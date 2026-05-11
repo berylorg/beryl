@@ -385,6 +385,23 @@ impl ThreadRef {
         &self.execution_target
     }
 
+    pub fn matches_thread_target(
+        &self,
+        thread_id: &ConversationThreadId,
+        execution_target: &ExecutionTargetId,
+    ) -> bool {
+        self.thread_id == *thread_id && self.execution_target == *execution_target
+    }
+
+    pub fn execution_target_in_scope<'a>(
+        &self,
+        execution_targets: impl IntoIterator<Item = &'a ExecutionTargetId>,
+    ) -> bool {
+        execution_targets
+            .into_iter()
+            .any(|execution_target| execution_target == &self.execution_target)
+    }
+
     pub fn label(&self) -> &str {
         &self.label
     }

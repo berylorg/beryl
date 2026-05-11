@@ -184,10 +184,11 @@ impl ShellView {
         };
         self.notify_checklist_sidebar_panel(cx);
 
-        let Some(connector) = self.backend_client_connector() else {
+        let Some(connector) = self.backend_client_connector_for_execution_target(&execution_target)
+        else {
             self.set_graph_thread_start_notice(
                 "Thread start unavailable",
-                "Beryl does not have an active managed backend for this workspace.",
+                "Beryl does not have an active managed backend for the resolved workspace member.",
             );
             cx.notify();
             return;

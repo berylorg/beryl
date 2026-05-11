@@ -139,10 +139,15 @@ pub(super) fn render_graph_overlay(
         ));
     } else {
         body = body.child(
-            div()
-                .flex_1()
-                .min_h(px(0.0))
-                .child(render_graph_columns(shell, surface, cx)),
+            div().flex_1().min_h(px(0.0)).child(render_graph_columns(
+                shell,
+                &loaded_workspace.workspace_state,
+                loaded_workspace
+                    .resolved_implicit_home_execution_target()
+                    .as_ref(),
+                surface,
+                cx,
+            )),
         );
     }
 
@@ -314,6 +319,8 @@ fn render_overlay_header_status(
 
 fn render_graph_columns(
     shell: &ShellView,
+    workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    implicit_home_execution_target: Option<&beryl_model::workspace::WorkspaceId>,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -325,7 +332,16 @@ fn render_graph_columns(
         .iter()
         .enumerate()
         .map(|(index, column)| {
-            render_graph_column(shell, index, surface, column, cx).into_any_element()
+            render_graph_column(
+                shell,
+                workspace_state,
+                implicit_home_execution_target,
+                index,
+                surface,
+                column,
+                cx,
+            )
+            .into_any_element()
         })
         .collect();
 
@@ -343,6 +359,8 @@ fn render_graph_columns(
 
 fn render_graph_column(
     shell: &ShellView,
+    workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    implicit_home_execution_target: Option<&beryl_model::workspace::WorkspaceId>,
     column_index: usize,
     surface: &ConversationSurfaceState,
     column: &GraphColumnState,
@@ -374,6 +392,8 @@ fn render_graph_column(
             for root_node in graph.root_nodes() {
                 root_rows = root_rows.child(render_graph_node_tree(
                     shell,
+                    workspace_state,
+                    implicit_home_execution_target,
                     column_index,
                     column,
                     surface,
@@ -409,6 +429,8 @@ fn render_graph_column(
                 .p_3()
                 .child(render_graph_node_tree(
                     shell,
+                    workspace_state,
+                    implicit_home_execution_target,
                     column_index,
                     column,
                     surface,

@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use beryl_backend::{JsonRpcError, ManagedBackendError, ThreadSummary};
 use beryl_model::{
@@ -48,6 +51,12 @@ pub(crate) struct MemberThreadInventoryThread {
     backend_name: Option<String>,
     created_at_millis: i64,
     updated_at_millis: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MemberThreadInventoryBackendThread {
+    runtime: RuntimeMode,
+    summary: ThreadSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -418,6 +427,21 @@ impl MemberThreadInventoryThread {
     }
 }
 
+impl MemberThreadInventoryBackendThread {
+    pub(crate) fn new(runtime: RuntimeMode, summary: ThreadSummary) -> Self {
+        Self { runtime, summary }
+    }
+
+    pub(crate) fn runtime(&self) -> &RuntimeMode {
+        &self.runtime
+    }
+
+    pub(crate) fn summary(&self) -> &ThreadSummary {
+        &self.summary
+    }
+}
+
+#[allow(dead_code)]
 pub(crate) fn build_member_thread_inventory_snapshot(
     workspace_id: BerylWorkspaceId,
     workspace_state: &WorkspaceConversationState,
@@ -425,17 +449,43 @@ pub(crate) fn build_member_thread_inventory_snapshot(
     backend_threads: Vec<ThreadSummary>,
     refreshed_at_millis: u64,
 ) -> MemberThreadInventorySnapshot {
+    let default_runtime = members
+        .first()
+        .map(|member| member.runtime().clone())
+        .unwrap_or(RuntimeMode::HostWindows);
+    let backend_threads = backend_threads
+        .into_iter()
+        .map(|summary| MemberThreadInventoryBackendThread::new(default_runtime.clone(), summary))
+        .collect();
+    build_member_thread_inventory_snapshot_for_backend_threads(
+        workspace_id,
+        workspace_state,
+        members,
+        backend_threads,
+        refreshed_at_millis,
+    )
+}
+
+pub(crate) fn build_member_thread_inventory_snapshot_for_backend_threads(
+    workspace_id: BerylWorkspaceId,
+    workspace_state: &WorkspaceConversationState,
+    members: Vec<MemberThreadInventoryGroup>,
+    mut backend_threads: Vec<MemberThreadInventoryBackendThread>,
+    refreshed_at_millis: u64,
+) -> MemberThreadInventorySnapshot {
+    dedupe_backend_threads_by_runtime_thread_and_cwd(&mut backend_threads);
     let mut groups = members
         .into_iter()
         .map(|mut group| {
             group.threads = backend_threads
                 .iter()
                 .filter(|thread| {
-                    group
-                        .canonical_path()
-                        .is_some_and(|path| thread.cwd.as_path() == path)
+                    thread.runtime() == group.runtime()
+                        && group
+                            .canonical_path()
+                            .is_some_and(|path| thread.summary().cwd.as_path() == path)
                 })
-                .map(|thread| thread_from_summary(workspace_state, &group, thread))
+                .map(|thread| thread_from_summary(workspace_state, &group, thread.summary()))
                 .collect();
             group.threads.sort_by(|left, right| {
                 right
@@ -450,6 +500,19 @@ pub(crate) fn build_member_thread_inventory_snapshot(
 
     groups.sort_by(|left, right| member_group_sort_key(left).cmp(&member_group_sort_key(right)));
     MemberThreadInventorySnapshot::new(workspace_id, refreshed_at_millis, groups)
+}
+
+fn dedupe_backend_threads_by_runtime_thread_and_cwd(
+    backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
+) {
+    let mut seen = HashSet::new();
+    backend_threads.retain(|thread| {
+        seen.insert((
+            thread.runtime().clone(),
+            thread.summary().id.clone(),
+            thread.summary().cwd.clone(),
+        ))
+    });
 }
 
 pub(crate) fn prepare_backend_threads_for_member_thread_inventory<R>(
@@ -473,6 +536,20 @@ pub(crate) fn retain_backend_threads_for_inventory_members(
             member
                 .canonical_path()
                 .is_some_and(|path| thread.cwd.as_path() == path)
+        })
+    });
+}
+
+pub(crate) fn retain_scoped_backend_threads_for_inventory_members(
+    backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
+    members: &[MemberThreadInventoryGroup],
+) {
+    backend_threads.retain(|thread| {
+        members.iter().any(|member| {
+            thread.runtime() == member.runtime()
+                && member
+                    .canonical_path()
+                    .is_some_and(|path| thread.summary().cwd.as_path() == path)
         })
     });
 }
@@ -568,7 +645,7 @@ pub(crate) fn empty_groups_for_workspace_state(
         return Vec::new();
     };
 
-    if workspace_state.explicit_members().is_empty() {
+    if !workspace_state.has_available_explicit_members() {
         return vec![MemberThreadInventoryGroup::new(
             MemberThreadInventoryMemberKey::ImplicitHome,
             MemberThreadInventoryMemberKind::ImplicitHome,
@@ -580,14 +657,13 @@ pub(crate) fn empty_groups_for_workspace_state(
     }
 
     workspace_state
-        .explicit_members()
-        .iter()
+        .available_explicit_members()
         .map(|member| {
             MemberThreadInventoryGroup::new(
                 MemberThreadInventoryMemberKey::Explicit(member.id().clone()),
                 MemberThreadInventoryMemberKind::Explicit,
                 member.canonical_path().display().to_string(),
-                runtime.clone(),
+                member.runtime_mode().clone(),
                 Some(member.canonical_path().to_path_buf()),
                 Vec::new(),
             )

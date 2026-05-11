@@ -18,7 +18,7 @@ use beryl_model::conversation::{
     ConversationThreadId, ConversationThreadTokenUsageSnapshot, RegisteredConversationThread,
     WorkspaceConversationState,
 };
-use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId};
+use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId, ThreadRefId};
 use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId, WorkspaceMemberId,
 };
@@ -269,7 +269,7 @@ use thread_history_worker::{
     ThreadHistoryPageOutcome, ThreadHistoryPageUpdate, spawn_older_thread_history_page_worker,
 };
 use thread_selection::{
-    ThreadSelectionRequest, exact_thread_selection_request, thread_rebind_detail,
+    ThreadSelectionRequest, exact_thread_selection_request, graph_thread_ref_availability,
 };
 use thread_selector::{
     ThreadSelectorActivationTarget, ThreadSelectorColumnKey, ThreadSelectorState,
@@ -310,8 +310,8 @@ use virtual_list::{ListAlignment, ListScrollEvent, ListState};
 use workspace_members::{
     WorkspaceMemberAttachRequest, apply_primary_execution_target_selection,
     apply_workspace_member_attachment, apply_workspace_member_detach,
-    apply_workspace_member_primary_selection, resolve_new_thread_execution_target,
-    resolve_workspace_member_attach_request,
+    apply_workspace_member_primary_selection, reconcile_workspace_member_availability,
+    resolve_new_thread_execution_target, resolve_workspace_member_attach_request,
 };
 use workspace_persistence_worker::{
     WorkspacePersistenceFlush, WorkspacePersistenceQueue, spawn_workspace_persistence_worker,
@@ -493,7 +493,7 @@ struct ShellView {
     #[allow(dead_code)]
     gui_preferences: SharedGuiPreferences,
     state: ShellState,
-    backend_server: Option<ManagedBackendServer>,
+    backend_servers: HashMap<WorkspaceId, ManagedBackendServer>,
     workspace_open_cancellation: Option<WorkspaceOpenCancellation>,
     discovery_receiver: Option<Receiver<DiscoveryUpdate>>,
     workspace_receiver: Option<Receiver<WorkspaceUpdate>>,
@@ -634,7 +634,7 @@ fn shutdown_queued_workspace_open_result(
 }
 
 fn spawn_application_shutdown_worker(
-    active_server: Option<ManagedBackendServer>,
+    active_servers: Vec<ManagedBackendServer>,
     workspace_receiver: Option<Receiver<WorkspaceUpdate>>,
     workspace_persistence_flush: WorkspacePersistenceFlush,
     pending_open_timeout: Duration,
@@ -642,10 +642,10 @@ fn spawn_application_shutdown_worker(
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let mut errors = Vec::new();
-        if let Some(server) = active_server
-            && let Err(error) = shutdown_managed_backend_server(server, "application shutdown")
-        {
-            errors.push(error);
+        for server in active_servers {
+            if let Err(error) = shutdown_managed_backend_server(server, "application shutdown") {
+                errors.push(error);
+            }
         }
 
         if let Some(receiver) = workspace_receiver
@@ -1379,14 +1379,18 @@ impl LoadedWorkspaceState {
         &mut self,
         runtime: &RuntimeMode,
         result: Result<PathBuf, String>,
-    ) {
+    ) -> bool {
         if !self
             .selected_implicit_home_runtime()
             .is_some_and(|selected| selected == runtime)
         {
-            return;
+            return false;
         }
 
+        let restored_target = result
+            .as_ref()
+            .ok()
+            .map(|path| WorkspaceId::from_parts(runtime.clone(), path.clone()));
         self.implicit_home_path_resolution = Some(ImplicitHomePathResolution {
             runtime: runtime.clone(),
             status: match result {
@@ -1394,14 +1398,18 @@ impl LoadedWorkspaceState {
                 Err(error) => ImplicitHomePathResolutionStatus::Failed(error),
             },
         });
+        restored_target.is_some_and(|target| self.restore_implicit_home_threads_for_target(&target))
     }
 
-    fn set_resolved_implicit_home_path_from_target(&mut self, execution_target: &WorkspaceId) {
+    fn set_resolved_implicit_home_path_from_target(
+        &mut self,
+        execution_target: &WorkspaceId,
+    ) -> bool {
         if !self
             .selected_implicit_home_runtime()
             .is_some_and(|runtime| runtime == execution_target.runtime_mode())
         {
-            return;
+            return false;
         }
 
         self.implicit_home_path_resolution = Some(ImplicitHomePathResolution {
@@ -1410,6 +1418,32 @@ impl LoadedWorkspaceState {
                 execution_target.canonical_path().to_path_buf(),
             ),
         });
+        self.restore_implicit_home_threads_for_target(execution_target)
+    }
+
+    fn resolved_implicit_home_execution_target(&self) -> Option<WorkspaceId> {
+        let runtime = self.selected_implicit_home_runtime()?;
+        let Some(resolution) = self.implicit_home_path_resolution.as_ref() else {
+            return None;
+        };
+        if resolution.runtime != *runtime {
+            return None;
+        }
+        let ImplicitHomePathResolutionStatus::Resolved(path) = &resolution.status else {
+            return None;
+        };
+
+        Some(WorkspaceId::from_parts(runtime.clone(), path.clone()))
+    }
+
+    fn restore_resolved_implicit_home_threads(&mut self) -> bool {
+        self.resolved_implicit_home_execution_target()
+            .is_some_and(|target| self.restore_implicit_home_threads_for_target(&target))
+    }
+
+    fn restore_implicit_home_threads_for_target(&mut self, execution_target: &WorkspaceId) -> bool {
+        self.workspace_state
+            .restore_implicit_home_threads_for_execution_target(execution_target)
     }
 
     fn clear_implicit_home_path_resolution(&mut self) {
@@ -1435,7 +1469,7 @@ impl LoadedWorkspaceState {
     }
 
     fn selected_implicit_home_runtime(&self) -> Option<&RuntimeMode> {
-        if self.explicit_members().is_empty() {
+        if !self.workspace_state.has_available_explicit_members() {
             self.selected_runtime()
         } else {
             None
@@ -3905,7 +3939,7 @@ impl ShellView {
             state: ShellState::Discovering(DiscoveringState {
                 detail: "Preparing startup discovery".to_string(),
             }),
-            backend_server: None,
+            backend_servers: HashMap::new(),
             workspace_open_cancellation: None,
             discovery_receiver: None,
             workspace_receiver: None,
@@ -4278,14 +4312,44 @@ impl ShellView {
         shutdown_queued_workspace_open_result(receiver, reason);
     }
 
-    pub(super) fn shutdown_active_backend_server_in_background(&mut self, reason: &'static str) {
+    pub(super) fn shutdown_backend_server_for_target_in_background(
+        &mut self,
+        execution_target: &WorkspaceId,
+        reason: &'static str,
+    ) {
         self.tool_activity_nickname_resolver.reset();
         self.account_rate_limits_receiver = None;
-        let Some(server) = self.backend_server.take() else {
+        let Some(server) = self.backend_servers.remove(execution_target) else {
             return;
         };
 
         spawn_managed_backend_shutdown(server, reason);
+    }
+
+    pub(super) fn shutdown_active_backend_server_in_background(&mut self, reason: &'static str) {
+        let target = match &self.state {
+            ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+            ShellState::Blocked(blocked) => match &blocked.target {
+                RetryTarget::Workspace(workspace) => Some(workspace.clone()),
+                _ => None,
+            },
+            ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_)
+            | ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_) => None,
+        };
+        if let Some(target) = target {
+            self.shutdown_backend_server_for_target_in_background(&target, reason);
+        }
+    }
+
+    pub(super) fn shutdown_all_backend_servers_in_background(&mut self, reason: &'static str) {
+        self.tool_activity_nickname_resolver.reset();
+        self.account_rate_limits_receiver = None;
+        for (_, server) in self.backend_servers.drain() {
+            spawn_managed_backend_shutdown(server, reason);
+        }
     }
 
     fn begin_application_shutdown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4296,7 +4360,11 @@ impl ShellView {
 
         self.cancel_thread_title_workers();
         self.cancel_workspace_open();
-        let active_server = self.backend_server.take();
+        let active_servers = self
+            .backend_servers
+            .drain()
+            .map(|(_, server)| server)
+            .collect();
         let workspace_receiver = self.workspace_receiver.take();
         self.discovery_receiver = None;
         self.graph_receiver = None;
@@ -4326,7 +4394,7 @@ impl ShellView {
         let timeout = self.bootstrap.probe_timeout() + APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT;
         let workspace_persistence_flush = self.workspace_persistence_queue.flush();
         self.application_shutdown_receiver = Some(spawn_application_shutdown_worker(
-            active_server,
+            active_servers,
             workspace_receiver,
             workspace_persistence_flush,
             timeout,
@@ -4337,7 +4405,7 @@ impl ShellView {
 
     fn clear_background_activity(&mut self) {
         self.cancel_thread_title_workers();
-        self.shutdown_active_backend_server_in_background("clearing shell background activity");
+        self.shutdown_all_backend_servers_in_background("clearing shell background activity");
         self.discard_workspace_open_receiver("clearing pending workspace open");
         self.discovery_receiver = None;
         self.graph_receiver = None;
@@ -4390,9 +4458,14 @@ impl ShellView {
                 &workspace_persistence,
             )
             .and_then(|startup| {
-                let workspace_state = workspace_persistence
+                let mut workspace_state = workspace_persistence
                     .load_workspace_state(startup.active_workspace().id())
                     .map_err(crate::StartupStateError::WorkspacePersistence)?;
+                if reconcile_workspace_member_availability(&mut workspace_state) {
+                    workspace_persistence
+                        .save_workspace_state(startup.active_workspace().id(), &workspace_state)
+                        .map_err(crate::StartupStateError::WorkspacePersistence)?;
+                }
                 let workspace_ui_state = workspace_persistence
                     .load_workspace_ui_state(startup.active_workspace().id())
                     .map_err(crate::StartupStateError::WorkspacePersistence)?;
@@ -4556,7 +4629,6 @@ impl ShellView {
         self.workspace_title_receiver = None;
         self.pending_workspace_title_candidate = None;
         self.status_model_cache = StatusModelListCache::default();
-        self.shutdown_active_backend_server_in_background("starting a new workspace open");
         self.state = ShellState::Opening(OpeningState {
             attempt,
             workspace_label: target.workspace_label(),
@@ -4685,7 +4757,7 @@ impl ShellView {
                 .conversation_surface()
                 .is_some_and(|surface| surface.member_thread_inventory().needs_refresh())
                 || self.tool_activity_nickname_resolver.has_retry_work()
-                || self.backend_server.is_some())
+                || !self.backend_servers.is_empty())
     }
 
     fn poll_workspace_persistence_pending_state(&mut self) -> bool {
@@ -4786,7 +4858,12 @@ impl ShellView {
                 });
         if should_poll_backend_liveness {
             self.last_backend_liveness_poll_at = Some(Instant::now());
-            if let Some(server) = self.backend_server.as_mut()
+            let active_target = match &self.state {
+                ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+                _ => None,
+            };
+            if let Some(active_target) = active_target
+                && let Some(server) = self.backend_servers.get_mut(&active_target)
                 && !server.is_process_alive()
             {
                 self.handle_disconnect();
@@ -6324,7 +6401,10 @@ impl ShellView {
             return;
         }
 
-        loaded.finish_implicit_home_path_resolution(&runtime, result);
+        let restored = loaded.finish_implicit_home_path_resolution(&runtime, result);
+        if restored {
+            self.persist_current_workspace_state(true);
+        }
         cx.notify();
     }
 
@@ -8269,7 +8349,8 @@ impl ShellView {
         let label = target.label;
         let execution_target = target.execution_target;
 
-        if current_execution_target != execution_target {
+        let connector = self.backend_client_connector_for_execution_target(&execution_target);
+        if current_execution_target != execution_target && connector.is_none() {
             self.begin_open_target_with_thread_selection_and_intent(
                 RetryTarget::Workspace(execution_target),
                 thread_selection,
@@ -8293,7 +8374,7 @@ impl ShellView {
             return;
         }
 
-        let Some(connector) = self.backend_client_connector() else {
+        let Some(connector) = connector else {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
                     "Thread activation failed",
@@ -8311,7 +8392,7 @@ impl ShellView {
         }
         MemoryMilestone::new("thread_activation_start")
             .workspace_id(beryl_workspace_id.as_str())
-            .runtime(current_execution_target.runtime_mode().display_name())
+            .runtime(execution_target.runtime_mode().display_name())
             .thread_id(thread_id.as_str())
             .log();
         debug!(
@@ -8330,7 +8411,7 @@ impl ShellView {
             persistence,
             connector,
             beryl_workspace_id,
-            current_execution_target,
+            execution_target,
             thread_id,
             label,
             self.bootstrap.probe_timeout(),
@@ -8347,6 +8428,7 @@ impl ShellView {
 
     fn select_graph_thread_ref(
         &mut self,
+        thread_ref_id: ThreadRefId,
         thread_id: String,
         execution_target: WorkspaceId,
         label: String,
@@ -8367,17 +8449,26 @@ impl ShellView {
             return;
         }
 
-        let (current_execution_target, rebind_reason) = match &self.state {
+        let (current_execution_target, availability) = match &self.state {
             ShellState::Ready(ready) => {
-                let registered_thread = ready
-                    .loaded_workspace
-                    .workspace_state
-                    .thread_registration(&ConversationThreadId::new(thread_id.clone()));
+                let Some(thread_ref) = ready
+                    .surface
+                    .graph_overlay()
+                    .graph()
+                    .thread_ref(&thread_ref_id)
+                else {
+                    return;
+                };
                 (
                     ready.execution_target.clone(),
-                    registered_thread
-                        .and_then(|thread| thread.rebind_required())
-                        .map(|requirement| requirement.detail().to_string()),
+                    graph_thread_ref_availability(
+                        &ready.loaded_workspace.workspace_state,
+                        thread_ref,
+                        ready
+                            .loaded_workspace
+                            .resolved_implicit_home_execution_target()
+                            .as_ref(),
+                    ),
                 )
             }
             ShellState::Discovering(_)
@@ -8388,18 +8479,22 @@ impl ShellView {
             | ShellState::Blocked(_) => return,
         };
 
-        if let Some(reason) = rebind_reason {
+        if let Some(notice_title) = availability.notice_title() {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
-                    "Thread requires rebind",
-                    thread_rebind_detail(&label, &execution_target, &reason),
+                    notice_title,
+                    availability
+                        .detail()
+                        .unwrap_or("That thread link is unavailable.")
+                        .to_string(),
                 ));
                 cx.notify();
             }
             return;
         }
 
-        if current_execution_target != execution_target {
+        let connector = self.backend_client_connector_for_execution_target(&execution_target);
+        if current_execution_target != execution_target && connector.is_none() {
             self.begin_open_target_with_thread_selection(
                 RetryTarget::Workspace(execution_target),
                 ThreadSelectionRequest::exact(thread_id, label),
@@ -8421,7 +8516,7 @@ impl ShellView {
             return;
         }
 
-        let Some(connector) = self.backend_client_connector() else {
+        let Some(connector) = connector else {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
                     "Thread activation failed",
@@ -8437,7 +8532,7 @@ impl ShellView {
             surface.begin_thread_activation(label.clone());
         }
         MemoryMilestone::new("thread_activation_start")
-            .runtime(current_execution_target.runtime_mode().display_name())
+            .runtime(execution_target.runtime_mode().display_name())
             .thread_id(thread_id.as_str())
             .log();
         debug!(
@@ -8466,7 +8561,7 @@ impl ShellView {
             persistence,
             connector,
             beryl_workspace_id,
-            current_execution_target,
+            execution_target,
             thread_id,
             label,
             self.bootstrap.probe_timeout(),
@@ -8990,13 +9085,19 @@ impl ShellView {
     }
 
     fn detach_workspace_member(&mut self, member_id: WorkspaceMemberId, cx: &mut Context<Self>) {
-        let result = {
+        let (result, restored) = {
             let Some(loaded) = self.workspace_shell_state_mut() else {
                 return;
             };
             loaded.clear_workspace_members_notice();
             loaded.workspace_picker.close_member_action_menu();
-            apply_workspace_member_detach(&mut loaded.workspace_state, &member_id)
+            let result = apply_workspace_member_detach(&mut loaded.workspace_state, &member_id);
+            let restored = if matches!(result, Ok(true)) {
+                loaded.restore_resolved_implicit_home_threads()
+            } else {
+                false
+            };
+            (result, restored)
         };
 
         match result {
@@ -9005,7 +9106,11 @@ impl ShellView {
                 self.reset_member_thread_inventory_for_workspace_state();
                 self.begin_implicit_home_path_resolution_if_needed(cx);
             }
-            Ok(false) => {}
+            Ok(false) => {
+                if restored {
+                    self.persist_current_workspace_state(true);
+                }
+            }
             Err(error) => {
                 self.set_workspace_members_notice(format!(
                     "Beryl could not detach that workspace member: {error}"
@@ -10161,10 +10266,10 @@ impl ShellView {
 
         self.notify_transcript_panel(cx);
 
-        let Some(connector) = self.backend_client_connector() else {
+        let Some(connector) = self.backend_client_connector_for_execution_target(&workspace) else {
             if let Some(surface) = self.conversation_surface_mut() {
                 let _ = surface.finish_turn_failure(
-                    "Beryl does not have an active managed backend for this workspace.",
+                    "Beryl does not have an active managed backend for the resolved workspace member.",
                 );
             }
             self.notify_transcript_panel(cx);
@@ -11008,9 +11113,37 @@ impl ShellView {
     }
 
     pub(super) fn backend_client_connector(&self) -> Option<ManagedBackendClientConnector> {
-        self.backend_server
-            .as_ref()
+        let execution_target = match &self.state {
+            ShellState::Ready(ready) => Some(&ready.execution_target),
+            ShellState::Blocked(blocked) => match &blocked.target {
+                RetryTarget::Workspace(workspace) => Some(workspace),
+                _ => None,
+            },
+            ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_)
+            | ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_) => None,
+        }?;
+        self.backend_client_connector_for_execution_target(execution_target)
+    }
+
+    pub(super) fn backend_client_connector_for_execution_target(
+        &self,
+        execution_target: &WorkspaceId,
+    ) -> Option<ManagedBackendClientConnector> {
+        self.backend_servers
+            .get(execution_target)
             .map(ManagedBackendServer::client_connector)
+    }
+
+    pub(super) fn backend_client_connectors(
+        &self,
+    ) -> Vec<(WorkspaceId, ManagedBackendClientConnector)> {
+        self.backend_servers
+            .iter()
+            .map(|(execution_target, server)| (execution_target.clone(), server.client_connector()))
+            .collect()
     }
 
     fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
@@ -11084,10 +11217,15 @@ impl ShellView {
         summary: &str,
         detail: &str,
     ) -> bool {
-        if self
-            .backend_server
-            .as_mut()
-            .is_some_and(ManagedBackendServer::is_process_alive)
+        let active_target = match &self.state {
+            ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+            _ => None,
+        };
+        if let Some(active_target) = active_target.as_ref()
+            && self
+                .backend_servers
+                .get_mut(active_target)
+                .is_some_and(ManagedBackendServer::is_process_alive)
         {
             return false;
         }

@@ -22,18 +22,23 @@ No browser technologies. Beryl-owned code must be Rust only.
 
 Beryl may depend on the official `gpui` package or on a fork anchored to upstream Zed `gpui` source when targeted patches are needed to satisfy Beryl's product constraints. GPUI-owned native build dependency surface, including transitive C or assembly compilation, remains allowed. A Beryl-maintained GPUI fork must preserve GPUI's public boundary for Beryl and must not be used to remove GPUI-owned build dependencies without an explicit design decision.
 
+Beryl's normal dependency on a Beryl-maintained GPUI fork does not require GPUI's HTTP client capability. The fork may gate GPUI-owned HTTP client integration, including the `http_client` and `zed-reqwest` dependency stack, behind an opt-in `gpui` Cargo feature so Beryl builds that do not use GPUI HTTP APIs do not compile that dependency stack. This exception is limited to the GPUI HTTP client dependency surface and must preserve the public GPUI HTTP client boundary for consumers that enable the feature.
+
 Agent execution, transcript history, and Codex-owned state flow through `codex app-server`. When the app-server protocol does not expose a direct GUI-needed helper, Beryl may own narrow GUI-side orchestration that uses app-server protocol primitives without modifying app-server or directly linking Codex internal crates.
 
 ### Vocabulary
 
-- `Runtime environment` is either host-Windows or one specific WSL distro. Runtime environment determines where a backend process runs, how filesystem paths are interpreted, and which home directory is used when a workspace falls back to its implicit home member.
+- `Runtime environment` is either host-Windows or one specific WSL distro. Runtime environment determines where a backend process runs, how filesystem paths are interpreted, and which home directory is used for runtime-specific home fallback.
+- `Default runtime environment` is the workspace-level runtime preference used for new member attachment and implicit home fallback. It does not limit a workspace to members from only one runtime environment.
 - `WSL distro name` is the distribution name used when a backend connection runs in WSL-Linux mode.
 - `Backend connection` is one live GUI connection to one `codex app-server` instance launched by the GUI.
 - `Beryl home directory` is the GUI-owned durable app-state root. It defaults to the current user's `~/.beryl` directory and may be overridden at process startup; an explicit Beryl home directory is the root itself and does not receive an appended `.beryl` component.
 - `Beryl workspace` is one GUI-owned durable semantic workspace stored under the configured Beryl home directory. A Beryl workspace is not itself a filesystem root and may begin untitled.
-- `Workspace member` is one GUI-owned attached directory within a Beryl workspace's selected runtime environment.
-- `Primary workspace member` is the currently designated workspace member whose directory is used as the concrete execution root for newly created Codex conversation threads in that workspace.
-- `Implicit home member` is the undeletable home-directory workspace member automatically exposed when a workspace has a selected runtime environment but no explicit attached workspace members.
+- `Workspace member` is one GUI-owned attached directory registration within a Beryl workspace, bound to one runtime environment.
+- `Available workspace member` is a workspace member whose registered runtime and directory currently resolve to a live directory that may be used as a concrete execution root.
+- `Unavailable workspace member` is an attached explicit workspace member whose registered directory cannot currently be resolved as a live directory. It remains attached workspace state but is not eligible as a concrete execution root while unavailable.
+- `Primary workspace member` is the currently designated available workspace member whose runtime and directory are used as the concrete execution root for newly created Codex conversation threads in that workspace.
+- `Implicit home member` is the undeletable home-directory workspace member exposed for the workspace default runtime when no available explicit workspace member can serve as primary.
 - `Conversation thread` is one backend-owned Codex thread with its own message history and execution event stream.
 - `Conversation thread branch` is a backend-owned Codex thread created from an existing backend conversation thread by preserving history through one selected parent turn and removing later turns from the new thread while leaving the source thread unchanged.
 - `Conversation thread edit` is a user-initiated source-thread rewrite flow that previews discarding one selected parent turn and the following conversation tail, then commits by rolling back backend-owned history and starting a new backend turn from the current composer draft on that same thread. It is not an in-place mutation of an existing turn id.
@@ -51,11 +56,11 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - `Semantic facet` is one capability-bearing classification attached to a semantic node. V1 semantic facets are `Topic`, `Checklist`, and `ChecklistItem`.
 - `Hard semantic forest` is the ordered single-parent parent/child structure connecting semantic nodes through one or more root-level semantic nodes. Each connected component is a tree and therefore a special case of a DAG.
 - `Soft semantic link` is one optional typed directed link between semantic nodes that is not part of the hard semantic forest and may connect nodes inside the same hard-tree component or across different hard-tree components.
-- `Thread ref` is one GUI-owned association between a semantic node and a backend conversation thread, including enough metadata to reopen or create work in the correct workspace runtime environment and bound workspace member, or to require explicit rebinding when that original execution context is no longer available.
+- `Thread ref` is one GUI-owned association between a semantic node and a backend conversation thread, including enough metadata to reopen work in the original runtime environment and execution target, report an invalid unopenable state when that execution target is outside current workspace scope, or require explicit rebinding.
 - `Workspace graph revision` is one GUI-owned monotonic revision for a workspace's durable semantic graph state. It orders durable semantic-graph commits without becoming part of the pure semantic graph model.
 - `Graph mutation commit` is one accepted semantic-graph patch outcome for a workspace revision, including enough metadata for the GUI to reconcile visible graph state with durable workspace state.
 - `Optimistic graph projection` is a temporary GUI-visible projection that applies a locally valid user-initiated graph mutation before the matching durable graph mutation commit is confirmed.
-- `Member-thread inventory` is one GUI-owned derived snapshot of backend conversation thread summaries grouped by available workspace member for the active Beryl workspace, including backend-provided thread fork parent metadata when it is available.
+- `Member-thread inventory` is one GUI-owned derived snapshot of backend conversation thread summaries grouped by available runtime-bound workspace member for the active Beryl workspace, including backend-provided thread fork parent metadata when it is available.
 - `Column selector` is a reusable GUI selection component that presents domain-owned items as a horizontally scrollable trail of columns, where selecting a branching row opens the next column without making those rows part of another domain model.
 - `Thread selector` is a GUI surface that uses the column selector to list and activate backend conversation threads from the member-thread inventory without requiring semantic graph interaction.
 - `Loaded transcript window` is the transient set of backend turn pages available to the GUI for the active conversation thread.
@@ -99,7 +104,7 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Transcript branch actions depend on app-server thread fork and rollback primitives. When those primitives are unavailable, Beryl must not emulate branching by copying backend-owned transcript history into GUI-local state.
 - Transcript edit actions depend on app-server rollback and turn-start primitives. When rollback is unavailable, the selected source thread is not idle, or Beryl cannot derive an exact trailing user-turn count from loaded backend history, Beryl must not emulate thread editing by copying backend-owned transcript history into GUI-local state.
 - Hard-stop backend primitives, including process-backed tool termination and thread-scoped background-terminal cleanup when app-server exposes them, are probed separately. Missing hard-stop primitives disable only the affected hard-stop escalation targets and must not disable soft turn interruption when active-turn interruption is available.
-- A GUI instance uses at most one active managed app-server process for the currently opened workspace runtime target, but it may open multiple independent backend client connections to that process.
+- A GUI instance may manage app-server processes for multiple workspace runtime targets as needed, but it uses at most one active managed app-server process for a given runtime target and may open multiple independent backend client connections to that process.
 - Foreground conversation turns, thread activation, inventory refresh, title generation, status operations, and future lazy maintenance work must use independent backend client connections when sharing a single connection would delay user-visible foreground streaming or completion.
 - Startup workspace discovery is derived from Beryl-owned persisted semantic workspaces rather than from enumerating backend conversation threads.
 
@@ -115,13 +120,13 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Backend client connections are initialized independently and may opt out of notifications that their workflow does not consume when the app-server protocol supports notification opt-out.
 - Opening a Beryl workspace does not require backend thread enumeration.
 - Refreshing a member-thread inventory may enumerate backend threads after a workspace is open, but that enumeration is not the source of workspace identity and is not required before the workspace shell can render.
-- Backend connections are established on demand for the active conversation thread and its selected workspace runtime environment and member binding rather than as the source of workspace identity.
+- Backend connections are established on demand for the active conversation thread or pending new-thread draft's runtime environment and member binding rather than as the source of workspace identity.
 - Activating an existing backend conversation thread by a known thread id uses direct thread resume; backend thread summary enumeration is not on the critical path for thread activation.
 - Existing-thread activation validates the resumed thread's recorded working directory against the expected execution target and reports a rebind-required state when the resumed thread does not match that binding.
 
 ### Responsibility Split
 
-- The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, runtime-environment selection, workspace-member registrations, semantic graph state, thread refs, thread-title display precedence, automatic thread-title generation orchestration, derived member-thread inventory snapshots, and GUI-local persistence.
+- The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, default-runtime selection, runtime-bound workspace-member registrations, semantic graph state, thread refs, thread-title display precedence, automatic thread-title generation orchestration, derived member-thread inventory snapshots, and GUI-local persistence.
 - The GUI owns transcript branch orchestration as a user action over backend-owned conversation threads, including choosing the source turn, invoking backend fork and rollback primitives, title generation eligibility, inventory refresh, and optional activation of the resulting thread.
 - The GUI owns transcript edit orchestration as a user action over one backend-owned source thread, including choosing the target turn, previewing the destructive tail scope, routing composer commit and cancel behavior, computing the backend rollback count, resetting transcript presentation from backend rollback results, starting the replacement turn, and surfacing partial-failure states.
 - Authentication, session storage, agent execution, subagents, configuration, skills, MCP, and other non-UI agent state remain backend-owned.
@@ -198,27 +203,32 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - There may be any number of Beryl workspaces, and a workspace may remain untitled until it is later auto-titled or manually renamed.
 - Untitled workspace display labels use a monotonically increasing cross-workspace sequence and are not renumbered after deletions.
 - Untitled workspace ids use the same monotonic sequence until a generated or manual title is accepted, after which the workspace id changes to the accepted title slug.
-- A Beryl workspace carries GUI-owned `last updated` metadata that changes when the semantic graph, checklist state, thread refs, workspace title, runtime environment, workspace members, or other durable workspace-owned content changes, and does not change merely because the user activates or views that workspace.
+- A Beryl workspace carries GUI-owned `last updated` metadata that changes when the semantic graph, checklist state, thread refs, workspace title, default runtime environment, workspace members, primary-member designation, or other durable workspace-owned content changes, and does not change merely because the user activates or views that workspace.
 - Persisting last-known exact token-usage snapshots for status presentation does not update workspace `last updated` metadata, because those snapshots are status cache metadata rather than workspace content.
-- A Beryl workspace may have at most one selected runtime environment at a time, and a newly created workspace may leave that runtime environment unset until the user chooses one.
-- Each explicit workspace member is a directory inside the workspace's selected runtime environment; files are not valid workspace members.
-- Workspace-member identity is represented by `(workspace id, member id, runtime environment, canonical real path)`.
-- Symlinks and equivalent filesystem aliases are resolved before workspace-member identity or overlap checks are compared or persisted.
-- Explicit workspace members within one workspace must not overlap after canonicalization; neither ancestor nor descendant duplicates are allowed.
+- A Beryl workspace may contain explicit workspace members from host-Windows and any number of WSL distro runtime environments.
+- A newly created workspace has a host-Windows default runtime environment, and a workspace may leave that default runtime environment unset only as a legacy or recovery state.
+- Each explicit workspace member is registered as a directory inside its own runtime environment; files are not valid workspace members.
+- Workspace-member identity is represented by `(workspace id, member id, runtime environment, persisted canonical real path)`.
+- Symlinks and equivalent filesystem aliases are resolved before workspace-member identity or overlap checks are compared or persisted at attachment time.
+- Explicit workspace members within one workspace and runtime environment must not overlap after canonicalization; neither ancestor nor descendant duplicates are allowed.
 - The same textual path in different runtime environments or different WSL distros is a different workspace member identity.
 - Except for explicit runtime-boundary conversions owned by this design, the application does not translate paths or other filesystem state between runtime environments.
 - Runtime-boundary conversions are limited to converting WSL filesystem paths into host-openable WSL UNC paths for OS-open actions and post-picker validation, plus converting Beryl-owned durable image asset paths into backend-runtime-readable paths for `localImage` submission.
 - Host-Windows backend submissions may use the durable host asset path directly. WSL-Linux backend submissions must use a path that the selected WSL distro can read for the same asset file, such as the distro's mounted view of the host profile directory, and Beryl must validate that mapping instead of submitting a path that only the GUI can interpret.
-- A workspace with a selected runtime environment but no explicit workspace members exposes that runtime environment's home directory as its implicit home member.
-- The implicit home member is undeletable and acts as the primary workspace member while no explicit members exist.
-- Attaching the first explicit workspace member removes the implicit home member from the workspace-member list and makes that first explicit member the primary workspace member unless the user explicitly changes the primary selection afterward.
-- If all explicit workspace members are detached, the implicit home member reappears for the currently selected runtime environment and becomes the primary workspace member again.
-- The workspace runtime environment may be changed only when no explicit workspace members remain attached.
+- If an attached explicit workspace member's persisted path cannot currently be resolved as a live directory, the member remains attached but becomes unavailable until the path resolves again or the user detaches it.
+- A workspace with a default runtime environment and no available explicit workspace member exposes that runtime environment's home directory as its implicit home member.
+- The implicit home member is undeletable and acts as the primary workspace member while no available explicit member exists.
+- Attaching the first available explicit workspace member removes the implicit home member from the workspace-member list and makes that explicit member the primary workspace member unless the user explicitly changes the primary selection afterward.
+- If the current primary explicit member becomes unavailable or is detached while other available explicit members remain, Beryl durably promotes the earliest available explicit member by stable attach order to primary.
+- If no available explicit workspace member remains, the implicit home member for the workspace default runtime reappears and durably becomes the primary workspace member.
+- Changing the workspace default runtime changes only the runtime preference used for future member attachment and implicit home fallback; it does not alter existing explicit members or existing thread refs.
 - New Codex conversation threads use the workspace's current primary workspace member as their concrete execution root.
 - Existing conversation threads may change bound workspace member or runtime environment only through an explicit rebind decision; Beryl never silently hops them between execution contexts.
-- If a thread's original execution context is no longer available, Beryl requires an explicit rebind before continuing that thread on a different primary workspace member or runtime environment.
-- The available members for thread-linking UI are the explicit workspace members, or the implicit home member when the workspace has a selected runtime environment and no explicit members.
-- A backend conversation thread belongs to a workspace member's linkable inventory only when the thread summary's recorded working directory exactly matches that member's canonical path.
+- A thread ref remains durable when its original member is detached, unavailable, or no longer represented by the current member-thread inventory.
+- A thread ref is openable only when its recorded runtime and execution target are in current workspace scope and the referenced backend thread id can be resumed with a recorded working directory that still matches that execution target.
+- Current workspace scope for thread refs and thread-linking UI consists of available explicit workspace members, or the implicit home member when no available explicit workspace member exists.
+- If a thread ref's original execution context is outside current workspace scope, Beryl reports the ref as invalid and requires explicit rebind before continuing that ref on a different primary workspace member or runtime environment.
+- A backend conversation thread belongs to a workspace member's linkable inventory only when the thread summary's recorded runtime and working directory exactly match that member's runtime and canonical path.
 - Member-thread inventories are refreshed off the `gpui` thread, grouped by available member, sorted within each member by last-updated time descending, and atomically swapped into UI state.
 - Member-thread inventory refreshes use backend-side working-directory filtering and updated-time ordering when those app-server capabilities are available, then preserve the same exact grouping contract in GUI state.
 - Backend-provided fork parent metadata in member-thread inventory does not change workspace-member grouping: a thread remains grouped by its own recorded working directory.
@@ -250,8 +260,8 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Backend-provided thread names may replace backend-metadata-derived display labels when updated by the backend.
 - There is no permanent built-in Scratchpad workspace.
 - When no previously active workspace can be resumed, Beryl creates and opens a fresh untitled workspace instead of falling back to a special default workspace.
-- Freshly created workspaces select the host-Windows runtime environment by default. With no explicit workspace members attached, that selected runtime exposes the host user's home directory as the implicit primary workspace member.
-- A workspace without a selected runtime environment is a legacy or recovery state rather than the normal state of a new workspace.
+- Freshly created workspaces use host-Windows as the default runtime environment. With no available explicit workspace members attached, that default runtime exposes the host user's home directory as the implicit primary workspace member.
+- A workspace without a default runtime environment is a legacy or recovery state rather than the normal state of a new workspace.
 
 ### Semantic Graph Ownership
 
@@ -283,7 +293,7 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Dynamic tool graph writes must use the same ordered graph mutation commit path as user-initiated graph writes. They must not use whole-graph reloads as the normal visible update mechanism.
 - Implicit semantic-graph maintenance should avoid unnecessary user-visible latency when graph state is not required to answer the current turn.
 - Attached workspace members are discoverable model context, not prompt-preloaded filesystem snapshots; the model should inspect them selectively through normal filesystem access or Beryl-provided workspace metadata tools rather than receiving their full contents eagerly.
-- Durable workspace creation, deletion, retitling, runtime-environment selection, primary-member changes, and workspace-member attachment changes remain user-visible actions even when proposed or initiated by the model.
+- Durable workspace creation, deletion, retitling, default-runtime changes, primary-member changes, and workspace-member attachment changes remain user-visible actions even when proposed or initiated by the model.
 
 ### AI Lifecycle Yield
 
@@ -371,7 +381,7 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Semantic graph mutations must record provenance that identifies at least the source conversation turn or tool action, timestamp, and actor, with room for confidence or similar metadata when useful.
 - Provenance must cover node creation and edits, hard-link changes, root-order changes, soft-link changes, checklist-item mutations, and thread-ref changes.
 - A graph patch that restates graph facts already present in the semantic graph is a no-op for graph records: repository revision metadata may advance, but semantic graph provenance, root order, and child ordering must not change solely to record a redundant write.
-- Workspace-level metadata such as titles, runtime environments, workspace-member registrations, and primary-member designation are persisted separately from semantic-graph provenance.
+- Workspace-level metadata such as titles, the default runtime environment, runtime-bound workspace-member registrations, and primary-member designation, including availability-derived fallback changes, are persisted separately from semantic-graph provenance.
 
 ### Responsiveness and Performance
 
@@ -406,7 +416,7 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - GUI-owned local application state that is not directly user-configurable is stored under the configured Beryl home directory, separately from those TOML files.
 - Workspace-scoped GUI-local state is stored in one directory per Beryl workspace under the configured Beryl home directory's `workspaces/` child, using the current workspace id slug as the directory name.
 - A workspace title change that changes the workspace id is a repository-level move of the workspace-scoped state directory plus the manifest and cross-workspace metadata updates needed to make the new id authoritative. If that operation fails, the old title and id remain authoritative.
-- Workspace-scoped GUI-local state includes semantic graph data, semantic graph revision metadata, checklist state, runtime-environment selection, workspace-member registrations, primary-member designation, backend thread-name snapshots, manual GUI-local thread title metadata, automatic thread-title generation state, per-thread member bindings and rebind-needed state, thread refs, active thread selection, last-known exact per-thread token-usage snapshots for status presentation, Beryl image asset metadata, window state, splitter positions, activity-panel mode and height, and similar workspace-local runtime state.
+- Workspace-scoped GUI-local state includes semantic graph data, semantic graph revision metadata, checklist state, default runtime environment, runtime-bound workspace-member registrations, primary-member designation, backend thread-name snapshots, manual GUI-local thread title metadata, automatic thread-title generation state, per-thread member bindings and rebind-needed state, thread refs, thread-ref validity projection, active thread selection, last-known exact per-thread token-usage snapshots for status presentation, Beryl image asset metadata, window state, splitter positions, activity-panel mode and height, and similar workspace-local runtime state.
 - Workspace-scoped Beryl image assets store original pasted image bytes as files under the workspace's directory within the configured Beryl home directory's `workspaces/` child, with durable metadata linking those assets to accepted fragments, queued fragments, retries, and transcript markers.
 - Beryl image asset metadata must be sufficient to determine whether an asset is still referenced by workspace-visible conversation state so later cleanup can remove unreferenced asset files without scanning opaque image bytes.
 - Workspace-scoped GUI-local state includes the durable workspace `last updated` timestamp.

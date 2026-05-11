@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use beryl_model::semantic_graph::ThreadRefId;
 use gpui::{
     AnyElement, AnyView, App, Context, DispatchPhase, InteractiveElement, KeyDownEvent, KeyUpEvent,
     MouseDownEvent, Render, StatefulInteractiveElement, Window, anchored, canvas, div, prelude::*,
@@ -26,6 +27,21 @@ use super::graph_link_menu_rows::{
     action_row, actions_back_row, back_row, delete_leaf_row, delete_recursive_hold_row,
     disabled_action_row, disabled_menu_row, menu_header, status_row,
 };
+
+#[derive(Clone)]
+enum ThreadLinkMenuMode {
+    Link,
+    Rebind(ThreadRefId),
+}
+
+impl ThreadLinkMenuMode {
+    fn header(&self) -> &'static str {
+        match self {
+            Self::Link => "Link thread",
+            Self::Rebind(_) => "Rebind thread link",
+        }
+    }
+}
 
 struct LinkMenuTooltip {
     message: String,
@@ -162,15 +178,69 @@ fn render_menu_content(
             render_node_action_menu(shell, loaded, surface, cx).into_any_element()
         }
         GraphThreadLinkMenuView::LinkThreads if loaded.selected_runtime().is_none() => {
-            render_missing_runtime_menu(shell, cx).into_any_element()
+            render_missing_runtime_menu(shell, ThreadLinkMenuMode::Link, cx).into_any_element()
         }
-        GraphThreadLinkMenuView::LinkThreads => render_link_thread_menu(shell, surface, cx),
+        GraphThreadLinkMenuView::LinkThreads => {
+            render_link_thread_menu(shell, surface, ThreadLinkMenuMode::Link, cx)
+        }
         GraphThreadLinkMenuView::MemberThreads(member_key) => snapshot
             .group(member_key)
             .map(|group| {
-                render_thread_list(shell, group, surface, cx, true, false).into_any_element()
+                render_thread_list(
+                    shell,
+                    group,
+                    surface,
+                    ThreadLinkMenuMode::Link,
+                    cx,
+                    true,
+                    false,
+                )
+                .into_any_element()
             })
-            .unwrap_or_else(|| render_stale_member_menu(shell, cx).into_any_element()),
+            .unwrap_or_else(|| {
+                render_stale_member_menu(shell, ThreadLinkMenuMode::Link, cx).into_any_element()
+            }),
+        GraphThreadLinkMenuView::RebindThreads(thread_ref_id)
+            if loaded.selected_runtime().is_none() =>
+        {
+            render_missing_runtime_menu(
+                shell,
+                ThreadLinkMenuMode::Rebind(thread_ref_id.clone()),
+                cx,
+            )
+            .into_any_element()
+        }
+        GraphThreadLinkMenuView::RebindThreads(thread_ref_id) => render_link_thread_menu(
+            shell,
+            surface,
+            ThreadLinkMenuMode::Rebind(thread_ref_id.clone()),
+            cx,
+        ),
+        GraphThreadLinkMenuView::RebindMemberThreads {
+            thread_ref_id,
+            member_key,
+        } => snapshot
+            .group(member_key)
+            .map(|group| {
+                render_thread_list(
+                    shell,
+                    group,
+                    surface,
+                    ThreadLinkMenuMode::Rebind(thread_ref_id.clone()),
+                    cx,
+                    true,
+                    false,
+                )
+                .into_any_element()
+            })
+            .unwrap_or_else(|| {
+                render_stale_member_menu(
+                    shell,
+                    ThreadLinkMenuMode::Rebind(thread_ref_id.clone()),
+                    cx,
+                )
+                .into_any_element()
+            }),
     }
 }
 
@@ -292,6 +362,7 @@ fn render_node_action_menu(
 fn render_link_thread_menu(
     shell: &ShellView,
     surface: &ConversationSurfaceState,
+    mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
     let snapshot = surface.member_thread_inventory().snapshot();
@@ -300,6 +371,7 @@ fn render_link_thread_menu(
             shell,
             snapshot.groups().first().unwrap(),
             surface,
+            mode,
             cx,
             false,
             true,
@@ -307,15 +379,19 @@ fn render_link_thread_menu(
         .into_any_element();
     }
 
-    render_member_list(shell, snapshot, surface, cx).into_any_element()
+    render_member_list(shell, snapshot, surface, mode, cx).into_any_element()
 }
 
-fn render_missing_runtime_menu(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+fn render_missing_runtime_menu(
+    shell: &ShellView,
+    mode: ThreadLinkMenuMode,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(menu_header(shell, "Link thread"))
+        .child(menu_header(shell, mode.header()))
         .child(disabled_link_thread_row(shell))
         .child(action_row(
             shell,
@@ -366,13 +442,14 @@ fn render_member_list(
     shell: &ShellView,
     snapshot: &MemberThreadInventorySnapshot,
     surface: &ConversationSurfaceState,
+    mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let mut list = div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(menu_header(shell, "Link thread"))
+        .child(menu_header(shell, mode.header()))
         .child(actions_back_row(shell, cx));
     if surface.member_thread_inventory().refreshing() {
         list = list.child(status_row(shell, "Refreshing thread list..."));
@@ -381,7 +458,7 @@ fn render_member_list(
     }
 
     for (index, group) in snapshot.groups().iter().enumerate() {
-        list = list.child(render_member_row(shell, index, group, cx));
+        list = list.child(render_member_row(shell, index, group, mode.clone(), cx));
     }
     list
 }
@@ -390,6 +467,7 @@ fn render_thread_list(
     shell: &ShellView,
     group: &MemberThreadInventoryGroup,
     surface: &ConversationSurfaceState,
+    mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
     show_member_back: bool,
     show_actions_back: bool,
@@ -398,12 +476,12 @@ fn render_thread_list(
         .flex()
         .flex_col()
         .gap_1()
-        .child(menu_header(shell, "Link thread"));
+        .child(menu_header(shell, mode.header()));
     if show_actions_back {
         list = list.child(actions_back_row(shell, cx));
     }
     if show_member_back {
-        list = list.child(back_row(shell, cx));
+        list = list.child(render_member_back_row(shell, mode.clone(), cx));
     }
     list = list.child(
         div()
@@ -427,25 +505,30 @@ fn render_thread_list(
     }
 
     for (index, thread) in group.threads().iter().enumerate() {
-        list = list.child(render_thread_row(shell, index, thread, cx));
+        list = list.child(render_thread_row(shell, index, thread, mode.clone(), cx));
     }
     list
 }
 
-fn render_stale_member_menu(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+fn render_stale_member_menu(
+    shell: &ShellView,
+    mode: ThreadLinkMenuMode,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(menu_header(shell, "Link thread"))
+        .child(menu_header(shell, mode.header()))
         .child(disabled_menu_row(shell, "Member unavailable"))
-        .child(back_row(shell, cx))
+        .child(render_member_back_row(shell, mode, cx))
 }
 
 fn render_member_row(
     shell: &ShellView,
     index: usize,
     group: &MemberThreadInventoryGroup,
+    mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let member_key = group.key().clone();
@@ -480,8 +563,19 @@ fn render_member_row(
                         .child(group.threads().len().to_string()),
                 ),
         )
-        .on_click(cx.listener(move |view, event, window, cx| {
-            view.open_graph_thread_link_member(member_key.clone(), event, window, cx);
+        .on_click(cx.listener(move |view, event, window, cx| match &mode {
+            ThreadLinkMenuMode::Link => {
+                view.open_graph_thread_link_member(member_key.clone(), event, window, cx);
+            }
+            ThreadLinkMenuMode::Rebind(thread_ref_id) => {
+                view.open_graph_thread_rebind_member(
+                    thread_ref_id.clone(),
+                    member_key.clone(),
+                    event,
+                    window,
+                    cx,
+                );
+            }
         }))
 }
 
@@ -489,6 +583,7 @@ fn render_thread_row(
     shell: &ShellView,
     index: usize,
     thread: &MemberThreadInventoryThread,
+    mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let thread = thread.clone();
@@ -497,13 +592,43 @@ fn render_thread_row(
         shell,
         ("graph-thread-link-thread-row", index),
         label,
-        cx.listener(move |view, event, window, cx| {
-            view.link_graph_thread_to_node(thread.clone(), event, window, cx);
+        cx.listener(move |view, event, window, cx| match &mode {
+            ThreadLinkMenuMode::Link => {
+                view.link_graph_thread_to_node(thread.clone(), event, window, cx);
+            }
+            ThreadLinkMenuMode::Rebind(thread_ref_id) => {
+                view.rebind_graph_thread_ref(
+                    thread_ref_id.clone(),
+                    thread.clone(),
+                    event,
+                    window,
+                    cx,
+                );
+            }
         }),
     )
     .w_full()
     .justify_start()
     .truncate()
+}
+
+fn render_member_back_row(
+    shell: &ShellView,
+    mode: ThreadLinkMenuMode,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    match mode {
+        ThreadLinkMenuMode::Link => back_row(shell, cx).into_any_element(),
+        ThreadLinkMenuMode::Rebind(thread_ref_id) => action_row(
+            shell,
+            "graph-thread-rebind-back-row",
+            "Back to members",
+            cx.listener(move |view, event, window, cx| {
+                view.show_graph_thread_ref_rebind_members(thread_ref_id.clone(), event, window, cx);
+            }),
+        )
+        .into_any_element(),
+    }
 }
 
 fn build_link_menu_tooltip(message: String, theme: LinkMenuTooltipTheme, cx: &mut App) -> AnyView {

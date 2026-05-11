@@ -51,6 +51,7 @@ pub(super) enum ThreadActivationUpdate {
 
 pub(super) enum ThreadActivationOutcome {
     Activated {
+        execution_target: WorkspaceId,
         thread: ThreadInfo,
         session_metadata: ThreadSessionMetadata,
         history_window: TranscriptHistoryWindow,
@@ -571,6 +572,7 @@ fn run_thread_activation_worker(
                 .log();
             let _ = sender.send(ThreadActivationUpdate::Finished(
                 ThreadActivationOutcome::Activated {
+                    execution_target: workspace,
                     thread: activation.thread,
                     session_metadata: activation.session_metadata,
                     history_window: activation.history_window,

@@ -1,5 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
+use beryl_backend::canonicalize_host_path;
 use beryl_model::{
     conversation::{PrimaryWorkspaceMember, WorkspaceConversationState},
     workspace::{RuntimeMode, WorkspaceId, WorkspaceMemberId},
@@ -8,7 +13,8 @@ use gpui::{Bounds, point, px, size};
 use workspace_members::{
     MemberPickerValidationError, NewThreadExecutionTargetError, WorkspaceMembersState,
     apply_workspace_member_attachment, apply_workspace_member_detach,
-    apply_workspace_member_primary_selection, resolve_new_thread_execution_target,
+    apply_workspace_member_primary_selection, reconcile_workspace_member_availability,
+    resolve_new_thread_execution_target, resolve_runtime_home_directory,
     validate_host_member_picker_path, validate_wsl_member_picker_path,
 };
 use workspace_picker::{
@@ -102,6 +108,7 @@ fn members_column_uses_picker_rows_and_no_old_popup_module() {
     assert!(member_rows_body.contains("render_attach_member_row"));
     assert!(member_rows_body.contains("render_implicit_home_member_row"));
     assert!(member_rows_body.contains("render_explicit_member_row"));
+    assert!(member_rows_body.contains("has_available_explicit_members"));
     assert!(member_row_shell_body.contains(".border_b_1()"));
     assert!(member_row_shell_body.contains("render_workspace_active_marker"));
     assert!(member_row_shell_body.contains("let background = shell.popup_surface_background();"));
@@ -122,6 +129,7 @@ fn members_column_actions_route_primary_detach_and_attach_guard() {
     let shell_source = include_str!("../src/shell.rs");
     let action_menu_body =
         rust_function_body(render_source, "fn render_workspace_member_action_menu");
+    let explicit_label_body = rust_function_body(render_source, "fn explicit_member_display_label");
     let implicit_row_body = rust_function_body(render_source, "fn render_implicit_home_member_row");
     let attach_prompt_body = rust_function_body(shell_source, "fn prompt_attach_workspace_member");
     let finish_prompt_body =
@@ -129,8 +137,11 @@ fn members_column_actions_route_primary_detach_and_attach_guard() {
 
     assert!(action_menu_body.contains("\"Make primary\""));
     assert!(action_menu_body.contains("make_workspace_member_primary"));
+    assert!(action_menu_body.contains("else if available"));
+    assert!(action_menu_body.contains("\"Path not found\""));
     assert!(action_menu_body.contains("\"Detach\""));
     assert!(action_menu_body.contains("prompt_detach_workspace_member"));
+    assert!(explicit_label_body.contains("format!(\"{label} - path not found\")"));
     assert!(implicit_row_body.contains("\"Home directory\""));
     assert!(!implicit_row_body.contains("\"Primary\""));
     assert!(attach_prompt_body.contains("path_prompt_active()"));
@@ -206,19 +217,24 @@ fn runtime_selector_distro_list_sorts_dedups_and_reports_failures() {
 }
 
 #[test]
-fn runtime_selector_rendering_locks_when_explicit_members_are_attached() {
+fn runtime_selector_rendering_stays_enabled_when_explicit_members_are_attached() {
     let render_source = include_str!("../src/shell/render/workspace_picker.rs");
     let control_body = rust_function_body(render_source, "fn render_runtime_selector_control");
     let trigger_body = rust_function_body(render_source, "fn render_runtime_selector_trigger");
     let dropdown_body = rust_function_body(render_source, "fn render_runtime_selector_dropdown");
 
-    assert!(control_body.contains("let runtime_locked = !loaded.explicit_members().is_empty();"));
+    assert!(!control_body.contains("runtime_locked"));
     assert!(control_body.contains("render_runtime_selector_trigger"));
     assert!(control_body.contains("toggle_workspace_runtime_selector_dropdown"));
-    assert!(trigger_body.contains("\"Locked while explicit members are attached.\""));
+    assert!(trigger_body.contains("\"Used for new attachments and home fallback.\""));
+    assert!(!trigger_body.contains("\"Locked while explicit members are attached.\""));
     assert!(dropdown_body.contains(".id(\"workspace-runtime-selector-dropdown\")"));
-    assert!(dropdown_body.contains(".left_0()"));
-    assert!(dropdown_body.contains(".right_0()"));
+    assert!(
+        dropdown_body.contains(".left(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))")
+    );
+    assert!(
+        dropdown_body.contains(".right(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))")
+    );
 }
 
 #[test]
@@ -321,18 +337,15 @@ fn new_thread_execution_target_uses_primary_explicit_member() {
 }
 
 #[test]
-fn new_thread_execution_target_rejects_mismatched_backend_runtime() {
+fn new_thread_execution_target_uses_primary_explicit_member_across_active_runtime() {
     let primary = WorkspaceId::host_windows(r"C:\work\primary");
     let active = WorkspaceId::wsl_linux("Ubuntu", "/home/me/project");
     let mut state = WorkspaceConversationState::default();
     state.designate_primary_execution_target(&primary).unwrap();
 
-    let error = resolve_new_thread_execution_target(&state, &active).unwrap_err();
+    let target = resolve_new_thread_execution_target(&state, &active).unwrap();
 
-    assert!(matches!(
-        error,
-        NewThreadExecutionTargetError::BackendRuntimeMismatch { .. }
-    ));
+    assert_eq!(target, primary);
 }
 
 #[test]
@@ -349,29 +362,45 @@ fn new_thread_execution_target_requires_selected_runtime() {
 }
 
 #[test]
-fn new_thread_execution_target_uses_active_target_for_implicit_home() {
+fn new_thread_execution_target_resolves_host_implicit_home() {
     let active = WorkspaceId::host_windows(r"C:\Users\me");
     let mut state = WorkspaceConversationState::default();
     state.select_runtime(RuntimeMode::HostWindows).unwrap();
 
     let target = resolve_new_thread_execution_target(&state, &active).unwrap();
 
-    assert_eq!(target, active);
+    assert_eq!(target.runtime_mode(), &RuntimeMode::HostWindows);
+    assert_eq!(
+        target.canonical_path(),
+        resolve_runtime_home_directory(&RuntimeMode::HostWindows)
+            .unwrap()
+            .as_path()
+    );
 }
 
 #[test]
-fn new_thread_execution_target_uses_active_target_for_wsl_implicit_home() {
-    let active = WorkspaceId::wsl_linux("Ubuntu", "/home/me");
+fn reconcile_workspace_member_availability_marks_missing_primary_unavailable_and_promotes_fallback()
+{
+    let (missing_path, fallback_path) = unique_missing_and_available_paths();
+    fs::create_dir_all(&fallback_path).unwrap();
+    let fallback_path = canonicalize_host_path(&fallback_path).unwrap();
+    let missing = WorkspaceId::host_windows(missing_path);
+    let fallback = WorkspaceId::host_windows(fallback_path);
     let mut state = WorkspaceConversationState::default();
-    state
-        .select_runtime(RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string(),
-        })
-        .unwrap();
+    state.designate_primary_execution_target(&missing).unwrap();
+    state.attach_execution_target(&fallback).unwrap();
+    let missing_id = state.explicit_members()[0].id().clone();
+    let fallback_id = state.explicit_members()[1].id().clone();
 
-    let target = resolve_new_thread_execution_target(&state, &active).unwrap();
+    assert!(reconcile_workspace_member_availability(&mut state));
 
-    assert_eq!(target, active);
+    assert_eq!(state.explicit_members()[0].id(), &missing_id);
+    assert!(!state.explicit_members()[0].is_available());
+    assert_eq!(
+        state.durable_primary_explicit_member_id(),
+        Some(&fallback_id)
+    );
+    let _ = fs::remove_dir_all(fallback.canonical_path());
 }
 
 #[test]
@@ -386,6 +415,17 @@ fn wsl_member_picker_rejects_other_distro_unc_paths() {
         error,
         MemberPickerValidationError::WslDistroMismatch { .. }
     ));
+}
+
+fn unique_missing_and_available_paths() -> (PathBuf, PathBuf) {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    (
+        std::env::temp_dir().join(format!("beryl_missing_member_{nanos}")),
+        std::env::temp_dir().join(format!("beryl_available_member_{nanos}")),
+    )
 }
 
 #[test]

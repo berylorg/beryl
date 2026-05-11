@@ -4,17 +4,19 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use beryl_backend::ManagedBackendClientConnector;
+use beryl_backend::{ManagedBackendClientConnector, ThreadListOptions};
 use beryl_model::{
     conversation::{RegisteredConversationThread, WorkspaceConversationState},
-    workspace::BerylWorkspaceId,
+    workspace::{BerylWorkspaceId, WorkspaceId},
 };
 use tracing::warn;
 
 use crate::member_thread_inventory::{
-    MemberThreadInventoryGroup, MemberThreadInventoryMemberKey, MemberThreadInventoryMemberKind,
-    MemberThreadInventorySnapshot, build_member_thread_inventory_snapshot,
-    prepare_backend_threads_for_member_thread_inventory, thread_fork_parent_metadata_read_error,
+    MemberThreadInventoryBackendThread, MemberThreadInventoryGroup, MemberThreadInventoryMemberKey,
+    MemberThreadInventoryMemberKind, MemberThreadInventorySnapshot,
+    build_member_thread_inventory_snapshot_for_backend_threads,
+    prepare_backend_threads_for_member_thread_inventory,
+    retain_scoped_backend_threads_for_inventory_members, thread_fork_parent_metadata_read_error,
 };
 
 use super::{ShellView, SurfaceNotice, workspace_members};
@@ -37,7 +39,7 @@ pub(super) enum MemberThreadInventoryResult {
 }
 
 pub(super) fn spawn_member_thread_inventory_worker(
-    connector: ManagedBackendClientConnector,
+    connectors: Vec<(WorkspaceId, ManagedBackendClientConnector)>,
     workspace_id: BerylWorkspaceId,
     workspace_state: WorkspaceConversationState,
     timeout: Duration,
@@ -45,7 +47,7 @@ pub(super) fn spawn_member_thread_inventory_worker(
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let result =
-            run_member_thread_inventory_worker(connector, &workspace_id, workspace_state, timeout);
+            run_member_thread_inventory_worker(connectors, &workspace_id, workspace_state, timeout);
         let _ = sender.send(MemberThreadInventoryUpdate::Finished {
             workspace_id,
             result,
@@ -55,20 +57,11 @@ pub(super) fn spawn_member_thread_inventory_worker(
 }
 
 fn run_member_thread_inventory_worker(
-    connector: ManagedBackendClientConnector,
+    connectors: Vec<(WorkspaceId, ManagedBackendClientConnector)>,
     workspace_id: &BerylWorkspaceId,
     workspace_state: WorkspaceConversationState,
     timeout: Duration,
 ) -> MemberThreadInventoryResult {
-    let mut session = match connector.connect_client(timeout) {
-        Ok(session) => session,
-        Err(error) => {
-            return MemberThreadInventoryResult::Failed {
-                message: format!("Beryl could not connect to the managed backend: {error}"),
-            };
-        }
-    };
-
     let members = match resolved_inventory_members(&workspace_state) {
         Ok(members) => members,
         Err(message) => {
@@ -76,28 +69,69 @@ fn run_member_thread_inventory_worker(
         }
     };
 
-    let mut backend_threads = match session.list_threads(timeout) {
-        Ok(threads) => threads,
-        Err(error) => {
-            return MemberThreadInventoryResult::Failed {
-                message: format!("Beryl could not refresh the workspace thread inventory: {error}"),
-            };
+    let mut backend_threads = Vec::new();
+    for (execution_target, connector) in connectors {
+        let mut session = match connector.connect_client(timeout) {
+            Ok(session) => session,
+            Err(error) => {
+                return MemberThreadInventoryResult::Failed {
+                    message: format!("Beryl could not connect to the managed backend: {error}"),
+                };
+            }
+        };
+        let runtime = execution_target.runtime_mode().clone();
+        let runtime_members = members
+            .iter()
+            .filter(|member| member.runtime() == &runtime)
+            .cloned()
+            .collect::<Vec<_>>();
+        if runtime_members.is_empty() {
+            continue;
         }
-    };
 
-    if let Err(message) = prepare_backend_threads_for_member_thread_inventory(
-        &mut backend_threads,
-        &members,
-        |thread_id| {
-            session
-                .read_thread_metadata(thread_id, timeout)
-                .map_err(|error| thread_fork_parent_metadata_read_error(thread_id, error))
-        },
-    ) {
-        return MemberThreadInventoryResult::Failed { message };
+        let cwd_filters = runtime_members
+            .iter()
+            .filter_map(|member| member.canonical_path().map(std::path::Path::to_path_buf))
+            .collect::<Vec<_>>();
+        if cwd_filters.is_empty() {
+            continue;
+        }
+
+        let mut runtime_threads = match session
+            .list_threads_with_options(ThreadListOptions::page(100).with_cwds(cwd_filters), timeout)
+        {
+            Ok(threads) => threads,
+            Err(error) => {
+                return MemberThreadInventoryResult::Failed {
+                    message: format!(
+                        "Beryl could not refresh the workspace thread inventory: {error}"
+                    ),
+                };
+            }
+        };
+
+        if let Err(message) = prepare_backend_threads_for_member_thread_inventory(
+            &mut runtime_threads,
+            &runtime_members,
+            |thread_id| {
+                session
+                    .read_thread_metadata(thread_id, timeout)
+                    .map_err(|error| thread_fork_parent_metadata_read_error(thread_id, error))
+            },
+        ) {
+            return MemberThreadInventoryResult::Failed { message };
+        }
+
+        backend_threads.extend(
+            runtime_threads
+                .into_iter()
+                .map(|summary| MemberThreadInventoryBackendThread::new(runtime.clone(), summary)),
+        );
     }
 
-    let snapshot = build_member_thread_inventory_snapshot(
+    retain_scoped_backend_threads_for_inventory_members(&mut backend_threads, &members);
+
+    let snapshot = build_member_thread_inventory_snapshot_for_backend_threads(
         workspace_id.clone(),
         &workspace_state,
         members,
@@ -124,7 +158,7 @@ fn resolved_inventory_members(
         return Ok(Vec::new());
     };
 
-    if workspace_state.explicit_members().is_empty() {
+    if !workspace_state.has_available_explicit_members() {
         let canonical_path =
             workspace_members::resolve_runtime_home_directory(&runtime).map_err(|error| {
                 format!("Beryl could not resolve the implicit home member for inventory: {error}")
@@ -140,14 +174,13 @@ fn resolved_inventory_members(
     }
 
     Ok(workspace_state
-        .explicit_members()
-        .iter()
+        .available_explicit_members()
         .map(|member| {
             MemberThreadInventoryGroup::new(
                 MemberThreadInventoryMemberKey::Explicit(member.id().clone()),
                 MemberThreadInventoryMemberKind::Explicit,
                 member.canonical_path().display().to_string(),
-                runtime.clone(),
+                member.runtime_mode().clone(),
                 Some(member.canonical_path().to_path_buf()),
                 Vec::new(),
             )
@@ -228,14 +261,15 @@ impl ShellView {
             return false;
         }
 
-        let Some(connector) = self.backend_client_connector() else {
+        let connectors = self.backend_client_connectors();
+        if connectors.is_empty() {
             return false;
-        };
+        }
         if let Some(surface) = self.conversation_surface_mut() {
             surface.member_thread_inventory_mut().begin_refresh();
         }
         self.member_thread_inventory_receiver = Some(spawn_member_thread_inventory_worker(
-            connector,
+            connectors,
             workspace_id,
             workspace_state,
             self.bootstrap.probe_timeout(),

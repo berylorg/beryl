@@ -4,7 +4,7 @@ use beryl_model::conversation::{
     PrimaryWorkspaceMember, RegisteredConversationThread, ThreadAutomaticTitleGenerationState,
     WorkspaceConversationState, WorkspaceConversationStateError,
 };
-use beryl_model::workspace::{RuntimeMode, WorkspaceId};
+use beryl_model::workspace::{RuntimeMode, WorkspaceId, WorkspaceMemberAvailability};
 
 #[test]
 fn primary_member_falls_back_to_implicit_home_without_explicit_members() {
@@ -83,6 +83,128 @@ fn attaching_secondary_execution_target_preserves_existing_primary_member() {
 }
 
 #[test]
+fn explicit_members_retain_runtime_identity() {
+    let mut state = WorkspaceConversationState::default();
+    let host_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let wsl_target = WorkspaceId::wsl_linux("Debian", r"\work\beryl");
+
+    state
+        .designate_primary_execution_target(&host_target)
+        .unwrap();
+    state.attach_execution_target(&wsl_target).unwrap();
+
+    assert_eq!(state.explicit_members().len(), 2);
+    assert_eq!(
+        state.explicit_members()[0].runtime_mode(),
+        host_target.runtime_mode()
+    );
+    assert_eq!(
+        state.explicit_members()[1].runtime_mode(),
+        wsl_target.runtime_mode()
+    );
+    assert_eq!(state.default_runtime(), Some(host_target.runtime_mode()));
+}
+
+#[test]
+fn same_canonical_path_can_be_attached_in_distinct_runtimes() {
+    let mut state = WorkspaceConversationState::default();
+    let host_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let wsl_target = WorkspaceId::wsl_linux("Debian", r"C:\work\beryl");
+
+    state.attach_execution_target(&host_target).unwrap();
+    state.attach_execution_target(&wsl_target).unwrap();
+
+    assert_eq!(state.explicit_members().len(), 2);
+}
+
+#[test]
+fn unavailable_primary_promotes_to_next_available_member_durably() {
+    let mut state = WorkspaceConversationState::default();
+    let first_target = WorkspaceId::host_windows(r"C:\work\one");
+    let second_target = WorkspaceId::host_windows(r"C:\work\two");
+
+    state
+        .designate_primary_execution_target(&first_target)
+        .unwrap();
+    state.attach_execution_target(&second_target).unwrap();
+    let first_member_id = state.explicit_members()[0].id().clone();
+    let second_member_id = state.explicit_members()[1].id().clone();
+
+    assert!(
+        state
+            .mark_explicit_member_path_not_found(&first_member_id)
+            .unwrap()
+    );
+
+    assert_eq!(
+        state.durable_primary_explicit_member_id(),
+        Some(&second_member_id)
+    );
+    assert_eq!(
+        state.primary_explicit_member().unwrap().id(),
+        &second_member_id
+    );
+    assert_eq!(
+        state
+            .unavailable_explicit_members()
+            .next()
+            .unwrap()
+            .availability(),
+        WorkspaceMemberAvailability::PathNotFound
+    );
+}
+
+#[test]
+fn all_unavailable_explicit_members_fall_back_to_implicit_home_durably() {
+    let mut state = WorkspaceConversationState::default();
+    let target = WorkspaceId::host_windows(r"C:\work\one");
+
+    state.designate_primary_execution_target(&target).unwrap();
+    let member_id = state.explicit_members()[0].id().clone();
+
+    state
+        .mark_explicit_member_path_not_found(&member_id)
+        .unwrap();
+
+    assert_eq!(state.durable_primary_explicit_member_id(), None);
+    assert_eq!(state.primary_explicit_member(), None);
+    match state.primary_member().unwrap() {
+        PrimaryWorkspaceMember::ImplicitHome(RuntimeMode::HostWindows) => {}
+        other => panic!("expected implicit host home member, got {other:?}"),
+    }
+}
+
+#[test]
+fn returning_member_does_not_restore_primary_automatically() {
+    let mut state = WorkspaceConversationState::default();
+    let first_target = WorkspaceId::host_windows(r"C:\work\one");
+    let second_target = WorkspaceId::host_windows(r"C:\work\two");
+
+    state
+        .designate_primary_execution_target(&first_target)
+        .unwrap();
+    state.attach_execution_target(&second_target).unwrap();
+    let first_member_id = state.explicit_members()[0].id().clone();
+    let second_member_id = state.explicit_members()[1].id().clone();
+
+    state
+        .mark_explicit_member_path_not_found(&first_member_id)
+        .unwrap();
+    state
+        .mark_explicit_member_available(&first_member_id)
+        .unwrap();
+
+    assert_eq!(
+        state.durable_primary_explicit_member_id(),
+        Some(&second_member_id)
+    );
+    assert_eq!(
+        state.primary_explicit_member().unwrap().id(),
+        &second_member_id
+    );
+}
+
+#[test]
 fn overlapping_members_are_rejected() {
     let mut state = WorkspaceConversationState::default();
     state
@@ -100,21 +222,34 @@ fn overlapping_members_are_rejected() {
 }
 
 #[test]
-fn runtime_change_is_locked_while_explicit_members_exist() {
+fn default_runtime_change_keeps_explicit_members_runtime_bound() {
     let mut state = WorkspaceConversationState::default();
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
     state
-        .designate_primary_execution_target(&WorkspaceId::host_windows(r"C:\work\beryl"))
+        .designate_primary_execution_target(&execution_target)
         .unwrap();
 
-    let error = state
-        .select_runtime(RuntimeMode::WslLinux {
-            distro_name: "Debian".to_string(),
-        })
-        .unwrap_err();
+    assert!(
+        state
+            .select_default_runtime(RuntimeMode::WslLinux {
+                distro_name: "Debian".to_string(),
+            })
+            .unwrap()
+    );
 
     assert_eq!(
-        error,
-        WorkspaceConversationStateError::RuntimeEnvironmentLocked
+        state.default_runtime(),
+        Some(&RuntimeMode::WslLinux {
+            distro_name: "Debian".to_string(),
+        })
+    );
+    assert_eq!(
+        state.explicit_members()[0].runtime_mode(),
+        &RuntimeMode::HostWindows
+    );
+    assert_eq!(
+        state.explicit_members()[0].canonical_path(),
+        execution_target.canonical_path()
     );
 }
 
@@ -818,6 +953,99 @@ fn detaching_bound_member_marks_thread_rebind_required() {
 }
 
 #[test]
+fn returning_unavailable_member_restores_matching_thread_binding() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_1");
+    let mut state = WorkspaceConversationState::default();
+    state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    let member_id = state.primary_explicit_member().unwrap().id().clone();
+    state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target.clone(),
+        "Preview",
+        None,
+        1,
+        2,
+    ));
+
+    state
+        .mark_explicit_member_path_not_found(&member_id)
+        .unwrap();
+    assert!(
+        state
+            .thread_registration(&thread_id)
+            .unwrap()
+            .requires_rebind()
+    );
+
+    assert!(state.mark_explicit_member_available(&member_id).unwrap());
+
+    let thread = state.thread_registration(&thread_id).unwrap();
+    assert!(!thread.requires_rebind());
+    assert!(matches!(
+        thread.member_binding(),
+        Some(ConversationThreadMemberBinding::Explicit {
+            member_id: bound_member_id,
+            execution_target: bound_target,
+        }) if bound_member_id == &member_id && bound_target == &execution_target
+    ));
+}
+
+#[test]
+fn reattaching_same_target_after_detach_restores_matching_thread_binding() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_1");
+    let mut state = WorkspaceConversationState::default();
+    state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    let original_member_id = state.primary_explicit_member().unwrap().id().clone();
+    state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target.clone(),
+        "Preview",
+        None,
+        1,
+        2,
+    ));
+
+    state.detach_explicit_member(&original_member_id).unwrap();
+    assert!(
+        state
+            .thread_registration(&thread_id)
+            .unwrap()
+            .requires_rebind()
+    );
+
+    state.attach_execution_target(&execution_target).unwrap();
+
+    let restored_member_id = state.primary_explicit_member().unwrap().id().clone();
+    assert_ne!(restored_member_id, original_member_id);
+    let thread = state.thread_registration(&thread_id).unwrap();
+    assert!(!thread.requires_rebind());
+    assert!(matches!(
+        thread.member_binding(),
+        Some(ConversationThreadMemberBinding::Explicit {
+            member_id: bound_member_id,
+            execution_target: bound_target,
+        }) if bound_member_id == &restored_member_id && bound_target == &execution_target
+    ));
+}
+
+#[test]
+fn workspace_scope_requires_exact_implicit_home_target() {
+    let home_target = WorkspaceId::host_windows(r"C:\Users\operator");
+    let missing_member_target = WorkspaceId::host_windows(r"C:\work\missing");
+    let mut state = WorkspaceConversationState::default();
+    state.select_runtime(RuntimeMode::HostWindows).unwrap();
+
+    assert!(state.execution_target_in_workspace_scope(&home_target, Some(&home_target)));
+    assert!(!state.execution_target_in_workspace_scope(&missing_member_target, Some(&home_target)));
+}
+
+#[test]
 fn attaching_first_explicit_member_marks_implicit_home_threads_rebind_required() {
     let home_target = WorkspaceId::host_windows(r"C:\Users\operator");
     let explicit_target = WorkspaceId::host_windows(r"C:\work\beryl");
@@ -842,6 +1070,43 @@ fn attaching_first_explicit_member_marks_implicit_home_threads_rebind_required()
         Some(ConversationThreadMemberBinding::ImplicitHome { .. })
     ));
     assert!(thread.requires_rebind());
+}
+
+#[test]
+fn implicit_home_threads_restore_when_home_fallback_returns() {
+    let home_target = WorkspaceId::host_windows(r"C:\Users\operator");
+    let explicit_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("thread_home");
+    let mut state = WorkspaceConversationState::default();
+    state.select_runtime(RuntimeMode::HostWindows).unwrap();
+    state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        home_target.clone(),
+        "Home preview",
+        None,
+        1,
+        2,
+    ));
+    state.attach_execution_target(&explicit_target).unwrap();
+    let explicit_member_id = state.primary_explicit_member().unwrap().id().clone();
+    assert!(
+        state
+            .thread_registration(&thread_id)
+            .unwrap()
+            .requires_rebind()
+    );
+
+    state.detach_explicit_member(&explicit_member_id).unwrap();
+    assert!(state.restore_implicit_home_threads_for_execution_target(&home_target));
+
+    let thread = state.thread_registration(&thread_id).unwrap();
+    assert!(!thread.requires_rebind());
+    assert!(matches!(
+        thread.member_binding(),
+        Some(ConversationThreadMemberBinding::ImplicitHome {
+            execution_target
+        }) if execution_target == &home_target
+    ));
 }
 
 fn token_usage_snapshot(

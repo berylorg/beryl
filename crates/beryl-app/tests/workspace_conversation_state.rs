@@ -18,6 +18,7 @@ use beryl_model::conversation::{
 };
 use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, BerylWorkspaceTitleSource, RuntimeMode, WorkspaceId,
+    WorkspaceMemberAvailability,
 };
 use gpui::ImageFormat;
 use redb::{Database, TableDefinition};
@@ -71,6 +72,96 @@ fn workspace_state_roundtrips_runtime_members_and_active_thread() {
     assert_eq!(
         loaded.primary_explicit_member().unwrap().canonical_path(),
         execution_target.canonical_path()
+    );
+
+    root.close().unwrap();
+}
+
+#[test]
+fn workspace_state_roundtrips_runtime_bound_member_availability() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let workspace_id = BerylWorkspaceId::new("member_availability").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Availability", 42);
+    let host_target = WorkspaceId::host_windows(r"C:\work\missing");
+    let wsl_target = WorkspaceId::wsl_linux("Debian", r"\work\available");
+    let mut state = WorkspaceConversationState::default();
+
+    persistence.save_workspace_manifest(&manifest).unwrap();
+    state
+        .designate_primary_execution_target(&host_target)
+        .unwrap();
+    state.attach_execution_target(&wsl_target).unwrap();
+    let missing_member_id = state.explicit_members()[0].id().clone();
+    let available_member_id = state.explicit_members()[1].id().clone();
+    state
+        .mark_explicit_member_path_not_found(&missing_member_id)
+        .unwrap();
+    persistence
+        .save_workspace_state(&workspace_id, &state)
+        .unwrap();
+
+    let loaded = persistence.load_workspace_state(&workspace_id).unwrap();
+
+    assert_eq!(loaded.explicit_members().len(), 2);
+    assert_eq!(
+        loaded.explicit_members()[0].runtime_mode(),
+        host_target.runtime_mode()
+    );
+    assert_eq!(
+        loaded.explicit_members()[0].availability(),
+        WorkspaceMemberAvailability::PathNotFound
+    );
+    assert_eq!(
+        loaded.explicit_members()[1].runtime_mode(),
+        wsl_target.runtime_mode()
+    );
+    assert_eq!(
+        loaded.durable_primary_explicit_member_id(),
+        Some(&available_member_id)
+    );
+
+    root.close().unwrap();
+}
+
+#[test]
+fn legacy_selected_runtime_members_load_as_runtime_bound_available_members() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let workspace_id = BerylWorkspaceId::new("legacy_runtime_members").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Legacy Members", 42);
+
+    persistence.save_workspace_manifest(&manifest).unwrap();
+    write_raw_workspace_conversation_state(
+        &persistence,
+        &workspace_id,
+        json!({
+            "selected_runtime": "HostWindows",
+            "explicit_members": [
+                {
+                    "id": "member_1",
+                    "canonical_path": "C:\\work\\beryl"
+                }
+            ],
+            "primary_explicit_member_id": "member_1"
+        }),
+    );
+
+    let loaded = persistence.load_workspace_state(&workspace_id).unwrap();
+
+    assert_eq!(loaded.default_runtime(), Some(&RuntimeMode::HostWindows));
+    assert_eq!(loaded.explicit_members().len(), 1);
+    assert_eq!(
+        loaded.explicit_members()[0].runtime_mode(),
+        &RuntimeMode::HostWindows
+    );
+    assert_eq!(
+        loaded.explicit_members()[0].availability(),
+        WorkspaceMemberAvailability::Available
+    );
+    assert_eq!(
+        loaded.primary_explicit_member().unwrap().canonical_path(),
+        WorkspaceId::host_windows(r"C:\work\beryl").canonical_path()
     );
 
     root.close().unwrap();

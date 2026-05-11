@@ -95,6 +95,47 @@ fn thread_selector_uses_member_to_thread_columns_for_multiple_members() {
 }
 
 #[test]
+fn thread_selector_omits_unavailable_explicit_members_from_inventory_columns() {
+    let workspace_id = BerylWorkspaceId::new("thread_selector").unwrap();
+    let available = WorkspaceId::host_windows(r"C:\work\available");
+    let missing = WorkspaceId::host_windows(r"C:\work\missing");
+    let mut workspace_state = WorkspaceConversationState::default();
+
+    workspace_state
+        .designate_primary_execution_target(&available)
+        .unwrap();
+    workspace_state.attach_execution_target(&missing).unwrap();
+    let available_key = MemberThreadInventoryMemberKey::Explicit(
+        workspace_state.explicit_members()[0].id().clone(),
+    );
+    let missing_key = MemberThreadInventoryMemberKey::Explicit(
+        workspace_state.explicit_members()[1].id().clone(),
+    );
+    let missing_id = workspace_state.explicit_members()[1].id().clone();
+    workspace_state
+        .mark_explicit_member_path_not_found(&missing_id)
+        .unwrap();
+
+    let snapshot = build_member_thread_inventory_snapshot(
+        workspace_id,
+        &workspace_state,
+        empty_groups_for_workspace_state(&workspace_state),
+        vec![summary("thread_available", available.canonical_path())],
+        50,
+    );
+    let mut selector = ThreadSelectorState::default();
+    selector.open(&snapshot, None);
+
+    assert!(snapshot.group(&available_key).is_some());
+    assert!(snapshot.group(&missing_key).is_none());
+    assert_eq!(selector.columns().len(), 1);
+    assert_eq!(
+        selector.columns()[0].root_key(),
+        &ThreadSelectorColumnKey::root_threads(available_key)
+    );
+}
+
+#[test]
 fn thread_selector_open_preselects_active_thread_path_for_multiple_members() {
     let (workspace_id, workspace_state, first, second) = workspace_with_two_members();
     let snapshot = build_member_thread_inventory_snapshot(

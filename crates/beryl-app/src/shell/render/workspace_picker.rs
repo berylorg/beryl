@@ -313,6 +313,8 @@ fn render_members_column(
     runtime_selector_dropdown_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
+    let dropdown_open = loaded.workspace_picker.runtime_selector_dropdown_is_open();
+
     div()
         .w(column_width)
         .h_full()
@@ -334,20 +336,31 @@ fn render_members_column(
                     .child(inline_notice(notice, rgb(0x3f1d1d), rgb(0xfecaca))),
             )
         })
-        .child(render_runtime_selector_control(
-            shell,
-            loaded,
-            runtime_selector_dropdown_height,
-            cx,
-        ))
-        .child(render_scrollable_member_rows(
-            shell,
-            loaded,
-            members_scroll_handle,
-            scrollbar_opacity,
-            list_height,
-            cx,
-        ))
+        .child(
+            div()
+                .relative()
+                .w_full()
+                .min_h(px(0.0))
+                .flex()
+                .flex_col()
+                .child(render_runtime_selector_control(shell, loaded, cx))
+                .child(render_scrollable_member_rows(
+                    shell,
+                    loaded,
+                    members_scroll_handle,
+                    scrollbar_opacity,
+                    list_height,
+                    cx,
+                ))
+                .when(dropdown_open, |this| {
+                    this.child(render_runtime_selector_dropdown(
+                        shell,
+                        loaded,
+                        runtime_selector_dropdown_height,
+                        cx,
+                    ))
+                }),
+        )
         .into_any_element()
 }
 
@@ -422,81 +435,46 @@ fn render_scrollable_workspace_rows(
 fn render_runtime_selector_control(
     shell: &ShellView,
     loaded: &LoadedWorkspaceState,
-    dropdown_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    let runtime_locked = !loaded.explicit_members().is_empty();
     let dropdown_open = loaded.workspace_picker.runtime_selector_dropdown_is_open();
     let entity = cx.entity();
 
     div()
         .h(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_HEIGHT))
-        .px_4()
+        .px(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
         .py(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_Y))
         .border_b_1()
         .border_color(shell.separator_color())
-        .child(
-            div()
-                .relative()
-                .w_full()
-                .child({
-                    let trigger = render_runtime_selector_trigger(
-                        shell,
-                        loaded,
-                        runtime_locked,
-                        dropdown_open,
-                    );
-                    let trigger = if runtime_locked {
-                        trigger
-                    } else {
-                        trigger
-                            .cursor_pointer()
-                            .hover({
-                                let theme = shell.secondary_button_theme();
-                                move |style| style.bg(theme.hover.background)
-                            })
-                            .on_click(
-                                cx.listener(ShellView::toggle_workspace_runtime_selector_dropdown),
-                            )
-                    };
-                    div()
-                        .on_children_prepainted(move |children, _, cx| {
-                            let bounds = children.first().copied();
-                            entity.update(cx, |view, cx| {
-                                view.record_workspace_runtime_selector_trigger_bounds(bounds, cx)
-                            });
-                        })
-                        .child(trigger)
+        .child(div().relative().w_full().child({
+            let trigger = render_runtime_selector_trigger(shell, loaded, dropdown_open);
+            let trigger = trigger
+                .cursor_pointer()
+                .hover({
+                    let theme = shell.secondary_button_theme();
+                    move |style| style.bg(theme.hover.background)
                 })
-                .when(dropdown_open, |this| {
-                    this.child(render_runtime_selector_dropdown(
-                        shell,
-                        loaded,
-                        dropdown_height,
-                        cx,
-                    ))
-                }),
-        )
+                .on_click(cx.listener(ShellView::toggle_workspace_runtime_selector_dropdown));
+            div()
+                .on_children_prepainted(move |children, _, cx| {
+                    let bounds = children.first().copied();
+                    entity.update(cx, |view, cx| {
+                        view.record_workspace_runtime_selector_trigger_bounds(bounds, cx)
+                    });
+                })
+                .child(trigger)
+        }))
 }
 
 fn render_runtime_selector_trigger(
     shell: &ShellView,
     loaded: &LoadedWorkspaceState,
-    runtime_locked: bool,
     dropdown_open: bool,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = shell.secondary_button_theme();
     let label = runtime_selector_current_label(loaded);
-    let detail = if runtime_locked {
-        "Locked while explicit members are attached."
-    } else {
-        "Select the runtime environment."
-    };
-    let foreground = if runtime_locked {
-        shell.surface_muted_foreground()
-    } else {
-        theme.normal.foreground
-    };
+    let detail = "Used for new attachments and home fallback.";
+    let foreground = theme.normal.foreground;
     let border = if dropdown_open {
         theme.active.border
     } else {
@@ -607,10 +585,10 @@ fn render_runtime_selector_dropdown(
     div()
         .absolute()
         .top(px(
-            layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_RELATIVE_TOP,
+            layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_COLUMN_TOP,
         ))
-        .left_0()
-        .right_0()
+        .left(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
+        .right(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
         .on_children_prepainted(move |children, _, cx| {
             let bounds = children.first().copied();
             entity.update(cx, |view, cx| {
@@ -623,6 +601,7 @@ fn render_runtime_selector_dropdown(
                 .w_full()
                 .h(dropdown_height)
                 .min_h(px(0.0))
+                .occlude()
                 .overflow_y_scroll()
                 .bg(shell.popup_surface_background())
                 .border_1()
@@ -834,12 +813,11 @@ fn render_member_rows(
         return rows;
     }
 
-    if loaded.explicit_members().is_empty() {
+    if !loaded.workspace_state.has_available_explicit_members() {
         rows = rows.child(render_implicit_home_member_row(shell, loaded));
-    } else {
-        for (index, member) in loaded.explicit_members().iter().enumerate() {
-            rows = rows.child(render_explicit_member_row(shell, loaded, index, member, cx));
-        }
+    }
+    for (index, member) in loaded.explicit_members().iter().enumerate() {
+        rows = rows.child(render_explicit_member_row(shell, loaded, index, member, cx));
     }
 
     rows
@@ -929,7 +907,7 @@ fn render_explicit_member_row(
         ("workspace-picker-member-row", index),
         primary,
         false,
-        member_display_label(member),
+        explicit_member_display_label(member),
         member.canonical_path().display().to_string(),
         layout::WORKSPACE_PICKER_MEMBERS_ROW_HEIGHT,
         None,
@@ -1063,6 +1041,7 @@ fn render_workspace_member_action_menu(
         .find(|member| member.id() == &member_id)?;
     let member_path = member.canonical_path().display().to_string();
     let primary = explicit_member_is_primary(loaded, member);
+    let available = member.is_available();
     let entity = cx.entity();
 
     let mut content = div()
@@ -1076,7 +1055,7 @@ fn render_workspace_member_action_menu(
             "workspace-picker-member-menu-primary",
             "Primary",
         ));
-    } else {
+    } else if available {
         let primary_member_id = member_id.clone();
         content = content.child(
             secondary_button(
@@ -1098,6 +1077,12 @@ fn render_workspace_member_action_menu(
             .w_full()
             .justify_start(),
         );
+    } else {
+        content = content.child(disabled_secondary_button(
+            shell,
+            "workspace-picker-member-menu-path-not-found",
+            "Path not found",
+        ));
     }
     content = content.child(
         secondary_button(
@@ -1161,13 +1146,18 @@ fn explicit_member_is_primary(loaded: &LoadedWorkspaceState, member: &WorkspaceM
         })
 }
 
-fn member_display_label(member: &WorkspaceMember) -> String {
-    member
+fn explicit_member_display_label(member: &WorkspaceMember) -> String {
+    let label = member
         .canonical_path()
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| member.canonical_path().display().to_string())
+        .unwrap_or_else(|| member.canonical_path().display().to_string());
+    if member.is_available() {
+        label
+    } else {
+        format!("{label} - path not found")
+    }
 }
 
 fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {

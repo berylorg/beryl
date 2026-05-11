@@ -30,7 +30,7 @@
 //!     2,
 //! );
 //! conversation
-//!     .select_runtime(execution_target.runtime_mode().clone())
+//!     .select_default_runtime(execution_target.runtime_mode().clone())
 //!     .unwrap();
 //! conversation
 //!     .designate_primary_execution_target(&execution_target)

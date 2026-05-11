@@ -347,6 +347,12 @@ fn picker_columns_render_without_workspace_total_label_or_members_filter() {
     let render_source = include_str!("../src/shell/render/workspace_picker.rs");
     let workspaces_column_body = rust_function_body(render_source, "fn render_workspaces_column");
     let members_column_body = rust_function_body(render_source, "fn render_members_column");
+    let member_rows_index = members_column_body
+        .find("render_scrollable_member_rows")
+        .unwrap();
+    let runtime_dropdown_index = members_column_body
+        .find("render_runtime_selector_dropdown")
+        .unwrap();
 
     assert!(workspaces_column_body.contains("\"Workspaces\""));
     assert!(!workspaces_column_body.contains("\"total\""));
@@ -355,6 +361,7 @@ fn picker_columns_render_without_workspace_total_label_or_members_filter() {
     assert!(members_column_body.contains("\"Members\""));
     assert!(members_column_body.contains("render_runtime_selector_control"));
     assert!(!members_column_body.contains("framed_text_input"));
+    assert!(runtime_dropdown_index > member_rows_index);
 }
 
 #[test]
@@ -432,11 +439,16 @@ fn picker_runtime_selector_dropdown_is_attached_to_trigger() {
     assert!(trigger_body.contains("layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DETAIL_LINE_HEIGHT"));
     assert!(dropdown_body.contains(".id(\"workspace-runtime-selector-dropdown\")"));
     assert!(
-        dropdown_body.contains("layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_RELATIVE_TOP")
+        dropdown_body.contains("layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_COLUMN_TOP")
     );
-    assert!(dropdown_body.contains(".left_0()"));
-    assert!(dropdown_body.contains(".right_0()"));
+    assert!(
+        dropdown_body.contains(".left(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))")
+    );
+    assert!(
+        dropdown_body.contains(".right(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))")
+    );
     assert!(dropdown_body.contains(".h(dropdown_height)"));
+    assert!(dropdown_body.contains(".occlude()"));
     assert!(dropdown_body.contains(".rounded_tl(px(0.0))"));
     assert!(dropdown_body.contains(".rounded_tr(px(0.0))"));
     assert!(dropdown_body.contains("workspace_picker::RuntimeSelectorRow::HostWindows"));

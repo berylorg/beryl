@@ -3,12 +3,36 @@ use std::path::Path;
 use super::*;
 
 impl WorkspaceConversationState {
+    pub fn default_runtime(&self) -> Option<&RuntimeMode> {
+        self.default_runtime.as_ref()
+    }
+
     pub fn selected_runtime(&self) -> Option<&RuntimeMode> {
-        self.selected_runtime.as_ref()
+        self.default_runtime()
     }
 
     pub fn explicit_members(&self) -> &[WorkspaceMember] {
         &self.explicit_members
+    }
+
+    pub fn available_explicit_members(&self) -> impl Iterator<Item = &WorkspaceMember> {
+        self.explicit_members
+            .iter()
+            .filter(|member| member.is_available())
+    }
+
+    pub fn unavailable_explicit_members(&self) -> impl Iterator<Item = &WorkspaceMember> {
+        self.explicit_members
+            .iter()
+            .filter(|member| !member.is_available())
+    }
+
+    pub fn has_available_explicit_members(&self) -> bool {
+        self.available_explicit_members().next().is_some()
+    }
+
+    pub fn durable_primary_explicit_member_id(&self) -> Option<&WorkspaceMemberId> {
+        self.primary_explicit_member_id.as_ref()
     }
 
     pub fn primary_explicit_member_id(&self) -> Option<&WorkspaceMemberId> {
@@ -23,7 +47,7 @@ impl WorkspaceConversationState {
     }
 
     pub fn primary_member(&self) -> Option<PrimaryWorkspaceMember<'_>> {
-        let runtime = self.selected_runtime.as_ref()?;
+        let runtime = self.default_runtime.as_ref()?;
         if let Some(member) = self.primary_explicit_member() {
             Some(PrimaryWorkspaceMember::Explicit(member))
         } else {
@@ -61,19 +85,16 @@ impl WorkspaceConversationState {
             .and_then(RegisteredConversationThread::token_usage_snapshot)
     }
 
-    pub fn select_runtime(
+    pub fn select_default_runtime(
         &mut self,
         runtime: RuntimeMode,
     ) -> Result<bool, WorkspaceConversationStateError> {
-        if !self.explicit_members.is_empty() && self.selected_runtime.as_ref() != Some(&runtime) {
-            return Err(WorkspaceConversationStateError::RuntimeEnvironmentLocked);
-        }
-        if self.selected_runtime.as_ref() == Some(&runtime) {
+        if self.default_runtime.as_ref() == Some(&runtime) {
             return Ok(false);
         }
 
-        let previous_runtime = self.selected_runtime.clone();
-        self.selected_runtime = Some(runtime);
+        let previous_runtime = self.default_runtime.clone();
+        self.default_runtime = Some(runtime);
         let mut changed = true;
         if let Some(previous_runtime) = previous_runtime {
             changed |= self.mark_threads_rebind_required_for_runtime_change(&previous_runtime);
@@ -81,31 +102,46 @@ impl WorkspaceConversationState {
         Ok(changed)
     }
 
-    pub fn clear_runtime(&mut self) -> Result<bool, WorkspaceConversationStateError> {
-        if !self.explicit_members.is_empty() {
-            return Err(WorkspaceConversationStateError::RuntimeEnvironmentLocked);
-        }
-        if self.selected_runtime.is_none() {
+    pub fn select_runtime(
+        &mut self,
+        runtime: RuntimeMode,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        self.select_default_runtime(runtime)
+    }
+
+    pub fn clear_default_runtime(&mut self) -> Result<bool, WorkspaceConversationStateError> {
+        if self.default_runtime.is_none() {
             return Ok(false);
         }
 
-        self.selected_runtime = None;
+        self.default_runtime = None;
         let _ = self.mark_threads_rebind_required_for_cleared_runtime();
         Ok(true)
+    }
+
+    pub fn clear_runtime(&mut self) -> Result<bool, WorkspaceConversationStateError> {
+        self.clear_default_runtime()
     }
 
     pub fn set_primary_explicit_member(
         &mut self,
         member_id: &WorkspaceMemberId,
     ) -> Result<bool, WorkspaceConversationStateError> {
-        if self
+        let Some(member) = self
             .explicit_members
             .iter()
-            .all(|member| member.id() != member_id)
-        {
+            .find(|member| member.id() == member_id)
+        else {
             return Err(WorkspaceConversationStateError::MissingWorkspaceMember {
                 member_id: member_id.clone(),
             });
+        };
+        if !member.is_available() {
+            return Err(
+                WorkspaceConversationStateError::UnavailableWorkspaceMember {
+                    member_id: member_id.clone(),
+                },
+            );
         }
         if self.primary_explicit_member_id() == Some(member_id) {
             return Ok(false);
@@ -131,16 +167,60 @@ impl WorkspaceConversationState {
 
         self.explicit_members.remove(index);
         self.mark_threads_rebind_required_for_detached_member(member_id);
-        if self.explicit_members.is_empty() {
-            self.primary_explicit_member_id = None;
-        } else if self.primary_explicit_member_id.as_ref() == Some(member_id) {
-            self.primary_explicit_member_id = self
-                .explicit_members
-                .first()
-                .map(|member| member.id().clone());
+        if self.primary_explicit_member_id.as_ref() == Some(member_id) {
+            self.promote_primary_to_first_available_explicit();
         }
 
         Ok(true)
+    }
+
+    pub fn mark_explicit_member_available(
+        &mut self,
+        member_id: &WorkspaceMemberId,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        let Some(index) = self
+            .explicit_members
+            .iter()
+            .position(|member| member.id() == member_id)
+        else {
+            return Err(WorkspaceConversationStateError::MissingWorkspaceMember {
+                member_id: member_id.clone(),
+            });
+        };
+
+        let execution_target = self.explicit_members[index].execution_target();
+        let changed = self.explicit_members[index].mark_available();
+        let restored =
+            self.restore_threads_for_available_explicit_member(member_id, &execution_target);
+        Ok(changed || restored)
+    }
+
+    pub fn mark_explicit_member_path_not_found(
+        &mut self,
+        member_id: &WorkspaceMemberId,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        let Some(index) = self
+            .explicit_members
+            .iter()
+            .position(|member| member.id() == member_id)
+        else {
+            return Err(WorkspaceConversationStateError::MissingWorkspaceMember {
+                member_id: member_id.clone(),
+            });
+        };
+
+        let changed = self.explicit_members[index].mark_path_not_found();
+        if !changed {
+            return Ok(false);
+        }
+
+        self.mark_threads_rebind_required_for_unavailable_member(member_id);
+        let primary_changed = if self.primary_explicit_member_id.as_ref() == Some(member_id) {
+            self.promote_primary_to_first_available_explicit()
+        } else {
+            false
+        };
+        Ok(changed || primary_changed)
     }
 
     pub fn designate_primary_execution_target(
@@ -151,7 +231,10 @@ impl WorkspaceConversationState {
         let existing_member_id = self
             .explicit_members
             .iter()
-            .find(|member| member.canonical_path() == execution_target.canonical_path())
+            .find(|member| {
+                member.runtime_mode() == execution_target.runtime_mode()
+                    && member.canonical_path() == execution_target.canonical_path()
+            })
             .map(|member| member.id().clone())
             .expect("attached execution target must be present in explicit member list");
         changed |= self.set_primary_explicit_member(&existing_member_id)?;
@@ -162,29 +245,39 @@ impl WorkspaceConversationState {
         &mut self,
         execution_target: &WorkspaceId,
     ) -> Result<bool, WorkspaceConversationStateError> {
-        let changed = self.select_runtime(execution_target.runtime_mode().clone())?;
-
-        if self
-            .explicit_members
-            .iter()
-            .any(|member| member.canonical_path() == execution_target.canonical_path())
-        {
-            return Ok(changed);
+        let mut changed = false;
+        if self.default_runtime.is_none() {
+            self.default_runtime = Some(execution_target.runtime_mode().clone());
+            changed = true;
         }
 
-        self.ensure_no_member_overlap(execution_target.canonical_path())?;
-        let replaces_implicit_home =
-            self.explicit_members.is_empty() && self.selected_runtime.is_some();
+        if let Some(member) = self.explicit_members.iter().find(|member| {
+            member.runtime_mode() == execution_target.runtime_mode()
+                && member.canonical_path() == execution_target.canonical_path()
+        }) {
+            let member_id = member.id().clone();
+            let member_changed = self.mark_explicit_member_available(&member_id)?;
+            return Ok(changed || member_changed);
+        }
+
+        self.ensure_no_member_overlap(
+            execution_target.runtime_mode(),
+            execution_target.canonical_path(),
+        )?;
+        let had_available_explicit = self.has_available_explicit_members();
+        let replaces_implicit_home = !had_available_explicit && self.default_runtime.is_some();
         let member_id = self.allocate_member_id();
         let should_promote_to_primary =
-            self.explicit_members.is_empty() && self.primary_explicit_member_id.is_none();
+            !had_available_explicit && self.primary_explicit_member_id.is_none();
         self.explicit_members.push(WorkspaceMember::new(
             member_id.clone(),
+            execution_target.runtime_mode().clone(),
             execution_target.canonical_path().to_path_buf(),
         ));
         if should_promote_to_primary {
-            self.primary_explicit_member_id = Some(member_id);
+            self.primary_explicit_member_id = Some(member_id.clone());
         }
+        self.restore_threads_for_available_explicit_member(&member_id, execution_target);
         if replaces_implicit_home {
             self.mark_implicit_home_threads_rebind_required();
         }
@@ -443,32 +536,81 @@ impl WorkspaceConversationState {
         Ok(true)
     }
 
+    pub fn restore_implicit_home_threads_for_execution_target(
+        &mut self,
+        execution_target: &WorkspaceId,
+    ) -> bool {
+        if self.has_available_explicit_members()
+            || self.default_runtime.as_ref() != Some(execution_target.runtime_mode())
+        {
+            return false;
+        }
+
+        let binding = ConversationThreadMemberBinding::implicit_home(execution_target.clone());
+        let mut changed = false;
+
+        for thread in &mut self.threads {
+            if thread.execution_target() != execution_target {
+                continue;
+            }
+
+            if thread.member_binding.as_ref() != Some(&binding) {
+                thread.member_binding = Some(binding.clone());
+                changed = true;
+            }
+            if thread.rebind_required.take().is_some() {
+                changed = true;
+            }
+        }
+
+        changed
+    }
+
     pub fn binding_for_execution_target(
         &self,
         execution_target: &WorkspaceId,
     ) -> Option<ConversationThreadMemberBinding> {
-        if self.selected_runtime.as_ref()? != execution_target.runtime_mode() {
-            return None;
-        }
+        self.binding_for_available_execution_target(execution_target, Some(execution_target))
+    }
 
-        if let Some(member) = self
-            .explicit_members
-            .iter()
-            .find(|member| member.canonical_path() == execution_target.canonical_path())
-        {
+    pub fn binding_for_available_execution_target(
+        &self,
+        execution_target: &WorkspaceId,
+        implicit_home_execution_target: Option<&WorkspaceId>,
+    ) -> Option<ConversationThreadMemberBinding> {
+        if let Some(member) = self.explicit_members.iter().find(|member| {
+            member.is_available()
+                && member.runtime_mode() == execution_target.runtime_mode()
+                && member.canonical_path() == execution_target.canonical_path()
+        }) {
             return Some(ConversationThreadMemberBinding::explicit(
                 member.id().clone(),
                 execution_target.clone(),
             ));
         }
 
-        if self.explicit_members.is_empty() {
+        if !self.has_available_explicit_members()
+            && self.default_runtime.as_ref() == Some(execution_target.runtime_mode())
+            && implicit_home_execution_target == Some(execution_target)
+        {
             return Some(ConversationThreadMemberBinding::implicit_home(
                 execution_target.clone(),
             ));
         }
 
         None
+    }
+
+    pub fn execution_target_in_workspace_scope(
+        &self,
+        execution_target: &WorkspaceId,
+        implicit_home_execution_target: Option<&WorkspaceId>,
+    ) -> bool {
+        self.binding_for_available_execution_target(
+            execution_target,
+            implicit_home_execution_target,
+        )
+        .is_some()
     }
 
     pub fn thread_registration_mut(
@@ -481,25 +623,24 @@ impl WorkspaceConversationState {
     }
 
     fn primary_explicit_member_index(&self) -> Option<usize> {
-        if self.explicit_members.is_empty() {
-            return None;
-        }
-
         self.primary_explicit_member_id
             .as_ref()
             .and_then(|primary_id| {
                 self.explicit_members
                     .iter()
-                    .position(|member| member.id() == primary_id)
+                    .position(|member| member.id() == primary_id && member.is_available())
             })
-            .or(Some(0))
     }
 
     fn ensure_no_member_overlap(
         &self,
+        candidate_runtime: &RuntimeMode,
         candidate_path: &Path,
     ) -> Result<(), WorkspaceConversationStateError> {
         for existing in &self.explicit_members {
+            if existing.runtime_mode() != candidate_runtime {
+                continue;
+            }
             if paths_overlap(existing.canonical_path(), candidate_path) {
                 return Err(WorkspaceConversationStateError::WorkspaceMemberOverlap {
                     existing_member_id: existing.id().clone(),
@@ -510,6 +651,46 @@ impl WorkspaceConversationState {
         }
 
         Ok(())
+    }
+
+    fn promote_primary_to_first_available_explicit(&mut self) -> bool {
+        let fallback_id = self
+            .explicit_members
+            .iter()
+            .find(|member| member.is_available())
+            .map(|member| member.id().clone());
+        if self.primary_explicit_member_id == fallback_id {
+            return false;
+        }
+
+        self.primary_explicit_member_id = fallback_id;
+        true
+    }
+
+    fn restore_threads_for_available_explicit_member(
+        &mut self,
+        member_id: &WorkspaceMemberId,
+        execution_target: &WorkspaceId,
+    ) -> bool {
+        let binding =
+            ConversationThreadMemberBinding::explicit(member_id.clone(), execution_target.clone());
+        let mut changed = false;
+
+        for thread in &mut self.threads {
+            if thread.execution_target() != execution_target {
+                continue;
+            }
+
+            if thread.member_binding.as_ref() != Some(&binding) {
+                thread.member_binding = Some(binding.clone());
+                changed = true;
+            }
+            if thread.rebind_required.take().is_some() {
+                changed = true;
+            }
+        }
+
+        changed
     }
 
     fn allocate_member_id(&mut self) -> WorkspaceMemberId {
@@ -539,6 +720,16 @@ impl WorkspaceConversationState {
         )
     }
 
+    fn mark_threads_rebind_required_for_unavailable_member(
+        &mut self,
+        member_id: &WorkspaceMemberId,
+    ) -> bool {
+        self.mark_threads_rebind_required_where(
+            |binding| binding.explicit_member_id() == Some(member_id),
+            "The workspace member originally bound to this thread is unavailable because its path was not found.",
+        )
+    }
+
     fn mark_implicit_home_threads_rebind_required(&mut self) -> bool {
         self.mark_threads_rebind_required_where(
             ConversationThreadMemberBinding::is_implicit_home,
@@ -551,8 +742,8 @@ impl WorkspaceConversationState {
         previous_runtime: &RuntimeMode,
     ) -> bool {
         self.mark_threads_rebind_required_where(
-            |binding| binding.runtime_mode() == previous_runtime,
-            "The runtime environment originally bound to this thread is no longer selected for this Beryl workspace.",
+            |binding| binding.is_implicit_home() && binding.runtime_mode() == previous_runtime,
+            "The default runtime environment originally bound to this implicit-home thread is no longer selected for this Beryl workspace.",
         )
     }
 

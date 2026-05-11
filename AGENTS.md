@@ -187,7 +187,7 @@ The orchestrator must provide an explicit task packet to each subagent. A task p
 
 Implementation boundaries:
 
-- Do not assign multiple subagents to edit the same files or the same crate in parallel.
+- Do not assign multiple subagents to edit the same files or the same subproject in parallel.
 - The main agent owns shared/root artifacts and final integration, including `doc/plan.md`, workspace `AGENTS.md`, and any parent `doc/design.md` that defines cross-project contracts.
 - A subagent should stay within its assigned workspace project unless explicitly told otherwise.
 - If a subagent discovers a needed shared-contract change, it should report it in its handoff; the main agent should apply the shared change.

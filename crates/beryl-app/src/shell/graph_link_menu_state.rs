@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use beryl_model::semantic_graph::SemanticNodeId;
+use beryl_model::semantic_graph::{SemanticNodeId, ThreadRefId};
 use gpui::{Bounds, Pixels, Point};
 
 use crate::member_thread_inventory::MemberThreadInventoryMemberKey;
@@ -27,6 +27,11 @@ pub(crate) enum GraphNodeActionMenuView {
     Root,
     LinkThreads,
     MemberThreads(MemberThreadInventoryMemberKey),
+    RebindThreads(ThreadRefId),
+    RebindMemberThreads {
+        thread_ref_id: ThreadRefId,
+        member_key: MemberThreadInventoryMemberKey,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,6 +80,22 @@ impl GraphNodeActionMenuState {
         });
     }
 
+    pub(crate) fn open_thread_ref_rebind(
+        &mut self,
+        node_id: SemanticNodeId,
+        thread_ref_id: ThreadRefId,
+        position: Point<Pixels>,
+    ) {
+        self.delete_hold = None;
+        self.delete_in_flight = None;
+        self.open = Some(GraphThreadLinkMenuOpen {
+            node_id,
+            position,
+            bounds: None,
+            view: GraphNodeActionMenuView::RebindThreads(thread_ref_id),
+        });
+    }
+
     pub(crate) fn close(&mut self) {
         self.open = None;
         self.delete_hold = None;
@@ -96,6 +117,24 @@ impl GraphNodeActionMenuState {
         }
     }
 
+    pub(crate) fn set_rebind_member_threads_view(
+        &mut self,
+        thread_ref_id: ThreadRefId,
+        member: MemberThreadInventoryMemberKey,
+    ) {
+        if self.delete_in_flight.is_some() {
+            return;
+        }
+
+        if let Some(open) = self.open.as_mut() {
+            self.delete_hold = None;
+            open.view = GraphNodeActionMenuView::RebindMemberThreads {
+                thread_ref_id,
+                member_key: member,
+            };
+        }
+    }
+
     pub(crate) fn set_link_threads_view(&mut self) {
         if self.delete_in_flight.is_some() {
             return;
@@ -104,6 +143,17 @@ impl GraphNodeActionMenuState {
         if let Some(open) = self.open.as_mut() {
             self.delete_hold = None;
             open.view = GraphNodeActionMenuView::LinkThreads;
+        }
+    }
+
+    pub(crate) fn set_rebind_threads_view(&mut self, thread_ref_id: ThreadRefId) {
+        if self.delete_in_flight.is_some() {
+            return;
+        }
+
+        if let Some(open) = self.open.as_mut() {
+            self.delete_hold = None;
+            open.view = GraphNodeActionMenuView::RebindThreads(thread_ref_id);
         }
     }
 

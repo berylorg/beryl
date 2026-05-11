@@ -48,7 +48,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - `Turn activity caret` is the non-interactive block cursor shown at the end of the transcript while the selected thread's parent turn is working.
 - `Popup widget` is a bounded transient surface such as the workspace picker, thread selector, or model/reasoning popup, layered above the main workspace window without replacing it.
 - `Workspace picker popup` is the merged two-column popup used for workspace selection and active-workspace member management.
-- `Workspace members column` is the right column inside the workspace picker popup. It manages the active workspace's runtime environment and workspace members.
+- `Workspace members column` is the right column inside the workspace picker popup. It manages the active workspace's default runtime environment and workspace members.
 - `Surface notice` is a bounded top-right transient message surface for localized errors and recovery information that should not replace the active workspace view.
 - `Context menu widget` is a bounded transient command surface opened from a specific row or control, with optional submenus layered above the main workspace window.
 - `Settings window` is the dedicated preheated top-level OS window for application settings. It is shown and hidden rather than rebuilt for each open request.
@@ -397,7 +397,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Active-row behavior: the currently active thread row is visibly highlighted.
 - Activation behavior: double-clicking a thread row or pressing `Enter` on a selected thread row activates that exact Codex thread in the transcript, including when the row also opens a fork column on single-click.
 - Activation-pending behavior: after an activation request is accepted, the selector closes and the transcript region shows the pending thread activation state until the backend resume and initial transcript page load succeed or fail.
-- Exact-selection behavior: if the selected thread is no longer available, cannot be reopened, or resumes with a recorded working directory that does not match the expected execution target, the workspace reports the standard rebind or activation failure path and does not activate a different thread.
+- Exact-selection behavior: if the selected thread is no longer available, cannot be reopened, is outside current workspace scope, or resumes with a recorded working directory that does not match the expected execution target, the workspace reports the standard rebind or activation failure path and does not activate a different thread.
 
 ### Graph Overlay
 
@@ -434,7 +434,8 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Row behavior: semantic-node rows are compact single-line rows; each row renders either `title` or `status symbol + title`, and node summaries are exposed through hover tooltips instead of consuming vertical row space.
 - Tooltip suppression behavior: semantic-node summary tooltips are suppressed while any graph-node context menu is open.
 - Context-menu behavior: right-clicking a semantic-node row opens that node's context menu without changing the active transcript thread.
-- Thread-ref activation behavior: activating a thread-ref row uses the same pending thread activation presentation as thread selector activation.
+- Thread-ref row behavior: valid thread-ref rows use the ordinary terminal row treatment. Invalid thread-ref rows remain visible, render a compact invalid-link indicator, and expose the invalid reason through a hover tooltip.
+- Thread-ref activation behavior: activating a valid thread-ref row uses the same pending thread activation presentation as thread selector activation. Activating an invalid thread-ref row leaves the active transcript unchanged and reports the invalid reason through the standard localized notice path.
 - Expand or collapse behavior: any node row with children shows a `+` or `-` control and is collapsible from that row.
 - Overflow behavior: each graph column owns vertical scrolling for its own node, soft-link, and thread-ref rows beneath a fixed column header.
 - Pending-row behavior: rows affected by pending local graph mutations may show pending, disabled, or dimmed state while unaffected rows remain visible and interactive according to the current graph-action policy.
@@ -456,7 +457,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Mutation-failure behavior: if the graph mutation fails, the menu or nearby graph surface reports the failure locally and clears the in-flight state without blanking the overlay.
 - Link-thread behavior: the menu includes a `Link thread` command.
 - Link-thread single-member behavior: when the active workspace has exactly one available member, including the implicit home member case, `Link thread` opens directly into that member's thread-list submenu.
-- Link-thread multi-member behavior: when the active workspace has more than one available member, `Link thread` opens a member-list submenu, and each member row opens that member's thread-list submenu.
+- Link-thread multi-member behavior: when the active workspace has more than one available member, `Link thread` opens a member-list submenu, and each member row opens that member's thread-list submenu. Unavailable explicit members do not appear in this submenu.
 - Thread-list behavior: thread rows show only the thread display title, sorted by last-updated time descending.
 - Empty-thread-list behavior: a member with no linkable threads shows a disabled `No threads` row in its thread-list submenu.
 
@@ -468,11 +469,11 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Automatic resize: preferred width `840 px`, clamped between `620 px` and `94%` of the OS window width, with maximum height `72%` of the OS window.
 - Manual resize: none in V1.
 - Overflow behavior: the popup itself does not become a general scrolling surface. The Workspaces column owns vertical scrolling for its divided workspace list when needed, and the Members column owns vertical scrolling for its divided member list when needed.
-- Internal layout: two side-by-side content columns separated by a vertical divider. The left Workspaces column contains a header, a fixed filter field, and one vertically scrollable divided workspace list. The right Members column contains a header, a fixed runtime-environment selector, and one vertically scrollable divided member list.
+- Internal layout: two side-by-side content columns separated by a vertical divider. The left Workspaces column contains a header, a fixed filter field, and one vertically scrollable divided workspace list. The right Members column contains a header, a fixed default-runtime selector, and one vertically scrollable divided member list.
 - Header behavior: column headers identify `Workspaces` and `Members` without item-count labels.
-- Filter behavior: the Workspaces filter matches against workspace names and explicit workspace member canonical paths shown in workspace rows. Filtering changes which existing workspace rows are visible without moving the `Create new workspace` row out of the first list position.
+- Filter behavior: the Workspaces filter matches against workspace names and explicit workspace member paths shown in workspace rows, including unavailable attached member paths. Filtering changes which existing workspace rows are visible without moving the `Create new workspace` row out of the first list position.
 - Create-row behavior: the `Create new workspace` row is part of the divided list, has no row action-menu trigger, and invokes workspace creation when activated.
-- Workspace rows show the workspace name as the primary line and explicit workspace member canonical paths as one secondary line per member.
+- Workspace rows show the workspace name as the primary line and explicit workspace member paths as one secondary line per member, including unavailable attached member paths.
 - Workspace-row action behavior: each ordinary workspace row exposes one row-edge action-menu trigger. The row action menu contains `Rename` and a dangerous delete action represented as a hold-for-action trigger.
 - Workspace rows do not render implicit-home member paths or `last updated` metadata.
 - Long workspace names and member paths soft-wrap and may grow the row vertically instead of truncating to ellipses.
@@ -484,15 +485,16 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 
 ### Workspace Members Column
 
-- Visual behavior: the Members column uses the same divided-list and left-edge accent row-state treatment as the Workspaces column. The member list's first row is the `Attach member` action row, followed by available workspace members.
-- Runtime-selector behavior: the runtime-environment selector occupies the fixed row above the member list. There is no independent member filter field.
+- Visual behavior: the Members column uses the same divided-list and left-edge accent row-state treatment as the Workspaces column. The member list's first row is the `Attach member` action row, followed by visible workspace members, including unavailable explicit members and any exposed implicit home member.
+- Runtime-selector behavior: the default-runtime selector occupies the fixed row above the member list and also chooses the runtime for the next attached member. There is no independent member filter field.
 - Runtime-dropdown behavior: activating the runtime selector opens an attached selector dropdown. The opened dropdown and trigger share one continuous outer boundary with aligned left and right walls. WSL distro selector rows are labeled with a `WSL: ` prefix.
-- Runtime-lock behavior: the runtime selector is enabled only while no explicit workspace members are attached. When explicit members exist, the selector displays the selected runtime and exposes a disabled reason instead of allowing a runtime change.
-- No-runtime behavior: when no runtime environment is selected, the runtime selector is enabled and the `Attach member` row is disabled until the user chooses host-Windows or one WSL distro.
-- Member-row behavior: each member row uses the same text hierarchy as a workspace row. The primary line is a display label derived from the member directory or implicit-home role, and the secondary line is the full canonical filesystem path. Long labels and paths soft-wrap and may grow the row vertically instead of truncating to ellipses.
+- Runtime-enabled behavior: the runtime selector remains enabled when explicit workspace members exist because changing it affects future member attachment and implicit home fallback, not existing runtime-bound members.
+- No-runtime behavior: when no default runtime environment is selected, the runtime selector is enabled and the `Attach member` row is disabled until the user chooses host-Windows or one WSL distro.
+- Member-row behavior: each member row uses the same text hierarchy as a workspace row. The primary line is a display label derived from the member directory or implicit-home role, and the secondary line is the full filesystem path. Long labels and paths soft-wrap and may grow the row vertically instead of truncating to ellipses.
+- Unavailable-member behavior: unavailable explicit member rows remain in the list. Their primary line appends `- path not found` to the normal display label, their secondary line remains the persisted full filesystem path, and they do not expose `Make primary`.
 - Primary-member behavior: the current primary member is indicated by the same left-edge accent marker used for the active workspace. The row does not use full-row primary-blue highlighting and does not render redundant primary/current label text.
 - Explicit-member action behavior: each explicit member row exposes one row-edge action-menu trigger. Non-primary member action menus include `Make primary`; explicit member action menus include a detach action that asks for confirmation.
-- Implicit-home behavior: when no explicit members exist, the list shows the selected runtime environment's implicit home member as the current primary member and does not expose member actions that would detach it. Host-Windows uses the host user's home directory; WSL uses the selected distro's home directory.
+- Implicit-home behavior: when no available explicit members exist, the list shows the default runtime environment's implicit home member as the current primary member and does not expose member actions that would detach it. Host-Windows uses the host user's home directory; WSL uses the selected distro's home directory.
 
 ## Scroll Ownership
 

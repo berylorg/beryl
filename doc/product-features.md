@@ -6,7 +6,8 @@ This document defines the user-visible product behavior for Beryl V1.
 
 - On successful application startup, Beryl automatically opens the previously active persisted Beryl workspace.
 - If the previously active workspace is unavailable, deleted, or otherwise cannot be resumed, Beryl creates and opens a fresh untitled workspace instead.
-- A fresh untitled workspace starts with the host-Windows runtime selected, no explicit workspace members, and the host user's home directory exposed as the implicit primary workspace member.
+- Missing or unavailable workspace member paths do not make the previously active workspace unavailable; Beryl opens the workspace, keeps those members attached, marks them invalid, and applies the durable primary fallback rules.
+- A fresh untitled workspace starts with host-Windows as the default runtime, no explicit workspace members, and the host user's home directory exposed as the implicit primary workspace member.
 - Normal successful startup does not require a dedicated startup screen before the workspace window appears.
 - Beryl stores persisted workspaces under the configured Beryl home directory, whose default is `~/.beryl`.
 - New workspaces begin untitled and there may be any number of untitled workspaces.
@@ -25,13 +26,13 @@ This document defines the user-visible product behavior for Beryl V1.
 - The main workspace toolbar includes a workspace-picker button that opens the workspace picker popup for workspace selection and active-workspace member management.
 - The workspace-picker popup contains a left Workspaces column and a right Members column separated by a vertical divider.
 - The Workspaces column includes a full-width filter field above a single divided workspace list.
-- The Workspaces filter matches workspace names and explicit workspace member canonical paths shown in workspace rows.
+- The Workspaces filter matches workspace names and explicit workspace member paths shown in workspace rows, including unavailable attached member paths.
 - The workspace list's first row is `Create new workspace`, followed by existing workspaces ordered by most recently opened first.
 - The currently active workspace is visually indicated by the row's left-edge accent marker only, without full-row primary-blue highlighting or redundant active/current label text.
-- Each workspace row shows the workspace name as its primary text, followed by the workspace's explicit member canonical paths, one member per line.
+- Each workspace row shows the workspace name as its primary text, followed by the workspace's explicit member paths, one member per line.
 - Workspace rows do not render implicit-home member paths or `last updated` metadata.
 - Each ordinary workspace row exposes a row-edge action menu containing `Rename` and hold-to-delete actions.
-- The `last updated` timestamp changes when durable workspace state such as graph content, thread refs, titles, runtime selection, or member registration changes, not merely when the user switches into that workspace.
+- The `last updated` timestamp changes when durable workspace state such as graph content, thread refs, titles, default-runtime selection, member registration, or primary-member designation changes, not merely when the user switches into that workspace or Beryl observes live member availability.
 - Activating a workspace row switches to that workspace and closes the picker.
 - Activating the currently active workspace row closes the picker without reloading the workspace.
 - Completing the hold-to-delete action for the active workspace opens a fresh untitled workspace with the default host-Windows runtime and implicit home member.
@@ -42,19 +43,20 @@ This document defines the user-visible product behavior for Beryl V1.
 
 ## Runtime Environments, Workspace Members, and Conversation Threads
 
-- Each Beryl workspace may have at most one selected runtime environment at a time, where the runtime environment is either host-Windows or one specific WSL distro.
-- A newly created workspace selects the host-Windows runtime environment by default.
-- A workspace without a selected runtime environment is a legacy or recovery state rather than the normal state of a new workspace.
-- Runtime-environment selection and workspace-member management are exposed in the workspace picker popup's Members column.
-- Each explicit workspace member is one attached directory inside the workspace's selected runtime environment.
-- Explicit workspace members must not overlap after canonicalization.
-- While a workspace has a selected runtime environment but no explicit members, Beryl shows that runtime environment's home directory as an implicit undeletable workspace member.
-- The implicit home member acts as the primary member while no explicit members exist.
-- Attaching the first explicit member removes the implicit home member from the member list and makes that explicit member the primary member.
+- Each Beryl workspace may have explicit workspace members from host-Windows and from any number of WSL distro runtime environments.
+- A newly created workspace uses host-Windows as the default runtime environment.
+- A workspace without a default runtime environment is a legacy or recovery state rather than the normal state of a new workspace.
+- Default-runtime selection and workspace-member management are exposed in the workspace picker popup's Members column.
+- Each explicit workspace member is one attached directory inside that member's own runtime environment.
+- Explicit workspace members must not overlap after canonicalization within the same runtime environment.
+- If an attached explicit member path cannot currently be resolved as a live directory, Beryl keeps it attached, displays it as invalid, and excludes it from new-thread execution and thread inventory.
+- While a workspace has a default runtime environment but no available explicit members, Beryl shows that runtime environment's home directory as an implicit undeletable workspace member.
+- The implicit home member acts as the primary member while no available explicit member exists.
+- Attaching the first available explicit member removes the implicit home member from the member list and makes that explicit member the primary member.
 - The primary workspace member is the concrete execution root used for newly created conversation threads in that workspace.
 - Additional non-primary workspace members remain attached so the model can discover them as related workspace context through Beryl-provided app-server dynamic workspace metadata tools.
-- The workspace runtime environment may be changed only when no explicit workspace members remain attached.
-- If no runtime environment is selected in a legacy or recovery state, Beryl requires runtime selection before creating a new thread or attaching the first workspace member.
+- Changing the default runtime environment affects future member attachment and implicit home fallback only; it does not move existing members, change existing thread refs, or restrict the workspace to one runtime.
+- If no default runtime environment is selected in a legacy or recovery state, Beryl requires default-runtime selection before creating a new thread or attaching the first workspace member.
 - Beryl stores images pasted into the composer as durable workspace-local image assets under the configured Beryl home directory, whose default is `~/.beryl`, so accepted transcript markers can still open previews after app restart.
 - When submitting pasted images, Beryl gives Codex a real image path readable by the selected backend runtime. Host-Windows submissions use a host-readable asset path; WSL submissions use the selected distro's readable path to that same asset, such as its mounted view of the host profile directory, and fail visibly if that mapping cannot be validated.
 - A conversation thread remains a backend-owned resource rather than a Beryl-owned graph node.
@@ -92,15 +94,16 @@ This document defines the user-visible product behavior for Beryl V1.
 - `Branch and switch to` activates the newly created branch only after fork, rollback, branch registration, and initial transcript activation succeed.
 - `Branch in background` registers the newly created branch, schedules thread inventory refresh, and keeps the current active transcript selected.
 - The branched thread becomes eligible for automatic Beryl thread-title generation using the clicked turn's user input fragments as the title seed rather than the source thread's title or assistant output.
-- Beryl maintains a UI-facing member-thread inventory snapshot for the active workspace, grouped by available workspace member.
-- Available workspace members for the inventory are the explicit workspace members, or the implicit home member when a runtime environment is selected and no explicit members exist.
-- A thread is listed under a member only when the backend thread summary's recorded working directory exactly matches that member's canonical path.
+- Beryl maintains a UI-facing member-thread inventory snapshot for the active workspace, grouped by available runtime-bound workspace member.
+- Available workspace members for the inventory are the available explicit workspace members, or the implicit home member when a default runtime environment is selected and no available explicit members exist.
+- Unavailable explicit workspace members remain visible in member management UI but do not contribute inventory groups.
+- A thread is listed under a member only when the backend thread summary's recorded runtime and working directory exactly match that member's runtime and canonical path.
 - Member-thread inventory refresh runs in the background and atomically swaps complete snapshots into UI state, so opening a thread-linking menu or thread selector never blocks on `codex app-server`.
 - The thread selector uses the same member-thread inventory snapshot as thread-linking UI.
 - Opening the thread selector may request a background member-thread inventory refresh, but it displays the latest available snapshot while refresh is pending or after refresh failure.
 - Threads inside each member group are ordered by `last updated` descending.
 - If no conversation thread is active and the user submits input from the workspace screen, Beryl creates and activates a new standalone Codex thread for the current workspace using the current primary workspace member.
-- Starting a new Codex thread requires a selected runtime environment and a resolved primary workspace member.
+- Starting a new Codex thread requires a default runtime environment and a resolved primary workspace member.
 - When the global developer-instructions setting is non-empty, Beryl sends the latest applied value as hidden developer-instructions context with each top-level user message, including messages sent to existing threads and the first message that creates a new user-facing persistent Codex thread.
 - Automatic lifecycle continuation after `yield(phase_continue)` also sends the latest applied developer-instructions setting with Beryl's generated continuation message.
 - Blank or whitespace-only developer-instructions settings are disabled and clear Beryl's custom developer-instructions context for later top-level user messages. Developer instructions are not sent with subagent requests, active-turn steering, title-generation maintenance, inventory refresh, context-compaction requests themselves, or other background/status-only work.
@@ -109,34 +112,36 @@ This document defines the user-visible product behavior for Beryl V1.
 - Activating an existing thread from the thread selector or from a graph thread ref reopens that exact backend thread by id and does not fall back to another thread if the selected thread is unavailable.
 - Existing-thread activation shows an immediate pending state while the backend resume and initial transcript page load are in progress.
 - Existing-thread activation does not require enumerating all backend threads before the selected thread can begin reopening.
-- Selecting a thread-ref item in the graph explorer activates that Codex thread in the transcript.
+- Selecting a valid thread-ref item in the graph explorer activates that Codex thread in the transcript.
+- Invalid thread-ref items remain visible, show an invalid-link indicator, and report why the linked thread is unavailable instead of activating a transcript.
 - Selecting a semantic node by itself does not switch the active transcript thread.
 - Double-clicking a topic-capable semantic node creates and activates a new Codex thread attached to that existing node, using the current primary workspace member.
-- If no runtime environment is selected in a legacy or recovery state, topic-capable node thread creation is unavailable and Beryl reports that the action cannot be completed.
+- If no default runtime environment is selected in a legacy or recovery state, topic-capable node thread creation is unavailable and Beryl reports that the action cannot be completed.
 - Existing conversation threads may change bound workspace member or runtime environment only through an explicit rebind decision.
 - Beryl never silently hops an existing conversation thread to a different workspace member or runtime environment.
-- If a thread's original bound member or runtime environment is no longer available, Beryl requires an explicit rebind decision before continuing that thread on the workspace's current primary member.
+- If a thread ref's original bound member, runtime environment, or backend thread id is no longer in workspace scope, Beryl keeps the ref, marks it invalid, and requires an explicit rebind decision before continuing that ref on another workspace member.
 
 ## Workspace Members Column
 
-- The workspace picker popup's Members column manages the active workspace's runtime environment and workspace members without replacing the main workspace screen.
+- The workspace picker popup's Members column manages the active workspace's default runtime environment and workspace members without replacing the main workspace screen.
 - The Members column copies the Workspaces column visual structure: a compact header, a fixed control row, a single divided list, left-edge accent row-state treatment, row dividers, soft-wrapping text, and row-edge action-menu triggers.
-- The Members column fixed control row is the runtime-environment selector. It replaces a member filter; the Members column does not have its own filter field.
+- The Members column fixed control row is the default-runtime and attachment-runtime selector. It replaces a member filter; the Members column does not have its own filter field.
 - The runtime-environment selector opens an attached selector dropdown whose outer boundary aligns with the trigger so the selector and dropdown read as one continuous control.
 - Runtime selector rows include host-Windows and available WSL distros. WSL distro rows render with a `WSL: ` prefix.
-- The runtime-environment selector is enabled only while no explicit workspace members are attached. With explicit members attached, it displays the selected runtime environment but does not allow switching.
-- If the workspace has no selected runtime environment, the Members column requires choosing host-Windows or one WSL distro before allowing member attachment.
+- The runtime-environment selector remains enabled with explicit members attached because it controls future attachment and implicit home fallback rather than constraining existing members.
+- If the workspace has no default runtime environment, the Members column requires choosing host-Windows or one WSL distro before allowing member attachment.
 - The Members list's first row is `Attach member`, which opens the native OS file picker.
-- Beryl validates the chosen member path after the picker returns and rejects selections outside the workspace's selected runtime environment.
-- Host-Windows workspaces reject WSL UNC selections.
-- WSL workspaces accept only UNC selections inside the selected distro and reject host paths or UNC selections from other distros.
-- The current runtime environment is presented by the runtime selector rather than as a member row.
-- When no explicit members exist, the Members list shows the selected runtime environment's implicit home member as the current primary member and does not allow detaching it. Host-Windows uses the host user's home directory; WSL uses the selected distro's home directory.
-- Attached explicit members render as divided-list rows using the same text hierarchy as workspace rows: a primary display label derived from the member directory and a secondary full canonical filesystem path. Long labels and paths soft-wrap and grow the row vertically instead of truncating.
+- Beryl validates the chosen member path after the picker returns and rejects selections outside the runtime environment selected for that attachment.
+- Host-Windows attachments reject WSL UNC selections.
+- WSL attachments accept only UNC selections inside the selected distro and reject host paths or UNC selections from other distros.
+- The default and attachment runtime is presented by the runtime selector rather than as a member row.
+- When no available explicit members exist, the Members list shows the default runtime environment's implicit home member as the current primary member and does not allow detaching it. Host-Windows uses the host user's home directory; WSL uses the selected distro's home directory.
+- Attached explicit members render as divided-list rows using the same text hierarchy as workspace rows: a primary display label derived from the member directory and a secondary full filesystem path. Long labels and paths soft-wrap and grow the row vertically instead of truncating.
+- An unavailable explicit member row remains in the list. Its primary line appends `- path not found` to the normal display label, its secondary line remains the persisted full filesystem path, and it is not eligible for `Make primary`.
 - The current primary member is visually indicated by the same left-edge accent marker used for the active workspace, without full-row primary-blue highlighting or redundant primary/current label text.
 - Each explicit member row exposes one row-edge action menu for member actions. Non-primary explicit member menus include `Make primary`, and explicit member menus include a detach action that asks for confirmation.
-- If the current primary explicit member is detached while other explicit members remain, Beryl deterministically promotes the earliest remaining explicit member by stable attach order to primary.
-- If all explicit members are detached, the implicit home member reappears and becomes primary again.
+- If the current primary explicit member is detached or becomes unavailable while other available explicit members remain, Beryl deterministically and durably promotes the earliest available explicit member by stable attach order to primary.
+- If no available explicit members remain, the implicit home member reappears and durably becomes primary.
 
 ## Semantic Graph and Workspace Organization
 
@@ -158,7 +163,7 @@ This document defines the user-visible product behavior for Beryl V1.
 - Workspace-member inventory, primary-member designation, and runtime-environment metadata may also be exposed through Beryl-provided app-server dynamic tools so the model can discover the workspace's attached filesystem roots without Beryl preloading all contents into prompt context.
 - Deleting a hard-tree leaf semantic node deletes only that node. Deleting a semantic node recursively deletes that node and its hard descendants only, whether or not the target is root-level. Deleting one root-level subtree preserves unrelated root-level subtrees. Soft links are not followed to expand the recursively deleted set, but any soft link whose source or target is deleted is removed so the graph does not retain dangling links.
 - Thread refs attached to deleted semantic nodes are removed from Beryl's semantic graph state, but deleting a semantic node never deletes backend-owned Codex conversation threads.
-- Durable top-level workspace creation, deletion, retitling, runtime selection, and member-management actions remain user-visible actions even when proposed or initiated by the model.
+- Durable top-level workspace creation, deletion, retitling, default-runtime selection, and member-management actions remain user-visible actions even when proposed or initiated by the model.
 
 ## AI Lifecycle Yield
 
@@ -377,14 +382,15 @@ This document defines the user-visible product behavior for Beryl V1.
 - Soft links and thread refs attached to expanded nodes render as compact terminal rows beneath those nodes.
 - Selecting a semantic node opens the next explorer column rooted at that node.
 - Selecting a soft link opens the next column rooted at that link's target semantic node.
-- Selecting a thread-ref row activates the referenced Codex thread in the main transcript instead of using that thread as the next graph root.
-- Activating a thread-ref row uses the same direct exact thread activation path and pending transcript state as the thread selector.
+- Selecting a valid thread-ref row activates the referenced Codex thread in the main transcript instead of using that thread as the next graph root.
+- Invalid thread-ref rows remain visible with a compact invalid-link indicator and do not open a transcript.
+- Activating a valid thread-ref row uses the same direct exact thread activation path and pending transcript state as the thread selector.
 - Right-clicking a semantic-node row opens a context menu for that node.
 - The node context menu includes `Delete`, which immediately deletes the selected semantic node only when it has no hard children. `Delete` remains visible but disabled with a reason tooltip when the selected semantic node has hard children.
 - The node context menu includes `Delete Recursively`, which deletes the selected semantic node and its hard descendants after held activation.
 - `Delete Recursively` is activated only by holding its popup row for three seconds. While the pointer or keyboard activation is held, the row background fills from left to right; releasing early, leaving the row, closing the popup, focus loss, or stale graph-node target cancels the hold without deleting graph state.
 - The node context menu includes `Link thread`, which creates a thread ref from the selected existing conversation thread to that semantic node without activating the transcript.
-- If the workspace has no selected runtime environment, `Link thread` is disabled and exposes the reason in a hover tooltip.
+- If the workspace has no default runtime environment, `Link thread` is disabled and exposes the reason in a hover tooltip.
 - If the active workspace has exactly one available member, including the implicit home member case, `Link thread` opens directly to that member's thread list.
 - If the active workspace has multiple available members, `Link thread` first opens a member list and each member opens its own thread list.
 - If a member has no linkable threads in the current inventory snapshot, its thread list shows a disabled `No threads` item.

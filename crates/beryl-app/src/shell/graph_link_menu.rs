@@ -48,6 +48,42 @@ impl ShellView {
         cx.notify();
     }
 
+    pub(crate) fn open_graph_thread_ref_rebind_menu(
+        &mut self,
+        column_index: usize,
+        thread_ref_id: ThreadRefId,
+        event: &MouseDownEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = self.conversation_surface_mut().is_some_and(|surface| {
+            let Some(node_id) = surface
+                .graph_overlay()
+                .graph()
+                .thread_ref(&thread_ref_id)
+                .map(|thread_ref| thread_ref.node_id().clone())
+            else {
+                return false;
+            };
+            let changed = surface.select_graph_node(column_index, &node_id);
+            surface.transcript_branch_menu_mut().close();
+            surface.status_line_operations_mut().close();
+            surface.checklist_thread_start_menu_mut().close();
+            surface.graph_thread_link_menu_mut().open_thread_ref_rebind(
+                node_id,
+                thread_ref_id.clone(),
+                event.position,
+            );
+            changed
+        });
+        if changed {
+            self.prune_graph_scrollbar_activity();
+            self.notify_checklist_sidebar_panel(cx);
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     pub(crate) fn show_graph_thread_link_menu(
         &mut self,
         _: &gpui::ClickEvent,
@@ -75,6 +111,22 @@ impl ShellView {
         }
     }
 
+    pub(crate) fn open_graph_thread_rebind_member(
+        &mut self,
+        thread_ref_id: ThreadRefId,
+        member: MemberThreadInventoryMemberKey,
+        _: &gpui::ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface
+                .graph_thread_link_menu_mut()
+                .set_rebind_member_threads_view(thread_ref_id, member);
+            cx.notify();
+        }
+    }
+
     pub(crate) fn show_graph_thread_link_members(
         &mut self,
         _: &gpui::ClickEvent,
@@ -83,6 +135,21 @@ impl ShellView {
     ) {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.graph_thread_link_menu_mut().set_link_threads_view();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn show_graph_thread_ref_rebind_members(
+        &mut self,
+        thread_ref_id: ThreadRefId,
+        _: &gpui::ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface
+                .graph_thread_link_menu_mut()
+                .set_rebind_threads_view(thread_ref_id);
             cx.notify();
         }
     }
@@ -196,6 +263,69 @@ impl ShellView {
         cx.notify();
     }
 
+    pub(crate) fn rebind_graph_thread_ref(
+        &mut self,
+        thread_ref_id: ThreadRefId,
+        thread: MemberThreadInventoryThread,
+        _: &gpui::ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if graph_node_delete_blocked_by_graph_work(
+            self.graph_receiver.is_some(),
+            self.graph_thread_start_receiver.is_some(),
+        ) {
+            return;
+        }
+
+        let Some((workspace_id, request, optimistic_mutation)) =
+            self.build_thread_ref_rebind_request(thread_ref_id, &thread)
+        else {
+            return;
+        };
+        let optimistic_mutation_id = optimistic_mutation.id();
+
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.graph_thread_link_menu_mut().close();
+            if let Err(error) = surface.begin_optimistic_graph_mutation(optimistic_mutation) {
+                surface.report_optimistic_graph_mutation_failure(None, error);
+                cx.notify();
+                return;
+            }
+        }
+
+        let touched_manifest = self.loaded_workspace_mut().is_some_and(|loaded| {
+            let mut changed = loaded
+                .workspace_state
+                .remember_thread(thread.to_registered_thread());
+            if loaded
+                .workspace_state
+                .thread_registration(thread.thread_id())
+                .is_some_and(|registered| registered.requires_rebind())
+            {
+                changed |= loaded
+                    .workspace_state
+                    .clear_thread_rebind_required(thread.thread_id())
+                    .unwrap_or(false);
+            }
+            changed
+        });
+        if touched_manifest {
+            self.persist_current_workspace_state(true);
+        }
+
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            return;
+        };
+        self.graph_receiver = Some(spawn_thread_ref_link_worker(
+            persistence,
+            workspace_id,
+            request,
+            Some(optimistic_mutation_id),
+        ));
+        cx.notify();
+    }
+
     fn build_thread_ref_upsert_request(
         &mut self,
         thread: &MemberThreadInventoryThread,
@@ -249,6 +379,87 @@ impl ShellView {
             patch,
             [node_id],
             "Linking thread to semantic node",
+        );
+
+        Some((
+            workspace_id.clone(),
+            ThreadRefUpsertRequest {
+                workspace_id,
+                thread_ref,
+                provenance,
+                expected_base_revision: Some(optimistic_mutation.base_revision()),
+            },
+            optimistic_mutation,
+        ))
+    }
+
+    fn build_thread_ref_rebind_request(
+        &mut self,
+        thread_ref_id: ThreadRefId,
+        thread: &MemberThreadInventoryThread,
+    ) -> Option<(
+        beryl_model::workspace::BerylWorkspaceId,
+        ThreadRefUpsertRequest,
+        GraphOptimisticMutation,
+    )> {
+        let workspace_id = self.loaded_workspace()?.workspace.id().clone();
+        let surface = self.conversation_surface()?;
+        let node_id = surface.graph_thread_link_menu().active()?.node_id().clone();
+        let graph = surface.graph_overlay().graph();
+        let graph_revision = surface.graph_overlay().revision();
+
+        if !graph
+            .thread_ref(&thread_ref_id)
+            .is_some_and(|thread_ref| thread_ref.node_id() == &node_id)
+        {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.graph_thread_link_menu_mut().close();
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread link unavailable",
+                    "The selected thread link no longer exists.",
+                ));
+            }
+            return None;
+        }
+
+        if graph.thread_refs_for_node(&node_id).any(|thread_ref| {
+            thread_ref.id() != &thread_ref_id && thread_ref.thread_id() == thread.thread_id()
+        }) {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.graph_thread_link_menu_mut().close();
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread already linked",
+                    "The selected thread is already attached to this semantic node.",
+                ));
+            }
+            return None;
+        }
+
+        let thread_ref = ThreadRefDraft::new(
+            thread_ref_id,
+            node_id.clone(),
+            thread.thread_id().clone(),
+            thread.execution_target().clone(),
+            thread.title(),
+        );
+        let provenance = MutationProvenance::new(
+            "operator",
+            current_unix_millis(),
+            MutationSource::workspace_action("rebind_thread_ref").ok()?,
+            Some(100),
+        )
+        .ok()?;
+
+        let mutation_id = self
+            .conversation_surface_mut()?
+            .reserve_optimistic_graph_mutation_id();
+        let patch = thread_ref_upsert_patch(&thread_ref, &provenance);
+        let optimistic_mutation = GraphOptimisticMutation::new(
+            mutation_id,
+            graph_revision,
+            patch,
+            [node_id],
+            "Rebinding thread link",
         );
 
         Some((

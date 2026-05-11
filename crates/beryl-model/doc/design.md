@@ -19,9 +19,11 @@ Provide shared pure-data types used across the Beryl workspace.
 - Slug derivation is deterministic and rejects titles that produce an empty slug. Slug uniqueness across persisted workspaces is enforced by the persistence boundary rather than by this pure model crate.
 - Updating a workspace title to an accepted generated or manual title updates the workspace manifest id and title together.
 - Runtime-environment identity is represented by `RuntimeMode`, preserving the distinction between host-Windows and WSL-Linux runtimes even when textual paths overlap.
-- Explicit workspace members are represented separately from concrete execution targets so workspace-level member selection can persist independently from thread-level backend targets.
+- Runtime-bound explicit workspace members are represented separately from concrete execution targets so workspace-level member selection can persist independently from thread-level backend targets.
 - Concrete execution-target identity is represented by runtime mode plus canonical path, with WSL distro name included only for WSL-Linux mode.
-- Workspace-conversation state owns the selected runtime environment, explicit workspace members, primary-member designation, active-thread selection, backend thread-name snapshots, manual GUI-local thread title metadata, whether a registered backend thread was created by Beryl, automatic thread-title generation attempt state for Beryl-created threads, thread/member binding metadata, last-known exact per-thread token-usage snapshots for status presentation, and registered thread summaries for one semantic workspace.
+- Workspace-conversation state owns the default runtime environment, runtime-bound explicit workspace members, primary-member designation, active-thread selection, backend thread-name snapshots, manual GUI-local thread title metadata, whether a registered backend thread was created by Beryl, automatic thread-title generation attempt state for Beryl-created threads, thread/member binding metadata, last-known exact per-thread token-usage snapshots for status presentation, and registered thread summaries for one semantic workspace.
+- Explicit workspace member data preserves enough runtime and canonical-path identity for a member to remain attached when its path is temporarily unavailable, and for thread refs to become valid again when the same runtime/path returns to workspace scope.
+- Primary-member designation is durable workspace state. If the designated explicit member is unavailable or detached, the model state may persist a deterministic fallback designation to another available explicit member or to the implicit home member for the default runtime.
 
 ## Semantic Graph
 
@@ -34,7 +36,8 @@ Provide shared pure-data types used across the Beryl workspace.
 - Checklist-item nodes are first-class semantic nodes and may only be hard children of checklist-capable nodes.
 - Checklist-capable nodes may only own checklist-item hard children.
 - The semantic graph node set contains only semantic nodes. Workspace members, member-thread inventories, and backend conversation threads are represented outside the semantic node set.
-- Thread refs remain associations to backend-owned conversation threads. This crate stores only the metadata needed to identify the thread and its execution target from GUI-owned graph state.
+- Thread refs remain associations to backend-owned conversation threads. This crate stores only the metadata needed to identify the thread and its execution target from GUI-owned graph state, including runtime/path identity needed to determine whether the ref is currently openable.
+- Thread-ref records remain valid graph records even when their execution target is outside current workspace scope; invalid or unopenable status is a derived state rather than deletion of the ref.
 - A node may not attach the same conversation thread more than once.
 - Leaf semantic-node deletion is a graph patch operation that deletes only the target node and is valid only when that node has no hard children at patch-application time.
 - Recursive semantic-node deletion is a graph patch operation over the hard semantic forest. It deletes the target node and its hard descendants only and does not traverse soft links to expand the deletion set.

@@ -83,6 +83,120 @@ fn inventory_groups_threads_by_exact_member_cwd_and_sorts_by_updated_time() {
 }
 
 #[test]
+fn inventory_groups_match_backend_threads_by_runtime_and_cwd() {
+    let workspace_id = BerylWorkspaceId::new("runtime_inventory").unwrap();
+    let host = WorkspaceId::host_windows(r"C:\work\shared");
+    let wsl = WorkspaceId::wsl_linux("Ubuntu", r"C:\work\shared");
+    let mut state = WorkspaceConversationState::default();
+    state.designate_primary_execution_target(&host).unwrap();
+    state.attach_execution_target(&wsl).unwrap();
+
+    let snapshot =
+        member_thread_inventory::build_member_thread_inventory_snapshot_for_backend_threads(
+            workspace_id,
+            &state,
+            member_thread_inventory::empty_groups_for_workspace_state(&state),
+            vec![
+                member_thread_inventory::MemberThreadInventoryBackendThread::new(
+                    RuntimeMode::HostWindows,
+                    summary("host_thread", host.canonical_path(), None, 1, 10),
+                ),
+                member_thread_inventory::MemberThreadInventoryBackendThread::new(
+                    RuntimeMode::WslLinux {
+                        distro_name: "Ubuntu".to_string(),
+                    },
+                    summary("wsl_thread", wsl.canonical_path(), None, 2, 20),
+                ),
+            ],
+            50,
+        );
+
+    let host_group = snapshot
+        .groups()
+        .iter()
+        .find(|group| group.runtime() == host.runtime_mode())
+        .unwrap();
+    let wsl_group = snapshot
+        .groups()
+        .iter()
+        .find(|group| group.runtime() == wsl.runtime_mode())
+        .unwrap();
+
+    assert_eq!(host_group.threads().len(), 1);
+    assert_eq!(host_group.threads()[0].thread_id().as_str(), "host_thread");
+    assert_eq!(wsl_group.threads().len(), 1);
+    assert_eq!(wsl_group.threads()[0].thread_id().as_str(), "wsl_thread");
+}
+
+#[test]
+fn inventory_deduplicates_backend_threads_by_runtime_thread_and_cwd() {
+    let workspace_id = BerylWorkspaceId::new("runtime_inventory").unwrap();
+    let host = WorkspaceId::host_windows(r"C:\work\shared");
+    let mut state = WorkspaceConversationState::default();
+    state.designate_primary_execution_target(&host).unwrap();
+
+    let snapshot =
+        member_thread_inventory::build_member_thread_inventory_snapshot_for_backend_threads(
+            workspace_id,
+            &state,
+            member_thread_inventory::empty_groups_for_workspace_state(&state),
+            vec![
+                member_thread_inventory::MemberThreadInventoryBackendThread::new(
+                    RuntimeMode::HostWindows,
+                    summary("host_thread", host.canonical_path(), None, 1, 10),
+                ),
+                member_thread_inventory::MemberThreadInventoryBackendThread::new(
+                    RuntimeMode::HostWindows,
+                    summary("host_thread", host.canonical_path(), None, 1, 10),
+                ),
+            ],
+            50,
+        );
+
+    assert_eq!(snapshot.groups().len(), 1);
+    assert_eq!(snapshot.groups()[0].threads().len(), 1);
+    assert_eq!(
+        snapshot.groups()[0].threads()[0].thread_id().as_str(),
+        "host_thread"
+    );
+}
+
+#[test]
+fn inventory_groups_exclude_unavailable_members_and_use_implicit_home_when_none_available() {
+    let available = WorkspaceId::host_windows(r"C:\work\available");
+    let missing = WorkspaceId::host_windows(r"C:\work\missing");
+    let mut state = WorkspaceConversationState::default();
+    state
+        .designate_primary_execution_target(&available)
+        .unwrap();
+    state.attach_execution_target(&missing).unwrap();
+    let available_id = state.explicit_members()[0].id().clone();
+    let missing_id = state.explicit_members()[1].id().clone();
+
+    state
+        .mark_explicit_member_path_not_found(&missing_id)
+        .unwrap();
+    let groups = member_thread_inventory::empty_groups_for_workspace_state(&state);
+
+    assert_eq!(groups.len(), 1);
+    assert_eq!(
+        groups[0].key(),
+        &member_thread_inventory::MemberThreadInventoryMemberKey::Explicit(available_id)
+    );
+
+    state
+        .mark_explicit_member_path_not_found(&state.explicit_members()[0].id().clone())
+        .unwrap();
+    let groups = member_thread_inventory::empty_groups_for_workspace_state(&state);
+
+    assert_eq!(groups.len(), 1);
+    assert_eq!(
+        groups[0].kind(),
+        &member_thread_inventory::MemberThreadInventoryMemberKind::ImplicitHome
+    );
+}
+
+#[test]
 fn inventory_preserves_optional_fork_parent_metadata() {
     let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
     let first = WorkspaceId::host_windows(r"C:\work\first");

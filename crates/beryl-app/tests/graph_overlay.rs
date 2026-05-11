@@ -63,6 +63,24 @@ fn graph_overlay_retained_counts_include_visible_and_committed_graphs() {
 }
 
 #[test]
+fn graph_thread_ref_rows_render_invalid_indicator_and_explicit_rebind_action() {
+    let rows_source = include_str!("../src/shell/render/graph_overlay/rows.rs");
+    let shell_source = include_str!("../src/shell.rs");
+    let row_body = rust_function_body(rows_source, "fn render_graph_thread_ref_row");
+    let invalid_actions_body =
+        rust_function_body(rows_source, "fn render_invalid_thread_ref_actions");
+    let select_body = rust_function_body(shell_source, "fn select_graph_thread_ref");
+
+    assert!(row_body.contains("graph_thread_ref_availability"));
+    assert!(row_body.contains("render_invalid_thread_ref_actions"));
+    assert!(invalid_actions_body.contains(".child(\"!\")"));
+    assert!(invalid_actions_body.contains("\"Rebind\""));
+    assert!(invalid_actions_body.contains("open_graph_thread_ref_rebind_menu"));
+    assert!(select_body.contains("graph_thread_ref_availability"));
+    assert!(select_body.contains("availability.notice_title()"));
+}
+
+#[test]
 fn graph_overlay_state_uses_root_level_first_column_for_ordered_roots() {
     let graph = multi_root_graph();
     let overlay =
@@ -1571,4 +1589,28 @@ fn provenance(recorded_at_millis: u64) -> MutationProvenance {
 
 fn unique_temp_dir() -> tempdir_support::TestTempDir {
     tempdir_support::temp_dir("beryl-graph-overlay-test-")
+}
+
+fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
+    let start = source.find(function_signature).unwrap_or_else(|| {
+        panic!("missing function signature {function_signature:?}");
+    });
+    let body_start = source[start..]
+        .find('{')
+        .map(|offset| start + offset)
+        .expect("function has an opening brace");
+    let mut depth = 0usize;
+    for (offset, ch) in source[body_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &source[body_start..=body_start + offset];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("function body did not close");
 }

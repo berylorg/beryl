@@ -129,9 +129,17 @@ impl ShellView {
                 surface.set_effective_new_thread_defaults(
                     self.status_model_cache.effective_default_turn_defaults(),
                 );
-                loaded_workspace
+                let restored_implicit_home_threads = loaded_workspace
                     .set_resolved_implicit_home_path_from_target(&opened.execution_target);
-                self.backend_server = Some(opened.server);
+                if let Some(replaced_server) = self
+                    .backend_servers
+                    .insert(opened.execution_target.clone(), opened.server)
+                {
+                    super::spawn_managed_backend_shutdown(
+                        replaced_server,
+                        "replacing managed backend for execution target",
+                    );
+                }
                 self.state = ShellState::Ready(super::ReadyState {
                     attempt,
                     loaded_workspace,
@@ -141,6 +149,9 @@ impl ShellView {
                     cleared_failure: previous_failure,
                     surface,
                 });
+                if restored_implicit_home_threads {
+                    self.persist_current_workspace_state(true);
+                }
                 MemoryMilestone::new("workspace_open_ui_applied")
                     .workspace_id(workspace_id_for_log)
                     .backend_pid(process_id)
@@ -172,7 +183,6 @@ impl ShellView {
                 );
                 let disconnect = preserved_surface.is_some();
                 self.cancel_thread_title_workers();
-                self.shutdown_active_backend_server_in_background("workspace open failed");
                 self.state = ShellState::Blocked(BlockedState {
                     attempt,
                     loaded_workspace: Some(loaded_workspace),
@@ -288,13 +298,17 @@ impl ShellView {
     pub(super) fn finish_thread_activation_worker(&mut self, outcome: ThreadActivationOutcome) {
         match outcome {
             ThreadActivationOutcome::Activated {
+                execution_target,
                 thread,
                 session_metadata,
                 history_window,
                 image_resolver,
             } => {
                 let ui_finish_started = Instant::now();
-                let execution_target = match &self.state {
+                if let ShellState::Ready(ready) = &mut self.state {
+                    ready.execution_target = execution_target.clone();
+                }
+                let active_execution_target = match &self.state {
                     ShellState::Ready(ready) => Some(ready.execution_target.clone()),
                     ShellState::Discovering(_)
                     | ShellState::Picker(_)
@@ -353,11 +367,11 @@ impl ShellView {
                         .retained_state_if_enabled(|| self.retained_state_snapshot())
                         .log();
                 }
-                if let Some(execution_target) = execution_target {
-                    self.remember_active_thread_summary(&execution_target, &summary, false);
+                if let Some(active_execution_target) = active_execution_target {
+                    self.remember_active_thread_summary(&active_execution_target, &summary, false);
                     self.hydrate_selected_thread_token_usage_snapshot();
                     self.mark_member_thread_inventory_refresh_needed();
-                    self.repair_selected_thread_title_if_needed(execution_target);
+                    self.repair_selected_thread_title_if_needed(active_execution_target);
                 }
                 debug!(
                     thread_id = summary.id.as_str(),

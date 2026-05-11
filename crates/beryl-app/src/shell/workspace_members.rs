@@ -27,13 +27,12 @@ pub(crate) enum MemberPickerValidationError {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NewThreadExecutionTargetError {
     MissingRuntimeSelection,
-    BackendRuntimeMismatch { primary: String, active: String },
+    ImplicitHomeUnavailable { detail: String },
 }
 
 #[derive(Debug)]
 pub(super) enum WorkspaceTargetResolutionError {
     MissingHomeDirectory,
-    MissingRuntimeSelection,
     InvalidPath(WorkspacePathError),
 }
 
@@ -53,9 +52,6 @@ impl WorkspaceTargetResolutionError {
             Self::MissingHomeDirectory => {
                 "Beryl could not resolve the implicit home member for the selected runtime environment."
             }
-            Self::MissingRuntimeSelection => {
-                "Beryl could not resolve the primary workspace member because the workspace runtime environment is missing."
-            }
             Self::InvalidPath(_) => {
                 "Beryl could not resolve the primary workspace member into a canonical execution target."
             }
@@ -68,9 +64,6 @@ impl fmt::Display for WorkspaceTargetResolutionError {
         match self {
             Self::MissingHomeDirectory => {
                 write!(f, "could not determine the current user's home directory")
-            }
-            Self::MissingRuntimeSelection => {
-                write!(f, "the workspace runtime environment is not selected")
             }
             Self::InvalidPath(error) => write!(f, "{error}"),
         }
@@ -88,9 +81,9 @@ impl fmt::Display for NewThreadExecutionTargetError {
                     "select a runtime environment before starting a new thread"
                 )
             }
-            Self::BackendRuntimeMismatch { primary, active } => write!(
+            Self::ImplicitHomeUnavailable { detail } => write!(
                 f,
-                "the current backend is running in {active}, but the primary workspace member is in {primary}; reopen the primary member before starting a new thread"
+                "Beryl could not resolve the implicit home member before starting a new thread: {detail}"
             ),
         }
     }
@@ -137,34 +130,22 @@ pub(super) fn apply_workspace_member_detach(
 
 pub(super) fn resolve_new_thread_execution_target(
     workspace_state: &WorkspaceConversationState,
-    active_execution_target: &WorkspaceId,
+    _active_execution_target: &WorkspaceId,
 ) -> Result<WorkspaceId, NewThreadExecutionTargetError> {
     let Some(primary_member) = workspace_state.primary_member() else {
         return Err(NewThreadExecutionTargetError::MissingRuntimeSelection);
     };
 
-    let primary_runtime = match primary_member {
-        PrimaryWorkspaceMember::Explicit(_) => workspace_state
-            .selected_runtime()
-            .ok_or(NewThreadExecutionTargetError::MissingRuntimeSelection)?,
-        PrimaryWorkspaceMember::ImplicitHome(runtime) => runtime,
-    };
-    if primary_runtime != active_execution_target.runtime_mode() {
-        return Err(NewThreadExecutionTargetError::BackendRuntimeMismatch {
-            primary: primary_runtime.display_name().to_string(),
-            active: active_execution_target
-                .runtime_mode()
-                .display_name()
-                .to_string(),
-        });
-    }
-
     match primary_member {
-        PrimaryWorkspaceMember::Explicit(member) => Ok(WorkspaceId::from_parts(
-            primary_runtime.clone(),
-            member.canonical_path().to_path_buf(),
-        )),
-        PrimaryWorkspaceMember::ImplicitHome(_) => Ok(active_execution_target.clone()),
+        PrimaryWorkspaceMember::Explicit(member) => Ok(member.execution_target()),
+        PrimaryWorkspaceMember::ImplicitHome(runtime) => {
+            let canonical_path = resolve_runtime_home_directory(runtime).map_err(|error| {
+                NewThreadExecutionTargetError::ImplicitHomeUnavailable {
+                    detail: error.to_string(),
+                }
+            })?;
+            Ok(WorkspaceId::from_parts(runtime.clone(), canonical_path))
+        }
     }
 }
 
@@ -268,22 +249,63 @@ pub(super) fn resolve_primary_execution_target(
     };
 
     match primary_member {
-        PrimaryWorkspaceMember::Explicit(member) => {
-            let runtime = workspace_state
-                .selected_runtime()
-                .ok_or(WorkspaceTargetResolutionError::MissingRuntimeSelection)?
-                .clone();
-            Ok(Some(WorkspaceId::from_parts(
-                runtime,
-                member.canonical_path().to_path_buf(),
-            )))
-        }
+        PrimaryWorkspaceMember::Explicit(member) => Ok(Some(member.execution_target())),
         PrimaryWorkspaceMember::ImplicitHome(runtime) => {
             let canonical_path = resolve_runtime_home_directory(runtime)?;
             Ok(Some(WorkspaceId::from_parts(
                 runtime.clone(),
                 canonical_path,
             )))
+        }
+    }
+}
+
+pub(super) fn reconcile_workspace_member_availability(
+    workspace_state: &mut WorkspaceConversationState,
+) -> bool {
+    let member_ids = workspace_state
+        .explicit_members()
+        .iter()
+        .map(|member| member.id().clone())
+        .collect::<Vec<_>>();
+    let mut changed = false;
+
+    for member_id in member_ids {
+        let Some(member) = workspace_state
+            .explicit_members()
+            .iter()
+            .find(|member| member.id() == &member_id)
+            .cloned()
+        else {
+            continue;
+        };
+
+        let available = workspace_member_path_available(&member.execution_target());
+        let result = if available {
+            workspace_state.mark_explicit_member_available(&member_id)
+        } else {
+            workspace_state.mark_explicit_member_path_not_found(&member_id)
+        };
+        match result {
+            Ok(member_changed) => changed |= member_changed,
+            Err(error) => tracing::warn!(
+                member_id = member_id.as_str(),
+                error = %error,
+                "workspace member disappeared during availability reconciliation"
+            ),
+        }
+    }
+
+    changed
+}
+
+fn workspace_member_path_available(execution_target: &WorkspaceId) -> bool {
+    match execution_target.runtime_mode() {
+        RuntimeMode::HostWindows => canonicalize_host_path(execution_target.canonical_path())
+            .is_ok_and(|canonical| canonical == execution_target.canonical_path()),
+        RuntimeMode::WslLinux { distro_name } => {
+            canonicalize_wsl_path(distro_name, execution_target.canonical_path())
+                .is_ok_and(|canonical| canonical == execution_target.canonical_path())
         }
     }
 }

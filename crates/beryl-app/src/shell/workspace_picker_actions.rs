@@ -13,7 +13,9 @@ use crate::{BerylWorkspacePersistence, StartupPersistence, WorkspaceUiState};
 use tracing::warn;
 
 use super::{
-    workspace_members::apply_primary_execution_target_selection,
+    workspace_members::{
+        apply_primary_execution_target_selection, reconcile_workspace_member_availability,
+    },
     workspace_persistence_worker::WorkspacePersistenceFlush,
     workspace_picker::{
         WorkspacePickerMemberPaths, explicit_member_path_strings,
@@ -206,9 +208,14 @@ fn switch_workspace_for_picker(
                 workspace_id.as_str()
             )
         })?;
-    let workspace_state = workspace_persistence
+    let mut workspace_state = workspace_persistence
         .load_workspace_state(&workspace_id)
         .map_err(|error| error.to_string())?;
+    if reconcile_workspace_member_availability(&mut workspace_state) {
+        workspace_persistence
+            .save_workspace_state(&workspace_id, &workspace_state)
+            .map_err(|error| error.to_string())?;
+    }
     let workspace_ui_state = workspace_persistence
         .load_workspace_ui_state(&workspace_id)
         .map_err(|error| error.to_string())?;
@@ -267,11 +274,15 @@ fn delete_workspace_for_picker(
     let replacement_workspace = resolution.replacement_workspace().cloned();
     let replacement_workspace_state =
         if let Some(replacement_workspace) = replacement_workspace.as_ref() {
-            Some(
+            let mut state = workspace_persistence
+                .load_workspace_state(replacement_workspace.id())
+                .map_err(|error| error.to_string())?;
+            if reconcile_workspace_member_availability(&mut state) {
                 workspace_persistence
-                    .load_workspace_state(replacement_workspace.id())
-                    .map_err(|error| error.to_string())?,
-            )
+                    .save_workspace_state(replacement_workspace.id(), &state)
+                    .map_err(|error| error.to_string())?;
+            }
+            Some(state)
         } else {
             None
         };

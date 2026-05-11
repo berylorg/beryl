@@ -680,6 +680,78 @@ fn thread_refs_allow_many_to_many_bindings_but_reject_duplicates_per_node() {
     assert!(graph.thread_ref(&ref_three).is_none());
 }
 
+#[test]
+fn thread_ref_helpers_match_thread_runtime_and_path_identity() {
+    let node_id = SemanticNodeId::new("root").unwrap();
+    let thread_id = ConversationThreadId::new("thread_1");
+    let thread_ref_id = ThreadRefId::new("ref_one").unwrap();
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let mut graph = SemanticGraph::default();
+
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: topic_node(node_id.clone(), "Root"),
+                provenance: provenance(1),
+            },
+            set_root_op(&node_id, None, 2),
+            SemanticGraphPatchOp::UpsertThreadRef {
+                thread_ref: ThreadRefDraft::new(
+                    thread_ref_id.clone(),
+                    node_id,
+                    thread_id.clone(),
+                    execution_target.clone(),
+                    "Root thread",
+                ),
+                provenance: provenance(3),
+            },
+        ]))
+        .unwrap();
+
+    let thread_ref = graph.thread_ref(&thread_ref_id).unwrap();
+    assert!(thread_ref.matches_thread_target(&thread_id, &execution_target));
+    assert!(thread_ref.execution_target_in_scope([&execution_target]));
+    assert!(!thread_ref.matches_thread_target(
+        &thread_id,
+        &WorkspaceId::wsl_linux("Debian", r"C:\work\beryl")
+    ));
+    assert!(!thread_ref.execution_target_in_scope([&WorkspaceId::host_windows(r"C:\work\other")]));
+}
+
+#[test]
+fn thread_ref_scope_treats_same_path_in_different_runtimes_as_distinct() {
+    let node_id = SemanticNodeId::new("root").unwrap();
+    let thread_id = ConversationThreadId::new("thread_1");
+    let thread_ref_id = ThreadRefId::new("ref_one").unwrap();
+    let host_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let wsl_target = WorkspaceId::wsl_linux("Debian", r"C:\work\beryl");
+    let mut graph = SemanticGraph::default();
+
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: topic_node(node_id.clone(), "Root"),
+                provenance: provenance(1),
+            },
+            set_root_op(&node_id, None, 2),
+            SemanticGraphPatchOp::UpsertThreadRef {
+                thread_ref: ThreadRefDraft::new(
+                    thread_ref_id.clone(),
+                    node_id,
+                    thread_id,
+                    host_target.clone(),
+                    "Root thread",
+                ),
+                provenance: provenance(3),
+            },
+        ]))
+        .unwrap();
+
+    let thread_ref = graph.thread_ref(&thread_ref_id).unwrap();
+    assert!(thread_ref.execution_target_in_scope([&host_target]));
+    assert!(!thread_ref.execution_target_in_scope([&wsl_target]));
+}
+
 fn provenance(recorded_at_millis: u64) -> MutationProvenance {
     MutationProvenance::new(
         "operator",

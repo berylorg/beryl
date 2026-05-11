@@ -1,3 +1,4 @@
+use beryl_model::semantic_graph::ThreadRefId;
 use beryl_model::{semantic_graph::SemanticNodeId, workspace::WorkspaceMemberId};
 use gpui::{Bounds, point, px, size};
 use graph_link_menu_state::{
@@ -66,6 +67,41 @@ fn graph_thread_link_menu_switches_between_member_threads_and_root_views() {
     menu.close();
     assert!(!menu.is_open());
     assert!(!menu.should_dismiss_for_mouse_down(point(px(40.0), px(90.0))));
+}
+
+#[test]
+fn graph_thread_link_menu_tracks_explicit_rebind_views() {
+    let mut menu = GraphThreadLinkMenuState::default();
+    let node_id = SemanticNodeId::new("release_node").unwrap();
+    let thread_ref_id = ThreadRefId::new("release_thread_ref").unwrap();
+    let member_key =
+        MemberThreadInventoryMemberKey::Explicit(WorkspaceMemberId::new("member_2").unwrap());
+
+    menu.open_thread_ref_rebind(
+        node_id.clone(),
+        thread_ref_id.clone(),
+        point(px(120.0), px(80.0)),
+    );
+    assert_eq!(
+        menu.active().unwrap().view(),
+        &GraphThreadLinkMenuView::RebindThreads(thread_ref_id.clone())
+    );
+
+    menu.set_rebind_member_threads_view(thread_ref_id.clone(), member_key.clone());
+    assert_eq!(
+        menu.active().unwrap().view(),
+        &GraphThreadLinkMenuView::RebindMemberThreads {
+            thread_ref_id: thread_ref_id.clone(),
+            member_key
+        }
+    );
+
+    menu.set_rebind_threads_view(thread_ref_id.clone());
+    assert_eq!(
+        menu.active().unwrap().view(),
+        &GraphThreadLinkMenuView::RebindThreads(thread_ref_id)
+    );
+    assert_eq!(menu.active().unwrap().node_id(), &node_id);
 }
 
 #[test]

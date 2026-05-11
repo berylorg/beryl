@@ -38,7 +38,18 @@ pub struct WorkspaceMemberId(String);
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceMember {
     id: WorkspaceMemberId,
+    runtime_mode: RuntimeMode,
     canonical_path: PathBuf,
+    #[serde(default)]
+    availability: WorkspaceMemberAvailability,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceMemberAvailability {
+    #[default]
+    Available,
+    PathNotFound,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -164,10 +175,30 @@ impl WorkspaceMemberId {
 }
 
 impl WorkspaceMember {
-    pub fn new(id: WorkspaceMemberId, canonical_path: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        id: WorkspaceMemberId,
+        runtime_mode: RuntimeMode,
+        canonical_path: impl Into<PathBuf>,
+    ) -> Self {
+        Self::new_with_availability(
+            id,
+            runtime_mode,
+            canonical_path,
+            WorkspaceMemberAvailability::Available,
+        )
+    }
+
+    pub fn new_with_availability(
+        id: WorkspaceMemberId,
+        runtime_mode: RuntimeMode,
+        canonical_path: impl Into<PathBuf>,
+        availability: WorkspaceMemberAvailability,
+    ) -> Self {
         Self {
             id,
+            runtime_mode,
             canonical_path: canonical_path.into(),
+            availability,
         }
     }
 
@@ -175,8 +206,41 @@ impl WorkspaceMember {
         &self.id
     }
 
+    pub fn runtime_mode(&self) -> &RuntimeMode {
+        &self.runtime_mode
+    }
+
     pub fn canonical_path(&self) -> &Path {
         &self.canonical_path
+    }
+
+    pub fn execution_target(&self) -> WorkspaceId {
+        WorkspaceId::from_parts(self.runtime_mode.clone(), self.canonical_path.clone())
+    }
+
+    pub fn availability(&self) -> WorkspaceMemberAvailability {
+        self.availability
+    }
+
+    pub fn is_available(&self) -> bool {
+        self.availability == WorkspaceMemberAvailability::Available
+    }
+
+    pub fn mark_available(&mut self) -> bool {
+        self.set_availability(WorkspaceMemberAvailability::Available)
+    }
+
+    pub fn mark_path_not_found(&mut self) -> bool {
+        self.set_availability(WorkspaceMemberAvailability::PathNotFound)
+    }
+
+    fn set_availability(&mut self, availability: WorkspaceMemberAvailability) -> bool {
+        if self.availability == availability {
+            return false;
+        }
+
+        self.availability = availability;
+        true
     }
 }
 

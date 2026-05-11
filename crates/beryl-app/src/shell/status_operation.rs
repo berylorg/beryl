@@ -298,7 +298,7 @@ impl ShellView {
     }
 
     pub(crate) fn status_line_backend_operation_available(&self) -> bool {
-        self.backend_server.is_some()
+        self.backend_client_connector().is_some()
             && self.status_operation_receiver.is_none()
             && self.workspace_receiver.is_none()
             && self.graph_thread_start_receiver.is_none()

@@ -31,8 +31,8 @@ use super::thread_selection::{
 };
 use super::transcript_image_sources::transcript_image_path_resolver_for_turns;
 use super::workspace_members::{
-    WorkspaceTargetResolutionError, resolve_primary_execution_target,
-    validate_primary_execution_target_selection,
+    WorkspaceTargetResolutionError, reconcile_workspace_member_availability,
+    resolve_primary_execution_target, validate_primary_execution_target_selection,
 };
 use super::workspace_persistence_worker::WorkspacePersistenceFlush;
 use super::{
@@ -628,7 +628,7 @@ fn resolve_workspace_target(
             next_steps: vec!["Use the startup retry action.".to_string()],
         }),
         RetryTarget::WorkspacePrimary => {
-            let workspace_state =
+            let mut workspace_state =
                 persistence
                     .load_workspace_state(workspace_id)
                     .map_err(|error| OpenWorkspaceFailure {
@@ -642,6 +642,20 @@ fn resolve_workspace_target(
                             "Retry after restoring workspace storage access.".to_string(),
                         ],
                     })?;
+            if reconcile_workspace_member_availability(&mut workspace_state) {
+                persistence.save_workspace_state(workspace_id, &workspace_state).map_err(
+                    |error| OpenWorkspaceFailure {
+                        stage: None,
+                        title: "Workspace state could not be updated",
+                        summary: "Beryl resolved unavailable workspace members but could not persist the updated primary selection.".to_string(),
+                        detail: error.to_string(),
+                        next_steps: vec![
+                            "Verify that the semantic workspace state is writable.".to_string(),
+                            "Retry after restoring workspace storage access.".to_string(),
+                        ],
+                    },
+                )?;
+            }
             resolve_primary_execution_target(&workspace_state)
                 .map_err(workspace_failure_from_primary_target_error)?
                 .ok_or_else(|| OpenWorkspaceFailure {

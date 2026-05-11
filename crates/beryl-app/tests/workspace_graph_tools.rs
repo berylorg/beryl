@@ -289,6 +289,90 @@ fn workspace_state_read_exposes_multiple_members_primary_and_rebind_metadata() {
 }
 
 #[test]
+fn workspace_state_read_filters_unavailable_members_and_preserves_member_runtime() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("workspace_state").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Workspace State", 42);
+    let host_target = WorkspaceId::host_windows(r"C:\work\host");
+    let wsl_target = WorkspaceId::wsl_linux("Ubuntu", "/home/me/project");
+    let mut state = WorkspaceConversationState::default();
+
+    state
+        .designate_primary_execution_target(&host_target)
+        .unwrap();
+    state.attach_execution_target(&wsl_target).unwrap();
+    let host_member_id = state.explicit_members()[0].id().clone();
+    let wsl_member_id = state.explicit_members()[1].id().clone();
+    state
+        .mark_explicit_member_path_not_found(&host_member_id)
+        .unwrap();
+
+    persistence.save_workspace_manifest(&manifest).unwrap();
+    persistence
+        .save_workspace_state(&workspace_id, &state)
+        .unwrap();
+
+    let response = service
+        .read_workspace_state(&WorkspaceStateReadRequest {
+            workspace_id: workspace_id.clone(),
+        })
+        .unwrap();
+
+    assert_eq!(response.available_members.len(), 1);
+    assert_eq!(
+        response.available_members[0].member_id.as_ref(),
+        Some(&wsl_member_id)
+    );
+    assert_eq!(
+        response.available_members[0].runtime,
+        RuntimeMode::WslLinux {
+            distro_name: "Ubuntu".to_string()
+        }
+    );
+    assert!(matches!(
+        response.primary_member,
+        WorkspacePrimaryMemberSnapshot::Explicit {
+            member_id,
+            runtime: RuntimeMode::WslLinux { .. },
+            ..
+        } if member_id == wsl_member_id
+    ));
+
+    state
+        .mark_explicit_member_path_not_found(&wsl_member_id)
+        .unwrap();
+    persistence
+        .save_workspace_state(&workspace_id, &state)
+        .unwrap();
+
+    let response = service
+        .read_workspace_state(&WorkspaceStateReadRequest {
+            workspace_id: workspace_id.clone(),
+        })
+        .unwrap();
+
+    assert_eq!(response.available_members.len(), 1);
+    assert_eq!(
+        response.available_members[0].kind,
+        WorkspaceMemberSnapshotKind::ImplicitHome
+    );
+    assert_eq!(
+        response.available_members[0].runtime,
+        RuntimeMode::HostWindows
+    );
+    assert!(matches!(
+        response.primary_member,
+        WorkspacePrimaryMemberSnapshot::ImplicitHome {
+            runtime: RuntimeMode::HostWindows
+        }
+    ));
+
+    root.close().unwrap();
+}
+
+#[test]
 fn graph_neighborhood_on_empty_graph_returns_empty_anchor() {
     let root = unique_temp_dir();
     let persistence = BerylWorkspacePersistence::new(&root);

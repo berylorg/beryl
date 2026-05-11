@@ -143,12 +143,9 @@ fn workspace_primary_member_snapshot(
 ) -> WorkspacePrimaryMemberSnapshot {
     match state.primary_member() {
         Some(PrimaryWorkspaceMember::Explicit(member)) => {
-            let Some(runtime) = state.selected_runtime().cloned() else {
-                return WorkspacePrimaryMemberSnapshot::None;
-            };
             WorkspacePrimaryMemberSnapshot::Explicit {
                 member_id: member.id().clone(),
-                runtime,
+                runtime: member.runtime_mode().clone(),
                 canonical_path: member.canonical_path().to_path_buf(),
             }
         }
@@ -168,7 +165,7 @@ fn workspace_available_member_snapshots(
         return Vec::new();
     };
 
-    if state.explicit_members().is_empty() {
+    if !state.has_available_explicit_members() {
         return vec![WorkspaceMemberSnapshot {
             kind: WorkspaceMemberSnapshotKind::ImplicitHome,
             member_id: None,
@@ -180,12 +177,11 @@ fn workspace_available_member_snapshots(
 
     let primary_member_id = state.primary_explicit_member_id().cloned();
     state
-        .explicit_members()
-        .iter()
+        .available_explicit_members()
         .map(|member| WorkspaceMemberSnapshot {
             kind: WorkspaceMemberSnapshotKind::Explicit,
             member_id: Some(member.id().clone()),
-            runtime: runtime.clone(),
+            runtime: member.runtime_mode().clone(),
             canonical_path: Some(member.canonical_path().to_path_buf()),
             primary: primary_member_id.as_ref() == Some(member.id()),
         })

@@ -698,7 +698,11 @@ fn fresh_workspace_first_submit_starts_backend_thread_at_host_implicit_home_targ
     assert_eq!(backend.started_threads.len(), 1);
     assert_eq!(
         backend.started_threads[0].cwd,
-        implicit_home_target.canonical_path()
+        submit_target.canonical_path()
+    );
+    assert_eq!(
+        submit_target.runtime_mode(),
+        implicit_home_target.runtime_mode()
     );
 }
 
