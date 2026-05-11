@@ -1,0 +1,641 @@
+use gpui::{AnyElement, FontWeight, div, prelude::*, px, rgb};
+
+use crate::AppearanceSettings;
+use crate::shell::transcript_markdown::{
+    BlockRenderCode, BlockRenderList, BlockRenderListItem, BlockRenderNode, BlockRenderPlan,
+    InlineRenderLine, InlineRenderRole, MarkdownSourceSpan, markdown_code_panel_block_path,
+    markdown_code_panel_block_quote_path, markdown_code_panel_list_item_path,
+};
+
+use super::super::code_panel::CodePanelWrapMode;
+use super::TranscriptCodeLayout;
+use super::block_fallback::{
+    empty_line, fallback_inline_lines, fallback_inline_lines_with_source_span,
+};
+use super::code_panel_controls::TranscriptCodePanelControls;
+use super::inline_markdown::{
+    InlineMarkdownStyle, TranscriptInlineImageMarker, TranscriptInlineSelectionContext,
+    render_heading_lines_with_style, render_heading_lines_with_style_and_selection,
+    render_heading_lines_with_style_markers_and_selection, render_inline_lines_with_style,
+    render_inline_lines_with_style_and_selection,
+    render_inline_lines_with_style_markers_and_selection,
+};
+use super::text_blocks::labeled_code_block;
+
+const LIST_MARKER_WIDTH: f32 = 32.0;
+
+pub(super) fn render_markdown_plan_with_style_and_selection(
+    plan: &BlockRenderPlan,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: TranscriptCodePanelControls,
+    selection_context: TranscriptInlineSelectionContext,
+) -> AnyElement {
+    render_markdown_plan(
+        plan,
+        appearance,
+        code_layout,
+        style,
+        Some(code_panel_controls),
+        Some(selection_context),
+        &[],
+    )
+}
+
+pub(super) fn markdown_prose_block_with_selection(
+    label: &str,
+    plan: &BlockRenderPlan,
+    background: gpui::Rgba,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: TranscriptCodePanelControls,
+    selection_context: TranscriptInlineSelectionContext,
+) -> AnyElement {
+    markdown_prose_block_inner(
+        label,
+        plan,
+        background,
+        appearance,
+        code_layout,
+        style,
+        Some(code_panel_controls),
+        Some(selection_context),
+        &[],
+    )
+}
+
+pub(super) fn markdown_prose_block_with_image_markers_and_selection(
+    label: &str,
+    plan: &BlockRenderPlan,
+    background: gpui::Rgba,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: TranscriptCodePanelControls,
+    selection_context: TranscriptInlineSelectionContext,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    markdown_prose_block_inner(
+        label,
+        plan,
+        background,
+        appearance,
+        code_layout,
+        style,
+        Some(code_panel_controls),
+        Some(selection_context),
+        image_markers,
+    )
+}
+
+fn markdown_prose_block_inner(
+    label: &str,
+    plan: &BlockRenderPlan,
+    background: gpui::Rgba,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let mut block = div()
+        .rounded_md()
+        .bg(background)
+        .border_1()
+        .border_color(rgb(0x1f2937))
+        .p_3()
+        .flex()
+        .flex_col()
+        .gap_2();
+
+    if !label.is_empty() {
+        block = block.child(
+            div()
+                .text_xs()
+                .text_color(rgb(0x94a3b8))
+                .child(label.to_string()),
+        );
+    }
+
+    block
+        .child(render_markdown_plan(
+            plan,
+            appearance,
+            code_layout,
+            style,
+            code_panel_controls,
+            selection_context,
+            image_markers,
+        ))
+        .into_any_element()
+}
+
+fn render_markdown_plan(
+    plan: &BlockRenderPlan,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    render_block_sequence(
+        plan.blocks.as_slice(),
+        appearance,
+        code_layout,
+        BlockSpacing::Normal,
+        style,
+        code_panel_controls,
+        "",
+        selection_context,
+        image_markers,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum BlockSpacing {
+    Normal,
+    Tight,
+}
+
+impl BlockSpacing {
+    fn raw_break_before(self) -> usize {
+        match self {
+            BlockSpacing::Normal => 2,
+            BlockSpacing::Tight => 1,
+        }
+    }
+}
+
+fn render_block_sequence(
+    blocks: &[BlockRenderNode],
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    spacing: BlockSpacing,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_parent_path: &str,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let mut container = div().w_full().min_w(px(0.0)).flex().flex_col();
+    container = match spacing {
+        BlockSpacing::Normal => container.gap_2(),
+        BlockSpacing::Tight => container.gap_1(),
+    };
+
+    if blocks.is_empty() {
+        return container.child(empty_line()).into_any_element();
+    }
+
+    container
+        .children(blocks.iter().enumerate().map(|(index, block)| {
+            let structural_path = markdown_code_panel_block_path(structural_parent_path, index);
+            if index > 0
+                && let Some(selection_context) = selection_context.as_ref()
+            {
+                selection_context.set_next_break_before(spacing.raw_break_before());
+            }
+            render_block(
+                block,
+                appearance,
+                code_layout,
+                style,
+                code_panel_controls.clone(),
+                structural_path,
+                selection_context.clone(),
+                image_markers,
+            )
+            .into_any_element()
+        }))
+        .into_any_element()
+}
+
+fn render_block(
+    block: &BlockRenderNode,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_path: String,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    match block {
+        BlockRenderNode::Paragraph { lines, .. } => {
+            render_paragraph(lines, appearance, style, selection_context, image_markers)
+        }
+        BlockRenderNode::Heading { level, lines, .. } => render_heading(
+            *level,
+            lines,
+            appearance,
+            style,
+            selection_context,
+            image_markers,
+        ),
+        BlockRenderNode::List(list) => render_list(
+            list,
+            appearance,
+            code_layout,
+            style,
+            code_panel_controls,
+            structural_path,
+            selection_context,
+            image_markers,
+        ),
+        BlockRenderNode::BlockQuote { blocks, .. } => render_block_quote(
+            blocks,
+            appearance,
+            code_layout,
+            style,
+            code_panel_controls,
+            structural_path,
+            selection_context,
+            image_markers,
+        ),
+        BlockRenderNode::Code(code) => render_code_block(
+            code,
+            appearance,
+            code_layout,
+            code_panel_controls,
+            structural_path.as_str(),
+            selection_context,
+            image_markers,
+        ),
+        BlockRenderNode::Math {
+            fallback,
+            source_span,
+            ..
+        } => render_code_fallback_text(
+            fallback,
+            *source_span,
+            appearance,
+            selection_context,
+            image_markers,
+        ),
+        BlockRenderNode::ThematicBreak => render_thematic_break(),
+        BlockRenderNode::Unsupported {
+            source,
+            source_span,
+            ..
+        } => render_code_fallback_text(
+            source,
+            *source_span,
+            appearance,
+            selection_context,
+            image_markers,
+        ),
+    }
+}
+
+fn render_paragraph(
+    lines: &[InlineRenderLine],
+    appearance: &AppearanceSettings,
+    style: InlineMarkdownStyle,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .child(match selection_context {
+            Some(selection_context) => render_inline_lines_with_style_markers_and_selection(
+                lines,
+                appearance,
+                style,
+                Some(selection_context),
+                image_markers,
+            ),
+            None => render_inline_lines_with_style(lines, appearance, style),
+        })
+        .into_any_element()
+}
+
+fn render_heading(
+    level: u8,
+    lines: &[InlineRenderLine],
+    appearance: &AppearanceSettings,
+    style: InlineMarkdownStyle,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let selection_context = selection_context
+        .map(|context| context.with_pending_prefix(format!("{} ", "#".repeat(level as usize))));
+
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .pb_1()
+        .child(match selection_context {
+            Some(selection_context) if image_markers.is_empty() => {
+                render_heading_lines_with_style_and_selection(
+                    lines,
+                    appearance,
+                    level,
+                    style,
+                    Some(selection_context),
+                )
+            }
+            Some(selection_context) => render_heading_lines_with_style_markers_and_selection(
+                lines,
+                appearance,
+                level,
+                style,
+                Some(selection_context),
+                image_markers,
+            ),
+            None => render_heading_lines_with_style(lines, appearance, level, style),
+        })
+        .into_any_element()
+}
+
+fn render_list(
+    list: &BlockRenderList,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_path: String,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let spacing = if list.tight {
+        BlockSpacing::Tight
+    } else {
+        BlockSpacing::Normal
+    };
+    let mut container = div().w_full().min_w(px(0.0)).flex().flex_col();
+    container = match spacing {
+        BlockSpacing::Normal => container.gap_2(),
+        BlockSpacing::Tight => container.gap_1(),
+    };
+
+    container
+        .children(list.items.iter().enumerate().map(|(index, item)| {
+            if index > 0
+                && let Some(selection_context) = selection_context.as_ref()
+            {
+                selection_context.set_next_break_before(spacing.raw_break_before());
+            }
+            render_list_item(
+                item,
+                appearance,
+                code_layout,
+                spacing,
+                style,
+                code_panel_controls.clone(),
+                markdown_code_panel_list_item_path(structural_path.as_str(), index),
+                selection_context.clone(),
+                image_markers,
+            )
+        }))
+        .into_any_element()
+}
+
+fn render_list_item(
+    item: &BlockRenderListItem,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    spacing: BlockSpacing,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_path: String,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let item_selection_context = selection_context
+        .as_ref()
+        .map(|context| context.with_pending_prefix(format!("{} ", item.marker)));
+
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .flex()
+        .items_start()
+        .gap_2()
+        .child(
+            div()
+                .flex_none()
+                .w(px(LIST_MARKER_WIDTH))
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(0x94a3b8))
+                .child(item.marker.clone()),
+        )
+        .child(div().flex_1().min_w(px(0.0)).child(render_block_sequence(
+            item.blocks.as_slice(),
+            appearance,
+            code_layout,
+            spacing,
+            style,
+            code_panel_controls,
+            structural_path.as_str(),
+            item_selection_context,
+            image_markers,
+        )))
+        .into_any_element()
+}
+
+fn render_block_quote(
+    blocks: &[BlockRenderNode],
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_path: String,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let selection_context = selection_context.map(|context| context.with_line_prefix("> "));
+
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .border_l_2()
+        .border_color(rgb(0x334155))
+        .pl_3()
+        .py_1()
+        .child(render_block_sequence(
+            blocks,
+            appearance,
+            code_layout,
+            BlockSpacing::Normal,
+            style,
+            code_panel_controls,
+            markdown_code_panel_block_quote_path(structural_path.as_str()).as_str(),
+            selection_context,
+            image_markers,
+        ))
+        .into_any_element()
+}
+
+fn render_code_block(
+    code: &BlockRenderCode,
+    appearance: &AppearanceSettings,
+    code_layout: TranscriptCodeLayout,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_path: &str,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    if code
+        .content_source_span
+        .is_some_and(|source_span| markers_intersect_source_span(image_markers, source_span))
+    {
+        return render_code_block_with_image_markers(
+            code,
+            appearance,
+            structural_path,
+            selection_context,
+            image_markers,
+        );
+    }
+
+    let selection =
+        selection_context.map(|context| context.code_panel_selection(structural_path, code));
+    let Some(code_panel_controls) = code_panel_controls else {
+        return labeled_code_block(
+            "",
+            None,
+            code.language.as_deref(),
+            code.source.as_str(),
+            CodePanelWrapMode::Smart {
+                columns: code_layout.transcript_bordered_panel_columns,
+            },
+            rgb(0x0b1220),
+            None,
+            None,
+            None,
+            selection,
+        )
+        .into_any_element();
+    };
+
+    let panel_id = code_panel_controls.panel_id_for(structural_path);
+    let wrap_mode = code_panel_controls.wrap_mode(panel_id.as_str(), code_layout);
+    let header = code_panel_controls.header(panel_id.as_str(), code.source.as_str());
+    let scroll_chrome = code_panel_controls.scroll_chrome(panel_id.as_str());
+    let resize = code_panel_controls.resize(panel_id.as_str(), code_layout);
+
+    labeled_code_block(
+        "",
+        Some(panel_id),
+        code.language.as_deref(),
+        code.source.as_str(),
+        wrap_mode,
+        rgb(0x0b1220),
+        Some(header),
+        Some(scroll_chrome),
+        Some(resize),
+        selection,
+    )
+    .into_any_element()
+}
+
+fn render_code_block_with_image_markers(
+    code: &BlockRenderCode,
+    appearance: &AppearanceSettings,
+    structural_path: &str,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let lines = code
+        .content_source_span
+        .map(|source_span| {
+            fallback_inline_lines_with_source_span(
+                code.source.as_str(),
+                InlineRenderRole::Code,
+                source_span.start(),
+            )
+        })
+        .unwrap_or_else(|| fallback_inline_lines(code.source.as_str(), InlineRenderRole::Code));
+    let selection_context =
+        selection_context.map(|context| context.with_code_copy_group(structural_path, code));
+
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(0x1f2937))
+        .bg(rgb(0x0b1220))
+        .p_3()
+        .child(render_inline_lines_with_style_markers_and_selection(
+            lines.as_slice(),
+            appearance,
+            InlineMarkdownStyle::default(),
+            selection_context,
+            image_markers,
+        ))
+        .into_any_element()
+}
+
+fn render_thematic_break() -> AnyElement {
+    div()
+        .w_full()
+        .h(px(1.0))
+        .bg(rgb(0x334155))
+        .my_1()
+        .into_any_element()
+}
+
+fn render_code_fallback_text(
+    source: &str,
+    source_span: Option<MarkdownSourceSpan>,
+    appearance: &AppearanceSettings,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+) -> AnyElement {
+    let lines = source_span
+        .map(|source_span| {
+            fallback_inline_lines_with_source_span(
+                source,
+                InlineRenderRole::Code,
+                source_span.start(),
+            )
+        })
+        .unwrap_or_else(|| fallback_inline_lines(source, InlineRenderRole::Code));
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .child(match selection_context {
+            Some(selection_context)
+                if source_span.is_some_and(|source_span| {
+                    markers_intersect_source_span(image_markers, source_span)
+                }) =>
+            {
+                render_inline_lines_with_style_markers_and_selection(
+                    lines.as_slice(),
+                    appearance,
+                    InlineMarkdownStyle::default(),
+                    Some(selection_context),
+                    image_markers,
+                )
+            }
+            Some(selection_context) => render_inline_lines_with_style_and_selection(
+                lines.as_slice(),
+                appearance,
+                InlineMarkdownStyle::default(),
+                Some(selection_context),
+            ),
+            None => render_inline_lines_with_style(
+                lines.as_slice(),
+                appearance,
+                InlineMarkdownStyle::default(),
+            ),
+        })
+        .into_any_element()
+}
+
+fn markers_intersect_source_span(
+    image_markers: &[TranscriptInlineImageMarker],
+    source_span: MarkdownSourceSpan,
+) -> bool {
+    image_markers.iter().any(|marker| {
+        let marker_range = marker.source_range();
+        marker_range.start < source_span.end() && source_span.start() < marker_range.end
+    })
+}

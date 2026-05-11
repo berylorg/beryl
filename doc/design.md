@@ -1,0 +1,432 @@
+# Goals
+
+Build a desktop GUI client for Codex that organizes user work as Beryl-owned semantic workspaces with low memory footprint and responsive UI.
+
+## Non-goals
+
+- Reimplementing Codex authentication, session storage, configuration, skills, MCP, subagent orchestration, or other non-UI agent behavior in this project.
+- Restricting the client to Windows only.
+- Guaranteeing that AI-maintained semantic graph updates are always correct without user review or later repair.
+
+# Decisions
+
+## Product Features
+
+- The user-visible product feature contract for this workspace project is defined in `doc/product-features.md`.
+- The shared window and panel geometry contract for this workspace project is defined in `doc/ui.md`.
+- The shared text-input interaction contract for this workspace project is defined in `doc/input-hotkeys.md`.
+
+## Implementation Details
+
+No browser technologies. Beryl-owned code must be Rust only.
+
+Beryl may depend on the official `gpui` package or on a fork anchored to upstream Zed `gpui` source when targeted patches are needed to satisfy Beryl's product constraints. GPUI-owned native build dependency surface, including transitive C or assembly compilation, remains allowed. A Beryl-maintained GPUI fork must preserve GPUI's public boundary for Beryl and must not be used to remove GPUI-owned build dependencies without an explicit design decision.
+
+Agent execution, transcript history, and Codex-owned state flow through `codex app-server`. When the app-server protocol does not expose a direct GUI-needed helper, Beryl may own narrow GUI-side orchestration that uses app-server protocol primitives without modifying app-server or directly linking Codex internal crates.
+
+### Vocabulary
+
+- `Runtime environment` is either host-Windows or one specific WSL distro. Runtime environment determines where a backend process runs, how filesystem paths are interpreted, and which home directory is used when a workspace falls back to its implicit home member.
+- `WSL distro name` is the distribution name used when a backend connection runs in WSL-Linux mode.
+- `Backend connection` is one live GUI connection to one `codex app-server` instance launched by the GUI.
+- `Beryl home directory` is the GUI-owned durable app-state root. It defaults to the current user's `~/.beryl` directory and may be overridden at process startup; an explicit Beryl home directory is the root itself and does not receive an appended `.beryl` component.
+- `Beryl workspace` is one GUI-owned durable semantic workspace stored under the configured Beryl home directory. A Beryl workspace is not itself a filesystem root and may begin untitled.
+- `Workspace member` is one GUI-owned attached directory within a Beryl workspace's selected runtime environment.
+- `Primary workspace member` is the currently designated workspace member whose directory is used as the concrete execution root for newly created Codex conversation threads in that workspace.
+- `Implicit home member` is the undeletable home-directory workspace member automatically exposed when a workspace has a selected runtime environment but no explicit attached workspace members.
+- `Conversation thread` is one backend-owned Codex thread with its own message history and execution event stream.
+- `Conversation thread branch` is a backend-owned Codex thread created from an existing backend conversation thread by preserving history through one selected parent turn and removing later turns from the new thread while leaving the source thread unchanged.
+- `Conversation thread edit` is a user-initiated source-thread rewrite flow that previews discarding one selected parent turn and the following conversation tail, then commits by rolling back backend-owned history and starting a new backend turn from the current composer draft on that same thread. It is not an in-place mutation of an existing turn id.
+- `User input fragment` is one GUI-accepted composer submission inside a conversation turn. A single backend turn may contain multiple ordered user input fragments, and each fragment remains a distinct transcript user block. A fragment may contain ordered text segments and image atom references.
+- `AI lifecycle yield outcome` is one model-requested semantic lifecycle event reported through a Beryl-owned dynamic tool. It tells Beryl which host-owned lifecycle policy to apply after the current backend turn reaches terminal state; it does not let the model choose compaction mechanics, notification sounds, or resume text.
+- `Beryl image asset` is one GUI-owned original pasted image stored durably under the configured Beryl home directory, referenced by stable GUI metadata, and used for preview plus backend delivery. Image labels such as `A` are user-facing references to assets within a thread, not part of the asset's storage identity.
+- `Runtime-readable image path` is a filesystem path for a Beryl image asset as interpreted by the backend runtime receiving a `localImage` record. Host-Windows and WSL-Linux may require different path strings for the same durable host-side asset file.
+- `Transcript media item` is one renderable raster image in the transcript, derived either from a native app-server image-generation item or from a Markdown image file reference that Beryl can resolve and decode.
+- `Transcript media run` is a consecutive sequence of transcript media items that renders with wrapping horizontal layout, except when a UI-local media promotion temporarily gives one item its own single-item row without changing transcript content.
+- `Composer image payload` is one GUI-staged pasted image asset reference retained for preview and backend delivery, identified to the user by a stable thread-scoped label such as `A`.
+- `Composer image atom` is one inline draft occurrence that refers to a composer image payload at a specific draft position. It renders as a visual marker such as `[A]`, and is serialized to app-server as a runtime-readable image record plus generated backend label text such as `Image A:` rather than as literal user-authored marker text when it is the first occurrence for that payload in an accepted fragment.
+- `Pending turn input queue` is a GUI-held ordered list of accepted user input fragments, including any text and image atoms inside those fragments, that are visible in the transcript but cannot yet be delivered to the backend as a new turn or active-turn steering input.
+- `Thread title` is one GUI display label for a backend conversation thread, derived from a manual GUI-local title, backend-provided thread name metadata, or a temporary untitled label while automatic naming is pending or unavailable.
+- `Semantic node` is one GUI-owned graph node inside a Beryl workspace. V1 semantic nodes may carry one or more constrained semantic facets.
+- `Semantic facet` is one capability-bearing classification attached to a semantic node. V1 semantic facets are `Topic`, `Checklist`, and `ChecklistItem`.
+- `Hard semantic forest` is the ordered single-parent parent/child structure connecting semantic nodes through one or more root-level semantic nodes. Each connected component is a tree and therefore a special case of a DAG.
+- `Soft semantic link` is one optional typed directed link between semantic nodes that is not part of the hard semantic forest and may connect nodes inside the same hard-tree component or across different hard-tree components.
+- `Thread ref` is one GUI-owned association between a semantic node and a backend conversation thread, including enough metadata to reopen or create work in the correct workspace runtime environment and bound workspace member, or to require explicit rebinding when that original execution context is no longer available.
+- `Workspace graph revision` is one GUI-owned monotonic revision for a workspace's durable semantic graph state. It orders durable semantic-graph commits without becoming part of the pure semantic graph model.
+- `Graph mutation commit` is one accepted semantic-graph patch outcome for a workspace revision, including enough metadata for the GUI to reconcile visible graph state with durable workspace state.
+- `Optimistic graph projection` is a temporary GUI-visible projection that applies a locally valid user-initiated graph mutation before the matching durable graph mutation commit is confirmed.
+- `Member-thread inventory` is one GUI-owned derived snapshot of backend conversation thread summaries grouped by available workspace member for the active Beryl workspace, including backend-provided thread fork parent metadata when it is available.
+- `Column selector` is a reusable GUI selection component that presents domain-owned items as a horizontally scrollable trail of columns, where selecting a branching row opens the next column without making those rows part of another domain model.
+- `Thread selector` is a GUI surface that uses the column selector to list and activate backend conversation threads from the member-thread inventory without requiring semantic graph interaction.
+- `Loaded transcript window` is the transient set of backend turn pages available to the GUI for the active conversation thread.
+- `Transcript presentation window` is the bounded subset of loaded transcript turns and items used to build one transcript render frame.
+- `Status line strip` is the fixed bottom window strip for compact backend and turn status metadata.
+- `Activity panel` is the mode-controlled, vertically resizable conversation-column strip between the transcript region and the user input panel that shows in-memory backend turn activity records without making them transcript content.
+
+### UI Technology
+
+- The desktop client is implemented in Rust using `gpui`.
+- The application stack must not depend on web browser technology, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native libraries.
+- Beryl consumes the standalone `gpui-text-input` crate for app-neutral text editing mechanics used by GUI text fields. Beryl-owned code adapts that behavior for application-specific composer behavior, including image markers, transcript quote insertion, submit policy, backend input serialization, and workspace image assets.
+- Beryl consumes the standalone `gpui-settings-window` crate for generic settings-window presentation and interaction mechanics, including a preheated show/hide OS settings window, left-side section navigation, right-side key-value settings rows, color-value input fields, and the in-window color picker.
+- Beryl owns the application-specific settings schema, staged settings draft, validation, apply behavior, and persistence; the reusable settings-window crate does not own Beryl settings data or storage.
+- Beryl's settings schema includes appearance settings, app-wide notification preferences, and app-wide developer-instructions preferences. Notification preferences and developer-instructions preferences are GUI-owned user settings rather than workspace-scoped state or backend-owned Codex configuration.
+- Beryl owns one appearance theme schema for both the main workspace window and the settings window. The active theme is the source for Beryl-owned main-window chrome and for the app-neutral visual theme passed into `gpui-settings-window`.
+- The appearance theme separates typography roles from UI chrome roles. UI chrome roles include toolbar and thread-strip backgrounds, primary and secondary button colors for normal, hover, active, and disabled states, user-input panel colors, transcript-region shell colors, status-line colors, structural separator color, and shared surface colors for panels, rows, and popups.
+- Transcript-specific appearance roles continue to own regular conversation text, Markdown headers, code, emphasis, strong emphasis, commentary assistant-message foreground, and reasoning foreground. Final-answer assistant messages use regular conversation text foreground as their base foreground unless a more specific Markdown role overrides it. Transcript-internal block backgrounds, labels, and dynamic turn-status colors may remain fixed outside the UI chrome theme until they are explicitly designed.
+- Graph semantic category colors, graph link/accent colors, selector-specific active-thread accents, and warning/error/info colors are outside the current UI chrome theme role boundary until explicit semantic appearance roles are designed.
+- The settings-window color picker currently remains part of `gpui-settings-window`; a later extraction into a separate color-picker crate must preserve the same Beryl-facing color input behavior.
+- Beryl may use the `rodio` playback crate for short custom notification sound playback. Notification playback must be best-effort, must not run blocking file or audio-device work on the `gpui` thread, and must not affect backend turn completion semantics.
+
+### Backend Boundary
+
+- The GUI integrates with Codex through `codex app-server` rather than in-process reuse of Codex internal crates.
+- The GUI is an out-of-process client of `codex app-server`.
+- The GUI does not bundle or install Codex.
+- Managed host launch uses the `codex` executable found on the user's `PATH`.
+- Managed WSL launch uses `wsl.exe` targeted at the user-selected distro and runs `codex` inside that distro.
+- The backend may run natively on the host OS or inside WSL.
+- The GUI launches and owns all backend processes it uses in V1.
+- V1 does not attach to an already running app-server instance.
+- A Beryl-owned backend process listens on a local app-server transport endpoint chosen by Beryl rather than exposing an operator-managed server.
+- Beryl's target managed app-server transport is authenticated loopback WebSocket using `codex app-server --listen ws://127.0.0.1:<port>` and capability-token WebSocket auth.
+- For WSL-Linux managed launch, Beryl assumes the WSL loopback listener is reachable from host Windows on the selected localhost port.
+- Beryl generates a high-entropy capability token per managed app-server launch, stores it only in a per-run local token file and process memory, passes the token file to app-server auth configuration, presents the token in WebSocket client handshakes, and removes the token file when the managed server exits.
+- Beryl must bind managed WebSocket app-server listeners only to loopback addresses and must not expose unauthenticated non-loopback app-server listeners.
+- On startup and on managed launch, the GUI probes backend compatibility.
+- If required app-server capabilities or version constraints are not satisfied, the GUI shows a blocking error and exits.
+- Required app-server capabilities include exact thread resume by id, metadata-only resume without historical turns, paginated thread-turn history reads, paginated thread summary listing, thread summary filters needed for workspace-member inventory, model listing, cwd-scoped configuration reads for effective pending new-thread defaults, ordered text and local-image user input records on turn start and active-turn steering, developer-instructions payloads on user-facing turn request primitives, filesystem reads for runtime-readable transcript media file references, active-turn steering by expected turn id, active-turn interruption by thread id and turn id, thread-targeted context compaction, thread-start dynamic tool registration, and reverse dynamic tool-call requests.
+- Transcript branch actions depend on app-server thread fork and rollback primitives. When those primitives are unavailable, Beryl must not emulate branching by copying backend-owned transcript history into GUI-local state.
+- Transcript edit actions depend on app-server rollback and turn-start primitives. When rollback is unavailable, the selected source thread is not idle, or Beryl cannot derive an exact trailing user-turn count from loaded backend history, Beryl must not emulate thread editing by copying backend-owned transcript history into GUI-local state.
+- Hard-stop backend primitives, including process-backed tool termination and thread-scoped background-terminal cleanup when app-server exposes them, are probed separately. Missing hard-stop primitives disable only the affected hard-stop escalation targets and must not disable soft turn interruption when active-turn interruption is available.
+- A GUI instance uses at most one active managed app-server process for the currently opened workspace runtime target, but it may open multiple independent backend client connections to that process.
+- Foreground conversation turns, thread activation, inventory refresh, title generation, status operations, and future lazy maintenance work must use independent backend client connections when sharing a single connection would delay user-visible foreground streaming or completion.
+- Startup workspace discovery is derived from Beryl-owned persisted semantic workspaces rather than from enumerating backend conversation threads.
+
+### Backend Lifecycle
+
+- Launching a backend through a local child process, including through `wsl.exe`, is a supported lifecycle mode rather than a separate architecture.
+- The GUI owns the lifetime of every backend child process it launches and terminates those child processes when they are no longer needed or when the GUI exits.
+- Managed backend termination must cover the supervised runtime boundary for the launch mode, including descendant processes that would otherwise outlive the immediate child process.
+- Host-Windows managed backend launch must be supervised as a Windows process tree so backend descendants are terminated with the owning GUI.
+- WSL-Linux managed backend launch must be supervised inside the selected distro so the Linux `codex app-server` process is terminated even when the host `wsl.exe` wrapper exits or is orphaned.
+- Normal GUI close and in-app quit paths must explicitly shut down active managed backend processes before process exit. Destructors remain a fallback for unexpected owner loss rather than the primary shutdown path.
+- Backend process lifetime is separate from backend client connection lifetime. Dropping one client connection must not terminate the managed app-server process while other foreground or background work still needs it.
+- Backend client connections are initialized independently and may opt out of notifications that their workflow does not consume when the app-server protocol supports notification opt-out.
+- Opening a Beryl workspace does not require backend thread enumeration.
+- Refreshing a member-thread inventory may enumerate backend threads after a workspace is open, but that enumeration is not the source of workspace identity and is not required before the workspace shell can render.
+- Backend connections are established on demand for the active conversation thread and its selected workspace runtime environment and member binding rather than as the source of workspace identity.
+- Activating an existing backend conversation thread by a known thread id uses direct thread resume; backend thread summary enumeration is not on the critical path for thread activation.
+- Existing-thread activation validates the resumed thread's recorded working directory against the expected execution target and reports a rebind-required state when the resumed thread does not match that binding.
+
+### Responsibility Split
+
+- The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, runtime-environment selection, workspace-member registrations, semantic graph state, thread refs, thread-title display precedence, automatic thread-title generation orchestration, derived member-thread inventory snapshots, and GUI-local persistence.
+- The GUI owns transcript branch orchestration as a user action over backend-owned conversation threads, including choosing the source turn, invoking backend fork and rollback primitives, title generation eligibility, inventory refresh, and optional activation of the resulting thread.
+- The GUI owns transcript edit orchestration as a user action over one backend-owned source thread, including choosing the target turn, previewing the destructive tail scope, routing composer commit and cancel behavior, computing the backend rollback count, resetting transcript presentation from backend rollback results, starting the replacement turn, and surfacing partial-failure states.
+- Authentication, session storage, agent execution, subagents, configuration, skills, MCP, and other non-UI agent state remain backend-owned.
+- Backend conversation thread contents and execution event streams remain backend-owned.
+- Conversation thread editing mutates backend conversation history only. It must not present or assume rollback of filesystem changes, Beryl semantic graph or checklist mutations, workspace state, thread-title metadata, durable image assets, in-memory activity records, or other non-history side effects produced by discarded turns.
+- Turn execution stream inactivity is not itself a backend failure. Request and probe timeouts apply to bounded JSON-RPC requests, while active turn streams may stay quiet for longer intervals and remain live until a terminal stream event, protocol error, transport disconnect, or backend process exit.
+- Deleting or retitling a Beryl workspace changes only GUI-owned workspace state and must not delete or mutate backend-owned Codex thread history.
+- Deleting semantic graph nodes changes only GUI-owned semantic graph state and must not delete or mutate backend-owned Codex thread history.
+- Cross-boundary communication uses the app-server contract rather than direct access to backend storage or process memory.
+- User-facing backend status metadata such as current model, reasoning effort, token-usage-derived context space, account rate-limit remaining percentages, and turn state is presentation state derived from app-server responses, notifications, and exact GUI-held projections of those responses and notifications; missing backend fields must render as explicit unknown values or be omitted rather than guessed values. The pending new-thread draft's model and reasoning status is not missing thread metadata when the effective backend defaults are known.
+- User-visible turn-completion sound is a GUI-local desktop notification side effect. It may be emitted only for user-visible parent conversation turns that reach a terminal state while at least one Beryl-owned attention trigger is active, and it must not be emitted for title-generation maintenance, inventory refresh, lazy metadata resolution, context compaction, automatic lifecycle continuation, or other background/status-only operations.
+- Beryl-owned attention triggers include no Beryl window being focused, no host-reported local mouse or keyboard input for 30 seconds, a locked desktop session, a closed laptop lid, or a host-reported off or dimmed session display. Unsupported or unknown trigger states do not make a notification eligible by themselves and must not suppress another known active trigger.
+- AI lifecycle yield notifications are GUI-local desktop notification side effects separate from ordinary end-turn sound. Outcomes that stop for operator attention or report full plan completion may use event-specific sounds chosen by Beryl policy, but the model must not supply a sound path, sound identity, volume, resume prompt, or compaction strategy.
+- User-facing activity is transient presentation state derived from backend execution stream notifications. It may include native app-server operational items, dynamic tool calls, collab-agent tool calls, external MCP tool calls, reasoning item lifecycle or summary updates, and subagent handoff-size records derived from completed child-thread final answers, but it must not treat external MCP inventory as the universal source for all Codex activity.
+- User-facing activity records are in-memory session history rather than backend conversation history or durable workspace content. They survive thread switching within the loaded workspace and are discarded on app restart or workspace/backend-session teardown.
+- Pending new-thread effective model and reasoning values come from the app-server configuration for the draft's execution root when that configuration exposes them; backend model-list defaults may supply model-menu choices and a default-model fallback, but they must not be treated as exact effective reasoning defaults.
+- Context-space status may reuse exact per-thread token usage previously observed through app-server notifications, durable GUI-held last-known snapshots of those notifications, or read-only app-server status metadata for that same thread.
+- Account rate-limit status may reuse exact account rate-limit snapshots observed through app-server notifications or read-only app-server status metadata, including multi-bucket read responses when the protocol exposes them. Beryl must preserve backend bucket identity such as `limitId` and `limitName`, select the bucket that matches the active model, and avoid merging unrelated model-specific buckets such as Spark into main-model status. Beryl may derive displayed short-window or weekly remaining percentages only from exact app-server usage percentages whose window duration identifies the bucket, and it must omit unavailable buckets rather than infer them. Partial update notifications may update only the buckets they contain.
+- Beryl does not expose a manual backend approval-review surface in V1. If `codex app-server` requests user approval during a Beryl-managed turn, Beryl must deny the request, prefer a denial response that interrupts the turn when the protocol supports it, log the full backend approval request payload for diagnostics, and avoid leaving the turn waiting indefinitely.
+- Model and reasoning status controls are scoped to either the selected backend conversation thread or the pending new-thread draft. Changing them from the GUI must not mutate global Codex configuration, other Beryl workspaces, or other backend conversation threads.
+- Model and reasoning changes selected while an existing thread is idle are GUI-held pending turn defaults until the next submitted user turn for that thread; the next turn submission carries the selected model and reasoning overrides, after which the backend-owned thread default is the source for subsequent status presentation.
+- While the workspace is on a pending new-thread draft with no explicit GUI model or reasoning selection, the status line follows the current effective backend defaults that would be used for the first submitted user turn, including later changes to those defaults before submission.
+- Model and reasoning changes selected while on a pending new-thread draft are GUI-held first-turn defaults for that draft. The first submitted user turn carries the selected overrides, and the created backend thread then owns those defaults for later turns.
+- Beryl must not start a synthetic backend turn, send synthetic user input, or otherwise mutate backend-owned conversation history merely to apply a model or reasoning change before the next real user turn.
+- Non-empty global developer-instructions preferences are sent as hidden developer-instructions context when Beryl starts a top-level user-message turn, including the first turn of a new user-facing persistent conversation thread and later turns in existing user-facing conversation threads.
+- Beryl also sends the current non-empty global developer-instructions preference as hidden developer-instructions context when an automatic lifecycle continuation turn is started after `yield` reports `phase_continue`.
+- Developer-instructions preference injection reads the latest applied setting at request assembly time. Existing threads, retries, and regeneration-style replacement starts therefore use the current setting rather than a value captured when the thread was created or when user input was first queued.
+- Developer-instructions preference injection must use app-server request data that reaches the model as developer-instructions context and does not become user input text. The exact app-server field is a backend integration detail and may be an app-server settings mechanism rather than a standalone per-turn field.
+- Developer-instructions preference injection must not create transcript-visible user messages, Beryl transcript presentation rows, queued user input fragments, semantic graph state, or backend-owned Codex configuration.
+- Blank or whitespace-only global developer-instructions preferences are disabled and produce no custom developer-instructions text. When the app-server mechanism is stateful, Beryl may send hidden reset metadata so a previously applied custom setting does not continue.
+- If the app-server developer-instructions mechanism requires an effective model and Beryl cannot determine that model from exact backend metadata or GUI-held pending defaults, Beryl must omit the hidden developer-instructions request data rather than guess a model.
+- Global developer-instructions preferences are not sent to backend-owned subagent requests, active-turn steering, title-generation maintenance threads, inventory refreshes, lazy metadata reads, context-compaction requests themselves, or other background/status-only backend work.
+- Composer submissions accepted into an existing conversation are ordered user input fragments. Each accepted composer send-and-clear event creates one distinct fragment; Beryl must not merge separate accepted submissions merely because they belong to the same backend turn.
+- Composer drafts preserve pasted image positions by storing image atom occurrences inline with draft text. When a draft is accepted, Beryl serializes the fragment into app-server's ordered user input array by splitting surrounding text into text records, inserting a runtime-readable image record at the first occurrence of each distinct image payload, and adding generated label text shaped as `Image A:` immediately before that image record so model references such as `image A` have a factual anchor. Later occurrences for the same payload serialize as generated textual references such as `[Image A]` rather than duplicate image records.
+- Composer image labels are allocated from thread-scoped monotonic state for the selected conversation thread or pending new-thread draft. Labels remain stable for the lifetime of the draft, accepted fragment, queued fragment, and any retry state. Multiple active atom occurrences may share a label only when they reference the same image payload. Removing one atom occurrence must not renumber other image atoms or reuse the removed label because surrounding user-authored text may refer to those labels.
+- Existing-thread image paste requires Beryl to know the thread's prior composer image labels well enough to allocate without collision. If prior-label discovery for the selected thread is incomplete, Beryl must reject or defer image paste with explicit user feedback rather than allocating a label that may collide with older backend history.
+- The visual marker text for a composer image atom is GUI presentation, not literal user-authored text. If the user types `[A]` or `[Image A]` manually, it remains ordinary text and must not create or revive an image attachment.
+- Composer image atoms are Beryl-owned editor atoms. Caret movement, selection, deletion, cut, paste, undo, and redo treat each marker as one indivisible draft position. Removing one of several atom occurrences for the same payload removes only that reference; Beryl drops the payload only after the final active occurrence is removed.
+- Clipboard copy or cut of a selection containing composer image atoms writes external plain text with explanatory references such as `[Image A]`, plus Beryl-private GPUI string metadata containing only an opaque clipboard token. Original image bytes stay in Beryl's transient in-process clipboard payload store and must not be serialized into clipboard metadata.
+- Composer paste restores image atoms from Beryl-private clipboard metadata only when the metadata resolves to a live Beryl clipboard payload and the visible clipboard text still matches that payload's external fallback text. If either check fails, paste is ordinary text paste. Plain text shaped like `[Image A]` must never create an attachment.
+- Pasting a Beryl-owned copied image marker in the same label scope preserves the label and references the same image payload. Pasting into a different thread or different pending-new-thread label scope allocates fresh labels from the target scope and follows the same prior-label discovery readiness rules as image clipboard paste.
+- Beryl preserves original pasted image data as durable Beryl image assets for backend submission, composer preview, and transcript preview after app restart. Any downscaled or fitted preview is presentation-only and must not replace the original image sent to app-server.
+- Before accepting an image-containing draft for backend delivery, Beryl must reference each image through a real path or URL readable by the selected backend runtime. If that cannot be done, submission is rejected and the draft remains intact.
+- Beryl-originated image records use Beryl image assets as the GUI source of truth. The backend `localImage.path` submitted to app-server is a runtime delivery reference and later historical hint, not the only durable source for transcript preview.
+- Transcript image markers are read-only presentation atoms derived from structured image records and Beryl image metadata, not from parsing literal `[A]` text. They keep stable labels, ordered positions, copy fallback text such as `[Image A]`, and click-to-preview behavior when their Beryl image asset is available.
+- Accepted user input fragments become visible transcript presentation immediately, but backend conversation history remains backend-owned. Beryl must deliver accepted fragments through the app-server turn primitives or preserve them as pending GUI-held input with explicit failure presentation when delivery cannot proceed.
+- User-initiated context compaction is a selected-thread operation and must use the backend compaction protocol for that exact thread rather than rewriting transcript state or locally summarizing backend history.
+- While selected-thread context compaction is active, accepted composer submissions for that thread are queued as ordered next-turn fragments. After compaction reaches its backend-reported idle completion state, Beryl starts one backend turn whose input contains all queued fragments in their accepted order.
+- Manual context compaction is a non-steerable backend operation for user-input purposes. Beryl must not attempt to deliver compaction-time user fragments with active-turn steering.
+- User-requested turn cancellation is a selected-thread operation and must use backend protocols for exact active backend turn ids and exact backend execution handles rather than dropping the GUI stream locally or guessing OS process ids.
+- Soft turn cancellation requests backend interruption for the selected ordinary active parent turn or selected-thread context compaction turn when Beryl knows the interruptible backend turn id for that operation.
+- Hard turn cancellation first performs the same selected operation interruption as soft cancellation, then best-effort terminates known running execution associated with that selected turn through exact backend-exposed handles. Hard cancellation may interrupt known active subagent turns, terminate process-backed command execution handles, and request thread-scoped background-terminal cleanup when those targets are known and supported.
+- Hard cancellation must never terminate by guessed OS pid, process name, working directory, or local process tree. When a running tool or subagent cannot be correlated to an exact backend termination handle, Beryl must leave that target untouched and report the limitation.
+- Hard cancellation is a best-effort escalation, not a guarantee that every backend-owned tool or subagent accepted termination. Partial failures and unsupported targets must be surfaced through status-operation feedback.
+- Turn cancellation request acceptance is not terminal completion. Beryl must converge visible turn and tool state from backend stream events, explicit termination responses, transport failure, or backend process exit.
+- If Beryl cannot identify an interruptible active backend turn for the selected thread, turn cancellation must not be offered as an enabled action.
+- Accepted user input fragments queued before or during a cancellation request must remain ordered user input fragments. Beryl must not drop or merge them merely because the active turn or compaction is interrupted.
+- While an ordinary parent turn is active and its backend turn id is known, each accepted composer submission for that thread is delivered immediately through app-server active-turn steering with the expected turn id.
+- If user input is accepted after a parent turn has started but before Beryl knows the active backend turn id, Beryl holds the fragment in a short pending turn input queue and flushes it through active-turn steering once the active turn id is known.
+- If active-turn steering is rejected because the active turn is not steerable or the expected turn id no longer matches, Beryl keeps the accepted fragment in the next-turn input queue rather than dropping it or silently rewriting prior transcript presentation.
+- Switching threads must not send synthetic user input, start a backend turn, or otherwise mutate backend-owned conversation history just to refresh status chrome.
+- If no exact same-thread token usage is available, Beryl must render context space as `Unknown` rather than estimating from transcript text, local tokenization, model names, or accumulated spend.
+- Automatic thread-title generation for Beryl-created threads is a GUI-owned maintenance workflow because app-server exposes thread-name storage but not a direct title-generation request.
+- Automatic thread-title generation uses a background backend client connection separate from the foreground turn stream, a fresh app-server ephemeral thread, and a constrained model turn per title-generation attempt, then publishes the accepted title to the target conversation through `thread/name/set`.
+- Ephemeral maintenance threads are created and consumed only inside one title-generation maintenance boundary. They are never reused across title-generation attempts and must not be registered as Beryl conversation threads, member-thread inventory rows, semantic thread refs, active transcript candidates, or user-visible selector entries.
+- The title-generation maintenance boundary must request app-server cleanup for each ephemeral thread after the title attempt reaches a terminal state. In the current app-server protocol this means calling `thread/unsubscribe` for that maintenance thread and treating the resulting unload or `thread/closed` notification as lifecycle cleanup, not as deletion of a persisted conversation record.
+- Title-generation maintenance turns must not mutate the target conversation's transcript or history. The only permitted target-thread mutation from automatic naming is setting backend thread-name metadata through `thread/name/set`.
+- Automatic thread-title generation and `thread/name/set` must not run on, wait on, or consume events from the foreground turn-stream client connection.
+
+### Semantic Workspaces, Runtime Environments, and Members
+
+- A Beryl workspace is identified by a GUI-owned workspace id rather than by an attached filesystem path.
+- A named workspace's id is a filesystem-friendly slug derived from its display title by transliteration and normalization. Slug-equivalent display titles are treated as the same workspace name.
+- There may be any number of Beryl workspaces, and a workspace may remain untitled until it is later auto-titled or manually renamed.
+- Untitled workspace display labels use a monotonically increasing cross-workspace sequence and are not renumbered after deletions.
+- Untitled workspace ids use the same monotonic sequence until a generated or manual title is accepted, after which the workspace id changes to the accepted title slug.
+- A Beryl workspace carries GUI-owned `last updated` metadata that changes when the semantic graph, checklist state, thread refs, workspace title, runtime environment, workspace members, or other durable workspace-owned content changes, and does not change merely because the user activates or views that workspace.
+- Persisting last-known exact token-usage snapshots for status presentation does not update workspace `last updated` metadata, because those snapshots are status cache metadata rather than workspace content.
+- A Beryl workspace may have at most one selected runtime environment at a time, and a newly created workspace may leave that runtime environment unset until the user chooses one.
+- Each explicit workspace member is a directory inside the workspace's selected runtime environment; files are not valid workspace members.
+- Workspace-member identity is represented by `(workspace id, member id, runtime environment, canonical real path)`.
+- Symlinks and equivalent filesystem aliases are resolved before workspace-member identity or overlap checks are compared or persisted.
+- Explicit workspace members within one workspace must not overlap after canonicalization; neither ancestor nor descendant duplicates are allowed.
+- The same textual path in different runtime environments or different WSL distros is a different workspace member identity.
+- Except for explicit runtime-boundary conversions owned by this design, the application does not translate paths or other filesystem state between runtime environments.
+- Runtime-boundary conversions are limited to converting WSL filesystem paths into host-openable WSL UNC paths for OS-open actions and post-picker validation, plus converting Beryl-owned durable image asset paths into backend-runtime-readable paths for `localImage` submission.
+- Host-Windows backend submissions may use the durable host asset path directly. WSL-Linux backend submissions must use a path that the selected WSL distro can read for the same asset file, such as the distro's mounted view of the host profile directory, and Beryl must validate that mapping instead of submitting a path that only the GUI can interpret.
+- A workspace with a selected runtime environment but no explicit workspace members exposes that runtime environment's home directory as its implicit home member.
+- The implicit home member is undeletable and acts as the primary workspace member while no explicit members exist.
+- Attaching the first explicit workspace member removes the implicit home member from the workspace-member list and makes that first explicit member the primary workspace member unless the user explicitly changes the primary selection afterward.
+- If all explicit workspace members are detached, the implicit home member reappears for the currently selected runtime environment and becomes the primary workspace member again.
+- The workspace runtime environment may be changed only when no explicit workspace members remain attached.
+- New Codex conversation threads use the workspace's current primary workspace member as their concrete execution root.
+- Existing conversation threads may change bound workspace member or runtime environment only through an explicit rebind decision; Beryl never silently hops them between execution contexts.
+- If a thread's original execution context is no longer available, Beryl requires an explicit rebind before continuing that thread on a different primary workspace member or runtime environment.
+- The available members for thread-linking UI are the explicit workspace members, or the implicit home member when the workspace has a selected runtime environment and no explicit members.
+- A backend conversation thread belongs to a workspace member's linkable inventory only when the thread summary's recorded working directory exactly matches that member's canonical path.
+- Member-thread inventories are refreshed off the `gpui` thread, grouped by available member, sorted within each member by last-updated time descending, and atomically swapped into UI state.
+- Member-thread inventory refreshes use backend-side working-directory filtering and updated-time ordering when those app-server capabilities are available, then preserve the same exact grouping contract in GUI state.
+- Backend-provided fork parent metadata in member-thread inventory does not change workspace-member grouping: a thread remains grouped by its own recorded working directory.
+- Member-thread inventory may combine backend thread-list summaries with backend metadata-only thread reads to obtain fork parent metadata when the list response lacks it. This enrichment is still a background inventory-refresh concern and must not move backend calls into selector rendering.
+- Rendering a thread-linking menu reads the latest member-thread inventory snapshot and must not synchronously query `codex app-server`.
+- Rendering a thread selector reads the latest member-thread inventory snapshot and must not synchronously query `codex app-server`.
+- Thread selector branch projection is derived only from backend-provided thread parent ids present in the member-thread inventory. It does not infer source turn ids, fork points, or full lineage from transcript history.
+- Opening the thread selector may request a background member-thread inventory refresh, but the selector remains usable with the latest available snapshot while a refresh is pending or has failed.
+- Activating a thread from the thread selector uses exact thread activation and must not fall back to another thread if the selected thread is unavailable.
+- A manually assigned workspace title takes precedence over any generated title.
+- Manual workspace rename is available only when no workspace-scoped work is in progress or queued.
+- A workspace title change is accepted only when its derived workspace id slug is non-empty and does not collide with any other persisted workspace id. Beryl does not auto-suffix colliding workspace names.
+- If a workspace is still untitled after its first completed assistant turn, Beryl may assign one best-effort generated title asynchronously from that turn's content.
+- Generated workspace titles use the same title-derived workspace id slug rules as manual titles; a generated title that cannot claim its slug leaves the workspace untitled.
+- Failed or interrupted first turns do not auto-title the workspace.
+- Once a manual title or generated title exists, Beryl does not overwrite it automatically.
+- A conversation thread may remain untitled until Beryl can display a manual GUI-local title or backend-provided thread name.
+- Backend-provided thread names are the preferred non-manual title source and are consumed from backend thread metadata, thread inventories, and live backend thread-name update notifications.
+- Backend-provided thread names include names generated by Beryl and published to app-server through `thread/name/set`.
+- If a Beryl-created conversation thread lacks a manual GUI-local title and backend-provided thread name, Beryl starts automatic title generation as soon as both the first submitted user input fragment and backend thread id are known, regardless of whether that backend thread was created during the same submit operation or by an earlier Beryl-owned thread-start action.
+- Automatic conversation-thread title generation runs asynchronously, does not wait for the target thread's first assistant response or terminal turn state, and must not block turn streaming, turn completion, transcript rendering, or selector rendering.
+- Automatic conversation-thread title generation uses the centralized title-generation maintenance boundary on a background backend client connection to run a constrained model turn with explicit medium reasoning inside a fresh app-server ephemeral thread that is not exposed as a user conversation and is cleaned up after the attempt terminates.
+- A generated automatic title is published to the target conversation through `thread/name/set`; Beryl may consume the resulting backend thread-name metadata from the title worker result, backend summaries, or thread-name update notifications.
+- Because title generation may run on a background client connection, Beryl must update its GUI-local thread-title projection from the title worker result and schedule inventory refresh rather than depending only on the foreground stream receiving a thread-name notification.
+- Failed title generation or failed backend name setting leaves the conversation thread untitled unless a manual GUI-local title or backend-provided thread name exists; the target turn later failing or being interrupted does not by itself cancel an already eligible automatic title attempt.
+- Beryl must not use a prompt-prefix heuristic as the automatic conversation-thread title mechanism.
+- Beryl does not automatically generate or publish names for externally created conversation threads in V1.
+- Manual GUI-local thread titles take precedence over backend-provided thread names.
+- Backend-provided thread names may replace backend-metadata-derived display labels when updated by the backend.
+- There is no permanent built-in Scratchpad workspace.
+- When no previously active workspace can be resumed, Beryl creates and opens a fresh untitled workspace instead of falling back to a special default workspace.
+- Freshly created workspaces select the host-Windows runtime environment by default. With no explicit workspace members attached, that selected runtime exposes the host user's home directory as the implicit primary workspace member.
+- A workspace without a selected runtime environment is a legacy or recovery state rather than the normal state of a new workspace.
+
+### Semantic Graph Ownership
+
+- GUI-local state owns the semantic graph, checklist state, node summaries, soft links, thread refs, and workspace-member association metadata for each Beryl workspace.
+- The hard semantic structure is an ordered single-parent forest of semantic nodes.
+- Root-level semantic nodes have durable graph-owned order.
+- Soft semantic links are typed directed edges layered on top of the hard semantic forest, may connect nodes across root-level components, and are not required to remain acyclic.
+- V1 semantic nodes use constrained facet combinations rather than one exclusive enum tag.
+- V1 semantic facets are `Topic`, `Checklist`, and `ChecklistItem`.
+- Semantic nodes share stable ids, short titles, concise summaries, provenance, and thread refs.
+- Topic-capable nodes store summaries suitable for seeding future conversation context.
+- Checklist-capable nodes own ordered checklist-item nodes rather than only embedded checklist text records.
+- Checklist-item nodes are first-class semantic nodes with stable ids, explicit status values such as `todo`, `in_progress`, and `done`, and are expected in V1 to also carry the `Topic` facet so work can start directly from that existing node.
+- Conversation threads are external resources attached to semantic nodes through thread refs; conversation threads are not the graph backbone.
+- Workspace members and member-thread inventories are not semantic nodes and do not appear in the canonical semantic graph.
+- Node-to-thread association is many-to-many rather than one optional thread pointer per node.
+
+### AI-Assisted Graph Maintenance
+
+- Beryl exposes GUI-owned semantic-graph and checklist maintenance to Codex through app-server dynamic tools registered on Beryl-created conversation threads.
+- App-server dynamic tools are the V1 mechanism for model access to Beryl-owned graph state; external MCP servers are not required for Beryl-owned semantic-graph maintenance.
+- Beryl advertises only bounded, intentional dynamic tool contracts to app-server. Tool definitions must include model-facing descriptions and JSON input schemas.
+- Beryl handles reverse dynamic tool-call requests from app-server, executes the matching GUI-owned graph operation, and returns structured results through the app-server dynamic tool-call response contract.
+- Tool contracts should favor targeted reads of relevant graph neighborhoods rather than whole-graph dumps.
+- Tool contracts should expose self-explanatory, operation-specific write commands when a polymorphic patch schema would force the model to infer an internal DSL. The implementation may still translate those commands into repository graph patches so persistence invariants remain centralized.
+- Model-supplied write arguments must not be trusted as provenance. Beryl injects provenance from the app-server thread, turn, and tool-call context before persisting graph or checklist mutations.
+- A successful dynamic tool write response means Beryl durably committed the matching semantic-graph patch before returning the tool result.
+- Successful dynamic tool writes must publish a graph mutation commit into the loaded workspace graph projection so visible graph and checklist surfaces converge on persisted state without requiring an application restart.
+- Dynamic tool graph writes must use the same ordered graph mutation commit path as user-initiated graph writes. They must not use whole-graph reloads as the normal visible update mechanism.
+- Implicit semantic-graph maintenance should avoid unnecessary user-visible latency when graph state is not required to answer the current turn.
+- Attached workspace members are discoverable model context, not prompt-preloaded filesystem snapshots; the model should inspect them selectively through normal filesystem access or Beryl-provided workspace metadata tools rather than receiving their full contents eagerly.
+- Durable workspace creation, deletion, retitling, runtime-environment selection, primary-member changes, and workspace-member attachment changes remain user-visible actions even when proposed or initiated by the model.
+
+### AI Lifecycle Yield
+
+- Beryl exposes a Beryl-owned app-server dynamic tool named `yield` for model-requested host lifecycle yield events on Beryl-created conversation threads.
+- The `yield` tool has one required argument, `outcome`, whose supported values are `phase_needs_review`, `blocked_needs_operator`, `phase_continue`, and `plan_complete`.
+- The model chooses only the semantic outcome. Beryl owns the mapping from each outcome to stopping, notification, context compaction, automatic resume, and exact resume text.
+- `phase_needs_review` stops after the current turn reaches terminal state and leaves review or live testing to the operator.
+- `blocked_needs_operator` stops after the current turn reaches terminal state and requests an operator-attention notification.
+- `phase_continue` records that the current turn should automatically continue after terminal completion, then Beryl runs selected-thread context compaction and starts the next turn with a fixed Beryl-owned continuation message. The fixed message is not supplied by the model.
+- `plan_complete` stops after the current turn reaches terminal state and requests a completion notification.
+- A successful `yield` tool response acknowledges that Beryl accepted the lifecycle request; it is not itself turn completion, compaction completion, resumed-turn start, or proof that the reported phase or plan state is correct.
+- At most one lifecycle yield outcome may control a backend turn. If multiple yield calls occur in one turn, Beryl must apply a deterministic host-owned policy and must not let later tool calls race lifecycle decisions.
+
+### Rendering Model
+
+- Rich transcript content is modeled as Markdown text plus backend metadata, not as a separate GUI-owned rich document format.
+- Existing backend conversation histories are loaded as bounded pages of turns rather than requiring the whole backend thread history before the transcript can render.
+- Opening an existing conversation thread first renders the latest available turn page at the transcript tail and loads older turn pages on demand as the user scrolls toward earlier history.
+- The loaded transcript window and the presentation window are separate concepts: loading may retain multiple fetched pages for navigation, but a render frame must build UI only from the presentation window needed for the visible transcript range and a small overscan margin.
+- Transcript scroll and render hot paths must not clone, scan, parse, or retain widget state for the whole loaded transcript window merely to render the visible viewport.
+- Transcript scroll-frame cost should be bounded by the visible transcript rows, configured overscan, and indexed lookup costs over retained row geometry, rather than by total backend thread size or total fetched history pages.
+- Offscreen transcript pages may remain in a bounded transient cache so nearby navigation is smooth, but cache retention must not make ordinary scroll frames perform all-loaded-history work.
+- Conversation transcript presentation is the stable parent conversation narrative: ordered user input fragments interleaved with parent assistant narrative items, including parent commentary, final answers, and optional parent-turn reasoning summaries when the backend exposes them.
+- Multiple user input fragments in one backend turn render as distinct user blocks within that turn. A later accepted fragment in an active turn is presented at its accepted transcript position after any already-rendered parent narrative items, rather than being hoisted beside the turn's original prompt. Historical transcript loading must preserve backend user-message content boundaries and item order instead of flattening separate fragments into one prompt string.
+- Historical and live user-message presentation preserves intra-fragment order between text records and image records. Image records render as typed compact transcript image markers such as `[A]`; those markers are selectable and copyable as atomic references and may be activated for preview when their Beryl image asset is available.
+- Native app-server image-generation items are transcript media output rather than operational placeholders. A generated image item may render as a pending media placeholder while generation is in progress and renders the generated raster image as soon as usable image bytes or a usable saved path is available, without depending solely on the backend status string.
+- Transcript presentation excludes asynchronous or operational turn activity that is not itself parent assistant narrative or native generated media output, including subagent transcripts, command execution records and output, file-change records, tool or MCP calls, ephemeral maintenance turns, raw backend lifecycle notifications, and token or status updates.
+- Operational turn detail may be exposed by separate diagnostic or detail surfaces, but the transcript must not spend persistent vertical space on placeholder rows whose only purpose is to say that background work happened.
+- The workspace toolbar is a controls-only row that exposes an `Activity` mode control for the activity panel. It must not reserve a leading static-text area. Static workspace-name text, thread-count text, graph-hotkey labels, and status chips are not persistent toolbar content; workspace identity may be presented through window title or compact controls when needed.
+- The `Activity` toolbar control cycles through `Activity Auto`, `Activity On`, and `Activity Off`.
+- New workspace UI state defaults to `Activity Auto`.
+- In `Activity Auto`, the activity panel is visible from the moment a parent turn is accepted on the conversation surface until that turn ends, and while selected-thread context compaction is active. It is hidden outside those active-work periods.
+- In `Activity On`, the activity panel remains visible between the transcript region and the user input panel even when it currently has no rows.
+- In `Activity Off`, the activity panel is hidden and consumes no conversation-column height.
+- The activity panel is vertically resizable by dragging its top border. Resizing changes the height shared between the panel and transcript region while preserving the pinned user input panel and status line.
+- Activity rows form an in-memory activity history and current-status surface. Each observed backend turn activity renders as a fixed-height single-line row in the same label/value style as the status line, with muted labels such as `Agent` and `Activity` and stronger values for the agent display label and activity display value.
+- Activity rows include a status disc before the row content: running rows use green, finished-ok rows use grey, and finished-error rows use red.
+- Activity rows sort running records before finished records, then sort by start time with newly started records first.
+- V1 activity rows render protocol-derived display values without broad human-friendly mapping except for GUI-derived subagent handoff byte counts.
+- `commandExecution` rows use the first non-empty line of the spawned command as the activity display value and fall back to `commandExecution` when no command line is available. Before display, if the first quoted or unquoted command token case-insensitively matches a drive-rooted Windows PowerShell launcher path shaped as `[drive]:\Windows(\.old)?\System32\WindowsPowerShell\v1.0\powershell.exe`, including the activity-log form with doubled backslashes such as `"D:\\Windows.old\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"`, that token is replaced with `powershell.exe` while preserving the rest of the command line.
+- Reasoning rows render `reasoning` and, when the backend exposes summary text, a bounded single-line `reasoning: <summary>` value.
+- `fileChange` rows render a bounded single-line patch summary. When explicit backend file-change records identify exactly one unique path and that path is relative or can be proven to be under the selected conversation execution target root, the row renders `Patching <relative/path>, +A -D`. Otherwise the row renders the aggregate `Patching N file(s), +A -D`. File count and addition/deletion counts are derived from explicit backend file-change records. Rows must not infer file paths from command text, diffs, or non-`fileChange` activity, and must not show an absolute path or outside-root path as a fallback.
+- Other activity rows use raw protocol-derived tool names or resource identifiers.
+- Activity row bodies do not include output, progress messages, resource contents, file paths other than the single relative `fileChange` path described above, patch diffs, raw reasoning content, handoff content, or expanded operational detail.
+- Subagent handoff activity rows are GUI-derived completed rows for observed child-thread final-answer `agentMessage` completions. They render `handoff: N bytes`, where `N` is the UTF-8 byte length of the completed handoff text. They must not include handoff content, excerpts, previews, or expanded operational detail in the row body.
+- Activity state is keyed internally by backend thread id, turn id, and item id so lifecycle updates can be exact even when multiple threads or subagents emit overlapping activity.
+- Activity history is retained for the loaded workspace session, but the visible panel is scoped to the selected backend conversation thread and that thread's observed subagent activity. A pending new-thread draft has no selected backend thread and therefore shows an empty activity row set instead of stale activity from the previously selected thread.
+- Activity rows may use the `Main` agent label for activity on the selected parent conversation thread without appending model or reasoning metadata. Observed subagent child-thread activity may use backend-provided subagent nicknames after resolution. Exact child-thread model and reasoning effort metadata for activity labels may come from app-server activity metadata for the collab-agent item that identified the child thread, or from read-only backend thread metadata when the protocol exposes exact runtime fields. When exact child-thread model metadata is known for a resolved subagent nickname, the subagent agent display value appends it as `nickname (model)`; when exact reasoning effort metadata is also known, it appends both as `nickname (model/reasoning)`. If exact model metadata is unavailable, the resolved subagent agent display value remains nickname-only. Known non-subagent thread display labels may be shown only when those labels are real user-facing labels rather than generated from backend ids, and they do not receive subagent model/reasoning suffixes. Backend thread ids are internal activity correlation and nickname-resolution keys; they must not render as agent labels. When a subagent nickname is unresolved, the agent display value stays empty until backend metadata resolution supplies the nickname.
+- Conversation transcript rendering parses Markdown into Beryl-owned semantic block and inline structures before rendering.
+- Transcript Markdown semantics include paragraphs, headings, lists, block quotes, code spans, code blocks, links, images, line breaks, thematic breaks, emphasis, strong emphasis, and math spans or math blocks, even when a particular UI renderer initially presents some structures with textual fallback styling.
+- Markdown image syntax with a local filesystem target, shaped as `![alt](path)`, is a transcript media request. Beryl resolves relative targets against the conversation thread's recorded execution target rather than the current Beryl process working directory, and absolute targets render only when they can be proven to belong to the selected thread's expected runtime/member boundary.
+- Markdown image targets render in-place only for supported raster image formats, including PNG and other raster formats that Beryl can decode from app-server or OpenAI-generated image output. SVG and other non-raster formats are unsupported in this phase. Ordinary Markdown links are not auto-inlined as media, including linked images such as `[![alt](path)](target)`.
+- Unsupported Markdown image targets render textual fallback shaped as `<alt> (render not supported)`. Missing, unreadable, or no-longer-present file targets render `<alt> (file unavailable)`, and targets rejected by path policy render `<alt> (path not allowed)`.
+- Consecutive transcript media items form media runs. A single-item media run occupies its own full transcript row and may expand to the padded transcript content width, capped by the image's natural raster dimensions so Beryl does not upscale it; when that cap makes the rendered item narrower than the padded content width, the item is horizontally centered within the row. A run with multiple media items renders the items at a shared compact width derived from the regular conversation text font, places them side by side inside the same transcript content padding used by surrounding transcript rows, and wraps at the right edge. Consecutive Markdown image embeds separated only by Markdown whitespace or line breaks are extracted into a media run even when the source paragraph also contains prose; surrounding prose renders as ordinary text before and after the media row.
+- Activating one loaded item inside a multi-item transcript media run toggles a UI-local promotion for that item. A promoted item renders at its original transcript position as its own single-item media row using the single-item sizing rule, while non-promoted items from the same original run remain in compact preview layout before or after it as needed to preserve transcript order, including when only one non-promoted item remains on one side. Activating the promoted item again clears that promotion and returns it to the compact multi-item layout. Media promotion is presentation state only and must not mutate backend transcript history, Markdown source, generated-image records, media cache ownership, selection copy semantics, or workspace persistence.
+- Secondary-clicking a loaded transcript media item opens the owning turn's transcript context menu with the ordinary turn actions plus media-specific image actions for the clicked item. `Copy image` writes the clicked raster image to the system clipboard as image data. `Save image as` asks the operating system for a destination path and writes the clicked raster bytes there without changing the authoritative transcript artifact. Pending media placeholders, unsupported fallbacks, unavailable files, and path-rejected image fallbacks do not expose media-specific image actions.
+- Beryl-owned Markdown semantic structures must retain enough source-span or copy-source information for transcript selection to produce Markdown-preserving selected text without reparsing or scanning full transcript history on clipboard or quote actions.
+- Raw HTML embedded in Markdown is not transcript UI content; it must be represented as literal source or unsupported source in the semantic structure and must never be interpreted as live HTML.
+- Transcript text selection, clipboard copying, and quote harvesting are GUI-local presentation and draft-composition interactions; they must not mutate backend-owned conversation history.
+- Transcript clipboard copying and quote harvesting use Markdown-preserving selected text rather than lossy rendered-only text. Selecting rendered inline code, emphasis, strong emphasis, links, images, transcript image markers, math, unsupported source fallbacks, block quotes, lists, headings, and code blocks must preserve the Markdown source semantics needed for pasted text to remain meaningful as Markdown.
+- Transcript selection across a Markdown code block copies that selection as Markdown code-block source, while a code-block header copy action copies only the bare code contents.
+- Quote harvesting transforms Markdown-preserving selected transcript text into Markdown block quote text inserted into the current draft, but it must not replace ordinary text selection or ordinary clipboard copying.
+- Column selector behavior is reusable UI infrastructure for column trails, selection, expansion, and per-column scrolling; graph and thread selectors own separate adapters from their domain models into that reusable presentation behavior.
+- Graph rendering must preserve the distinction between semantic nodes and terminal rendered link items so the UI can traverse graph structure without conflating nodes with edges.
+- Graph UI may expose context-menu actions for semantic nodes, including linking an existing conversation thread by creating a thread ref, deleting a leaf node, and deleting a node's hard subtree, without introducing non-semantic nodes into the graph model.
+- Graph UI must preserve the mounted graph scene during ordinary graph mutations from user actions or dynamic tools. Pending, committed, failed, and recovery states should be represented locally without blanking or replacing the graph columns when a graph is already available.
+- Graph UI state such as selected columns, expansion overrides, scroll positions, popup targets, and checklist sidebar projection must be reconciled by semantic identity after graph mutation commits, pruning only state invalidated by the changed graph.
+- Thread selector rendering must not introduce workspace members, member-thread inventory groups, or backend conversation threads into the semantic graph model.
+- Thread selector branch columns are presentation over member-thread inventory lineage and must not create semantic graph nodes, semantic graph links, or graph thread refs.
+- The workspace surface may project the currently selected checklist-capable node into a dedicated checklist sidebar without changing the underlying semantic graph model.
+- The rendering model must preserve enough structure for configurable typography, block-level presentation, inline controls, and future syntax highlighting without redesigning the conversation model.
+- The workspace surface exposes a bottom status line strip for model/reasoning selection, context-space percentage, and last-turn state; model/reasoning may target either the selected thread or the pending new-thread draft, while context and turn state target only a backend conversation thread. This status strip is UI chrome and is not part of the backend conversation transcript.
+- The status line's model/reasoning cell is interactive when an idle backend conversation thread is selected or when the workspace is on a pending new-thread draft. The context-operation cell is interactive only when a backend conversation thread is selected and that thread is idle. The turn-state cell is interactive only when the selected backend conversation thread has an interruptible active turn.
+- The status line's turn-state cell renders `compacting` while selected-thread context compaction is active; otherwise active parent turns render as `working`.
+- Activating an interactive turn-state cell opens a turn-operations popup with a soft cancellation action and, when supported targets are known, a held hard cancellation action. The popup must not mutate transcript history, synthesize user input, terminate guessed OS processes, or make local-only completion assumptions.
+- While the selected thread has an active parent turn, the transcript region renders a presentation-only activity caret at the end of the parent conversation narrative. The caret is not transcript content, Markdown source, selectable text, copyable text, quoteable text, or transcript metric input.
+- The activity caret must have stable geometry while blinking, must not cause text reflow, must disappear when the active parent turn stops working, and must follow platform text-caret blink policy when available. When platform text-caret blinking is disabled, or when only a general reduced-motion signal is available and it requests reduced motion, the activity caret renders steadily.
+- Streaming scroll surfaces may expose a trailing virtual scroll allowance so a caller-selected content line can remain reachable and visually anchoring while content below that line is shorter than the viewport.
+- Trailing virtual scroll allowance is scroll geometry, not semantic content; it must not appear as transcript history, graph data, checklist data, backend output, or another user-visible content record.
+- Streaming scroll state must distinguish bottom-following, content-anchored, and virtual-tail positions so live content growth cannot accidentally preserve a durable anchor inside empty trailing space.
+- Reusable virtual-list behavior is owned by Beryl application code layered on `gpui` public element APIs; modifying the third-party `gpui` fork is not part of the target scroll design.
+
+### Provenance
+
+- Semantic graph mutations must record provenance that identifies at least the source conversation turn or tool action, timestamp, and actor, with room for confidence or similar metadata when useful.
+- Provenance must cover node creation and edits, hard-link changes, root-order changes, soft-link changes, checklist-item mutations, and thread-ref changes.
+- A graph patch that restates graph facts already present in the semantic graph is a no-op for graph records: repository revision metadata may advance, but semantic graph provenance, root order, and child ordering must not change solely to record a redundant write.
+- Workspace-level metadata such as titles, runtime environments, workspace-member registrations, and primary-member designation are persisted separately from semantic-graph provenance.
+
+### Responsiveness and Performance
+
+- UI responsiveness, including input latency and rendering latency, is a first-order design constraint rather than deferred polish work.
+- RAM efficiency and CPU efficiency are first-order design constraints rather than deferred polish work.
+- The application must not perform blocking filesystem, process, network, parsing, or persistence operations on the thread that drives `gpui`.
+- Member-thread inventory refreshes must run away from the `gpui` thread and publish complete snapshots so menu display remains responsive even while a refresh is pending or failed.
+- Thread selector display must remain responsive while inventory refresh or thread activation work is pending; blocking backend calls must remain off the `gpui` thread.
+- Starting a thread activation must produce an immediate visible pending state in the workspace surface so the user can distinguish accepted activation work from a missed click or keypress.
+- Existing-thread activation must not synchronously enumerate workspace threads or load the entire conversation history before reporting progress to the UI.
+- Large transcript scrolling must remain responsive after many history pages have been fetched; render-frame work for the transcript must stay viewport-windowed.
+- Ordinary semantic-graph writes must keep visible graph rendering responsive by publishing patch/revision commits to an incrementally reconciled graph projection rather than synchronously reloading or reconstructing the whole visible graph scene.
+- Hot-path buffers, queues, caches, and similar data structures must have bounded or otherwise justified growth under normal operation.
+- Interactive code paths must avoid avoidable algorithmic complexity cliffs as transcript size, semantic graph size, workspace count, or backend event volume grows.
+- Expensive recomputation on hot paths should be replaced with reasonable caching or incremental maintenance when that is necessary to preserve responsiveness.
+- Transcript media resolution, filesystem reads, image decoding, thumbnail preparation, and cache eviction must run off the `gpui` thread. Pending or failed media loads must preserve stable transcript layout with placeholders or textual fallbacks rather than blocking render frames.
+- Activity presentation must render from an incrementally maintained in-memory projection and must not synchronously query `codex app-server` or rebuild activity from transcript history during a render frame.
+- Beryl may resolve unresolved subagent nicknames by using an independent backend maintenance client session to issue metadata-only `thread/read` requests outside the render path. If a future app-server protocol exposes exact child-thread model/reasoning metadata on that read-only response, Beryl may use it for subagent activity labels. Beryl must not use `thread/resume` merely to decorate activity rows unless a later design explicitly accepts the load and subscription side effects of that primitive for this purpose.
+- Large activity-history rendering must remain responsive as rows accumulate; render-frame work for the activity panel must stay bounded by the visible row window and small overscan rather than by total retained activity history.
+- Background backend clients must be bounded, cancellable, and lower priority than foreground turn streaming and transcript activation.
+- Implementation work must prefer predictable latency and bounded resource use over expedient shortcuts that would compromise responsiveness.
+
+### Persistence
+
+- GUI-owned user settings are persisted separately from backend-owned Codex configuration.
+- The configured Beryl home directory owns GUI-controlled durable app state, including shared cross-workspace metadata, workspace-scoped state, workspace image assets, `preferences.toml`, and `theme.toml`.
+- The configured Beryl home directory does not own backend-managed Codex authentication, session storage, configuration, skills, MCP state, or conversation execution history.
+- Changing the configured Beryl home directory does not change any runtime environment's home directory used for implicit workspace members.
+- Theme settings are stored in a dedicated portable TOML file so users can share visual themes without sharing unrelated preferences.
+- The theme file stores the current Beryl appearance schema. Beryl does not maintain multiple concurrently supported historical theme schemas.
+- Other explicit user-configurable GUI preferences, including notification sound preferences and global developer-instructions preferences, are stored in `preferences.toml`.
+- GUI-owned local application state that is not directly user-configurable is stored under the configured Beryl home directory, separately from those TOML files.
+- Workspace-scoped GUI-local state is stored in one directory per Beryl workspace under the configured Beryl home directory's `workspaces/` child, using the current workspace id slug as the directory name.
+- A workspace title change that changes the workspace id is a repository-level move of the workspace-scoped state directory plus the manifest and cross-workspace metadata updates needed to make the new id authoritative. If that operation fails, the old title and id remain authoritative.
+- Workspace-scoped GUI-local state includes semantic graph data, semantic graph revision metadata, checklist state, runtime-environment selection, workspace-member registrations, primary-member designation, backend thread-name snapshots, manual GUI-local thread title metadata, automatic thread-title generation state, per-thread member bindings and rebind-needed state, thread refs, active thread selection, last-known exact per-thread token-usage snapshots for status presentation, Beryl image asset metadata, window state, splitter positions, activity-panel mode and height, and similar workspace-local runtime state.
+- Workspace-scoped Beryl image assets store original pasted image bytes as files under the workspace's directory within the configured Beryl home directory's `workspaces/` child, with durable metadata linking those assets to accepted fragments, queued fragments, retries, and transcript markers.
+- Beryl image asset metadata must be sufficient to determine whether an asset is still referenced by workspace-visible conversation state so later cleanup can remove unreferenced asset files without scanning opaque image bytes.
+- Workspace-scoped GUI-local state includes the durable workspace `last updated` timestamp.
+- Workspace-scoped GUI-local state must use an embedded pure-Rust storage engine.
+- The design does not require multiple GUI instances to perform concurrent writes to the same workspace-scoped state store, because one GUI instance owns one workspace at a time.
+- Shared cross-workspace runtime metadata under the configured Beryl home directory must remain minimal.
+- Shared cross-workspace runtime metadata includes the monotonically increasing untitled-workspace sequence counter.
+- Shared cross-workspace runtime metadata may use last-write-wins or atomic-replace semantics across GUI instances.
+- Semantic graph records in GUI-local state are modeled as durable metadata rather than as a cached copy of backend thread contents.
+- Workspace graph revisions are GUI-local commit-order metadata for semantic graph persistence and projection reconciliation.
+- Creation of semantic graph nodes, links, thread refs, and provenance records should be append-oriented where practical.
+- Mutable GUI-local cursors such as active workspace selection, active thread selection, window state, and splitter positions may use last-write-wins semantics across GUI instances.
+- Backend-owned conversation thread contents and execution history do not move into GUI-local settings or GUI-local state storage. Beryl image assets are an exception only in the narrow sense that Beryl durably stores original bytes for images the GUI accepted from user paste or explicitly imported for image-marker preview; they do not make Beryl the owner of backend transcript text, assistant output, turn ordering, or execution history.
+- Paged transcript data held for rendering is a transient projection of backend-owned conversation history rather than GUI-owned durable history.
+- Derived projections and caches, including member-thread inventory snapshots, are not authoritative when they can be rebuilt from backend data plus GUI-local metadata.
+- Runtime temp files and backend-returned historical `localImage.path` values are not durable preview storage. Transcript image preview after restart must resolve through a Beryl image asset, or report that the image bytes are unavailable when no asset can be recovered.
+- Markdown image file references in backend-owned transcript text are durable as text only; the referenced file bytes remain filesystem state and may disappear or change outside Beryl. Beryl must render unavailable or updated filesystem state honestly rather than treating the Markdown reference as an attached artifact.
+- Native app-server image-generation output is backend transcript content when app-server returns image bytes or a saved generated-image path. Beryl may cache decoded presentation data, but that cache is not the authoritative generated image artifact.
+
+### Platform Targeting
+
+- Windows is the primary target platform for product quality and developer attention.
+- The design must preserve the ability to run the GUI on other platforms supported by `gpui` when the backend boundary permits it.

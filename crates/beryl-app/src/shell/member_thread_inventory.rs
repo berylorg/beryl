@@ -1,0 +1,337 @@
+use std::{
+    sync::mpsc::{self, Receiver},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use beryl_backend::ManagedBackendClientConnector;
+use beryl_model::{
+    conversation::{RegisteredConversationThread, WorkspaceConversationState},
+    workspace::BerylWorkspaceId,
+};
+use tracing::warn;
+
+use crate::member_thread_inventory::{
+    MemberThreadInventoryGroup, MemberThreadInventoryMemberKey, MemberThreadInventoryMemberKind,
+    MemberThreadInventorySnapshot, build_member_thread_inventory_snapshot,
+    prepare_backend_threads_for_member_thread_inventory, thread_fork_parent_metadata_read_error,
+};
+
+use super::{ShellView, SurfaceNotice, workspace_members};
+
+pub(super) enum MemberThreadInventoryUpdate {
+    Finished {
+        workspace_id: BerylWorkspaceId,
+        result: MemberThreadInventoryResult,
+    },
+}
+
+pub(super) enum MemberThreadInventoryResult {
+    Refreshed {
+        snapshot: MemberThreadInventorySnapshot,
+        registered_threads: Vec<RegisteredConversationThread>,
+    },
+    Failed {
+        message: String,
+    },
+}
+
+pub(super) fn spawn_member_thread_inventory_worker(
+    connector: ManagedBackendClientConnector,
+    workspace_id: BerylWorkspaceId,
+    workspace_state: WorkspaceConversationState,
+    timeout: Duration,
+) -> Receiver<MemberThreadInventoryUpdate> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let result =
+            run_member_thread_inventory_worker(connector, &workspace_id, workspace_state, timeout);
+        let _ = sender.send(MemberThreadInventoryUpdate::Finished {
+            workspace_id,
+            result,
+        });
+    });
+    receiver
+}
+
+fn run_member_thread_inventory_worker(
+    connector: ManagedBackendClientConnector,
+    workspace_id: &BerylWorkspaceId,
+    workspace_state: WorkspaceConversationState,
+    timeout: Duration,
+) -> MemberThreadInventoryResult {
+    let mut session = match connector.connect_client(timeout) {
+        Ok(session) => session,
+        Err(error) => {
+            return MemberThreadInventoryResult::Failed {
+                message: format!("Beryl could not connect to the managed backend: {error}"),
+            };
+        }
+    };
+
+    let members = match resolved_inventory_members(&workspace_state) {
+        Ok(members) => members,
+        Err(message) => {
+            return MemberThreadInventoryResult::Failed { message };
+        }
+    };
+
+    let mut backend_threads = match session.list_threads(timeout) {
+        Ok(threads) => threads,
+        Err(error) => {
+            return MemberThreadInventoryResult::Failed {
+                message: format!("Beryl could not refresh the workspace thread inventory: {error}"),
+            };
+        }
+    };
+
+    if let Err(message) = prepare_backend_threads_for_member_thread_inventory(
+        &mut backend_threads,
+        &members,
+        |thread_id| {
+            session
+                .read_thread_metadata(thread_id, timeout)
+                .map_err(|error| thread_fork_parent_metadata_read_error(thread_id, error))
+        },
+    ) {
+        return MemberThreadInventoryResult::Failed { message };
+    }
+
+    let snapshot = build_member_thread_inventory_snapshot(
+        workspace_id.clone(),
+        &workspace_state,
+        members,
+        backend_threads,
+        current_unix_millis(),
+    );
+    let registered_threads = snapshot
+        .groups()
+        .iter()
+        .flat_map(|group| group.threads().iter())
+        .map(|thread| thread.to_registered_thread())
+        .collect();
+
+    MemberThreadInventoryResult::Refreshed {
+        snapshot,
+        registered_threads,
+    }
+}
+
+fn resolved_inventory_members(
+    workspace_state: &WorkspaceConversationState,
+) -> Result<Vec<MemberThreadInventoryGroup>, String> {
+    let Some(runtime) = workspace_state.selected_runtime().cloned() else {
+        return Ok(Vec::new());
+    };
+
+    if workspace_state.explicit_members().is_empty() {
+        let canonical_path =
+            workspace_members::resolve_runtime_home_directory(&runtime).map_err(|error| {
+                format!("Beryl could not resolve the implicit home member for inventory: {error}")
+            })?;
+        return Ok(vec![MemberThreadInventoryGroup::new(
+            MemberThreadInventoryMemberKey::ImplicitHome,
+            MemberThreadInventoryMemberKind::ImplicitHome,
+            "Implicit home",
+            runtime.clone(),
+            Some(canonical_path),
+            Vec::new(),
+        )]);
+    }
+
+    Ok(workspace_state
+        .explicit_members()
+        .iter()
+        .map(|member| {
+            MemberThreadInventoryGroup::new(
+                MemberThreadInventoryMemberKey::Explicit(member.id().clone()),
+                MemberThreadInventoryMemberKind::Explicit,
+                member.canonical_path().display().to_string(),
+                runtime.clone(),
+                Some(member.canonical_path().to_path_buf()),
+                Vec::new(),
+            )
+        })
+        .collect())
+}
+
+fn current_unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+impl ShellView {
+    pub(super) fn poll_member_thread_inventory_updates(&mut self) -> bool {
+        let Some(receiver) = self.member_thread_inventory_receiver.as_ref() else {
+            return false;
+        };
+
+        match receiver.try_recv() {
+            Ok(MemberThreadInventoryUpdate::Finished {
+                workspace_id,
+                result,
+            }) => {
+                self.member_thread_inventory_receiver = None;
+                self.finish_member_thread_inventory_refresh(&workspace_id, result);
+                true
+            }
+            Err(mpsc::TryRecvError::Empty) => false,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.member_thread_inventory_receiver = None;
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface
+                        .member_thread_inventory_mut()
+                        .fail_refresh("Beryl lost the background thread inventory refresh task.");
+                }
+                true
+            }
+        }
+    }
+
+    pub(super) fn begin_member_thread_inventory_refresh_if_needed(&mut self) -> bool {
+        if self.member_thread_inventory_receiver.is_some()
+            || self.workspace_receiver.is_some()
+            || self.thread_activation_receiver.is_some()
+            || self.transcript_branch_receiver.is_some()
+            || self.thread_history_page_receiver.is_some()
+            || self.turn_receiver.is_some()
+            || !self.turn_steering_receivers.is_empty()
+            || self.workspace_picker_action_receiver.is_some()
+            || self.workspace_title_receiver.is_some()
+        {
+            return false;
+        }
+        if self.conversation_surface().is_some_and(|surface| {
+            surface.thread_selector().is_open()
+                || surface.graph_overlay().visible()
+                || surface.pending_thread_activation_label().is_some()
+        }) {
+            return false;
+        }
+
+        let Some((workspace_id, workspace_state)) = self.loaded_workspace().and_then(|loaded| {
+            loaded.selected_runtime().map(|_| {
+                (
+                    loaded.workspace.id().clone(),
+                    loaded.workspace_state.clone(),
+                )
+            })
+        }) else {
+            return false;
+        };
+        if !self
+            .conversation_surface()
+            .is_some_and(|surface| surface.member_thread_inventory().needs_refresh())
+        {
+            return false;
+        }
+
+        let Some(connector) = self.backend_client_connector() else {
+            return false;
+        };
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.member_thread_inventory_mut().begin_refresh();
+        }
+        self.member_thread_inventory_receiver = Some(spawn_member_thread_inventory_worker(
+            connector,
+            workspace_id,
+            workspace_state,
+            self.bootstrap.probe_timeout(),
+        ));
+        true
+    }
+
+    fn finish_member_thread_inventory_refresh(
+        &mut self,
+        workspace_id: &BerylWorkspaceId,
+        result: MemberThreadInventoryResult,
+    ) {
+        match result {
+            MemberThreadInventoryResult::Refreshed {
+                snapshot,
+                registered_threads,
+            } => {
+                if !self
+                    .loaded_workspace()
+                    .is_some_and(|loaded| loaded.workspace.id() == workspace_id)
+                {
+                    return;
+                }
+
+                let registered_threads = registered_threads
+                    .into_iter()
+                    .map(|mut thread| {
+                        if self.thread_ignores_backend_name_for_automatic_title(
+                            thread.thread_id().as_str(),
+                            thread.backend_name(),
+                        ) {
+                            thread.set_backend_name(None);
+                        }
+                        thread
+                    })
+                    .collect::<Vec<_>>();
+                let mut touched_manifest = false;
+                let Some(workspace_state) = self.loaded_workspace_mut().map(|loaded| {
+                    for thread in registered_threads {
+                        touched_manifest |= loaded.workspace_state.remember_thread(thread);
+                    }
+                    loaded.workspace_state.clone()
+                }) else {
+                    return;
+                };
+                if touched_manifest {
+                    self.persist_current_workspace_state(true);
+                }
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface
+                        .member_thread_inventory_mut()
+                        .finish_refresh(snapshot, &workspace_state);
+                    surface.reconcile_thread_selector_state();
+                }
+            }
+            MemberThreadInventoryResult::Failed { message } => {
+                warn!(error = %message, "member-thread inventory refresh failed");
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface
+                        .member_thread_inventory_mut()
+                        .fail_refresh(message.clone());
+                    surface.set_notice(SurfaceNotice::new(
+                        "Thread inventory refresh failed",
+                        message,
+                    ));
+                }
+                self.block_if_backend_process_dead(
+                    "Managed backend disconnected during thread inventory refresh",
+                    "The backend process exited while Beryl was refreshing the workspace thread inventory.",
+                    "Beryl could not refresh the workspace thread inventory because the managed backend process is no longer alive.",
+                );
+            }
+        }
+    }
+
+    pub(super) fn reset_member_thread_inventory_for_workspace_state(&mut self) {
+        let Some((workspace_id, workspace_state)) = self.loaded_workspace().map(|loaded| {
+            (
+                loaded.workspace.id().clone(),
+                loaded.workspace_state.clone(),
+            )
+        }) else {
+            return;
+        };
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface
+                .member_thread_inventory_mut()
+                .reset_for_workspace_state(workspace_id, &workspace_state);
+            surface.close_thread_selector();
+            surface.reconcile_thread_selector_state();
+        }
+    }
+
+    pub(super) fn mark_member_thread_inventory_refresh_needed(&mut self) {
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.member_thread_inventory_mut().mark_refresh_needed();
+        }
+    }
+}

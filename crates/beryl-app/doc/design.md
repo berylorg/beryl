@@ -1,0 +1,350 @@
+# Goals
+
+Own the reusable application-shell boundary for Beryl's desktop UI.
+
+## Non-goals
+
+- Owning process entry or CLI bootstrap.
+- Owning backend child-process command construction.
+- Owning canonical workspace identity types.
+
+# Decisions
+
+## Application Shell
+
+- This crate owns window lifecycle, startup-flow orchestration, and other high-level UI concerns.
+- This crate consumes the bootstrap-supplied Beryl home directory as the root for GUI-owned durable settings and workspace state.
+- This crate initializes freshly created workspaces with the default host-Windows runtime so the existing implicit-home primary-member path can open the ordinary pending-new-thread conversation surface.
+- This crate is the workspace project that depends on `gpui`.
+- This crate consumes normalized backend integration types rather than reaching into backend process details directly.
+- This crate owns normal window close and in-app quit orchestration, including explicitly releasing active managed backend server handles through the backend boundary before application process exit.
+- This crate treats backend shutdown during close and quit as a bounded lifecycle operation rather than relying on destructor timing after the `gpui` application begins exiting.
+- This crate consumes backend-provided thread names from normalized thread summaries and thread-name update events.
+- This crate owns thread display-title precedence: manual GUI-local title, then backend-provided thread name, then an untitled fallback label while automatic naming is pending or unavailable.
+- This crate owns automatic thread-title generation orchestration for Beryl-created threads whose first submitted user input fragment and backend thread id are known, including Beryl-owned threads created before that fragment through graph or checklist start actions, and whose title has not already been supplied manually or by backend metadata.
+- This crate owns transcript branch orchestration for Beryl-created branch threads, including turn-target selection, backend fork and rollback sequencing, branch registration, automatic title eligibility from the clicked turn's user input, inventory refresh, and optional activation.
+- This crate owns transcript edit orchestration for selected source threads, including edit-target selection, edit availability gating, destructive-scope preview, composer commit and cancel routing, backend rollback-count computation, rollback sequencing, selected-thread transcript reset from the rollback response, replacement turn start, and partial-failure presentation.
+- This crate owns the single title-generation maintenance boundary that uses a background backend client connection to run each constrained model turn with explicit medium reasoning and fixed title-generation instructions in a fresh app-server ephemeral thread, hides those maintenance threads from all user-visible conversation state, publishes accepted titles to target threads through the backend `thread/name/set` path without waiting for the target turn response or terminal state, and requests backend cleanup for each maintenance thread after the attempt reaches a terminal state.
+- Title-generation maintenance threads must not receive the global developer-instructions preference used for top-level user-message turns.
+- This crate must not run automatic thread-title generation, title assignment, or title maintenance cleanup on the foreground turn-stream client connection or gate them on foreground turn-stream completion.
+- This crate updates GUI-local thread-title display state from successful background title worker results and schedules inventory refresh, without depending on the selected foreground stream receiving a thread-name notification from the background client.
+- This crate must not use prompt-prefix heuristics as automatic thread titles.
+- This crate owns the UI-facing status projection for backend-reported thread metadata, exact per-thread token usage, exact account rate-limit snapshots, new-thread draft model/reasoning defaults, and turn state, including unknown states or omitted optional values when neither backend metadata nor effective defaults are available.
+- The status projection may keep an in-memory per-thread token-usage cache populated only from backend token-usage notifications, durable GUI-held last-known snapshots originally populated by those notifications, or read-only backend metadata for the same thread.
+- The status projection may keep exact in-memory account rate-limit buckets populated only from backend account-rate-limit notifications or read-only backend metadata. A startup background read may seed the buckets from a backend multi-bucket account rate-limit response, and later partial notifications may update only the buckets they contain. The projection selects the bucket matching the active status model, using the general `codex` bucket for non-Spark Codex models when no exact model bucket exists. The Context status cell may append short-window and weekly remaining percentages only when exact matching rate-limit windows are available.
+- This crate persists last-known exact per-thread token-usage snapshots through workspace conversation state and hydrates the status projection from that state when a workspace or thread is restored.
+- This crate must not estimate context space from transcript history or trigger a backend turn to populate status chrome.
+- This crate owns status-line operation state and presentation, including the merged model/reasoning cell, context operations cell, disabled state, and transient popup state.
+- This crate owns the UI-facing activity history projection derived from normalized backend stream events across observed conversation and subagent threads.
+- The activity history projection is keyed by backend thread id, turn id, and item id, and it is updated incrementally from stream lifecycle events rather than rebuilt during rendering or by synchronous backend queries.
+- This crate may enqueue observed subagent thread ids for background metadata resolution and apply resolved backend-provided nicknames plus exact child-thread model/reasoning metadata to existing and future projection rows outside the render path. Exact child-thread model/reasoning metadata for activity labels may also be applied from normalized backend activity events that identify the observed child thread. Missing child-thread model/reasoning metadata remains unknown rather than inferred.
+- The activity history projection may synthesize completed subagent handoff rows from observed child-thread final-answer `agentMessage` completions. Handoff rows render only `handoff: N bytes`, where `N` is the UTF-8 byte length of the completed message text, and must not expose the message content, excerpts, or previews.
+- The activity history projection is in-memory session state. It survives thread switching within the loaded workspace and is cleared on app restart or workspace/backend-session teardown rather than persisted as durable conversation history.
+- This crate scopes visible activity rows to the selected backend conversation thread and that thread's observed subagent activity. When the workspace is on a pending new-thread draft, visible activity is empty while the in-memory session history remains available for later thread switches.
+- This crate renders the main workspace toolbar as a controls-only row without a reserved leading static-text area or non-interactive status chips.
+- This crate renders the main workspace thread strip beneath the toolbar with a `New Thread` button before the active thread title control, optional non-host runtime context, and thread-selector activation from the active thread title.
+- This crate renders fresh workspaces through the same main workspace shell and composer layout used for initialized pending-new-thread drafts rather than through a separate fresh-startup or no-member shell.
+- This crate renders Beryl-owned buttons through shared GPUI button geometry so primary, secondary, toolbar, and thread-strip buttons use one outer-height rule, one shared corner-shape value, button-label typography sized to fit that height, and padding derived from the button label height while preserving their distinct theme state colors.
+- This crate owns merged workspace-picker popup presentation. The popup renders a left Workspaces column and a right Members column separated by a vertical divider. Workspace rows render the workspace title as primary text and render explicit workspace member canonical paths as secondary text, one member per line. Rows do not render implicit-home member paths or `last updated` metadata. The current workspace row is indicated only by a left-edge accent marker rather than full-row primary-blue highlighting. Long titles and member paths soft-wrap and grow the row vertically instead of truncating to ellipses.
+- This crate owns manual workspace-rename availability. Rename is disabled while workspace-scoped work is in progress or queued, and the disabled rename action exposes a tooltip telling the user to wait until in-progress workspace work is finished.
+- This crate owns workspace-member management presentation inside the merged workspace-picker popup. The Members column uses the same divided-list and left-edge accent row-state treatment as the Workspaces column, places the runtime-environment selector in the fixed control row above the member list, and renders no independent member filter. Member rows render a primary display label and the full canonical filesystem path for the represented member root as secondary text. The current primary member uses the shared left-edge accent marker rather than full-row primary-blue highlighting or redundant label text, and explicit member actions live behind one row-edge action-menu trigger.
+- This crate owns runtime selector dropdown presentation inside the Members column. The runtime selector dropdown is attached to its trigger with a continuous outer boundary, and WSL distro rows render with a `WSL: ` prefix.
+- This crate owns the toolbar `Activity` mode control, persists that mode and the activity panel height as workspace-scoped GUI-local state, and derives activity panel visibility from that mode and selected-thread work state.
+- The toolbar `Activity` mode control cycles through `Activity Auto`, `Activity On`, and `Activity Off`.
+- This crate defaults new workspace UI state to `Activity Auto`.
+- `Activity Auto` renders the activity panel from the moment a parent turn is accepted on the conversation surface until that turn ends, and while selected-thread context compaction is active. `Activity On` always renders the panel for the selected thread, including when it has no rows. `Activity Off` hides the panel and consumes no conversation-column height.
+- This crate owns activity panel top-border resizing, with the panel taking space from or returning space to the transcript region while preserving pinned composer and status-line layout.
+- Activity rows use the status-line label/value text treatment, show a status disc for running, finished-ok, or finished-error state, and render protocol-derived activity display values without broad human-friendly mapping in V1 except for GUI-derived subagent handoff byte counts.
+- `commandExecution` rows use the first non-empty line of the spawned command as their activity display value and fall back to `commandExecution` when no command line is available. Before display, if the first quoted or unquoted command token case-insensitively matches a drive-rooted Windows PowerShell launcher path shaped as `[drive]:\Windows(\.old)?\System32\WindowsPowerShell\v1.0\powershell.exe`, including the activity-log form with doubled backslashes such as `"D:\\Windows.old\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"`, that token is replaced with `powershell.exe` while preserving the rest of the command line.
+- Reasoning rows render `reasoning` and optional bounded backend-provided summary text as `reasoning: <summary>`.
+- `fileChange` rows render a bounded single-line patch summary. When explicit backend file-change records identify exactly one unique path and the path is relative or can be proven to be under the selected conversation execution target root, the row renders `Patching <relative/path>, +A -D`. Otherwise the row renders the aggregate `Patching N file(s), +A -D`. Addition and deletion counts are derived from explicit backend file-change records. The app must not infer file paths from command text, diffs, or non-`fileChange` activity, and must not show an absolute path or outside-root path as a fallback.
+- Subagent handoff rows render a bounded single-line byte-count value shaped as `handoff: N bytes`.
+- Other rows use raw protocol-derived tool names or resource identifiers.
+- Rows omit output, progress messages, resource contents, file paths other than the single relative `fileChange` path described above, patch diffs, raw reasoning content, handoff content, and expanded operational detail.
+- The activity projection owns the complete `Agent` display value consumed by rendering. Activity agent labels may use `Main` for activity from the currently selected parent thread, backend-provided subagent nicknames for observed child-thread activity, and known non-subagent thread display labels only when those labels are real user-facing labels rather than generated from backend ids. Resolved subagent labels may append exact child-thread model/reasoning metadata when that metadata is known for that observed child thread. Parent-thread labels and known non-subagent labels do not receive subagent model/reasoning suffixes. Backend thread ids are resolution keys and must not render as fallback agent labels; unresolved subagent rows keep an empty agent display value until a nickname is resolved, even when exact model/reasoning metadata is already known.
+- The activity projection owns child-thread nickname priority, unresolved-name handling, and row repair. The conversation surface may only mark activity from the currently selected parent thread as `Main`.
+- Activity rows sort running records before finished records, then by newest start time first.
+- This crate owns localized surface-notice presentation for non-blocking errors and recovery information. Surface notices are transient UI state, render selectable title and detail text for clipboard copying, expose a visible close control, and dismiss without mutating backend, transcript, workspace, graph, or persistence state.
+- This crate owns a bounded FIFO surface-notice queue that renders at most one active notice at a time, advances on dismissal, may coalesce overflow into a summary notice, and deduplicates repeated reports for the same selected foreground turn failure.
+- This crate enqueues `Turn error` surface notices for selected user-visible parent turns that fail with backend error detail or local turn-delivery failure. Interrupted turns without an actual error payload update turn status but do not enqueue a turn-error notice.
+- Model/reasoning status-line changes are scoped to the selected backend thread or to the pending new-thread draft and are held as pending defaults until the next real user turn for that conversation path.
+- The pending model/reasoning defaults overlay backend-reported thread metadata or effective new-thread defaults for status-line presentation but must not mutate global Codex configuration or another thread's status.
+- When the pending new-thread draft has no explicit model/reasoning selection, this crate presents the current effective backend defaults that would be used for the first submitted turn, and later backend-default changes remain visible until the user selects an explicit draft override or submits the first turn.
+- Pending new-thread effective defaults use backend `config/read` model and reasoning fields for the draft execution target, with backend `model/list` used only as the default-model fallback and model/reasoning menu data. `model/list.defaultReasoningEffort` is a menu-selection fallback, not an effective pending-thread reasoning authority.
+- Turn submission must pass the selected thread's pending model/reasoning defaults or the pending new-thread draft's explicit first-turn defaults through the normalized backend turn-start options when starting the next real user turn.
+- This crate owns ordered user input fragment presentation for conversation turns. Each accepted composer send-and-clear event is one distinct fragment, and transcript rendering must keep separate fragments visually distinct even when they belong to one backend turn.
+- This crate adapts app-neutral text input behavior for the conversation composer while retaining Beryl-owned draft semantics around that input.
+- This crate owns GUI-local composer history browsing, including bounded accepted-draft history state with oldest-entry eviction, selected-thread and pending-new-thread scoping, `Alt+Up` and `Alt+Down` action routing while thread-edit mode is inactive, pre-browse draft restoration, consecutive duplicate collapse, exact restorable image-atom handling, edit-mode and bounds no-op behavior, and end-of-draft caret placement with no selection. Composer history browsing is in-memory session state and must not persist backend transcript text, fetch missing backend history, submit user input, or mutate backend-owned conversation history.
+- This crate owns transient thread-edit mode. Starting edit mode requires an empty composer draft, populates the composer from the target turn's reconstructable user input, and dims the target turn plus later loaded turns without mutating backend history. Canceling edit mode, including through `Escape`, clears only the edit state and must not clear or otherwise mutate the composer draft.
+- This crate owns composer image marker state for pasted images, including thread-scoped label allocation state, inline marker rendering, multiple marker occurrences per staged image payload, marker selection and deletion behavior, marker context-menu state, larger preview popup state, and removal from the mutable draft.
+- This crate owns durable Beryl image asset storage for pasted images. Original bytes are stored under the active workspace's state directory within the configured Beryl home directory's `workspaces/` child, with metadata that can resolve composer payloads, accepted fragments, queued fragments, retries, and transcript markers back to a stable image asset.
+- This crate owns treating composer image markers as atomic draft items through its composer adapter. Caret movement, selection endpoints, deletion, replacement, cut, paste, undo, and redo must not leave a partial marker in the draft. Clipboard copy and cut of a selected image atom write explanatory fallback text shaped like `[Image A]`, while composer-owned paste may restore atoms only from Beryl-private clipboard metadata that resolves to a live transient payload.
+- This crate owns discovering prior image labels for the selected thread from live fragments, loaded historical input records, and paginated backend turn history. The image label allocator must be monotonic within the selected thread or pending new-thread draft and must not reuse labels removed from the active draft. Image paste into an existing thread is unavailable until prior-label discovery for that thread is complete enough to avoid collisions.
+- This crate owns Beryl-private composer clipboard payloads for copied image atoms. Clipboard metadata contains only a versioned marker and opaque payload token; original image bytes stay in an in-process transient store. If clipboard metadata is missing, stale, malformed, or paired with visible text that no longer matches the stored fallback text, composer paste falls back to ordinary text paste and must not parse `[Image A]`-shaped text into an attachment.
+- This crate owns same-scope and cross-scope paste behavior for copied image markers. Same-scope paste preserves labels and references the same staged image payload. Cross-scope paste allocates fresh labels from the target label scope and follows the selected thread's prior-label scan readiness rules before mutating the draft.
+- This crate owns converting a text-and-image composer draft into ordered backend user input records at submission time. Conversion must preserve the draft order of text and image atoms, send each distinct image label once at its first marker occurrence through a backend image record that points at the durable Beryl image asset through a runtime-readable path, and inject concise generated image-label text immediately before those image records because the app-server image records do not carry a stable GUI label field. The generated label text is shaped as `Image A:` for label `A`; later occurrences of the same label serialize as generated textual references such as `[Image A]`.
+- This crate owns preparing pasted image assets so local-image records are readable by the selected backend runtime before accepting submission. Host runtime submissions may use the host asset path directly. WSL runtime submissions must use a validated WSL-readable path to the same asset file, such as the selected distro's mounted view of the host profile directory. Failure to prepare a real runtime-readable image path rejects submission without clearing the draft.
+- This crate owns pending turn input queues for fragments accepted before they can be delivered to app-server. Queued fragments remain visible in the transcript and must be delivered in accepted order or reported with explicit failure presentation.
+- Thread-edit commit validates and prepares the current composer draft for backend delivery before invoking rollback. If validation or preparation fails before rollback, this crate keeps edit mode active and leaves the draft intact. After rollback succeeds, this crate must rebuild transcript presentation for the original target thread from the rollback response before starting the replacement turn. If the active workspace or selected thread changes while commit work is in flight, responses and retry or failure state remain scoped to the original target thread and must not be applied to an unrelated visible transcript. If replacement turn start fails after rollback, the discarded tail remains gone and this crate leaves the draft intact with explicit failure presentation.
+- During selected-thread context compaction, this crate accepts non-empty composer submissions for the compacting thread, clears the draft, renders each accepted fragment immediately as a distinct user block, and sends all queued fragments as one ordered `turn/start` input array only after compaction reaches backend-reported idle completion.
+- During an ordinary active parent turn, this crate sends each accepted composer fragment through backend active-turn steering immediately when the active turn id is known.
+- If a fragment is accepted while an ordinary active turn exists but the backend turn id is not yet known, this crate queues the fragment only until the turn id is observed, then flushes it through active-turn steering.
+- If active-turn steering fails because the backend reports the active turn is not steerable or the expected turn id no longer matches, this crate keeps the already accepted fragment in the next-turn input queue rather than dropping it or merging it into a prior fragment.
+- This crate does not provide manual approval review during active turns. If the backend requests approval while this crate owns an active turn stream, the turn worker must log the full normalized approval request payload, deny the request through the backend boundary, request interruption when the denial response does not itself interrupt, and then let the interrupted turn finish through the normal stream path.
+- Pending model/reasoning defaults remain available for retry when turn start fails.
+- After a turn starts successfully with pending model/reasoning defaults, this crate reflects those values as the selected thread's effective status values until backend-reported metadata for that thread is observed again. When that turn creates a backend thread from the pending new-thread draft, the draft's explicit defaults become the created thread's pending or effective status values for later turns.
+- The status-line model/reasoning cell is interactive while a backend conversation thread is selected and idle, and while the workspace is on a pending new-thread draft. The context-operation cell is interactive only while a backend conversation thread is selected and idle. The turn-state cell is interactive only when the selected backend conversation thread has a cancellable active backend turn target.
+- Cancellable active backend turn targets are exact thread-id and turn-id pairs. This crate may project an ordinary active parent turn as cancellable only after the active turn id is known, and may project selected-thread context compaction as cancellable only after compaction activity exposes its backend turn id.
+- The turn operations popup owns separate `Soft stop` and `Hard stop` actions. `Soft stop` maps to exact selected-turn interruption. `Hard stop` maps to a best-effort backend hard-stop cascade for exact selected-turn execution targets and is disabled or omitted when no exact backend hard-stop target is known.
+- This crate owns hard-stop target projection from normalized backend stream state. Hard-stop targets may include exact active subagent turn ids associated with the selected parent turn, process-backed command execution handles exposed by the backend, and thread-scoped background-terminal cleanup support. This crate must not create hard-stop targets from guessed OS pids, process names, command text, or working directories.
+- The hard-stop hold interaction is transient UI state owned by this crate. A hard-stop hold lasts three seconds, renders a left-to-right row fill, cancels on early release, pointer exit, popup close, focus loss, or active-target change, and triggers at most one backend hard-stop request after completion.
+- Stop request state must distinguish soft and hard stop in-flight work, suppress duplicate requests against the same active target, keep target-scoped error feedback, and clear only when backend stream events, explicit hard-stop responses, transport failure, or backend process exit converge the operation.
+- The model/reasoning popup renders from normalized backend model-list data and limits reasoning choices to the selected model's supported reasoning efforts.
+- The context operations popup owns the user-facing `Compact` action and must request backend compaction off the `gpui` thread while preserving the managed backend process lifecycle.
+- This crate owns a transient selected-thread status projection override that renders the turn-state cell as `compacting` while context compaction is active.
+- Context compaction remains active until the backend stream identifies compaction work for the selected thread and then reports that thread idle; request acceptance or a queued idle status alone is not completion.
+- The context-compaction worker must subscribe to the selected thread on the same backend client session it uses for `thread/compact/start` before waiting for completion notifications.
+- After the compaction request is accepted on a subscribed status-operation client, a target-thread active transition or a `contextCompaction` item identifies compaction work; idle still completes compaction only after such work has been observed.
+- This crate owns composer submission presentation behavior, including clearing accepted drafts, rendering accepted user input fragments immediately, forcing the initial submit-time transcript viewport anchor to the latest accepted fragment, and maintaining the separate trailing scroll allowance that keeps the latest accepted fragment's last rendered line reachable when response content is shorter than the viewport.
+- Image-containing drafts are submit-eligible when they contain at least one image marker even if their text is blank. If image asset storage, runtime path preparation, or backend input serialization fails before acceptance, this crate keeps the draft intact and reports rejection rather than clearing the draft or presenting a phantom accepted fragment.
+- This crate owns transcript viewport defaults for loaded thread history, including opening existing threads at the tail of the loaded history window while preserving the trailing scroll allowance for the latest user input fragment when no submit-time anchor is active.
+
+## AI Lifecycle Yield Tools
+
+- This crate owns the app-shell policy for Beryl's `yield` dynamic tool.
+- The `yield` dynamic tool belongs to the Beryl dynamic-tool namespace, is registered with Beryl-owned dynamic tools on new Beryl-created app-server threads, and accepts exactly one required `outcome` argument.
+- Supported `outcome` values are `phase_needs_review`, `blocked_needs_operator`, `phase_continue`, and `plan_complete`.
+- The model-facing tool description must present `yield` as a semantic lifecycle signal, not as a direct compaction, restart, notification, or process-control tool.
+- A valid `yield` call returns a structured success response and records the requested outcome for the active parent turn. The current backend turn remains live until app-server reports a terminal turn event.
+- This crate must ignore or reject unsupported yield outcomes, malformed arguments, yield calls outside the active parent turn being streamed, and lifecycle requests that cannot be correlated to the active thread and turn.
+- At most one yield outcome may control a streamed parent turn. If the same turn calls `yield` more than once, this crate must use deterministic first-accepted-outcome behavior and return non-controlling responses for later calls.
+- `phase_needs_review` records a no-auto-resume stop. After terminal completion, Beryl leaves the thread idle for operator review or live testing.
+- `blocked_needs_operator` records a no-auto-resume stop. After terminal completion, Beryl surfaces an operator-attention notification.
+- `phase_continue` records automatic continuation. After terminal completion, Beryl suppresses ordinary end-turn sound for that turn, starts selected-thread context compaction through the existing compaction worker path, and after compaction completion submits one Beryl-generated resume fragment.
+- The V1 Beryl-generated resume fragment text for `phase_continue` is `Continue from the root doc/plan.md.`.
+- The Beryl-generated resume fragment participates in the same pending-turn input queue as composer fragments accepted while compaction is active, so all next-turn inputs preserve deterministic queue order.
+- `plan_complete` records final completion. After terminal completion, Beryl leaves the thread idle and surfaces a completion notification.
+- Lifecycle notifications are separate event kinds from ordinary end-turn sound. This crate chooses their playback policy; the model cannot choose sound files, sound identity, volume, focus gating, or notification text.
+- Yield lifecycle actions must not mark a turn complete locally, rewrite transcript history, mutate backend-owned history, or treat compaction request acceptance as compaction completion.
+
+## Turn Completion Notifications
+
+- This crate owns the GUI-local end-turn sound behavior for user-visible parent conversation turns.
+- A turn-completion sound attempt is eligible only when the app-wide notification settings contain a selected WAV file path, a user-visible parent conversation turn reaches a terminal state, and at least one Beryl-owned attention trigger is active.
+- Beryl-owned attention triggers include no Beryl-owned OS window being focused, no host-reported local mouse or keyboard input for 30 seconds, a locked desktop session, a closed laptop lid, or a host-reported off or dimmed session display.
+- Unsupported or unknown platform attention states do not make a notification eligible by themselves and must not suppress another known active trigger.
+- Beryl-owned OS windows for notification focus gating include the main workspace window and the settings window.
+- Eligible terminal parent-turn states include successful completion, interruption, and failure.
+- This crate must not emit end-turn sound for automatic title-generation maintenance turns, member-thread inventory refresh, lazy metadata resolution, context compaction, automatic lifecycle continuation, startup probes, settings changes, or other background/status-only work.
+- Platform attention-state detection is best-effort, must keep blocking system work away from the `gpui` thread, and is not required to play audio while the host is suspended.
+- The selected notification sound path is a host filesystem path to a WAV file. An empty selected path disables end-turn sound.
+- This crate may use `rodio` for short custom notification sound playback.
+- Notification sound playback should use the current default OS output device for each playback attempt when the platform audio stack exposes a stable default-device identity.
+- Notification sound playback must be dispatched away from the `gpui` thread. Missing files, decode failures, unavailable audio devices, and playback failures are non-fatal diagnostics and must not change backend turn state, status projection state, or transcript presentation.
+
+## Settings Window
+
+- This crate owns Beryl's settings-window integration policy, including when settings should be shown or hidden and how Beryl settings are adapted into reusable settings-window presentation data.
+- This crate consumes `gpui-settings-window` for generic OS settings-window lifecycle mechanics, including preheated show/hide behavior, left navigation, key-value setting rows, color input fields, and the in-window color picker.
+- This crate owns Beryl's appearance-settings draft state, validation, apply behavior, active settings update, and persistence to the Beryl theme file.
+- This crate owns Beryl's notification-settings draft state, validation, apply behavior, active settings update, and persistence as app-wide GUI preferences in `preferences.toml`, outside the Beryl theme file.
+- This crate owns Beryl's developer-instructions settings draft state, validation, apply behavior, active settings update, and persistence as an app-wide GUI preference in `preferences.toml`, outside the Beryl theme file and outside backend-owned Codex configuration.
+- The settings window exposes a `Notifications` section with an end-turn sound row that shows the staged full filesystem path, or an empty disabled state when no sound is selected.
+- The end-turn sound row's choose action opens the Windows file picker for WAV file selection and stages the chosen host filesystem path without applying it until settings are applied.
+- The end-turn sound row's clear action stages an empty path so applying settings disables end-turn sound.
+- The settings window exposes an `Agent` section with a multiline developer-instructions field. The field row shows the secondary subtext `Sent as developer instructions with every user message.` Blank or whitespace-only staged content is treated as disabled when settings are applied.
+- This crate maps Beryl's active appearance theme into app-neutral settings-window style options so the settings window uses Beryl-owned theme roles without making `gpui-settings-window` depend on Beryl.
+- The settings window does not include the main workspace toolbar strip.
+- Applying settings validates staged values before they become active, updates the running UI, and persists the accepted settings without requiring the window to close.
+- Closing or hiding the settings window without applying discards unapplied staged edits and does not mutate active appearance or notification settings.
+
+## Appearance Theme
+
+- This crate owns Beryl's appearance theme data model for UI chrome, typography, and transcript presentation roles.
+- UI chrome theme roles cover toolbar and thread-strip backgrounds, primary and secondary button colors for normal, hover, active, and disabled states, user-input panel colors, transcript-region shell colors, status-line colors, structural separator color, and shared surface colors for panels, rows, and popups.
+- The active theme is read during rendering rather than cached in individual widgets, so applying settings can refresh all windows without reconstructing the application shell.
+- The theme file uses Beryl's current appearance schema, and this crate rewrites the local theme file in that schema when theme settings are applied.
+- Transcript commentary assistant-message foreground and reasoning foreground are explicit appearance roles. Transcript-internal block backgrounds, labels, and dynamic turn-status colors remain outside this crate's UI chrome theming boundary until a later design explicitly includes them.
+- Graph semantic category colors, graph link/accent colors, selector-specific active-thread accents, and warning/error/info colors remain outside this crate's UI chrome theming boundary until a later design explicitly includes semantic appearance roles.
+
+## Responsiveness
+
+- This crate must keep blocking filesystem, process, and protocol work out of the `gpui` thread.
+- This crate may hold UI-facing bootstrap state, but authoritative backend history remains backend-owned.
+- This crate must show an immediate visible pending state when existing-thread activation begins.
+- This crate must not put workspace thread enumeration or full-history transfer on the critical path before reporting existing-thread activation progress.
+- This crate must keep active turns pending across quiet backend stream intervals; absence of turn-stream notifications is not a user-visible turn failure while the backend process and transport remain alive.
+- This crate must keep active turn completion independent from background title generation, title assignment, inventory refresh, semantic-graph maintenance, and other lazy backend work.
+- This crate must keep notification sound file probing, decoding, and playback away from the `gpui` thread.
+- This crate must keep activity panel rendering independent from backend requests and transcript-history scans by reading only the latest incrementally maintained activity-history projection on the render path.
+- This crate must keep activity panel render-frame work bounded by the selected-thread visible row window plus small overscan rather than by total retained activity history.
+- Background backend work launched by this crate must be bounded, cancellable, and reported as non-fatal unless it is explicitly part of the foreground user action.
+- This crate must keep transcript scroll-frame work bounded by the visible rows, configured overscan, and indexed row-geometry lookups rather than by total backend thread size or total fetched history pages.
+- This crate must keep ordinary semantic-graph mutation presentation bounded to patch/revision reconciliation and affected UI state. Successful graph writes must not require unmounting graph columns or synchronously reloading the whole graph on the `gpui` thread.
+
+## Streaming Scroll Surfaces
+
+- This crate owns reusable `gpui`-based scroll support for streaming surfaces that need bounded virtual trailing scroll allowance.
+- The reusable virtual-list primitive is Beryl-owned application code built on `gpui` public element APIs; virtual trailing allowance is not implemented by patching the third-party `gpui` fork.
+- Virtual trailing scroll allowance is part of scroll geometry rather than the content model; list item counts, visible item ranges, and rendered content children remain real-content-only.
+- The effective trailing allowance is bounded by the viewport and by caller-provided content-anchor geometry so empty scroll space cannot displace all real content from the viewport.
+- Scroll preservation for live remeasurement is based on explicit scroll intent, including bottom-following, content-anchored, and virtual-tail positions, rather than raw offsets that can accidentally become durable anchors inside empty space.
+- Transcript submit anchoring and loaded-history trailing allowance are clients of this reusable scroll support; transcript code supplies user-fragment line geometry but does not own a transcript-specific spacer row model.
+
+## Transcript Presentation
+
+- This crate owns the native `gpui` presentation of parsed transcript Markdown structures.
+- Transcript presentation uses application appearance roles for conversation text, commentary foreground, reasoning foreground, Markdown headers, code, emphasis, and strong emphasis. Final-answer assistant messages use conversation text as their base foreground unless a more specific Markdown role overrides it.
+- Transcript presentation may use textual fallback elements for semantic structures that do not yet have dedicated UI renderers, including math spans or math blocks.
+- Transcript code blocks are rendered through the application code-panel presentation path.
+- Backend-owned transcript text remains the authoritative content for conversation history, while this crate may maintain separate UI-visible Markdown snapshots for live streaming presentation.
+- Historical transcript presentation is backed by bounded backend turn pages; this crate renders the latest page first and requests older pages as transcript scrolling reaches unloaded earlier history.
+- Loaded transcript windows remain one chronological transcript surface even when only part of the backend history has been fetched.
+- Transcript presentation uses a viewport-bound presentation window over the loaded transcript window; render frames must not clone or scan every loaded turn merely to build visible transcript rows.
+- Full-loaded-history derived state needed by transcript rendering must either be maintained incrementally outside the render path or scoped to visible rows and nearby overscan.
+- Transcript row identities, nested widget ownership, Markdown cache keys, and scroll anchors must remain stable when older pages are prepended, newer live turns are appended, or offscreen loaded pages are released from the presentation window.
+- Retained historical pages are a transient cache for navigation and must not become authoritative application state or a prerequisite for rendering the currently visible viewport.
+- Transcript presentation is limited to the active thread's parent conversation narrative: ordered user input fragments interleaved with parent assistant narrative items, including parent commentary, final answers, and optional parent-turn reasoning summaries.
+- Live active-turn steering fragments render at the transcript position where this crate accepted them, after any already-rendered parent narrative items, while still belonging to the same backend turn.
+- Historical transcript presentation must preserve backend user-message content boundaries as separate user input fragments and preserve their item-order position among parent narrative items instead of flattening them into a single prompt string.
+- Historical and live user-message presentation must preserve intra-fragment order between text records and image records. Image records render as compact typed transcript image markers in user blocks instead of unlabeled fallback text when enough GUI or backend context exists to assign a stable display label.
+- Transcript image markers are read-only atom widgets, not mutable composer editor atoms. They must carry occurrence identity, display label, copy fallback text such as `[Image A]`, and a source reference that resolves preview bytes from a durable Beryl image asset when available.
+- Historical image records that point at Beryl-owned asset paths should resolve to the existing asset metadata. Historical image records that point elsewhere may be imported into a Beryl image asset only when the bytes can be read through a trusted backend or host filesystem path; otherwise the marker remains present with unavailable preview state rather than depending on a temp file path.
+- Native app-server `imageGeneration` items are parent transcript media output. This crate must normalize live and historical image-generation items into transcript media records that can render a pending placeholder before bytes are available and a raster image once either embedded result bytes or a readable saved path is available.
+- Image-generation rendering must treat usable result bytes or a usable saved path as sufficient to render, even if the backend status field still says generation is in progress.
+- Parsed Markdown image syntax with a local filesystem target produces transcript media records when the target resolves inside the selected conversation's expected runtime/member boundary. Relative targets resolve against that thread execution target, not the process working directory of the GUI. Markdown images nested inside ordinary links remain link content rather than transcript media.
+- Markdown image rendering supports decoded raster images only. PNG is required; other raster formats may be enabled only when the `gpui` image pipeline can decode them reliably. SVG and other non-raster image targets must use unsupported fallback text.
+- Markdown image targets rejected by format, path policy, or file availability render textual fallbacks using the image alt text: `<alt> (render not supported)`, `<alt> (path not allowed)`, or `<alt> (file unavailable)`. Empty alt text uses the same fallback shape with an empty label prefix omitted.
+- Transcript media runs are formed before rendering rows. Consecutive media records separated only by Markdown whitespace or line breaks belong to one run even when they appeared inside a paragraph with prose; prose before or after the run remains ordinary Markdown text in neighboring transcript rows.
+- A one-item media run renders as a full-width transcript row whose image expands up to the padded transcript content width without exceeding the image's scale-adjusted natural raster width, and centers the image horizontally when it renders narrower than that padded width. A multi-item media run renders left-to-right image tiles that share a compact target width derived from 30 `M` glyph advances in the active regular conversation text font, cap each rendered image at its scale-adjusted natural raster width, preserve image aspect ratio, keep stable placeholder dimensions while loading, and wrap at the transcript row's right edge inside the same transcript content padding used by surrounding transcript rows.
+- Transcript turn context menus are presentation controls over loaded parent turns. They must use stable backend turn identity from the loaded transcript projection rather than inferring targets from visual row indexes alone.
+- Transcript branch menu actions are unavailable while a transcript selection is active, while the selected source thread is not idle, while selected-thread context compaction or thread activation is pending, when the targeted turn lacks non-empty user input for title seeding, or when the backend branch primitives are unavailable.
+- This crate must keep subagent transcripts, command executions and output, file changes, tool or MCP activity, title-generation maintenance turns, status notifications, token updates, and other operational stream details out of the transcript presentation unless they are later shown through a separate detail surface. Native image-generation media output is the explicit exception because it is assistant-produced transcript content.
+- This crate must not render transcript placeholder rows solely to report that commands, tools, subagents, or other background activities ran.
+- Live streamed Markdown may lag briefly behind the latest backend text so that visible transcript updates occur at stable presentation boundaries, including completed block boundaries, completed list items, bounded coalescing intervals, and item or turn completion.
+- Pending Markdown parses keep rendering the latest completed parsed snapshot for the transcript item when one exists; ordinary pending parse state must not switch the item to a different raw or plain-text visual model.
+- Raw or plain Markdown fallback presentation is reserved for parse failure or first display before any parsed snapshot exists.
+- Markdown parsing stays off the `gpui` thread, rapid live source updates are coalesced to the latest needed parse input, and stale parse completions cannot replace newer displayed snapshots.
+- Transcript media path resolution, app-server file reads, image decoding, thumbnail preparation, and cache eviction stay off the `gpui` thread. Completed media loads must be correlated to the current transcript item and source target before replacing a placeholder so stale loads cannot update newer content.
+- Stable-boundary stream projection is only a presentation throttle; parsed Markdown structures remain the source of transcript rendering semantics.
+- Parsed Markdown structures retain source-span or copy-source information needed to derive Markdown-preserving selected text for transcript clipboard copying and quote harvesting.
+- While the selected thread has an active parent turn, this crate renders a non-interactive block activity caret at the end of the parent conversation narrative.
+- The activity caret is presentation chrome rather than transcript content: it is excluded from Markdown parsing, transcript selection, clipboard copying, quote harvesting, and transcript render metrics.
+- Activity-caret blinking must use stable layout geometry and follow platform text-caret blink policy when available. When platform text-caret blinking is disabled, or when only a general reduced-motion signal is available and it requests reduced motion, the activity caret renders steadily.
+- Transcript selection highlight geometry must be derived from the same logical selection ranges used for clipboard copying and quote harvesting. When a single selectable Markdown line soft-wraps across multiple visual rows, this crate must render per-visual-row highlight rectangles instead of highlighting the whole logical line.
+- Transcript selection state separates display text used for hit testing and highlight geometry from Markdown-preserving copy text used for clipboard copying and quote harvesting.
+- Scrolling and viewport-window virtualization must not clear selected text merely because selection endpoints leave visible rows.
+- Clipboard copying and quote harvesting use Markdown-preserving selected text from retained loaded transcript content, while visible highlight rectangles and quote-popup placement use only current-frame geometry.
+- Partial selections inside styled inline Markdown nodes preserve the selected node's Markdown semantics around the selected visible text when practical, instead of copying only the rendered characters and dropping the construct.
+- Transcript selection across a Markdown code block copies Markdown code-block source, while the code-block header copy action remains a bare-code copy.
+- Copy-text derivation must be prepared from parsed Markdown and retained transcript content outside the render hot path; ordinary copy or quote actions must not reparse Markdown or scan the full loaded transcript window.
+- This crate owns pointer-wheel scroll arbitration between the transcript and nested transcript widgets such as code panels.
+- Nested transcript widgets must still expose hover-driven scrollbar affordances when overflowed, but they consume vertical pointer-wheel scrolling only after click selection.
+
+## Reusable Column Selectors
+
+- This crate owns the reusable `gpui` column selector behavior used by graph and thread selection surfaces.
+- The reusable column selector owns column trail state, selected row state, optional row expansion state, per-column vertical scrolling, horizontal column scrolling, and shared keyboard navigation.
+- Domain-specific selector surfaces own their row models, labels, row decorations, branching targets, terminal actions, context menus, and activation semantics.
+- The semantic graph overlay adapts semantic graph nodes, soft links, and thread refs into the reusable column selector without exposing graph-owned types through the reusable widget API.
+- The semantic graph overlay's first column begins with the ordered root-level semantic nodes from the current graph projection, and later columns are opened from user node or soft-link selections.
+- The semantic graph overlay must preserve column roots, selection, expansion overrides, and scroll handles by semantic identity across graph mutation commits, pruning only ids invalidated by the committed or optimistic graph projection.
+- The thread selector adapts member-thread inventory groups and threads into the reusable column selector without representing those rows as semantic graph nodes.
+- Only one column selector surface is interactive at a time in the workspace shell.
+
+## Workspace Repository
+
+- This crate owns the GUI-local repository boundary for per-workspace durable state stored under the configured Beryl home directory's `workspaces/` child.
+- Per-workspace durable state is stored in one `redb` database per Beryl workspace and includes the workspace manifest, selected runtime environment, explicit workspace members, primary-member selection, active-thread state, backend thread-name snapshots, manual GUI-local thread title metadata, automatic thread-title generation state, thread/member binding metadata, last-known exact per-thread token-usage snapshots for status presentation, Beryl image asset metadata, activity-panel mode and height, the semantic graph aggregate, and app-owned semantic graph revision metadata.
+- The repository owns workspace title changes that alter the workspace id slug. A successful title change validates slug uniqueness, moves the per-workspace storage directory to the new slug, updates the manifest id and title, and updates cross-workspace startup metadata references. A failed title change leaves the old title, id, storage directory, and metadata references authoritative.
+- Original bytes for Beryl image assets are stored as files beside the workspace database rather than inside the main `redb` value payloads. Repository operations must keep asset metadata and asset-file writes ordered so a committed image reference does not point at a missing file during normal operation.
+- Persisting status-only token-usage snapshots does not update the workspace manifest's last-updated timestamp.
+- The semantic graph is persisted as an opaque `beryl-model` aggregate at this crate boundary rather than being decomposed into app-owned storage tables that would duplicate graph invariants.
+- Durable semantic-graph mutations are repository-level content changes and must update the persisted workspace `last updated` timestamp when they change stored graph state.
+- Durable semantic-graph mutations must atomically update the workspace manifest, semantic graph aggregate, and semantic graph revision metadata.
+- Repository graph write outputs must be a commit-or-failure result. Only accepted durable writes produce graph mutation commits.
+- Repository graph mutation commits must carry workspace identity, base revision, committed revision, changed flag, committed patch, and updated manifest.
+- Repository graph write failures such as revision conflicts or persistence errors must carry enough metadata for shell recovery without being represented as commits.
+- User-initiated graph writes must be able to supply an expected base revision so stale optimistic requests cannot silently mutate a newer durable graph state.
+
+## Semantic Graph Mutation Projection
+
+- This crate owns the shell-side graph mutation coordinator that applies graph mutation commits from direct GUI graph actions, graph-start thread-ref persistence, and Beryl dynamic graph tools.
+- The shell graph projection is revisioned. Commit application is ordered by graph revision, and stale, duplicate, or gapped commits must be handled deterministically through no-op acknowledgement or explicit recovery rather than by silently replacing visible state.
+- Direct GUI graph actions may create an optimistic graph projection by applying a locally valid `SemanticGraphPatch` before the repository commit returns.
+- Optimistic graph projection is presentation state over the latest committed graph revision plus pending local patches. It must not become authoritative persisted graph state.
+- Pending optimistic mutations must be keyed by mutation identity and affected semantic ids so menus, rows, checklist projection, and thread-ref affordances can show local pending state without replacing the graph overlay body.
+- A durable graph mutation commit clears the matching pending optimistic state and reconciles column selection, expansion, scroll, context-menu, and checklist-sidebar state by semantic identity.
+- A failed optimistic mutation must either roll back the affected pending projection over the current committed graph or enter explicit authoritative-refresh recovery. It must not leave stale pending state or silently rewind unrelated graph changes.
+- No-op graph commits must preserve visible graph columns, scroll, selection, expansion, checklist projection, and context-menu state except for local status or notice changes.
+- Full graph reloads are allowed for startup, workspace open, and explicit recovery after revision mismatch or repository failure. They are not the normal visible update path for successful graph mutations.
+
+## Thread Inventory
+
+- This crate owns the UI-facing member-thread inventory snapshot for the active workspace.
+- Inventory snapshots use the manual GUI-local title when available, then the backend-provided thread name, then an untitled label while automatic naming is pending or unavailable.
+- Member-thread inventory refreshes must run off the `gpui` thread and publish complete snapshots atomically into shell state.
+- Refreshed member-thread inventory snapshots must resolve row titles against the current workspace conversation state before publication, because manual title metadata and backend thread-name snapshots can change while an off-thread refresh is running.
+- Refreshed member-thread inventory snapshots preserve optional backend-provided fork parent thread id metadata so UI selectors can project branch relationships without backend calls on render paths.
+- Inventory refresh may enrich backend thread-list summaries with metadata-only backend thread reads when list summaries do not include a durable fork parent id. This enrichment remains part of the off-thread refresh job and must publish a complete snapshot rather than making render-time backend calls.
+- Menu rendering must read the latest available member-thread inventory snapshot and must not synchronously call backend protocol methods.
+- Inventory grouping uses the active workspace's available members: explicit members when present, otherwise the implicit home member when a runtime environment is selected.
+- A backend thread summary is grouped under a member only when its recorded working directory exactly matches that member's canonical path.
+- Fork parent metadata does not affect inventory grouping; a thread remains grouped by its own recorded working directory even when its parent metadata points to a thread outside that member group or outside the latest snapshot.
+- Inventory refresh requests should use app-server working-directory filters, updated-time sorting, and pagination so the backend does the coarse filtering and ordering work when supported.
+- Thread groups are sorted by backend `last updated` metadata descending before they are published to UI state.
+- Graph node `Link thread` menus create durable thread refs through the repository-backed semantic-graph mutation path, may show an optimistic local graph projection, and do not activate or reload the selected transcript thread.
+- Graph node `Delete` menus delete only a hard-tree leaf semantic node through the repository-backed semantic-graph mutation path, may show an optimistic local graph projection, and leave backend-owned conversation threads untouched.
+- Graph node `Delete Recursively` menus delete only the selected semantic node and its hard descendants through the repository-backed semantic-graph mutation path, may show an optimistic local graph projection, and leave backend-owned conversation threads untouched.
+- Thread selector rendering uses the latest available member-thread inventory snapshot and must not synchronously call backend protocol methods.
+- Opening the thread selector may mark the member-thread inventory for background refresh while preserving the latest snapshot for immediate rendering.
+
+## Thread Selection Entry Points
+
+- This crate owns the thread selector UI for activating existing backend conversation threads from the active workspace's member-thread inventory.
+- Thread selector columns project each member group as a root/orphan thread column plus recursive fork columns derived from optional inventory fork parent metadata.
+- A parent-child selector relationship exists only when both threads are present in the same member group. Threads with no parent metadata, missing parent rows, stale or filtered parent rows, malformed parent metadata, or parent rows in another member group remain selectable in the root/orphan column for their own member group.
+- Selecting a thread row with forks opens the next fork column, while activation still targets the exact selected thread id.
+- Thread selector row ordering uses the newest backend update time in each row's visible branch subtree so recently active forks keep their root branch near recent work.
+- Thread selector state reconciles selected column paths after inventory refreshes by durable member and thread identity, pruning invalid branch columns without substituting a different selected thread.
+- Thread selector activation reuses the exact direct-resume activation path used by graph thread refs and must preserve rebind-required behavior.
+- Exact existing-thread activation resumes the selected backend thread by id without prelisting workspace threads.
+- Exact existing-thread activation validates the resumed thread's recorded working directory against the expected execution target before updating active-thread workspace state.
+- Exact existing-thread activation first requests metadata-only resume and then loads transcript turns through bounded paginated history requests.
+- Activating a thread from the thread selector updates active-thread workspace state only after the selected backend thread is successfully reopened.
+- Thread selector activation does not create, remove, or modify semantic graph thread refs.
+
+## Thread Creation Entry Points
+
+- This crate owns GUI entry points that create new backend conversation threads from the workspace composer and semantic graph.
+- New standalone threads created from the composer use the active Beryl workspace's current primary workspace member rather than whichever member was last opened for an existing thread.
+- This crate applies the active non-empty global developer-instructions preference as hidden developer-instructions context when it starts a top-level user-message turn for a user-facing backend conversation thread, including the first turn of new threads created through the workspace composer, graph topic start, or checklist-item start and later turns in existing threads.
+- This crate also applies the active non-empty global developer-instructions preference as hidden developer-instructions context when it starts the automatic continuation turn produced by `yield(phase_continue)`.
+- When the active developer-instructions preference is disabled, this crate sends the hidden app-server reset value needed by the backend request mechanism so an earlier custom developer-instructions setting does not continue on later top-level user-message turns.
+- When the backend hidden developer-instructions mechanism requires an effective model and this crate has no exact effective model for the target turn from backend metadata or GUI-held pending defaults, this crate omits hidden developer-instructions request data rather than guessing a model.
+- Developer-instructions preference lookup is late-bound to request assembly, so retries, regeneration-style replacement starts, and existing threads use the latest applied setting rather than a thread-creation value or a value stored in queued input.
+- This crate must not store injected developer instructions in transcript presentation, pending user input fragments, semantic graph thread refs, or any other GUI-owned conversation content, and must not convert them into backend user input records.
+- Existing-thread activation, active-turn steering, context compaction requests themselves, title-generation maintenance, inventory refresh, lazy metadata reads, subagent requests, and other background/status-only backend work do not consume the global developer-instructions preference.
+- Beryl-created backend conversation threads become eligible for automatic title generation as soon as the first submitted user input fragment and backend thread id are both known, including when the backend thread was created before the fragment by a graph or checklist start action.
+- Automatic title generation must be scheduled off the `gpui` thread on a background backend client connection and must not wait for or delay the target thread's turn streaming, terminal state, or transcript presentation.
+- Automatic title generation must not reuse a prior maintenance thread or carry history from another title attempt.
+- A transcript branch thread is a Beryl-created user-facing persistent thread. Its automatic title seed is the clicked turn's ordered user input fragments after text and image-marker fallback extraction, not the source thread's first prompt, source thread title, or assistant narrative.
+- `Branch and switch to` reuses the exact existing-thread activation path after backend fork, rollback, local branch registration, and title scheduling succeed. `Branch in background` registers the branch and schedules inventory refresh without changing the selected active thread.
+- Transcript branch creation must perform backend fork and rollback away from the `gpui` thread, must not mutate the source thread transcript projection, and must not publish the branch into active-thread UI state until rollback succeeds.
+- Double-clicking a topic-capable semantic node creates a backend conversation thread through the current primary workspace member, persists a durable thread ref to that existing node, and activates the resulting transcript.
+- Graph-started thread creation must keep backend work and graph persistence off the `gpui` thread and must report the created-but-not-linked failure case explicitly if backend thread creation succeeds but graph ref persistence fails. The backend-created thread is not rolled back by a graph-ref persistence failure.
+- Immediate graph-node `Delete` actions are transient UI actions owned by this crate. `Delete` is visible for every graph node but is enabled only when the latest graph projection shows no hard children, and its repository-backed mutation must still fail if the target is not a hard-tree leaf when persisted state is mutated.
+- Held destructive graph-node actions are transient UI state owned by this crate. `Delete Recursively` uses a three-second held activation with left-to-right row fill, cancels on early release, pointer exit, menu close, focus loss, or stale graph-node target, and triggers at most one repository-backed graph mutation after completion.
+
+## Graph Tools
+
+- This crate owns the repository-backed boundary used by Beryl's GUI-owned semantic-graph app-server dynamic tools.
+- Tool reads must be targeted and bounded, returning node-centered graph neighborhoods or checklist slices from persisted workspace graph state rather than whole-graph dumps.
+- Dynamic write tools must expose explicit operation-specific argument schemas so the model can call graph and checklist commands without inferring an internal patch DSL. Node upsert must include parent or root-level assignment in the same tool call so hard-forest invariants are preserved atomically.
+- Dynamic graph read tools must not silently choose one root-level node when a graph has multiple roots. Reads that need a node-centered neighborhood must either receive an explicit anchor or return bounded root-level information.
+- Tool writes must flow through the same durable repository patch path used by other semantic-graph mutations so invariants and workspace `last updated` behavior stay consistent.
+- A successful dynamic tool write response means the repository graph mutation commit succeeded before this crate returns the tool result to app-server.
+- Successful dynamic tool writes must publish the committed patch and graph revision into shell state through the same graph mutation coordinator used by user-initiated graph changes.
+- Dynamic tool writes that durably restate already-current graph facts publish quiet no-op commits. The shell may advance graph revision metadata from those commits, but it must not surface an error, replace the graph overlay body, or disturb graph columns, scroll, selection, expansion, thread refs, soft-link identity, or checklist-sidebar projection.
+- Dynamic tool writes must not publish routine whole-graph reloads into shell state after successful commits. Whole-graph reload is reserved for startup and explicit recovery.
+- Callers of this crate-owned tool boundary must keep repository and tool execution off the `gpui` thread, and optional post-turn graph maintenance must stay off the user-visible response path.
