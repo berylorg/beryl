@@ -317,6 +317,52 @@ fn thread_selector_close_and_dismissal_keep_anchor_clicks_inside() {
 }
 
 #[test]
+fn thread_selector_close_drops_runtime_projection_until_reopen() {
+    let (workspace_id, workspace_state, first) = workspace_with_single_member();
+    let thread_id = ConversationThreadId::new("thread_a");
+    let snapshot = build_member_thread_inventory_snapshot(
+        workspace_id,
+        &workspace_state,
+        empty_groups_for_workspace_state(&workspace_state),
+        vec![summary("thread_a", first.canonical_path())],
+        50,
+    );
+    let mut selector = ThreadSelectorState::default();
+
+    selector.open(&snapshot, Some(thread_id.clone()));
+    assert!(selector.is_open());
+    assert!(!selector.columns().is_empty());
+    assert!(
+        selector
+            .projection()
+            .member_key_for_thread(&thread_id)
+            .is_some()
+    );
+
+    selector.close();
+
+    assert!(!selector.is_open());
+    assert!(selector.columns().is_empty());
+    assert!(
+        selector
+            .projection()
+            .member_key_for_thread(&thread_id)
+            .is_none()
+    );
+
+    selector.open(&snapshot, Some(thread_id.clone()));
+
+    assert!(selector.is_open());
+    assert!(
+        selector
+            .projection()
+            .member_key_for_thread(&thread_id)
+            .is_some()
+    );
+    assert!(selector.selected_activation_target().is_some());
+}
+
+#[test]
 fn thread_selector_uses_stale_snapshot_while_inventory_refresh_is_pending_or_failed() {
     let (workspace_id, workspace_state, first, _) = workspace_with_two_members();
     let snapshot = build_member_thread_inventory_snapshot(

@@ -7,6 +7,7 @@ use beryl_backend::{
 
 pub(crate) const THREAD_HISTORY_PAGE_LIMIT: u32 = 80;
 pub(crate) const TRANSCRIPT_HISTORY_MAX_RESIDENT_PAGES: usize = 4;
+pub(crate) const TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES: usize = 32;
 #[allow(dead_code)]
 const OLDER_HISTORY_VISIBLE_ROW_THRESHOLD: usize = 2;
 const MISSING_HISTORY_VISIBLE_ROW_THRESHOLD: usize = 8;
@@ -60,6 +61,11 @@ pub(crate) struct TranscriptHistoryRetainedCounts {
     pub(crate) resident_pages: usize,
     pub(crate) released_pages: usize,
     pub(crate) loading_pages: usize,
+    pub(crate) pinned_pages: usize,
+    pub(crate) turn_ids: usize,
+    pub(crate) turn_id_bytes: usize,
+    pub(crate) cursor_bytes: usize,
+    pub(crate) metadata_bytes: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -223,11 +229,47 @@ impl TranscriptHistoryWindow {
 
     pub(crate) fn retained_counts(&self) -> TranscriptHistoryRetainedCounts {
         let resident_pages = self.pages.iter().filter(|page| page.resident).count();
+        let pinned_pages = self.pages.iter().filter(|page| page.pinned).count();
+        let turn_ids = self.pages.iter().map(|page| page.turn_ids.len()).sum();
+        let turn_id_bytes = self
+            .pages
+            .iter()
+            .flat_map(|page| page.turn_ids.iter())
+            .map(String::len)
+            .sum::<usize>();
+        let cursor_bytes = self
+            .older_cursor
+            .as_ref()
+            .map_or(0, String::len)
+            .saturating_add(self.newer_cursor.as_ref().map_or(0, String::len))
+            .saturating_add(
+                self.loading_page
+                    .as_ref()
+                    .map_or(0, |loading| match loading {
+                        LoadingTranscriptHistoryPage::Older { cursor } => cursor.len(),
+                        LoadingTranscriptHistoryPage::Released { .. } => 0,
+                    }),
+            )
+            .saturating_add(
+                self.pages
+                    .iter()
+                    .map(|page| {
+                        page.load_cursor.as_ref().map_or(0, String::len)
+                            + page.older_cursor.as_ref().map_or(0, String::len)
+                            + page.newer_cursor.as_ref().map_or(0, String::len)
+                    })
+                    .sum::<usize>(),
+            );
         TranscriptHistoryRetainedCounts {
             pages: self.pages.len(),
             resident_pages,
             released_pages: self.pages.len().saturating_sub(resident_pages),
             loading_pages: usize::from(self.loading_page.is_some()),
+            pinned_pages,
+            turn_ids,
+            turn_id_bytes,
+            cursor_bytes,
+            metadata_bytes: turn_id_bytes.saturating_add(cursor_bytes),
         }
     }
 
@@ -323,6 +365,7 @@ impl TranscriptHistoryWindow {
             });
         }
 
+        self.prune_released_page_metadata(visible_range);
         releases
     }
 
@@ -370,6 +413,28 @@ impl TranscriptHistoryWindow {
         let id = TranscriptHistoryPageId(self.next_page_id);
         self.next_page_id += 1;
         id
+    }
+
+    fn prune_released_page_metadata(&mut self, visible_range: &Range<usize>) {
+        let loading_page_id = match self.loading_page {
+            Some(LoadingTranscriptHistoryPage::Released { page_id }) => Some(page_id),
+            _ => None,
+        };
+        while self.pages.iter().filter(|page| !page.resident).count()
+            > TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES
+        {
+            let Some(index) = self
+                .pages
+                .iter()
+                .enumerate()
+                .filter(|(_, page)| !page.resident && Some(page.id) != loading_page_id)
+                .max_by_key(|(_, page)| page_distance_to_range(&page.range(), visible_range))
+                .map(|(index, _)| index)
+            else {
+                break;
+            };
+            self.pages.remove(index);
+        }
     }
 }
 

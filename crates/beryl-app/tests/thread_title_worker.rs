@@ -295,6 +295,14 @@ fn repair_candidate_uses_later_fallback_when_no_earlier_input_is_known() {
 }
 
 #[test]
+fn title_candidate_truncates_retained_user_input_seed() {
+    let input = "x".repeat(4_500);
+    let candidate = ThreadTitleCandidate::new("target_thread", input).unwrap();
+
+    assert_eq!(candidate.user_input().len(), 4_000);
+}
+
+#[test]
 fn repair_candidate_respects_title_and_task_guards() {
     assert!(
         thread_title_repair_candidate("target_thread", false, None, false, Some("Prompt"), None,)

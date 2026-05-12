@@ -5,6 +5,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub(crate) const TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES: usize = 512;
+pub(crate) const TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_TEXT_BYTES: usize = 2 * 1024 * 1024;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TranscriptStreamProjectionKey(String);
 
@@ -33,12 +36,22 @@ impl Default for TranscriptStreamProjectionConfig {
 pub(crate) struct TranscriptStreamProjection {
     config: TranscriptStreamProjectionConfig,
     entries: HashMap<TranscriptStreamProjectionKey, TranscriptStreamProjectionEntry>,
+    access_tick: u64,
 }
 
 #[derive(Debug, Default)]
 struct TranscriptStreamProjectionEntry {
     visible_text: String,
     first_uncommitted_at: Option<Instant>,
+    last_used: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TranscriptStreamProjectionRetainedCounts {
+    pub(crate) entries: usize,
+    pub(crate) key_bytes: usize,
+    pub(crate) text_bytes: usize,
+    pub(crate) uncommitted_entries: usize,
 }
 
 #[derive(Clone)]
@@ -61,7 +74,6 @@ impl TranscriptStreamProjectionContext {
         self.projection
             .borrow_mut()
             .visible_text(key, authoritative_text, complete, now)
-            .to_string()
     }
 }
 
@@ -70,6 +82,7 @@ impl TranscriptStreamProjection {
         Self {
             config,
             entries: HashMap::new(),
+            access_tick: 0,
         }
     }
 
@@ -79,53 +92,110 @@ impl TranscriptStreamProjection {
         authoritative_text: &str,
         complete: bool,
         now: Instant,
-    ) -> &str {
-        let entry = self.entries.entry(key).or_default();
-        if complete {
-            entry.visible_text.clear();
-            entry.visible_text.push_str(authoritative_text);
-            entry.first_uncommitted_at = None;
-            return entry.visible_text.as_str();
-        }
-
-        if !authoritative_text.starts_with(entry.visible_text.as_str()) {
-            entry.visible_text.clear();
-            entry.first_uncommitted_at = None;
-        }
-
-        if authoritative_text.len() == entry.visible_text.len() {
-            entry.first_uncommitted_at = None;
-            return entry.visible_text.as_str();
-        }
-
-        let visible_len = entry.visible_text.len();
-        let stable_prefix_len = stable_prefix_len(authoritative_text).max(visible_len);
-        if stable_prefix_len > visible_len {
-            entry.visible_text.clear();
-            entry
-                .visible_text
-                .push_str(&authoritative_text[..stable_prefix_len]);
-            entry.first_uncommitted_at =
-                (stable_prefix_len < authoritative_text.len()).then_some(now);
-            return entry.visible_text.as_str();
-        }
-
-        let first_uncommitted_at = *entry.first_uncommitted_at.get_or_insert(now);
-        let uncommitted_chars = authoritative_text[visible_len..].chars().count();
-        if now.saturating_duration_since(first_uncommitted_at) >= self.config.coalesce_interval
-            || uncommitted_chars >= self.config.max_uncommitted_chars
+    ) -> String {
+        self.access_tick = self.access_tick.saturating_add(1);
+        let access_tick = self.access_tick;
+        let key_for_return = key.clone();
         {
-            entry.visible_text.clear();
-            entry.visible_text.push_str(authoritative_text);
-            entry.first_uncommitted_at = None;
+            let entry = self.entries.entry(key).or_default();
+            entry.last_used = access_tick;
+            if complete {
+                entry.visible_text.clear();
+                entry.visible_text.push_str(authoritative_text);
+                entry.first_uncommitted_at = None;
+            } else {
+                if !authoritative_text.starts_with(entry.visible_text.as_str()) {
+                    entry.visible_text.clear();
+                    entry.first_uncommitted_at = None;
+                }
+
+                if authoritative_text.len() == entry.visible_text.len() {
+                    entry.first_uncommitted_at = None;
+                } else {
+                    let visible_len = entry.visible_text.len();
+                    let stable_prefix_len = stable_prefix_len(authoritative_text).max(visible_len);
+                    if stable_prefix_len > visible_len {
+                        entry.visible_text.clear();
+                        entry
+                            .visible_text
+                            .push_str(&authoritative_text[..stable_prefix_len]);
+                        entry.first_uncommitted_at =
+                            (stable_prefix_len < authoritative_text.len()).then_some(now);
+                    } else {
+                        let first_uncommitted_at = *entry.first_uncommitted_at.get_or_insert(now);
+                        let uncommitted_chars = authoritative_text[visible_len..].chars().count();
+                        if now.saturating_duration_since(first_uncommitted_at)
+                            >= self.config.coalesce_interval
+                            || uncommitted_chars >= self.config.max_uncommitted_chars
+                        {
+                            entry.visible_text.clear();
+                            entry.visible_text.push_str(authoritative_text);
+                            entry.first_uncommitted_at = None;
+                        }
+                    }
+                }
+            }
         }
 
-        entry.visible_text.as_str()
+        self.prune_completed_entries();
+        self.entries
+            .get(&key_for_return)
+            .map(|entry| entry.visible_text.clone())
+            .unwrap_or_default()
     }
 
     #[allow(dead_code)]
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
+    }
+
+    pub(crate) fn retained_counts(&self) -> TranscriptStreamProjectionRetainedCounts {
+        TranscriptStreamProjectionRetainedCounts {
+            entries: self.entries.len(),
+            key_bytes: self.entries.keys().map(|key| key.0.len()).sum(),
+            text_bytes: self
+                .entries
+                .values()
+                .map(|entry| entry.visible_text.len())
+                .sum(),
+            uncommitted_entries: self
+                .entries
+                .values()
+                .filter(|entry| entry.first_uncommitted_at.is_some())
+                .count(),
+        }
+    }
+
+    fn prune_completed_entries(&mut self) {
+        while self.completed_entry_count() > TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES
+            || self.completed_text_bytes() > TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_TEXT_BYTES
+        {
+            let Some(key) = self
+                .entries
+                .iter()
+                .filter(|(_, entry)| entry.first_uncommitted_at.is_none())
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.entries.remove(&key);
+        }
+    }
+
+    fn completed_entry_count(&self) -> usize {
+        self.entries
+            .values()
+            .filter(|entry| entry.first_uncommitted_at.is_none())
+            .count()
+    }
+
+    fn completed_text_bytes(&self) -> usize {
+        self.entries
+            .values()
+            .filter(|entry| entry.first_uncommitted_at.is_none())
+            .map(|entry| entry.visible_text.len())
+            .sum()
     }
 }
 

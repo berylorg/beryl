@@ -4,7 +4,10 @@ use std::{
     hash::{Hash, Hasher},
     ops::Range,
     path::PathBuf,
-    sync::mpsc::{self, Receiver, RecvTimeoutError, TryRecvError},
+    sync::{
+        Arc,
+        mpsc::{self, Receiver, RecvTimeoutError, TryRecvError},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -23,10 +26,10 @@ use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId, WorkspaceMemberId,
 };
 use gpui::{
-    App, Application, AsyncApp, Bounds, ClipboardItem, Context, Entity, KeyBinding, KeyDownEvent,
-    KeyUpEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions, Pixels, Point,
-    PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent, Task, WeakEntity, Window,
-    WindowBounds, WindowOptions, prelude::*, px, rgb, size,
+    App, Application, AsyncApp, Bounds, ClipboardItem, Context, Entity, Image, KeyBinding,
+    KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions,
+    Pixels, Point, PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent, Task, WeakEntity,
+    Window, WindowBounds, WindowOptions, prelude::*, px, rgb, size,
 };
 use gpui_settings_window::{
     SettingsWindowEvent, SettingsWindowHandle, SettingsWindowOpenDisposition, open_settings_window,
@@ -44,7 +47,8 @@ use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
 use crate::text_input::{
     SharedTextInputCopy, SharedTextInputCut, SharedTextInputEnter, SharedTextInputPaste,
     SingleLineInput, TextInputAtomClipboardPolicy, TextInputEnterKey, TextInputEvent,
-    TextInputOptions, TextInputRichPastePolicy, TextInputSelectionAtom, TextInputSelectionExport,
+    TextInputOptions, TextInputRetainedCounts, TextInputRichPastePolicy, TextInputSelectionAtom,
+    TextInputSelectionExport,
 };
 use crate::{AppBootstrap, WorkspaceActivityPanelMode, WorkspaceGraphRevision, WorkspaceUiState};
 
@@ -58,32 +62,100 @@ const SHELL_WORKER_POLL_MAX_EVENTS_PER_FRAME: usize = 64;
 const SHELL_WORKER_POLL_MAX_FRAME_TIME: Duration = Duration::from_millis(4);
 const TURN_UPDATE_POLL_MAX_EVENTS_PER_FRAME: usize = 64;
 const TURN_UPDATE_POLL_MAX_FRAME_TIME: Duration = Duration::from_millis(4);
+const SHORT_TEXT_INPUT_UNDO_BYTE_LIMIT: usize = 256 * 1024;
+const COMPOSER_TEXT_INPUT_UNDO_BYTE_LIMIT: usize = 2 * 1024 * 1024;
+const PENDING_NEW_THREAD_LABEL_SCOPE_BINDINGS_MAX: usize = 64;
+const KNOWN_THREADS_MAX: usize = 2048;
+const KNOWN_THREADS_PAYLOAD_BYTE_LIMIT: usize = 4 * 1024 * 1024;
+const KNOWN_THREAD_PREVIEW_MAX_BYTES: usize = 4 * 1024;
+const KNOWN_THREAD_NAME_MAX_BYTES: usize = 512;
+const KNOWN_THREAD_AGENT_NICKNAME_MAX_BYTES: usize = 512;
+const KNOWN_THREAD_MODEL_PROVIDER_MAX_BYTES: usize = 256;
 
 fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
 fn known_thread_payload_bytes(threads: &[ThreadSummary]) -> usize {
-    threads
-        .iter()
-        .map(|thread| {
+    threads.iter().map(known_thread_summary_payload_bytes).sum()
+}
+
+fn known_thread_summary_payload_bytes(thread: &ThreadSummary) -> usize {
+    thread
+        .id
+        .len()
+        .saturating_add(thread.forked_from_id.as_ref().map_or(0, String::len))
+        .saturating_add(thread.cwd.to_string_lossy().len())
+        .saturating_add(thread.preview.len())
+        .saturating_add(thread.name.as_ref().map_or(0, String::len))
+        .saturating_add(thread.agent_nickname.as_ref().map_or(0, String::len))
+        .saturating_add(
             thread
-                .id
-                .len()
-                .saturating_add(thread.forked_from_id.as_ref().map_or(0, String::len))
-                .saturating_add(thread.cwd.to_string_lossy().len())
-                .saturating_add(thread.preview.len())
-                .saturating_add(thread.name.as_ref().map_or(0, String::len))
-                .saturating_add(thread.agent_nickname.as_ref().map_or(0, String::len))
-                .saturating_add(
-                    thread
-                        .path
-                        .as_ref()
-                        .map_or(0, |path| path.to_string_lossy().len()),
-                )
-                .saturating_add(thread.model_provider.len())
-        })
-        .sum()
+                .path
+                .as_ref()
+                .map_or(0, |path| path.to_string_lossy().len()),
+        )
+        .saturating_add(thread.model_provider.len())
+}
+
+fn bounded_known_thread_summary(mut thread: ThreadSummary) -> ThreadSummary {
+    truncate_string_to_byte_limit(&mut thread.preview, KNOWN_THREAD_PREVIEW_MAX_BYTES);
+    if let Some(name) = thread.name.as_mut() {
+        truncate_string_to_byte_limit(name, KNOWN_THREAD_NAME_MAX_BYTES);
+    }
+    if let Some(agent_nickname) = thread.agent_nickname.as_mut() {
+        truncate_string_to_byte_limit(agent_nickname, KNOWN_THREAD_AGENT_NICKNAME_MAX_BYTES);
+    }
+    truncate_string_to_byte_limit(
+        &mut thread.model_provider,
+        KNOWN_THREAD_MODEL_PROVIDER_MAX_BYTES,
+    );
+    thread
+}
+
+fn truncate_string_to_byte_limit(text: &mut String, max_bytes: usize) {
+    if text.len() <= max_bytes {
+        return;
+    }
+    if max_bytes == 0 {
+        text.clear();
+        return;
+    }
+
+    const SUFFIX: &str = "...";
+    let suffix = if max_bytes >= SUFFIX.len() {
+        SUFFIX
+    } else {
+        ""
+    };
+    let mut end = max_bytes.saturating_sub(suffix.len());
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    text.push_str(suffix);
+}
+
+fn bounded_known_threads(
+    known_threads: Vec<ThreadSummary>,
+    pinned_thread_ids: impl IntoIterator<Item = String>,
+) -> Vec<ThreadSummary> {
+    let pinned_thread_ids = pinned_thread_ids.into_iter().collect::<HashSet<_>>();
+    let mut retained = Vec::new();
+    let mut retained_bytes = 0usize;
+
+    for thread in known_threads.into_iter().map(bounded_known_thread_summary) {
+        let thread_bytes = known_thread_summary_payload_bytes(&thread);
+        let pinned = pinned_thread_ids.contains(&thread.id);
+        let within_budget = retained.len() < KNOWN_THREADS_MAX
+            && retained_bytes.saturating_add(thread_bytes) <= KNOWN_THREADS_PAYLOAD_BYTE_LIMIT;
+        if pinned || within_budget {
+            retained_bytes = retained_bytes.saturating_add(thread_bytes);
+            retained.push(thread);
+        }
+    }
+
+    retained
 }
 
 fn workspace_picker_action_keyboard_activation_key(key: &str) -> bool {
@@ -197,7 +269,9 @@ mod workspace_title;
 use account_rate_limits::{
     AccountRateLimitsOutcome, AccountRateLimitsUpdate, spawn_account_rate_limits_worker,
 };
-use checklist_sidebar_projection::{ChecklistSidebarProjection, ChecklistSidebarProjectionCache};
+use checklist_sidebar_projection::{
+    ChecklistSidebarProjection, ChecklistSidebarProjectionCache, ChecklistSidebarRow,
+};
 use checklist_sidebar_visibility::ChecklistSidebarVisibilityState;
 use checklist_thread_menu::ChecklistThreadStartMenuState;
 use column_selector::{
@@ -209,9 +283,9 @@ use composer_clipboard::{
     ComposerClipboardStore,
 };
 use composer_draft::{
-    AcceptedComposerDraft, ComposerDraft, ComposerDraftImageAtom, ComposerDraftImageData,
-    composer_image_copy_text, composer_image_label_from_atom_id, composer_image_marker,
-    first_clipboard_image,
+    AcceptedComposerDraft, ComposerDraft, ComposerDraftImageAdmissionError, ComposerDraftImageAtom,
+    ComposerDraftImageData, composer_image_copy_text, composer_image_label_from_atom_id,
+    composer_image_marker, first_clipboard_image,
 };
 use composer_history::{ComposerHistoryBrowseResult, ComposerHistoryScope, ComposerHistoryState};
 use composer_image_assets::{ComposerImageAssetUpdate, spawn_composer_image_asset_worker};
@@ -235,7 +309,10 @@ use graph::{
     GraphOptimisticMutation, GraphOverlayState, OptimisticGraphMutationId,
 };
 use graph_thread_start::GraphThreadStartTask;
-use graph_worker::{GraphUpdate, GraphWorkerTask, spawn_thread_ref_link_worker};
+use graph_worker::{
+    GraphReloadUpdate, GraphUpdate, GraphWorkerTask, spawn_graph_reload_worker,
+    spawn_thread_ref_link_worker,
+};
 use hard_stop::HardStopUpdate;
 use hard_stop_targets::HardStopTargetProjection;
 use lifecycle_continuation::{
@@ -549,13 +626,15 @@ struct ShellView {
     next_attempt: u32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 struct ComposerImagePopupState {
     atom_id: String,
     label: String,
     position: Point<Pixels>,
     bounds: Option<Bounds<Pixels>>,
     mode: ComposerImagePopupMode,
+    preview_image: Option<Arc<Image>>,
+    preview_image_bytes: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -563,6 +642,68 @@ struct PendingComposerImageAssetPaste {
     workspace_id: BerylWorkspaceId,
     display_text_snapshot: String,
     replacement_range: Range<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct TextInputRetainedAggregate {
+    count: usize,
+    current_text_bytes: usize,
+    current_atom_count: usize,
+    current_atom_bytes: usize,
+    undo_snapshot_count: usize,
+    redo_snapshot_count: usize,
+    undo_bytes: usize,
+    redo_bytes: usize,
+    widget_layout_lines: usize,
+    widget_visual_lines: usize,
+    widget_visible_text_bytes: usize,
+}
+
+impl TextInputRetainedAggregate {
+    fn add(&mut self, counts: TextInputRetainedCounts) {
+        self.count = self.count.saturating_add(1);
+        self.current_text_bytes = self
+            .current_text_bytes
+            .saturating_add(counts.current_text_bytes);
+        self.current_atom_count = self
+            .current_atom_count
+            .saturating_add(counts.current_atom_count);
+        self.current_atom_bytes = self
+            .current_atom_bytes
+            .saturating_add(counts.current_atom_id_bytes)
+            .saturating_add(counts.current_atom_display_bytes)
+            .saturating_add(counts.current_atom_copy_text_bytes);
+        self.undo_snapshot_count = self
+            .undo_snapshot_count
+            .saturating_add(counts.undo_snapshot_count);
+        self.redo_snapshot_count = self
+            .redo_snapshot_count
+            .saturating_add(counts.redo_snapshot_count);
+        self.undo_bytes = self
+            .undo_bytes
+            .saturating_add(counts.undo_text_bytes)
+            .saturating_add(counts.undo_atom_bytes);
+        self.redo_bytes = self
+            .redo_bytes
+            .saturating_add(counts.redo_text_bytes)
+            .saturating_add(counts.redo_atom_bytes);
+        self.widget_layout_lines = self
+            .widget_layout_lines
+            .saturating_add(counts.widget_layout_line_count.unwrap_or_default());
+        self.widget_visual_lines = self
+            .widget_visual_lines
+            .saturating_add(counts.widget_visual_line_count.unwrap_or_default());
+        self.widget_visible_text_bytes = self
+            .widget_visible_text_bytes
+            .saturating_add(counts.widget_visible_text_bytes.unwrap_or_default());
+    }
+
+    fn payload_bytes_lower_bound(self) -> usize {
+        self.current_text_bytes
+            .saturating_add(self.current_atom_bytes)
+            .saturating_add(self.undo_bytes)
+            .saturating_add(self.redo_bytes)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -581,6 +722,22 @@ struct TurnSteeringTask {
     thread_id: String,
     fragments: Vec<SteeringInputFragment>,
     receiver: Receiver<TurnSteeringUpdate>,
+}
+
+const MAX_CONCURRENT_TURN_STEERING_TASKS: usize = 4;
+
+fn validate_pending_active_turn_steering_first_fragment(
+    fragment: &SteeringInputFragment,
+) -> Result<(), pending_turn_input::PendingInputAdmissionError> {
+    let retained_bytes = fragment.retained_payload_bytes_lower_bound();
+    if retained_bytes > pending_turn_input::PENDING_ACTIVE_TURN_STEERING_MAX_PAYLOAD_BYTES {
+        return Err(
+            pending_turn_input::PendingInputAdmissionError::TooManyBytes {
+                max_bytes: pending_turn_input::PENDING_ACTIVE_TURN_STEERING_MAX_PAYLOAD_BYTES,
+            },
+        );
+    }
+    Ok(())
 }
 
 impl Drop for ShellView {
@@ -1614,6 +1771,8 @@ impl ConversationSurfaceState {
         graph_revision: WorkspaceGraphRevision,
         graph_warning: Option<String>,
     ) -> Self {
+        let known_threads =
+            bounded_known_threads(known_threads, selected_thread_id.iter().cloned());
         let mut state = Self {
             known_threads,
             selected_thread: None,
@@ -1727,8 +1886,10 @@ impl ConversationSurfaceState {
     }
 
     fn record_accepted_composer_history(&mut self, draft: &AcceptedComposerDraft) {
-        self.composer_history
-            .record_accepted(self.composer_history_scope(), draft.clone());
+        self.composer_history.record_accepted(
+            self.composer_history_scope(),
+            draft.with_durable_image_references(),
+        );
     }
 
     fn browse_composer_history_previous(
@@ -1799,10 +1960,37 @@ impl ConversationSurfaceState {
             self.pending_new_thread_label_scope_id,
             thread_id.to_string(),
         );
+        self.prune_pending_new_thread_label_scope_bindings();
         self.composer_history.bind_pending_new_thread_to_thread(
             self.pending_new_thread_label_scope_id,
             thread_id.to_string(),
         );
+    }
+
+    fn prune_pending_new_thread_label_scope_bindings(&mut self) {
+        if self.pending_new_thread_label_scope_bindings.len()
+            <= PENDING_NEW_THREAD_LABEL_SCOPE_BINDINGS_MAX
+        {
+            return;
+        }
+
+        let current_scope = self.pending_new_thread_label_scope_id;
+        let mut removable_scopes = self
+            .pending_new_thread_label_scope_bindings
+            .keys()
+            .copied()
+            .filter(|scope_id| *scope_id != current_scope)
+            .collect::<Vec<_>>();
+        removable_scopes.sort_unstable();
+        for scope_id in removable_scopes {
+            if self.pending_new_thread_label_scope_bindings.len()
+                <= PENDING_NEW_THREAD_LABEL_SCOPE_BINDINGS_MAX
+            {
+                break;
+            }
+            self.pending_new_thread_label_scope_bindings
+                .remove(&scope_id);
+        }
     }
 
     fn finish_composer_image_label_scan(
@@ -1865,33 +2053,108 @@ impl ConversationSurfaceState {
         let activity = self.tool_activity.retained_counts();
         let graph = self.graph_overlay.retained_counts();
         let inventory = self.member_thread_inventory.snapshot().retained_counts();
+        let composer_history = self.composer_history.retained_counts();
+        let pending_turn_input_fragments = self
+            .pending_turn_input_queue
+            .as_ref()
+            .map(PendingTurnInputQueue::fragment_count)
+            .unwrap_or_default();
+        let pending_turn_input_bytes = self
+            .pending_turn_input_queue
+            .as_ref()
+            .map(PendingTurnInputQueue::payload_bytes_lower_bound)
+            .unwrap_or_default();
+        let pending_steering_fragments = self
+            .pending_active_turn_steering_queue
+            .as_ref()
+            .map(PendingActiveTurnSteeringQueue::fragment_count)
+            .unwrap_or_default();
+        let pending_steering_bytes = self
+            .pending_active_turn_steering_queue
+            .as_ref()
+            .map(|queue| {
+                queue
+                    .fragments()
+                    .iter()
+                    .map(SteeringInputFragment::retained_payload_bytes_lower_bound)
+                    .sum::<usize>()
+            })
+            .unwrap_or_default();
         let known_thread_payload_bytes = known_thread_payload_bytes(&self.known_threads);
         RetainedStateSnapshot {
             retained_payload_bytes_lower_bound: Some(
                 transcript
                     .payload_bytes
                     .saturating_add(presentation.text_bytes)
+                    .saturating_add(presentation.identity_bytes)
+                    .saturating_add(presentation.anchor_bytes)
+                    .saturating_add(history.metadata_bytes)
                     .saturating_add(activity.payload_bytes)
                     .saturating_add(graph.payload_bytes)
                     .saturating_add(inventory.payload_bytes)
+                    .saturating_add(composer_history.display_text_bytes)
+                    .saturating_add(composer_history.part_text_bytes)
+                    .saturating_add(composer_history.image_bytes)
+                    .saturating_add(composer_history.atom_bytes)
+                    .saturating_add(pending_turn_input_bytes)
+                    .saturating_add(pending_steering_bytes)
                     .saturating_add(known_thread_payload_bytes),
             ),
             loaded_transcript_turns: Some(transcript.turns),
             loaded_transcript_items: Some(transcript.items),
             loaded_transcript_text_bytes: Some(transcript.text_bytes),
             transcript_user_fragments: Some(transcript.user_fragments),
+            transcript_user_fragment_text_bytes: Some(transcript.user_fragment_text_bytes),
             transcript_backend_input_records: Some(transcript.backend_input_records),
+            transcript_backend_input_bytes: Some(transcript.backend_input_bytes),
+            transcript_image_marker_bytes: Some(transcript.image_marker_bytes),
             transcript_narrative_entries: Some(transcript.narrative_entries),
             released_transcript_placeholders: Some(transcript.released_placeholders),
+            active_turn_payload_bytes: Some(transcript.active_turn_payload_bytes),
+            transcript_agent_text_bytes: Some(transcript.agent_text_bytes),
+            transcript_reasoning_summary_bytes: Some(transcript.reasoning_summary_bytes),
+            transcript_reasoning_content_bytes: Some(transcript.reasoning_content_bytes),
+            transcript_command_text_bytes: Some(transcript.command_text_bytes),
+            transcript_command_output_bytes: Some(transcript.command_output_bytes),
+            transcript_file_change_path_bytes: Some(transcript.file_change_path_bytes),
+            transcript_file_change_output_bytes: Some(transcript.file_change_output_bytes),
+            transcript_generated_image_inline_bytes: Some(transcript.generated_image_inline_bytes),
+            transcript_generated_image_metadata_bytes: Some(
+                transcript.generated_image_metadata_bytes,
+            ),
+            transcript_error_bytes: Some(transcript.error_bytes),
+            transcript_identity_bytes: Some(transcript.identity_bytes),
             presentation_rows: Some(presentation.rows),
             presentation_items: Some(presentation.items),
             presentation_text_bytes: Some(presentation.text_bytes),
+            presentation_identity_bytes: Some(presentation.identity_bytes),
+            presentation_anchor_bytes: Some(presentation.anchor_bytes),
+            presentation_placeholder_rows: Some(presentation.placeholder_rows),
             history_pages: Some(history.pages),
             history_resident_pages: Some(history.resident_pages),
             history_released_pages: Some(history.released_pages),
+            history_loading_pages: Some(history.loading_pages),
+            history_pinned_pages: Some(history.pinned_pages),
+            history_turn_ids: Some(history.turn_ids),
+            history_turn_id_bytes: Some(history.turn_id_bytes),
+            history_cursor_bytes: Some(history.cursor_bytes),
+            history_metadata_bytes: Some(history.metadata_bytes),
             activity_records: Some(activity.records),
             activity_rows: Some(activity.rows),
             activity_visible_thread_indexes: Some(activity.visible_thread_indexes),
+            activity_label_count: Some(activity.label_count),
+            activity_label_bytes: Some(activity.label_payload_bytes),
+            activity_reasoning_summary_parts: Some(activity.reasoning_summary_parts),
+            activity_reasoning_summary_bytes: Some(activity.reasoning_summary_bytes),
+            activity_subagent_metadata_count: Some(activity.subagent_metadata_count),
+            activity_subagent_metadata_bytes: Some(activity.subagent_metadata_bytes),
+            activity_parent_thread_links: Some(activity.parent_thread_links),
+            activity_parent_thread_link_bytes: Some(activity.parent_thread_link_bytes),
+            activity_visible_thread_index_maps: Some(activity.visible_thread_index_maps),
+            activity_visible_thread_index_key_bytes: Some(activity.visible_thread_index_key_bytes),
+            activity_visible_thread_index_bytes: Some(activity.visible_thread_index_bytes),
+            activity_record_payload_bytes: Some(activity.record_payload_bytes),
+            activity_row_payload_bytes: Some(activity.row_payload_bytes),
             graph_nodes: Some(graph.visible_nodes),
             graph_soft_links: Some(graph.visible_soft_links),
             graph_thread_refs: Some(graph.visible_thread_refs),
@@ -1904,6 +2167,21 @@ impl ConversationSurfaceState {
             inventory_groups: Some(inventory.groups),
             inventory_threads: Some(inventory.threads),
             known_threads: Some(self.known_threads.len()),
+            composer_history_lanes: Some(composer_history.lanes),
+            composer_history_entries: Some(composer_history.entries),
+            composer_history_text_bytes: Some(
+                composer_history
+                    .display_text_bytes
+                    .saturating_add(composer_history.part_text_bytes),
+            ),
+            composer_history_images: Some(composer_history.image_count),
+            composer_history_image_bytes: Some(composer_history.image_bytes),
+            composer_history_atoms: Some(composer_history.atom_count),
+            composer_history_atom_bytes: Some(composer_history.atom_bytes),
+            pending_turn_input_fragments: Some(pending_turn_input_fragments),
+            pending_turn_input_bytes: Some(pending_turn_input_bytes),
+            pending_steering_fragments: Some(pending_steering_fragments),
+            pending_steering_bytes: Some(pending_steering_bytes),
             ..RetainedStateSnapshot::default()
         }
     }
@@ -2432,6 +2710,12 @@ impl ConversationSurfaceState {
         self.checklist_sidebar_projection.projection()
     }
 
+    fn checklist_sidebar_row(&self, index: usize) -> Option<ChecklistSidebarRow> {
+        self.checklist_sidebar_projection
+            .projection()?
+            .row(self.graph_overlay.graph(), index)
+    }
+
     fn checklist_sidebar_viewport_height_hint(&self) -> Pixels {
         self.layout_bounds
             .map(|bounds| (bounds.size.height - px(96.0)).max(px(0.0)))
@@ -2639,6 +2923,12 @@ impl ConversationSurfaceState {
         graph_warning: Option<String>,
     ) {
         let previous_selected_thread = self.selected_thread().cloned();
+        let known_thread_pin = selected_thread_id.clone().or_else(|| {
+            previous_selected_thread
+                .as_ref()
+                .map(|thread| thread.id.clone())
+        });
+        let known_threads = bounded_known_threads(known_threads, known_thread_pin.iter().cloned());
         match selected_thread_history {
             Some(thread) => {
                 self.known_threads = known_threads;
@@ -2718,7 +3008,7 @@ impl ConversationSurfaceState {
         self.transcript_branch_menu.close();
         let visible = self.graph_overlay.toggle_visibility();
         if visible {
-            self.thread_selector.close();
+            self.close_thread_selector();
         }
         visible
     }
@@ -2738,6 +3028,8 @@ impl ConversationSurfaceState {
             self.member_thread_inventory.mark_refresh_needed();
             self.thread_column_selector_scroll
                 .reconcile(self.thread_selector.columns());
+        } else {
+            self.thread_column_selector_scroll.clear();
         }
         opened
     }
@@ -2745,6 +3037,7 @@ impl ConversationSurfaceState {
     fn close_thread_selector(&mut self) -> bool {
         let was_open = self.thread_selector.is_open();
         self.thread_selector.close();
+        self.thread_column_selector_scroll.clear();
         was_open
     }
 
@@ -3177,6 +3470,8 @@ impl ConversationSurfaceState {
     ) -> Option<SteeringInputFragment> {
         let before = self.transcript_presentation.len();
         let anchor_text = user_input.text.clone();
+        let steering_fragment =
+            SteeringInputFragment::from_user_input_fragment(target.turn_index, &user_input);
         self.observe_composer_image_labels_in_thread_fragment(&target.thread_id, &user_input);
         let fragment_index = self
             .execution_details
@@ -3186,15 +3481,6 @@ impl ConversationSurfaceState {
             .len();
         self.execution_details
             .append_user_input_fragment(target.turn_index, user_input)?;
-        let steering_fragment = {
-            let user_fragment = self
-                .execution_details
-                .turns()
-                .get(target.turn_index)?
-                .user_input_fragments()
-                .get(fragment_index)?;
-            SteeringInputFragment::from_user_input_fragment(target.turn_index, user_fragment)
-        };
         let presentation_index = self
             .execution_details
             .turns()
@@ -3229,11 +3515,22 @@ impl ConversationSurfaceState {
         ) {
             Some(PendingActiveTurnSteeringSubmissionPlan::AppendToQueue) => {
                 if let Some(queue) = self.pending_active_turn_steering_queue.as_mut() {
-                    queue.append(fragment);
+                    if let Err(error) = queue.try_append(
+                        fragment,
+                        SteeringInputFragment::retained_payload_bytes_lower_bound,
+                    ) {
+                        self.report_pending_input_admission_error(error);
+                        return false;
+                    }
                 }
                 true
             }
             Some(PendingActiveTurnSteeringSubmissionPlan::StartQueue) => {
+                if let Err(error) = validate_pending_active_turn_steering_first_fragment(&fragment)
+                {
+                    self.report_pending_input_admission_error(error);
+                    return false;
+                }
                 self.pending_active_turn_steering_queue = Some(
                     PendingActiveTurnSteeringQueue::new(thread_id, turn_index, fragment),
                 );
@@ -3243,17 +3540,33 @@ impl ConversationSurfaceState {
         }
     }
 
-    fn can_queue_pending_active_turn_steering_fragment(
+    fn pending_active_turn_steering_admission(
         &self,
         thread_id: &str,
         turn_index: usize,
-    ) -> bool {
-        PendingActiveTurnSteeringQueue::<SteeringInputFragment>::submission_plan(
+        fragment: &SteeringInputFragment,
+    ) -> Result<bool, pending_turn_input::PendingInputAdmissionError> {
+        match PendingActiveTurnSteeringQueue::<SteeringInputFragment>::submission_plan(
             self.pending_active_turn_steering_queue.as_ref(),
             thread_id,
             turn_index,
-        )
-        .is_some()
+        ) {
+            Some(PendingActiveTurnSteeringSubmissionPlan::AppendToQueue) => {
+                let Some(queue) = self.pending_active_turn_steering_queue.as_ref() else {
+                    return Ok(false);
+                };
+                queue.validate_append(
+                    fragment,
+                    SteeringInputFragment::retained_payload_bytes_lower_bound,
+                )?;
+                Ok(true)
+            }
+            Some(PendingActiveTurnSteeringSubmissionPlan::StartQueue) => {
+                validate_pending_active_turn_steering_first_fragment(fragment)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     fn take_pending_active_turn_steering_fragments(
@@ -3302,6 +3615,43 @@ impl ConversationSurfaceState {
             return false;
         }
 
+        let user_inputs = fragments
+            .iter()
+            .cloned()
+            .map(SteeringInputFragment::into_user_input_fragment)
+            .collect::<Vec<_>>();
+        match pending_turn_input::validate_pending_turn_input_fragments(
+            self.pending_turn_input_queue.as_ref(),
+            &thread_id,
+            &execution_target,
+            automatic_title_generation_allowed,
+            &turn_options,
+            self.execution_details.turns().len(),
+            &user_inputs,
+        ) {
+            Ok(true) => {}
+            Ok(false) => return false,
+            Err(error) => {
+                self.report_pending_input_admission_error(error);
+                return false;
+            }
+        }
+
+        let mut queued = true;
+        for user_input in user_inputs {
+            queued &= self.queue_pending_turn_fragment(
+                thread_id.clone(),
+                execution_target.clone(),
+                automatic_title_generation_allowed,
+                turn_options.clone(),
+                user_input,
+            );
+        }
+        debug_assert!(queued, "pending turn input was validated before queueing");
+        if !queued {
+            return false;
+        }
+
         let removals = fragments
             .iter()
             .map(|fragment| {
@@ -3322,17 +3672,7 @@ impl ConversationSurfaceState {
             }
         }
 
-        let mut queued = false;
-        for fragment in fragments {
-            queued |= self.queue_pending_turn_fragment(
-                thread_id.clone(),
-                execution_target.clone(),
-                automatic_title_generation_allowed,
-                turn_options.clone(),
-                fragment.into_user_input_fragment(),
-            );
-        }
-        queued
+        true
     }
 
     fn queue_pending_turn_fragment(
@@ -3355,24 +3695,38 @@ impl ConversationSurfaceState {
                 fragment_index,
             }) => {
                 if let Some(queue) = self.pending_turn_input_queue.as_mut() {
-                    debug_assert_eq!(queue.append(user_input.clone()), fragment_index);
+                    match queue.try_append(user_input.clone()) {
+                        Ok(index) => debug_assert_eq!(index, fragment_index),
+                        Err(error) => {
+                            self.report_pending_input_admission_error(error);
+                            return false;
+                        }
+                    }
                 }
                 self.execution_details
                     .append_user_input_fragment(turn_index, user_input);
                 Some((turn_index, fragment_index))
             }
             Some(PendingTurnInputSubmissionPlan::StartQueue) => {
-                let turn_index = self
-                    .execution_details
-                    .begin_pending_turn_with_fragments(vec![user_input.clone()]);
-                self.pending_turn_input_queue = Some(PendingTurnInputQueue::new(
+                let queue = match PendingTurnInputQueue::try_new(
                     thread_id,
                     execution_target,
                     automatic_title_generation_allowed,
                     turn_options,
-                    turn_index,
-                    user_input,
-                ));
+                    self.execution_details.turns().len(),
+                    user_input.clone(),
+                ) {
+                    Ok(queue) => queue,
+                    Err(error) => {
+                        self.report_pending_input_admission_error(error);
+                        return false;
+                    }
+                };
+                let turn_index = self
+                    .execution_details
+                    .begin_pending_turn_with_fragments(vec![user_input.clone()]);
+                debug_assert_eq!(queue.turn_index(), turn_index);
+                self.pending_turn_input_queue = Some(queue);
                 Some((turn_index, 0))
             }
             None => None,
@@ -3401,6 +3755,13 @@ impl ConversationSurfaceState {
         self.notices.clear_all();
         self.sync_live_transcript_rows(before);
         true
+    }
+
+    fn report_pending_input_admission_error(
+        &mut self,
+        error: pending_turn_input::PendingInputAdmissionError,
+    ) {
+        self.set_notice(SurfaceNotice::new("Input queue full", error.user_message()));
     }
 
     fn selected_thread_context_compaction_id(&self) -> Option<&str> {
@@ -3497,8 +3858,11 @@ impl ConversationSurfaceState {
             }
             _ => None,
         };
+        let selected_thread_id = self.selected_thread_id().map(str::to_string);
+        self.tool_activity
+            .set_selected_thread_id(selected_thread_id.as_deref());
         let tool_activity_agent_label = event.activity().and_then(|activity| {
-            (self.selected_thread_id() == Some(activity.thread_id.as_str()))
+            (selected_thread_id.as_deref() == Some(activity.thread_id.as_str()))
                 .then(|| "Main".to_string())
         });
         self.hard_stop_targets.apply_stream_event(&event);
@@ -3510,7 +3874,8 @@ impl ConversationSurfaceState {
 
         let selected_thread_completed_turn = match &event {
             beryl_backend::TurnStreamEvent::TurnCompleted { thread_id, turn }
-                if self.selected_thread_id() == Some(thread_id.as_str()) && turn.is_terminal() =>
+                if selected_thread_id.as_deref() == Some(thread_id.as_str())
+                    && turn.is_terminal() =>
             {
                 Some(thread_id.clone())
             }
@@ -3620,6 +3985,7 @@ impl ConversationSurfaceState {
     }
 
     fn upsert_selected_thread(&mut self, thread: ThreadSummary) {
+        let thread = bounded_known_thread_summary(thread);
         let previous_thread_id = self.selected_thread_id().map(str::to_string);
         if let Some(index) = self
             .known_threads
@@ -3632,6 +3998,7 @@ impl ConversationSurfaceState {
                 self.selected_thread_status = None;
                 self.cancel_transcript_edit_mode();
             }
+            self.prune_known_threads();
             self.apply_known_thread_agent_labels();
             return;
         }
@@ -3642,16 +4009,30 @@ impl ConversationSurfaceState {
             self.selected_thread_status = None;
             self.cancel_transcript_edit_mode();
         }
+        self.prune_known_threads();
         self.apply_known_thread_agent_labels();
     }
 
     fn replace_known_threads(&mut self, known_threads: Vec<ThreadSummary>, active_thread_id: &str) {
-        self.known_threads = known_threads;
+        self.known_threads = bounded_known_threads(known_threads, [active_thread_id.to_string()]);
         self.select_thread_by_id(active_thread_id);
         if self.selected_thread.is_none() {
             self.selected_thread = (!self.known_threads.is_empty()).then_some(0);
         }
         self.apply_known_thread_agent_labels();
+    }
+
+    fn prune_known_threads(&mut self) {
+        let selected_thread_id = self.selected_thread_id().map(str::to_string);
+        let pinned_thread_ids = selected_thread_id.iter().cloned().collect::<Vec<_>>();
+        let previous_selected_thread_id = selected_thread_id;
+        self.known_threads =
+            bounded_known_threads(std::mem::take(&mut self.known_threads), pinned_thread_ids);
+        self.selected_thread = previous_selected_thread_id.and_then(|thread_id| {
+            self.known_threads
+                .iter()
+                .position(|thread| thread.id == thread_id)
+        });
     }
 
     fn mark_selected_turn_finished_idle(&mut self, active_thread_id: &str) -> bool {
@@ -3890,15 +4271,59 @@ impl ShellView {
         let host_default = std::env::current_dir()
             .map(|path| path.display().to_string())
             .unwrap_or_default();
-        let host_path_input =
-            cx.new(|cx| SingleLineInput::new(host_default, "C:\\path\\to\\workspace", cx));
-        let wsl_distro_input = cx.new(|cx| SingleLineInput::new("", "Debian", cx));
-        let wsl_path_input = cx.new(|cx| SingleLineInput::new("/", "/path/in/wsl", cx));
-        let workspace_picker_filter_input =
-            cx.new(|cx| SingleLineInput::new("", "Filter workspace names or paths", cx));
-        let workspace_rename_input = cx.new(|cx| SingleLineInput::new("", "Workspace name", cx));
+        let host_path_input = cx.new(|cx| {
+            SingleLineInput::new_with_options(
+                host_default,
+                "C:\\path\\to\\workspace",
+                TextInputOptions::single_line()
+                    .with_undo_byte_limit(SHORT_TEXT_INPUT_UNDO_BYTE_LIMIT),
+                cx,
+            )
+        });
+        let wsl_distro_input = cx.new(|cx| {
+            SingleLineInput::new_with_options(
+                "",
+                "Debian",
+                TextInputOptions::single_line()
+                    .with_undo_byte_limit(SHORT_TEXT_INPUT_UNDO_BYTE_LIMIT),
+                cx,
+            )
+        });
+        let wsl_path_input = cx.new(|cx| {
+            SingleLineInput::new_with_options(
+                "/",
+                "/path/in/wsl",
+                TextInputOptions::single_line()
+                    .with_undo_byte_limit(SHORT_TEXT_INPUT_UNDO_BYTE_LIMIT),
+                cx,
+            )
+        });
+        let workspace_picker_filter_input = cx.new(|cx| {
+            SingleLineInput::new_with_options(
+                "",
+                "Filter workspace names or paths",
+                TextInputOptions::single_line()
+                    .with_undo_byte_limit(SHORT_TEXT_INPUT_UNDO_BYTE_LIMIT),
+                cx,
+            )
+        });
+        let workspace_rename_input = cx.new(|cx| {
+            SingleLineInput::new_with_options(
+                "",
+                "Workspace name",
+                TextInputOptions::single_line()
+                    .with_undo_byte_limit(SHORT_TEXT_INPUT_UNDO_BYTE_LIMIT),
+                cx,
+            )
+        });
         let conversation_input = cx.new(|cx| {
-            let mut input = SingleLineInput::multiline("", "Ask Codex about this workspace", cx);
+            let mut input = SingleLineInput::new_with_options(
+                "",
+                "Ask Codex about this workspace",
+                TextInputOptions::multiline()
+                    .with_undo_byte_limit(COMPOSER_TEXT_INPUT_UNDO_BYTE_LIMIT),
+                cx,
+            );
             input.set_enter_key(TextInputEnterKey::Propagate);
             input.set_rich_paste_policy(TextInputRichPastePolicy::Propagate);
             input.set_atom_clipboard_policy(TextInputAtomClipboardPolicy::Propagate);
@@ -4186,11 +4611,12 @@ impl ShellView {
         self.composer_image_popup.as_ref()
     }
 
-    fn composer_image_preview_data(&self) -> Option<&ComposerDraftImageData> {
-        let label = &self.composer_image_popup.as_ref()?.label;
-        self.composer_draft
-            .image_data_for_label(label)
-            .filter(|data| !data.bytes().is_empty())
+    fn composer_image_preview_image(&self) -> Option<Arc<Image>> {
+        self.composer_image_popup
+            .as_ref()?
+            .preview_image
+            .as_ref()
+            .cloned()
     }
 
     fn transcript_shell_background(&self) -> gpui::Rgba {
@@ -5123,6 +5549,10 @@ impl ShellView {
                 self.graph_receiver = None;
                 updated |= self.finish_graph_mutation_update(update);
             }
+            Ok(GraphUpdate::ReloadFinished(result)) => {
+                self.graph_receiver = None;
+                updated |= self.finish_graph_reload_update(result);
+            }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 let update = receiver.disconnected_update(
@@ -5533,6 +5963,11 @@ impl ShellView {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        self.tool_activity_nickname_resolver.retain_retry_threads(
+            resolution_targets
+                .iter()
+                .map(|target| target.thread_id.as_str()),
+        );
         if resolution_targets.is_empty() {
             return false;
         }
@@ -5748,6 +6183,14 @@ impl ShellView {
     ) -> bool {
         let thread_id = candidate.target_thread_id().to_string();
         if !self.thread_title_generation_can_start(&thread_id) {
+            return false;
+        }
+        if self.thread_title_receivers.len() >= thread_title::MAX_THREAD_TITLE_WORKERS {
+            warn!(
+                thread_id = candidate.target_thread_id(),
+                max_workers = thread_title::MAX_THREAD_TITLE_WORKERS,
+                "skipping automatic thread-title generation because the worker limit is reached"
+            );
             return false;
         }
 
@@ -9417,6 +9860,12 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.sync_composer_draft_from_input(cx);
+        if let Err(error) = self.composer_draft.validate_new_image_admission(&data) {
+            self.report_composer_image_admission_error(error, cx);
+            return;
+        }
+
         if self.composer_image_asset_receiver.is_some() {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
@@ -9510,7 +9959,14 @@ impl ShellView {
             self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
             return;
         };
-        let insertion = self.composer_draft.stage_image(label, data);
+        let insertion = match self.composer_draft.stage_image(label, data) {
+            Ok(insertion) => insertion,
+            Err(error) => {
+                self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
+                self.report_composer_image_admission_error(error, cx);
+                return;
+            }
+        };
         let changed = match self.conversation_input.update(cx, |input, cx| {
             input.replace_text_range_with_atom(
                 pending.replacement_range.clone(),
@@ -9577,6 +10033,15 @@ impl ShellView {
         let display_text = plan.display_text().to_string();
         let atoms = plan.atoms().to_vec();
         let images = plan.images().to_vec();
+        let mut admission_probe = self.composer_draft.clone();
+        for image in &images {
+            if let Err(error) = admission_probe
+                .ensure_image_payload(image.label().to_string(), image.data().clone())
+            {
+                self.report_composer_image_admission_error(error, cx);
+                return;
+            }
+        }
         let changed = match self.conversation_input.update(cx, |input, cx| {
             input.replace_selected_text_with_atoms(&display_text, atoms, cx)
         }) {
@@ -9588,7 +10053,8 @@ impl ShellView {
         };
 
         for image in images {
-            self.composer_draft
+            let _ = self
+                .composer_draft
                 .ensure_image_payload(image.label().to_string(), image.data().clone());
             self.mark_current_workspace_image_asset_referenced(image.data().asset_id());
         }
@@ -9658,6 +10124,20 @@ impl ShellView {
         }
     }
 
+    fn report_composer_image_admission_error(
+        &mut self,
+        error: ComposerDraftImageAdmissionError,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.set_notice(SurfaceNotice::new(
+                "Image input rejected",
+                error.user_message(),
+            ));
+        }
+        cx.notify();
+    }
+
     fn sync_composer_draft_from_input(&mut self, cx: &mut Context<Self>) {
         let previous_asset_ids = self.composer_draft.active_image_asset_ids();
         let (display_text, image_atoms) = {
@@ -9686,9 +10166,12 @@ impl ShellView {
 
     fn clear_composer_draft(&mut self, cx: &mut Context<Self>) {
         self.composer_draft.clear();
-        self.composer_image_popup = None;
-        self.conversation_input
-            .update(cx, |input, cx| input.set_text("", cx));
+        self.take_composer_image_popup(cx);
+        self.conversation_input.update(cx, |input, cx| {
+            let changed = input.set_text("", cx);
+            input.clear_edit_history();
+            changed
+        });
     }
 
     fn mark_current_workspace_image_asset_referenced(&self, asset_id: Option<&str>) {
@@ -9767,20 +10250,34 @@ impl ShellView {
             return;
         }
 
+        self.take_composer_image_popup(cx);
         self.composer_image_popup = Some(ComposerImagePopupState {
             atom_id,
             label,
             position,
             bounds: None,
             mode: ComposerImagePopupMode::Menu,
+            preview_image: None,
+            preview_image_bytes: 0,
         });
         cx.notify();
     }
 
     fn close_composer_image_popup(&mut self, cx: &mut Context<Self>) {
-        if self.composer_image_popup.take().is_some() {
+        if self.take_composer_image_popup(cx).is_some() {
             cx.notify();
         }
+    }
+
+    fn take_composer_image_popup(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<ComposerImagePopupState> {
+        let mut popup = self.composer_image_popup.take();
+        if let Some(image) = popup.as_mut().and_then(|popup| popup.preview_image.take()) {
+            image.remove_asset(cx);
+        }
+        popup
     }
 
     fn view_composer_image_from_popup(
@@ -9789,7 +10286,29 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let preview_image = self.composer_image_popup.as_ref().and_then(|popup| {
+            if popup.preview_image.is_some() {
+                return None;
+            }
+            self.composer_draft
+                .image_data_for_label(&popup.label)
+                .filter(|data| !data.bytes().is_empty())
+                .map(|data| {
+                    let bytes = data.bytes().to_vec();
+                    let byte_count = bytes.len();
+                    (
+                        Arc::new(Image::from_bytes(data.format(), bytes)),
+                        byte_count,
+                    )
+                })
+        });
         if let Some(popup) = self.composer_image_popup.as_mut() {
+            if popup.preview_image.is_none() {
+                if let Some((image, byte_count)) = preview_image {
+                    popup.preview_image = Some(image);
+                    popup.preview_image_bytes = byte_count;
+                }
+            }
             popup.mode = ComposerImagePopupMode::Preview;
             popup.bounds = None;
             cx.notify();
@@ -9823,7 +10342,7 @@ impl ShellView {
         if !self.composer_draft.has_active_image_marker(&label) {
             self.composer_draft.remove_image_by_label(&label);
         }
-        self.composer_image_popup = None;
+        self.take_composer_image_popup(cx);
         cx.notify();
     }
 
@@ -9914,7 +10433,7 @@ impl ShellView {
                     }
                 };
                 self.mark_accepted_composer_image_assets_retained(staged.draft());
-                let accepted_draft = staged.draft().clone();
+                let accepted_draft = staged.draft().with_durable_image_references();
 
                 if self.queue_accepted_composer_fragment(fragment, cx) {
                     self.record_accepted_composer_history(&accepted_draft);
@@ -10063,7 +10582,7 @@ impl ShellView {
                 }
             }
         }
-        self.composer_image_popup = None;
+        self.take_composer_image_popup(cx);
         let current_asset_ids = next_draft.active_image_asset_ids();
         self.composer_draft = next_draft;
         self.mark_removed_draft_image_assets_unreferenced(previous_asset_ids, current_asset_ids);
@@ -10309,15 +10828,21 @@ impl ShellView {
                 let Some(target) = ready.surface.selected_active_turn_steering_target() else {
                     return false;
                 };
-                if target.turn_id.is_none()
-                    && !ready
-                        .surface
-                        .can_queue_pending_active_turn_steering_fragment(
-                            &target.thread_id,
-                            target.turn_index,
-                        )
-                {
-                    return false;
+                let pending_steering_fragment =
+                    SteeringInputFragment::from_user_input_fragment(target.turn_index, &fragment);
+                if target.turn_id.is_none() {
+                    match ready.surface.pending_active_turn_steering_admission(
+                        &target.thread_id,
+                        target.turn_index,
+                        &pending_steering_fragment,
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => return false,
+                        Err(error) => {
+                            ready.surface.report_pending_input_admission_error(error);
+                            return false;
+                        }
+                    }
                 }
                 let Some(steering_fragment) = ready
                     .surface
@@ -10530,6 +11055,14 @@ impl ShellView {
         expected_turn_id: String,
         fragments: Vec<SteeringInputFragment>,
     ) -> bool {
+        if self.turn_steering_receivers.len() >= MAX_CONCURRENT_TURN_STEERING_TASKS {
+            return self.queue_steering_fragments_for_next_turn(
+                thread_id,
+                fragments,
+                "Beryl queued this input for the next turn because too many active-turn steering requests are already in flight.".to_string(),
+            );
+        }
+
         let Some(connector) = self.backend_client_connector() else {
             return self.queue_steering_fragments_for_next_turn(
                 thread_id,
@@ -11062,19 +11595,24 @@ impl ShellView {
                 };
 
                 let mut updated = application.is_some();
-                if let Some(GraphCommitApplication::Applied {
-                    latest_manifest,
-                    graph_changed,
-                    ..
-                }) = application
-                {
-                    if let Some(loaded) = self.loaded_workspace_mut() {
-                        loaded.replace_manifest(latest_manifest);
-                        updated = true;
+                match application {
+                    Some(GraphCommitApplication::Applied {
+                        latest_manifest,
+                        graph_changed,
+                        ..
+                    }) => {
+                        if let Some(loaded) = self.loaded_workspace_mut() {
+                            loaded.replace_manifest(latest_manifest);
+                            updated = true;
+                        }
+                        if graph_changed {
+                            self.prune_graph_scrollbar_activity();
+                        }
                     }
-                    if graph_changed {
-                        self.prune_graph_scrollbar_activity();
+                    Some(GraphCommitApplication::RecoveryRequired { reason }) => {
+                        updated |= self.start_graph_reload_recovery(workspace_id, reason);
                     }
+                    _ => {}
                 }
                 updated
             }
@@ -11090,6 +11628,70 @@ impl ShellView {
                 }
             }
         }
+    }
+
+    fn finish_graph_reload_update(&mut self, result: Result<GraphReloadUpdate, String>) -> bool {
+        let update = match result {
+            Ok(update) => update,
+            Err(error) => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.report_graph_mutation_failure(error);
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        if !self
+            .loaded_workspace()
+            .is_some_and(|loaded| loaded.workspace.id() == &update.workspace_id)
+        {
+            return false;
+        }
+
+        if let Some(loaded) = self.loaded_workspace_mut() {
+            loaded.replace_manifest(update.manifest);
+        }
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.finish_graph_mutation(update.graph, update.revision, update.warning);
+        }
+        self.prune_graph_scrollbar_activity();
+        true
+    }
+
+    fn start_graph_reload_recovery(
+        &mut self,
+        workspace_id: BerylWorkspaceId,
+        reason: String,
+    ) -> bool {
+        if self.graph_receiver.is_some() {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.report_graph_mutation_failure(format!(
+                    "{reason}; semantic graph reload recovery is waiting for another graph worker to finish."
+                ));
+                return true;
+            }
+            return false;
+        }
+
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.report_graph_mutation_failure(format!(
+                    "{reason}; semantic graph reload recovery is unavailable because workspace persistence is not configured."
+                ));
+                return true;
+            }
+            return false;
+        };
+
+        self.graph_receiver = Some(spawn_graph_reload_worker(
+            persistence,
+            workspace_id,
+            Some(format!(
+                "Recovered semantic graph projection after {reason}."
+            )),
+        ));
+        true
     }
 
     fn conversation_surface_mut(&mut self) -> Option<&mut ConversationSurfaceState> {
@@ -11153,11 +11755,98 @@ impl ShellView {
             .unwrap_or_default();
         let backend_work_receivers = self.backend_work_receiver_count();
         let backend_client_connection_estimate = self.backend_client_connection_estimate();
+        let composer_draft = self.composer_draft.retained_counts();
+        let composer_clipboard = self.composer_clipboard.retained_counts();
         snapshot.backend_work_receivers = Some(backend_work_receivers);
         snapshot.backend_event_queue_estimate = Some(backend_client_connection_estimate);
         snapshot.backend_client_connection_estimate = Some(backend_client_connection_estimate);
         snapshot.turn_steering_receivers = Some(self.turn_steering_receivers.len());
+        snapshot.composer_draft_text_bytes = Some(composer_draft.display_text_bytes);
+        snapshot.composer_draft_images = Some(composer_draft.image_count);
+        snapshot.composer_draft_image_bytes = Some(composer_draft.image_bytes);
+        snapshot.composer_draft_atoms = Some(composer_draft.atom_count);
+        snapshot.composer_draft_atom_bytes = Some(composer_draft.atom_bytes);
+        snapshot.composer_clipboard_payloads = Some(composer_clipboard.payloads);
+        snapshot.composer_clipboard_text_bytes = Some(
+            composer_clipboard
+                .selected_text_bytes
+                .saturating_add(composer_clipboard.fallback_text_bytes),
+        );
+        snapshot.composer_clipboard_images = Some(composer_clipboard.image_count);
+        snapshot.composer_clipboard_image_bytes = Some(composer_clipboard.image_bytes);
+        snapshot.composer_clipboard_atoms = Some(composer_clipboard.atom_count);
+        snapshot.composer_clipboard_atom_bytes = Some(composer_clipboard.atom_bytes);
+        snapshot.pending_composer_image_asset_paste_bytes = Some(
+            self.pending_composer_image_asset_paste
+                .as_ref()
+                .map_or(0, |pending| {
+                    pending
+                        .workspace_id
+                        .as_str()
+                        .len()
+                        .saturating_add(pending.display_text_snapshot.len())
+                }),
+        );
+        snapshot.composer_image_popup_bytes =
+            Some(self.composer_image_popup.as_ref().map_or(0, |popup| {
+                popup
+                    .atom_id
+                    .len()
+                    .saturating_add(popup.label.len())
+                    .saturating_add(popup.preview_image_bytes)
+            }));
+        snapshot.workspace_persistence_pending_work =
+            Some(self.workspace_persistence_queue.pending_work_count());
+        snapshot.thread_title_workers = Some(self.thread_title_receivers.len());
+        snapshot.inventory_worker_active =
+            Some(usize::from(self.member_thread_inventory_receiver.is_some()));
+        if let Some(total) = snapshot.retained_payload_bytes_lower_bound.as_mut() {
+            *total = total
+                .saturating_add(composer_draft.display_text_bytes)
+                .saturating_add(composer_draft.image_bytes)
+                .saturating_add(composer_draft.atom_bytes)
+                .saturating_add(composer_clipboard.selected_text_bytes)
+                .saturating_add(composer_clipboard.fallback_text_bytes)
+                .saturating_add(composer_clipboard.image_bytes)
+                .saturating_add(composer_clipboard.atom_bytes)
+                .saturating_add(
+                    snapshot
+                        .pending_composer_image_asset_paste_bytes
+                        .unwrap_or_default(),
+                )
+                .saturating_add(snapshot.composer_image_popup_bytes.unwrap_or_default());
+        }
         snapshot
+    }
+
+    fn add_text_input_retained_counts(&self, snapshot: &mut RetainedStateSnapshot, cx: &App) {
+        let mut counts = TextInputRetainedAggregate::default();
+        for input in [
+            &self.host_path_input,
+            &self.wsl_distro_input,
+            &self.wsl_path_input,
+            &self.workspace_picker_filter_input,
+            &self.workspace_rename_input,
+            &self.conversation_input,
+            &self.surface_notice_text_input,
+        ] {
+            counts.add(input.read(cx).retained_counts());
+        }
+
+        snapshot.text_input_count = Some(counts.count);
+        snapshot.text_input_current_text_bytes = Some(counts.current_text_bytes);
+        snapshot.text_input_current_atoms = Some(counts.current_atom_count);
+        snapshot.text_input_current_atom_bytes = Some(counts.current_atom_bytes);
+        snapshot.text_input_undo_snapshots = Some(counts.undo_snapshot_count);
+        snapshot.text_input_redo_snapshots = Some(counts.redo_snapshot_count);
+        snapshot.text_input_undo_bytes = Some(counts.undo_bytes);
+        snapshot.text_input_redo_bytes = Some(counts.redo_bytes);
+        snapshot.text_input_widget_layout_lines = Some(counts.widget_layout_lines);
+        snapshot.text_input_widget_visual_lines = Some(counts.widget_visual_lines);
+        snapshot.text_input_widget_visible_text_bytes = Some(counts.widget_visible_text_bytes);
+        if let Some(total) = snapshot.retained_payload_bytes_lower_bound.as_mut() {
+            *total = total.saturating_add(counts.payload_bytes_lower_bound());
+        }
     }
 
     fn backend_work_receiver_count(&self) -> usize {

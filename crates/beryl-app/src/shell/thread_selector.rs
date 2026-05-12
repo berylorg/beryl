@@ -148,6 +148,8 @@ impl ThreadSelectorState {
     pub(crate) fn close(&mut self) {
         self.open = false;
         self.popup_bounds = None;
+        self.columns.clear();
+        self.projection = ThreadSelectorProjection::default();
     }
 
     pub(crate) fn set_anchor_bounds(&mut self, bounds: Option<Bounds<Pixels>>) {

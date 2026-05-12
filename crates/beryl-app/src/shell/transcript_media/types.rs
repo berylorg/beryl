@@ -35,6 +35,7 @@ pub(crate) enum TranscriptMediaLoadOutcome {
     Pending { alt: String },
     Loaded(TranscriptMediaLoadedImage),
     RenderNotSupported { alt: String },
+    TooLarge { alt: String },
     FileUnavailable { alt: String },
     PathNotAllowed { alt: String },
 }
@@ -59,6 +60,7 @@ pub(crate) trait TranscriptMediaFileReader {
 pub(crate) struct TranscriptMediaLookup {
     pub(crate) outcome: Arc<TranscriptMediaLoadOutcome>,
     pub(crate) load_request: Option<TranscriptMediaLoadRequest>,
+    pub(crate) evicted_images: Vec<Arc<Image>>,
 }
 
 #[derive(Clone, Debug)]
@@ -85,6 +87,7 @@ pub(crate) struct TranscriptMediaLoadCompletionResult {
     pub(crate) display_changed: bool,
     pub(crate) follow_up_request: Option<TranscriptMediaLoadRequest>,
     pub(crate) stale: bool,
+    pub(crate) evicted_images: Vec<Arc<Image>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,6 +150,7 @@ impl TranscriptMediaLoadOutcome {
             Self::RenderNotSupported { alt } => {
                 Some(status_fallback_text(alt, "render not supported"))
             }
+            Self::TooLarge { alt } => Some(status_fallback_text(alt, "image too large")),
             Self::FileUnavailable { alt } => Some(status_fallback_text(alt, "file unavailable")),
             Self::PathNotAllowed { alt } => Some(status_fallback_text(alt, "path not allowed")),
         }
@@ -201,6 +205,10 @@ impl TranscriptMediaLoadedImage {
 
     pub(crate) fn image(&self) -> Arc<Image> {
         self.image.clone()
+    }
+
+    pub(crate) fn image_id(&self) -> u64 {
+        self.image.id()
     }
 
     pub(crate) fn natural_dimensions(&self) -> TranscriptMediaNaturalDimensions {

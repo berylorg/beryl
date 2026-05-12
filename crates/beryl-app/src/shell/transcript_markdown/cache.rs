@@ -12,6 +12,10 @@ use super::{
 
 const DEFAULT_MAX_ENTRIES: usize = 512;
 const DEFAULT_MAX_SOURCE_BYTES: usize = 1_000_000;
+const DEFAULT_MAX_ESTIMATED_RETAINED_BYTES: usize = 4_000_000;
+const ESTIMATED_BLOCK_BYTES: usize = 128;
+const ESTIMATED_INLINE_BYTES: usize = 96;
+const ESTIMATED_MEDIA_REQUEST_BYTES: usize = 128;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TranscriptMarkdownCacheKey(String);
@@ -87,6 +91,11 @@ impl TranscriptMarkdownCacheStats {
             entries: self.entries,
             pending_entries: self.pending_entries,
             source_bytes: self.source_bytes,
+            estimated_retained_bytes: self.estimated_retained_bytes,
+            in_flight_source_bytes: self.in_flight_source_bytes,
+            displayed_source_bytes: self.displayed_source_bytes,
+            parsed_source_bytes: self.parsed_source_bytes,
+            markdown_estimated_structure_bytes: self.markdown_estimated_structure_bytes,
             markdown_blocks: self.markdown_blocks,
             markdown_inlines: self.markdown_inlines,
             markdown_media_requests: self.markdown_media_requests,
@@ -200,6 +209,11 @@ pub(crate) struct TranscriptMarkdownCacheStats {
     pub(crate) entries: usize,
     pub(crate) pending_entries: usize,
     pub(crate) source_bytes: usize,
+    pub(crate) estimated_retained_bytes: usize,
+    pub(crate) in_flight_source_bytes: usize,
+    pub(crate) displayed_source_bytes: usize,
+    pub(crate) parsed_source_bytes: usize,
+    pub(crate) markdown_estimated_structure_bytes: usize,
     pub(crate) markdown_blocks: usize,
     pub(crate) markdown_inlines: usize,
     pub(crate) markdown_media_requests: usize,
@@ -261,6 +275,7 @@ pub(crate) struct TranscriptMarkdownCache {
     entries: HashMap<TranscriptMarkdownCacheKey, TranscriptMarkdownCacheEntry>,
     max_entries: usize,
     max_source_bytes: usize,
+    max_estimated_retained_bytes: usize,
     source_bytes: usize,
     access_tick: u64,
     scope_generation: u64,
@@ -287,7 +302,11 @@ struct TranscriptMarkdownInFlightParse {
 
 impl Default for TranscriptMarkdownCache {
     fn default() -> Self {
-        Self::new(DEFAULT_MAX_ENTRIES, DEFAULT_MAX_SOURCE_BYTES)
+        Self::new_with_estimated_bytes(
+            DEFAULT_MAX_ENTRIES,
+            DEFAULT_MAX_SOURCE_BYTES,
+            DEFAULT_MAX_ESTIMATED_RETAINED_BYTES,
+        )
     }
 }
 
@@ -313,10 +332,25 @@ fn parse_request_for(
 
 impl TranscriptMarkdownCache {
     pub(crate) fn new(max_entries: usize, max_source_bytes: usize) -> Self {
+        Self::new_with_estimated_bytes(
+            max_entries,
+            max_source_bytes,
+            max_source_bytes
+                .saturating_mul(4)
+                .max(DEFAULT_MAX_ESTIMATED_RETAINED_BYTES.min(max_source_bytes.max(1))),
+        )
+    }
+
+    pub(crate) fn new_with_estimated_bytes(
+        max_entries: usize,
+        max_source_bytes: usize,
+        max_estimated_retained_bytes: usize,
+    ) -> Self {
         Self {
             entries: HashMap::new(),
             max_entries: max_entries.max(1),
             max_source_bytes: max_source_bytes.max(1),
+            max_estimated_retained_bytes: max_estimated_retained_bytes.max(1),
             source_bytes: 0,
             access_tick: 0,
             scope_generation: 0,
@@ -500,6 +534,7 @@ impl TranscriptMarkdownCache {
             self.stats.scheduled_parses = self.stats.scheduled_parses.saturating_add(1);
         }
 
+        self.prune_if_needed();
         result
     }
 
@@ -509,26 +544,20 @@ impl TranscriptMarkdownCache {
             .values()
             .filter(|entry| entry.in_flight.is_some())
             .count();
-        let retained_markdown =
-            self.entries
-                .values()
-                .fold(MarkdownStructureCounts::default(), |mut counts, entry| {
-                    let entry_counts = entry.displayed.structure_counts();
-                    counts.blocks = counts.blocks.saturating_add(entry_counts.blocks);
-                    counts.inlines = counts.inlines.saturating_add(entry_counts.inlines);
-                    counts.media_requests = counts
-                        .media_requests
-                        .saturating_add(entry_counts.media_requests);
-                    counts
-                });
+        let retained = self.retained_estimate();
 
         TranscriptMarkdownCacheStats {
             entries: self.entries.len(),
             pending_entries,
             source_bytes: self.source_bytes,
-            markdown_blocks: retained_markdown.blocks,
-            markdown_inlines: retained_markdown.inlines,
-            markdown_media_requests: retained_markdown.media_requests,
+            estimated_retained_bytes: retained.total_bytes,
+            in_flight_source_bytes: retained.in_flight_source_bytes,
+            displayed_source_bytes: retained.displayed_source_bytes,
+            parsed_source_bytes: retained.parsed_source_bytes,
+            markdown_estimated_structure_bytes: retained.structure_bytes,
+            markdown_blocks: retained.structure.blocks,
+            markdown_inlines: retained.structure.inlines,
+            markdown_media_requests: retained.structure.media_requests,
             ..self.stats
         }
     }
@@ -540,7 +569,10 @@ impl TranscriptMarkdownCache {
     }
 
     fn prune_if_needed(&mut self) {
-        while self.entries.len() > self.max_entries || self.source_bytes > self.max_source_bytes {
+        while self.entries.len() > self.max_entries
+            || self.source_bytes > self.max_source_bytes
+            || self.retained_estimate().total_bytes > self.max_estimated_retained_bytes
+        {
             let Some(key) = self
                 .entries
                 .iter()
@@ -552,5 +584,91 @@ impl TranscriptMarkdownCache {
             self.remove_entry(&key);
             self.stats.evictions = self.stats.evictions.saturating_add(1);
         }
+    }
+
+    fn retained_estimate(&self) -> MarkdownRetainedEstimate {
+        self.entries.iter().fold(
+            MarkdownRetainedEstimate::default(),
+            |mut estimate, (key, entry)| {
+                let entry_estimate = markdown_entry_retained_estimate(key, entry);
+                estimate.total_bytes = estimate
+                    .total_bytes
+                    .saturating_add(entry_estimate.total_bytes);
+                estimate.in_flight_source_bytes = estimate
+                    .in_flight_source_bytes
+                    .saturating_add(entry_estimate.in_flight_source_bytes);
+                estimate.displayed_source_bytes = estimate
+                    .displayed_source_bytes
+                    .saturating_add(entry_estimate.displayed_source_bytes);
+                estimate.parsed_source_bytes = estimate
+                    .parsed_source_bytes
+                    .saturating_add(entry_estimate.parsed_source_bytes);
+                estimate.structure_bytes = estimate
+                    .structure_bytes
+                    .saturating_add(entry_estimate.structure_bytes);
+                estimate.structure.blocks = estimate
+                    .structure
+                    .blocks
+                    .saturating_add(entry_estimate.structure.blocks);
+                estimate.structure.inlines = estimate
+                    .structure
+                    .inlines
+                    .saturating_add(entry_estimate.structure.inlines);
+                estimate.structure.media_requests = estimate
+                    .structure
+                    .media_requests
+                    .saturating_add(entry_estimate.structure.media_requests);
+                estimate
+            },
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct MarkdownRetainedEstimate {
+    total_bytes: usize,
+    in_flight_source_bytes: usize,
+    displayed_source_bytes: usize,
+    parsed_source_bytes: usize,
+    structure_bytes: usize,
+    structure: MarkdownStructureCounts,
+}
+
+fn markdown_entry_retained_estimate(
+    key: &TranscriptMarkdownCacheKey,
+    entry: &TranscriptMarkdownCacheEntry,
+) -> MarkdownRetainedEstimate {
+    let structure = entry.displayed.structure_counts();
+    let structure_bytes = structure
+        .blocks
+        .saturating_mul(ESTIMATED_BLOCK_BYTES)
+        .saturating_add(structure.inlines.saturating_mul(ESTIMATED_INLINE_BYTES))
+        .saturating_add(
+            structure
+                .media_requests
+                .saturating_mul(ESTIMATED_MEDIA_REQUEST_BYTES),
+        );
+    let in_flight_source_bytes = entry
+        .in_flight
+        .as_ref()
+        .map_or(0, |in_flight| in_flight.source.len());
+    let displayed_source_bytes = entry.displayed_source.as_ref().map_or(0, String::len);
+    let parsed_source_bytes = entry.displayed.source().len();
+    let total_bytes = key
+        .as_str()
+        .len()
+        .saturating_add(entry.latest_source.len())
+        .saturating_add(in_flight_source_bytes)
+        .saturating_add(displayed_source_bytes)
+        .saturating_add(parsed_source_bytes)
+        .saturating_add(structure_bytes);
+
+    MarkdownRetainedEstimate {
+        total_bytes,
+        in_flight_source_bytes,
+        displayed_source_bytes,
+        parsed_source_bytes,
+        structure_bytes,
+        structure,
     }
 }

@@ -50,6 +50,13 @@ const PROBE_THREAD_ID: &str = "00000000-0000-0000-0000-000000000000";
 const PROBE_TURN_ID: &str = "00000000-0000-0000-0000-000000000001";
 const PROBE_COMMAND_EXEC_PROCESS_ID: &str = "beryl-hard-stop-probe";
 const STDERR_LOG_LIMIT: usize = 240;
+const INVALID_JSON_ERROR_LINE_LIMIT: usize = 4 * 1024;
+const PENDING_MESSAGE_COUNT_LIMIT: usize = 1024;
+const PENDING_MESSAGE_BYTE_BUDGET: usize = 16 * 1024 * 1024;
+const PENDING_DYNAMIC_TOOL_REQUEST_LIMIT: usize = 64;
+const STDIO_STDOUT_LINE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
+const STDIO_STDERR_LINE_BYTE_LIMIT: usize = 8 * 1024;
+const STDIO_MESSAGE_CHANNEL_BOUND: usize = 64;
 const STDIO_PROCESS_CLOSE_GRACE_TIMEOUT: Duration = Duration::from_millis(250);
 const MANAGED_PROCESS_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
@@ -106,6 +113,8 @@ pub struct ManagedBackendSession {
     process: Option<SupervisedBackendProcess>,
     transport: BackendClientTransport,
     pending_messages: VecDeque<IncomingMessage>,
+    pending_message_bytes: usize,
+    pending_dynamic_tool_requests: usize,
     next_request_id: u64,
 }
 
@@ -324,6 +333,14 @@ pub enum ManagedBackendError {
     RequestFailed { method: String, error: JsonRpcError },
     #[error("backend response line did not match JSON-RPC response or notification shape")]
     UnexpectedMessageShape,
+    #[error(
+        "bounded backend resource exceeded while handling {method}: {resource} exceeded limit {limit}"
+    )]
+    BoundedResourceExceeded {
+        method: String,
+        resource: &'static str,
+        limit: usize,
+    },
     #[error("backend returned invalid {method} notification payload")]
     DeserializeNotification {
         method: String,
@@ -929,7 +946,7 @@ impl ManagedBackendSession {
                 return Ok(None);
             };
 
-            let message = if let Some(message) = self.pending_messages.pop_front() {
+            let message = if let Some(message) = self.pop_pending_message() {
                 message
             } else {
                 match self.recv_message_timeout("turn stream", remaining, None)? {
@@ -1057,6 +1074,8 @@ impl ManagedBackendSession {
                 messages,
             },
             pending_messages: VecDeque::new(),
+            pending_message_bytes: 0,
+            pending_dynamic_tool_requests: 0,
             next_request_id: 1,
         })
     }
@@ -1073,6 +1092,8 @@ impl ManagedBackendSession {
             process: None,
             transport: BackendClientTransport::WebSocket(transport),
             pending_messages: VecDeque::new(),
+            pending_message_bytes: 0,
+            pending_dynamic_tool_requests: 0,
             next_request_id: 1,
         })
     }
@@ -1593,11 +1614,13 @@ impl ManagedBackendSession {
                     params,
                 } => {
                     interleaved_notification_count += 1;
-                    self.pending_messages
-                        .push_back(IncomingMessage::Notification {
+                    self.push_pending_message(
+                        method,
+                        IncomingMessage::Notification {
                             method: notification_method.clone(),
                             params,
-                        });
+                        },
+                    )?;
                     debug!(
                         request_method = method,
                         notification_method,
@@ -1622,12 +1645,14 @@ impl ManagedBackendSession {
                         self.deny_approval_request(&request)?;
                     } else if is_dynamic_tool_call_method(&request_method) {
                         deferred_dynamic_tool_request_count += 1;
-                        self.pending_messages
-                            .push_back(IncomingMessage::ServerRequest {
+                        self.push_pending_message(
+                            method,
+                            IncomingMessage::ServerRequest {
                                 id,
                                 method: request_method.clone(),
                                 params,
-                            });
+                            },
+                        )?;
                         warn!(
                             request_method = method,
                             server_request_method = request_method,
@@ -1668,6 +1693,59 @@ impl ManagedBackendSession {
                 });
             }
         }
+    }
+
+    fn pop_pending_message(&mut self) -> Option<IncomingMessage> {
+        let message = self.pending_messages.pop_front()?;
+        self.pending_message_bytes = self
+            .pending_message_bytes
+            .saturating_sub(message.approximate_retained_bytes());
+        if message.is_dynamic_tool_request() {
+            self.pending_dynamic_tool_requests =
+                self.pending_dynamic_tool_requests.saturating_sub(1);
+        }
+        Some(message)
+    }
+
+    fn push_pending_message(
+        &mut self,
+        method: &str,
+        message: IncomingMessage,
+    ) -> Result<(), ManagedBackendError> {
+        if self.pending_messages.len() >= PENDING_MESSAGE_COUNT_LIMIT {
+            return Err(bounded_resource_exceeded(
+                method,
+                "pending message queue count",
+                PENDING_MESSAGE_COUNT_LIMIT,
+            ));
+        }
+
+        let dynamic_tool_request = message.is_dynamic_tool_request();
+        if dynamic_tool_request
+            && self.pending_dynamic_tool_requests >= PENDING_DYNAMIC_TOOL_REQUEST_LIMIT
+        {
+            return Err(bounded_resource_exceeded(
+                method,
+                "dynamic tool-call request queue count",
+                PENDING_DYNAMIC_TOOL_REQUEST_LIMIT,
+            ));
+        }
+
+        let message_bytes = message.approximate_retained_bytes();
+        if self.pending_message_bytes.saturating_add(message_bytes) > PENDING_MESSAGE_BYTE_BUDGET {
+            return Err(bounded_resource_exceeded(
+                method,
+                "pending message queue byte budget",
+                PENDING_MESSAGE_BYTE_BUDGET,
+            ));
+        }
+
+        self.pending_message_bytes = self.pending_message_bytes.saturating_add(message_bytes);
+        if dynamic_tool_request {
+            self.pending_dynamic_tool_requests += 1;
+        }
+        self.pending_messages.push_back(message);
+        Ok(())
     }
 
     fn write_message(
@@ -1893,6 +1971,32 @@ enum IncomingMessage {
         method: String,
         params: Option<Value>,
     },
+}
+
+impl IncomingMessage {
+    fn approximate_retained_bytes(&self) -> usize {
+        match self {
+            Self::Response { result, .. } => json_value_retained_byte_len(result),
+            Self::Error { id, error } => id
+                .map(|_| std::mem::size_of::<u64>())
+                .unwrap_or_default()
+                .saturating_add(error.message.len())
+                .saturating_add(optional_json_value_retained_byte_len(error.data.as_ref())),
+            Self::Notification { method, params } => method
+                .len()
+                .saturating_add(optional_json_value_retained_byte_len(params.as_ref())),
+            Self::ServerRequest { id, method, params } => json_value_retained_byte_len(id)
+                .saturating_add(method.len())
+                .saturating_add(optional_json_value_retained_byte_len(params.as_ref())),
+        }
+    }
+
+    fn is_dynamic_tool_request(&self) -> bool {
+        matches!(
+            self,
+            Self::ServerRequest { method, .. } if is_dynamic_tool_call_method(method)
+        )
+    }
 }
 
 enum JsonRpcRequestOutcome {
@@ -2224,18 +2328,80 @@ impl<'a> ThreadUnsubscribeParams<'a> {
 #[derive(serde::Deserialize)]
 struct EmptyResponse {}
 
+enum BoundedLineRead {
+    Eof,
+    Line(Vec<u8>),
+    LineTooLong { prefix: Vec<u8> },
+}
+
+fn read_bounded_line_bytes(reader: &mut impl BufRead, limit: usize) -> io::Result<BoundedLineRead> {
+    let mut line = Vec::new();
+    let mut over_limit = false;
+    let mut saw_bytes = false;
+
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return if !saw_bytes {
+                Ok(BoundedLineRead::Eof)
+            } else if over_limit {
+                Ok(BoundedLineRead::LineTooLong { prefix: line })
+            } else {
+                Ok(BoundedLineRead::Line(line))
+            };
+        }
+
+        saw_bytes = true;
+        let newline_index = available.iter().position(|byte| *byte == b'\n');
+        let take = newline_index.map_or(available.len(), |index| index + 1);
+
+        if over_limit {
+            reader.consume(take);
+            if newline_index.is_some() {
+                return Ok(BoundedLineRead::LineTooLong { prefix: line });
+            }
+            continue;
+        }
+
+        let remaining_budget = limit.saturating_sub(line.len());
+        if take > remaining_budget {
+            line.extend_from_slice(&available[..remaining_budget]);
+            over_limit = true;
+        } else {
+            line.extend_from_slice(&available[..take]);
+        }
+
+        reader.consume(take);
+
+        if newline_index.is_some() {
+            return if over_limit {
+                Ok(BoundedLineRead::LineTooLong { prefix: line })
+            } else {
+                Ok(BoundedLineRead::Line(line))
+            };
+        }
+    }
+}
+
 fn spawn_stdout_reader(
     stdout: ChildStdout,
 ) -> Receiver<Result<IncomingMessage, ManagedBackendError>> {
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = mpsc::sync_channel(STDIO_MESSAGE_CHANNEL_BOUND);
     thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
-        let mut line = String::new();
         loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) => break,
-                Ok(_) => {
+            match read_bounded_line_bytes(&mut reader, STDIO_STDOUT_LINE_BYTE_LIMIT) {
+                Ok(BoundedLineRead::Eof) => break,
+                Ok(BoundedLineRead::Line(line)) => {
+                    let line = match std::str::from_utf8(&line) {
+                        Ok(line) => line,
+                        Err(source) => {
+                            let error = io::Error::new(io::ErrorKind::InvalidData, source);
+                            let _ = sender
+                                .send(Err(ManagedBackendError::ReadTransport { source: error }));
+                            break;
+                        }
+                    };
                     let json_line = line.trim();
                     if json_line.is_empty() {
                         continue;
@@ -2245,6 +2411,15 @@ fn spawn_stdout_reader(
                     if sender.send(message).is_err() {
                         break;
                     }
+                }
+                Ok(BoundedLineRead::LineTooLong { .. }) => {
+                    let error = bounded_resource_exceeded(
+                        "stdio stdout",
+                        "stdio stdout line byte length",
+                        STDIO_STDOUT_LINE_BYTE_LIMIT,
+                    );
+                    let _ = sender.send(Err(error));
+                    break;
                 }
                 Err(source) => {
                     let _ = sender.send(Err(ManagedBackendError::ReadTransport { source }));
@@ -2258,10 +2433,16 @@ fn spawn_stdout_reader(
 
 pub(crate) fn spawn_stderr_logger(stderr: ChildStderr, launch_spec: BackendLaunchSpec) {
     thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            match line {
-                Ok(line) if !line.trim().is_empty() => {
+        let mut reader = BufReader::new(stderr);
+        loop {
+            match read_bounded_line_bytes(&mut reader, STDIO_STDERR_LINE_BYTE_LIMIT) {
+                Ok(BoundedLineRead::Eof) => break,
+                Ok(BoundedLineRead::Line(line))
+                | Ok(BoundedLineRead::LineTooLong { prefix: line, .. }) => {
+                    let line = String::from_utf8_lossy(&line);
+                    if line.trim().is_empty() {
+                        continue;
+                    }
                     let message = truncate_for_log(&line, STDERR_LOG_LIMIT);
                     debug!(
                         workspace = %launch_spec.display_label(),
@@ -2269,7 +2450,6 @@ pub(crate) fn spawn_stderr_logger(stderr: ChildStderr, launch_spec: BackendLaunc
                         "backend stderr"
                     );
                 }
-                Ok(_) => {}
                 Err(error) => {
                     warn!(
                         workspace = %launch_spec.display_label(),
@@ -2292,10 +2472,47 @@ fn truncate_for_log(line: &str, limit: usize) -> String {
     format!("{truncated}...")
 }
 
+fn bounded_resource_exceeded(
+    method: &str,
+    resource: &'static str,
+    limit: usize,
+) -> ManagedBackendError {
+    ManagedBackendError::BoundedResourceExceeded {
+        method: method.to_string(),
+        resource,
+        limit,
+    }
+}
+
+fn optional_json_value_retained_byte_len(value: Option<&Value>) -> usize {
+    value.map(json_value_retained_byte_len).unwrap_or_default()
+}
+
+fn json_value_retained_byte_len(value: &Value) -> usize {
+    match value {
+        Value::Null | Value::Bool(_) => 0,
+        Value::Number(_) => std::mem::size_of::<serde_json::Number>(),
+        Value::String(text) => text.len(),
+        Value::Array(values) => values
+            .iter()
+            .fold(values.len() * std::mem::size_of::<Value>(), {
+                |total, value| total.saturating_add(json_value_retained_byte_len(value))
+            }),
+        Value::Object(entries) => entries.iter().fold(
+            entries.len() * (std::mem::size_of::<String>() + std::mem::size_of::<Value>()),
+            |total, (key, value)| {
+                total
+                    .saturating_add(key.len())
+                    .saturating_add(json_value_retained_byte_len(value))
+            },
+        ),
+    }
+}
+
 fn parse_incoming_message(line: &str) -> Result<IncomingMessage, ManagedBackendError> {
     let value: Value =
         serde_json::from_str(line).map_err(|source| ManagedBackendError::InvalidJsonLine {
-            line: line.to_string(),
+            line: truncate_for_log(line, INVALID_JSON_ERROR_LINE_LIMIT),
             source,
         })?;
 

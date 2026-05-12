@@ -1,10 +1,11 @@
 use std::{
+    sync::Arc,
     sync::mpsc::{self, Receiver},
     thread,
 };
 
 use beryl_model::workspace::BerylWorkspaceId;
-use gpui::ImageFormat;
+use gpui::Image;
 
 use crate::BerylWorkspacePersistence;
 
@@ -17,17 +18,12 @@ pub(super) enum TranscriptImagePreviewUpdate {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct TranscriptImagePreviewData {
-    format: ImageFormat,
-    bytes: Vec<u8>,
+    image: Arc<Image>,
 }
 
 impl TranscriptImagePreviewData {
-    pub(super) fn format(&self) -> ImageFormat {
-        self.format
-    }
-
-    pub(super) fn bytes(&self) -> &[u8] {
-        &self.bytes
+    pub(super) fn image(&self) -> Arc<Image> {
+        self.image.clone()
     }
 }
 
@@ -69,7 +65,6 @@ pub(super) fn read_transcript_image_preview_from_persistence(
         .map_err(|error| format!("Beryl could not read image bytes: {error}"))?;
 
     Ok(TranscriptImagePreviewData {
-        format: asset.format(),
-        bytes,
+        image: Arc::new(Image::from_bytes(asset.format(), bytes)),
     })
 }

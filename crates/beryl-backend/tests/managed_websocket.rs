@@ -8,13 +8,17 @@ use std::{
 
 use beryl_backend::{
     BackendLaunchSpec, BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendSession,
-    ThreadItem, ThreadReadOptions, ThreadStatus, ThreadTurnsListOptions, TurnStreamEvent,
+    ThreadItem, ThreadListOptions, ThreadReadOptions, ThreadStatus, ThreadTurnsListOptions,
+    TurnStreamEvent,
 };
 use beryl_model::workspace::RuntimeMode;
 use serde_json::{Value, json};
 use tungstenite::{
     Message, WebSocket, accept_hdr, connect,
-    handshake::server::{ErrorResponse, Request, Response},
+    handshake::{
+        derive_accept_key,
+        server::{ErrorResponse, Request, Response},
+    },
     http::StatusCode,
 };
 
@@ -149,6 +153,189 @@ fn managed_websocket_reads_fragmented_notification_with_interleaved_ping() {
         }
     );
 
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_rejects_pending_notification_count_overflow() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/list"));
+
+        for index in 0..1025 {
+            send_notification(
+                &mut socket,
+                "thread/name/updated",
+                json!({
+                    "threadId": format!("thread_{index}"),
+                    "threadName": format!("Thread {index}")
+                }),
+            );
+        }
+        let _ = socket.send(Message::text(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "data": []
+                }
+            })
+            .to_string(),
+        ));
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .unwrap_err();
+
+    assert_bounded_resource(error, "pending message queue count", 1024);
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_rejects_pending_notification_byte_overflow() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/list"));
+
+        send_notification(
+            &mut socket,
+            "thread/status/changed",
+            json!({
+                "threadId": "large_pending_thread",
+                "status": { "type": "active", "activeFlags": [] },
+                "padding": "x".repeat(17 * 1024 * 1024)
+            }),
+        );
+        let _ = socket.send(Message::text(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "data": []
+                }
+            })
+            .to_string(),
+        ));
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .unwrap_err();
+
+    assert_bounded_resource(error, "pending message queue byte budget", 16 * 1024 * 1024);
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_rejects_deferred_dynamic_tool_request_overflow() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/list"));
+
+        for index in 0..65 {
+            socket
+                .send(Message::text(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": format!("request_{index}"),
+                        "method": "item/tool/call",
+                        "params": {
+                            "threadId": "thread_1",
+                            "turnId": "turn_1",
+                            "callId": format!("call_{index}"),
+                            "namespace": "beryl",
+                            "tool": "read_checklist",
+                            "arguments": {}
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap();
+        }
+        let _ = socket.send(Message::text(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "data": []
+                }
+            })
+            .to_string(),
+        ));
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .unwrap_err();
+
+    assert_bounded_resource(error, "dynamic tool-call request queue count", 64);
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_rejects_oversized_handshake_read_ahead() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server_endpoint = endpoint.clone();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let request = read_http_upgrade_request(&mut stream);
+        assert!(request.contains("Authorization: Bearer test-token"));
+        let key = websocket_key(&request);
+        let accept_key = derive_accept_key(key.as_bytes());
+        let response = format!(
+            "HTTP/1.1 101 Switching Protocols\r\n\
+             Connection: Upgrade\r\n\
+             Upgrade: websocket\r\n\
+             Sec-WebSocket-Accept: {accept_key}\r\n\
+             \r\n"
+        );
+        let mut bytes = response.into_bytes();
+        bytes.extend_from_slice(&vec![0_u8; 8 * 1024]);
+        stream.write_all(&bytes).unwrap();
+        thread::sleep(Duration::from_millis(100));
+    });
+
+    let error = ManagedBackendSession::connect_websocket(
+        websocket_test_launch(server_endpoint.clone()),
+        server_endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap_err();
+
+    let ManagedBackendError::ConnectWebSocket { source, .. } = error else {
+        panic!("unexpected error: {error:?}");
+    };
+    assert!(
+        source.to_string().contains("read-ahead"),
+        "unexpected error text: {source}"
+    );
     server.join().unwrap();
 }
 
@@ -428,6 +615,45 @@ fn connect_test_client(endpoint: &BackendWebSocketEndpoint) -> ManagedBackendSes
         Duration::from_secs(2),
     )
     .unwrap()
+}
+
+fn assert_bounded_resource(error: ManagedBackendError, resource: &'static str, limit: usize) {
+    match error {
+        ManagedBackendError::BoundedResourceExceeded {
+            resource: actual_resource,
+            limit: actual_limit,
+            ..
+        } => {
+            assert_eq!(actual_resource, resource);
+            assert_eq!(actual_limit, limit);
+        }
+        other => panic!("expected bounded resource error, got {other:?}"),
+    }
+}
+
+fn read_http_upgrade_request(stream: &mut TcpStream) -> String {
+    let mut request = Vec::new();
+    let mut byte = [0_u8; 1];
+    loop {
+        stream.read_exact(&mut byte).unwrap();
+        request.push(byte[0]);
+        if request.ends_with(b"\r\n\r\n") {
+            break;
+        }
+        assert!(
+            request.len() < 16 * 1024,
+            "test WebSocket request header exceeded sanity limit"
+        );
+    }
+    String::from_utf8(request).unwrap()
+}
+
+fn websocket_key(request: &str) -> &str {
+    request
+        .lines()
+        .find_map(|line| line.strip_prefix("Sec-WebSocket-Key: "))
+        .expect("request should include Sec-WebSocket-Key")
+        .trim()
 }
 
 fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpec {

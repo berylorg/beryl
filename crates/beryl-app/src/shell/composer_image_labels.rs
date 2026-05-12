@@ -2,10 +2,14 @@ use std::collections::HashMap;
 
 use beryl_backend::{ThreadInfo, ThreadItem, TurnInfo, UserInput};
 
+pub(super) const COMPOSER_IMAGE_LABEL_MAX_THREADS: usize = 256;
+pub(super) const COMPOSER_IMAGE_LABEL_SCAN_ERROR_MAX_BYTES: usize = 4096;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct ComposerImageLabelState {
     pending_new_thread: ComposerImageLabelAllocator,
     threads: HashMap<String, ComposerImageLabelThreadState>,
+    next_touch_index: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -17,6 +21,7 @@ struct ComposerImageLabelAllocator {
 struct ComposerImageLabelThreadState {
     allocator: ComposerImageLabelAllocator,
     history_scan: ComposerImageLabelScanState,
+    last_touched: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -114,7 +119,7 @@ impl ComposerImageLabelState {
 
     pub(super) fn fail_thread_history_scan(&mut self, thread_id: &str, message: impl Into<String>) {
         self.thread_state_mut(thread_id).history_scan = ComposerImageLabelScanState::Failed {
-            message: message.into(),
+            message: bounded_scan_failure_message(message.into()),
         };
     }
 
@@ -177,8 +182,67 @@ impl ComposerImageLabelState {
     }
 
     fn thread_state_mut(&mut self, thread_id: &str) -> &mut ComposerImageLabelThreadState {
-        self.threads.entry(thread_id.to_string()).or_default()
+        let touch_index = self.next_touch_index();
+        let thread_id = thread_id.to_string();
+        self.threads
+            .entry(thread_id.clone())
+            .or_default()
+            .last_touched = touch_index;
+        self.prune_threads(Some(thread_id.as_str()));
+        self.threads
+            .get_mut(thread_id.as_str())
+            .expect("protected thread state should remain after pruning")
     }
+
+    fn next_touch_index(&mut self) -> u64 {
+        let touch_index = self.next_touch_index;
+        self.next_touch_index = self.next_touch_index.saturating_add(1);
+        touch_index
+    }
+
+    fn prune_threads(&mut self, protected_thread_id: Option<&str>) {
+        if self.threads.len() <= COMPOSER_IMAGE_LABEL_MAX_THREADS {
+            return;
+        }
+
+        let mut candidates = self
+            .threads
+            .iter()
+            .filter(|(thread_id, _)| Some(thread_id.as_str()) != protected_thread_id)
+            .map(|(thread_id, state)| (state.last_touched, thread_id.clone()))
+            .collect::<Vec<_>>();
+        candidates.sort();
+
+        for (_, thread_id) in candidates {
+            if self.threads.len() <= COMPOSER_IMAGE_LABEL_MAX_THREADS {
+                break;
+            }
+            self.threads.remove(&thread_id);
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn retained_thread_count_for_test(&self) -> usize {
+        self.threads.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn has_thread_for_test(&self, thread_id: &str) -> bool {
+        self.threads.contains_key(thread_id)
+    }
+}
+
+fn bounded_scan_failure_message(message: String) -> String {
+    if message.len() <= COMPOSER_IMAGE_LABEL_SCAN_ERROR_MAX_BYTES {
+        return message;
+    }
+
+    let suffix = "...";
+    let mut end = COMPOSER_IMAGE_LABEL_SCAN_ERROR_MAX_BYTES.saturating_sub(suffix.len());
+    while !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{suffix}", &message[..end])
 }
 
 impl ComposerImageLabelAllocator {

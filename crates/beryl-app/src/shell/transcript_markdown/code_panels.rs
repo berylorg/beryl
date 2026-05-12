@@ -15,6 +15,16 @@ pub(crate) fn markdown_code_panel_id(
     )
 }
 
+pub(crate) fn markdown_code_panel_id_belongs_to_row(panel_id: &str, row_identity: &str) -> bool {
+    let row_prefix = format!("{PANEL_ID_PREFIX}:r{}:", row_identity.len());
+    let Some(after_prefix) = panel_id.strip_prefix(row_prefix.as_str()) else {
+        return false;
+    };
+    after_prefix
+        .strip_prefix(row_identity)
+        .is_some_and(|suffix| suffix.starts_with(":b"))
+}
+
 pub(crate) fn markdown_code_panel_ids(
     row_identity: &str,
     block_path: &str,

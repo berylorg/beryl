@@ -3,7 +3,9 @@ use std::time::{Duration, Instant};
 #[path = "../src/shell/tool_activity_nickname.rs"]
 mod tool_activity_nickname;
 
-use tool_activity_nickname::{ToolActivityNicknameResolutionTarget, ToolActivityNicknameResolver};
+use tool_activity_nickname::{
+    MAX_RETRY_THREADS, ToolActivityNicknameResolutionTarget, ToolActivityNicknameResolver,
+};
 
 #[test]
 fn resolver_deduplicates_eligible_thread_ids_and_respects_retry_backoff() {
@@ -49,6 +51,36 @@ fn resolver_limits_each_resolution_batch() {
     assert_eq!(batch.len(), 8);
     assert_eq!(batch[0].thread_id, "child_0");
     assert_eq!(batch[7].thread_id, "child_7");
+}
+
+#[test]
+fn resolver_prunes_retry_threads_to_retained_targets() {
+    let now = Instant::now();
+    let mut resolver = ToolActivityNicknameResolver::default();
+    resolver.mark_retry_for_test("child_a", now, 1);
+    resolver.mark_retry_for_test("child_b", now, 1);
+
+    resolver.retain_retry_threads(["child_b"]);
+
+    assert!(!resolver.has_retry_for_test("child_a"));
+    assert!(resolver.has_retry_for_test("child_b"));
+}
+
+#[test]
+fn resolver_caps_retry_threads() {
+    let now = Instant::now();
+    let mut resolver = ToolActivityNicknameResolver::default();
+    for index in 0..=MAX_RETRY_THREADS {
+        resolver.mark_retry_for_test(
+            format!("child_{index}"),
+            now + Duration::from_millis(index as u64),
+            1,
+        );
+    }
+
+    assert_eq!(resolver.retry_thread_count_for_test(), MAX_RETRY_THREADS);
+    assert!(!resolver.has_retry_for_test("child_0"));
+    assert!(resolver.has_retry_for_test(&format!("child_{MAX_RETRY_THREADS}")));
 }
 
 fn target(thread_id: impl Into<String>) -> ToolActivityNicknameResolutionTarget {

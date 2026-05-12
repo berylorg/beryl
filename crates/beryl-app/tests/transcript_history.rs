@@ -79,9 +79,10 @@ mod shell {
 
 use shell::DetailHarness;
 use shell::transcript_history::{
-    THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend, TranscriptHistoryPageRequest,
-    TranscriptHistoryWindow, initial_thread_history_page_options, load_older_thread_history_page,
-    loaded_page_from_desc_response, older_thread_history_page_options,
+    THREAD_HISTORY_PAGE_LIMIT, TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES, TranscriptHistoryBackend,
+    TranscriptHistoryPageRequest, TranscriptHistoryWindow, initial_thread_history_page_options,
+    load_older_thread_history_page, loaded_page_from_desc_response,
+    older_thread_history_page_options,
 };
 
 #[test]
@@ -295,6 +296,36 @@ fn history_window_retained_counts_track_resident_and_released_pages() {
     assert_eq!(counts.resident_pages, 2);
     assert_eq!(counts.released_pages, 1);
     assert_eq!(counts.loading_pages, 0);
+}
+
+#[test]
+fn history_window_caps_released_page_metadata() {
+    let initial_page = loaded_page_from_desc_response(ThreadTurnsListResponse {
+        data: vec![turn("turn_latest")],
+        next_cursor: Some("older_0".to_string()),
+        backwards_cursor: None,
+    });
+    let mut window = TranscriptHistoryWindow::from_latest_page(&initial_page);
+
+    for index in 0..(TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES + 4) {
+        assert_eq!(
+            window.begin_loading_older().as_deref(),
+            Some(format!("older_{index}").as_str())
+        );
+        let page = loaded_page_from_desc_response(ThreadTurnsListResponse {
+            data: vec![turn(&format!("turn_{index}"))],
+            next_cursor: Some(format!("older_{}", index + 1)),
+            backwards_cursor: Some(format!("newer_{index}")),
+        });
+        window.finish_loading_older_with_added(&page, page.turns.len());
+    }
+
+    window.release_cold_pages_with_limit(&(10_000..10_001), 1);
+
+    let counts = window.retained_counts();
+    assert_eq!(counts.released_pages, TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES);
+    assert_eq!(counts.resident_pages, 1);
+    assert_eq!(counts.pages, TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES + 1);
 }
 
 #[test]

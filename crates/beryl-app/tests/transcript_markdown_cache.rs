@@ -163,6 +163,43 @@ fn markdown_cache_bounds_entries_by_least_recent_use() {
 }
 
 #[test]
+fn markdown_cache_reports_retained_byte_estimates() {
+    let mut cache = TranscriptMarkdownCache::new(8, 4096);
+    let key = TranscriptMarkdownCacheKey::new("turn:1:assistant");
+
+    let lookup = cache.lookup(key, "plain **bold**");
+    assert!(lookup.parse_request.is_some());
+    let pending = cache.stats();
+    assert!(pending.estimated_retained_bytes >= pending.source_bytes);
+    assert!(pending.in_flight_source_bytes >= "plain **bold**".len());
+
+    assert_display_changed(cache.complete_parse(lookup.parse_request.unwrap().parse()));
+    let completed = cache.stats();
+    assert_eq!(completed.in_flight_source_bytes, 0);
+    assert!(completed.displayed_source_bytes >= "plain **bold**".len());
+    assert!(completed.parsed_source_bytes >= "plain **bold**".len());
+    assert!(completed.markdown_estimated_structure_bytes > 0);
+}
+
+#[test]
+fn markdown_cache_bounds_entries_by_estimated_retained_bytes() {
+    let mut cache = TranscriptMarkdownCache::new_with_estimated_bytes(8, 4096, 900);
+
+    for index in 0..4 {
+        let key = TranscriptMarkdownCacheKey::new(format!("turn:{index}:assistant"));
+        let lookup = cache.lookup(key, &format!("message {index}"));
+        if let Some(request) = lookup.parse_request {
+            let _ = cache.complete_parse(request.parse());
+        }
+    }
+
+    let stats = cache.stats();
+    assert!(stats.entries < 4);
+    assert!(stats.estimated_retained_bytes <= 900);
+    assert!(stats.evictions > 0);
+}
+
+#[test]
 fn markdown_cache_rejects_parse_completion_after_scope_clear() {
     let mut cache = TranscriptMarkdownCache::new(8, 4096);
     let key = TranscriptMarkdownCacheKey::new("turn:1:assistant");

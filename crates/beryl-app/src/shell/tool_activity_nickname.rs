@@ -9,6 +9,7 @@ use beryl_backend::{ManagedBackendClientConnector, ThreadReadMetadata};
 use tracing::warn;
 
 const MAX_RESOLUTION_BATCH: usize = 8;
+pub(super) const MAX_RETRY_THREADS: usize = 256;
 const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(250);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(5);
 
@@ -62,6 +63,18 @@ impl ToolActivityNicknameResolver {
 
     pub(super) fn has_retry_work(&self) -> bool {
         !self.retry_by_thread.is_empty()
+    }
+
+    pub(super) fn retain_retry_threads<'a>(
+        &mut self,
+        retained_thread_ids: impl IntoIterator<Item = &'a str>,
+    ) {
+        let retained_thread_ids = retained_thread_ids
+            .into_iter()
+            .map(str::to_string)
+            .collect::<HashSet<_>>();
+        self.retry_by_thread
+            .retain(|thread_id, _| retained_thread_ids.contains(thread_id));
     }
 
     pub(super) fn begin_if_needed(
@@ -175,8 +188,28 @@ impl ToolActivityNicknameResolver {
                             retry_at: now + retry_delay(attempts),
                         },
                     );
+                    self.prune_retry_threads();
                 }
             }
+        }
+    }
+
+    fn prune_retry_threads(&mut self) {
+        if self.retry_by_thread.len() <= MAX_RETRY_THREADS {
+            return;
+        }
+
+        let mut entries = self
+            .retry_by_thread
+            .iter()
+            .map(|(thread_id, retry)| (retry.retry_at, thread_id.clone()))
+            .collect::<Vec<_>>();
+        entries.sort();
+        for (_, thread_id) in entries {
+            if self.retry_by_thread.len() <= MAX_RETRY_THREADS {
+                break;
+            }
+            self.retry_by_thread.remove(&thread_id);
         }
     }
 
@@ -203,6 +236,17 @@ impl ToolActivityNicknameResolver {
     ) {
         self.retry_by_thread
             .insert(thread_id.into(), NicknameRetryState { attempts, retry_at });
+        self.prune_retry_threads();
+    }
+
+    #[cfg(test)]
+    pub(super) fn retry_thread_count_for_test(&self) -> usize {
+        self.retry_by_thread.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn has_retry_for_test(&self, thread_id: &str) -> bool {
+        self.retry_by_thread.contains_key(thread_id)
     }
 }
 

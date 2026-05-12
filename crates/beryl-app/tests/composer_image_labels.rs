@@ -5,6 +5,7 @@ mod composer_image_labels;
 
 use beryl_backend::{ThreadItem, TurnInfo, TurnStatus, UserInput, UserMessageItem};
 use composer_image_labels::{
+    COMPOSER_IMAGE_LABEL_MAX_THREADS, COMPOSER_IMAGE_LABEL_SCAN_ERROR_MAX_BYTES,
     ComposerImageLabelObservations, ComposerImageLabelState, ComposerImagePasteReadiness,
     image_label_for_index, image_label_index,
 };
@@ -152,6 +153,37 @@ fn scan_failure_keeps_existing_thread_paste_blocked() {
         }
     );
     assert_eq!(state.allocate(None), "A");
+}
+
+#[test]
+fn retained_thread_label_state_is_capped_and_protects_touched_thread() {
+    let mut state = ComposerImageLabelState::default();
+
+    for index in 0..=COMPOSER_IMAGE_LABEL_MAX_THREADS {
+        state.observe_thread_backend_input(&format!("thread_{index}"), &[]);
+    }
+
+    assert_eq!(
+        state.retained_thread_count_for_test(),
+        COMPOSER_IMAGE_LABEL_MAX_THREADS
+    );
+    assert!(!state.has_thread_for_test("thread_0"));
+    assert!(state.has_thread_for_test(&format!("thread_{}", COMPOSER_IMAGE_LABEL_MAX_THREADS)));
+}
+
+#[test]
+fn scan_failure_message_is_truncated() {
+    let mut state = ComposerImageLabelState::default();
+    let message = "x".repeat(5000);
+
+    state.fail_thread_history_scan("thread_1", message);
+
+    let ComposerImagePasteReadiness::Failed { message } = state.paste_readiness(Some("thread_1"))
+    else {
+        panic!("thread should report failed scan");
+    };
+    assert!(message.len() <= COMPOSER_IMAGE_LABEL_SCAN_ERROR_MAX_BYTES);
+    assert!(message.ends_with("..."));
 }
 
 fn image_turn(id: &str, label: &str) -> TurnInfo {

@@ -77,6 +77,10 @@ impl<ColumnKey, RowSelection, ExpansionKey>
         self.columns.len()
     }
 
+    pub(crate) fn clear(&mut self) {
+        self.columns.clear();
+    }
+
     pub(crate) fn push_root(&mut self, root_key: ColumnKey) {
         self.columns.push(ColumnSelectorColumn::new(root_key));
     }
@@ -87,6 +91,42 @@ impl<ColumnKey, RowSelection, ExpansionKey>
 
     pub(crate) fn truncate_columns(&mut self, len: usize) {
         self.columns.truncate(len);
+    }
+}
+
+impl<ColumnKey, RowSelection, ExpansionKey>
+    ColumnSelectorState<ColumnKey, RowSelection, ExpansionKey>
+where
+    ExpansionKey: Clone + Ord,
+{
+    pub(crate) fn expansion_override_count(&self) -> usize {
+        self.columns
+            .iter()
+            .map(|column| column.expansion_overrides.len())
+            .sum()
+    }
+
+    pub(crate) fn prune_expansion_overrides(&mut self, max_overrides: usize) -> bool {
+        let mut retained = self.expansion_override_count();
+        if retained <= max_overrides {
+            return false;
+        }
+
+        let mut changed = false;
+        for column in &mut self.columns {
+            while retained > max_overrides {
+                let Some(key) = column.expansion_overrides.keys().next().cloned() else {
+                    break;
+                };
+                column.expansion_overrides.remove(&key);
+                retained -= 1;
+                changed = true;
+            }
+            if retained <= max_overrides {
+                break;
+            }
+        }
+        changed
     }
 }
 
@@ -258,6 +298,10 @@ impl<ColumnKey> ColumnSelectorScrollState<ColumnKey> {
 
     pub(crate) fn column_keys(&self) -> impl Iterator<Item = &ColumnKey> {
         self.columns.iter().map(|(key, _)| key)
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.columns.clear();
     }
 }
 

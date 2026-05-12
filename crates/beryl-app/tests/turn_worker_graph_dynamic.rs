@@ -281,7 +281,7 @@ fn stream_dynamic_graph_write_publishes_update_before_success_response() {
             })
         },
         |_| panic!("test did not expect a lifecycle yield"),
-        |_| {},
+        |_| Ok(()),
     )
     .unwrap();
 

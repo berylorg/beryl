@@ -33,7 +33,7 @@ fn checklist_sidebar_projection_preserves_flat_item_order_numbers_and_status_lab
 
     let projection = checklist_sidebar_projection::project_checklist_projection(&graph, checklist);
     let rows = (0..projection.row_count())
-        .map(|index| projection.row(index).unwrap())
+        .map(|index| projection.row(&graph, index).unwrap())
         .collect::<Vec<_>>();
 
     assert_eq!(projection.title(), "Release checklist");
@@ -88,7 +88,7 @@ fn checklist_sidebar_projection_cache_refreshes_only_when_selection_or_graph_cha
     assert!(graph_refresh.changed());
     assert!(!graph_refresh.selected_checklist_changed());
     assert_eq!(
-        cache.projection().unwrap().row(0).unwrap().status,
+        cache.projection().unwrap().row(&graph, 0).unwrap().status,
         Some(ChecklistItemStatus::Done)
     );
 
@@ -118,7 +118,12 @@ fn checklist_sidebar_projection_cache_reflects_optimistic_status_projection() {
     assert!(refresh.changed());
     assert!(!refresh.selected_checklist_changed());
     assert_eq!(
-        cache.projection().unwrap().row(0).unwrap().status,
+        cache
+            .projection()
+            .unwrap()
+            .row(overlay.graph(), 0)
+            .unwrap()
+            .status,
         Some(ChecklistItemStatus::Done)
     );
 }
@@ -140,7 +145,12 @@ fn checklist_sidebar_projection_cache_reflects_committed_status_projection() {
 
     assert!(refresh.changed());
     assert_eq!(
-        cache.projection().unwrap().row(0).unwrap().status,
+        cache
+            .projection()
+            .unwrap()
+            .row(overlay.graph(), 0)
+            .unwrap()
+            .status,
         Some(ChecklistItemStatus::Done)
     );
 }
@@ -167,8 +177,16 @@ fn checklist_sidebar_projection_cache_drops_optimistically_deleted_item() {
 
     assert!(refresh.changed());
     assert_eq!(projection.row_count(), 2);
-    assert!(projection.row(0).is_some_and(|row| row.node_id != draft));
-    assert!(projection.row(1).is_some_and(|row| row.node_id != draft));
+    assert!(
+        projection
+            .row(overlay.graph(), 0)
+            .is_some_and(|row| row.node_id != draft)
+    );
+    assert!(
+        projection
+            .row(overlay.graph(), 1)
+            .is_some_and(|row| row.node_id != draft)
+    );
 }
 
 #[test]
@@ -222,8 +240,16 @@ fn checklist_sidebar_projection_cache_drops_deleted_checklist_item() {
     assert!(!refresh.selected_checklist_changed());
     assert_eq!(refresh.previous_row_count(), 3);
     assert_eq!(refresh.row_count(), 2);
-    assert!(projection.row(0).is_some_and(|row| row.node_id != draft));
-    assert!(projection.row(1).is_some_and(|row| row.node_id != draft));
+    assert!(
+        projection
+            .row(&graph, 0)
+            .is_some_and(|row| row.node_id != draft)
+    );
+    assert!(
+        projection
+            .row(&graph, 1)
+            .is_some_and(|row| row.node_id != draft)
+    );
 }
 
 #[test]
@@ -327,7 +353,7 @@ fn checklist_sidebar_row_element_key_uses_stable_semantic_node_id() {
     let mut graph = checklist_graph();
     let checklist = graph.node(&node_id("release_checklist")).unwrap();
     let before = checklist_sidebar_projection::project_checklist_projection(&graph, checklist);
-    let verify_key = before.row(1).unwrap().element_key();
+    let verify_key = before.row(&graph, 1).unwrap().element_key();
 
     graph
         .apply_patch(&SemanticGraphPatch::from_operation(
@@ -344,9 +370,10 @@ fn checklist_sidebar_row_element_key_uses_stable_semantic_node_id() {
     let after = checklist_sidebar_projection::project_checklist_projection(&graph, checklist);
 
     assert_eq!(verify_key, "checklist-item-row-verify");
-    assert_eq!(after.row(0).unwrap().node_id, node_id("verify"));
-    assert_eq!(after.row(0).unwrap().number, 1);
-    assert_eq!(after.row(0).unwrap().element_key(), verify_key);
+    let after_row = after.row(&graph, 0).unwrap();
+    assert_eq!(after_row.node_id, node_id("verify"));
+    assert_eq!(after_row.number, 1);
+    assert_eq!(after_row.element_key(), verify_key);
 }
 
 #[test]
@@ -389,7 +416,7 @@ fn checklist_projection_reflects_dynamic_tool_commit_projection() {
         .finish_mutation_commit_update(graph::GraphMutationCommitUpdate::new(commit, ""))
         .unwrap();
     let refresh = cache.refresh(overlay.graph(), Some(&checklist_id));
-    let row = cache.projection().unwrap().row(0).unwrap();
+    let row = cache.projection().unwrap().row(overlay.graph(), 0).unwrap();
 
     assert!(dispatch.response().success);
     assert!(refresh.changed());

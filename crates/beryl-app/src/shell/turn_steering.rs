@@ -41,6 +41,29 @@ impl SteeringInputFragment {
             self.image_markers,
         )
     }
+
+    pub(super) fn retained_payload_bytes_lower_bound(&self) -> usize {
+        self.text
+            .len()
+            .saturating_add(
+                self.backend_input
+                    .iter()
+                    .map(user_input_payload_bytes)
+                    .sum::<usize>(),
+            )
+            .saturating_add(self.image_markers.len().saturating_mul(32))
+    }
+}
+
+fn user_input_payload_bytes(input: &UserInput) -> usize {
+    match input {
+        UserInput::Text { text } => text.len(),
+        UserInput::Image { url } => url.len(),
+        UserInput::LocalImage { path } => path.len(),
+        UserInput::Skill { name, path } | UserInput::Mention { name, path } => {
+            name.len().saturating_add(path.len())
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

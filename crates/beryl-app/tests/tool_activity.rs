@@ -9,7 +9,12 @@ use beryl_backend::{
 };
 use beryl_model::workspace::WorkspaceId;
 use serde_json::{Value, json};
-use tool_activity::{ToolActivityProjection, ToolActivityRowStatus};
+use tool_activity::{
+    ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET, ACTIVITY_COMPLETED_ROW_BUDGET,
+    ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT, ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT,
+    ACTIVITY_REASONING_SUMMARY_BYTE_LIMIT, ACTIVITY_SELECTED_COMPLETED_ROW_WINDOW,
+    ToolActivityProjection, ToolActivityRowStatus,
+};
 
 #[test]
 fn projection_keeps_session_history_sorted_by_running_state_and_start_time() {
@@ -106,6 +111,11 @@ fn projection_retained_counts_report_records_rows_and_visible_indexes() {
     assert_eq!(counts.records, 1);
     assert_eq!(counts.rows, 1);
     assert_eq!(counts.visible_thread_indexes, 1);
+    assert_eq!(counts.label_count, 0);
+    assert_eq!(counts.visible_thread_index_maps, 1);
+    assert!(counts.record_payload_bytes > 0);
+    assert!(counts.row_payload_bytes > 0);
+    assert_eq!(counts.label_payload_bytes, 0);
     assert!(counts.payload_bytes > 0);
 }
 
@@ -616,6 +626,233 @@ fn projection_returns_bounded_selected_thread_row_windows() {
     assert_eq!(oversized_window.len(), 2);
     assert_eq!(oversized_window[0].0, 10);
     assert_eq!(oversized_window[1].0, 11);
+}
+
+#[test]
+fn projection_prunes_completed_rows_by_global_row_budget_but_keeps_running() {
+    let mut projection = ToolActivityProjection::default();
+
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 6 {
+        let status = match index {
+            value if value == ACTIVITY_COMPLETED_ROW_BUDGET + 3 => "failed",
+            value if value == ACTIVITY_COMPLETED_ROW_BUDGET + 4 => "declined",
+            _ => "completed",
+        };
+        add_completed_command(&mut projection, "thread_main", index, status);
+    }
+    projection.apply_stream_event(
+        &started("thread_main", "turn_running", command_item("running")),
+        Some("Main".to_string()),
+    );
+
+    let counts = projection.retained_counts();
+    assert_eq!(counts.records, ACTIVITY_COMPLETED_ROW_BUDGET + 1);
+    assert_eq!(counts.rows, ACTIVITY_COMPLETED_ROW_BUDGET + 1);
+    assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .any(|row| row.status == ToolActivityRowStatus::FinishedError)
+    );
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.tool_display_value != "cmd 0")
+    );
+}
+
+#[test]
+fn projection_prunes_completed_rows_by_display_byte_budget() {
+    let mut projection = ToolActivityProjection::default();
+    let command = "x".repeat(ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT + 4096);
+    let row_count =
+        (ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET / ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT) + 20;
+
+    for index in 0..row_count {
+        projection.apply_stream_event(
+            &completed(
+                "thread_main",
+                format!("turn_{index}").as_str(),
+                command_item_with_command(format!("cmd_{index}").as_str(), &command, "completed"),
+            ),
+            Some("Main".to_string()),
+        );
+    }
+
+    let counts = projection.retained_counts();
+    assert!(counts.records < row_count);
+    assert!(
+        counts.records
+            <= ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET / ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT
+    );
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.tool_display_value.len() <= ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT)
+    );
+}
+
+#[test]
+fn projection_protects_latest_completed_window_for_selected_thread() {
+    let mut projection = ToolActivityProjection::default();
+
+    for index in 0..ACTIVITY_SELECTED_COMPLETED_ROW_WINDOW {
+        add_completed_command(&mut projection, "thread_selected", index, "completed");
+    }
+    projection.set_selected_thread_id(Some("thread_selected"));
+    assert_eq!(
+        projection.row_count_for_selected_thread(Some("thread_selected")),
+        ACTIVITY_SELECTED_COMPLETED_ROW_WINDOW
+    );
+
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 100 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+
+    assert_eq!(
+        projection.row_count_for_selected_thread(Some("thread_selected")),
+        ACTIVITY_SELECTED_COMPLETED_ROW_WINDOW
+    );
+    let window = projection.rows_for_selected_thread_window(Some("thread_selected"), 2..5);
+    assert_eq!(window.len(), 3);
+    assert_eq!(
+        window
+            .iter()
+            .map(|(_, row)| row.agent_label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Main", "Main", "Main"]
+    );
+}
+
+#[test]
+fn projection_keeps_retained_spawn_child_ownership_until_child_rows_arrive() {
+    let mut projection = ToolActivityProjection::default();
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 10 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_parent", collab_spawn_item("agent_1")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
+        None,
+    );
+
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("cmd_child")),
+        None,
+    );
+
+    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert!(
+        parent_rows
+            .iter()
+            .any(|row| row.tool_display_value == "dir")
+    );
+    let counts = projection.retained_counts();
+    assert_eq!(counts.parent_thread_links, 1);
+    assert_eq!(counts.root_turn_links, 1);
+}
+
+#[test]
+fn projection_prunes_subagent_maps_when_retained_rows_no_longer_reference_them() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started("thread_parent", "turn_parent", collab_spawn_item("agent_1")),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &started("thread_child", "turn_child", command_item("cmd_child")),
+        None,
+    );
+    let metadata = thread_read_metadata(
+        "thread_child",
+        Some("Hooke"),
+        Some("gpt-5.5"),
+        Some("xhigh"),
+    );
+    projection.apply_thread_read_metadata([&metadata]);
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
+        None,
+    );
+    projection.apply_stream_event(
+        &turn_completed_with_status("thread_child", "turn_child", TurnStatus::Completed),
+        None,
+    );
+
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 10 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+
+    let counts = projection.retained_counts();
+    assert_eq!(counts.parent_thread_links, 0);
+    assert_eq!(counts.root_turn_links, 0);
+    assert_eq!(counts.subagent_metadata_count, 0);
+    assert_eq!(counts.label_count, 0);
+    assert!(projection.subagent_metadata_resolution_targets().is_empty());
+    assert!(projection.unresolved_subagent_thread_ids().is_empty());
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.tool_display_value != "spawnAgent" && row.tool_display_value != "dir")
+    );
+}
+
+#[test]
+fn projection_truncates_large_ingress_payloads() {
+    let mut projection = ToolActivityProjection::default();
+    let long_label = "agent ".to_string() + &"l".repeat(ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT * 2);
+    let long_command = "run ".to_string() + &"c".repeat(ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT * 2);
+    let long_reasoning =
+        "reason ".to_string() + &"r".repeat(ACTIVITY_REASONING_SUMMARY_BYTE_LIMIT * 2);
+
+    projection.apply_stream_event(
+        &started(
+            "thread_main",
+            "turn_command",
+            command_item_with_command("cmd_1", &long_command, "inProgress"),
+        ),
+        Some(long_label),
+    );
+    projection.apply_stream_event(
+        &reasoning_summary_delta(
+            "thread_main",
+            "turn_reasoning",
+            "reasoning_1",
+            0,
+            &long_reasoning,
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &reasoning_summary_delta(
+            "thread_main",
+            "turn_reasoning",
+            "reasoning_1",
+            ACTIVITY_SELECTED_COMPLETED_ROW_WINDOW,
+            "ignored high-index summary",
+        ),
+        Some("Main".to_string()),
+    );
+
+    let command_row = projection
+        .rows()
+        .iter()
+        .find(|row| row.tool_display_value.starts_with("run "))
+        .expect("command row should be retained");
+    assert!(command_row.agent_label.len() <= ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT);
+    assert!(command_row.tool_display_value.len() <= ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT);
+
+    let counts = projection.retained_counts();
+    assert_eq!(counts.reasoning_summary_parts, 1);
+    assert!(counts.reasoning_summary_bytes <= ACTIVITY_REASONING_SUMMARY_BYTE_LIMIT);
 }
 
 #[test]
@@ -1381,6 +1618,26 @@ fn row_for_activity<'a>(
         .iter()
         .find(|row| row.tool_display_value == tool_display_value)
         .expect("activity row should be visible")
+}
+
+fn add_completed_command(
+    projection: &mut ToolActivityProjection,
+    thread_id: &str,
+    index: usize,
+    status: &str,
+) {
+    projection.apply_stream_event(
+        &completed(
+            thread_id,
+            format!("turn_{index}").as_str(),
+            command_item_with_command(
+                format!("cmd_{index}").as_str(),
+                &format!("cmd {index}"),
+                status,
+            ),
+        ),
+        Some("Main".to_string()),
+    );
 }
 
 fn mcp_item(item_id: &str, tool: &str) -> ThreadItem {

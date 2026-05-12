@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    time::{Duration, Instant},
+};
 
 use beryl_model::{
     semantic_graph::{SemanticGraphError, SemanticGraphPatch, SemanticNodeId},
@@ -7,12 +10,25 @@ use beryl_model::{
 
 use crate::{WorkspaceGraphMutationCommit, WorkspaceGraphRevision};
 
+const GRAPH_MUTATION_QUEUED_COMMIT_MAX: usize = 256;
+const GRAPH_MUTATION_QUEUED_COMMIT_BYTE_LIMIT: usize = 4 * 1024 * 1024;
+const GRAPH_MUTATION_PENDING_OPTIMISTIC_MAX: usize = 256;
+const GRAPH_MUTATION_PENDING_OPTIMISTIC_BYTE_LIMIT: usize = 4 * 1024 * 1024;
+const GRAPH_MUTATION_QUEUE_MAX_AGE: Duration = Duration::from_secs(30);
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct GraphMutationCoordinatorState {
     committed_revision: WorkspaceGraphRevision,
-    queued_commits: BTreeMap<WorkspaceGraphRevision, GraphMutationCommitUpdate>,
+    queued_commits: BTreeMap<WorkspaceGraphRevision, QueuedGraphCommit>,
     pending_optimistic_mutations: VecDeque<PendingOptimisticGraphMutation>,
     next_optimistic_mutation_id: u64,
+}
+
+#[derive(Clone, Debug)]
+struct QueuedGraphCommit {
+    update: GraphMutationCommitUpdate,
+    queued_at: Instant,
+    retained_bytes: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,6 +37,8 @@ pub(super) struct PendingOptimisticGraphMutation {
     pub(super) base_revision: WorkspaceGraphRevision,
     pub(super) patch: SemanticGraphPatch,
     pub(super) affected_node_ids: BTreeSet<SemanticNodeId>,
+    queued_at: Instant,
+    retained_bytes: usize,
 }
 
 pub(super) enum StagedGraphCommit {
@@ -28,6 +46,9 @@ pub(super) enum StagedGraphCommit {
     QueuedGap {
         queued_revision: WorkspaceGraphRevision,
         waiting_for_revision: WorkspaceGraphRevision,
+    },
+    RecoveryRequired {
+        reason: String,
     },
     IgnoredStale {
         committed_revision: WorkspaceGraphRevision,
@@ -78,6 +99,9 @@ pub(crate) enum GraphCommitApplication {
     QueuedGap {
         queued_revision: WorkspaceGraphRevision,
         waiting_for_revision: WorkspaceGraphRevision,
+    },
+    RecoveryRequired {
+        reason: String,
     },
     IgnoredStale {
         committed_revision: WorkspaceGraphRevision,
@@ -215,6 +239,19 @@ impl GraphOptimisticMutation {
             base_revision: self.base_revision,
             patch: self.patch,
             affected_node_ids: self.affected_node_ids,
+            queued_at: Instant::now(),
+            retained_bytes: 0,
+        }
+    }
+}
+
+impl QueuedGraphCommit {
+    fn new(update: GraphMutationCommitUpdate) -> Self {
+        let retained_bytes = graph_commit_update_retained_bytes(&update);
+        Self {
+            update,
+            queued_at: Instant::now(),
+            retained_bytes,
         }
     }
 }
@@ -237,8 +274,18 @@ impl GraphMutationCoordinatorState {
         self.queued_commits.len()
     }
 
+    #[cfg(test)]
+    pub(super) fn queued_commit_payload_bytes(&self) -> usize {
+        self.queued_commit_retained_bytes()
+    }
+
     pub(super) fn pending_optimistic_mutation_count(&self) -> usize {
         self.pending_optimistic_mutations.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn pending_optimistic_mutation_payload_bytes(&self) -> usize {
+        self.pending_optimistic_mutation_retained_bytes()
     }
 
     pub(super) fn reserve_optimistic_mutation_id(&mut self) -> OptimisticGraphMutationId {
@@ -265,9 +312,12 @@ impl GraphMutationCoordinatorState {
 
     pub(super) fn push_pending_optimistic_mutation(
         &mut self,
-        mutation: PendingOptimisticGraphMutation,
-    ) {
+        mut mutation: PendingOptimisticGraphMutation,
+    ) -> bool {
+        mutation.queued_at = Instant::now();
+        mutation.retained_bytes = pending_optimistic_mutation_retained_bytes(&mutation);
         self.pending_optimistic_mutations.push_back(mutation);
+        self.prune_pending_optimistic_mutations()
     }
 
     pub(super) fn remove_pending_optimistic_mutation(
@@ -319,8 +369,34 @@ impl GraphMutationCoordinatorState {
         }
 
         if commit.base_revision > self.committed_revision {
+            if self.drop_expired_queued_commits() {
+                return Ok(StagedGraphCommit::RecoveryRequired {
+                    reason:
+                        "semantic graph revision gap waited longer than the bounded recovery window"
+                            .to_string(),
+                });
+            }
             let queued_revision = commit.committed_revision;
-            self.queued_commits.entry(queued_revision).or_insert(update);
+            let retained_bytes = graph_commit_update_retained_bytes(&update);
+            if retained_bytes > GRAPH_MUTATION_QUEUED_COMMIT_BYTE_LIMIT {
+                self.clear_runtime_projection_queues();
+                return Ok(StagedGraphCommit::RecoveryRequired {
+                    reason: format!(
+                        "semantic graph commit {queued_revision} exceeds the queued-commit byte budget"
+                    ),
+                });
+            }
+            self.queued_commits
+                .entry(queued_revision)
+                .or_insert_with(|| QueuedGraphCommit::new(update));
+            if self.queued_commits.len() > GRAPH_MUTATION_QUEUED_COMMIT_MAX
+                || self.queued_commit_retained_bytes() > GRAPH_MUTATION_QUEUED_COMMIT_BYTE_LIMIT
+            {
+                self.clear_runtime_projection_queues();
+                return Ok(StagedGraphCommit::RecoveryRequired {
+                    reason: "semantic graph queued commit budget was exceeded".to_string(),
+                });
+            }
             return Ok(StagedGraphCommit::QueuedGap {
                 queued_revision,
                 waiting_for_revision: self.committed_revision.next(),
@@ -342,9 +418,11 @@ impl GraphMutationCoordinatorState {
     pub(super) fn take_next_ready_commit(&mut self) -> Option<GraphMutationCommitUpdate> {
         self.drop_stale_queued_commits();
         let next_revision = self.queued_commits.iter().find_map(|(revision, update)| {
-            (update.commit.base_revision == self.committed_revision).then_some(*revision)
+            (update.update.commit.base_revision == self.committed_revision).then_some(*revision)
         })?;
-        self.queued_commits.remove(&next_revision)
+        self.queued_commits
+            .remove(&next_revision)
+            .map(|queued| queued.update)
     }
 
     fn drop_stale_queued_commits(&mut self) {
@@ -352,6 +430,56 @@ impl GraphMutationCoordinatorState {
         self.queued_commits
             .retain(|revision, _| *revision > committed_revision);
     }
+
+    fn drop_expired_queued_commits(&mut self) -> bool {
+        let now = Instant::now();
+        let before = self.queued_commits.len();
+        self.queued_commits.retain(|_, queued| {
+            now.duration_since(queued.queued_at) <= GRAPH_MUTATION_QUEUE_MAX_AGE
+        });
+        before != self.queued_commits.len()
+    }
+
+    fn prune_pending_optimistic_mutations(&mut self) -> bool {
+        let mut pruned = false;
+        while self.pending_optimistic_mutations.len() > GRAPH_MUTATION_PENDING_OPTIMISTIC_MAX
+            || self.pending_optimistic_mutation_retained_bytes()
+                > GRAPH_MUTATION_PENDING_OPTIMISTIC_BYTE_LIMIT
+        {
+            if self.pending_optimistic_mutations.pop_front().is_none() {
+                break;
+            }
+            pruned = true;
+        }
+        pruned
+    }
+
+    fn queued_commit_retained_bytes(&self) -> usize {
+        self.queued_commits
+            .values()
+            .map(|queued| queued.retained_bytes)
+            .sum()
+    }
+
+    fn pending_optimistic_mutation_retained_bytes(&self) -> usize {
+        self.pending_optimistic_mutations
+            .iter()
+            .map(|pending| pending.retained_bytes)
+            .sum()
+    }
+
+    fn clear_runtime_projection_queues(&mut self) {
+        self.queued_commits.clear();
+        self.pending_optimistic_mutations.clear();
+    }
+}
+
+fn graph_commit_update_retained_bytes(update: &GraphMutationCommitUpdate) -> usize {
+    std::mem::size_of_val(update).saturating_add(format!("{update:?}").len())
+}
+
+fn pending_optimistic_mutation_retained_bytes(mutation: &PendingOptimisticGraphMutation) -> usize {
+    std::mem::size_of_val(mutation).saturating_add(format!("{mutation:?}").len())
 }
 
 #[derive(Debug)]

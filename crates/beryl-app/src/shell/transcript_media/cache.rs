@@ -13,6 +13,9 @@ use super::types::{
     TranscriptMediaSourceFingerprint, media_load_request,
 };
 
+pub(crate) const TRANSCRIPT_MEDIA_CACHE_MAX_COMPRESSED_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE: usize = 128 * 1024 * 1024;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TranscriptMediaCacheStats {
     pub(crate) lookups: u64,
@@ -37,6 +40,8 @@ pub(crate) struct TranscriptMediaCacheStats {
 pub(crate) struct TranscriptMediaCache {
     entries: HashMap<TranscriptMediaCacheKey, TranscriptMediaCacheEntry>,
     max_entries: usize,
+    max_loaded_image_bytes: usize,
+    max_decoded_image_bytes_estimate: usize,
     markdown_revalidate_after: Duration,
     access_tick: u64,
     scope_generation: u64,
@@ -95,16 +100,49 @@ impl Default for TranscriptMediaCache {
 
 impl TranscriptMediaCache {
     pub(crate) fn new(max_entries: usize) -> Self {
-        Self::new_with_markdown_revalidate_after(max_entries, Duration::from_secs(2))
+        Self::new_with_byte_budgets(
+            max_entries,
+            TRANSCRIPT_MEDIA_CACHE_MAX_COMPRESSED_IMAGE_BYTES,
+            TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE,
+        )
+    }
+
+    pub(crate) fn new_with_byte_budgets(
+        max_entries: usize,
+        max_loaded_image_bytes: usize,
+        max_decoded_image_bytes_estimate: usize,
+    ) -> Self {
+        Self::new_with_byte_budgets_and_markdown_revalidate_after(
+            max_entries,
+            max_loaded_image_bytes,
+            max_decoded_image_bytes_estimate,
+            Duration::from_secs(2),
+        )
     }
 
     pub(crate) fn new_with_markdown_revalidate_after(
         max_entries: usize,
         markdown_revalidate_after: Duration,
     ) -> Self {
+        Self::new_with_byte_budgets_and_markdown_revalidate_after(
+            max_entries,
+            TRANSCRIPT_MEDIA_CACHE_MAX_COMPRESSED_IMAGE_BYTES,
+            TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE,
+            markdown_revalidate_after,
+        )
+    }
+
+    pub(crate) fn new_with_byte_budgets_and_markdown_revalidate_after(
+        max_entries: usize,
+        max_loaded_image_bytes: usize,
+        max_decoded_image_bytes_estimate: usize,
+        markdown_revalidate_after: Duration,
+    ) -> Self {
         Self {
             entries: HashMap::new(),
             max_entries: max_entries.max(1),
+            max_loaded_image_bytes: max_loaded_image_bytes.max(1),
+            max_decoded_image_bytes_estimate: max_decoded_image_bytes_estimate.max(1),
             markdown_revalidate_after,
             access_tick: 0,
             scope_generation: 0,
@@ -112,9 +150,14 @@ impl TranscriptMediaCache {
         }
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.entries.clear();
+    pub(crate) fn clear(&mut self) -> Vec<Arc<gpui::Image>> {
+        let evicted_images = self
+            .entries
+            .drain()
+            .filter_map(|(_, entry)| entry.loaded_image_handle())
+            .collect();
         self.scope_generation = self.scope_generation.saturating_add(1);
+        evicted_images
     }
 
     pub(crate) fn lookup(
@@ -155,6 +198,7 @@ impl TranscriptMediaCache {
                     return TranscriptMediaLookup {
                         outcome: entry.displayed.clone(),
                         load_request: Some(request),
+                        evicted_images: Vec::new(),
                     };
                 }
                 if entry.displayed_fingerprint == Some(fingerprint) && entry.in_flight.is_none() {
@@ -165,6 +209,7 @@ impl TranscriptMediaCache {
                 return TranscriptMediaLookup {
                     outcome: entry.displayed.clone(),
                     load_request: None,
+                    evicted_images: Vec::new(),
                 };
             }
 
@@ -201,10 +246,11 @@ impl TranscriptMediaCache {
             }
 
             let outcome = entry.displayed.clone();
-            self.prune_if_needed();
+            let evicted_images = self.prune_if_needed();
             return TranscriptMediaLookup {
                 outcome,
                 load_request,
+                evicted_images,
             };
         }
 
@@ -231,7 +277,7 @@ impl TranscriptMediaCache {
             scheduled_loads = self.stats.scheduled_loads,
             "scheduled transcript media load"
         );
-        self.prune_if_needed();
+        let evicted_images = self.prune_if_needed();
 
         TranscriptMediaLookup {
             outcome: pending,
@@ -243,6 +289,7 @@ impl TranscriptMediaCache {
                 execution_target,
                 timeout,
             )),
+            evicted_images,
         }
     }
 
@@ -346,27 +393,12 @@ impl TranscriptMediaCache {
             );
         }
 
+        result.evicted_images = self.prune_if_needed();
         result
     }
 
     pub(crate) fn stats(&self) -> TranscriptMediaCacheStats {
-        let loaded = self.entries.values().fold(
-            TranscriptMediaLoadedStats::default(),
-            |mut stats, entry| {
-                if let TranscriptMediaLoadOutcome::Loaded(image) = entry.displayed.as_ref() {
-                    stats.entries = stats.entries.saturating_add(1);
-                    stats.image_bytes = stats.image_bytes.saturating_add(image.bytes().len());
-                    let dimensions = image.natural_dimensions();
-                    let decoded_bytes = (dimensions.width() as usize)
-                        .saturating_mul(dimensions.height() as usize)
-                        .saturating_mul(4);
-                    stats.decoded_image_bytes_estimate = stats
-                        .decoded_image_bytes_estimate
-                        .saturating_add(decoded_bytes);
-                }
-                stats
-            },
-        );
+        let loaded = self.loaded_stats();
         TranscriptMediaCacheStats {
             entries: self.entries.len(),
             pending_entries: self
@@ -382,8 +414,9 @@ impl TranscriptMediaCache {
         }
     }
 
-    fn prune_if_needed(&mut self) {
-        while self.entries.len() > self.max_entries {
+    fn prune_if_needed(&mut self) -> Vec<Arc<gpui::Image>> {
+        let mut evicted_images = Vec::new();
+        while self.entries.len() > self.max_entries || self.loaded_budgets_exceeded() {
             let Some(key) = self
                 .entries
                 .iter()
@@ -392,8 +425,50 @@ impl TranscriptMediaCache {
             else {
                 break;
             };
-            self.entries.remove(&key);
+            if let Some(entry) = self.entries.remove(&key)
+                && let Some(image) = entry.loaded_image_handle()
+            {
+                evicted_images.push(image);
+            }
             self.stats.evictions = self.stats.evictions.saturating_add(1);
+        }
+        evicted_images
+    }
+
+    fn loaded_budgets_exceeded(&self) -> bool {
+        let loaded = self.loaded_stats();
+        loaded.image_bytes > self.max_loaded_image_bytes
+            || loaded.decoded_image_bytes_estimate > self.max_decoded_image_bytes_estimate
+    }
+
+    fn loaded_stats(&self) -> TranscriptMediaLoadedStats {
+        self.entries
+            .values()
+            .fold(TranscriptMediaLoadedStats::default(), |mut stats, entry| {
+                if let TranscriptMediaLoadOutcome::Loaded(image) = entry.displayed.as_ref() {
+                    stats.entries = stats.entries.saturating_add(1);
+                    stats.image_bytes = stats.image_bytes.saturating_add(image.bytes().len());
+                    stats.decoded_image_bytes_estimate = stats
+                        .decoded_image_bytes_estimate
+                        .saturating_add(decoded_image_bytes_estimate(image));
+                }
+                stats
+            })
+    }
+}
+
+fn decoded_image_bytes_estimate(image: &super::types::TranscriptMediaLoadedImage) -> usize {
+    let dimensions = image.natural_dimensions();
+    (dimensions.width() as usize)
+        .saturating_mul(dimensions.height() as usize)
+        .saturating_mul(4)
+}
+
+impl TranscriptMediaCacheEntry {
+    fn loaded_image_handle(self) -> Option<Arc<gpui::Image>> {
+        match self.displayed.as_ref() {
+            TranscriptMediaLoadOutcome::Loaded(image) => Some(image.image()),
+            _ => None,
         }
     }
 }
@@ -418,6 +493,7 @@ fn media_load_outcome_label(outcome: &TranscriptMediaLoadOutcome) -> &'static st
         TranscriptMediaLoadOutcome::Pending { .. } => "pending",
         TranscriptMediaLoadOutcome::Loaded(_) => "loaded",
         TranscriptMediaLoadOutcome::RenderNotSupported { .. } => "render_not_supported",
+        TranscriptMediaLoadOutcome::TooLarge { .. } => "too_large",
         TranscriptMediaLoadOutcome::FileUnavailable { .. } => "file_unavailable",
         TranscriptMediaLoadOutcome::PathNotAllowed { .. } => "path_not_allowed",
     }

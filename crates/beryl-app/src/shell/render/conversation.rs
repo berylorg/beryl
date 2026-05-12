@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
 use gpui::{
-    AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, Image, KeyDownEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, ScrollHandle, Window,
-    anchored, canvas, div, img, point, prelude::*, px, relative, rgb, rgba,
+    AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, ScrollHandle, Window, anchored,
+    canvas, div, img, point, prelude::*, px, relative, rgb, rgba,
 };
 
 use crate::shell::{
@@ -886,9 +884,7 @@ fn composer_image_menu_row(
 }
 
 fn render_composer_image_preview(shell: &ShellView, label: &str) -> impl IntoElement {
-    let image = shell
-        .composer_image_preview_data()
-        .map(|data| Arc::new(Image::from_bytes(data.format(), data.bytes().to_vec())));
+    let image = shell.composer_image_preview_image();
 
     div()
         .id("composer-image-preview-popup")

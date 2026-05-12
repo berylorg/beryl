@@ -4,8 +4,9 @@
 mod composer_draft;
 
 use composer_draft::{
-    AcceptedComposerDraftPart, ComposerDraft, ComposerDraftImageAtom, ComposerDraftImageData,
-    composer_image_label_from_atom_id, first_clipboard_image,
+    AcceptedComposerDraftPart, COMPOSER_DRAFT_MAX_IMAGE_BYTES, COMPOSER_DRAFT_MAX_IMAGES,
+    ComposerDraft, ComposerDraftImageAdmissionError, ComposerDraftImageAtom,
+    ComposerDraftImageData, composer_image_label_from_atom_id, first_clipboard_image,
 };
 use gpui::{ClipboardItem, Image, ImageFormat};
 
@@ -219,7 +220,9 @@ fn input_sync_uses_only_explicit_atom_ranges() {
     assert_eq!(draft.image_data_for_label("A"), None);
 
     let mut draft = ComposerDraft::default();
-    draft.stage_image("A", png(b"shot"));
+    draft
+        .stage_image("A", png(b"shot"))
+        .expect("fixture image should fit");
     draft.sync_from_input(
         "Look [A] now".to_string(),
         vec![image_atom("A", "Look [A] now")],
@@ -230,7 +233,9 @@ fn input_sync_uses_only_explicit_atom_ranges() {
 #[test]
 fn input_sync_allows_duplicate_labels_with_distinct_atom_ids() {
     let mut draft = ComposerDraft::default();
-    let insertion = draft.stage_image("A", png(b"shot"));
+    let insertion = draft
+        .stage_image("A", png(b"shot"))
+        .expect("fixture image should fit");
     let display_text = "first [A], second [A]".to_string();
     draft.sync_from_input(
         display_text.clone(),
@@ -263,7 +268,9 @@ fn input_sync_allows_duplicate_labels_with_distinct_atom_ids() {
 #[test]
 fn input_sync_rejects_duplicate_atom_ids_and_prunes_orphaned_images() {
     let mut draft = ComposerDraft::default();
-    let insertion = draft.stage_image("A", png(b"shot"));
+    let insertion = draft
+        .stage_image("A", png(b"shot"))
+        .expect("fixture image should fit");
     let atom_id = insertion.atom_id().to_string();
     let display_text = "first [A], second [A]".to_string();
     draft.sync_from_input(
@@ -376,4 +383,83 @@ fn clipboard_image_extraction_uses_image_entries_before_text_projection() {
         first_clipboard_image(&ClipboardItem::new_string("plain".to_string())),
         None
     );
+}
+
+#[test]
+fn composer_draft_retained_counts_include_text_atoms_and_image_bytes() {
+    let mut draft = ComposerDraft::default();
+    draft.sync_display_text("See [A]".to_string());
+    draft
+        .ensure_image_payload(
+            "A",
+            ComposerDraftImageData::with_asset_id(ImageFormat::Png, b"image".to_vec(), "asset-a"),
+        )
+        .expect("fixture image should fit");
+    draft.sync_from_input("See [A]", vec![image_atom("A", "See [A]")]);
+
+    let counts = draft.retained_counts();
+
+    assert_eq!(counts.display_text_bytes, "See [A]".len());
+    assert_eq!(counts.image_count, 1);
+    assert_eq!(counts.image_bytes, b"image".len());
+    assert_eq!(counts.image_asset_id_bytes, "asset-a".len());
+    assert_eq!(counts.atom_count, 1);
+    assert!(counts.atom_bytes >= "A".len() + "[A]".len());
+
+    let accepted = draft.accepted().expect("draft has image content");
+    let accepted_counts = accepted.retained_counts();
+    assert_eq!(accepted_counts.image_count, 1);
+    assert_eq!(accepted_counts.image_bytes, b"image".len());
+    assert_eq!(accepted_counts.occurrence_count, 1);
+    assert_eq!(accepted_counts.display_text_bytes, "See [A]".len());
+}
+
+#[test]
+fn composer_draft_rejects_images_over_count_or_byte_budget() {
+    let mut draft = ComposerDraft::default();
+    for index in 0..COMPOSER_DRAFT_MAX_IMAGES {
+        let label = format!("A{index}");
+        draft
+            .stage_image(label, png(b"tiny"))
+            .expect("fixture images should fit until count limit");
+    }
+
+    assert_eq!(
+        draft.stage_image("OVER", png(b"tiny")),
+        Err(ComposerDraftImageAdmissionError::TooManyImages {
+            limit: COMPOSER_DRAFT_MAX_IMAGES
+        })
+    );
+
+    let mut draft = ComposerDraft::default();
+    assert_eq!(
+        draft.stage_image(
+            "A",
+            ComposerDraftImageData::new(
+                ImageFormat::Png,
+                vec![0; COMPOSER_DRAFT_MAX_IMAGE_BYTES + 1],
+            ),
+        ),
+        Err(ComposerDraftImageAdmissionError::TooManyImageBytes {
+            limit: COMPOSER_DRAFT_MAX_IMAGE_BYTES,
+            attempted: COMPOSER_DRAFT_MAX_IMAGE_BYTES + 1,
+        })
+    );
+}
+
+#[test]
+fn accepted_draft_can_drop_retained_bytes_for_durable_image_references() {
+    let mut draft = ComposerDraft::default();
+    draft.replace_range_with_image(
+        0..0,
+        "A",
+        ComposerDraftImageData::with_asset_id(ImageFormat::Png, b"image".to_vec(), "asset-a"),
+    );
+    let accepted = draft.accepted().expect("image draft should be accepted");
+
+    let compacted = accepted.with_durable_image_references();
+
+    assert_eq!(accepted.retained_counts().image_bytes, b"image".len());
+    assert_eq!(compacted.retained_counts().image_bytes, 0);
+    assert_eq!(compacted.image_asset_ids(), vec!["asset-a".to_string()]);
 }

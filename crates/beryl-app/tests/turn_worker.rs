@@ -129,7 +129,10 @@ fn stream_idle_before_completion_keeps_turn_pending() {
         completion_grace,
         unexpected_dynamic_tool_call,
         |_| panic!("test did not expect a lifecycle yield"),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -161,12 +164,45 @@ fn stream_status_after_completion_ends_without_waiting_for_idle_grace() {
         completion_grace,
         unexpected_dynamic_tool_call,
         |_| panic!("test did not expect a lifecycle yield"),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
     assert_eq!(emitted.len(), 2);
     assert_eq!(backend.polls, vec![idle_poll, completion_grace]);
+}
+
+#[test]
+fn stream_stops_when_update_consumer_rejects_event() {
+    let idle_poll = Duration::from_secs(10);
+    let completion_grace = Duration::from_millis(500);
+    let mut backend = FakeTurnStreamBackend::new([
+        Ok(Some(TurnStreamEvent::AgentMessageDelta {
+            thread_id: "thread_1".to_string(),
+            turn_id: "turn_1".to_string(),
+            item_id: "message_1".to_string(),
+            delta: "still working".to_string(),
+        })),
+        Ok(Some(turn_completed("thread_1", "turn_1"))),
+    ]);
+
+    let error = stream_active_turn_events(
+        &mut backend,
+        "thread_1",
+        "turn_1",
+        idle_poll,
+        completion_grace,
+        unexpected_dynamic_tool_call,
+        |_| panic!("test did not expect a lifecycle yield"),
+        |_| Err("receiver closed".to_string()),
+    )
+    .unwrap_err();
+
+    assert_eq!(error, "receiver closed");
+    assert_eq!(backend.polls, vec![idle_poll]);
 }
 
 #[test]
@@ -192,7 +228,10 @@ fn stream_auto_cancels_command_approval_and_waits_for_interruption() {
         completion_grace,
         unexpected_dynamic_tool_call,
         |_| panic!("test did not expect a lifecycle yield"),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -228,7 +267,10 @@ fn stream_interrupts_after_permission_approval_denial() {
         completion_grace,
         unexpected_dynamic_tool_call,
         |_| panic!("test did not expect a lifecycle yield"),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -268,7 +310,10 @@ fn stream_dynamic_tool_call_responds_and_keeps_streaming() {
             DynamicToolCallResponse::success_text("{\"ok\":true}")
         },
         |_| panic!("test did not expect a lifecycle yield"),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -317,7 +362,10 @@ fn stream_lifecycle_yield_captures_correlated_outcome() {
             })
         },
         |yielded| lifecycle_yields.push(yielded),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -373,7 +421,10 @@ fn stream_malformed_lifecycle_yield_fails_without_capture() {
             })
         },
         |yielded| lifecycle_yields.push(yielded),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -441,7 +492,10 @@ fn stream_duplicate_lifecycle_yield_keeps_first_outcome() {
             })
         },
         |yielded| lifecycle_yields.push(yielded),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 
@@ -504,7 +558,10 @@ fn stream_uncorrelated_lifecycle_yield_is_rejected_without_capture() {
             })
         },
         |yielded| lifecycle_yields.push(yielded),
-        |event| emitted.push(event),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
     )
     .unwrap();
 

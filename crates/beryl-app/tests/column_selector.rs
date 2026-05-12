@@ -74,6 +74,22 @@ fn column_selector_replace_trail_preserves_expansion_for_matching_column_keys() 
 }
 
 #[test]
+fn column_selector_prunes_expansion_overrides_to_count_budget() {
+    let mut selector = ColumnSelectorState::<&str, &str, &str>::from_root("root");
+    assert!(selector.columns_mut()[0].toggle_expansion(&"a", true));
+    assert!(selector.columns_mut()[0].toggle_expansion(&"b", true));
+    assert!(selector.select_row(0, "child", Some("child")));
+    assert!(selector.columns_mut()[1].toggle_expansion(&"c", true));
+
+    assert_eq!(selector.expansion_override_count(), 3);
+    assert!(selector.prune_expansion_overrides(2));
+
+    assert_eq!(selector.expansion_override_count(), 2);
+    assert!(!selector.columns()[0].is_expanded(&"b", true));
+    assert!(!selector.columns()[1].is_expanded(&"c", true));
+}
+
+#[test]
 fn column_selector_scroll_handles_reconcile_with_current_column_trail() {
     let mut selector = ColumnSelectorState::<&str, &str, &str>::from_root("root");
     selector.select_row(0, "child", Some("child"));
@@ -89,6 +105,21 @@ fn column_selector_scroll_handles_reconcile_with_current_column_trail() {
     assert!(scroll.column_handle(0).is_some());
     assert!(scroll.column_handle(1).is_some());
     assert!(scroll.column_handle(2).is_none());
+}
+
+#[test]
+fn column_selector_scroll_handles_clear_retained_column_handles() {
+    let mut selector = ColumnSelectorState::<&str, &str, &str>::from_root("root");
+    selector.select_row(0, "child", Some("child"));
+    let mut scroll = ColumnSelectorScrollState::new();
+
+    scroll.reconcile(selector.columns());
+    assert_eq!(scroll_keys(&scroll), vec!["root", "child"]);
+
+    scroll.clear();
+
+    assert!(scroll_keys(&scroll).is_empty());
+    assert!(scroll.column_handle(0).is_none());
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver, Sender, SyncSender},
     thread,
     time::{Duration, Instant},
 };
@@ -44,6 +44,7 @@ use title::automatic_thread_title_candidate;
 
 const TURN_STREAM_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(10);
 const POST_COMPLETION_GRACE: Duration = Duration::from_millis(500);
+const TURN_WORKER_UPDATE_QUEUE_CAPACITY: usize = 1024;
 
 pub(super) enum ThreadActivationUpdate {
     Finished(ThreadActivationOutcome),
@@ -159,7 +160,7 @@ pub(super) fn spawn_turn_worker(
     turn_options: TurnStartOptions,
     timeout: Duration,
 ) -> Receiver<TurnWorkerUpdate> {
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = mpsc::sync_channel(TURN_WORKER_UPDATE_QUEUE_CAPACITY);
     thread::spawn(move || {
         run_turn_worker(
             persistence,
@@ -212,14 +213,17 @@ fn run_turn_worker(
     user_input_fragments: Vec<UserInputFragment>,
     turn_options: TurnStartOptions,
     timeout: Duration,
-    sender: Sender<TurnWorkerUpdate>,
+    sender: SyncSender<TurnWorkerUpdate>,
 ) {
     let mut session = match connector.connect_client(timeout) {
         Ok(session) => session,
         Err(error) => {
-            let _ = sender.send(TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
-                message: format!("Beryl could not connect to the managed backend: {error}"),
-            }));
+            let _ = send_turn_worker_update(
+                &sender,
+                TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
+                    message: format!("Beryl could not connect to the managed backend: {error}"),
+                }),
+            );
             return;
         }
     };
@@ -232,18 +236,26 @@ fn run_turn_worker(
     ) {
         Ok(activation) => activation,
         Err(message) => {
-            let _ = sender.send(TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
-                message,
-            }));
+            let _ = send_turn_worker_update(
+                &sender,
+                TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
+            );
             return;
         }
     };
 
-    let _ = sender.send(TurnWorkerUpdate::ThreadActivated {
-        execution_target: workspace.clone(),
-        thread: activation.summary.clone(),
-        session_metadata: activation.session_metadata.clone(),
-    });
+    if send_turn_worker_update(
+        &sender,
+        TurnWorkerUpdate::ThreadActivated {
+            execution_target: workspace.clone(),
+            thread: activation.summary.clone(),
+            session_metadata: activation.session_metadata.clone(),
+        },
+    )
+    .is_err()
+    {
+        return;
+    }
 
     let graph_tool_service = WorkspaceGraphToolService::new(persistence.clone());
 
@@ -255,17 +267,27 @@ fn run_turn_worker(
     ) {
         Ok(response) => response.turn,
         Err(error) => {
-            let _ = sender.send(TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
-                message: format!("Beryl could not start the turn: {error}"),
-            }));
+            let _ = send_turn_worker_update(
+                &sender,
+                TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
+                    message: format!("Beryl could not start the turn: {error}"),
+                }),
+            );
             return;
         }
     };
     let active_turn_id = turn.id.clone();
-    let _ = sender.send(TurnWorkerUpdate::Event(TurnStreamEvent::TurnStarted {
-        thread_id: activation.thread_id.clone(),
-        turn,
-    }));
+    if send_turn_worker_update(
+        &sender,
+        TurnWorkerUpdate::Event(TurnStreamEvent::TurnStarted {
+            thread_id: activation.thread_id.clone(),
+            turn,
+        }),
+    )
+    .is_err()
+    {
+        return;
+    }
 
     let first_user_input_fragment = user_input_fragments
         .iter()
@@ -278,10 +300,17 @@ fn run_turn_worker(
         automatic_title_generation_allowed,
         activation.summary.name.as_deref(),
     ) {
-        let _ = sender.send(TurnWorkerUpdate::ThreadTitleEligible {
-            execution_target: workspace.clone(),
-            candidate,
-        });
+        if send_turn_worker_update(
+            &sender,
+            TurnWorkerUpdate::ThreadTitleEligible {
+                execution_target: workspace.clone(),
+                candidate,
+            },
+        )
+        .is_err()
+        {
+            return;
+        }
     }
 
     let graph_update_sender = sender.clone();
@@ -298,29 +327,46 @@ fn run_turn_worker(
                 &beryl_workspace_id,
                 request,
                 |update| {
-                    let _ =
-                        graph_update_sender.send(TurnWorkerUpdate::GraphMutationFinished(update));
+                    let _ = send_turn_worker_update(
+                        &graph_update_sender,
+                        TurnWorkerUpdate::GraphMutationFinished(update),
+                    );
                 },
             )
         },
         |yielded| {
-            let _ = lifecycle_update_sender.send(TurnWorkerUpdate::LifecycleYieldAccepted(yielded));
+            let _ = send_turn_worker_update(
+                &lifecycle_update_sender,
+                TurnWorkerUpdate::LifecycleYieldAccepted(yielded),
+            );
         },
         |event| {
-            let _ = sender.send(TurnWorkerUpdate::Event(event));
+            send_turn_worker_update(&sender, TurnWorkerUpdate::Event(event))
+                .map_err(|_| "Beryl stopped receiving turn stream updates.".to_string())
         },
     ) {
-        let _ = sender.send(TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
-            message,
-        }));
+        let _ = send_turn_worker_update(
+            &sender,
+            TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
+        );
         return;
     }
 
-    let _ = sender.send(TurnWorkerUpdate::Finished(TurnWorkerOutcome::Finished {
-        execution_target: workspace,
-        known_threads: None,
-        active_thread_id: activation.thread_id,
-    }));
+    let _ = send_turn_worker_update(
+        &sender,
+        TurnWorkerUpdate::Finished(TurnWorkerOutcome::Finished {
+            execution_target: workspace,
+            known_threads: None,
+            active_thread_id: activation.thread_id,
+        }),
+    );
+}
+
+fn send_turn_worker_update(
+    sender: &SyncSender<TurnWorkerUpdate>,
+    update: TurnWorkerUpdate,
+) -> Result<(), ()> {
+    sender.send(update).map_err(|_| ())
 }
 
 pub(super) fn backend_input_for_user_input_fragments(
@@ -375,7 +421,7 @@ pub(crate) fn stream_active_turn_events<B, F, H, R>(
 ) -> Result<(), String>
 where
     B: TurnStreamBackend,
-    F: FnMut(TurnStreamEvent),
+    F: FnMut(TurnStreamEvent) -> Result<(), String>,
     H: FnMut(&DynamicToolCallRequest) -> R,
     R: Into<HandledDynamicToolCall>,
 {
@@ -443,7 +489,7 @@ where
                         && (status.waiting_on_user_input() || matches!(status, ThreadStatus::Idle))
             );
 
-        emit_event(event);
+        emit_event(event)?;
 
         if finish_after_event {
             break;

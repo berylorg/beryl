@@ -14,6 +14,7 @@ use crate::text_input::TextInputSelectionAtom;
 const COMPOSER_CLIPBOARD_METADATA_MARKER: &str = "beryl.composer.image-selection";
 const COMPOSER_CLIPBOARD_METADATA_VERSION: u32 = 1;
 const DEFAULT_MAX_COMPOSER_CLIPBOARD_PAYLOADS: usize = 32;
+pub(super) const DEFAULT_MAX_COMPOSER_CLIPBOARD_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug)]
 pub(super) struct ComposerClipboardStore {
@@ -21,6 +22,7 @@ pub(super) struct ComposerClipboardStore {
     payloads: HashMap<String, ComposerClipboardPayload>,
     token_order: VecDeque<String>,
     max_payloads: usize,
+    max_image_bytes: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,6 +85,22 @@ pub(super) enum ComposerClipboardPastePlanError {
     InvalidTargetLabel,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ComposerClipboardRetainedCounts {
+    pub(super) payloads: usize,
+    pub(super) tokens: usize,
+    pub(super) token_bytes: usize,
+    pub(super) selected_text_bytes: usize,
+    pub(super) fallback_text_bytes: usize,
+    pub(super) label_scope_bytes: usize,
+    pub(super) atom_count: usize,
+    pub(super) atom_bytes: usize,
+    pub(super) image_count: usize,
+    pub(super) image_bytes: usize,
+    pub(super) image_label_bytes: usize,
+    pub(super) image_asset_id_bytes: usize,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ComposerClipboardMetadata {
     marker: String,
@@ -97,6 +115,7 @@ impl Default for ComposerClipboardStore {
             payloads: HashMap::new(),
             token_order: VecDeque::new(),
             max_payloads: DEFAULT_MAX_COMPOSER_CLIPBOARD_PAYLOADS,
+            max_image_bytes: DEFAULT_MAX_COMPOSER_CLIPBOARD_IMAGE_BYTES,
         }
     }
 }
@@ -107,6 +126,16 @@ impl ComposerClipboardStore {
     pub(super) fn with_capacity(max_payloads: usize) -> Self {
         Self {
             max_payloads,
+            ..Self::default()
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(super) fn with_limits(max_payloads: usize, max_image_bytes: usize) -> Self {
+        Self {
+            max_payloads: max_payloads.max(1),
+            max_image_bytes: max_image_bytes.max(1),
             ..Self::default()
         }
     }
@@ -132,6 +161,26 @@ impl ComposerClipboardStore {
         .then(|| payload.clone())
     }
 
+    pub(super) fn retained_counts(&self) -> ComposerClipboardRetainedCounts {
+        let mut counts = ComposerClipboardRetainedCounts {
+            payloads: self.payloads.len(),
+            tokens: self.token_order.len(),
+            token_bytes: self
+                .payloads
+                .keys()
+                .map(String::len)
+                .sum::<usize>()
+                .saturating_add(self.token_order.iter().map(String::len).sum::<usize>()),
+            ..ComposerClipboardRetainedCounts::default()
+        };
+
+        for payload in self.payloads.values() {
+            counts.add_payload(payload);
+        }
+
+        counts
+    }
+
     fn allocate_token(&mut self) -> String {
         let token = format!("composer-clipboard-{token:016x}", token = self.next_token);
         self.next_token = self.next_token.wrapping_add(1);
@@ -139,11 +188,66 @@ impl ComposerClipboardStore {
     }
 
     fn enforce_capacity(&mut self) {
-        while self.token_order.len() > self.max_payloads {
+        while self.token_order.len() > self.max_payloads
+            || self.retained_image_bytes() > self.max_image_bytes
+        {
             if let Some(token) = self.token_order.pop_front() {
                 self.payloads.remove(&token);
+            } else {
+                break;
             }
         }
+    }
+
+    fn retained_image_bytes(&self) -> usize {
+        self.payloads
+            .values()
+            .map(ComposerClipboardPayload::image_bytes)
+            .sum()
+    }
+}
+
+impl ComposerClipboardRetainedCounts {
+    fn add_payload(&mut self, payload: &ComposerClipboardPayload) {
+        self.selected_text_bytes = self
+            .selected_text_bytes
+            .saturating_add(payload.selected_display_text.len());
+        self.fallback_text_bytes = self
+            .fallback_text_bytes
+            .saturating_add(payload.fallback_text.len());
+        self.label_scope_bytes = self
+            .label_scope_bytes
+            .saturating_add(label_scope_retained_bytes(&payload.source_label_scope));
+        self.atom_count = self.atom_count.saturating_add(payload.atoms.len());
+        self.atom_bytes = self.atom_bytes.saturating_add(
+            payload
+                .atoms
+                .iter()
+                .map(composer_clipboard_atom_retained_bytes)
+                .sum::<usize>(),
+        );
+        self.image_count = self.image_count.saturating_add(payload.images.len());
+        self.image_bytes = self.image_bytes.saturating_add(
+            payload
+                .images
+                .iter()
+                .map(|image| image.data.bytes().len())
+                .sum::<usize>(),
+        );
+        self.image_label_bytes = self.image_label_bytes.saturating_add(
+            payload
+                .images
+                .iter()
+                .map(|image| image.label.len())
+                .sum::<usize>(),
+        );
+        self.image_asset_id_bytes = self.image_asset_id_bytes.saturating_add(
+            payload
+                .images
+                .iter()
+                .map(|image| image.data.asset_id().map_or(0, str::len))
+                .sum::<usize>(),
+        );
     }
 }
 
@@ -206,6 +310,13 @@ impl ComposerClipboardPayload {
         validate_atoms(&self.selected_display_text, &self.atoms)?;
         validate_images(&self.atoms, &self.images)?;
         Ok(())
+    }
+
+    fn image_bytes(&self) -> usize {
+        self.images
+            .iter()
+            .map(|image| image.data.bytes().len())
+            .sum()
     }
 }
 
@@ -449,4 +560,18 @@ fn validate_label_mapping(
     }
 
     Ok(())
+}
+
+fn label_scope_retained_bytes(scope: &ComposerClipboardLabelScope) -> usize {
+    match scope {
+        ComposerClipboardLabelScope::PendingNewThread(_) => 0,
+        ComposerClipboardLabelScope::Thread(thread_id) => thread_id.len(),
+    }
+}
+
+fn composer_clipboard_atom_retained_bytes(atom: &ComposerClipboardAtom) -> usize {
+    atom.label
+        .len()
+        .saturating_add(atom.display_text.len())
+        .saturating_add(atom.fallback_text.len())
 }

@@ -69,6 +69,24 @@ fn repeated_payload_for_label(label: &str, bytes: &[u8]) -> ComposerClipboardPay
 }
 
 #[test]
+fn clipboard_store_retained_counts_include_payload_text_atoms_and_images() {
+    let mut store = ComposerClipboardStore::default();
+    store.store_payload(payload_for_label("A", b"image"));
+
+    let counts = store.retained_counts();
+
+    assert_eq!(counts.payloads, 1);
+    assert_eq!(counts.tokens, 1);
+    assert!(counts.token_bytes > 0);
+    assert_eq!(counts.selected_text_bytes, "See [A]".len());
+    assert_eq!(counts.fallback_text_bytes, "See [Image A]".len());
+    assert_eq!(counts.atom_count, 1);
+    assert!(counts.atom_bytes >= "A".len() + "[A]".len() + "[Image A]".len());
+    assert_eq!(counts.image_count, 1);
+    assert_eq!(counts.image_bytes, b"image".len());
+}
+
+#[test]
 fn store_writes_metadata_token_and_resolves_live_matching_payload() {
     let payload = payload_for_label("A", b"secret-image-bytes");
     let mut store = ComposerClipboardStore::default();
@@ -125,6 +143,22 @@ fn store_evicts_old_tokens_without_exposing_image_bytes_in_metadata() {
     assert_eq!(store.resolve_payload(&first), None);
     assert_eq!(store.resolve_payload(&second), Some(second_payload));
     assert!(!second.metadata().unwrap().contains("second-image"));
+}
+
+#[test]
+fn store_evicts_old_payloads_to_stay_under_image_byte_budget() {
+    let mut store = ComposerClipboardStore::with_limits(8, 10);
+    let first = store.store_payload(payload_for_label("A", b"123456"));
+    let second_payload = payload_for_label("B", b"abcdef");
+    let second = store.store_payload(second_payload.clone());
+
+    assert_eq!(store.resolve_payload(&first), None);
+    assert_eq!(store.resolve_payload(&second), Some(second_payload));
+    assert_eq!(store.retained_counts().image_bytes, 6);
+
+    let too_large = store.store_payload(payload_for_label("C", b"01234567890"));
+    assert_eq!(store.resolve_payload(&too_large), None);
+    assert_eq!(store.retained_counts().image_bytes, 0);
 }
 
 #[test]

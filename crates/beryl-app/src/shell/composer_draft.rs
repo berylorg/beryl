@@ -2,6 +2,9 @@ use std::{collections::HashSet, ops::Range};
 
 use gpui::{ClipboardEntry, ClipboardItem, Image, ImageFormat};
 
+pub(super) const COMPOSER_DRAFT_MAX_IMAGES: usize = 20;
+pub(super) const COMPOSER_DRAFT_MAX_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct ComposerDraft {
     display_text: String,
@@ -39,6 +42,12 @@ pub(super) struct ComposerImageInsertion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ComposerDraftImageAdmissionError {
+    TooManyImages { limit: usize },
+    TooManyImageBytes { limit: usize, attempted: usize },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AcceptedComposerDraft {
     display_text: String,
     parts: Vec<AcceptedComposerDraftPart>,
@@ -68,6 +77,20 @@ struct ActiveImageOccurrence {
     start: usize,
     end: usize,
     image: ComposerDraftImage,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ComposerDraftRetainedCounts {
+    pub(super) display_text_bytes: usize,
+    pub(super) part_text_bytes: usize,
+    pub(super) image_count: usize,
+    pub(super) image_bytes: usize,
+    pub(super) image_label_bytes: usize,
+    pub(super) image_asset_id_bytes: usize,
+    pub(super) atom_count: usize,
+    pub(super) atom_bytes: usize,
+    pub(super) occurrence_count: usize,
+    pub(super) occurrence_label_bytes: usize,
 }
 
 impl ComposerDraft {
@@ -153,6 +176,32 @@ impl ComposerDraft {
         self.display_text.is_empty() && self.active_image_occurrences().is_empty()
     }
 
+    pub(super) fn retained_counts(&self) -> ComposerDraftRetainedCounts {
+        let image_count = self.images.len();
+        ComposerDraftRetainedCounts {
+            display_text_bytes: self.display_text.len(),
+            image_count,
+            image_bytes: self
+                .images
+                .iter()
+                .map(|image| image.data.bytes().len())
+                .sum(),
+            image_label_bytes: self.images.iter().map(|image| image.label.len()).sum(),
+            image_asset_id_bytes: self
+                .images
+                .iter()
+                .map(|image| image.data.asset_id().map_or(0, str::len))
+                .sum(),
+            atom_count: self.image_atoms.len(),
+            atom_bytes: self
+                .image_atoms
+                .iter()
+                .map(|atom| image_atom_retained_bytes(&self.display_text, atom))
+                .sum(),
+            ..ComposerDraftRetainedCounts::default()
+        }
+    }
+
     #[allow(dead_code)]
     pub(super) fn image_labels(&self) -> Vec<String> {
         self.image_atoms
@@ -170,6 +219,13 @@ impl ComposerDraft {
             .iter()
             .find(|image| image.label == label)
             .map(|image| &image.data)
+    }
+
+    pub(super) fn validate_new_image_admission(
+        &self,
+        data: &ComposerDraftImageData,
+    ) -> Result<(), ComposerDraftImageAdmissionError> {
+        self.validate_image_admission("", data)
     }
 
     pub(super) fn active_image_asset_ids(&self) -> Vec<String> {
@@ -232,7 +288,9 @@ impl ComposerDraft {
         label: impl Into<String>,
         data: ComposerDraftImageData,
     ) -> ComposerImageInsertion {
-        let insertion = self.stage_image(label, data);
+        let insertion = self
+            .stage_image(label, data)
+            .expect("test image fixture should fit composer draft limits");
         let label = insertion.label().to_string();
         let marker = composer_image_marker(&label);
         let range = clamp_to_char_boundary_range(&self.display_text, range);
@@ -256,24 +314,26 @@ impl ComposerDraft {
         &mut self,
         label: impl Into<String>,
         data: ComposerDraftImageData,
-    ) -> ComposerImageInsertion {
+    ) -> Result<ComposerImageInsertion, ComposerDraftImageAdmissionError> {
         let label = label.into();
+        self.validate_image_admission(&label, &data)?;
         self.set_image_payload(label.clone(), data);
-        self.allocate_image_reference(&label)
+        Ok(self.allocate_image_reference(&label))
     }
 
     pub(super) fn ensure_image_payload(
         &mut self,
         label: impl Into<String>,
         data: ComposerDraftImageData,
-    ) -> bool {
+    ) -> Result<bool, ComposerDraftImageAdmissionError> {
         let label = label.into();
         if self.images.iter().any(|image| image.label == label) {
-            return false;
+            return Ok(false);
         }
 
+        self.validate_image_admission(&label, &data)?;
         self.images.push(ComposerDraftImage { label, data });
-        true
+        Ok(true)
     }
 
     pub(super) fn allocate_image_reference(&mut self, label: &str) -> ComposerImageInsertion {
@@ -287,6 +347,41 @@ impl ComposerDraft {
         } else {
             self.images.push(ComposerDraftImage { label, data });
         }
+    }
+
+    fn validate_image_admission(
+        &self,
+        label: &str,
+        data: &ComposerDraftImageData,
+    ) -> Result<(), ComposerDraftImageAdmissionError> {
+        let replacing = self.images.iter().find(|image| image.label == label);
+        let next_count = self
+            .images
+            .len()
+            .saturating_add(usize::from(replacing.is_none()));
+        if next_count > COMPOSER_DRAFT_MAX_IMAGES {
+            return Err(ComposerDraftImageAdmissionError::TooManyImages {
+                limit: COMPOSER_DRAFT_MAX_IMAGES,
+            });
+        }
+
+        let current_bytes = self
+            .images
+            .iter()
+            .map(|image| image.data.bytes().len())
+            .sum::<usize>();
+        let replaced_bytes = replacing.map_or(0, |image| image.data.bytes().len());
+        let attempted = current_bytes
+            .saturating_sub(replaced_bytes)
+            .saturating_add(data.bytes().len());
+        if attempted > COMPOSER_DRAFT_MAX_IMAGE_BYTES {
+            return Err(ComposerDraftImageAdmissionError::TooManyImageBytes {
+                limit: COMPOSER_DRAFT_MAX_IMAGE_BYTES,
+                attempted,
+            });
+        }
+
+        Ok(())
     }
 
     pub(super) fn accepted(&self) -> Option<AcceptedComposerDraft> {
@@ -516,6 +611,62 @@ impl AcceptedComposerDraft {
     pub(super) fn image_occurrences(&self) -> &[AcceptedComposerImageOccurrence] {
         &self.image_occurrences
     }
+
+    pub(super) fn with_durable_image_references(&self) -> Self {
+        let parts = self
+            .parts
+            .iter()
+            .map(|part| match part {
+                AcceptedComposerDraftPart::Text(text) => {
+                    AcceptedComposerDraftPart::Text(text.clone())
+                }
+                AcceptedComposerDraftPart::Image(image) => {
+                    AcceptedComposerDraftPart::Image(AcceptedComposerImage {
+                        label: image.label.clone(),
+                        data: image.data.durable_reference_copy(),
+                    })
+                }
+            })
+            .collect();
+        Self {
+            display_text: self.display_text.clone(),
+            parts,
+            image_occurrences: self.image_occurrences.clone(),
+        }
+    }
+
+    pub(super) fn retained_counts(&self) -> ComposerDraftRetainedCounts {
+        let mut counts = ComposerDraftRetainedCounts {
+            display_text_bytes: self.display_text.len(),
+            occurrence_count: self.image_occurrences.len(),
+            occurrence_label_bytes: self
+                .image_occurrences
+                .iter()
+                .map(|occurrence| occurrence.label.len())
+                .sum(),
+            ..ComposerDraftRetainedCounts::default()
+        };
+
+        for part in &self.parts {
+            match part {
+                AcceptedComposerDraftPart::Text(text) => {
+                    counts.part_text_bytes = counts.part_text_bytes.saturating_add(text.len());
+                }
+                AcceptedComposerDraftPart::Image(image) => {
+                    counts.image_count = counts.image_count.saturating_add(1);
+                    counts.image_bytes =
+                        counts.image_bytes.saturating_add(image.data.bytes().len());
+                    counts.image_label_bytes =
+                        counts.image_label_bytes.saturating_add(image.label.len());
+                    counts.image_asset_id_bytes = counts
+                        .image_asset_id_bytes
+                        .saturating_add(image.data.asset_id().map_or(0, str::len));
+                }
+            }
+        }
+
+        counts
+    }
 }
 
 impl AcceptedComposerImage {
@@ -592,6 +743,28 @@ impl ComposerDraftImageData {
     pub(super) fn asset_id(&self) -> Option<&str> {
         self.asset_id.as_deref()
     }
+
+    fn durable_reference_copy(&self) -> Self {
+        match self.asset_id.as_deref() {
+            Some(asset_id) => Self::durable_reference(self.format, asset_id.to_string()),
+            None => self.clone(),
+        }
+    }
+}
+
+impl ComposerDraftImageAdmissionError {
+    pub(super) fn user_message(&self) -> String {
+        match self {
+            Self::TooManyImages { limit } => {
+                format!("A draft can contain at most {limit} pasted images.")
+            }
+            Self::TooManyImageBytes { limit, attempted } => format!(
+                "A draft can retain at most {} MiB of pasted image data; this paste would retain {} MiB.",
+                bytes_to_mib_floor(*limit),
+                bytes_to_mib_ceil(*attempted)
+            ),
+        }
+    }
 }
 
 pub(super) fn first_clipboard_image(item: &ClipboardItem) -> Option<Image> {
@@ -607,6 +780,17 @@ fn push_text_part(parts: &mut Vec<AcceptedComposerDraftPart>, text: &str) {
     }
 
     parts.push(AcceptedComposerDraftPart::Text(text.to_string()));
+}
+
+fn image_atom_retained_bytes(display_text: &str, atom: &ComposerDraftImageAtom) -> usize {
+    atom.atom_id
+        .len()
+        .saturating_add(atom.label.len())
+        .saturating_add(
+            display_text
+                .get(atom.range.clone())
+                .map_or(atom.range.len(), str::len),
+        )
 }
 
 pub(super) fn composer_image_marker(label: &str) -> String {
@@ -752,4 +936,12 @@ fn clamp_to_char_boundary(text: &str, offset: usize) -> usize {
         offset -= 1;
     }
     offset
+}
+
+fn bytes_to_mib_floor(bytes: usize) -> usize {
+    bytes / (1024 * 1024)
+}
+
+fn bytes_to_mib_ceil(bytes: usize) -> usize {
+    bytes.div_ceil(1024 * 1024)
 }

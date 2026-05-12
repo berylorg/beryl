@@ -1,4 +1,5 @@
 use std::{
+    io::Cursor,
     path::Path,
     sync::Arc,
     time::{Duration, Instant},
@@ -17,6 +18,10 @@ use super::{
         TranscriptMediaSource, fallback_alt,
     },
 };
+
+pub(crate) const TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS: u64 = 32 * 1024 * 1024;
+pub(crate) const TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES: usize = 128 * 1024 * 1024;
+pub(crate) const TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES: usize = 64 * 1024 * 1024;
 
 pub(super) fn load_transcript_media<R>(
     source: &TranscriptMediaSource,
@@ -240,21 +245,62 @@ fn loaded_image(
     source_path: Option<String>,
     timing: LoadedImageTimingContext,
 ) -> TranscriptMediaLoadOutcome {
-    let dimensions_started = Instant::now();
-    let Some(natural_dimensions) = decoded_raster_dimensions(format, bytes.as_slice()) else {
+    if timing.bytes_len > TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES {
         debug!(
             source = timing.source,
             branch = timing.branch,
             complete = timing.complete,
-            outcome = "render_not_supported",
+            outcome = "too_large",
             bytes = timing.bytes_len,
+            max_bytes = TRANSCRIPT_MEDIA_MAX_COMPRESSED_IMAGE_BYTES,
             saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
             inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
-            raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
             total_ms = elapsed_ms(timing.load_started.elapsed()),
-            "transcript media load finished"
+            "transcript media load rejected before decode"
         );
-        return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
+        return TranscriptMediaLoadOutcome::TooLarge { alt };
+    }
+
+    let dimensions_started = Instant::now();
+    let natural_dimensions = match decoded_raster_dimensions(format, bytes.as_slice()) {
+        Ok(dimensions) => dimensions,
+        Err(RasterAdmissionError::Unsupported) => {
+            debug!(
+                source = timing.source,
+                branch = timing.branch,
+                complete = timing.complete,
+                outcome = "render_not_supported",
+                bytes = timing.bytes_len,
+                saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
+                inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
+                raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+                total_ms = elapsed_ms(timing.load_started.elapsed()),
+                "transcript media load finished"
+            );
+            return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
+        }
+        Err(RasterAdmissionError::TooLarge {
+            pixels,
+            decoded_bytes,
+        }) => {
+            debug!(
+                source = timing.source,
+                branch = timing.branch,
+                complete = timing.complete,
+                outcome = "too_large",
+                bytes = timing.bytes_len,
+                pixels,
+                decoded_bytes,
+                max_pixels = TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS,
+                max_decoded_bytes = TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES,
+                saved_path_read_ms = timing.saved_path_read.map(elapsed_ms),
+                inline_base64_decode_ms = timing.inline_base64_decode.map(elapsed_ms),
+                raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+                total_ms = elapsed_ms(timing.load_started.elapsed()),
+                "transcript media load rejected after dimension decode"
+            );
+            return TranscriptMediaLoadOutcome::TooLarge { alt };
+        }
     };
     let dimensions_elapsed = dimensions_started.elapsed();
     let image_started = Instant::now();
@@ -286,12 +332,50 @@ fn loaded_image(
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RasterAdmissionError {
+    Unsupported,
+    TooLarge { pixels: u64, decoded_bytes: usize },
+}
+
 fn decoded_raster_dimensions(
     format: ImageFormat,
     bytes: &[u8],
-) -> Option<TranscriptMediaNaturalDimensions> {
-    let image = image::load_from_memory_with_format(bytes, image_format(format)).ok()?;
-    TranscriptMediaNaturalDimensions::new(image.width(), image.height())
+) -> Result<TranscriptMediaNaturalDimensions, RasterAdmissionError> {
+    let image_format = image_format(format);
+    let dimensions = image::ImageReader::with_format(Cursor::new(bytes), image_format)
+        .into_dimensions()
+        .map_err(|_| RasterAdmissionError::Unsupported)?;
+    let decoded_bytes =
+        decoded_rgba_bytes(dimensions.0, dimensions.1).ok_or(RasterAdmissionError::TooLarge {
+            pixels: u64::MAX,
+            decoded_bytes: usize::MAX,
+        })?;
+    let pixels = u64::from(dimensions.0).saturating_mul(u64::from(dimensions.1));
+    if pixels > TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS
+        || decoded_bytes > TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES
+    {
+        return Err(RasterAdmissionError::TooLarge {
+            pixels,
+            decoded_bytes,
+        });
+    }
+
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image_format);
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES as u64);
+    reader.limits(limits);
+    reader
+        .decode()
+        .map_err(|_| RasterAdmissionError::Unsupported)?;
+    TranscriptMediaNaturalDimensions::new(dimensions.0, dimensions.1)
+        .ok_or(RasterAdmissionError::Unsupported)
+}
+
+fn decoded_rgba_bytes(width: u32, height: u32) -> Option<usize> {
+    (width as usize)
+        .checked_mul(height as usize)?
+        .checked_mul(4)
 }
 
 fn image_format(format: ImageFormat) -> image::ImageFormat {

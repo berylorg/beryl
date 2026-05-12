@@ -61,6 +61,16 @@ pub(crate) struct TranscriptPresentationRetainedCounts {
     pub(crate) rows: usize,
     pub(crate) items: usize,
     pub(crate) text_bytes: usize,
+    pub(crate) identity_bytes: usize,
+    pub(crate) anchor_bytes: usize,
+    pub(crate) placeholder_rows: usize,
+}
+
+impl TranscriptPresentationRetainedCounts {
+    fn with_anchor_bytes(mut self, anchor_bytes: usize) -> Self {
+        self.anchor_bytes = anchor_bytes;
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -183,17 +193,31 @@ impl TranscriptPresentationState {
     }
 
     pub(crate) fn retained_counts(&self) -> TranscriptPresentationRetainedCounts {
-        self.rows.iter().fold(
-            TranscriptPresentationRetainedCounts {
-                rows: self.rows.len(),
-                ..TranscriptPresentationRetainedCounts::default()
-            },
-            |mut counts, row| {
-                counts.items = counts.items.saturating_add(row.turn.item_count());
-                counts.text_bytes = counts.text_bytes.saturating_add(row.turn.text_char_count());
-                counts
-            },
-        )
+        self.rows
+            .iter()
+            .fold(
+                TranscriptPresentationRetainedCounts {
+                    rows: self.rows.len(),
+                    ..TranscriptPresentationRetainedCounts::default()
+                },
+                |mut counts, row| {
+                    counts.items = counts.items.saturating_add(row.turn.item_count());
+                    counts.text_bytes =
+                        counts.text_bytes.saturating_add(row.turn.text_char_count());
+                    counts.identity_bytes = counts
+                        .identity_bytes
+                        .saturating_add(row.identity.as_str().len());
+                    counts.placeholder_rows = counts
+                        .placeholder_rows
+                        .saturating_add(usize::from(row.placeholder_height.is_some()));
+                    counts
+                },
+            )
+            .with_anchor_bytes(
+                self.latest_user_prompt_anchor
+                    .as_ref()
+                    .map_or(0, |(_, _, value)| value.len()),
+            )
     }
 
     #[allow(dead_code)]

@@ -94,6 +94,7 @@ use super::super::virtual_list::{ListOffset, ListState, list};
 use super::scrollbars::render_vertical_scrollbar;
 use super::{code_panel, common::panel_shell};
 use crate::memory_diagnostics::{self, MemoryMilestone};
+use crate::shell::transcript_markdown::markdown_code_panel_id_belongs_to_row;
 
 const SLOW_TRANSCRIPT_FRAME_THRESHOLD: Duration = Duration::from_millis(8);
 const SLOW_TRANSCRIPT_TURN_BUILD_THRESHOLD: Duration = Duration::from_millis(1);
@@ -104,6 +105,7 @@ const TRANSCRIPT_CODE_PANEL_DEFAULT_MAX_HEIGHT: f32 = 360.0;
 const TRANSCRIPT_CODE_PANEL_MAX_HEIGHT_RATIO: f32 = 0.7;
 const CODE_PANEL_SCROLLBAR_FADE_DELAY: Duration = Duration::from_secs(2);
 const CODE_PANEL_SCROLLBAR_FADE_DURATION: Duration = Duration::from_millis(180);
+const CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES: usize = 512;
 const TRANSCRIPT_KEY_CONTEXT: &str = "TranscriptPanel";
 const TRANSCRIPT_SELECTION_HIGHLIGHT_COLOR: gpui::Rgba = gpui::Rgba {
     r: 0.23,
@@ -866,6 +868,7 @@ impl TranscriptPanel {
         cx: &mut Context<Self>,
     ) {
         self.clear_text_selection(cx);
+        self.close_image_preview_popup(cx);
         let request_id = self.next_image_preview_request_id;
         self.next_image_preview_request_id = self.next_image_preview_request_id.saturating_add(1);
         let status = if marker.preview_state
@@ -903,8 +906,11 @@ impl TranscriptPanel {
     }
 
     fn close_image_preview_popup(&mut self, cx: &mut Context<Self>) {
-        if self.image_preview_popup.take().is_some() {
+        if let Some(popup) = self.image_preview_popup.take() {
             self.image_preview_receiver = None;
+            if let TranscriptImagePreviewPopupStatus::Loaded(data) = popup.status {
+                data.image().remove_asset(cx);
+            }
             cx.notify();
         }
     }
@@ -1248,10 +1254,7 @@ impl TranscriptPanel {
     fn render_image_preview_popup(&self, entity: Entity<TranscriptPanel>) -> Option<AnyElement> {
         let popup = self.image_preview_popup.as_ref()?;
         let image = match &popup.status {
-            TranscriptImagePreviewPopupStatus::Loaded(data) => Some(Arc::new(Image::from_bytes(
-                data.format(),
-                data.bytes().to_vec(),
-            ))),
+            TranscriptImagePreviewPopupStatus::Loaded(data) => Some(data.image()),
             TranscriptImagePreviewPopupStatus::Loading
             | TranscriptImagePreviewPopupStatus::Unavailable(_) => None,
         };
@@ -1373,6 +1376,83 @@ impl TranscriptPanel {
             .retain(|panel_id, _| visible_panel_ids.contains(panel_id));
     }
 
+    fn clear_code_panel_interaction_state(&mut self) {
+        self.soft_wrapped_panel_keys.clear();
+        self.resized_panel_heights.clear();
+        self.code_panel_resize_drag = None;
+    }
+
+    fn clear_code_panel_interaction_state_for_released_rows(
+        &mut self,
+        row_identities: &HashSet<String>,
+    ) -> bool {
+        let previous_soft_wrap_count = self.soft_wrapped_panel_keys.len();
+        let previous_height_count = self.resized_panel_heights.len();
+        self.soft_wrapped_panel_keys.retain(|panel_id| {
+            !row_identities
+                .iter()
+                .any(|row_identity| markdown_code_panel_id_belongs_to_row(panel_id, row_identity))
+        });
+        self.resized_panel_heights.retain(|panel_id, _| {
+            !row_identities
+                .iter()
+                .any(|row_identity| markdown_code_panel_id_belongs_to_row(panel_id, row_identity))
+        });
+        if self.code_panel_resize_drag.as_ref().is_some_and(|drag| {
+            row_identities.iter().any(|row_identity| {
+                markdown_code_panel_id_belongs_to_row(&drag.panel_key, row_identity)
+            })
+        }) {
+            self.code_panel_resize_drag = None;
+        }
+        previous_soft_wrap_count != self.soft_wrapped_panel_keys.len()
+            || previous_height_count != self.resized_panel_heights.len()
+    }
+
+    fn prune_code_panel_interaction_state(&mut self, protected_panel_ids: &HashSet<String>) {
+        let mut retained_panel_ids = self
+            .soft_wrapped_panel_keys
+            .iter()
+            .chain(self.resized_panel_heights.keys())
+            .cloned()
+            .collect::<HashSet<_>>();
+        if retained_panel_ids.len() <= CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES {
+            return;
+        }
+
+        let mut removable_panel_ids = retained_panel_ids
+            .iter()
+            .filter(|panel_id| !protected_panel_ids.contains(*panel_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        removable_panel_ids.sort();
+        for panel_id in removable_panel_ids {
+            if retained_panel_ids.len() <= CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES {
+                break;
+            }
+            self.soft_wrapped_panel_keys.remove(&panel_id);
+            self.resized_panel_heights.remove(&panel_id);
+            retained_panel_ids.remove(&panel_id);
+        }
+        if retained_panel_ids.len() <= CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES {
+            return;
+        }
+
+        let mut retained_count = retained_panel_ids.len();
+        let mut protected_panel_ids = retained_panel_ids.into_iter().collect::<Vec<_>>();
+        protected_panel_ids.sort();
+        for panel_id in protected_panel_ids {
+            if retained_count <= CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES {
+                break;
+            }
+            let removed = self.soft_wrapped_panel_keys.remove(&panel_id)
+                | self.resized_panel_heights.remove(&panel_id).is_some();
+            if removed {
+                retained_count -= 1;
+            }
+        }
+    }
+
     fn scoped_soft_wrapped_panel_keys(
         &self,
         visible_panel_ids: &HashSet<String>,
@@ -1429,6 +1509,7 @@ impl TranscriptPanel {
         &mut self,
         workspace: WorkspaceId,
         selected_thread_id: Option<String>,
+        cx: &mut Context<Self>,
     ) {
         let scope = TranscriptMarkdownCacheScope {
             workspace,
@@ -1439,8 +1520,10 @@ impl TranscriptPanel {
         }
 
         self.markdown_cache.borrow_mut().clear();
-        self.media_cache.borrow_mut().clear();
+        let evicted_images = self.media_cache.borrow_mut().clear();
+        self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
+        self.clear_code_panel_interaction_state();
         self.nested_scroll_ownership.clear_to_transcript();
         self.text_selection.clear();
         self.quote_popup.clear_selection();
@@ -1456,15 +1539,17 @@ impl TranscriptPanel {
         self.markdown_cache_scope = Some(scope);
     }
 
-    fn sync_transcript_reset_generation(&mut self, generation: u64) {
+    fn sync_transcript_reset_generation(&mut self, generation: u64, cx: &mut Context<Self>) {
         if self.handled_transcript_reset_generation == generation {
             return;
         }
 
         self.handled_transcript_reset_generation = generation;
         self.markdown_cache.borrow_mut().clear();
-        self.media_cache.borrow_mut().clear();
+        let evicted_images = self.media_cache.borrow_mut().clear();
+        self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
+        self.clear_code_panel_interaction_state();
         self.nested_scroll_ownership.clear_to_transcript();
         self.text_selection.clear();
         self.quote_popup.clear_selection();
@@ -1493,15 +1578,18 @@ impl TranscriptPanel {
             return;
         }
 
-        self.media_cache.borrow_mut().clear();
+        let evicted_images = self.media_cache.borrow_mut().clear();
+        self.release_evicted_media_images(evicted_images, cx);
         self.validated_image_menu_target = None;
         let row_identities = row_identities.iter().cloned().collect();
+        let code_panel_changed =
+            self.clear_code_panel_interaction_state_for_released_rows(&row_identities);
         let promoted_changed = self.clear_promoted_media_for_released_rows(&row_identities, cx);
         let selection_changed = self
             .text_selection
             .clear_if_intersects_row_identities(&row_identities);
         let popup_changed = selection_changed && self.quote_popup.clear_selection();
-        if selection_changed || popup_changed || promoted_changed {
+        if selection_changed || popup_changed || promoted_changed || code_panel_changed {
             cx.notify();
         }
     }
@@ -1721,6 +1809,12 @@ impl TranscriptPanel {
             self.schedule_code_panel_scrollbar_animation(panel_key.to_string(), generation, cx);
         }
     }
+
+    fn release_evicted_media_images(&self, images: Vec<Arc<Image>>, cx: &mut App) {
+        for image in images {
+            image.remove_asset(cx);
+        }
+    }
 }
 
 impl Render for TranscriptPanel {
@@ -1728,7 +1822,8 @@ impl Render for TranscriptPanel {
         self.poll_image_preview_update(window, cx);
         let Some(snapshot) = self.shell.read(cx).transcript_panel_snapshot() else {
             self.current_workspace_id = None;
-            self.media_cache.borrow_mut().clear();
+            let evicted_images = self.media_cache.borrow_mut().clear();
+            self.release_evicted_media_images(evicted_images, cx);
             self.nested_scroll_ownership.clear_to_transcript();
             self.nested_code_panel_selected_during_mouse_down = false;
             self.text_selection.clear();
@@ -1753,8 +1848,9 @@ impl Render for TranscriptPanel {
         self.sync_markdown_cache_scope(
             snapshot.workspace.clone(),
             snapshot.selected_thread_id.clone(),
+            cx,
         );
-        self.sync_transcript_reset_generation(snapshot.transcript_reset_generation);
+        self.sync_transcript_reset_generation(snapshot.transcript_reset_generation, cx);
         self.sync_content_releases(
             snapshot.content_release_generation,
             &snapshot.content_release_row_identities,
@@ -1808,11 +1904,25 @@ impl Render for TranscriptPanel {
             self.memory_logged_transcript_reset_generation = snapshot.transcript_reset_generation;
             let markdown_stats = self.markdown_cache.borrow().stats();
             let media_stats = self.media_cache.borrow().stats();
-            let mut retained_state = shell.read(cx).retained_state_snapshot();
+            let stream_projection_counts = self.stream_projection.borrow().retained_counts();
+            let mut retained_state = shell.read_with(cx, |shell, app| {
+                let mut retained_state = shell.retained_state_snapshot();
+                shell.add_text_input_retained_counts(&mut retained_state, app);
+                retained_state
+            });
             retained_state.presentation_range_rows = Some(presentation_range.len());
             retained_state.markdown_cache_entries = Some(markdown_stats.entries);
             retained_state.markdown_cache_pending_entries = Some(markdown_stats.pending_entries);
             retained_state.markdown_source_bytes = Some(markdown_stats.source_bytes);
+            retained_state.markdown_estimated_retained_bytes =
+                Some(markdown_stats.estimated_retained_bytes);
+            retained_state.markdown_in_flight_source_bytes =
+                Some(markdown_stats.in_flight_source_bytes);
+            retained_state.markdown_displayed_source_bytes =
+                Some(markdown_stats.displayed_source_bytes);
+            retained_state.markdown_parsed_source_bytes = Some(markdown_stats.parsed_source_bytes);
+            retained_state.markdown_estimated_structure_bytes =
+                Some(markdown_stats.markdown_estimated_structure_bytes);
             retained_state.markdown_blocks = Some(markdown_stats.markdown_blocks);
             retained_state.markdown_inlines = Some(markdown_stats.markdown_inlines);
             retained_state.markdown_media_requests = Some(markdown_stats.markdown_media_requests);
@@ -1823,11 +1933,18 @@ impl Render for TranscriptPanel {
             retained_state.media_cache_decoded_image_bytes_estimate =
                 Some(media_stats.decoded_image_bytes_estimate);
             retained_state.media_cache_thumbnail_count = Some(media_stats.thumbnail_count);
+            retained_state.stream_projection_entries = Some(stream_projection_counts.entries);
+            retained_state.stream_projection_key_bytes = Some(stream_projection_counts.key_bytes);
+            retained_state.stream_projection_text_bytes = Some(stream_projection_counts.text_bytes);
+            retained_state.stream_projection_uncommitted_entries =
+                Some(stream_projection_counts.uncommitted_entries);
             if let Some(total) = retained_state.retained_payload_bytes_lower_bound.as_mut() {
                 *total = total
-                    .saturating_add(markdown_stats.source_bytes)
+                    .saturating_add(markdown_stats.estimated_retained_bytes)
                     .saturating_add(media_stats.loaded_image_bytes)
-                    .saturating_add(media_stats.decoded_image_bytes_estimate);
+                    .saturating_add(media_stats.decoded_image_bytes_estimate)
+                    .saturating_add(stream_projection_counts.key_bytes)
+                    .saturating_add(stream_projection_counts.text_bytes);
             }
             let mut milestone = MemoryMilestone::new("first_transcript_render_after_reset")
                 .runtime(snapshot.workspace.runtime_mode().display_name())
@@ -1878,6 +1995,7 @@ impl Render for TranscriptPanel {
             active_nested_code_panel_ids.iter().map(String::as_str),
         );
         self.retain_visible_code_panel_scroll_state(&active_nested_code_panel_ids);
+        self.prune_code_panel_interaction_state(&active_nested_code_panel_ids);
         let selected_nested_code_panel_id = Arc::new(
             self.nested_scroll_ownership
                 .selected_panel_id()
@@ -2735,6 +2853,7 @@ impl TranscriptFrameProfile {
             markdown_cache_entries = markdown_cache_stats.entries,
             markdown_cache_pending_entries = markdown_cache_stats.pending_entries,
             markdown_cache_source_bytes = markdown_cache_stats.source_bytes,
+            markdown_cache_estimated_retained_bytes = markdown_cache_stats.estimated_retained_bytes,
             "slow transcript frame"
         );
     }

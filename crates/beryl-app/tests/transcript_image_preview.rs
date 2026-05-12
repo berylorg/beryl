@@ -26,9 +26,10 @@ fn transcript_image_preview_reads_durable_asset_bytes() {
     let preview =
         read_transcript_image_preview_from_persistence(&persistence, &workspace_id, asset.id())
             .unwrap();
+    let image = preview.image();
 
-    assert_eq!(preview.format(), ImageFormat::Png);
-    assert_eq!(preview.bytes(), b"png bytes");
+    assert_eq!(image.format, ImageFormat::Png);
+    assert_eq!(image.bytes.as_slice(), b"png bytes");
 
     root.close().unwrap();
 }

@@ -12,6 +12,8 @@ use beryl_model::{
 };
 use tracing::warn;
 
+pub(crate) const MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS: usize = 2048;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum MemberThreadInventoryMemberKey {
     Explicit(WorkspaceMemberId),
@@ -524,6 +526,7 @@ where
     R: FnMut(&str) -> Result<ThreadSummary, ThreadForkParentMetadataReadError>,
 {
     retain_backend_threads_for_inventory_members(backend_threads, members);
+    truncate_backend_threads_for_member_thread_inventory(backend_threads);
     enrich_missing_thread_fork_parent_metadata(backend_threads, read_metadata)
 }
 
@@ -540,6 +543,23 @@ pub(crate) fn retain_backend_threads_for_inventory_members(
     });
 }
 
+pub(crate) fn truncate_backend_threads_for_member_thread_inventory(
+    backend_threads: &mut Vec<ThreadSummary>,
+) {
+    if backend_threads.len() <= MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS {
+        return;
+    }
+
+    backend_threads.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.created_at.cmp(&left.created_at))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    backend_threads.truncate(MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS);
+}
+
 pub(crate) fn retain_scoped_backend_threads_for_inventory_members(
     backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
     members: &[MemberThreadInventoryGroup],
@@ -552,6 +572,29 @@ pub(crate) fn retain_scoped_backend_threads_for_inventory_members(
                     .is_some_and(|path| thread.summary().cwd.as_path() == path)
         })
     });
+}
+
+pub(crate) fn truncate_scoped_backend_threads_for_member_thread_inventory(
+    backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
+) {
+    if backend_threads.len() <= MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS {
+        return;
+    }
+
+    backend_threads.sort_by(|left, right| {
+        right
+            .summary()
+            .updated_at
+            .cmp(&left.summary().updated_at)
+            .then_with(|| right.summary().created_at.cmp(&left.summary().created_at))
+            .then_with(|| left.summary().id.cmp(&right.summary().id))
+            .then_with(|| {
+                left.runtime()
+                    .display_name()
+                    .cmp(&right.runtime().display_name())
+            })
+    });
+    backend_threads.truncate(MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS);
 }
 
 pub(crate) fn enrich_missing_thread_fork_parent_metadata<R>(

@@ -8,8 +8,9 @@ use std::{
 };
 
 use stream_projection::{
-    TranscriptStreamProjection, TranscriptStreamProjectionConfig,
-    TranscriptStreamProjectionContext, TranscriptStreamProjectionKey,
+    TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES, TranscriptStreamProjection,
+    TranscriptStreamProjectionConfig, TranscriptStreamProjectionContext,
+    TranscriptStreamProjectionKey,
 };
 
 #[test]
@@ -135,6 +136,27 @@ fn stream_projection_clear_drops_visible_prefixes() {
 }
 
 #[test]
+fn stream_projection_retained_counts_include_keys_text_and_uncommitted_entries() {
+    let mut projection = projection();
+    let key = TranscriptStreamProjectionKey::new("turn:1:item:assistant");
+    let started_at = Instant::now();
+
+    projection.visible_text(key, "first paragraph", true, started_at);
+    projection.visible_text(
+        TranscriptStreamProjectionKey::new("turn:1:item:reasoning"),
+        "open paragraph without stable boundary",
+        false,
+        started_at,
+    );
+
+    let counts = projection.retained_counts();
+    assert_eq!(counts.entries, 2);
+    assert!(counts.key_bytes >= "turn:1:item:assistant".len());
+    assert_eq!(counts.text_bytes, "first paragraph".len());
+    assert_eq!(counts.uncommitted_entries, 1);
+}
+
+#[test]
 fn stream_projection_context_returns_owned_visible_text() {
     let projection = Rc::new(RefCell::new(projection()));
     let context = TranscriptStreamProjectionContext::new(projection);
@@ -144,6 +166,56 @@ fn stream_projection_context_returns_owned_visible_text() {
         context.visible_text(key, "complete paragraph", true, Instant::now()),
         "complete paragraph"
     );
+}
+
+#[test]
+fn stream_projection_prunes_old_completed_entries() {
+    let mut projection = projection();
+    let started_at = Instant::now();
+
+    for index in 0..=TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES {
+        projection.visible_text(
+            TranscriptStreamProjectionKey::new(format!("turn:{index}:item:assistant")),
+            "complete paragraph",
+            true,
+            started_at,
+        );
+    }
+
+    let counts = projection.retained_counts();
+    assert_eq!(
+        counts.entries,
+        TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES
+    );
+    assert_eq!(counts.uncommitted_entries, 0);
+}
+
+#[test]
+fn stream_projection_keeps_uncommitted_entries_while_pruning_completed_entries() {
+    let mut projection = projection();
+    let started_at = Instant::now();
+    projection.visible_text(
+        TranscriptStreamProjectionKey::new("turn:active:item:assistant"),
+        "partial paragraph without a stable boundary",
+        false,
+        started_at,
+    );
+
+    for index in 0..=TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES {
+        projection.visible_text(
+            TranscriptStreamProjectionKey::new(format!("turn:{index}:item:assistant")),
+            "complete paragraph",
+            true,
+            started_at,
+        );
+    }
+
+    let counts = projection.retained_counts();
+    assert_eq!(
+        counts.entries,
+        TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES + 1
+    );
+    assert_eq!(counts.uncommitted_entries, 1);
 }
 
 fn projection() -> TranscriptStreamProjection {

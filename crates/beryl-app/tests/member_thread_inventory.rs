@@ -341,6 +341,51 @@ fn inventory_preparation_filters_unrelated_threads_before_lineage_reads() {
 }
 
 #[test]
+fn inventory_preparation_truncates_large_backend_thread_sets_before_lineage_reads() {
+    let member_cwd = PathBuf::from(r"C:\work\first");
+    let members = vec![inventory_group("member_first", member_cwd.as_path())];
+    let total = member_thread_inventory::MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS + 5;
+    let mut backend_threads = (0..total)
+        .map(|index| {
+            summary(
+                &format!("thread_{index:04}"),
+                member_cwd.as_path(),
+                Some("Thread"),
+                index as i64,
+                index as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut read_count = 0;
+
+    member_thread_inventory::prepare_backend_threads_for_member_thread_inventory(
+        &mut backend_threads,
+        &members,
+        |thread_id| {
+            read_count += 1;
+            Ok(summary(
+                thread_id,
+                member_cwd.as_path(),
+                Some("Thread"),
+                1,
+                1,
+            ))
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        backend_threads.len(),
+        member_thread_inventory::MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS
+    );
+    assert_eq!(
+        read_count,
+        member_thread_inventory::MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS
+    );
+    assert_eq!(backend_threads[0].id, format!("thread_{:04}", total - 1));
+}
+
+#[test]
 fn inventory_enrichment_skips_threads_that_already_have_fork_parent_metadata() {
     let cwd = PathBuf::from(r"C:\work\first");
     let mut backend_threads = vec![summary_with_fork_parent(

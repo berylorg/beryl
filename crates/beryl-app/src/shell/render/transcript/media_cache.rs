@@ -7,7 +7,7 @@ use std::{
 
 use beryl_backend::ManagedBackendClientConnector;
 use beryl_model::workspace::WorkspaceId;
-use gpui::{App, AsyncApp, Entity};
+use gpui::{App, AsyncApp, Entity, Image};
 use tracing::debug;
 
 use crate::shell::transcript_media::{
@@ -86,6 +86,7 @@ impl TranscriptMediaRenderContext {
                 cx,
             );
         }
+        release_evicted_media_images(lookup.evicted_images, cx);
         lookup.outcome
     }
 
@@ -141,6 +142,7 @@ fn schedule_media_load(
             let completion = load_task.await;
             let _ = panel.update(&mut cx, |view, cx| {
                 let result = view.media_cache.borrow_mut().complete_load(completion);
+                release_evicted_media_images(result.evicted_images, cx);
                 if let Some(request) = result.follow_up_request {
                     schedule_media_load(
                         cx.entity(),
@@ -204,9 +206,24 @@ fn transcript_media_outcome_label(outcome: &TranscriptMediaLoadOutcome) -> &'sta
         TranscriptMediaLoadOutcome::Pending { .. } => "pending",
         TranscriptMediaLoadOutcome::Loaded(_) => "loaded",
         TranscriptMediaLoadOutcome::RenderNotSupported { .. } => "render_not_supported",
+        TranscriptMediaLoadOutcome::TooLarge { .. } => "too_large",
         TranscriptMediaLoadOutcome::FileUnavailable { .. } => "file_unavailable",
         TranscriptMediaLoadOutcome::PathNotAllowed { .. } => "path_not_allowed",
     }
+}
+
+fn release_evicted_media_images(images: Vec<Arc<Image>>, cx: &mut App) {
+    if images.is_empty() {
+        return;
+    }
+    let image_count = images.len();
+    for image in images {
+        image.remove_asset(cx);
+    }
+    debug!(
+        image_count,
+        "released evicted transcript media GPUI image assets"
+    );
 }
 
 struct UnavailableMediaFileReader;

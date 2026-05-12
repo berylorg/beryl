@@ -34,10 +34,14 @@ Own Beryl's integration boundary with `codex app-server`.
 - This crate separates managed app-server process lifetime from backend client session lifetime.
 - Dropping or closing a backend client session must not terminate a managed app-server process owned by a managed server handle.
 - Each backend client session performs its own initialize handshake, request id sequencing, notification buffering, and stream polling.
+- Each backend client session bounds deferred notification and server-request retention by message count and approximate retained bytes while it is waiting for a specific JSON-RPC response.
+- Deferred dynamic tool-call requests have an additional explicit count cap. Exceeding that cap is a bounded-resource error instead of an unbounded retained request backlog.
 - Backend client initialization requests the app-server experimental API capability when available, because Beryl depends on new protocol fields and notifications such as subagent `agentNickname` metadata and `thread/started`.
 - Backend client initialization must not opt out of `thread/started` on sessions that can feed foreground turn-stream activity.
 - WebSocket client sessions authenticate with the managed server using `Authorization: Bearer <token>` during the WebSocket handshake.
-- The WebSocket transport layer owns the authenticated client handshake, outbound client-to-server masking, inbound frame-header parsing, opcode and reserved-bit validation, server-to-client masking rejection, continuation-frame state, control-frame handling, close handling, and bounded payload-byte reads.
+- The WebSocket transport layer owns the authenticated client handshake, outbound client-to-server masking, inbound frame-header parsing, opcode and reserved-bit validation, server-to-client masking rejection, continuation-frame state, control-frame handling, close handling, bounded handshake read-ahead retention, handshake timeout behavior, and bounded payload-byte reads.
+- Stdio transport line reads are bounded before JSON parsing or stderr logging so a backend cannot force Beryl to retain an unlimited single stdout or stderr line.
+- Protocol errors for oversized stdio lines and invalid JSON must not retain the rejected full line payload.
 - WebSocket transport code must not know JSON-RPC method names, request ids, transcript item schemas, generated-image fields, or backend normalization types.
 - The JSON-RPC session layer owns request id allocation, outstanding-method correlation, notification buffering, response routing, initialize handshake behavior, compatibility probing, and session-level cancellation semantics.
 - Method-aware response sanitization is a separate JSON layer selected only from known outstanding request methods whose response shape is explicitly supported.

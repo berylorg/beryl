@@ -7,14 +7,26 @@ use beryl_model::workspace::BerylWorkspaceId;
 
 use crate::{
     BerylWorkspacePersistence, NodeLeafDeleteRequest, NodeSubtreeDeleteRequest,
-    ThreadRefUpsertRequest, WorkspaceGraphToolService,
+    ThreadRefUpsertRequest, WorkspaceGraphRevision, WorkspaceGraphToolService,
 };
+use beryl_model::semantic_graph::SemanticGraph;
+use beryl_model::workspace::BerylWorkspaceManifest;
 
 use super::graph::{GraphMutationCommitUpdate, GraphMutationUpdate, OptimisticGraphMutationId};
 
 #[derive(Debug)]
 pub(super) enum GraphUpdate {
     MutationFinished(GraphMutationUpdate),
+    ReloadFinished(Result<GraphReloadUpdate, String>),
+}
+
+#[derive(Debug)]
+pub(super) struct GraphReloadUpdate {
+    pub(super) workspace_id: BerylWorkspaceId,
+    pub(super) manifest: BerylWorkspaceManifest,
+    pub(super) graph: SemanticGraph,
+    pub(super) revision: WorkspaceGraphRevision,
+    pub(super) warning: Option<String>,
 }
 
 pub(super) struct GraphWorkerTask {
@@ -109,6 +121,20 @@ pub(super) fn spawn_node_leaf_delete_worker(
     task
 }
 
+pub(super) fn spawn_graph_reload_worker(
+    persistence: BerylWorkspacePersistence,
+    workspace_id: BerylWorkspaceId,
+    warning: Option<String>,
+) -> GraphWorkerTask {
+    let (sender, receiver) = mpsc::channel();
+    let task = GraphWorkerTask::new(workspace_id.clone(), None, receiver);
+    thread::spawn(move || {
+        let result = run_graph_reload(&persistence, workspace_id, warning);
+        let _ = sender.send(GraphUpdate::ReloadFinished(result));
+    });
+    task
+}
+
 fn graph_worker_update(
     workspace_id: BerylWorkspaceId,
     optimistic_mutation_id: Option<OptimisticGraphMutationId>,
@@ -175,4 +201,30 @@ fn run_node_subtree_delete(
         response.commit,
         "The selected semantic node was already deleted.",
     ))
+}
+
+fn run_graph_reload(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: BerylWorkspaceId,
+    warning: Option<String>,
+) -> Result<GraphReloadUpdate, String> {
+    let manifest = persistence
+        .load_workspace_manifest(&workspace_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "workspace {} no longer has a persisted manifest",
+                workspace_id.as_str()
+            )
+        })?;
+    let snapshot = persistence
+        .load_workspace_graph_state_snapshot(&workspace_id)
+        .map_err(|error| error.to_string())?;
+    Ok(GraphReloadUpdate {
+        workspace_id,
+        manifest,
+        graph: snapshot.graph,
+        revision: snapshot.revision,
+        warning,
+    })
 }

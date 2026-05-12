@@ -58,6 +58,25 @@ fn result_text(result: Option<ComposerHistoryBrowseResult>) -> Option<String> {
 }
 
 #[test]
+fn retained_counts_include_entries_browses_scopes_and_image_bytes() {
+    let mut history = ComposerHistoryState::with_capacity(4);
+    let scope = ComposerHistoryScope::Thread("thread-a".to_string());
+    history.record_accepted(scope.clone(), accepted_image("See ", "A", b"image"));
+
+    let _ = history.browse_previous(scope, draft_text("current draft"));
+    let counts = history.retained_counts();
+
+    assert_eq!(counts.lanes, 1);
+    assert_eq!(counts.entries, 1);
+    assert_eq!(counts.active_browses, 1);
+    assert_eq!(counts.scope_bytes, "thread-a".len());
+    assert!(counts.display_text_bytes >= "See [A]".len() + "current draft".len());
+    assert_eq!(counts.image_count, 1);
+    assert_eq!(counts.image_bytes, b"image".len());
+    assert_eq!(counts.occurrence_count, 1);
+}
+
+#[test]
 fn empty_history_browse_is_noop() {
     let mut history = ComposerHistoryState::with_capacity(4);
     let scope = ComposerHistoryScope::Thread("thread-a".to_string());
@@ -183,6 +202,52 @@ fn pending_new_thread_history_promotes_to_created_thread() {
     assert_eq!(
         result_text(history.browse_previous(thread, draft_text(""))),
         Some("first prompt".to_string())
+    );
+}
+
+#[test]
+fn history_prunes_global_lanes_and_image_bytes() {
+    let mut history = ComposerHistoryState::with_limits(4, 2, 10);
+    let thread_a = ComposerHistoryScope::Thread("thread-a".to_string());
+    let thread_b = ComposerHistoryScope::Thread("thread-b".to_string());
+    let thread_c = ComposerHistoryScope::Thread("thread-c".to_string());
+
+    history.record_accepted(thread_a.clone(), accepted_text("a"));
+    history.record_accepted(thread_b.clone(), accepted_text("b"));
+    history.record_accepted(thread_c.clone(), accepted_text("c"));
+
+    assert_eq!(history.browse_previous(thread_a, draft_text("")), None);
+    assert_eq!(
+        result_text(history.browse_previous(thread_b.clone(), draft_text(""))),
+        Some("b".to_string())
+    );
+    assert_eq!(
+        result_text(history.browse_previous(thread_c.clone(), draft_text(""))),
+        Some("c".to_string())
+    );
+
+    history.record_accepted(thread_b.clone(), accepted_image("see ", "A", b"123456"));
+    history.record_accepted(thread_c.clone(), accepted_image("look ", "B", b"abcdef"));
+
+    let counts = history.retained_counts();
+    assert!(counts.image_bytes <= 10);
+    assert!(counts.lanes <= 2);
+}
+
+#[test]
+fn history_records_durable_image_references_without_retaining_bytes() {
+    let mut history = ComposerHistoryState::with_limits(4, 4, 1);
+    let scope = ComposerHistoryScope::Thread("thread-a".to_string());
+    let compacted = accepted_image("see ", "A", b"large").with_durable_image_references();
+
+    history.record_accepted(scope.clone(), compacted);
+
+    let counts = history.retained_counts();
+    assert_eq!(counts.image_count, 1);
+    assert_eq!(counts.image_bytes, 0);
+    assert_eq!(
+        result_text(history.browse_previous(scope, draft_text(""))),
+        Some("see [A]".to_string())
     );
 }
 

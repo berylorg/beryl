@@ -1,3 +1,8 @@
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
+
 use beryl_model::semantic_graph::{
     ChecklistItemStatus, SemanticGraph, SemanticNode, SemanticNodeId,
 };
@@ -15,7 +20,8 @@ pub(crate) struct ChecklistSidebarRow {
 pub(crate) struct ChecklistSidebarProjection {
     checklist_id: SemanticNodeId,
     title: String,
-    rows: Vec<ChecklistSidebarRow>,
+    row_count: usize,
+    content_fingerprint: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,11 +53,19 @@ impl ChecklistSidebarProjection {
     }
 
     pub(crate) fn row_count(&self) -> usize {
-        self.rows.len()
+        self.row_count
     }
 
-    pub(crate) fn row(&self, index: usize) -> Option<&ChecklistSidebarRow> {
-        self.rows.get(index)
+    pub(crate) fn row(&self, graph: &SemanticGraph, index: usize) -> Option<ChecklistSidebarRow> {
+        let item_id = graph.child_ids_of(&self.checklist_id)?.get(index)?;
+        let item = graph.node(item_id)?;
+        Some(ChecklistSidebarRow {
+            node_id: item.id().clone(),
+            number: index + 1,
+            title: item.title().to_string(),
+            status: item.checklist_item_status(),
+            status_label: checklist_status_label(item.checklist_item_status()),
+        })
     }
 }
 
@@ -127,23 +141,42 @@ pub(crate) fn project_checklist_projection(
     graph: &SemanticGraph,
     checklist: &SemanticNode,
 ) -> ChecklistSidebarProjection {
-    let rows = graph
-        .checklist_items(checklist.id())
-        .into_iter()
-        .enumerate()
-        .map(|(index, item)| ChecklistSidebarRow {
-            node_id: item.id().clone(),
-            number: index + 1,
-            title: item.title().to_string(),
-            status: item.checklist_item_status(),
-            status_label: checklist_status_label(item.checklist_item_status()),
-        })
-        .collect();
+    let child_ids = graph.child_ids_of(checklist.id()).unwrap_or(&[]);
+    let content_fingerprint = checklist_projection_fingerprint(graph, checklist, child_ids);
 
     ChecklistSidebarProjection {
         checklist_id: checklist.id().clone(),
         title: checklist.title().to_string(),
-        rows,
+        row_count: child_ids.len(),
+        content_fingerprint,
+    }
+}
+
+fn checklist_projection_fingerprint(
+    graph: &SemanticGraph,
+    checklist: &SemanticNode,
+    child_ids: &[SemanticNodeId],
+) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    checklist.id().as_str().hash(&mut hasher);
+    checklist.title().hash(&mut hasher);
+    child_ids.len().hash(&mut hasher);
+    for (index, child_id) in child_ids.iter().enumerate() {
+        index.hash(&mut hasher);
+        child_id.as_str().hash(&mut hasher);
+        if let Some(item) = graph.node(child_id) {
+            item.title().hash(&mut hasher);
+            checklist_status_fingerprint_value(item.checklist_item_status()).hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+fn checklist_status_fingerprint_value(status: Option<ChecklistItemStatus>) -> u8 {
+    match status.unwrap_or(ChecklistItemStatus::Todo) {
+        ChecklistItemStatus::Todo => 0,
+        ChecklistItemStatus::InProgress => 1,
+        ChecklistItemStatus::Done => 2,
     }
 }
 

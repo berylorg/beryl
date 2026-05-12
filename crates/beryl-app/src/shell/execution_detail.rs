@@ -29,6 +29,12 @@ use transcript_images::{
 
 static NEXT_USER_INPUT_FRAGMENT_ID: AtomicU64 = AtomicU64::new(1);
 const MAX_HISTORY_INLINE_GENERATED_IMAGE_RESULT_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_REASONING_CONTENT_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_REASONING_SUMMARY_BYTES: usize = 512 * 1024;
+pub(crate) const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_FILE_CHANGE_OUTPUT_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_ERROR_MESSAGE_BYTES: usize = 128 * 1024;
 
 #[derive(Clone, Default)]
 pub(super) struct ExecutionDetailState {
@@ -186,11 +192,44 @@ pub(super) struct ExecutionDetailRetainedCounts {
     pub(super) items: usize,
     pub(super) text_bytes: usize,
     pub(super) user_fragments: usize,
+    pub(super) user_fragment_text_bytes: usize,
     pub(super) backend_input_records: usize,
+    pub(super) backend_input_bytes: usize,
+    pub(super) image_marker_bytes: usize,
     pub(super) narrative_entries: usize,
     pub(super) released_placeholders: usize,
     pub(super) generated_image_items: usize,
+    pub(super) active_turn_payload_bytes: usize,
+    pub(super) agent_text_bytes: usize,
+    pub(super) reasoning_summary_bytes: usize,
+    pub(super) reasoning_content_bytes: usize,
+    pub(super) command_text_bytes: usize,
+    pub(super) command_output_bytes: usize,
+    pub(super) file_change_path_bytes: usize,
+    pub(super) file_change_output_bytes: usize,
+    pub(super) generated_image_inline_bytes: usize,
+    pub(super) generated_image_metadata_bytes: usize,
+    pub(super) error_bytes: usize,
+    pub(super) identity_bytes: usize,
     pub(super) payload_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct TurnPayloadRetainedCounts {
+    user_fragment_text_bytes: usize,
+    backend_input_bytes: usize,
+    image_marker_bytes: usize,
+    agent_text_bytes: usize,
+    reasoning_summary_bytes: usize,
+    reasoning_content_bytes: usize,
+    command_text_bytes: usize,
+    command_output_bytes: usize,
+    file_change_path_bytes: usize,
+    file_change_output_bytes: usize,
+    generated_image_inline_bytes: usize,
+    generated_image_metadata_bytes: usize,
+    error_bytes: usize,
+    identity_bytes: usize,
 }
 
 impl ExecutionDetailState {
@@ -358,9 +397,59 @@ impl ExecutionDetailState {
                         .filter(|item| matches!(item, ExecutionItem::GeneratedImage(_)))
                         .count(),
                 );
+                let turn_payload = turn.retained_payload_counts();
+                counts.user_fragment_text_bytes = counts
+                    .user_fragment_text_bytes
+                    .saturating_add(turn_payload.user_fragment_text_bytes);
+                counts.backend_input_bytes = counts
+                    .backend_input_bytes
+                    .saturating_add(turn_payload.backend_input_bytes);
+                counts.image_marker_bytes = counts
+                    .image_marker_bytes
+                    .saturating_add(turn_payload.image_marker_bytes);
+                counts.agent_text_bytes = counts
+                    .agent_text_bytes
+                    .saturating_add(turn_payload.agent_text_bytes);
+                counts.reasoning_summary_bytes = counts
+                    .reasoning_summary_bytes
+                    .saturating_add(turn_payload.reasoning_summary_bytes);
+                counts.reasoning_content_bytes = counts
+                    .reasoning_content_bytes
+                    .saturating_add(turn_payload.reasoning_content_bytes);
+                counts.command_text_bytes = counts
+                    .command_text_bytes
+                    .saturating_add(turn_payload.command_text_bytes);
+                counts.command_output_bytes = counts
+                    .command_output_bytes
+                    .saturating_add(turn_payload.command_output_bytes);
+                counts.file_change_path_bytes = counts
+                    .file_change_path_bytes
+                    .saturating_add(turn_payload.file_change_path_bytes);
+                counts.file_change_output_bytes = counts
+                    .file_change_output_bytes
+                    .saturating_add(turn_payload.file_change_output_bytes);
+                counts.generated_image_inline_bytes = counts
+                    .generated_image_inline_bytes
+                    .saturating_add(turn_payload.generated_image_inline_bytes);
+                counts.generated_image_metadata_bytes = counts
+                    .generated_image_metadata_bytes
+                    .saturating_add(turn_payload.generated_image_metadata_bytes);
+                counts.error_bytes = counts.error_bytes.saturating_add(turn_payload.error_bytes);
+                counts.identity_bytes = counts
+                    .identity_bytes
+                    .saturating_add(turn_payload.identity_bytes);
+                if self.active_turn_index.is_some_and(|index| {
+                    self.turns
+                        .get(index)
+                        .is_some_and(|active_turn| Arc::ptr_eq(active_turn, turn))
+                }) {
+                    counts.active_turn_payload_bytes = counts
+                        .active_turn_payload_bytes
+                        .saturating_add(turn_payload.total_bytes());
+                }
                 counts.payload_bytes = counts
                     .payload_bytes
-                    .saturating_add(turn.payload_bytes_lower_bound());
+                    .saturating_add(turn_payload.total_bytes());
                 counts
             },
         )
@@ -636,7 +725,12 @@ impl ExecutionDetailState {
 
         let turn = Arc::make_mut(&mut self.turns[index]);
         turn.status = TurnExecutionStatus::Failed;
-        turn.error_message = Some(message.into());
+        turn.error_message = Some(bounded_text(
+            message.into(),
+            MAX_ERROR_MESSAGE_BYTES,
+            "turn error detail",
+        ));
+        turn.compact_terminal_operational_detail();
         self.active_turn_index = None;
         Some(index)
     }
@@ -675,11 +769,15 @@ impl ExecutionDetailState {
                     turn.thread_id = Some(thread_id);
                     turn.turn_id = Some(info.id.clone());
                     turn.status = execution_status_from_turn(&info);
-                    turn.error_message = info
-                        .error
-                        .as_ref()
-                        .map(|error| backend_turn_error_detail(Some(error)));
+                    turn.error_message = info.error.as_ref().map(|error| {
+                        bounded_text(
+                            backend_turn_error_detail(Some(error)),
+                            MAX_ERROR_MESSAGE_BYTES,
+                            "turn error detail",
+                        )
+                    });
                     turn.terminal_assistant_item_id = resolve_terminal_assistant_item(turn);
+                    turn.compact_terminal_operational_detail();
                     finished_turn = true;
                 }
                 TurnStreamEvent::ItemStarted { item, .. } => {
@@ -707,7 +805,12 @@ impl ExecutionDetailState {
                 } => {
                     let item = turn.ensure_reasoning(item_id);
                     ensure_text_slot(&mut item.summary, summary_index);
-                    item.summary[summary_index].push_str(&delta);
+                    push_bounded_text(
+                        &mut item.summary[summary_index],
+                        &delta,
+                        MAX_REASONING_SUMMARY_BYTES,
+                        "reasoning summary",
+                    );
                 }
                 TurnStreamEvent::ReasoningTextDelta {
                     item_id,
@@ -717,15 +820,28 @@ impl ExecutionDetailState {
                 } => {
                     let item = turn.ensure_reasoning(item_id);
                     ensure_text_slot(&mut item.content, content_index);
-                    item.content[content_index].push_str(&delta);
+                    push_bounded_text(
+                        &mut item.content[content_index],
+                        &delta,
+                        MAX_REASONING_CONTENT_BYTES,
+                        "reasoning detail",
+                    );
                 }
                 TurnStreamEvent::CommandExecutionOutputDelta { item_id, delta, .. } => {
-                    turn.ensure_command_execution(item_id)
-                        .output
-                        .push_str(&delta);
+                    push_bounded_text(
+                        &mut turn.ensure_command_execution(item_id).output,
+                        &delta,
+                        MAX_COMMAND_OUTPUT_BYTES,
+                        "command output",
+                    );
                 }
                 TurnStreamEvent::FileChangeOutputDelta { item_id, delta, .. } => {
-                    turn.ensure_file_change(item_id).output.push_str(&delta);
+                    push_bounded_text(
+                        &mut turn.ensure_file_change(item_id).output,
+                        &delta,
+                        MAX_FILE_CHANGE_OUTPUT_BYTES,
+                        "file-change output",
+                    );
                 }
                 TurnStreamEvent::ThreadStarted { .. } => {}
                 TurnStreamEvent::AgentLabelUpdated { .. } => {}
@@ -909,6 +1025,18 @@ impl UserInputFragment {
         transcript_image_marker_specs_from_markers(&self.image_markers)
     }
 
+    pub fn retained_payload_bytes_lower_bound(&self) -> usize {
+        self.text
+            .len()
+            .saturating_add(
+                self.backend_input
+                    .iter()
+                    .map(user_input_payload_bytes)
+                    .sum::<usize>(),
+            )
+            .saturating_add(self.image_markers.len().saturating_mul(32))
+    }
+
     pub fn is_blank(&self) -> bool {
         self.text.trim().is_empty() && self.backend_input.is_empty()
     }
@@ -982,47 +1110,54 @@ impl TurnExecutionRecord {
         }
     }
 
-    fn payload_bytes_lower_bound(&self) -> usize {
+    fn retained_payload_counts(&self) -> TurnPayloadRetainedCounts {
         if self.released_history_placeholder {
-            return self
+            return TurnPayloadRetainedCounts {
+                identity_bytes: self
+                    .thread_id
+                    .as_ref()
+                    .map_or(0, String::len)
+                    .saturating_add(self.turn_id.as_ref().map_or(0, String::len)),
+                ..TurnPayloadRetainedCounts::default()
+            };
+        }
+
+        let mut counts = TurnPayloadRetainedCounts {
+            identity_bytes: self
                 .thread_id
                 .as_ref()
                 .map_or(0, String::len)
-                .saturating_add(self.turn_id.as_ref().map_or(0, String::len));
+                .saturating_add(self.turn_id.as_ref().map_or(0, String::len))
+                .saturating_add(
+                    self.terminal_assistant_item_id
+                        .as_ref()
+                        .map_or(0, String::len),
+                ),
+            error_bytes: self.error_message.as_ref().map_or(0, String::len),
+            ..TurnPayloadRetainedCounts::default()
+        };
+
+        for fragment in &self.user_input_fragments {
+            counts.user_fragment_text_bytes = counts
+                .user_fragment_text_bytes
+                .saturating_add(fragment.text.len());
+            counts.backend_input_bytes = counts.backend_input_bytes.saturating_add(
+                fragment
+                    .backend_input
+                    .iter()
+                    .map(user_input_payload_bytes)
+                    .sum::<usize>(),
+            );
+            counts.image_marker_bytes = counts
+                .image_marker_bytes
+                .saturating_add(fragment.image_markers.len().saturating_mul(32));
         }
 
-        let fragment_bytes = self
-            .user_input_fragments
-            .iter()
-            .map(|fragment| {
-                fragment
-                    .text
-                    .len()
-                    .saturating_add(
-                        fragment
-                            .backend_input
-                            .iter()
-                            .map(user_input_payload_bytes)
-                            .sum::<usize>(),
-                    )
-                    .saturating_add(fragment.image_markers.len().saturating_mul(32))
-            })
-            .sum::<usize>();
-        let item_bytes = self
-            .items
-            .iter()
-            .map(execution_item_payload_bytes)
-            .sum::<usize>();
-        fragment_bytes
-            .saturating_add(item_bytes)
-            .saturating_add(self.thread_id.as_ref().map_or(0, String::len))
-            .saturating_add(self.turn_id.as_ref().map_or(0, String::len))
-            .saturating_add(
-                self.terminal_assistant_item_id
-                    .as_ref()
-                    .map_or(0, String::len),
-            )
-            .saturating_add(self.error_message.as_ref().map_or(0, String::len))
+        for item in &self.items {
+            counts.add_item(item);
+        }
+
+        counts
     }
 
     fn render_metrics(&self) -> TurnRenderMetrics {
@@ -1091,10 +1226,13 @@ impl TurnExecutionRecord {
             suppress_user_input_echoes: false,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,
-            error_message: turn
-                .error
-                .as_ref()
-                .map(|error| backend_turn_error_detail(Some(error))),
+            error_message: turn.error.as_ref().map(|error| {
+                bounded_text(
+                    backend_turn_error_detail(Some(error)),
+                    MAX_ERROR_MESSAGE_BYTES,
+                    "turn error detail",
+                )
+            }),
             items: Vec::new(),
         };
 
@@ -1256,8 +1394,16 @@ impl TurnExecutionRecord {
 
     fn upsert_reasoning(&mut self, item: beryl_backend::ReasoningItem, complete: bool) {
         let target = self.ensure_reasoning(item.id);
-        target.summary = item.summary;
-        target.content = item.content;
+        target.summary = item
+            .summary
+            .into_iter()
+            .map(|part| bounded_text(part, MAX_REASONING_SUMMARY_BYTES, "reasoning summary"))
+            .collect();
+        target.content = item
+            .content
+            .into_iter()
+            .map(|part| bounded_text(part, MAX_REASONING_CONTENT_BYTES, "reasoning detail"))
+            .collect();
         target.complete = complete;
     }
 
@@ -1267,7 +1413,7 @@ impl TurnExecutionRecord {
         target.cwd = Some(item.cwd);
         target.status = item.status;
         if let Some(output) = item.aggregated_output {
-            target.output = output;
+            target.output = bounded_text(output, MAX_COMMAND_OUTPUT_BYTES, "command output");
         }
         target.exit_code = item.exit_code;
         target.duration_ms = item.duration_ms;
@@ -1361,6 +1507,68 @@ impl TurnExecutionRecord {
             self.append_user_input_fragment_to_narrative(fragment);
         }
     }
+
+    fn compact_terminal_operational_detail(&mut self) {
+        for item in &mut self.items {
+            if let ExecutionItem::Reasoning(reasoning) = item {
+                reasoning.content.clear();
+            }
+        }
+    }
+}
+
+fn push_bounded_text(target: &mut String, delta: &str, limit: usize, label: &str) {
+    if delta.is_empty() || target.contains("[Beryl omitted additional ") {
+        return;
+    }
+
+    if target.len().saturating_add(delta.len()) <= limit {
+        target.push_str(delta);
+        return;
+    }
+
+    let marker = truncation_marker(label, limit);
+    let retained_limit = limit.saturating_sub(marker.len());
+    if target.len() > retained_limit {
+        truncate_to_utf8_boundary(target, retained_limit);
+    } else {
+        let available = retained_limit.saturating_sub(target.len());
+        target.push_str(prefix_at_utf8_boundary(delta, available));
+    }
+    target.push_str(marker.as_str());
+}
+
+fn bounded_text(mut text: String, limit: usize, label: &str) -> String {
+    if text.len() <= limit {
+        return text;
+    }
+
+    let marker = truncation_marker(label, limit);
+    let retained_limit = limit.saturating_sub(marker.len());
+    truncate_to_utf8_boundary(&mut text, retained_limit);
+    text.push_str(marker.as_str());
+    text
+}
+
+fn truncation_marker(label: &str, limit: usize) -> String {
+    format!("\n[Beryl omitted additional {label} after {limit} retained bytes]")
+}
+
+fn truncate_to_utf8_boundary(text: &mut String, limit: usize) {
+    let boundary = floor_char_boundary(text.as_str(), limit);
+    text.truncate(boundary);
+}
+
+fn prefix_at_utf8_boundary(text: &str, limit: usize) -> &str {
+    &text[..floor_char_boundary(text, limit)]
+}
+
+fn floor_char_boundary(text: &str, limit: usize) -> usize {
+    let mut boundary = limit.min(text.len());
+    while boundary > 0 && !text.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
 }
 
 fn update_generated_image_result(current: &mut Option<Arc<String>>, next: Option<String>) {
@@ -1381,16 +1589,15 @@ fn update_generated_image_result(current: &mut Option<Arc<String>>, next: Option
 fn retain_generated_image_result(
     result: Option<String>,
     saved_path: Option<&str>,
-    history_item: bool,
+    _history_item: bool,
 ) -> Option<String> {
     if saved_path.is_some_and(|path| !path.trim().is_empty()) {
         return None;
     }
 
-    if history_item
-        && result
-            .as_ref()
-            .is_some_and(|result| result.len() > MAX_HISTORY_INLINE_GENERATED_IMAGE_RESULT_BYTES)
+    if result
+        .as_ref()
+        .is_some_and(|result| result.len() > MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES)
     {
         return None;
     }
@@ -1448,6 +1655,81 @@ fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
+impl TurnPayloadRetainedCounts {
+    fn add_item(&mut self, item: &ExecutionItem) {
+        match item {
+            ExecutionItem::AgentMessage(item) => {
+                self.identity_bytes = self.identity_bytes.saturating_add(item.id.len());
+                self.agent_text_bytes = self.agent_text_bytes.saturating_add(item.text.len());
+            }
+            ExecutionItem::Reasoning(item) => {
+                self.identity_bytes = self.identity_bytes.saturating_add(item.id.len());
+                self.reasoning_summary_bytes = self
+                    .reasoning_summary_bytes
+                    .saturating_add(item.summary.iter().map(String::len).sum::<usize>());
+                self.reasoning_content_bytes = self
+                    .reasoning_content_bytes
+                    .saturating_add(item.content.iter().map(String::len).sum::<usize>());
+            }
+            ExecutionItem::CommandExecution(item) => {
+                self.identity_bytes = self.identity_bytes.saturating_add(item.id.len());
+                self.command_text_bytes = self
+                    .command_text_bytes
+                    .saturating_add(item.command.as_ref().map_or(0, String::len))
+                    .saturating_add(item.cwd.as_ref().map_or(0, String::len));
+                self.command_output_bytes =
+                    self.command_output_bytes.saturating_add(item.output.len());
+            }
+            ExecutionItem::FileChange(item) => {
+                self.identity_bytes = self.identity_bytes.saturating_add(item.id.len());
+                self.file_change_path_bytes = self.file_change_path_bytes.saturating_add(
+                    item.changes
+                        .iter()
+                        .map(|change| change.path.len())
+                        .sum::<usize>(),
+                );
+                self.file_change_output_bytes = self
+                    .file_change_output_bytes
+                    .saturating_add(item.output.len());
+            }
+            ExecutionItem::GeneratedImage(item) => {
+                self.identity_bytes = self.identity_bytes.saturating_add(item.id.len());
+                self.generated_image_metadata_bytes = self
+                    .generated_image_metadata_bytes
+                    .saturating_add(item.status.as_ref().map_or(0, String::len))
+                    .saturating_add(item.revised_prompt.as_ref().map_or(0, String::len))
+                    .saturating_add(item.saved_path.as_ref().map_or(0, String::len));
+                self.generated_image_inline_bytes = self
+                    .generated_image_inline_bytes
+                    .saturating_add(item.result.as_ref().map_or(0, |result| result.len()));
+            }
+            ExecutionItem::Generic(item) => {
+                self.identity_bytes = self
+                    .identity_bytes
+                    .saturating_add(item.id.len())
+                    .saturating_add(item.item_type.len());
+            }
+        }
+    }
+
+    fn total_bytes(self) -> usize {
+        self.user_fragment_text_bytes
+            .saturating_add(self.backend_input_bytes)
+            .saturating_add(self.image_marker_bytes)
+            .saturating_add(self.agent_text_bytes)
+            .saturating_add(self.reasoning_summary_bytes)
+            .saturating_add(self.reasoning_content_bytes)
+            .saturating_add(self.command_text_bytes)
+            .saturating_add(self.command_output_bytes)
+            .saturating_add(self.file_change_path_bytes)
+            .saturating_add(self.file_change_output_bytes)
+            .saturating_add(self.generated_image_inline_bytes)
+            .saturating_add(self.generated_image_metadata_bytes)
+            .saturating_add(self.error_bytes)
+            .saturating_add(self.identity_bytes)
+    }
+}
+
 impl ExecutionItem {
     pub fn id(&self) -> &str {
         match self {
@@ -1469,41 +1751,6 @@ fn user_input_payload_bytes(input: &UserInput) -> usize {
         UserInput::Skill { name, path } | UserInput::Mention { name, path } => {
             name.len().saturating_add(path.len())
         }
-    }
-}
-
-fn execution_item_payload_bytes(item: &ExecutionItem) -> usize {
-    match item {
-        ExecutionItem::AgentMessage(item) => item.id.len().saturating_add(item.text.len()),
-        ExecutionItem::Reasoning(item) => item
-            .id
-            .len()
-            .saturating_add(item.summary.iter().map(String::len).sum::<usize>())
-            .saturating_add(item.content.iter().map(String::len).sum::<usize>()),
-        ExecutionItem::CommandExecution(item) => item
-            .id
-            .len()
-            .saturating_add(item.command.as_ref().map_or(0, String::len))
-            .saturating_add(item.cwd.as_ref().map_or(0, String::len))
-            .saturating_add(item.output.len()),
-        ExecutionItem::FileChange(item) => item
-            .id
-            .len()
-            .saturating_add(item.output.len())
-            .saturating_add(
-                item.changes
-                    .iter()
-                    .map(|change| change.path.len())
-                    .sum::<usize>(),
-            ),
-        ExecutionItem::GeneratedImage(item) => item
-            .id
-            .len()
-            .saturating_add(item.status.as_ref().map_or(0, String::len))
-            .saturating_add(item.revised_prompt.as_ref().map_or(0, String::len))
-            .saturating_add(item.result.as_ref().map_or(0, |result| result.len()))
-            .saturating_add(item.saved_path.as_ref().map_or(0, String::len)),
-        ExecutionItem::Generic(item) => item.id.len().saturating_add(item.item_type.len()),
     }
 }
 

@@ -142,6 +142,7 @@ fn render_checklist_sidebar(
             shell_entity,
             scroll_handle.clone(),
             snapshot.viewport_height_hint,
+            cx,
         )
         .into_any_element(),
         None => empty_state().into_any_element(),
@@ -283,6 +284,7 @@ fn render_checklist_items(
     shell: Entity<ShellView>,
     scroll_handle: ScrollHandle,
     viewport_height_hint: gpui::Pixels,
+    cx: &mut Context<ChecklistSidebarPanel>,
 ) -> impl IntoElement {
     let row_count = projection.row_count();
     if row_count == 0 {
@@ -318,10 +320,20 @@ fn render_checklist_items(
                 .min_h(row_window.top_spacer_height),
         );
 
-    for index in row_window.range {
-        if let Some(row) = projection.row(index).cloned() {
-            list = list.child(render_checklist_item_row(row, shell.clone()));
-        }
+    let visible_rows = shell
+        .read(cx)
+        .conversation_surface()
+        .map(|surface| {
+            row_window
+                .range
+                .clone()
+                .filter_map(|index| surface.checklist_sidebar_row(index))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    for row in visible_rows {
+        list = list.child(render_checklist_item_row(row, shell.clone()));
     }
 
     list.child(

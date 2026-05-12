@@ -37,6 +37,8 @@ use theme::settings_window_theme;
 pub(super) type SharedAppearanceSettings = Arc<Mutex<AppearanceSettings>>;
 pub(super) type SharedGuiPreferences = Arc<Mutex<GuiPreferences>>;
 
+const SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT: usize = 1024 * 1024;
+
 pub(super) fn load_initial_appearance_settings(
     store: &AppearanceSettingsStore,
 ) -> AppearanceSettings {
@@ -150,6 +152,7 @@ impl SettingsState {
             .with_window_size(720.0, 760.0)
             .with_min_window_size(520.0, 420.0)
             .with_saved_color_swatches(self.saved_color_swatches())
+            .with_text_input_undo_byte_limit(SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT)
             .with_visual_theme(self.visual_theme())
     }
 

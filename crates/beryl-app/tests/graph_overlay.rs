@@ -506,6 +506,93 @@ fn graph_overlay_state_applies_gapped_commits_after_missing_revision_arrives() {
 }
 
 #[test]
+fn graph_overlay_state_recovers_when_gapped_commit_count_exceeds_budget() {
+    let mut overlay =
+        graph::GraphOverlayState::new(explorer_graph(), WorkspaceGraphRevision::default(), None);
+
+    let mut application = None;
+    for index in 0..257u64 {
+        let node_id = SemanticNodeId::new(format!("queued_gap_{index}")).unwrap();
+        application = Some(
+            overlay
+                .finish_mutation_commit_update(graph_commit_update(
+                    index + 1,
+                    index + 2,
+                    true,
+                    upsert_root_child_patch(node_id, "Queued Gap", 500 + index),
+                    "",
+                ))
+                .unwrap(),
+        );
+    }
+
+    assert!(matches!(
+        application,
+        Some(graph::GraphCommitApplication::RecoveryRequired { .. })
+    ));
+    assert_eq!(overlay.queued_commit_count(), 0);
+    assert_eq!(overlay.pending_optimistic_mutation_count(), 0);
+    assert_eq!(overlay.revision(), WorkspaceGraphRevision::default());
+    assert_eq!(
+        overlay.status_message(),
+        Some("Recovering semantic graph projection from persisted state.")
+    );
+}
+
+#[test]
+fn graph_overlay_state_recovers_when_gapped_commit_bytes_exceed_budget() {
+    let mut overlay =
+        graph::GraphOverlayState::new(explorer_graph(), WorkspaceGraphRevision::default(), None);
+    let node_id = SemanticNodeId::new("huge_gap").unwrap();
+    let huge_title = "x".repeat(4 * 1024 * 1024 + 1);
+
+    let application = overlay
+        .finish_mutation_commit_update(graph_commit_update(
+            1,
+            2,
+            true,
+            upsert_root_child_patch(node_id, &huge_title, 900),
+            "",
+        ))
+        .unwrap();
+
+    assert!(matches!(
+        application,
+        graph::GraphCommitApplication::RecoveryRequired { .. }
+    ));
+    assert_eq!(overlay.queued_commit_count(), 0);
+}
+
+#[test]
+fn graph_overlay_state_prunes_pending_optimistic_mutations_to_budget() {
+    let mut overlay =
+        graph::GraphOverlayState::new(explorer_graph(), WorkspaceGraphRevision::default(), None);
+
+    for index in 0..260u64 {
+        let node_id = SemanticNodeId::new(format!("optimistic_{index}")).unwrap();
+        begin_optimistic_patch(
+            &mut overlay,
+            upsert_root_child_patch(node_id.clone(), "Optimistic", 1000 + index),
+            [node_id],
+        );
+    }
+
+    assert!(overlay.pending_optimistic_mutation_count() <= 256);
+    assert!(
+        overlay
+            .graph()
+            .node(&SemanticNodeId::new("optimistic_0").unwrap())
+            .is_none()
+    );
+    assert!(
+        overlay
+            .graph()
+            .node(&SemanticNodeId::new("optimistic_259").unwrap())
+            .is_some()
+    );
+}
+
+#[test]
 fn graph_overlay_state_ignores_duplicate_commit_without_rewinding_projection() {
     let mut overlay =
         graph::GraphOverlayState::new(explorer_graph(), WorkspaceGraphRevision::default(), None);

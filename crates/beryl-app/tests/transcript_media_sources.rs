@@ -8,7 +8,8 @@ use gpui::ImageFormat;
 mod transcript_media;
 
 use transcript_media::{
-    TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaFileReader, TranscriptMediaSource,
+    TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE, TranscriptMediaCache,
+    TranscriptMediaCacheKey, TranscriptMediaFileReader, TranscriptMediaSource,
 };
 
 #[test]
@@ -100,6 +101,105 @@ fn media_cache_stats_report_loaded_image_bytes_and_decoded_estimate() {
     assert_eq!(stats.loaded_image_bytes, bytes.len());
     assert_eq!(stats.decoded_image_bytes_estimate, 3 * 2 * 4);
     assert_eq!(stats.thumbnail_count, 0);
+}
+
+#[test]
+fn media_cache_evicts_loaded_images_by_compressed_byte_budget() {
+    let first_path = r"c:\work\member\images\first.png";
+    let second_path = r"c:\work\member\images\second.png";
+    let first_bytes = png_bytes_with_pixel([1, 0, 0, 255]);
+    let second_bytes = png_bytes_with_pixel([2, 0, 0, 255]);
+    let budget = first_bytes.len().saturating_add(second_bytes.len() - 1);
+    let mut reader = FakeReader::default()
+        .with_file_added(first_path, first_bytes)
+        .with_file_added(second_path, second_bytes.clone());
+    let mut cache = TranscriptMediaCache::new_with_byte_budgets(
+        8,
+        budget,
+        TRANSCRIPT_MEDIA_CACHE_MAX_DECODED_IMAGE_BYTES_ESTIMATE,
+    );
+
+    let first_source = TranscriptMediaSource::markdown_image("first", "images/first.png", None);
+    let first_lookup = cache.lookup(
+        cache_key("first"),
+        first_source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(first_lookup.load_request.unwrap().load(&mut reader))
+            .evicted_images
+            .is_empty()
+    );
+    let second_source = TranscriptMediaSource::markdown_image("second", "images/second.png", None);
+    let second_lookup = cache.lookup(
+        cache_key("second"),
+        second_source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    let second_result = cache.complete_load(second_lookup.load_request.unwrap().load(&mut reader));
+
+    assert_eq!(second_result.evicted_images.len(), 1);
+    assert_eq!(cache.stats().loaded_entries, 1);
+    assert_eq!(
+        cache
+            .lookup(
+                cache_key("second"),
+                second_source,
+                host_workspace(),
+                timeout()
+            )
+            .outcome
+            .loaded()
+            .map(|image| image.bytes()),
+        Some(second_bytes.as_slice())
+    );
+}
+
+#[test]
+fn evicted_pending_media_completion_is_stale() {
+    let mut reader = FakeReader::default()
+        .with_file_added(r"c:\work\member\images\first.png", png_bytes())
+        .with_file_added(r"c:\work\member\images\second.png", png_bytes());
+    let mut cache = TranscriptMediaCache::new(1);
+    let first = TranscriptMediaSource::markdown_image("first", "images/first.png", None);
+    let second = TranscriptMediaSource::markdown_image("second", "images/second.png", None);
+
+    let first_lookup = cache.lookup(cache_key("first"), first, host_workspace(), timeout());
+    let first_completion = first_lookup.load_request.unwrap().load(&mut reader);
+    let second_lookup = cache.lookup(cache_key("second"), second, host_workspace(), timeout());
+    assert_eq!(second_lookup.evicted_images.len(), 0);
+
+    let stale = cache.complete_load(first_completion);
+
+    assert!(stale.stale);
+    assert!(stale.follow_up_request.is_none());
+}
+
+#[test]
+fn oversized_media_renders_too_large_fallback_without_gpui_image() {
+    let path = r"c:\work\member\images\huge.bmp";
+    let source = TranscriptMediaSource::markdown_image("huge", "images/huge.bmp", None);
+    let mut reader = FakeReader::with_file(path, oversized_bmp_header(6000, 6000));
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("huge"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    let completion = lookup.load_request.unwrap().load(&mut reader);
+    assert!(cache.complete_load(completion).display_changed);
+    let ready = cache.lookup(cache_key("huge"), source, host_workspace(), timeout());
+
+    assert_eq!(
+        ready.outcome.fallback_text().as_deref(),
+        Some("huge (image too large)")
+    );
+    assert_eq!(cache.stats().loaded_entries, 0);
 }
 
 #[test]
@@ -707,4 +807,18 @@ fn png_bytes_with_dimensions(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> 
         .write_to(&mut bytes, image::ImageFormat::Png)
         .expect("embedded PNG fixture should encode");
     bytes.into_inner()
+}
+
+fn oversized_bmp_header(width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = vec![0_u8; 54];
+    bytes[0] = b'B';
+    bytes[1] = b'M';
+    bytes[2..6].copy_from_slice(&(54_u32).to_le_bytes());
+    bytes[10..14].copy_from_slice(&(54_u32).to_le_bytes());
+    bytes[14..18].copy_from_slice(&(40_u32).to_le_bytes());
+    bytes[18..22].copy_from_slice(&(width as i32).to_le_bytes());
+    bytes[22..26].copy_from_slice(&(height as i32).to_le_bytes());
+    bytes[26..28].copy_from_slice(&(1_u16).to_le_bytes());
+    bytes[28..30].copy_from_slice(&(32_u16).to_le_bytes());
+    bytes
 }

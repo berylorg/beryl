@@ -4,7 +4,7 @@ mod transcript_markdown;
 use transcript_markdown::{
     BlockRenderListKind, BlockRenderNode, InlineRenderLine, InlineRenderRole, MarkdownSourceSpan,
     block_render_plan, block_render_plan_with_copy_source, markdown_code_panel_id,
-    markdown_code_panel_ids, parse,
+    markdown_code_panel_id_belongs_to_row, markdown_code_panel_ids, parse,
 };
 
 #[test]
@@ -149,6 +149,18 @@ fn markdown_code_panel_ids_are_scoped_by_row_and_transcript_block() {
         markdown_code_panel_id("row-a", "item:answer", "b0"),
         markdown_code_panel_id("row-a", "user-prompt", "b0")
     );
+}
+
+#[test]
+fn markdown_code_panel_row_match_uses_encoded_row_identity_length() {
+    let panel_id = markdown_code_panel_id("row", "item:answer", "b0");
+
+    assert!(markdown_code_panel_id_belongs_to_row(&panel_id, "row"));
+    assert!(!markdown_code_panel_id_belongs_to_row(&panel_id, "ro"));
+    assert!(!markdown_code_panel_id_belongs_to_row(
+        &panel_id,
+        "row:extra"
+    ));
 }
 
 #[test]

@@ -16,6 +16,7 @@ pub(crate) use mutation::{
 use mutation::{GraphMutationCoordinatorState, StagedGraphCommit};
 
 pub(crate) const DEFAULT_GRAPH_COLUMN_EXPANDED_DEPTH: usize = 2;
+const GRAPH_COLUMN_EXPANSION_OVERRIDE_MAX: usize = 512;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GraphOverlayState {
@@ -262,8 +263,12 @@ impl GraphOverlayState {
             mutation.status_message().to_string(),
         ));
         self.last_error = None;
-        self.mutation_coordinator
+        let pruned_pending = self
+            .mutation_coordinator
             .push_pending_optimistic_mutation(mutation.into_pending());
+        if pruned_pending {
+            self.rebuild_visible_graph_from_committed()?;
+        }
         self.reconcile_columns();
         Ok(())
     }
@@ -308,6 +313,14 @@ impl GraphOverlayState {
                     "Waiting for semantic graph revision {waiting_for_revision} before applying revision {queued_revision}."
                 )));
             }
+            GraphCommitApplication::RecoveryRequired { reason } => {
+                self.graph = self.committed_graph.clone();
+                self.mutation_status = Some(GraphOverlayMutationStatus::new(
+                    "Recovering semantic graph projection from persisted state.",
+                ));
+                self.last_error = Some(reason.clone());
+                self.reconcile_columns();
+            }
         }
         Ok(application)
     }
@@ -325,6 +338,9 @@ impl GraphOverlayState {
                 queued_revision,
                 waiting_for_revision,
             }),
+            StagedGraphCommit::RecoveryRequired { reason } => {
+                Ok(GraphCommitApplication::RecoveryRequired { reason })
+            }
             StagedGraphCommit::IgnoredStale {
                 committed_revision,
                 visible_revision,
@@ -495,6 +511,10 @@ impl GraphOverlayState {
             .is_some_and(|column| {
                 column.toggle_expansion(node_id, graph_node_default_expanded(depth))
             })
+            && {
+                self.prune_expansion_overrides();
+                true
+            }
     }
 
     fn reconcile_columns(&mut self) {
@@ -538,6 +558,12 @@ impl GraphOverlayState {
         if let Some(node_id) = relocated_selected_node_id {
             self.rebuild_columns_to_node(&node_id);
         }
+        self.prune_expansion_overrides();
+    }
+
+    fn prune_expansion_overrides(&mut self) -> bool {
+        self.columns
+            .prune_expansion_overrides(GRAPH_COLUMN_EXPANSION_OVERRIDE_MAX)
     }
 
     fn rebuild_visible_graph_from_committed(

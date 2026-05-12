@@ -2,13 +2,14 @@
 mod execution_detail;
 
 use beryl_backend::{
-    AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, ProtocolPhase, ThreadItem,
-    ThreadSessionResponse, TurnInfo, TurnStatus, TurnStreamEvent,
+    AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, ImageGenerationItem,
+    ProtocolPhase, ThreadItem, ThreadSessionResponse, TurnInfo, TurnStatus, TurnStreamEvent,
 };
 use execution_detail::{
-    ExecutionDetailState, ExecutionItem, LastTurnState, TranscriptImagePathResolver,
-    TranscriptImagePreviewState, TranscriptImageSourceResolution, TurnExecutionRecord,
-    TurnExecutionStatus, TurnNarrativeEntry,
+    ExecutionDetailState, ExecutionItem, LastTurnState, MAX_COMMAND_OUTPUT_BYTES,
+    MAX_ERROR_MESSAGE_BYTES, MAX_FILE_CHANGE_OUTPUT_BYTES, MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES,
+    MAX_REASONING_CONTENT_BYTES, TranscriptImagePathResolver, TranscriptImagePreviewState,
+    TranscriptImageSourceResolution, TurnExecutionRecord, TurnExecutionStatus, TurnNarrativeEntry,
 };
 use serde_json::json;
 
@@ -152,9 +153,14 @@ fn execution_detail_retained_counts_include_loaded_turn_payloads() {
     assert_eq!(counts.turns, 1);
     assert_eq!(counts.items, 1);
     assert_eq!(counts.user_fragments, 1);
+    assert_eq!(counts.user_fragment_text_bytes, "Inspect".len());
     assert_eq!(counts.backend_input_records, 1);
+    assert_eq!(counts.backend_input_bytes, "Inspect".len());
     assert_eq!(counts.narrative_entries, 2);
     assert_eq!(counts.text_bytes, "Inspect".len() + "Done".len());
+    assert_eq!(counts.agent_text_bytes, "Done".len());
+    assert_eq!(counts.active_turn_payload_bytes, counts.payload_bytes);
+    assert!(counts.identity_bytes >= "thread_1".len() + "turn_1".len() + "msg_1".len());
     assert!(counts.payload_bytes >= counts.text_bytes);
 }
 
@@ -193,6 +199,138 @@ fn execution_detail_keeps_failed_turn_without_fabricated_answer() {
     );
     assert_eq!(turn.terminal_assistant_item_id, None);
     assert!(turn.items.is_empty());
+}
+
+#[test]
+fn execution_detail_bounds_operational_stream_payloads() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Run noisy work".to_string());
+    state.apply_stream_event(TurnStreamEvent::TurnStarted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_noisy".to_string(),
+            status: TurnStatus::InProgress,
+            items: Vec::new(),
+            error: None,
+        },
+    });
+
+    state.apply_stream_event(TurnStreamEvent::CommandExecutionOutputDelta {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_noisy".to_string(),
+        item_id: "cmd_noisy".to_string(),
+        delta: "C".repeat(MAX_COMMAND_OUTPUT_BYTES + 1024),
+    });
+    state.apply_stream_event(TurnStreamEvent::FileChangeOutputDelta {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_noisy".to_string(),
+        item_id: "file_noisy".to_string(),
+        delta: "F".repeat(MAX_FILE_CHANGE_OUTPUT_BYTES + 1024),
+    });
+    state.apply_stream_event(TurnStreamEvent::ReasoningTextDelta {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_noisy".to_string(),
+        item_id: "reason_noisy".to_string(),
+        content_index: 0,
+        delta: "R".repeat(MAX_REASONING_CONTENT_BYTES + 1024),
+    });
+
+    let turn = &state.turns()[0];
+    let command = turn
+        .items
+        .iter()
+        .find_map(|item| match item {
+            ExecutionItem::CommandExecution(item) => Some(item),
+            _ => None,
+        })
+        .expect("command output item should exist");
+    assert!(command.output.len() <= MAX_COMMAND_OUTPUT_BYTES);
+    assert!(
+        command
+            .output
+            .contains("Beryl omitted additional command output")
+    );
+
+    let file_change = turn
+        .items
+        .iter()
+        .find_map(|item| match item {
+            ExecutionItem::FileChange(item) => Some(item),
+            _ => None,
+        })
+        .expect("file-change output item should exist");
+    assert!(file_change.output.len() <= MAX_FILE_CHANGE_OUTPUT_BYTES);
+    assert!(
+        file_change
+            .output
+            .contains("Beryl omitted additional file-change output")
+    );
+
+    let reasoning = turn
+        .items
+        .iter()
+        .find_map(|item| match item {
+            ExecutionItem::Reasoning(item) => Some(item),
+            _ => None,
+        })
+        .expect("reasoning item should exist");
+    assert!(reasoning.content[0].len() <= MAX_REASONING_CONTENT_BYTES);
+    assert!(reasoning.content[0].contains("Beryl omitted additional reasoning detail"));
+
+    state.apply_stream_event(TurnStreamEvent::TurnCompleted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_noisy".to_string(),
+            status: TurnStatus::Completed,
+            items: Vec::new(),
+            error: None,
+        },
+    });
+
+    let reasoning = state.turns()[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            ExecutionItem::Reasoning(item) => Some(item),
+            _ => None,
+        })
+        .expect("reasoning item should still exist");
+    assert!(reasoning.content.is_empty());
+}
+
+#[test]
+fn execution_detail_bounds_turn_error_detail() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Fail loudly".to_string());
+    state.apply_stream_event(TurnStreamEvent::TurnStarted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_failed".to_string(),
+            status: TurnStatus::InProgress,
+            items: Vec::new(),
+            error: None,
+        },
+    });
+
+    state.apply_stream_event(TurnStreamEvent::TurnCompleted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_failed".to_string(),
+            status: TurnStatus::Failed,
+            items: Vec::new(),
+            error: Some(beryl_backend::TurnError {
+                message: "failed".to_string(),
+                additional_details: Some("E".repeat(MAX_ERROR_MESSAGE_BYTES + 1024)),
+            }),
+        },
+    });
+
+    let error = state.turns()[0]
+        .error_message
+        .as_deref()
+        .expect("failed turn should retain bounded error detail");
+    assert!(error.len() <= MAX_ERROR_MESSAGE_BYTES);
+    assert!(error.contains("Beryl omitted additional turn error detail"));
 }
 
 #[test]
@@ -1458,6 +1596,40 @@ fn image_generation_history_without_saved_path_keeps_only_bounded_inline_result(
     assert!(small.saved_path.is_none());
     assert!(large.result.is_none());
     assert!(large.saved_path.is_none());
+}
+
+#[test]
+fn live_image_generation_without_saved_path_keeps_only_bounded_inline_result() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Generate an image".to_string());
+    state.apply_stream_event(TurnStreamEvent::TurnStarted {
+        thread_id: "thread_1".to_string(),
+        turn: TurnInfo {
+            id: "turn_image".to_string(),
+            status: TurnStatus::InProgress,
+            items: Vec::new(),
+            error: None,
+        },
+    });
+
+    state.apply_stream_event(TurnStreamEvent::ItemCompleted {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_image".to_string(),
+        item: ThreadItem::ImageGeneration(ImageGenerationItem {
+            id: "large_inline".to_string(),
+            status: Some("completed".to_string()),
+            revised_prompt: Some("Huge inline image".to_string()),
+            result: Some("A".repeat(MAX_INLINE_GENERATED_IMAGE_RESULT_BYTES + 1)),
+            saved_path: None,
+        }),
+    });
+
+    let [ExecutionItem::GeneratedImage(image)] = state.turns()[0].items.as_slice() else {
+        panic!("expected generated image item");
+    };
+    assert_eq!(image.id, "large_inline");
+    assert!(image.result.is_none());
+    assert!(image.saved_path.is_none());
 }
 
 #[test]

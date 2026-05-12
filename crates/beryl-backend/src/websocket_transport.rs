@@ -25,6 +25,8 @@ use message::{MessagePayload, MessagePrime, PayloadRead, WebSocketTextMessageRea
 const READ_CHUNK_BYTES: usize = 8 * 1024;
 const WEBSOCKET_FRAME_PAYLOAD_BUDGET: usize = 64 * 1024 * 1024;
 const WEBSOCKET_TEXT_MESSAGE_BUDGET: usize = 64 * 1024 * 1024;
+const WEBSOCKET_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const WEBSOCKET_HANDSHAKE_READ_AHEAD_BUDGET: usize = 4 * 1024;
 
 pub(crate) struct WebSocketClientTransport {
     endpoint: String,
@@ -476,9 +478,13 @@ async fn connect_handshake_async(
     authorization_header_value: String,
 ) -> Result<HandshakenStream, ManagedWebSocketError> {
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-    let stream = tokio::net::TcpStream::connect(address)
-        .await
-        .map_err(ManagedWebSocketError::from_io)?;
+    let stream = tokio::time::timeout(
+        WEBSOCKET_HANDSHAKE_TIMEOUT,
+        tokio::net::TcpStream::connect(address),
+    )
+    .await
+    .map_err(|_| ManagedWebSocketError::protocol("timed out connecting WebSocket endpoint"))?
+    .map_err(ManagedWebSocketError::from_io)?;
     let host = format!("127.0.0.1:{port}");
     let headers = [HandshakeHeader {
         name: "Authorization",
@@ -486,12 +492,19 @@ async fn connect_handshake_async(
     }];
     let mut client = Client::new(stream.compat(), &host, "/");
     client.set_headers(&headers);
-    client
-        .handshake()
+    tokio::time::timeout(WEBSOCKET_HANDSHAKE_TIMEOUT, client.handshake())
         .await
+        .map_err(|_| ManagedWebSocketError::protocol("timed out during WebSocket handshake"))?
         .map_err(ManagedWebSocketError::from_handshake)?;
 
-    let pending_read = VecDeque::from(client.take_buffer().to_vec());
+    let buffered = client.take_buffer();
+    if buffered.len() > WEBSOCKET_HANDSHAKE_READ_AHEAD_BUDGET {
+        return Err(ManagedWebSocketError::protocol(format!(
+            "WebSocket handshake read-ahead exceeded {} byte budget",
+            WEBSOCKET_HANDSHAKE_READ_AHEAD_BUDGET
+        )));
+    }
+    let pending_read = VecDeque::from(buffered.to_vec());
     let compat_stream: Compat<tokio::net::TcpStream> = client.into_inner();
     let stream = compat_stream
         .into_inner()

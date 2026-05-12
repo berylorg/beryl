@@ -44,6 +44,7 @@ const TITLE_GENERATION_STREAM_POLL_INTERVAL: Duration = Duration::from_millis(25
 const TITLE_PROMPT_INPUT_LIMIT: usize = 4_000;
 const MAX_TITLE_CHARS: usize = 80;
 const TITLE_REASONING_EFFORT: &str = "medium";
+pub(super) const MAX_THREAD_TITLE_WORKERS: usize = 4;
 
 #[derive(Clone, Debug)]
 pub(super) struct ThreadTitleCandidate {
@@ -69,7 +70,7 @@ impl ThreadTitleCandidate {
 
         Some(Self {
             target_thread_id,
-            user_input,
+            user_input: truncate_for_prompt(user_input.trim()),
         })
     }
 

@@ -17,6 +17,7 @@ use crate::member_thread_inventory::{
     build_member_thread_inventory_snapshot_for_backend_threads,
     prepare_backend_threads_for_member_thread_inventory,
     retain_scoped_backend_threads_for_inventory_members, thread_fork_parent_metadata_read_error,
+    truncate_scoped_backend_threads_for_member_thread_inventory,
 };
 
 use super::{ShellView, SurfaceNotice, workspace_members};
@@ -130,6 +131,7 @@ fn run_member_thread_inventory_worker(
     }
 
     retain_scoped_backend_threads_for_inventory_members(&mut backend_threads, &members);
+    truncate_scoped_backend_threads_for_member_thread_inventory(&mut backend_threads);
 
     let snapshot = build_member_thread_inventory_snapshot_for_backend_threads(
         workspace_id.clone(),
