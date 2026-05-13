@@ -15,6 +15,7 @@ fn default_parse_uses_picker_default_timeout_and_default_home() {
     assert_eq!(cli.probe_timeout_ms(), DEFAULT_PROBE_TIMEOUT_MS);
     assert_eq!(cli.beryl_home_dir(), None);
     assert!(!cli.memory_milestones());
+    assert!(!cli.diagnostic_target_stdio());
 }
 
 #[test]
@@ -30,6 +31,7 @@ fn help_lists_beryl_home_options() {
     assert!(help.contains("--wsl-path <PATH>"));
     assert!(help.contains("--probe-timeout-ms <MS>"));
     assert!(help.contains("--memory-milestones"));
+    assert!(help.contains("--diagnostic-target-stdio"));
     assert!(!help.contains("--memory-startup-experiment"));
 }
 
@@ -77,7 +79,28 @@ fn memory_milestones_flag_is_opt_in() {
     let cli = parse(&["--memory-milestones"]).unwrap();
 
     assert!(cli.memory_milestones());
+    assert!(!cli.diagnostic_target_stdio());
     assert!(matches!(cli.target(), RuntimeTarget::Picker));
+}
+
+#[test]
+fn diagnostic_target_stdio_requires_explicit_beryl_home() {
+    let error = parse(&["--diagnostic-target-stdio"]).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+}
+
+#[test]
+fn diagnostic_target_stdio_accepts_explicit_beryl_home() {
+    let cli = parse(&[
+        "--diagnostic-target-stdio",
+        "--beryl-home-dir",
+        "child-home",
+    ])
+    .unwrap();
+
+    assert!(cli.diagnostic_target_stdio());
+    assert_eq!(cli.beryl_home_dir(), Some(Path::new("child-home")));
 }
 
 #[test]

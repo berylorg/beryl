@@ -20,8 +20,10 @@ pub use beryl_app::{
     NodeLeafDeleteRequest, NodeSubtreeDeleteRequest, ThreadRefUpsertRequest,
     UPSERT_GRAPH_NODE_TOOL, WorkspaceGraphMutationCommit, WorkspaceGraphRevision,
     WorkspaceGraphToolService, WorkspaceImageAsset, WorkspaceImageAssetStatus,
-    WorkspacePersistenceError, YIELD_TOOL, beryl_user_thread_start_options,
-    dispatch_beryl_dynamic_tool_call_with_metadata,
+    WorkspacePersistenceError, YIELD_TOOL,
+    beryl_diagnostic_child_dynamic_tool_shell_response_timeout, beryl_user_thread_start_options,
+    diagnostic_bridge_unavailable_response, dispatch_beryl_dynamic_tool_call_with_metadata,
+    is_beryl_diagnostic_child_dynamic_tool, is_beryl_diagnostic_dynamic_tool,
 };
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,

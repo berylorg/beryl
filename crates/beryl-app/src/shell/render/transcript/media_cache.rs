@@ -10,6 +10,9 @@ use beryl_model::workspace::WorkspaceId;
 use gpui::{App, AsyncApp, Entity, Image};
 use tracing::debug;
 
+use crate::diagnostic_dynamic_tools::{
+    MediaDiagnosticEvent, MediaDiagnosticLog, VisibleMediaDiagnostics,
+};
 use crate::shell::transcript_media::{
     TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaFileReader,
     TranscriptMediaLoadOutcome, TranscriptMediaLoadRequest, TranscriptMediaSource,
@@ -20,6 +23,8 @@ use super::{TranscriptImageMenuRenderState, TranscriptMediaPromotionState, Trans
 #[derive(Clone)]
 pub(super) struct TranscriptMediaRenderContext {
     cache: Rc<RefCell<TranscriptMediaCache>>,
+    events: Rc<RefCell<MediaDiagnosticLog>>,
+    visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     panel: Entity<TranscriptPanel>,
     connector: Option<ManagedBackendClientConnector>,
     timeout: Duration,
@@ -31,6 +36,8 @@ pub(super) struct TranscriptMediaRenderContext {
 impl TranscriptMediaRenderContext {
     pub(super) fn new(
         cache: Rc<RefCell<TranscriptMediaCache>>,
+        events: Rc<RefCell<MediaDiagnosticLog>>,
+        visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
         panel: Entity<TranscriptPanel>,
         connector: Option<ManagedBackendClientConnector>,
         timeout: Duration,
@@ -39,6 +46,8 @@ impl TranscriptMediaRenderContext {
     ) -> Self {
         Self {
             cache,
+            events,
+            visible_media,
             panel,
             connector,
             timeout,
@@ -64,11 +73,22 @@ impl TranscriptMediaRenderContext {
     ) -> Arc<TranscriptMediaLoadOutcome> {
         let lookup_started = Instant::now();
         let source_kind = transcript_media_source_kind(&source);
-        let lookup = self
-            .cache
-            .borrow_mut()
-            .lookup(key, source, execution_target, self.timeout);
+        let lookup = self.cache.borrow_mut().lookup(
+            key.clone(),
+            source.clone(),
+            execution_target,
+            self.timeout,
+        );
         let load_scheduled = lookup.load_request.is_some();
+        let mut event = MediaDiagnosticEvent::new("transcript_media_lookup");
+        event.key = Some(key.as_str().to_string());
+        event.row_identity = self.row_identity.clone();
+        event.source_kind = Some(transcript_media_source_kind(&source).to_string());
+        event.outcome = Some(transcript_media_outcome_label(&lookup.outcome).to_string());
+        if load_scheduled {
+            event.detail = Some("load_scheduled".to_string());
+        }
+        self.events.borrow_mut().record(event);
         debug!(
             source = source_kind,
             outcome = transcript_media_outcome_label(&lookup.outcome),
@@ -82,11 +102,12 @@ impl TranscriptMediaRenderContext {
                 self.connector.clone(),
                 self.timeout,
                 self.row_identity.clone(),
+                self.events.clone(),
                 request,
                 cx,
             );
         }
-        release_evicted_media_images(lookup.evicted_images, cx);
+        release_evicted_media_images(lookup.evicted_images, self.events.clone(), cx);
         lookup.outcome
     }
 
@@ -101,6 +122,10 @@ impl TranscriptMediaRenderContext {
     pub(super) fn image_menu(&self) -> TranscriptImageMenuRenderState {
         self.image_menu.clone()
     }
+
+    pub(super) fn visible_media(&self) -> Rc<RefCell<VisibleMediaDiagnostics>> {
+        self.visible_media.clone()
+    }
 }
 
 fn schedule_media_load(
@@ -108,6 +133,7 @@ fn schedule_media_load(
     connector: Option<ManagedBackendClientConnector>,
     timeout: Duration,
     row_identity: Option<String>,
+    events: Rc<RefCell<MediaDiagnosticLog>>,
     request: TranscriptMediaLoadRequest,
     cx: &mut App,
 ) {
@@ -142,13 +168,27 @@ fn schedule_media_load(
             let completion = load_task.await;
             let _ = panel.update(&mut cx, |view, cx| {
                 let result = view.media_cache.borrow_mut().complete_load(completion);
-                release_evicted_media_images(result.evicted_images, cx);
+                let mut event = MediaDiagnosticEvent::new("transcript_media_load_completed");
+                event.outcome = Some(
+                    if result.display_changed {
+                        "display_changed"
+                    } else if result.stale {
+                        "stale"
+                    } else {
+                        "unchanged"
+                    }
+                    .to_string(),
+                );
+                event.row_identity = row_identity.clone();
+                events.borrow_mut().record(event);
+                release_evicted_media_images(result.evicted_images, events.clone(), cx);
                 if let Some(request) = result.follow_up_request {
                     schedule_media_load(
                         cx.entity(),
                         follow_up_connector.clone(),
                         timeout,
                         row_identity.clone(),
+                        events.clone(),
                         request,
                         cx,
                     );
@@ -212,7 +252,11 @@ fn transcript_media_outcome_label(outcome: &TranscriptMediaLoadOutcome) -> &'sta
     }
 }
 
-fn release_evicted_media_images(images: Vec<Arc<Image>>, cx: &mut App) {
+fn release_evicted_media_images(
+    images: Vec<Arc<Image>>,
+    events: Rc<RefCell<MediaDiagnosticLog>>,
+    cx: &mut App,
+) {
     if images.is_empty() {
         return;
     }
@@ -224,6 +268,9 @@ fn release_evicted_media_images(images: Vec<Arc<Image>>, cx: &mut App) {
         image_count,
         "released evicted transcript media GPUI image assets"
     );
+    let mut event = MediaDiagnosticEvent::new("gpui_media_images_released");
+    event.image_count = Some(image_count);
+    events.borrow_mut().record(event);
 }
 
 struct UnavailableMediaFileReader;

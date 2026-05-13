@@ -1,6 +1,10 @@
 use std::{
     fmt,
-    sync::mpsc::{self, Receiver, Sender, SyncSender},
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+        mpsc::{self, Receiver, Sender, SyncSender, TrySendError},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -31,7 +35,9 @@ use super::transcript_image_sources::transcript_image_path_resolver_for_turns;
 use crate::memory_diagnostics::MemoryMilestone;
 use crate::{
     BerylWorkspacePersistence, WorkspaceGraphToolService,
-    dispatch_beryl_dynamic_tool_call_with_metadata,
+    beryl_diagnostic_child_dynamic_tool_shell_response_timeout,
+    diagnostic_bridge_unavailable_response, dispatch_beryl_dynamic_tool_call_with_metadata,
+    is_beryl_diagnostic_child_dynamic_tool, is_beryl_diagnostic_dynamic_tool,
 };
 use approval::deny_backend_approval_request;
 use lifecycle_yield::ActiveTurnLifecycleYieldCapture;
@@ -45,6 +51,28 @@ use title::automatic_thread_title_candidate;
 const TURN_STREAM_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(10);
 const POST_COMPLETION_GRACE: Duration = Duration::from_millis(500);
 const TURN_WORKER_UPDATE_QUEUE_CAPACITY: usize = 1024;
+const DYNAMIC_TOOL_SHELL_REQUEST_QUEUE_CAPACITY: usize = 8;
+const DYNAMIC_TOOL_SHELL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
+const SHELL_DYNAMIC_TOOL_REQUEST_PENDING: u8 = 0;
+const SHELL_DYNAMIC_TOOL_REQUEST_CANCELLED: u8 = 1;
+const SHELL_DYNAMIC_TOOL_REQUEST_CLAIMED: u8 = 2;
+
+#[derive(Clone)]
+pub(crate) struct ShellDynamicToolRequestSender {
+    sender: SyncSender<ShellDynamicToolRequest>,
+    response_timeout: Duration,
+}
+
+pub(crate) struct ShellDynamicToolRequest {
+    request: DynamicToolCallRequest,
+    response_sender: SyncSender<DynamicToolCallResponse>,
+    control: Arc<ShellDynamicToolRequestControl>,
+}
+
+struct ShellDynamicToolRequestControl {
+    state: AtomicU8,
+    expires_at: Instant,
+}
 
 pub(super) enum ThreadActivationUpdate {
     Finished(ThreadActivationOutcome),
@@ -91,6 +119,140 @@ pub(super) enum TurnWorkerOutcome {
     Failed {
         message: String,
     },
+}
+
+pub(crate) fn shell_dynamic_tool_request_channel() -> (
+    ShellDynamicToolRequestSender,
+    Receiver<ShellDynamicToolRequest>,
+) {
+    let (sender, receiver) = mpsc::sync_channel(DYNAMIC_TOOL_SHELL_REQUEST_QUEUE_CAPACITY);
+    (
+        ShellDynamicToolRequestSender {
+            sender,
+            response_timeout: DYNAMIC_TOOL_SHELL_RESPONSE_TIMEOUT,
+        },
+        receiver,
+    )
+}
+
+impl ShellDynamicToolRequestSender {
+    pub(crate) fn request(&self, request: &DynamicToolCallRequest) -> DynamicToolCallResponse {
+        let (response_sender, response_receiver) = mpsc::sync_channel(1);
+        let response_timeout = self.response_timeout_for_request(request);
+        let control = Arc::new(ShellDynamicToolRequestControl::new(response_timeout));
+        let shell_request = ShellDynamicToolRequest {
+            request: request.clone(),
+            response_sender,
+            control: control.clone(),
+        };
+        match self.sender.try_send(shell_request) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                return diagnostic_bridge_unavailable_response(
+                    request,
+                    "Beryl live shell dynamic tool request bridge is busy.",
+                );
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                return diagnostic_bridge_unavailable_response(
+                    request,
+                    "Beryl shell stopped receiving live shell dynamic tool requests.",
+                );
+            }
+        }
+        match response_receiver.recv_timeout(response_timeout) {
+            Ok(response) => response,
+            Err(_) => {
+                control.cancel();
+                diagnostic_bridge_unavailable_response(
+                    request,
+                    "Timed out waiting for Beryl shell dynamic tool response.",
+                )
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_response_timeout_for_test(mut self, response_timeout: Duration) -> Self {
+        self.response_timeout = response_timeout;
+        self
+    }
+
+    fn response_timeout_for_request(&self, request: &DynamicToolCallRequest) -> Duration {
+        beryl_diagnostic_child_dynamic_tool_shell_response_timeout(request, self.response_timeout)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn response_timeout_for_request_for_test(
+        &self,
+        request: &DynamicToolCallRequest,
+    ) -> Duration {
+        self.response_timeout_for_request(request)
+    }
+}
+
+impl ShellDynamicToolRequest {
+    pub(crate) fn request(&self) -> &DynamicToolCallRequest {
+        &self.request
+    }
+
+    pub(crate) fn try_claim(&self) -> bool {
+        self.control.try_claim()
+    }
+
+    pub(crate) fn respond(self, response: DynamicToolCallResponse) {
+        let _ = self.response_sender.send(response);
+    }
+}
+
+impl ShellDynamicToolRequestControl {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            state: AtomicU8::new(SHELL_DYNAMIC_TOOL_REQUEST_PENDING),
+            expires_at: Instant::now() + timeout,
+        }
+    }
+
+    fn cancel(&self) {
+        let _ = self.state.compare_exchange(
+            SHELL_DYNAMIC_TOOL_REQUEST_PENDING,
+            SHELL_DYNAMIC_TOOL_REQUEST_CANCELLED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+
+    fn try_claim(&self) -> bool {
+        if Instant::now() >= self.expires_at {
+            self.cancel();
+            return false;
+        }
+        self.state
+            .compare_exchange(
+                SHELL_DYNAMIC_TOOL_REQUEST_PENDING,
+                SHELL_DYNAMIC_TOOL_REQUEST_CLAIMED,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn shell_dynamic_tool_request_channel_with_capacity_for_test(
+    capacity: usize,
+) -> (
+    ShellDynamicToolRequestSender,
+    Receiver<ShellDynamicToolRequest>,
+) {
+    let (sender, receiver) = mpsc::sync_channel(capacity);
+    (
+        ShellDynamicToolRequestSender {
+            sender,
+            response_timeout: DYNAMIC_TOOL_SHELL_RESPONSE_TIMEOUT,
+        },
+        receiver,
+    )
 }
 
 pub(crate) trait TurnStreamBackend {
@@ -158,6 +320,7 @@ pub(super) fn spawn_turn_worker(
     automatic_title_generation_allowed: bool,
     user_input_fragments: Vec<UserInputFragment>,
     turn_options: TurnStartOptions,
+    shell_tool_sender: Option<ShellDynamicToolRequestSender>,
     timeout: Duration,
 ) -> Receiver<TurnWorkerUpdate> {
     let (sender, receiver) = mpsc::sync_channel(TURN_WORKER_UPDATE_QUEUE_CAPACITY);
@@ -171,6 +334,7 @@ pub(super) fn spawn_turn_worker(
             automatic_title_generation_allowed,
             user_input_fragments,
             turn_options,
+            shell_tool_sender,
             timeout,
             sender,
         )
@@ -212,6 +376,7 @@ fn run_turn_worker(
     automatic_title_generation_allowed: bool,
     user_input_fragments: Vec<UserInputFragment>,
     turn_options: TurnStartOptions,
+    shell_tool_sender: Option<ShellDynamicToolRequestSender>,
     timeout: Duration,
     sender: SyncSender<TurnWorkerUpdate>,
 ) {
@@ -322,9 +487,10 @@ fn run_turn_worker(
         TURN_STREAM_IDLE_POLL_INTERVAL,
         POST_COMPLETION_GRACE,
         |request| {
-            handle_beryl_dynamic_tool_call(
+            handle_beryl_dynamic_tool_call_with_shell_tools(
                 &graph_tool_service,
                 &beryl_workspace_id,
+                shell_tool_sender.as_ref(),
                 request,
                 |update| {
                     let _ = send_turn_worker_update(
@@ -407,6 +573,30 @@ pub(crate) fn handle_beryl_dynamic_tool_call(
     }
 
     HandledDynamicToolCall::new(dispatch.into_response(), lifecycle_yield)
+}
+
+pub(crate) fn handle_beryl_dynamic_tool_call_with_shell_tools(
+    service: &WorkspaceGraphToolService,
+    workspace_id: &BerylWorkspaceId,
+    shell_tool_sender: Option<&ShellDynamicToolRequestSender>,
+    request: &DynamicToolCallRequest,
+    publish_graph_mutation: impl FnMut(GraphMutationUpdate),
+) -> HandledDynamicToolCall {
+    if is_beryl_diagnostic_dynamic_tool(request) || is_beryl_diagnostic_child_dynamic_tool(request)
+    {
+        let response = shell_tool_sender.map_or_else(
+            || {
+                diagnostic_bridge_unavailable_response(
+                    request,
+                    "Beryl live shell dynamic tools are unavailable for this turn.",
+                )
+            },
+            |sender| sender.request(request),
+        );
+        return HandledDynamicToolCall::new(response, None);
+    }
+
+    handle_beryl_dynamic_tool_call(service, workspace_id, request, publish_graph_mutation)
 }
 
 pub(crate) fn stream_active_turn_events<B, F, H, R>(

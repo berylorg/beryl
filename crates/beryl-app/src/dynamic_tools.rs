@@ -5,6 +5,8 @@ use beryl_model::workspace::BerylWorkspaceId;
 
 use crate::{
     WorkspaceGraphToolService,
+    diagnostic_child_dynamic_tools::beryl_diagnostic_child_dynamic_tool_specs,
+    diagnostic_dynamic_tools::beryl_diagnostic_dynamic_tool_specs,
     graph_dynamic_tools::{
         BerylGraphDynamicToolDispatch, BerylGraphDynamicWrite, beryl_graph_dynamic_tool_specs,
         dispatch_beryl_graph_dynamic_tool_call_with_metadata,
@@ -41,6 +43,9 @@ pub fn beryl_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
     let mut tools = Vec::new();
     tools.extend(beryl_graph_dynamic_tool_specs());
     tools.extend(beryl_lifecycle_dynamic_tool_specs());
+    tools.extend(beryl_diagnostic_dynamic_tool_specs());
+    tools.extend(beryl_diagnostic_child_dynamic_tool_specs());
+    assert_api_valid_dynamic_tool_namespaces(&tools);
     validate_unique_dynamic_tool_names(&tools)
         .expect("Beryl dynamic tool names must be unique within each namespace");
     tools
@@ -139,6 +144,19 @@ pub fn validate_unique_dynamic_tool_names(
         }
     }
     Ok(())
+}
+
+fn assert_api_valid_dynamic_tool_namespaces(tools: &[DynamicToolSpec]) {
+    for tool in tools {
+        let Some(namespace) = tool.namespace.as_deref() else {
+            continue;
+        };
+        assert!(
+            !namespace.contains('.'),
+            "Beryl dynamic tool namespace {namespace:?} for {:?} must not contain dots",
+            tool.name
+        );
+    }
 }
 
 impl DynamicToolRegistryError {

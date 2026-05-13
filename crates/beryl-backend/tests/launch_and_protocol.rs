@@ -725,6 +725,17 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                         },
                         "namespace": "beryl",
                         "deferLoading": true
+                    },
+                    {
+                        "name": "status",
+                        "description": "Read diagnostic child process lifecycle status.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": false
+                        },
+                        "namespace": "beryl_diagnostic",
+                        "deferLoading": false
                     }
                 ]
             })
@@ -786,6 +797,19 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                     )
                     .with_namespace("beryl")
                     .with_defer_loading(true),
+                )
+                .with_dynamic_tool(
+                    DynamicToolSpec::new(
+                        "status",
+                        "Read diagnostic child process lifecycle status.",
+                        json!({
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": false
+                        }),
+                    )
+                    .with_namespace("beryl_diagnostic")
+                    .with_defer_loading(false),
                 ),
             Duration::from_secs(2),
         )

@@ -15,6 +15,7 @@
 //! assert!(matches!(cli.target(), RuntimeTarget::Picker));
 //! assert_eq!(cli.probe_timeout_ms(), 500);
 //! assert_eq!(cli.beryl_home_dir().unwrap(), std::path::Path::new("state-root"));
+//! assert!(!cli.diagnostic_target_stdio());
 //! ```
 
 pub mod cli;

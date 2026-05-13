@@ -39,6 +39,13 @@ pub struct BootstrapCli {
         help = "Emit narrow process-memory milestone diagnostics"
     )]
     memory_milestones: bool,
+
+    #[arg(
+        long = "diagnostic-target-stdio",
+        requires = "beryl_home_dir",
+        help = "Run as a diagnostic child target using newline-delimited JSON over stdio"
+    )]
+    diagnostic_target_stdio: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,6 +117,10 @@ impl BootstrapCli {
 
     pub fn memory_milestones(&self) -> bool {
         self.memory_milestones
+    }
+
+    pub fn diagnostic_target_stdio(&self) -> bool {
+        self.diagnostic_target_stdio
     }
 
     pub fn resolve_workspace(&self) -> Result<Option<WorkspaceId>> {

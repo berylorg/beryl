@@ -4,11 +4,21 @@ mod tempdir_support;
 use std::fs;
 
 use beryl_app::{
-    BERYL_DYNAMIC_TOOL_NAMESPACE, BERYL_GRAPH_DYNAMIC_TOOL_NAMESPACE, BerylWorkspacePersistence,
+    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
+    BERYL_GRAPH_DYNAMIC_TOOL_NAMESPACE, BerylWorkspacePersistence,
+    DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL, DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL,
+    DIAGNOSTIC_CHILD_READ_MEMORY_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
+    DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL, DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL,
+    DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
+    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL, DIAGNOSTIC_CHILD_STOP_TOOL,
+    DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL, DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
     LifecycleYieldOutcome, READ_CHECKLIST_TOOL, READ_GRAPH_NEIGHBORHOOD_TOOL,
-    READ_WORKSPACE_GRAPH_SUMMARY_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL,
-    UPSERT_GRAPH_NODE_TOOL, UPSERT_GRAPH_SOFT_LINK_TOOL, WorkspaceGraphToolService, YIELD_TOOL,
-    beryl_dynamic_tool_specs, beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
+    READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
+    READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL, READ_WORKSPACE_GRAPH_SUMMARY_TOOL,
+    SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL, UPSERT_GRAPH_NODE_TOOL,
+    UPSERT_GRAPH_SOFT_LINK_TOOL, WorkspaceGraphToolService, YIELD_TOOL,
+    beryl_diagnostic_child_dynamic_tool_specs, beryl_dynamic_tool_specs,
+    beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
     beryl_user_thread_start_options, dispatch_beryl_dynamic_tool_call_with_metadata,
     dispatch_beryl_graph_dynamic_tool_call, dispatch_beryl_graph_dynamic_tool_call_with_metadata,
     dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata, validate_unique_dynamic_tool_names,
@@ -28,26 +38,108 @@ use serde_json::{Value, json};
 fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
     let options = beryl_thread_start_options();
     let tools = options.dynamic_tools();
-    let names: Vec<_> = tools.iter().map(|tool| tool.name.as_str()).collect();
+    let tool_keys: Vec<_> = tools
+        .iter()
+        .map(|tool| (tool.namespace.as_deref(), tool.name.as_str()))
+        .collect();
 
     assert!(!options.is_ephemeral());
     assert_eq!(
-        names,
+        tool_keys,
         vec![
-            READ_WORKSPACE_GRAPH_SUMMARY_TOOL,
-            READ_GRAPH_NEIGHBORHOOD_TOOL,
-            READ_CHECKLIST_TOOL,
-            UPSERT_GRAPH_NODE_TOOL,
-            SET_GRAPH_NODE_PARENT_TOOL,
-            UPSERT_GRAPH_SOFT_LINK_TOOL,
-            SET_CHECKLIST_ITEM_STATUS_TOOL,
-            YIELD_TOOL,
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_WORKSPACE_GRAPH_SUMMARY_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_GRAPH_NEIGHBORHOOD_TOOL
+            ),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_CHECKLIST_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), UPSERT_GRAPH_NODE_TOOL),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                SET_GRAPH_NODE_PARENT_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                UPSERT_GRAPH_SOFT_LINK_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                SET_CHECKLIST_ITEM_STATUS_TOOL
+            ),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), YIELD_TOOL),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_PROCESS_DIAGNOSTICS_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_MEMORY_DIAGNOSTICS_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_RETAINED_STATE_SUMMARY_TOOL
+            ),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_VISIBLE_MEDIA_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_MEDIA_EVENTS_TOOL),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_START_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_STOP_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_STATUS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_PROCESS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_MEMORY_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL
+            ),
         ]
     );
-    assert!(tools.iter().all(|tool| {
-        tool.namespace.as_deref() == Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
-            && tool.defer_loading == Some(false)
-    }));
+    assert!(tools.iter().all(|tool| tool.defer_loading == Some(false)));
+    assert_api_valid_namespaces(tools);
     validate_unique_dynamic_tool_names(tools).unwrap();
 }
 
@@ -128,6 +220,75 @@ fn lifecycle_yield_tool_spec_accepts_only_outcome() {
             .description
             .contains("semantic lifecycle outcome")
     );
+}
+
+#[test]
+fn diagnostic_tool_specs_are_bounded_and_read_only() {
+    let tools = beryl_dynamic_tool_specs();
+    let visible = tools
+        .iter()
+        .find(|tool| tool.name == READ_VISIBLE_MEDIA_TOOL)
+        .expect("visible-media diagnostics tool must be registered");
+    let events = tools
+        .iter()
+        .find(|tool| tool.name == READ_MEDIA_EVENTS_TOOL)
+        .expect("media-events diagnostics tool must be registered");
+
+    assert_eq!(
+        visible.namespace.as_deref(),
+        Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+    );
+    assert_eq!(visible.defer_loading, Some(false));
+    assert_eq!(visible.input_schema["additionalProperties"], false);
+    assert_eq!(visible.input_schema["properties"]["limit"]["maximum"], 64);
+    assert_eq!(events.input_schema["additionalProperties"], false);
+    assert_eq!(events.input_schema["properties"]["limit"]["maximum"], 128);
+    assert!(events.input_schema["properties"]["afterSequence"].is_object());
+}
+
+#[test]
+fn diagnostic_child_tool_specs_use_separate_namespace() {
+    let tools = beryl_diagnostic_child_dynamic_tool_specs();
+    let start = tools
+        .iter()
+        .find(|tool| tool.name == DIAGNOSTIC_CHILD_START_TOOL)
+        .expect("diagnostic child start tool must be registered");
+    let switch_workspace = tools
+        .iter()
+        .find(|tool| tool.name == DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL)
+        .expect("diagnostic child switch_workspace tool must be registered");
+
+    assert!(tools.iter().all(|tool| {
+        tool.namespace.as_deref() == Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE)
+            && tool.defer_loading == Some(false)
+    }));
+    assert!(!BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE.contains('.'));
+    assert_eq!(start.input_schema["required"], json!(["berylHomeDir"]));
+    assert_eq!(
+        switch_workspace.input_schema["required"],
+        json!(["workspaceId"])
+    );
+    validate_unique_dynamic_tool_names(&tools).unwrap();
+}
+
+#[test]
+fn local_supervisor_gui_control_tools_are_not_registered() {
+    let tools = beryl_dynamic_tool_specs();
+
+    for removed_tool in [
+        "read_ui_state",
+        "switch_thread",
+        "scroll_transcript",
+        "close_popups",
+    ] {
+        assert!(
+            tools.iter().all(|tool| {
+                tool.namespace.as_deref() != Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+                    || tool.name != removed_tool
+            }),
+            "{removed_tool} must not be registered as a local supervisor dynamic tool"
+        );
+    }
 }
 
 #[test]
@@ -751,4 +912,16 @@ fn response_json(response: &DynamicToolCallResponse) -> Value {
 
 fn unique_temp_dir() -> tempdir_support::TestTempDir {
     tempdir_support::temp_dir("beryl-workspace-graph-dynamic-tools-test-")
+}
+
+fn assert_api_valid_namespaces(tools: &[DynamicToolSpec]) {
+    for tool in tools {
+        if let Some(namespace) = tool.namespace.as_deref() {
+            assert!(
+                !namespace.contains('.'),
+                "dynamic tool namespace {namespace:?} for {:?} must not contain dots",
+                tool.name
+            );
+        }
+    }
 }

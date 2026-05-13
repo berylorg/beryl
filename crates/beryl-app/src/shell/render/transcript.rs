@@ -41,6 +41,10 @@ use gpui::{
 use tracing::{Level, debug};
 
 use crate::AppearanceSettings;
+use crate::diagnostic_dynamic_tools::{
+    MediaDiagnosticEvent, MediaDiagnosticLog, PreviewStateDiagnostic, VisibleMediaDiagnostics,
+    VisibleMediaSnapshot,
+};
 use crate::shell::{
     ScrollbarRegion, ShellView,
     execution_detail::{TranscriptRenderMetrics, TurnExecutionRecord},
@@ -56,8 +60,8 @@ use crate::shell::{
         TranscriptMarkdownCache, TranscriptMarkdownCacheKey, TranscriptMarkdownCacheStats,
     },
     transcript_media::{
-        TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaLayoutInput,
-        TranscriptMediaSource, transcript_media_layout_metrics,
+        TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaCacheStats,
+        TranscriptMediaLayoutInput, TranscriptMediaSource, transcript_media_layout_metrics,
     },
     transcript_presentation::TranscriptActivityCaret,
     transcript_presentation::transcript_frame_presentation_range,
@@ -93,7 +97,7 @@ use self::{
 use super::super::virtual_list::{ListOffset, ListState, list};
 use super::scrollbars::render_vertical_scrollbar;
 use super::{code_panel, common::panel_shell};
-use crate::memory_diagnostics::{self, MemoryMilestone};
+use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
 use crate::shell::transcript_markdown::markdown_code_panel_id_belongs_to_row;
 
 const SLOW_TRANSCRIPT_FRAME_THRESHOLD: Duration = Duration::from_millis(8);
@@ -172,6 +176,8 @@ pub(crate) struct TranscriptPanel {
     resized_panel_heights: HashMap<String, Pixels>,
     markdown_cache: Rc<RefCell<TranscriptMarkdownCache>>,
     media_cache: Rc<RefCell<TranscriptMediaCache>>,
+    media_events: Rc<RefCell<MediaDiagnosticLog>>,
+    visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     markdown_cache_scope: Option<TranscriptMarkdownCacheScope>,
     stream_projection: Rc<RefCell<TranscriptStreamProjection>>,
     code_panel_scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
@@ -200,6 +206,55 @@ pub(crate) struct TranscriptPanel {
     next_image_preview_request_id: u64,
     promoted_media: Option<TranscriptMediaRenderIdentity>,
     validated_image_menu_target: Option<TranscriptImageMenuTarget>,
+}
+
+pub(crate) struct TranscriptPanelDiagnosticSnapshot {
+    markdown_stats: TranscriptMarkdownCacheStats,
+    media_stats: TranscriptMediaCacheStats,
+    stream_projection_counts: stream_projection::TranscriptStreamProjectionRetainedCounts,
+    pub(crate) visible_media: VisibleMediaSnapshot,
+    pub(crate) media_events: crate::diagnostic_dynamic_tools::MediaEventSnapshot,
+}
+
+impl TranscriptPanelDiagnosticSnapshot {
+    pub(crate) fn add_retained_counts(&self, retained_state: &mut RetainedStateSnapshot) {
+        retained_state.markdown_cache_entries = Some(self.markdown_stats.entries);
+        retained_state.markdown_cache_pending_entries = Some(self.markdown_stats.pending_entries);
+        retained_state.markdown_source_bytes = Some(self.markdown_stats.source_bytes);
+        retained_state.markdown_estimated_retained_bytes =
+            Some(self.markdown_stats.estimated_retained_bytes);
+        retained_state.markdown_in_flight_source_bytes =
+            Some(self.markdown_stats.in_flight_source_bytes);
+        retained_state.markdown_displayed_source_bytes =
+            Some(self.markdown_stats.displayed_source_bytes);
+        retained_state.markdown_parsed_source_bytes = Some(self.markdown_stats.parsed_source_bytes);
+        retained_state.markdown_estimated_structure_bytes =
+            Some(self.markdown_stats.markdown_estimated_structure_bytes);
+        retained_state.markdown_blocks = Some(self.markdown_stats.markdown_blocks);
+        retained_state.markdown_inlines = Some(self.markdown_stats.markdown_inlines);
+        retained_state.markdown_media_requests = Some(self.markdown_stats.markdown_media_requests);
+        retained_state.media_cache_entries = Some(self.media_stats.entries);
+        retained_state.media_cache_pending_entries = Some(self.media_stats.pending_entries);
+        retained_state.media_cache_loaded_entries = Some(self.media_stats.loaded_entries);
+        retained_state.media_cache_loaded_image_bytes = Some(self.media_stats.loaded_image_bytes);
+        retained_state.media_cache_decoded_image_bytes_estimate =
+            Some(self.media_stats.decoded_image_bytes_estimate);
+        retained_state.media_cache_thumbnail_count = Some(self.media_stats.thumbnail_count);
+        retained_state.stream_projection_entries = Some(self.stream_projection_counts.entries);
+        retained_state.stream_projection_key_bytes = Some(self.stream_projection_counts.key_bytes);
+        retained_state.stream_projection_text_bytes =
+            Some(self.stream_projection_counts.text_bytes);
+        retained_state.stream_projection_uncommitted_entries =
+            Some(self.stream_projection_counts.uncommitted_entries);
+        if let Some(total) = retained_state.retained_payload_bytes_lower_bound.as_mut() {
+            *total = total
+                .saturating_add(self.markdown_stats.estimated_retained_bytes)
+                .saturating_add(self.media_stats.loaded_image_bytes)
+                .saturating_add(self.media_stats.decoded_image_bytes_estimate)
+                .saturating_add(self.stream_projection_counts.key_bytes)
+                .saturating_add(self.stream_projection_counts.text_bytes);
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -264,6 +319,10 @@ impl TranscriptMediaRenderIdentity {
 
     pub(super) fn row_identity(&self) -> &str {
         self.row_identity.as_str()
+    }
+
+    pub(super) fn key(&self) -> &TranscriptMediaCacheKey {
+        &self.key
     }
 
     pub(super) fn image_menu_identity(&self) -> String {
@@ -531,6 +590,8 @@ impl TranscriptPanel {
             resized_panel_heights: HashMap::new(),
             markdown_cache: Rc::new(RefCell::new(TranscriptMarkdownCache::default())),
             media_cache: Rc::new(RefCell::new(TranscriptMediaCache::default())),
+            media_events: Rc::new(RefCell::new(MediaDiagnosticLog::default())),
+            visible_media: Rc::new(RefCell::new(VisibleMediaDiagnostics::default())),
             markdown_cache_scope: None,
             stream_projection: Rc::new(RefCell::new(TranscriptStreamProjection::default())),
             code_panel_scroll_handles: Rc::new(RefCell::new(HashMap::new())),
@@ -560,6 +621,31 @@ impl TranscriptPanel {
             promoted_media: None,
             validated_image_menu_target: None,
         }
+    }
+
+    pub(crate) fn diagnostic_snapshot(&self) -> TranscriptPanelDiagnosticSnapshot {
+        let mut visible_media = self.visible_media.borrow().snapshot();
+        visible_media.preview.transcript_image_preview = self.transcript_preview_diagnostic();
+        TranscriptPanelDiagnosticSnapshot {
+            markdown_stats: self.markdown_cache.borrow().stats(),
+            media_stats: self.media_cache.borrow().stats(),
+            stream_projection_counts: self.stream_projection.borrow().retained_counts(),
+            visible_media,
+            media_events: self.media_events.borrow().snapshot(),
+        }
+    }
+
+    fn transcript_preview_diagnostic(&self) -> Option<PreviewStateDiagnostic> {
+        let popup = self.image_preview_popup.as_ref()?;
+        let (state, compressed_bytes) = match &popup.status {
+            TranscriptImagePreviewPopupStatus::Loading => ("loading", None),
+            TranscriptImagePreviewPopupStatus::Unavailable(_) => ("unavailable", None),
+            TranscriptImagePreviewPopupStatus::Loaded(_) => ("loaded", None),
+        };
+        Some(PreviewStateDiagnostic {
+            state: state.to_string(),
+            compressed_bytes,
+        })
     }
 
     fn toggle_code_panel_soft_wrap(&mut self, panel_key: String, cx: &mut Context<Self>) {
@@ -902,6 +988,9 @@ impl TranscriptPanel {
             bounds: None,
             status,
         });
+        self.media_events
+            .borrow_mut()
+            .record(MediaDiagnosticEvent::new("transcript_image_preview_opened"));
         cx.notify();
     }
 
@@ -911,8 +1000,22 @@ impl TranscriptPanel {
             if let TranscriptImagePreviewPopupStatus::Loaded(data) = popup.status {
                 data.image().remove_asset(cx);
             }
+            self.media_events
+                .borrow_mut()
+                .record(MediaDiagnosticEvent::new("transcript_image_preview_closed"));
             cx.notify();
         }
+    }
+
+    pub(crate) fn close_transient_popups_for_dynamic_tool(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.image_preview_popup.is_none() {
+            return false;
+        }
+        self.close_image_preview_popup(cx);
+        true
     }
 
     pub(super) fn toggle_promoted_media(
@@ -1027,15 +1130,28 @@ impl TranscriptPanel {
         match receiver.try_recv() {
             Ok(TranscriptImagePreviewUpdate::Finished { request_id, result }) => {
                 self.image_preview_receiver = None;
+                let mut completed_event = None;
                 if let Some(popup) = self.image_preview_popup.as_mut()
                     && popup.request_id == request_id
                 {
+                    let mut event = MediaDiagnosticEvent::new("transcript_image_preview_loaded");
                     popup.status = match result {
-                        Ok(data) => TranscriptImagePreviewPopupStatus::Loaded(data),
-                        Err(message) => TranscriptImagePreviewPopupStatus::Unavailable(message),
+                        Ok(data) => {
+                            event.outcome = Some("loaded".to_string());
+                            TranscriptImagePreviewPopupStatus::Loaded(data)
+                        }
+                        Err(message) => {
+                            event.outcome = Some("unavailable".to_string());
+                            event.detail = Some(message.clone());
+                            TranscriptImagePreviewPopupStatus::Unavailable(message)
+                        }
                     };
+                    completed_event = Some(event);
                     popup.bounds = None;
                     cx.notify();
+                }
+                if let Some(event) = completed_event {
+                    self.media_events.borrow_mut().record(event);
                 }
             }
             Err(TryRecvError::Empty) => window.request_animation_frame(),
@@ -1529,6 +1645,7 @@ impl TranscriptPanel {
         self.quote_popup.clear_selection();
         self.visible_text_frame.clear();
         self.next_visible_text_frame.clear();
+        self.visible_media.borrow_mut().clear();
         self.visible_text_geometry.clear();
         self.next_visible_text_geometry.clear();
         self.visible_text_geometry_viewport_bounds = None;
@@ -1545,6 +1662,9 @@ impl TranscriptPanel {
         }
 
         self.handled_transcript_reset_generation = generation;
+        let mut reset_event = MediaDiagnosticEvent::new("transcript_reset");
+        reset_event.detail = Some(generation.to_string());
+        self.media_events.borrow_mut().record(reset_event);
         self.markdown_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
         self.release_evicted_media_images(evicted_images, cx);
@@ -1578,8 +1698,13 @@ impl TranscriptPanel {
             return;
         }
 
+        let mut release_event = MediaDiagnosticEvent::new("transcript_content_release");
+        release_event.image_count = Some(row_identities.len());
+        release_event.detail = Some(generation.to_string());
+        self.media_events.borrow_mut().record(release_event);
         let evicted_images = self.media_cache.borrow_mut().clear();
         self.release_evicted_media_images(evicted_images, cx);
+        self.visible_media.borrow_mut().clear();
         self.validated_image_menu_target = None;
         let row_identities = row_identities.iter().cloned().collect();
         let code_panel_changed =
@@ -1811,8 +1936,14 @@ impl TranscriptPanel {
     }
 
     fn release_evicted_media_images(&self, images: Vec<Arc<Image>>, cx: &mut App) {
+        let image_count = images.len();
         for image in images {
             image.remove_asset(cx);
+        }
+        if image_count > 0 {
+            let mut event = MediaDiagnosticEvent::new("gpui_media_images_released");
+            event.image_count = Some(image_count);
+            self.media_events.borrow_mut().record(event);
         }
     }
 }
@@ -1822,6 +1953,10 @@ impl Render for TranscriptPanel {
         self.poll_image_preview_update(window, cx);
         let Some(snapshot) = self.shell.read(cx).transcript_panel_snapshot() else {
             self.current_workspace_id = None;
+            self.visible_media.borrow_mut().clear();
+            self.media_events
+                .borrow_mut()
+                .record(MediaDiagnosticEvent::new("transcript_panel_cleared"));
             let evicted_images = self.media_cache.borrow_mut().clear();
             self.release_evicted_media_images(evicted_images, cx);
             self.nested_scroll_ownership.clear_to_transcript();
@@ -1880,6 +2015,8 @@ impl Render for TranscriptPanel {
             TranscriptMarkdownRenderContext::new(self.markdown_cache.clone(), entity.clone());
         let media_context = TranscriptMediaRenderContext::new(
             self.media_cache.clone(),
+            self.media_events.clone(),
+            self.visible_media.clone(),
             entity.clone(),
             shell.read(cx).backend_client_connector(),
             Duration::from_secs(5),
@@ -1895,6 +2032,10 @@ impl Render for TranscriptPanel {
             .unwrap_or_default();
         let presentation_range =
             transcript_frame_presentation_range(&transcript_list_state, turn_count);
+        self.visible_media.borrow_mut().begin_frame(
+            snapshot.selected_thread_id.clone(),
+            presentation_range.clone(),
+        );
         if memory_diagnostics::enabled()
             && snapshot.pending_thread_activation_label.is_none()
             && snapshot.selected_thread_id.is_some()

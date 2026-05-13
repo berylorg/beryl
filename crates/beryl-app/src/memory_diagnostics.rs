@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use serde::Serialize;
 use tracing::info;
 
 const TARGET: &str = "beryl_app::memory_milestones";
@@ -20,7 +21,8 @@ pub(crate) struct MemoryMilestone {
     note: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RetainedStateSnapshot {
     pub(crate) retained_payload_bytes_lower_bound: Option<usize>,
     pub(crate) loaded_transcript_turns: Option<usize>,
@@ -154,12 +156,15 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) turn_steering_receivers: Option<usize>,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct ProcessMemorySnapshot {
-    pid: u32,
-    private_bytes: u64,
-    working_set_bytes: u64,
-    pagefile_usage_bytes: u64,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessMemorySnapshot {
+    pub pid: u32,
+    pub private_bytes: u64,
+    pub working_set_bytes: u64,
+    pub pagefile_usage_bytes: u64,
+    pub handle_count: Option<u32>,
+    pub thread_count: Option<u32>,
 }
 
 impl MemoryMilestone {
@@ -479,6 +484,10 @@ pub(crate) fn enabled() -> bool {
     ENABLED.load(Ordering::Acquire)
 }
 
+pub fn current_process_memory_snapshot() -> Result<ProcessMemorySnapshot, &'static str> {
+    current_process_memory()
+}
+
 fn optional_usize(value: Option<usize>) -> String {
     value.map(|value| value.to_string()).unwrap_or_default()
 }
@@ -488,7 +497,7 @@ fn current_process_memory() -> Result<ProcessMemorySnapshot, &'static str> {
     use windows::Win32::System::ProcessStatus::{
         GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
     };
-    use windows::Win32::System::Threading::GetCurrentProcess;
+    use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessHandleCount};
 
     let mut counters = PROCESS_MEMORY_COUNTERS_EX {
         cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
@@ -505,15 +514,57 @@ fn current_process_memory() -> Result<ProcessMemorySnapshot, &'static str> {
         .map_err(|_| "GetProcessMemoryInfo failed")?;
     }
 
+    let mut handle_count = 0u32;
+    let handle_count = unsafe {
+        GetProcessHandleCount(GetCurrentProcess(), &mut handle_count)
+            .map(|_| handle_count)
+            .ok()
+    };
+
     Ok(ProcessMemorySnapshot {
         pid: std::process::id(),
         private_bytes: counters.PrivateUsage as u64,
         working_set_bytes: counters.WorkingSetSize as u64,
         pagefile_usage_bytes: counters.PagefileUsage as u64,
+        handle_count,
+        thread_count: current_process_thread_count(),
     })
 }
 
 #[cfg(not(target_os = "windows"))]
 fn current_process_memory() -> Result<ProcessMemorySnapshot, &'static str> {
     Err("process memory counters are only implemented on Windows")
+}
+
+#[cfg(target_os = "windows")]
+fn current_process_thread_count() -> Option<u32> {
+    use windows::Win32::{
+        Foundation::CloseHandle,
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+        },
+    };
+
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0).ok()? };
+    let mut entry = THREADENTRY32 {
+        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+        ..THREADENTRY32::default()
+    };
+    let current_pid = std::process::id();
+    let mut thread_count = 0u32;
+    let first = unsafe { Thread32First(snapshot, &mut entry).is_ok() };
+    if first {
+        loop {
+            if entry.th32OwnerProcessID == current_pid {
+                thread_count = thread_count.saturating_add(1);
+            }
+            entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+            if unsafe { Thread32Next(snapshot, &mut entry) }.is_err() {
+                break;
+            }
+        }
+    }
+    let _ = unsafe { CloseHandle(snapshot) };
+
+    first.then_some(thread_count)
 }

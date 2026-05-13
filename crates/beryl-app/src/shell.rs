@@ -5,7 +5,7 @@ use std::{
     ops::Range,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         mpsc::{self, Receiver, RecvTimeoutError, TryRecvError},
     },
     thread,
@@ -13,9 +13,10 @@ use std::{
 };
 
 use beryl_backend::{
-    HardStopCapabilities, ManagedBackendClientConnector, ManagedBackendProbeReport,
-    ManagedBackendServer, ManagedBackendStartupProgress, ManagedBackendStartupStage, ThreadInfo,
-    ThreadSessionMetadata, ThreadStatus, ThreadSummary, TurnStartOptions, list_wsl_distros,
+    DynamicToolCallRequest, HardStopCapabilities, ManagedBackendClientConnector,
+    ManagedBackendProbeReport, ManagedBackendServer, ManagedBackendStartupProgress,
+    ManagedBackendStartupStage, ThreadInfo, ThreadSessionMetadata, ThreadStatus, ThreadSummary,
+    TurnStartOptions, list_wsl_distros,
 };
 use beryl_model::conversation::{
     ConversationThreadId, ConversationThreadTokenUsageSnapshot, RegisteredConversationThread,
@@ -36,10 +37,43 @@ use gpui_settings_window::{
 };
 #[cfg(target_os = "windows")]
 use raw_window_handle::RawWindowHandle;
+use serde::Deserialize;
+use serde_json::{Value, json};
 use tracing::{debug, warn};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
+use crate::diagnostic_child_dynamic_tools::{
+    diagnostic_child_failure_response, dispatch_beryl_diagnostic_child_dynamic_tool_call,
+    is_beryl_diagnostic_child_dynamic_tool,
+};
+use crate::diagnostic_child_protocol::{
+    CLOSE_POPUPS_COMMAND, DiagnosticChildCommand, DiagnosticProtocolRequest,
+    DiagnosticProtocolResponse, READ_UI_STATE_COMMAND, SCROLL_TRANSCRIPT_COMMAND,
+    SWITCH_THREAD_COMMAND, SWITCH_WORKSPACE_COMMAND,
+};
+use crate::diagnostic_child_supervisor::DiagnosticChildSupervisor;
+use crate::diagnostic_child_target::{
+    DiagnosticTargetShellRequest, spawn_diagnostic_target_stdio_server,
+};
+use crate::diagnostic_dynamic_tools::{
+    DEFAULT_MEDIA_EVENT_LIMIT, DEFAULT_VISIBLE_MEDIA_LIMIT, DiagnosticToolSnapshot,
+    MAX_MEDIA_EVENT_LIMIT, MAX_VISIBLE_MEDIA_LIMIT, ManagedBackendProcessDiagnostic,
+    MemoryDiagnosticSnapshot, MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic,
+    ProcessDiagnosticSnapshot, RuntimeTargetDiagnostic, bounded_diagnostic_string,
+    dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result, visible_media_result,
+};
+use crate::gui_control_dynamic_tools::{
+    ActivityPanelUiState, BackgroundWorkUiState, ClosePopupsResult, DEFAULT_UI_VISIBLE_ROW_LIMIT,
+    GuiControlToolRequest, PopupUiState, SETTINGS_WINDOW_POPUP_CLOSE_REASON,
+    ScrollTranscriptArguments, ScrollTranscriptCommand, ScrollTranscriptResult,
+    SwitchThreadArguments, SwitchThreadResult, SwitchWorkspaceArguments, SwitchWorkspaceResult,
+    TranscriptScrollPositionDiagnostic, TranscriptUiState, UiRangeDiagnostic, UiStateSnapshot,
+    VisibleTranscriptRowDiagnostic, bounded_control_string, close_popups_tool_response,
+    gui_control_failure_response, is_beryl_gui_control_dynamic_tool,
+    parse_beryl_gui_control_dynamic_tool_request, parse_gui_control_tool_request,
+    scroll_transcript_tool_response, switch_thread_tool_response, ui_state_tool_response,
+};
 use crate::member_thread_inventory::{
     MemberThreadInventoryMemberKey, MemberThreadInventoryState, resolved_thread_title,
 };
@@ -74,6 +108,14 @@ const KNOWN_THREAD_MODEL_PROVIDER_MAX_BYTES: usize = 256;
 
 fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
+}
+
+fn runtime_target_diagnostic(target: &WorkspaceId) -> RuntimeTargetDiagnostic {
+    RuntimeTargetDiagnostic {
+        runtime: bounded_diagnostic_string(target.runtime_mode().display_name()),
+        canonical_path: bounded_diagnostic_string(target.canonical_path().display().to_string()),
+        display_label: bounded_diagnostic_string(target.display_label()),
+    }
 }
 
 fn known_thread_payload_bytes(threads: &[ThreadSummary]) -> usize {
@@ -156,6 +198,65 @@ fn bounded_known_threads(
     }
 
     retained
+}
+
+fn clamp_ui_range(range: Range<usize>, item_count: usize) -> Range<usize> {
+    let start = range.start.min(item_count);
+    let end = range.end.min(item_count).max(start);
+    start..end
+}
+
+fn ui_range_diagnostic(range: &Range<usize>) -> UiRangeDiagnostic {
+    UiRangeDiagnostic {
+        start: range.start,
+        end: range.end,
+    }
+}
+
+fn transcript_scroll_position_diagnostic(
+    position: ListScrollPosition,
+) -> TranscriptScrollPositionDiagnostic {
+    match position {
+        ListScrollPosition::Bottom => TranscriptScrollPositionDiagnostic {
+            kind: "bottom".to_string(),
+            item_index: None,
+            offset_px: None,
+        },
+        ListScrollPosition::Content(offset) => TranscriptScrollPositionDiagnostic {
+            kind: "content".to_string(),
+            item_index: Some(offset.item_ix),
+            offset_px: Some(f64::from(f32::from(offset.offset_in_item))),
+        },
+        ListScrollPosition::VirtualTail {
+            offset_from_content_end,
+        } => TranscriptScrollPositionDiagnostic {
+            kind: "virtual_tail".to_string(),
+            item_index: None,
+            offset_px: Some(f64::from(f32::from(offset_from_content_end))),
+        },
+    }
+}
+
+fn visible_transcript_rows(
+    surface: &ConversationSurfaceState,
+    visible_range: Range<usize>,
+    limit: usize,
+) -> (Vec<VisibleTranscriptRowDiagnostic>, bool) {
+    let mut rows = Vec::new();
+    for index in visible_range.clone().take(limit) {
+        if let Some(row) = surface.transcript_presentation().turn_at(index) {
+            rows.push(VisibleTranscriptRowDiagnostic {
+                row_index: row.index,
+                row_identity: bounded_control_string(row.identity.as_str().to_string()),
+                source_turn_index: row.source_turn_index,
+                item_count: row.turn.item_count(),
+                text_chars: row.turn.text_char_count(),
+                released_history_placeholder: row.turn.is_released_history_placeholder(),
+            });
+        }
+    }
+    let truncated = visible_range.len() > rows.len();
+    (rows, truncated)
 }
 
 fn workspace_picker_action_keyboard_activation_key(key: &str) -> bool {
@@ -380,10 +481,11 @@ use turn_steering::{
 };
 use turn_stop::TurnStopUpdate;
 use turn_worker::{
-    AcceptedLifecycleYield, ThreadActivationUpdate, TurnWorkerOutcome, TurnWorkerUpdate,
-    spawn_thread_activation_worker, spawn_turn_worker,
+    AcceptedLifecycleYield, ShellDynamicToolRequest, ThreadActivationUpdate, TurnWorkerOutcome,
+    TurnWorkerUpdate, shell_dynamic_tool_request_channel, spawn_thread_activation_worker,
+    spawn_turn_worker,
 };
-use virtual_list::{ListAlignment, ListScrollEvent, ListState};
+use virtual_list::{ListAlignment, ListOffset, ListScrollEvent, ListScrollPosition, ListState};
 use workspace_members::{
     WorkspaceMemberAttachRequest, apply_primary_execution_target_selection,
     apply_workspace_member_attachment, apply_workspace_member_detach,
@@ -426,6 +528,18 @@ impl ConfiguredAppState {
 }
 
 pub(crate) fn run_app(bootstrap: AppBootstrap) {
+    run_app_with_diagnostic_target(bootstrap, None);
+}
+
+pub(crate) fn run_diagnostic_target_stdio(bootstrap: AppBootstrap) {
+    let diagnostic_target_receiver = Some(spawn_diagnostic_target_stdio_server());
+    run_app_with_diagnostic_target(bootstrap, diagnostic_target_receiver);
+}
+
+fn run_app_with_diagnostic_target(
+    bootstrap: AppBootstrap,
+    mut diagnostic_target_receiver: Option<Receiver<DiagnosticTargetShellRequest>>,
+) {
     memory_diagnostics::configure(bootstrap.memory_milestones_enabled());
     MemoryMilestone::new("app_startup").log();
 
@@ -515,6 +629,7 @@ pub(crate) fn run_app(bootstrap: AppBootstrap) {
         MemoryMilestone::new("settings_window_created").log();
 
         MemoryMilestone::new("main_window_open_start").log();
+        let diagnostic_target_receiver = diagnostic_target_receiver.take();
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -538,6 +653,7 @@ pub(crate) fn run_app(bootstrap: AppBootstrap) {
                         settings_state,
                         appearance_settings.clone(),
                         gui_preferences.clone(),
+                        diagnostic_target_receiver,
                         cx,
                     )
                 });
@@ -584,6 +700,9 @@ struct ShellView {
     composer_image_label_scan_receiver: Option<Receiver<ComposerImageLabelScanUpdate>>,
     composer_image_asset_receiver: Option<Receiver<ComposerImageAssetUpdate>>,
     turn_receiver: Option<Receiver<TurnWorkerUpdate>>,
+    shell_tool_receiver: Option<Receiver<ShellDynamicToolRequest>>,
+    diagnostic_target_receiver: Option<Receiver<DiagnosticTargetShellRequest>>,
+    diagnostic_child_supervisor: Arc<Mutex<DiagnosticChildSupervisor>>,
     transcript_edit_replacement_turn: Option<TranscriptEditReplacementTurnState>,
     turn_steering_receivers: Vec<TurnSteeringTask>,
     composer_image_delivery_receiver: Option<Receiver<ComposerImageDeliveryUpdate>>,
@@ -1094,6 +1213,49 @@ struct BlockedState {
 #[derive(Clone)]
 struct PendingThreadActivation {
     label: String,
+}
+
+enum ThreadActivationStart {
+    Started,
+    AlreadySelected,
+    Rejected { kind: &'static str, message: String },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmptyDiagnosticTargetArguments {}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiagnosticTargetLimitArguments {
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiagnosticTargetMediaEventsArguments {
+    limit: Option<usize>,
+    after_sequence: Option<u64>,
+}
+
+impl DiagnosticTargetLimitArguments {
+    fn limit_or_default(self, default: usize, max: usize) -> usize {
+        self.limit.unwrap_or(default).min(max)
+    }
+}
+
+impl DiagnosticTargetMediaEventsArguments {
+    fn limit_or_default(&self, default: usize, max: usize) -> usize {
+        self.limit.unwrap_or(default).min(max)
+    }
+}
+
+fn parse_diagnostic_target_arguments<T>(arguments: &Value) -> Result<T, (&'static str, String)>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    serde_json::from_value(arguments.clone())
+        .map_err(|source| ("invalid_arguments", source.to_string()))
 }
 
 struct CompletedTurnTitleCandidate {
@@ -4259,6 +4421,7 @@ impl ShellView {
         settings_state: settings::SettingsState,
         appearance_settings: SharedAppearanceSettings,
         gui_preferences: SharedGuiPreferences,
+        diagnostic_target_receiver: Option<Receiver<DiagnosticTargetShellRequest>>,
         cx: &mut Context<Self>,
     ) -> Self {
         let shell_entity = cx.entity();
@@ -4378,6 +4541,9 @@ impl ShellView {
             composer_image_label_scan_receiver: None,
             composer_image_asset_receiver: None,
             turn_receiver: None,
+            shell_tool_receiver: None,
+            diagnostic_target_receiver,
+            diagnostic_child_supervisor: Arc::new(Mutex::new(DiagnosticChildSupervisor::default())),
             transcript_edit_replacement_turn: None,
             turn_steering_receivers: Vec::new(),
             composer_image_delivery_receiver: None,
@@ -4424,6 +4590,7 @@ impl ShellView {
         view.subscribe_conversation_input(cx);
 
         if view.block_if_app_state_unavailable(window, cx) {
+            view.schedule_poll_if_needed(window, cx);
             return view;
         }
 
@@ -5152,6 +5319,8 @@ impl ShellView {
             || self.composer_image_label_scan_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
             || self.turn_receiver.is_some()
+            || self.shell_tool_receiver.is_some()
+            || self.diagnostic_target_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
             || self.composer_image_delivery_receiver.is_some()
             || !self.thread_title_receivers.is_empty()
@@ -5256,6 +5425,8 @@ impl ShellView {
         updated |= self.poll_thread_history_page_updates();
         updated |= self.poll_composer_image_label_scan_updates();
         updated |= self.poll_composer_image_asset_updates(cx);
+        updated |= self.poll_diagnostic_target_requests(window, cx);
+        updated |= self.poll_shell_dynamic_tool_requests(window, cx);
         updated |= self.poll_turn_updates(window, cx);
         updated |= self.poll_turn_steering_updates();
         updated |= self.poll_composer_image_delivery_updates(cx);
@@ -5712,6 +5883,7 @@ impl ShellView {
                         .as_ref()
                         .is_some_and(|replacement| !replacement.turn_started);
                     self.turn_receiver = None;
+                    self.shell_tool_receiver = None;
                     self.pending_lifecycle_phase_continue = None;
                     let sound_candidate = self.handle_turn_worker_stopped();
                     self.finish_transcript_edit_replacement_turn(
@@ -5879,6 +6051,7 @@ impl ShellView {
                             .as_ref()
                             .is_some_and(|replacement| !replacement.turn_started);
                     self.turn_receiver = None;
+                    self.shell_tool_receiver = None;
                     let sound_candidate = self.finish_turn_worker(outcome);
                     if failure_message.is_some() {
                         self.pending_lifecycle_phase_continue = None;
@@ -5910,6 +6083,133 @@ impl ShellView {
         }
 
         updated
+    }
+
+    fn poll_shell_dynamic_tool_requests(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let mut processed_updates = 0usize;
+        let poll_started_at = Instant::now();
+        loop {
+            if processed_updates >= SHELL_WORKER_POLL_MAX_EVENTS_PER_FRAME
+                || poll_started_at.elapsed() >= SHELL_WORKER_POLL_MAX_FRAME_TIME
+            {
+                return false;
+            }
+
+            let next_request = match self.shell_tool_receiver.as_ref() {
+                Some(receiver) => receiver.try_recv(),
+                None => return false,
+            };
+
+            match next_request {
+                Ok(request) => {
+                    processed_updates = processed_updates.saturating_add(1);
+                    if !request.try_claim() {
+                        continue;
+                    }
+                    if is_beryl_diagnostic_child_dynamic_tool(request.request()) {
+                        self.spawn_diagnostic_child_dynamic_tool_worker(request);
+                        continue;
+                    }
+                    let response = if is_beryl_gui_control_dynamic_tool(request.request()) {
+                        self.handle_beryl_gui_control_dynamic_tool_request(
+                            request.request(),
+                            window,
+                            cx,
+                        )
+                    } else {
+                        let snapshot = self.diagnostic_tool_snapshot(cx);
+                        dispatch_beryl_diagnostic_dynamic_tool_call(request.request(), snapshot)
+                    };
+                    request.respond(response);
+                }
+                Err(TryRecvError::Empty) => return false,
+                Err(TryRecvError::Disconnected) => {
+                    self.shell_tool_receiver = None;
+                    return false;
+                }
+            }
+        }
+    }
+
+    fn spawn_diagnostic_child_dynamic_tool_worker(&self, request: ShellDynamicToolRequest) {
+        let supervisor_home = match self.bootstrap.beryl_home_dir() {
+            Ok(supervisor_home) => supervisor_home,
+            Err(error) => {
+                let response = diagnostic_child_failure_response(
+                    request.request(),
+                    "diagnostic_child_lifecycle_error",
+                    error.to_string(),
+                );
+                request.respond(response);
+                return;
+            }
+        };
+        let supervisor = Arc::clone(&self.diagnostic_child_supervisor);
+        thread::spawn(move || {
+            let response = match supervisor.lock() {
+                Ok(mut supervisor) => dispatch_beryl_diagnostic_child_dynamic_tool_call(
+                    &mut supervisor,
+                    &supervisor_home,
+                    request.request(),
+                ),
+                Err(error) => diagnostic_child_failure_response(
+                    request.request(),
+                    "diagnostic_child_lifecycle_error",
+                    format!("diagnostic child supervisor lock was poisoned: {error}"),
+                ),
+            };
+            request.respond(response);
+        });
+    }
+
+    fn poll_diagnostic_target_requests(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let mut processed_updates = 0usize;
+        let poll_started_at = Instant::now();
+        loop {
+            if processed_updates >= SHELL_WORKER_POLL_MAX_EVENTS_PER_FRAME
+                || poll_started_at.elapsed() >= SHELL_WORKER_POLL_MAX_FRAME_TIME
+            {
+                return false;
+            }
+
+            let next_request = match self.diagnostic_target_receiver.as_ref() {
+                Some(receiver) => receiver.try_recv(),
+                None => return false,
+            };
+
+            match next_request {
+                Ok(DiagnosticTargetShellRequest::Execute(request)) => {
+                    processed_updates = processed_updates.saturating_add(1);
+                    if !request.try_claim() {
+                        continue;
+                    }
+                    let response = self.handle_diagnostic_target_protocol_request(
+                        request.request(),
+                        window,
+                        cx,
+                    );
+                    request.respond(response);
+                }
+                Ok(DiagnosticTargetShellRequest::Shutdown) => {
+                    self.diagnostic_target_receiver = None;
+                    cx.quit();
+                    return true;
+                }
+                Err(TryRecvError::Empty) => return false,
+                Err(TryRecvError::Disconnected) => {
+                    self.diagnostic_target_receiver = None;
+                    return false;
+                }
+            }
+        }
     }
 
     fn poll_tool_activity_nickname_updates(&mut self) -> bool {
@@ -8760,7 +9060,7 @@ impl ShellView {
         target: ThreadSelectorActivationTarget,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> ThreadActivationStart {
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
@@ -8771,7 +9071,10 @@ impl ShellView {
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
         {
-            return;
+            return ThreadActivationStart::Rejected {
+                kind: "busy",
+                message: "Beryl is already running workspace, transcript, status, or turn work that blocks thread activation.".to_string(),
+            };
         }
 
         let (beryl_workspace_id, current_execution_target) = match &self.state {
@@ -8784,7 +9087,12 @@ impl ShellView {
             | ShellState::Opening(_)
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
-            | ShellState::Blocked(_) => return,
+            | ShellState::Blocked(_) => {
+                return ThreadActivationStart::Rejected {
+                    kind: "not_ready",
+                    message: "Beryl is not on a ready workspace surface.".to_string(),
+                };
+            }
         };
 
         let thread_selection = exact_thread_selection_request(&target.thread_id, &target.label);
@@ -8801,7 +9109,7 @@ impl ShellView {
                 window,
                 cx,
             );
-            return;
+            return ThreadActivationStart::Started;
         }
 
         if self
@@ -8814,18 +9122,27 @@ impl ShellView {
                 surface.close_thread_selector();
                 cx.notify();
             }
-            return;
+            return ThreadActivationStart::AlreadySelected;
         }
 
         let Some(connector) = connector else {
+            let message =
+                "Beryl does not have an active managed backend for this execution target.";
             if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation failed",
-                    "Beryl does not have an active managed backend for this execution target.",
-                ));
+                surface.set_notice(SurfaceNotice::new("Thread activation failed", message));
                 cx.notify();
             }
-            return;
+            return ThreadActivationStart::Rejected {
+                kind: "backend_unavailable",
+                message: message.to_string(),
+            };
+        };
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            return ThreadActivationStart::Rejected {
+                kind: "not_ready",
+                message: "Beryl has no workspace persistence handle for thread activation."
+                    .to_string(),
+            };
         };
 
         let activation_ui_started = Instant::now();
@@ -8845,9 +9162,6 @@ impl ShellView {
         );
         self.composer_image_label_scan_receiver = None;
         self.notify_transcript_panel(cx);
-        let Some(persistence) = self.workspace_persistence_for_worker() else {
-            return;
-        };
         let worker_spawn_started = Instant::now();
         let thread_id_for_log = thread_id.clone();
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
@@ -8867,6 +9181,7 @@ impl ShellView {
         );
         self.schedule_poll_if_needed(window, cx);
         cx.notify();
+        ThreadActivationStart::Started
     }
 
     fn select_graph_thread_ref(
@@ -10804,6 +11119,8 @@ impl ShellView {
             return true;
         };
 
+        let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
+        self.shell_tool_receiver = Some(shell_tool_receiver);
         self.turn_receiver = Some(spawn_turn_worker(
             persistence,
             connector,
@@ -10813,6 +11130,7 @@ impl ShellView {
             automatic_title_generation_allowed,
             vec![fragment],
             turn_options,
+            Some(shell_tool_sender),
             self.bootstrap.probe_timeout(),
         ));
         true
@@ -11167,6 +11485,8 @@ impl ShellView {
             queue.turn_options().clone(),
         );
         let user_input_fragments = queue.into_fragments();
+        let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
+        self.shell_tool_receiver = Some(shell_tool_receiver);
         self.turn_receiver = Some(spawn_turn_worker(
             persistence,
             connector,
@@ -11176,6 +11496,7 @@ impl ShellView {
             automatic_title_generation_allowed,
             user_input_fragments,
             turn_options,
+            Some(shell_tool_sender),
             self.bootstrap.probe_timeout(),
         ));
         true
@@ -11817,6 +12138,788 @@ impl ShellView {
                 .saturating_add(snapshot.composer_image_popup_bytes.unwrap_or_default());
         }
         snapshot
+    }
+
+    fn handle_diagnostic_target_protocol_request(
+        &mut self,
+        request: &DiagnosticProtocolRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> DiagnosticProtocolResponse {
+        match self.diagnostic_target_protocol_result(request, window, cx) {
+            Ok(result) => DiagnosticProtocolResponse::success(request.id(), result),
+            Err((kind, message)) => {
+                DiagnosticProtocolResponse::error(Some(request.id().to_string()), kind, message)
+            }
+        }
+    }
+
+    fn diagnostic_target_protocol_result(
+        &mut self,
+        request: &DiagnosticProtocolRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, (&'static str, String)> {
+        match request.command() {
+            DiagnosticChildCommand::ReadProcess => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                Ok(json!(self.process_diagnostic_snapshot()))
+            }
+            DiagnosticChildCommand::ReadMemory => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                let process = self.process_diagnostic_snapshot();
+                Ok(json!(self.memory_diagnostic_snapshot(&process)))
+            }
+            DiagnosticChildCommand::ReadRetainedState => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                let snapshot = self.diagnostic_tool_snapshot(cx);
+                Ok(json!({ "retainedState": snapshot.retained_state }))
+            }
+            DiagnosticChildCommand::ReadVisibleMedia => {
+                let arguments = parse_diagnostic_target_arguments::<DiagnosticTargetLimitArguments>(
+                    request.params(),
+                )?;
+                let snapshot = self.diagnostic_tool_snapshot(cx);
+                Ok(json!(visible_media_result(
+                    snapshot.visible_media,
+                    arguments
+                        .limit_or_default(DEFAULT_VISIBLE_MEDIA_LIMIT, MAX_VISIBLE_MEDIA_LIMIT),
+                )))
+            }
+            DiagnosticChildCommand::ReadMediaEvents => {
+                let arguments = parse_diagnostic_target_arguments::<
+                    DiagnosticTargetMediaEventsArguments,
+                >(request.params())?;
+                let snapshot = self.diagnostic_tool_snapshot(cx);
+                Ok(json!(media_events_result(
+                    snapshot.media_events,
+                    arguments.after_sequence,
+                    arguments.limit_or_default(DEFAULT_MEDIA_EVENT_LIMIT, MAX_MEDIA_EVENT_LIMIT),
+                )))
+            }
+            DiagnosticChildCommand::ReadUiState => {
+                let parsed =
+                    parse_gui_control_tool_request(READ_UI_STATE_COMMAND, request.params())
+                        .map_err(|error| (error.kind(), error.to_string()))?;
+                match parsed {
+                    GuiControlToolRequest::ReadUiState { visible_row_limit } => {
+                        Ok(json!(self.ui_state_snapshot(cx, visible_row_limit)))
+                    }
+                    _ => Err((
+                        "internal",
+                        "diagnostic target read_ui_state parsed to the wrong command".to_string(),
+                    )),
+                }
+            }
+            DiagnosticChildCommand::SwitchWorkspace => {
+                let parsed =
+                    parse_gui_control_tool_request(SWITCH_WORKSPACE_COMMAND, request.params())
+                        .map_err(|error| (error.kind(), error.to_string()))?;
+                match parsed {
+                    GuiControlToolRequest::SwitchWorkspace(arguments) => self
+                        .handle_switch_workspace_tool_result(arguments, window, cx)
+                        .map(|result| json!(result)),
+                    _ => Err((
+                        "internal",
+                        "diagnostic target switch_workspace parsed to the wrong command"
+                            .to_string(),
+                    )),
+                }
+            }
+            DiagnosticChildCommand::SwitchThread => {
+                let parsed =
+                    parse_gui_control_tool_request(SWITCH_THREAD_COMMAND, request.params())
+                        .map_err(|error| (error.kind(), error.to_string()))?;
+                match parsed {
+                    GuiControlToolRequest::SwitchThread(arguments) => self
+                        .handle_switch_thread_tool_result(arguments, window, cx)
+                        .map(|result| json!(result)),
+                    _ => Err((
+                        "internal",
+                        "diagnostic target switch_thread parsed to the wrong command".to_string(),
+                    )),
+                }
+            }
+            DiagnosticChildCommand::ScrollTranscript => {
+                let parsed =
+                    parse_gui_control_tool_request(SCROLL_TRANSCRIPT_COMMAND, request.params())
+                        .map_err(|error| (error.kind(), error.to_string()))?;
+                match parsed {
+                    GuiControlToolRequest::ScrollTranscript(arguments) => Ok(json!(
+                        self.handle_scroll_transcript_tool_result(arguments, cx)
+                    )),
+                    _ => Err((
+                        "internal",
+                        "diagnostic target scroll_transcript parsed to the wrong command"
+                            .to_string(),
+                    )),
+                }
+            }
+            DiagnosticChildCommand::ClosePopups => {
+                let parsed = parse_gui_control_tool_request(CLOSE_POPUPS_COMMAND, request.params())
+                    .map_err(|error| (error.kind(), error.to_string()))?;
+                match parsed {
+                    GuiControlToolRequest::ClosePopups => {
+                        Ok(json!(self.handle_close_popups_tool_result(cx)))
+                    }
+                    _ => Err((
+                        "internal",
+                        "diagnostic target close_popups parsed to the wrong command".to_string(),
+                    )),
+                }
+            }
+        }
+    }
+
+    fn handle_beryl_gui_control_dynamic_tool_request(
+        &mut self,
+        request: &DynamicToolCallRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> beryl_backend::DynamicToolCallResponse {
+        let parsed = match parse_beryl_gui_control_dynamic_tool_request(request) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                return gui_control_failure_response(request, error.kind(), error.to_string());
+            }
+        };
+
+        match parsed {
+            GuiControlToolRequest::ReadUiState { visible_row_limit } => {
+                ui_state_tool_response(request, self.ui_state_snapshot(cx, visible_row_limit))
+            }
+            GuiControlToolRequest::SwitchWorkspace(_) => gui_control_failure_response(
+                request,
+                "unsupported_tool",
+                "switch_workspace is only available through beryl_diagnostic against a diagnostic child.",
+            ),
+            GuiControlToolRequest::SwitchThread(arguments) => {
+                match self.handle_switch_thread_tool_result(arguments, window, cx) {
+                    Ok(result) => switch_thread_tool_response(request, result),
+                    Err((kind, message)) => gui_control_failure_response(request, kind, message),
+                }
+            }
+            GuiControlToolRequest::ScrollTranscript(arguments) => scroll_transcript_tool_response(
+                request,
+                self.handle_scroll_transcript_tool_result(arguments, cx),
+            ),
+            GuiControlToolRequest::ClosePopups => {
+                close_popups_tool_response(request, self.handle_close_popups_tool_result(cx))
+            }
+        }
+    }
+
+    fn ui_state_snapshot(
+        &self,
+        cx: &mut Context<Self>,
+        visible_row_limit: usize,
+    ) -> UiStateSnapshot {
+        let panel_snapshot = self.transcript_panel.read(cx).diagnostic_snapshot();
+        let selected_workspace_id = self
+            .loaded_workspace()
+            .map(|loaded| loaded.workspace.id().as_str().to_string())
+            .map(bounded_control_string);
+        let selected_thread_id = self
+            .conversation_surface()
+            .and_then(ConversationSurfaceState::selected_thread_id)
+            .map(str::to_string)
+            .map(bounded_control_string);
+        let selected_runtime_target = match &self.state {
+            ShellState::Ready(ready) => Some(runtime_target_diagnostic(&ready.execution_target)),
+            ShellState::Blocked(blocked) => {
+                Some(runtime_target_diagnostic(&blocked.target.workspace()))
+            }
+            ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_)
+            | ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_) => None,
+        };
+        let mut visible_media = panel_snapshot.visible_media;
+        visible_media.preview.composer_image_preview = self.composer_image_preview_diagnostic();
+
+        UiStateSnapshot {
+            shell_state: self.shell_state_diagnostic_label().to_string(),
+            selected_surface: self.selected_surface_diagnostic_label(cx).to_string(),
+            selected_workspace_id,
+            selected_thread_id,
+            selected_runtime_target,
+            transcript: self.transcript_ui_state(visible_row_limit),
+            visible_media,
+            activity_panel: self.activity_panel_ui_state(),
+            popups: self.popup_ui_state(cx),
+            background_work: BackgroundWorkUiState {
+                backend_work_receivers: self.backend_work_receiver_count(),
+                thread_activation_pending: self.thread_activation_receiver.is_some(),
+                turn_stream_pending: self.turn_receiver.is_some(),
+                workspace_transition_pending: self.workspace_picker_action_receiver.is_some()
+                    || self.workspace_receiver.is_some()
+                    || matches!(self.state, ShellState::Opening(_)),
+            },
+        }
+    }
+
+    fn shell_state_diagnostic_label(&self) -> &'static str {
+        match self.state {
+            ShellState::Discovering(_) => "discovering",
+            ShellState::Picker(_) => "picker",
+            ShellState::Opening(_) => "opening",
+            ShellState::WorkspaceIdle(_) => "workspace_idle",
+            ShellState::WorkspaceLoaded(_) => "workspace_loaded",
+            ShellState::Ready(_) => "ready",
+            ShellState::Blocked(_) => "blocked",
+        }
+    }
+
+    fn selected_surface_diagnostic_label(&self, cx: &mut Context<Self>) -> &'static str {
+        if self
+            .settings_window
+            .is_visible(cx)
+            .ok()
+            .is_some_and(|visible| visible)
+        {
+            return "settings";
+        }
+        if self
+            .loaded_workspace()
+            .is_some_and(|loaded| loaded.workspace_picker.is_open())
+        {
+            return "workspace_picker";
+        }
+        let Some(surface) = self.conversation_surface() else {
+            return self.shell_state_diagnostic_label();
+        };
+        if surface.thread_selector().is_open() {
+            return "thread_selector";
+        }
+        if surface.graph_overlay().visible() {
+            return "graph";
+        }
+        "conversation"
+    }
+
+    fn transcript_ui_state(&self, visible_row_limit: usize) -> TranscriptUiState {
+        let Some(surface) = self.conversation_surface() else {
+            return TranscriptUiState::default();
+        };
+        let list_state = surface.transcript_list_state();
+        let item_count = surface.transcript_presentation().len();
+        let visible_range = clamp_ui_range(list_state.visible_range(), item_count);
+        let presentation_range = clamp_ui_range(list_state.presentation_range(), item_count);
+        let (visible_rows, visible_rows_truncated) =
+            visible_transcript_rows(surface, visible_range.clone(), visible_row_limit);
+
+        TranscriptUiState {
+            item_count,
+            visible_range: Some(ui_range_diagnostic(&visible_range)),
+            presentation_range: Some(ui_range_diagnostic(&presentation_range)),
+            scroll_position: transcript_scroll_position_diagnostic(list_state.scroll_position()),
+            user_scrolled: surface.transcript_user_scrolled,
+            pending_thread_activation_label: surface
+                .pending_thread_activation_label()
+                .map(str::to_string)
+                .map(bounded_control_string),
+            older_history_loading: surface.older_history_loading(),
+            visible_row_count: visible_range.len(),
+            visible_rows,
+            visible_rows_truncated,
+        }
+    }
+
+    fn activity_panel_ui_state(&self) -> ActivityPanelUiState {
+        self.conversation_surface()
+            .map(|surface| ActivityPanelUiState {
+                mode: format!("{:?}", surface.tool_activity_panel_mode()).to_ascii_lowercase(),
+                visible: surface.tool_activity_panel_visible(),
+                row_count: surface.tool_activity_row_count(),
+                height_px: f64::from(f32::from(surface.tool_activity_panel_height())),
+            })
+            .unwrap_or_default()
+    }
+
+    fn popup_ui_state(&self, cx: &mut Context<Self>) -> PopupUiState {
+        let workspace_picker = self
+            .loaded_workspace()
+            .map(|loaded| &loaded.workspace_picker);
+        let surface = self.conversation_surface();
+        let transcript_preview_open = self
+            .transcript_panel
+            .read(cx)
+            .diagnostic_snapshot()
+            .visible_media
+            .preview
+            .transcript_image_preview
+            .is_some();
+
+        PopupUiState {
+            workspace_picker_open: workspace_picker.is_some_and(|picker| picker.is_open()),
+            workspace_picker_row_action_menu_open: workspace_picker
+                .is_some_and(|picker| picker.row_action_menu_is_open()),
+            workspace_picker_member_action_menu_open: workspace_picker
+                .is_some_and(|picker| picker.member_action_menu_is_open()),
+            workspace_picker_runtime_selector_open: workspace_picker
+                .is_some_and(|picker| picker.runtime_selector_dropdown_is_open()),
+            workspace_picker_rename_editor_open: workspace_picker
+                .is_some_and(|picker| picker.rename_editor_open()),
+            thread_selector_open: surface
+                .is_some_and(|surface| surface.thread_selector().is_open()),
+            graph_thread_link_menu_open: surface
+                .is_some_and(|surface| surface.graph_thread_link_menu().is_open()),
+            transcript_branch_menu_open: surface
+                .is_some_and(|surface| surface.transcript_branch_menu().is_open()),
+            checklist_thread_start_menu_open: surface
+                .is_some_and(|surface| surface.checklist_thread_start_menu().is_open()),
+            status_line_operations_open: surface
+                .is_some_and(|surface| surface.status_line_operations().is_open()),
+            composer_image_popup_open: self.composer_image_popup.is_some(),
+            transcript_image_preview_open: transcript_preview_open,
+            settings_window_visible: self.settings_window.is_visible(cx).ok(),
+            settings_window_transient_popup_open: self
+                .settings_window
+                .has_transient_popups(cx)
+                .ok(),
+        }
+    }
+
+    fn handle_switch_workspace_tool_result(
+        &mut self,
+        arguments: SwitchWorkspaceArguments,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<SwitchWorkspaceResult, (&'static str, String)> {
+        let workspace_id = arguments.workspace_id;
+        let requested_workspace_id =
+            BerylWorkspaceId::new(workspace_id.clone()).map_err(|error| {
+                (
+                    "invalid_arguments",
+                    format!("invalid workspaceId {workspace_id:?}: {error}"),
+                )
+            })?;
+        let Some(current_workspace_id) = self
+            .loaded_workspace()
+            .map(|loaded| loaded.workspace.id().clone())
+        else {
+            return Err((
+                "not_ready",
+                "Beryl has no loaded workspace to switch from.".to_string(),
+            ));
+        };
+
+        if current_workspace_id == requested_workspace_id {
+            return Ok(SwitchWorkspaceResult {
+                status: "already_selected".to_string(),
+                workspace_id: bounded_control_string(workspace_id),
+                message: None,
+                ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            });
+        }
+
+        if self.workspace_picker_action_receiver.is_some()
+            || self.workspace_receiver.is_some()
+            || matches!(self.state, ShellState::Opening(_))
+        {
+            return Err((
+                "workspace_transition_pending",
+                "Beryl already has workspace transition work in progress.".to_string(),
+            ));
+        }
+
+        if let Some(reason) = workspace_picker::workspace_picker_transition_path_disabled_reason(
+            workspace_picker::WorkspacePickerTransitionPath::SwitchWorkspace,
+            workspace_picker::WorkspacePickerTransitionBlockers {
+                edit_rollback_work: self.transcript_edit_commit_receiver.is_some(),
+                edit_replacement_work: self.transcript_edit_replacement_turn.is_some(),
+            },
+        ) {
+            return Err(("unsafe_state", reason.to_string()));
+        }
+
+        let target_known = self.loaded_workspace().is_some_and(|loaded| {
+            loaded
+                .known_workspaces
+                .iter()
+                .any(|workspace| workspace.id() == &requested_workspace_id)
+        });
+        if !target_known {
+            return Err((
+                "unknown_workspace",
+                format!(
+                    "Workspace id {:?} is not present in the current bounded workspace list.",
+                    requested_workspace_id.as_str()
+                ),
+            ));
+        }
+
+        self.cancel_thread_title_workers();
+        let Some(app_state) = self.app_state_for_worker() else {
+            return Err((
+                "not_ready",
+                "Beryl app state is unavailable for workspace switching.".to_string(),
+            ));
+        };
+        self.workspace_picker_action_receiver = Some(spawn_switch_workspace_worker(
+            app_state.startup_persistence,
+            app_state.workspace_persistence,
+            requested_workspace_id.clone(),
+            self.workspace_persistence_queue.flush(),
+            self.bootstrap.probe_timeout(),
+        ));
+        self.schedule_poll_if_needed(window, cx);
+        cx.notify();
+
+        Ok(SwitchWorkspaceResult {
+            status: "pending".to_string(),
+            workspace_id: bounded_control_string(workspace_id),
+            message: Some(
+                "Workspace activation started through the ordinary Beryl activation path."
+                    .to_string(),
+            ),
+            ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+        })
+    }
+
+    fn handle_switch_thread_tool_result(
+        &mut self,
+        arguments: SwitchThreadArguments,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<SwitchThreadResult, (&'static str, String)> {
+        let thread_id = arguments.thread_id;
+        if self
+            .conversation_surface()
+            .and_then(ConversationSurfaceState::selected_thread_id)
+            == Some(thread_id.as_str())
+        {
+            return Ok(SwitchThreadResult {
+                status: "already_selected".to_string(),
+                thread_id: bounded_control_string(thread_id),
+                message: None,
+                ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            });
+        }
+
+        let target = match self.gui_control_thread_activation_target(&thread_id) {
+            Ok(target) => target,
+            Err((kind, message)) => {
+                return Err((kind, message));
+            }
+        };
+        let started = self.activate_thread_selector_target(target, window, cx);
+        let (status, message) = match started {
+            ThreadActivationStart::Started => (
+                "pending".to_string(),
+                Some(
+                    "Thread activation started through the ordinary Beryl activation path."
+                        .to_string(),
+                ),
+            ),
+            ThreadActivationStart::AlreadySelected => ("already_selected".to_string(), None),
+            ThreadActivationStart::Rejected { kind, message } => {
+                return Err((kind, message));
+            }
+        };
+
+        Ok(SwitchThreadResult {
+            status,
+            thread_id: bounded_control_string(thread_id),
+            message,
+            ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+        })
+    }
+
+    fn gui_control_thread_activation_target(
+        &self,
+        thread_id: &str,
+    ) -> Result<ThreadSelectorActivationTarget, (&'static str, String)> {
+        let Some(surface) = self.conversation_surface() else {
+            return Err((
+                "not_ready",
+                "Beryl has no active conversation surface to switch threads.".to_string(),
+            ));
+        };
+        let requested = ConversationThreadId::new(thread_id.to_string());
+        let mut matches = Vec::new();
+        for group in surface.member_thread_inventory().snapshot().groups() {
+            for thread in group.threads() {
+                if thread.thread_id() == &requested {
+                    matches.push(ThreadSelectorActivationTarget {
+                        thread_id: requested.clone(),
+                        label: thread.title().to_string(),
+                        execution_target: thread.execution_target().clone(),
+                    });
+                }
+            }
+        }
+
+        match matches.len() {
+            1 => Ok(matches.remove(0)),
+            0 => Err((
+                "unknown_thread",
+                format!(
+                    "Thread id {thread_id:?} is not present in the current bounded member-thread inventory."
+                ),
+            )),
+            _ => Err((
+                "ambiguous_thread",
+                format!(
+                    "Thread id {thread_id:?} appears more than once in the current member-thread inventory."
+                ),
+            )),
+        }
+    }
+
+    fn handle_scroll_transcript_tool_result(
+        &mut self,
+        arguments: ScrollTranscriptArguments,
+        cx: &mut Context<Self>,
+    ) -> ScrollTranscriptResult {
+        let command = arguments.command;
+        let repeat = arguments.repeat;
+        let result = self.apply_transcript_scroll_command(command, repeat, cx);
+        let (status, message) = match result {
+            Ok(()) => ("applied".to_string(), None),
+            Err(message) => ("unavailable".to_string(), Some(message)),
+        };
+        ScrollTranscriptResult {
+            status,
+            command,
+            repeat,
+            message,
+            ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+        }
+    }
+
+    fn apply_transcript_scroll_command(
+        &mut self,
+        command: ScrollTranscriptCommand,
+        repeat: usize,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let Some(surface) = self.conversation_surface_mut() else {
+            return Err("Beryl has no active conversation surface.".to_string());
+        };
+        let list_state = surface.transcript_list_state();
+        let item_count = surface.transcript_presentation().len();
+        if item_count == 0 {
+            return Err("The selected transcript has no rows to scroll.".to_string());
+        }
+
+        match command {
+            ScrollTranscriptCommand::Top => {
+                list_state.scroll_to_position(ListScrollPosition::Content(ListOffset {
+                    item_ix: 0,
+                    offset_in_item: px(0.0),
+                }));
+                surface.release_transcript_submit_anchor();
+                surface.set_transcript_user_scrolled(true);
+            }
+            ScrollTranscriptCommand::Bottom => {
+                list_state.scroll_to_position(ListScrollPosition::Bottom);
+                surface.release_transcript_submit_anchor();
+                surface.set_transcript_user_scrolled(false);
+            }
+            ScrollTranscriptCommand::PageUp | ScrollTranscriptCommand::PageDown => {
+                let viewport_height = list_state.viewport_bounds().size.height;
+                if viewport_height <= px(0.0) {
+                    return Err(
+                        "The transcript viewport has not been measured yet, so page scrolling is unavailable."
+                            .to_string(),
+                    );
+                }
+                let direction = match command {
+                    ScrollTranscriptCommand::PageUp => -1.0_f32,
+                    ScrollTranscriptCommand::PageDown => 1.0_f32,
+                    ScrollTranscriptCommand::Top | ScrollTranscriptCommand::Bottom => 0.0,
+                };
+                for _ in 0..repeat {
+                    list_state.scroll_by(viewport_height * direction);
+                }
+                surface.release_transcript_submit_anchor();
+                let at_bottom = matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
+                surface.set_transcript_user_scrolled(!at_bottom);
+            }
+        }
+        self.note_scrollbar_activity(ScrollbarRegion::Transcript, cx);
+        self.notify_transcript_panel(cx);
+        Ok(())
+    }
+
+    fn handle_close_popups_tool_result(&mut self, cx: &mut Context<Self>) -> ClosePopupsResult {
+        let mut closed = Vec::new();
+
+        if self.composer_image_popup.is_some() {
+            self.close_composer_image_popup(cx);
+            closed.push("composer_image_popup".to_string());
+        }
+        self.transcript_panel.update(cx, |panel, cx| {
+            if panel.close_transient_popups_for_dynamic_tool(cx) {
+                closed.push("transcript_panel_popup".to_string());
+            }
+        });
+        match self.settings_window.close_transient_popups(cx) {
+            Ok(true) => closed.push(SETTINGS_WINDOW_POPUP_CLOSE_REASON.to_string()),
+            Ok(false) => {}
+            Err(error) => {
+                warn!(error = %error, "failed to close Beryl settings window transient popups");
+            }
+        }
+
+        if let Some(loaded) = self.loaded_workspace_mut() {
+            if loaded.workspace_picker.row_action_menu_is_open() {
+                loaded.workspace_picker.close_row_action_menu();
+                closed.push("workspace_picker_row_action_menu".to_string());
+            }
+            if loaded.workspace_picker.member_action_menu_is_open() {
+                loaded.workspace_picker.close_member_action_menu();
+                closed.push("workspace_picker_member_action_menu".to_string());
+            }
+            if loaded.workspace_picker.runtime_selector_dropdown_is_open() {
+                loaded.workspace_picker.close_runtime_selector_dropdown();
+                closed.push("workspace_picker_runtime_selector".to_string());
+            }
+            if loaded.workspace_picker.is_open() {
+                loaded.workspace_picker.close();
+                closed.push("workspace_picker".to_string());
+            }
+        }
+
+        if let Some(surface) = self.conversation_surface_mut() {
+            if surface.close_thread_selector() {
+                closed.push("thread_selector".to_string());
+            }
+            if surface.graph_thread_link_menu().is_open() {
+                surface.graph_thread_link_menu_mut().close();
+                closed.push("graph_thread_link_menu".to_string());
+            }
+            if surface.transcript_branch_menu().is_open() {
+                surface.transcript_branch_menu_mut().close();
+                closed.push("transcript_branch_menu".to_string());
+            }
+            if surface.checklist_thread_start_menu().is_open() {
+                surface.checklist_thread_start_menu_mut().close();
+                closed.push("checklist_thread_start_menu".to_string());
+            }
+            if surface.status_line_operations().is_open() {
+                surface.status_line_operations_mut().close();
+                closed.push("status_line_operations".to_string());
+            }
+        }
+
+        if !closed.is_empty() {
+            cx.notify();
+        }
+
+        ClosePopupsResult {
+            closed_count: closed.len(),
+            closed,
+            ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+        }
+    }
+
+    fn diagnostic_tool_snapshot(&self, cx: &mut Context<Self>) -> DiagnosticToolSnapshot {
+        let panel_snapshot = self.transcript_panel.read(cx).diagnostic_snapshot();
+        let mut retained_state = self.retained_state_snapshot();
+        self.add_text_input_retained_counts(&mut retained_state, cx);
+        panel_snapshot.add_retained_counts(&mut retained_state);
+        let mut visible_media = panel_snapshot.visible_media;
+        visible_media.preview.composer_image_preview = self.composer_image_preview_diagnostic();
+        let process = self.process_diagnostic_snapshot();
+        let memory = self.memory_diagnostic_snapshot(&process);
+        DiagnosticToolSnapshot {
+            process,
+            memory,
+            retained_state,
+            visible_media,
+            media_events: panel_snapshot.media_events,
+        }
+    }
+
+    fn process_diagnostic_snapshot(&self) -> ProcessDiagnosticSnapshot {
+        let selected_target = match &self.state {
+            ShellState::Ready(ready) => Some(&ready.execution_target),
+            _ => None,
+        };
+        let selected_workspace_id = self
+            .loaded_workspace()
+            .map(|loaded| loaded.workspace.id().as_str().to_string());
+        let selected_thread_id = self
+            .conversation_surface()
+            .and_then(ConversationSurfaceState::selected_thread_id)
+            .map(str::to_string);
+        let managed_backend_child_pids = self
+            .backend_servers
+            .iter()
+            .filter_map(|(target, server)| {
+                server
+                    .process_id()
+                    .map(|pid| ManagedBackendProcessDiagnostic {
+                        pid,
+                        runtime_target: runtime_target_diagnostic(target),
+                        selected: selected_target.is_some_and(|selected| selected == target),
+                    })
+            })
+            .take(32)
+            .collect();
+
+        ProcessDiagnosticSnapshot {
+            pid: std::process::id(),
+            executable_path: std::env::current_exe()
+                .ok()
+                .map(|path| bounded_diagnostic_string(path.display().to_string())),
+            beryl_home: self
+                .app_state
+                .as_ref()
+                .ok()
+                .map(ConfiguredAppState::home_display)
+                .map(bounded_diagnostic_string),
+            selected_workspace_id: selected_workspace_id.map(bounded_diagnostic_string),
+            selected_thread_id: selected_thread_id.map(bounded_diagnostic_string),
+            selected_runtime_target: selected_target.map(runtime_target_diagnostic),
+            managed_backend_child_pids,
+        }
+    }
+
+    fn memory_diagnostic_snapshot(
+        &self,
+        process: &ProcessDiagnosticSnapshot,
+    ) -> MemoryDiagnosticSnapshot {
+        let ui = MemoryDiagnosticUiCorrelation::from_process(process);
+        match memory_diagnostics::current_process_memory_snapshot() {
+            Ok(counters) => MemoryDiagnosticSnapshot {
+                counters: Some(counters),
+                unavailable_reason: None,
+                ui,
+            },
+            Err(error) => MemoryDiagnosticSnapshot {
+                counters: None,
+                unavailable_reason: Some(error.to_string()),
+                ui,
+            },
+        }
+    }
+
+    fn composer_image_preview_diagnostic(&self) -> Option<PreviewStateDiagnostic> {
+        let popup = self.composer_image_popup.as_ref()?;
+        let state = match &popup.mode {
+            ComposerImagePopupMode::Menu => "menu",
+            ComposerImagePopupMode::Preview => {
+                if popup.preview_image.is_some() {
+                    "loaded"
+                } else {
+                    "pending"
+                }
+            }
+        };
+        Some(PreviewStateDiagnostic {
+            state: state.to_string(),
+            compressed_bytes: (popup.preview_image_bytes > 0).then_some(popup.preview_image_bytes),
+        })
     }
 
     fn add_text_input_retained_counts(&self, snapshot: &mut RetainedStateSnapshot, cx: &App) {

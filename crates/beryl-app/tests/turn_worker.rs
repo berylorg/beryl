@@ -9,13 +9,16 @@ use std::{
 };
 
 pub use beryl_app::{
-    BERYL_DYNAMIC_TOOL_NAMESPACE, BerylWorkspacePersistence, LifecycleYieldOutcome,
-    NodeLeafDeleteRequest, NodeSubtreeDeleteRequest, ThreadRefUpsertRequest,
-    UPSERT_GRAPH_NODE_TOOL, WorkspaceGraphMutationCommit, WorkspaceGraphRevision,
-    WorkspaceGraphToolService, WorkspaceImageAsset, WorkspaceImageAssetStatus,
-    WorkspacePersistenceError, YIELD_TOOL, beryl_thread_start_options,
-    beryl_user_thread_start_options, dispatch_beryl_dynamic_tool_call_with_metadata,
-    dispatch_beryl_graph_dynamic_tool_call, dispatch_beryl_graph_dynamic_tool_call_with_metadata,
+    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
+    BerylWorkspacePersistence, LifecycleYieldOutcome, NodeLeafDeleteRequest,
+    NodeSubtreeDeleteRequest, ThreadRefUpsertRequest, UPSERT_GRAPH_NODE_TOOL,
+    WorkspaceGraphMutationCommit, WorkspaceGraphRevision, WorkspaceGraphToolService,
+    WorkspaceImageAsset, WorkspaceImageAssetStatus, WorkspacePersistenceError, YIELD_TOOL,
+    beryl_diagnostic_child_dynamic_tool_shell_response_timeout, beryl_thread_start_options,
+    beryl_user_thread_start_options, diagnostic_bridge_unavailable_response,
+    dispatch_beryl_dynamic_tool_call_with_metadata, dispatch_beryl_graph_dynamic_tool_call,
+    dispatch_beryl_graph_dynamic_tool_call_with_metadata, is_beryl_diagnostic_child_dynamic_tool,
+    is_beryl_diagnostic_dynamic_tool,
 };
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,
@@ -100,7 +103,8 @@ use shell::{
     turn_worker::{
         ThreadActivationBackend, TurnStreamBackend, activate_thread,
         automatic_thread_title_generation_is_eligible, handle_beryl_dynamic_tool_call,
-        stream_active_turn_events,
+        handle_beryl_dynamic_tool_call_with_shell_tools,
+        shell_dynamic_tool_request_channel_with_capacity_for_test, stream_active_turn_events,
     },
 };
 
@@ -322,6 +326,128 @@ fn stream_dynamic_tool_call_responds_and_keeps_streaming() {
     assert_eq!(backend.dynamic_tool_responses[0].0, request);
     assert!(backend.dynamic_tool_responses[0].1.success);
     assert_eq!(emitted, vec![turn_completed("thread_1", "turn_1")]);
+}
+
+#[test]
+fn shell_dynamic_tool_bridge_reports_busy_without_blocking_when_full() {
+    let request = dynamic_tool_call_request("read_ui_state", json!({ "limit": 1 }));
+    let (sender, _receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(0);
+    let sender = sender.with_response_timeout_for_test(Duration::from_secs(60));
+
+    let response = sender.request(&request);
+    let payload = response_json(&response);
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "shell_unavailable");
+    assert!(
+        payload["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("busy"))
+    );
+}
+
+#[test]
+fn timed_out_shell_dynamic_tool_request_cannot_be_claimed_later() {
+    let request = dynamic_tool_call_request("close_popups", json!({}));
+    let (sender, receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
+
+    let response = sender.request(&request);
+    let payload = response_json(&response);
+    let queued_request = receiver
+        .try_recv()
+        .expect("timed-out request should still be queued for stale-drop testing");
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "shell_unavailable");
+    assert!(!queued_request.try_claim());
+}
+
+#[test]
+fn local_gui_control_tool_call_is_not_forwarded_to_supervisor_shell_bridge() {
+    let request = dynamic_tool_call_request("read_ui_state", json!({ "limit": 1 }));
+    let (sender, receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("local_gui_control_removed").unwrap();
+    let mut graph_updates = Vec::new();
+
+    let handled = handle_beryl_dynamic_tool_call_with_shell_tools(
+        &service,
+        &workspace_id,
+        Some(&sender),
+        &request,
+        |update| graph_updates.push(update),
+    );
+    let response = handled.into_response();
+    let payload = response_json(&response);
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "unsupported_tool");
+    assert!(receiver.try_recv().is_err());
+    assert!(graph_updates.is_empty());
+
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_tool_call_is_forwarded_to_supervisor_shell_bridge() {
+    let request = dynamic_tool_call_request_with_namespace(
+        BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE,
+        "status",
+        json!({}),
+    );
+    let (sender, receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("diagnostic_child_forwarded").unwrap();
+    let mut graph_updates = Vec::new();
+
+    let handled = handle_beryl_dynamic_tool_call_with_shell_tools(
+        &service,
+        &workspace_id,
+        Some(&sender),
+        &request,
+        |update| graph_updates.push(update),
+    );
+    let response = handled.into_response();
+    let payload = response_json(&response);
+    let queued_request = receiver
+        .try_recv()
+        .expect("diagnostic child tool request should be queued for shell handling");
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "shell_unavailable");
+    assert_eq!(
+        queued_request.request().namespace(),
+        Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE)
+    );
+    assert_eq!(queued_request.request().tool(), "status");
+    assert!(graph_updates.is_empty());
+
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_stop_uses_extended_shell_response_timeout() {
+    let request = dynamic_tool_call_request_with_namespace(
+        BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE,
+        "stop",
+        json!({}),
+    );
+    let (sender, _receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
+
+    assert!(sender.response_timeout_for_request_for_test(&request) > Duration::from_secs(2));
 }
 
 #[test]
@@ -962,6 +1088,29 @@ fn dynamic_tool_call_request_with_identity(
     tool: &str,
     arguments: serde_json::Value,
 ) -> DynamicToolCallRequest {
+    dynamic_tool_call_request_with_namespace_and_identity(
+        "beryl", thread_id, turn_id, call_id, tool, arguments,
+    )
+}
+
+fn dynamic_tool_call_request_with_namespace(
+    namespace: &str,
+    tool: &str,
+    arguments: serde_json::Value,
+) -> DynamicToolCallRequest {
+    dynamic_tool_call_request_with_namespace_and_identity(
+        namespace, "thread_1", "turn_1", "call_1", tool, arguments,
+    )
+}
+
+fn dynamic_tool_call_request_with_namespace_and_identity(
+    namespace: &str,
+    thread_id: &str,
+    turn_id: &str,
+    call_id: &str,
+    tool: &str,
+    arguments: serde_json::Value,
+) -> DynamicToolCallRequest {
     parse_dynamic_tool_call_request(
         json!("dynamic-request-1"),
         "item/tool/call",
@@ -969,7 +1118,7 @@ fn dynamic_tool_call_request_with_identity(
             "threadId": thread_id,
             "turnId": turn_id,
             "callId": call_id,
-            "namespace": "beryl",
+            "namespace": namespace,
             "tool": tool,
             "arguments": arguments
         })),

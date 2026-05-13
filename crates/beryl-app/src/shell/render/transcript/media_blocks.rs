@@ -5,6 +5,7 @@ use gpui::{
     AnyElement, App, MouseButton, ObjectFit, Pixels, div, img, prelude::*, px, relative, rgb,
 };
 
+use crate::diagnostic_dynamic_tools::VisibleMediaItemDiagnostic;
 use crate::shell::transcript_branch_menu_state::TranscriptImageMenuTarget;
 use crate::shell::transcript_media::{
     TranscriptMediaCacheKey, TranscriptMediaLoadOutcome, TranscriptMediaRunAlignment,
@@ -115,6 +116,13 @@ fn render_media_item(
             .unwrap_or_else(|| "image (file unavailable)".to_string());
         return render_media_fallback_row(fallback);
     };
+
+    if let Some(item) = item {
+        context
+            .visible_media()
+            .borrow_mut()
+            .record_item(visible_media_diagnostic_item(item, outcome, width, height));
+    }
 
     let tile = div()
         .w(width)
@@ -424,5 +432,64 @@ fn pending_media_text(outcome: &TranscriptMediaLoadOutcome) -> String {
     match outcome {
         TranscriptMediaLoadOutcome::Pending { alt } => alt.to_string(),
         _ => "image".to_string(),
+    }
+}
+
+fn visible_media_diagnostic_item(
+    item: &ResolvedTranscriptMediaRenderItem,
+    outcome: Option<&TranscriptMediaLoadOutcome>,
+    displayed_width: gpui::Pixels,
+    displayed_height: gpui::Pixels,
+) -> VisibleMediaItemDiagnostic {
+    let loaded = outcome.and_then(TranscriptMediaLoadOutcome::loaded);
+    let dimensions = loaded.map(|image| image.natural_dimensions());
+    VisibleMediaItemDiagnostic {
+        row_identity: Some(item.identity.row_identity().to_string()),
+        key: item.identity.key().as_str().to_string(),
+        source_kind: transcript_media_source_kind(&item.source).to_string(),
+        outcome: transcript_media_outcome_label(outcome).to_string(),
+        format: loaded.map(|image| image_format_label(image.format()).to_string()),
+        compressed_bytes: loaded.map(|image| image.bytes().len()),
+        decoded_bytes_estimate: dimensions.map(|dimensions| {
+            (dimensions.width() as usize)
+                .saturating_mul(dimensions.height() as usize)
+                .saturating_mul(4)
+        }),
+        natural_width: dimensions.map(|dimensions| dimensions.width()),
+        natural_height: dimensions.map(|dimensions| dimensions.height()),
+        displayed_width: f64::from(displayed_width),
+        displayed_height: f64::from(displayed_height),
+        image_id: loaded.map(|image| image.image_id()),
+    }
+}
+
+fn transcript_media_source_kind(source: &TranscriptMediaSource) -> &'static str {
+    match source {
+        TranscriptMediaSource::MarkdownImage { .. } => "markdown_image",
+        TranscriptMediaSource::NativeImageGeneration { .. } => "native_generated_image",
+    }
+}
+
+fn transcript_media_outcome_label(outcome: Option<&TranscriptMediaLoadOutcome>) -> &'static str {
+    match outcome {
+        Some(TranscriptMediaLoadOutcome::Pending { .. }) => "pending",
+        Some(TranscriptMediaLoadOutcome::Loaded(_)) => "loaded",
+        Some(TranscriptMediaLoadOutcome::RenderNotSupported { .. }) => "render_not_supported",
+        Some(TranscriptMediaLoadOutcome::TooLarge { .. }) => "too_large",
+        Some(TranscriptMediaLoadOutcome::FileUnavailable { .. }) => "file_unavailable",
+        Some(TranscriptMediaLoadOutcome::PathNotAllowed { .. }) => "path_not_allowed",
+        None => "missing",
+    }
+}
+
+fn image_format_label(format: gpui::ImageFormat) -> &'static str {
+    match format {
+        gpui::ImageFormat::Png => "png",
+        gpui::ImageFormat::Jpeg => "jpeg",
+        gpui::ImageFormat::Webp => "webp",
+        gpui::ImageFormat::Gif => "gif",
+        gpui::ImageFormat::Svg => "svg",
+        gpui::ImageFormat::Bmp => "bmp",
+        gpui::ImageFormat::Tiff => "tiff",
     }
 }

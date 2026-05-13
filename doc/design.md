@@ -308,6 +308,22 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - A successful `yield` tool response acknowledges that Beryl accepted the lifecycle request; it is not itself turn completion, compaction completion, resumed-turn start, or proof that the reported phase or plan state is correct.
 - At most one lifecycle yield outcome may control a backend turn. If multiple yield calls occur in one turn, Beryl must apply a deterministic host-owned policy and must not let later tool calls race lifecycle decisions.
 
+### AI Diagnostics And Diagnostic Child Control
+
+- Beryl may expose Beryl-owned app-server dynamic tools on Beryl-created conversation threads to support operator-approved debugging, live testing, and resource investigation.
+- Supervisor diagnostic tools are observation tools for the Beryl instance that registered them. They may report bounded snapshots of Beryl process identity, platform memory counters, active workspace and thread identity, managed backend child process ids, retained GUI projections, visible transcript media, and recent media lifecycle events, but they must not mutate backend conversation history, semantic graph state, workspace persistence, settings, transcript content, or durable image assets.
+- Supervisor diagnostic tool output must be bounded by deterministic item and byte caps. Large strings, paths, labels, error text, media keys, event details, and lists must be truncated or omitted rather than returned without limit.
+- Supervisor diagnostic tools must not retain image bytes, decoded pixel buffers, GPUI image handles, process handles, backend responses, or transcript payloads solely to make later diagnostics more detailed. Recent diagnostic event logs must be metadata-only bounded rings.
+- Process and memory diagnostics may expose platform-specific counters. Windows builds should expose the Beryl GUI process id, child backend process ids when known, Private Bytes, Working Set, commit-related counters when available, handle count, and thread count. Unsupported counters must be reported as unavailable rather than guessed.
+- Visible-media diagnostics may report only the currently retained or visible GUI projection state. They must not load transcript history pages, read image files, decode images, or create GPUI image assets just to answer a diagnostic query.
+- Beryl may expose a separate API-valid dot-free diagnostic child-control dynamic-tool namespace implemented by the supervisor Beryl. These tools control at most one diagnostic child Beryl process and report child lifecycle, process, memory, retained-state, visible-media, media-event, UI-state, and bounded GUI-control outcomes.
+- A diagnostic child Beryl process must run with an explicit Beryl home directory that is distinct from the supervisor Beryl home directory. The supervisor must reject launching a child against the supervisor home.
+- Supervisor-to-child control uses a Beryl-owned bounded local control protocol over the child process stdio pipes. Child stdout is reserved for protocol frames; diagnostic child logs must use stderr or files.
+- Diagnostic child GUI-control commands may switch child workspaces or threads, scroll the child transcript, and close child transient popups through the same child-owned UI paths used by direct interaction. They must reject ambiguous targets and report timeout or partial state instead of blocking indefinitely.
+- Diagnostic child GUI-control commands must not synthesize user-authored transcript input, submit turns, interrupt turns, edit backend history, apply settings, mutate semantic graph data, or bypass existing availability checks for workspace activation, thread activation, scrolling, and popup closing.
+- Diagnostic child control is independent of the child app-server turn lifecycle. A supervisor command may reach the child GUI while the child has an active turn because the command is delivered over the child control channel rather than through that child turn's dynamic-tool stream.
+- Beryl-owned dynamic-tool results use the existing app-server dynamic tool-call response contract for the supervisor-facing tool call. The child-control protocol remains an internal Beryl process boundary rather than a direct CAS connection to the child.
+
 ### Rendering Model
 
 - Rich transcript content is modeled as Markdown text plus backend metadata, not as a separate GUI-owned rich document format.

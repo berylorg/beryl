@@ -2,14 +2,15 @@ use std::time::Duration;
 
 use anyhow::Result;
 use beryl::cli::BootstrapCli;
-use beryl_app::{AppBootstrap, run_app};
+use beryl_app::{AppBootstrap, run_app, run_diagnostic_target_stdio};
 use beryl_model::workspace::WorkspaceId;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
+    let cli = BootstrapCli::parse_from_env();
     init_tracing();
-    run(BootstrapCli::parse_from_env())
+    run(cli)
 }
 
 fn run(cli: BootstrapCli) -> Result<()> {
@@ -35,10 +36,15 @@ fn run(cli: BootstrapCli) -> Result<()> {
         probe_timeout_ms = cli.probe_timeout_ms(),
         beryl_home_dir = %beryl_home_dir_label,
         memory_milestones = cli.memory_milestones(),
+        diagnostic_target_stdio = cli.diagnostic_target_stdio(),
         "starting beryl workspace shell"
     );
 
-    run_app(bootstrap);
+    if cli.diagnostic_target_stdio() {
+        run_diagnostic_target_stdio(bootstrap);
+    } else {
+        run_app(bootstrap);
+    }
     Ok(())
 }
 
@@ -46,6 +52,7 @@ fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
+        .with_writer(std::io::stderr)
         .with_target(false)
         .init();
 }

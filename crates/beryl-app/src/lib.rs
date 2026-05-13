@@ -26,9 +26,15 @@
 mod appearance;
 mod backend_failure;
 mod beryl_home_dir;
+mod diagnostic_child_dynamic_tools;
+mod diagnostic_child_protocol;
+mod diagnostic_child_supervisor;
+mod diagnostic_child_target;
+mod diagnostic_dynamic_tools;
 mod dynamic_tools;
 mod graph_dynamic_tools;
 mod graph_tools;
+mod gui_control_dynamic_tools;
 mod lifecycle_dynamic_tools;
 mod member_thread_inventory;
 mod memory_diagnostics;
@@ -153,6 +159,10 @@ pub fn run_app(bootstrap: AppBootstrap) {
     shell::run_app(bootstrap);
 }
 
+pub fn run_diagnostic_target_stdio(bootstrap: AppBootstrap) {
+    shell::run_diagnostic_target_stdio(bootstrap);
+}
+
 pub use appearance::{
     AppearanceButtonSettings, AppearanceButtonStateSettings, AppearanceChromeSettings,
     AppearanceForegroundSettings, AppearanceInputSettings, AppearanceRoleSettings,
@@ -161,6 +171,22 @@ pub use appearance::{
     ParsedHexColor,
 };
 pub use beryl_home_dir::{BerylHomeDir, BerylHomeDirError};
+pub use diagnostic_child_dynamic_tools::{
+    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL,
+    DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL, DIAGNOSTIC_CHILD_READ_MEMORY_TOOL,
+    DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL,
+    DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL, DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL,
+    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
+    DIAGNOSTIC_CHILD_STATUS_TOOL, DIAGNOSTIC_CHILD_STOP_TOOL, DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL,
+    DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
+    beryl_diagnostic_child_dynamic_tool_shell_response_timeout,
+    beryl_diagnostic_child_dynamic_tool_specs, is_beryl_diagnostic_child_dynamic_tool,
+};
+pub use diagnostic_dynamic_tools::{
+    READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
+    READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL, beryl_diagnostic_dynamic_tool_specs,
+    diagnostic_bridge_unavailable_response, is_beryl_diagnostic_dynamic_tool,
+};
 pub use dynamic_tools::{
     BERYL_DYNAMIC_TOOL_NAMESPACE, BerylDynamicToolDispatch, DynamicToolRegistryError,
     beryl_dynamic_tool_specs, dispatch_beryl_dynamic_tool_call_with_metadata,

@@ -4,7 +4,7 @@ use super::{
     execution_detail::{TranscriptImagePathResolver, UserInputFragment},
     status_line::ThreadTurnDefaults,
     transcript_edit_commit_worker::TranscriptEditCommitRequest,
-    turn_worker::spawn_turn_worker,
+    turn_worker::{shell_dynamic_tool_request_channel, spawn_turn_worker},
 };
 use crate::text_input::TextInputSelectionAtom;
 use gpui::{Context, Window};
@@ -115,6 +115,8 @@ impl ShellView {
             request.turn_options().clone(),
             turn_context_defaults,
         );
+        let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
+        self.shell_tool_receiver = Some(shell_tool_receiver);
         self.turn_receiver = Some(spawn_turn_worker(
             persistence,
             connector,
@@ -124,6 +126,7 @@ impl ShellView {
             request.automatic_title_generation_allowed(),
             vec![fragment],
             turn_options,
+            Some(shell_tool_sender),
             self.bootstrap.probe_timeout(),
         ));
         true
