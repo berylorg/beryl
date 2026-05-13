@@ -85,6 +85,10 @@ impl TranscriptMediaRenderContext {
         event.row_identity = self.row_identity.clone();
         event.source_kind = Some(transcript_media_source_kind(&source).to_string());
         event.outcome = Some(transcript_media_outcome_label(&lookup.outcome).to_string());
+        if let Some(image) = lookup.outcome.loaded() {
+            event.image_id = Some(image.image_id());
+            event.image_asset_key_hash = Some(image.image_asset_key_hash());
+        }
         if load_scheduled {
             event.detail = Some("load_scheduled".to_string());
         }
@@ -167,6 +171,17 @@ fn schedule_media_load(
         async move {
             let completion = load_task.await;
             let _ = panel.update(&mut cx, |view, cx| {
+                let loaded_diagnostic = completion.loaded_image().map(|image| {
+                    let dimensions = image.natural_dimensions();
+                    (
+                        image.format().mime_type().to_string(),
+                        image.bytes().len(),
+                        dimensions.width(),
+                        dimensions.height(),
+                        image.image_id(),
+                        image.image_asset_key_hash(),
+                    )
+                });
                 let result = view.media_cache.borrow_mut().complete_load(completion);
                 let mut event = MediaDiagnosticEvent::new("transcript_media_load_completed");
                 event.outcome = Some(
@@ -180,6 +195,27 @@ fn schedule_media_load(
                     .to_string(),
                 );
                 event.row_identity = row_identity.clone();
+                if let Some((
+                    format,
+                    compressed_bytes,
+                    natural_width,
+                    natural_height,
+                    image_id,
+                    image_asset_key_hash,
+                )) = loaded_diagnostic
+                {
+                    event.format = Some(format);
+                    event.compressed_bytes = Some(compressed_bytes);
+                    event.decoded_bytes_estimate = Some(
+                        (natural_width as usize)
+                            .saturating_mul(natural_height as usize)
+                            .saturating_mul(4),
+                    );
+                    event.natural_width = Some(natural_width);
+                    event.natural_height = Some(natural_height);
+                    event.image_id = Some(image_id);
+                    event.image_asset_key_hash = Some(image_asset_key_hash);
+                }
                 events.borrow_mut().record(event);
                 release_evicted_media_images(result.evicted_images, events.clone(), cx);
                 if let Some(request) = result.follow_up_request {

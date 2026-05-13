@@ -1,6 +1,10 @@
 use std::{collections::VecDeque, ops::Range};
 
 use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolSpec};
+use gpui::{
+    RendererDiagnosticSnapshot as GpuiRendererDiagnosticSnapshot,
+    WindowRendererDiagnosticSnapshot as GpuiWindowRendererDiagnosticSnapshot,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -11,6 +15,7 @@ use crate::{
 
 pub const READ_PROCESS_DIAGNOSTICS_TOOL: &str = "read_process_diagnostics";
 pub const READ_MEMORY_DIAGNOSTICS_TOOL: &str = "read_memory_diagnostics";
+pub const READ_RENDERER_DIAGNOSTICS_TOOL: &str = "read_renderer_diagnostics";
 pub const READ_RETAINED_STATE_SUMMARY_TOOL: &str = "read_retained_state_summary";
 pub const READ_VISIBLE_MEDIA_TOOL: &str = "read_visible_media";
 pub const READ_MEDIA_EVENTS_TOOL: &str = "read_media_events";
@@ -19,6 +24,7 @@ pub(crate) const DEFAULT_VISIBLE_MEDIA_LIMIT: usize = 32;
 pub(crate) const MAX_VISIBLE_MEDIA_LIMIT: usize = 64;
 pub(crate) const DEFAULT_MEDIA_EVENT_LIMIT: usize = 64;
 pub(crate) const MAX_MEDIA_EVENT_LIMIT: usize = 128;
+const MAX_RENDERER_DIAGNOSTIC_WINDOWS: usize = 16;
 const MEDIA_EVENT_RING_CAPACITY: usize = 256;
 const MAX_DIAGNOSTIC_STRING_BYTES: usize = 512;
 
@@ -27,6 +33,7 @@ const MAX_DIAGNOSTIC_STRING_BYTES: usize = 512;
 pub(crate) struct DiagnosticToolSnapshot {
     pub process: ProcessDiagnosticSnapshot,
     pub memory: MemoryDiagnosticSnapshot,
+    pub renderer: RendererDiagnosticSnapshot,
     pub retained_state: RetainedStateSnapshot,
     pub visible_media: VisibleMediaSnapshot,
     pub media_events: MediaEventSnapshot,
@@ -76,6 +83,122 @@ pub(crate) struct MemoryDiagnosticUiCorrelation {
     pub selected_runtime_target: Option<RuntimeTargetDiagnostic>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RendererDiagnosticSnapshot {
+    pub target: ProcessDiagnosticSnapshot,
+    pub shell_window: ShellWindowRendererDiagnostic,
+    pub renderer: GpuiRendererDiagnosticSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ShellWindowRendererDiagnostic {
+    pub window_id: u64,
+    pub matched_renderer_window: bool,
+    pub active: Option<bool>,
+    pub logical_width: Option<f64>,
+    pub logical_height: Option<f64>,
+    pub device_width: Option<u32>,
+    pub device_height: Option<u32>,
+    pub scale_factor: Option<f32>,
+    pub surface_usable: Option<bool>,
+    pub renderer_attribution_ready: bool,
+    pub unready_reason: Option<String>,
+}
+
+impl ShellWindowRendererDiagnostic {
+    pub(crate) fn from_renderer_window(
+        window_id: u64,
+        window: Option<&GpuiWindowRendererDiagnosticSnapshot>,
+    ) -> Self {
+        let Some(window) = window else {
+            return Self {
+                window_id,
+                matched_renderer_window: false,
+                active: None,
+                logical_width: None,
+                logical_height: None,
+                device_width: None,
+                device_height: None,
+                scale_factor: None,
+                surface_usable: None,
+                renderer_attribution_ready: false,
+                unready_reason: Some("shell_window_not_in_renderer_snapshot".to_string()),
+            };
+        };
+        let unready_reason = shell_renderer_unready_reason(window);
+        Self {
+            window_id,
+            matched_renderer_window: true,
+            active: Some(window.active),
+            logical_width: Some(window.logical_width),
+            logical_height: Some(window.logical_height),
+            device_width: Some(window.device_width),
+            device_height: Some(window.device_height),
+            scale_factor: Some(window.scale_factor),
+            surface_usable: Some(window.surface_usable),
+            renderer_attribution_ready: unready_reason.is_none(),
+            unready_reason,
+        }
+    }
+}
+
+pub(crate) fn renderer_snapshot_with_shell_window(
+    target: ProcessDiagnosticSnapshot,
+    mut renderer: GpuiRendererDiagnosticSnapshot,
+    shell_window_snapshot: GpuiWindowRendererDiagnosticSnapshot,
+) -> RendererDiagnosticSnapshot {
+    let shell_window_id = shell_window_snapshot.window_id;
+    if let Some(window) = renderer
+        .windows
+        .iter_mut()
+        .find(|window| window.window_id == shell_window_id)
+    {
+        *window = shell_window_snapshot;
+    } else {
+        renderer.window_count = renderer.window_count.saturating_add(1);
+        renderer.windows.insert(0, shell_window_snapshot);
+        if renderer.windows.len() > MAX_RENDERER_DIAGNOSTIC_WINDOWS {
+            renderer.windows.truncate(MAX_RENDERER_DIAGNOSTIC_WINDOWS);
+            renderer.truncated = true;
+        }
+    }
+    let shell_window = ShellWindowRendererDiagnostic::from_renderer_window(
+        shell_window_id,
+        renderer
+            .windows
+            .iter()
+            .find(|window| window.window_id == shell_window_id),
+    );
+    RendererDiagnosticSnapshot {
+        target,
+        shell_window,
+        renderer,
+    }
+}
+
+fn shell_renderer_unready_reason(window: &GpuiWindowRendererDiagnosticSnapshot) -> Option<String> {
+    if !window.surface_usable {
+        return Some(
+            window
+                .surface_unusable_reason
+                .clone()
+                .unwrap_or_else(|| "surface_unusable".to_string()),
+        );
+    }
+    if window.device_width == 0 || window.device_height == 0 {
+        return Some("zero_device_size".to_string());
+    }
+    if window.logical_width <= 0.0 || window.logical_height <= 0.0 {
+        return Some("zero_logical_size".to_string());
+    }
+    if !window.active {
+        return Some("shell_window_inactive".to_string());
+    }
+    None
+}
+
 impl MemoryDiagnosticUiCorrelation {
     pub(crate) fn from_process(process: &ProcessDiagnosticSnapshot) -> Self {
         Self {
@@ -121,6 +244,7 @@ pub(crate) struct VisibleMediaItemDiagnostic {
     pub displayed_width: f64,
     pub displayed_height: f64,
     pub image_id: Option<u64>,
+    pub image_asset_key_hash: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -161,6 +285,7 @@ pub(crate) struct MediaDiagnosticEvent {
     pub natural_width: Option<u32>,
     pub natural_height: Option<u32>,
     pub image_id: Option<u64>,
+    pub image_asset_key_hash: Option<u64>,
     pub image_count: Option<usize>,
     pub detail: Option<String>,
 }
@@ -285,6 +410,7 @@ impl MediaDiagnosticEvent {
             natural_width: None,
             natural_height: None,
             image_id: None,
+            image_asset_key_hash: None,
             image_count: None,
             detail: None,
         }
@@ -311,6 +437,11 @@ pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
         DynamicToolSpec::new(
             READ_MEMORY_DIAGNOSTICS_TOOL,
             "Read bounded Beryl GUI process memory counters and related UI labels.",
+            empty_object_schema(),
+        ),
+        DynamicToolSpec::new(
+            READ_RENDERER_DIAGNOSTICS_TOOL,
+            "Read bounded Beryl GUI renderer resource counters and byte estimates.",
             empty_object_schema(),
         ),
         DynamicToolSpec::new(
@@ -345,6 +476,7 @@ pub fn is_beryl_diagnostic_dynamic_tool(request: &DynamicToolCallRequest) -> boo
             request.tool(),
             READ_PROCESS_DIAGNOSTICS_TOOL
                 | READ_MEMORY_DIAGNOSTICS_TOOL
+                | READ_RENDERER_DIAGNOSTICS_TOOL
                 | READ_RETAINED_STATE_SUMMARY_TOOL
                 | READ_VISIBLE_MEDIA_TOOL
                 | READ_MEDIA_EVENTS_TOOL
@@ -388,6 +520,10 @@ fn diagnostic_tool_result(
         READ_MEMORY_DIAGNOSTICS_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok(json!(snapshot.memory))
+        }
+        READ_RENDERER_DIAGNOSTICS_TOOL => {
+            parse_arguments::<EmptyArguments>(request.arguments())?;
+            Ok(json!(snapshot.renderer))
         }
         READ_RETAINED_STATE_SUMMARY_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;

@@ -460,6 +460,7 @@ fn visible_media_diagnostic_item(
         displayed_width: f64::from(displayed_width),
         displayed_height: f64::from(displayed_height),
         image_id: loaded.map(|image| image.image_id()),
+        image_asset_key_hash: loaded.map(|image| image.image_asset_key_hash()),
     }
 }
 

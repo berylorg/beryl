@@ -40,6 +40,8 @@ pub const DIAGNOSTIC_CHILD_STOP_TOOL: &str = "stop";
 pub const DIAGNOSTIC_CHILD_STATUS_TOOL: &str = "status";
 pub const DIAGNOSTIC_CHILD_READ_PROCESS_TOOL: &str = "read_process";
 pub const DIAGNOSTIC_CHILD_READ_MEMORY_TOOL: &str = "read_memory";
+pub const DIAGNOSTIC_CHILD_READ_RENDERER_TOOL: &str = "read_renderer";
+pub const DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL: &str = "prepare_renderer_window";
 pub const DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL: &str = "read_ui_state";
 pub const DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL: &str = "read_retained_state";
 pub const DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL: &str = "read_visible_media";
@@ -87,6 +89,16 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
         diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_READ_MEMORY_TOOL,
             "Read bounded process memory counters from the diagnostic child Beryl.",
+            empty_object_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
+            "Read bounded renderer resource counters and byte estimates from the diagnostic child Beryl.",
+            read_renderer_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL,
+            "Activate, resize, and refresh the diagnostic child's shell window before renderer attribution.",
             empty_object_schema(),
         ),
         diagnostic_child_tool_spec(
@@ -174,6 +186,8 @@ pub fn is_beryl_diagnostic_child_dynamic_tool(request: &DynamicToolCallRequest) 
                 | DIAGNOSTIC_CHILD_STATUS_TOOL
                 | DIAGNOSTIC_CHILD_READ_PROCESS_TOOL
                 | DIAGNOSTIC_CHILD_READ_MEMORY_TOOL
+                | DIAGNOSTIC_CHILD_READ_RENDERER_TOOL
+                | DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL
                 | DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL
                 | DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
                 | DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
@@ -296,6 +310,8 @@ fn diagnostic_child_tool_result(
         }
         DIAGNOSTIC_CHILD_READ_PROCESS_TOOL
         | DIAGNOSTIC_CHILD_READ_MEMORY_TOOL
+        | DIAGNOSTIC_CHILD_READ_RENDERER_TOOL
+        | DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL
         | DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL
         | DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
         | DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
@@ -333,6 +349,18 @@ fn child_command_and_params(
         DIAGNOSTIC_CHILD_READ_MEMORY_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok((DiagnosticChildCommand::ReadMemory, json!({})))
+        }
+        DIAGNOSTIC_CHILD_READ_RENDERER_TOOL => {
+            let arguments = parse_arguments::<ReadRendererArguments>(request.arguments())?;
+            if arguments.prepare_window.unwrap_or(false) {
+                Ok((DiagnosticChildCommand::PrepareRendererWindow, json!({})))
+            } else {
+                Ok((DiagnosticChildCommand::ReadRenderer, json!({})))
+            }
+        }
+        DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL => {
+            parse_arguments::<EmptyArguments>(request.arguments())?;
+            Ok((DiagnosticChildCommand::PrepareRendererWindow, json!({})))
         }
         DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;
@@ -770,6 +798,12 @@ struct StartArguments {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReadRendererArguments {
+    prepare_window: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LimitedReadArguments {
     limit: Option<usize>,
 }
@@ -836,6 +870,20 @@ fn start_schema() -> Value {
             }
         },
         "required": ["berylHomeDir"],
+        "additionalProperties": false
+    })
+}
+
+fn read_renderer_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "prepareWindow": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, first activate, resize, and refresh the diagnostic child's shell window before returning renderer diagnostics."
+            }
+        },
         "additionalProperties": false
     })
 }

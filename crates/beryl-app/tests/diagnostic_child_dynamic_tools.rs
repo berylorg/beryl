@@ -279,7 +279,8 @@ use beryl_backend::{
 };
 use diagnostic_child_dynamic_tools::{
     BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
-    DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
+    DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL, DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL,
+    DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
     DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
     DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
     DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
@@ -480,6 +481,13 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
         DIAGNOSTIC_CHILD_START_TURN_TOOL,
         json!({ "text": "diagnostic turn" }),
     );
+    let renderer_request = tool_request(DIAGNOSTIC_CHILD_READ_RENDERER_TOOL, json!({}));
+    let renderer_prepare_alias_request = tool_request(
+        DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
+        json!({ "prepareWindow": true }),
+    );
+    let prepare_renderer_request =
+        tool_request(DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL, json!({}));
 
     let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
         &mut supervisor,
@@ -496,8 +504,26 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
         &supervisor_home,
         &turn_request,
     );
+    let renderer_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &renderer_request,
+    );
+    let renderer_prepare_alias_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &renderer_prepare_alias_request,
+    );
+    let prepare_renderer_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &prepare_renderer_request,
+    );
     let list_payload = response_json(&list_response);
     let turn_payload = response_json(&turn_response);
+    let renderer_payload = response_json(&renderer_response);
+    let renderer_prepare_alias_payload = response_json(&renderer_prepare_alias_response);
+    let prepare_renderer_payload = response_json(&prepare_renderer_response);
 
     assert!(list_response.success);
     assert_eq!(list_payload["result"]["command"], "list_workspace_threads");
@@ -505,6 +531,18 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
     assert!(turn_response.success);
     assert_eq!(turn_payload["result"]["command"], "start_turn");
     assert_eq!(turn_payload["result"]["params"]["text"], "diagnostic turn");
+    assert!(renderer_response.success);
+    assert_eq!(renderer_payload["result"]["command"], "read_renderer");
+    assert!(renderer_prepare_alias_response.success);
+    assert_eq!(
+        renderer_prepare_alias_payload["result"]["command"],
+        "prepare_renderer_window"
+    );
+    assert!(prepare_renderer_response.success);
+    assert_eq!(
+        prepare_renderer_payload["result"]["command"],
+        "prepare_renderer_window"
+    );
 
     child.close().unwrap();
     root.close().unwrap();
@@ -586,11 +624,20 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL)
         .unwrap();
+    let renderer_schema = specs
+        .iter()
+        .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_RENDERER_TOOL)
+        .unwrap();
     let wait_schema = specs
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL)
         .unwrap();
 
+    assert_eq!(
+        renderer_schema.input_schema["properties"]["prepareWindow"]["type"],
+        "boolean"
+    );
+    assert_eq!(renderer_schema.input_schema["additionalProperties"], false);
     assert_eq!(
         list_schema.input_schema["properties"]["limit"]["maximum"],
         diagnostic_child_control::MAX_DIAGNOSTIC_THREAD_LIST_LIMIT

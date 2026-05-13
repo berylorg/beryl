@@ -6,17 +6,21 @@ use std::fs;
 use beryl_app::{
     BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
     BERYL_GRAPH_DYNAMIC_TOOL_NAMESPACE, BerylWorkspacePersistence,
-    DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL, DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL,
+    DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL, DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL,
+    DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
+    DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL, DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL,
     DIAGNOSTIC_CHILD_READ_MEMORY_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
-    DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL, DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL,
-    DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
-    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL, DIAGNOSTIC_CHILD_STOP_TOOL,
-    DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL, DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
+    DIAGNOSTIC_CHILD_READ_RENDERER_TOOL, DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL,
+    DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL, DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL,
+    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
+    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
+    DIAGNOSTIC_CHILD_STOP_TOOL, DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL,
+    DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL, DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
     LifecycleYieldOutcome, READ_CHECKLIST_TOOL, READ_GRAPH_NEIGHBORHOOD_TOOL,
     READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
-    READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL, READ_WORKSPACE_GRAPH_SUMMARY_TOOL,
-    SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL, UPSERT_GRAPH_NODE_TOOL,
-    UPSERT_GRAPH_SOFT_LINK_TOOL, WorkspaceGraphToolService, YIELD_TOOL,
+    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL,
+    READ_WORKSPACE_GRAPH_SUMMARY_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL,
+    UPSERT_GRAPH_NODE_TOOL, UPSERT_GRAPH_SOFT_LINK_TOOL, WorkspaceGraphToolService, YIELD_TOOL,
     beryl_diagnostic_child_dynamic_tool_specs, beryl_dynamic_tool_specs,
     beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
     beryl_user_thread_start_options, dispatch_beryl_dynamic_tool_call_with_metadata,
@@ -80,6 +84,10 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             ),
             (
                 Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_RENDERER_DIAGNOSTICS_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
                 READ_RETAINED_STATE_SUMMARY_TOOL
             ),
             (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_VISIBLE_MEDIA_TOOL),
@@ -106,6 +114,14 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             ),
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_RENDERER_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
                 DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL
             ),
             (
@@ -119,6 +135,30 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
                 DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_START_TURN_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL
             ),
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
@@ -229,6 +269,10 @@ fn diagnostic_tool_specs_are_bounded_and_read_only() {
         .iter()
         .find(|tool| tool.name == READ_VISIBLE_MEDIA_TOOL)
         .expect("visible-media diagnostics tool must be registered");
+    let renderer = tools
+        .iter()
+        .find(|tool| tool.name == READ_RENDERER_DIAGNOSTICS_TOOL)
+        .expect("renderer diagnostics tool must be registered");
     let events = tools
         .iter()
         .find(|tool| tool.name == READ_MEDIA_EVENTS_TOOL)
@@ -239,6 +283,8 @@ fn diagnostic_tool_specs_are_bounded_and_read_only() {
         Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
     );
     assert_eq!(visible.defer_loading, Some(false));
+    assert_eq!(renderer.defer_loading, Some(false));
+    assert_eq!(renderer.input_schema["additionalProperties"], false);
     assert_eq!(visible.input_schema["additionalProperties"], false);
     assert_eq!(visible.input_schema["properties"]["limit"]["maximum"], 64);
     assert_eq!(events.input_schema["additionalProperties"], false);

@@ -63,8 +63,9 @@ use crate::diagnostic_dynamic_tools::{
     DEFAULT_MEDIA_EVENT_LIMIT, DEFAULT_VISIBLE_MEDIA_LIMIT, DiagnosticToolSnapshot,
     MAX_MEDIA_EVENT_LIMIT, MAX_VISIBLE_MEDIA_LIMIT, ManagedBackendProcessDiagnostic,
     MemoryDiagnosticSnapshot, MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic,
-    ProcessDiagnosticSnapshot, RuntimeTargetDiagnostic, bounded_diagnostic_string,
-    dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result, visible_media_result,
+    ProcessDiagnosticSnapshot, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
+    bounded_diagnostic_string, dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result,
+    renderer_snapshot_with_shell_window, visible_media_result,
 };
 use crate::gui_control_dynamic_tools::{
     ActivityPanelUiState, BackgroundWorkUiState, CancellableTurnUiState, ClosePopupsResult,
@@ -6188,7 +6189,7 @@ impl ShellView {
                             cx,
                         )
                     } else {
-                        let snapshot = self.diagnostic_tool_snapshot(cx);
+                        let snapshot = self.diagnostic_tool_snapshot(window, cx);
                         dispatch_beryl_diagnostic_dynamic_tool_call(request.request(), snapshot)
                     };
                     request.respond(response);
@@ -12248,18 +12249,33 @@ impl ShellView {
                 let process = self.process_diagnostic_snapshot();
                 Ok(json!(self.memory_diagnostic_snapshot(&process)))
             }
+            DiagnosticChildCommand::ReadRenderer => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                let snapshot = self.diagnostic_tool_snapshot(window, cx);
+                Ok(json!(snapshot.renderer))
+            }
+            DiagnosticChildCommand::PrepareRendererWindow => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                Ok(json!(
+                    self.handle_prepare_renderer_window_tool_result(window, cx)
+                ))
+            }
             DiagnosticChildCommand::ReadRetainedState => {
                 parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
                     request.params(),
                 )?;
-                let snapshot = self.diagnostic_tool_snapshot(cx);
+                let snapshot = self.diagnostic_tool_snapshot(window, cx);
                 Ok(json!({ "retainedState": snapshot.retained_state }))
             }
             DiagnosticChildCommand::ReadVisibleMedia => {
                 let arguments = parse_diagnostic_target_arguments::<DiagnosticTargetLimitArguments>(
                     request.params(),
                 )?;
-                let snapshot = self.diagnostic_tool_snapshot(cx);
+                let snapshot = self.diagnostic_tool_snapshot(window, cx);
                 Ok(json!(visible_media_result(
                     snapshot.visible_media,
                     arguments
@@ -12270,7 +12286,7 @@ impl ShellView {
                 let arguments = parse_diagnostic_target_arguments::<
                     DiagnosticTargetMediaEventsArguments,
                 >(request.params())?;
-                let snapshot = self.diagnostic_tool_snapshot(cx);
+                let snapshot = self.diagnostic_tool_snapshot(window, cx);
                 Ok(json!(media_events_result(
                     snapshot.media_events,
                     arguments.after_sequence,
@@ -13293,7 +13309,23 @@ impl ShellView {
         }
     }
 
-    fn diagnostic_tool_snapshot(&self, cx: &mut Context<Self>) -> DiagnosticToolSnapshot {
+    fn handle_prepare_renderer_window_tool_result(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> RendererDiagnosticSnapshot {
+        cx.activate(true);
+        window.resize(size(px(1040.0), px(760.0)));
+        window.activate_window();
+        window.refresh();
+        self.diagnostic_tool_snapshot(window, cx).renderer
+    }
+
+    fn diagnostic_tool_snapshot(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> DiagnosticToolSnapshot {
         let panel_snapshot = self.transcript_panel.read(cx).diagnostic_snapshot();
         let mut retained_state = self.retained_state_snapshot();
         self.add_text_input_retained_counts(&mut retained_state, cx);
@@ -13302,9 +13334,15 @@ impl ShellView {
         visible_media.preview.composer_image_preview = self.composer_image_preview_diagnostic();
         let process = self.process_diagnostic_snapshot();
         let memory = self.memory_diagnostic_snapshot(&process);
+        let renderer = renderer_snapshot_with_shell_window(
+            process.clone(),
+            cx.renderer_diagnostic_snapshot(),
+            window.renderer_diagnostic_snapshot(),
+        );
         DiagnosticToolSnapshot {
             process,
             memory,
+            renderer,
             retained_state,
             visible_media,
             media_events: panel_snapshot.media_events,

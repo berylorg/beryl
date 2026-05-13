@@ -9,6 +9,8 @@ use thiserror::Error;
 pub(crate) const HANDSHAKE_COMMAND: &str = "handshake";
 pub(crate) const READ_PROCESS_COMMAND: &str = "read_process";
 pub(crate) const READ_MEMORY_COMMAND: &str = "read_memory";
+pub(crate) const READ_RENDERER_COMMAND: &str = "read_renderer";
+pub(crate) const PREPARE_RENDERER_WINDOW_COMMAND: &str = "prepare_renderer_window";
 pub(crate) const READ_RETAINED_STATE_COMMAND: &str = "read_retained_state";
 pub(crate) const READ_VISIBLE_MEDIA_COMMAND: &str = "read_visible_media";
 pub(crate) const READ_MEDIA_EVENTS_COMMAND: &str = "read_media_events";
@@ -40,6 +42,8 @@ pub(crate) enum DiagnosticChildCommand {
     Handshake,
     ReadProcess,
     ReadMemory,
+    ReadRenderer,
+    PrepareRendererWindow,
     ReadRetainedState,
     ReadVisibleMedia,
     ReadMediaEvents,
@@ -124,6 +128,8 @@ impl DiagnosticChildCommand {
             Self::Handshake => HANDSHAKE_COMMAND,
             Self::ReadProcess => READ_PROCESS_COMMAND,
             Self::ReadMemory => READ_MEMORY_COMMAND,
+            Self::ReadRenderer => READ_RENDERER_COMMAND,
+            Self::PrepareRendererWindow => PREPARE_RENDERER_WINDOW_COMMAND,
             Self::ReadRetainedState => READ_RETAINED_STATE_COMMAND,
             Self::ReadVisibleMedia => READ_VISIBLE_MEDIA_COMMAND,
             Self::ReadMediaEvents => READ_MEDIA_EVENTS_COMMAND,
@@ -149,6 +155,8 @@ impl TryFrom<&str> for DiagnosticChildCommand {
             HANDSHAKE_COMMAND => Ok(Self::Handshake),
             READ_PROCESS_COMMAND => Ok(Self::ReadProcess),
             READ_MEMORY_COMMAND => Ok(Self::ReadMemory),
+            READ_RENDERER_COMMAND => Ok(Self::ReadRenderer),
+            PREPARE_RENDERER_WINDOW_COMMAND => Ok(Self::PrepareRendererWindow),
             READ_RETAINED_STATE_COMMAND => Ok(Self::ReadRetainedState),
             READ_VISIBLE_MEDIA_COMMAND => Ok(Self::ReadVisibleMedia),
             READ_MEDIA_EVENTS_COMMAND => Ok(Self::ReadMediaEvents),

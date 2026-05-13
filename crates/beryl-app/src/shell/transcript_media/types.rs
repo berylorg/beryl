@@ -7,7 +7,7 @@ use std::{
 
 use beryl_backend::ManagedBackendSession;
 use beryl_model::workspace::WorkspaceId;
-use gpui::{Image, ImageFormat};
+use gpui::{Image, ImageFormat, hash as gpui_hash};
 
 use super::{load::load_transcript_media, sizing::TranscriptMediaNaturalDimensions};
 
@@ -215,6 +215,10 @@ impl TranscriptMediaLoadedImage {
         self.image.id()
     }
 
+    pub(crate) fn image_asset_key_hash(&self) -> u64 {
+        gpui_hash(&self.image)
+    }
+
     pub(crate) fn natural_dimensions(&self) -> TranscriptMediaNaturalDimensions {
         self.natural_dimensions
     }
@@ -247,6 +251,12 @@ impl TranscriptMediaLoadRequest {
             outcome,
             elapsed: started_at.elapsed(),
         }
+    }
+}
+
+impl TranscriptMediaLoadCompletion {
+    pub(crate) fn loaded_image(&self) -> Option<&TranscriptMediaLoadedImage> {
+        self.outcome.loaded()
     }
 }
 
