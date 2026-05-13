@@ -43,6 +43,9 @@ use tracing::{debug, warn};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
+use crate::diagnostic_child_control::{
+    DiagnosticStartTurnArguments, DiagnosticStopTurnArguments, DiagnosticThreadListArguments,
+};
 use crate::diagnostic_child_dynamic_tools::{
     diagnostic_child_failure_response, dispatch_beryl_diagnostic_child_dynamic_tool_call,
     is_beryl_diagnostic_child_dynamic_tool,
@@ -64,18 +67,19 @@ use crate::diagnostic_dynamic_tools::{
     dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result, visible_media_result,
 };
 use crate::gui_control_dynamic_tools::{
-    ActivityPanelUiState, BackgroundWorkUiState, ClosePopupsResult, DEFAULT_UI_VISIBLE_ROW_LIMIT,
-    GuiControlToolRequest, PopupUiState, SETTINGS_WINDOW_POPUP_CLOSE_REASON,
-    ScrollTranscriptArguments, ScrollTranscriptCommand, ScrollTranscriptResult,
-    SwitchThreadArguments, SwitchThreadResult, SwitchWorkspaceArguments, SwitchWorkspaceResult,
-    TranscriptScrollPositionDiagnostic, TranscriptUiState, UiRangeDiagnostic, UiStateSnapshot,
-    VisibleTranscriptRowDiagnostic, bounded_control_string, close_popups_tool_response,
-    gui_control_failure_response, is_beryl_gui_control_dynamic_tool,
+    ActivityPanelUiState, BackgroundWorkUiState, CancellableTurnUiState, ClosePopupsResult,
+    DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, PopupUiState,
+    SETTINGS_WINDOW_POPUP_CLOSE_REASON, ScrollTranscriptArguments, ScrollTranscriptCommand,
+    ScrollTranscriptResult, SwitchThreadArguments, SwitchThreadResult, SwitchWorkspaceArguments,
+    SwitchWorkspaceResult, TranscriptScrollPositionDiagnostic, TranscriptUiState, TurnUiState,
+    UiRangeDiagnostic, UiStateSnapshot, VisibleTranscriptRowDiagnostic, bounded_control_string,
+    close_popups_tool_response, gui_control_failure_response, is_beryl_gui_control_dynamic_tool,
     parse_beryl_gui_control_dynamic_tool_request, parse_gui_control_tool_request,
     scroll_transcript_tool_response, switch_thread_tool_response, ui_state_tool_response,
 };
 use crate::member_thread_inventory::{
-    MemberThreadInventoryMemberKey, MemberThreadInventoryState, resolved_thread_title,
+    MemberThreadInventoryMemberKey, MemberThreadInventoryMemberKind, MemberThreadInventoryState,
+    resolved_thread_title,
 };
 use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
 use crate::text_input::{
@@ -235,6 +239,67 @@ fn transcript_scroll_position_diagnostic(
             offset_px: Some(f64::from(f32::from(offset_from_content_end))),
         },
     }
+}
+
+fn selected_thread_state_diagnostic_label(surface: &ConversationSurfaceState) -> &'static str {
+    if surface.selected_thread_id().is_none() {
+        return "pending_new_thread";
+    }
+    if surface.pending_thread_activation_label().is_some() {
+        return "pending_activation";
+    }
+    if surface.selected_thread_context_compaction_id().is_some() {
+        return "compacting";
+    }
+    if surface.execution_details.working_turn_index().is_some() {
+        return "working";
+    }
+
+    match surface.selected_thread_status.as_ref() {
+        Some(ThreadStatus::Idle) => "idle",
+        Some(ThreadStatus::Active { .. }) => "working",
+        Some(ThreadStatus::NotLoaded) => "not_loaded",
+        Some(ThreadStatus::SystemError) => "system_error",
+        None => "unknown",
+    }
+}
+
+fn thread_status_diagnostic_label(status: &ThreadStatus) -> &'static str {
+    match status {
+        ThreadStatus::NotLoaded => "not_loaded",
+        ThreadStatus::Idle => "idle",
+        ThreadStatus::SystemError => "system_error",
+        ThreadStatus::Active { .. } if status.waiting_on_user_input() => "waiting_on_user_input",
+        ThreadStatus::Active { .. } => "active",
+    }
+}
+
+fn cancellable_turn_ui_state(turn: &CancellableActiveTurn) -> CancellableTurnUiState {
+    let kind = match turn.kind {
+        CancellableActiveTurnKind::Ordinary => "ordinary",
+        CancellableActiveTurnKind::ContextCompaction => "context_compaction",
+    };
+    CancellableTurnUiState {
+        thread_id: bounded_control_string(turn.thread_id.clone()),
+        turn_id: bounded_control_string(turn.turn_id.clone()),
+        kind: kind.to_string(),
+    }
+}
+
+fn diagnostic_expected_turn_mismatch(
+    expected: &DiagnosticStopTurnArguments,
+    current: Option<&CancellableActiveTurn>,
+) -> Option<String> {
+    let current = current?;
+    (!expected.matches(&current.thread_id, &current.turn_id)).then(|| {
+        format!(
+            "Expected selected child turn {}/{} but current selected child turn is {}/{}.",
+            expected.expected_thread_id,
+            expected.expected_turn_id,
+            current.thread_id,
+            current.turn_id
+        )
+    })
 }
 
 fn visible_transcript_rows(
@@ -436,7 +501,9 @@ use pending_turn_input::{
 };
 use platform_attention::PlatformAttentionMonitor;
 use settings::{SharedAppearanceSettings, SharedGuiPreferences};
-use status_line::{CancellableActiveTurn, StatusLineState, ThreadTurnDefaults};
+use status_line::{
+    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, ThreadTurnDefaults,
+};
 use status_operation::{StatusOperationUpdate, spawn_context_compaction_worker};
 use status_operation_state::{StatusLineOperationState, StatusModelListCache};
 use surface_notice::{
@@ -10946,7 +11013,7 @@ impl ShellView {
         }
     }
 
-    fn queue_turn_from_composer(&mut self, cx: &mut Context<Self>) {
+    fn queue_turn_from_composer(&mut self, cx: &mut Context<Self>) -> bool {
         if self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
@@ -10954,15 +11021,15 @@ impl ShellView {
             || self.composer_image_asset_receiver.is_some()
             || self.composer_image_delivery_receiver.is_some()
         {
-            return;
+            return false;
         }
 
         self.sync_composer_draft_from_input(cx);
         let Some(accepted_draft) = self.composer_draft.accepted() else {
-            return;
+            return false;
         };
         if self.queue_transcript_edit_commit_from_composer(&accepted_draft, cx) {
-            return;
+            return true;
         }
         if accepted_draft.contains_images() {
             if self.status_operation_receiver.is_some()
@@ -10970,29 +11037,32 @@ impl ShellView {
                     surface.selected_thread_context_compaction_id().is_some()
                 })
             {
-                return;
+                return false;
             }
             if self.thread_history_page_receiver.is_some() {
-                return;
+                return false;
             }
             if self.begin_composer_image_delivery(accepted_draft) {
                 cx.notify();
+                return true;
             }
-            return;
+            return false;
         }
 
         let Some(draft) = accepted_draft
             .text_only()
             .or_else(|| accepted_composer_draft(self.conversation_input.read(cx).text()))
         else {
-            return;
+            return false;
         };
         let fragment = UserInputFragment::text(draft);
 
         if self.queue_accepted_composer_fragment(fragment, cx) {
             self.record_accepted_composer_history(&accepted_draft);
             cx.notify();
+            return true;
         }
+        false
     }
 
     fn record_accepted_composer_history(&mut self, draft: &AcceptedComposerDraft) {
@@ -11068,7 +11138,7 @@ impl ShellView {
                                 ));
                                 cx.notify();
                             }
-                            return true;
+                            return false;
                         }
                     }
                 };
@@ -12217,6 +12287,42 @@ impl ShellView {
                     )),
                 }
             }
+            DiagnosticChildCommand::ListWorkspaceThreads => {
+                let arguments = parse_diagnostic_target_arguments::<DiagnosticThreadListArguments>(
+                    request.params(),
+                )?;
+                Ok(self.handle_list_workspace_threads_tool_result(arguments, window, cx))
+            }
+            DiagnosticChildCommand::CreateNewThread => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                Ok(self.handle_create_new_thread_tool_result(cx))
+            }
+            DiagnosticChildCommand::StartTurn => {
+                let arguments = parse_diagnostic_target_arguments::<DiagnosticStartTurnArguments>(
+                    request.params(),
+                )?;
+                self.handle_start_turn_tool_result(arguments, cx)
+            }
+            DiagnosticChildCommand::SoftStopTurn => {
+                let arguments = parse_diagnostic_target_arguments::<DiagnosticStopTurnArguments>(
+                    request.params(),
+                )?;
+                arguments
+                    .validate()
+                    .map_err(|message| ("invalid_arguments", message))?;
+                Ok(self.handle_soft_stop_turn_tool_result(arguments, window, cx))
+            }
+            DiagnosticChildCommand::HardStopTurn => {
+                let arguments = parse_diagnostic_target_arguments::<DiagnosticStopTurnArguments>(
+                    request.params(),
+                )?;
+                arguments
+                    .validate()
+                    .map_err(|message| ("invalid_arguments", message))?;
+                Ok(self.handle_hard_stop_turn_tool_result(arguments, window, cx))
+            }
             DiagnosticChildCommand::SwitchWorkspace => {
                 let parsed =
                     parse_gui_control_tool_request(SWITCH_WORKSPACE_COMMAND, request.params())
@@ -12350,6 +12456,7 @@ impl ShellView {
             selected_workspace_id,
             selected_thread_id,
             selected_runtime_target,
+            turn_state: self.turn_ui_state(),
             transcript: self.transcript_ui_state(visible_row_limit),
             visible_media,
             activity_panel: self.activity_panel_ui_state(),
@@ -12362,6 +12469,48 @@ impl ShellView {
                     || self.workspace_receiver.is_some()
                     || matches!(self.state, ShellState::Opening(_)),
             },
+        }
+    }
+
+    fn turn_ui_state(&self) -> TurnUiState {
+        let Some(surface) = self.conversation_surface() else {
+            return TurnUiState {
+                selected_thread_state: "none".to_string(),
+                last_turn_state: "Unknown".to_string(),
+                ..TurnUiState::default()
+            };
+        };
+        let projection = surface.status_line_projection();
+        let selected_thread_status = surface
+            .selected_thread_status
+            .as_ref()
+            .map(thread_status_diagnostic_label)
+            .map(str::to_string);
+        let selected_thread_state = selected_thread_state_diagnostic_label(surface).to_string();
+        let cancellable_active_turn = projection
+            .cancellable_active_turn
+            .as_ref()
+            .map(cancellable_turn_ui_state);
+        let (hard_stop_target_count, hard_stop_limitation_count) = projection
+            .hard_stop_targets
+            .as_ref()
+            .map(|targets| (targets.targets.len(), targets.limitations.len()))
+            .unwrap_or_default();
+
+        TurnUiState {
+            selected_thread_state,
+            selected_thread_status,
+            last_turn_state: projection.last_turn_state,
+            cancellable_active_turn,
+            hard_stop_target_count,
+            hard_stop_limitation_count,
+            turn_stop_request_in_flight: surface
+                .status_line_operations()
+                .turn_stop_request_in_flight(),
+            hard_stop_request_in_flight: surface
+                .status_line_operations()
+                .hard_stop_request_in_flight(),
+            hard_stop_hold_active: surface.status_line_operations().hard_stop_hold_active(),
         }
     }
 
@@ -12485,6 +12634,324 @@ impl ShellView {
                 .has_transient_popups(cx)
                 .ok(),
         }
+    }
+
+    fn handle_list_workspace_threads_tool_result(
+        &mut self,
+        arguments: DiagnosticThreadListArguments,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Value {
+        let refresh_started = self.begin_member_thread_inventory_refresh_if_needed();
+        if refresh_started {
+            self.schedule_poll_if_needed(window, cx);
+        }
+
+        let limit = arguments.normalized_limit();
+        let selected_workspace_id = self
+            .loaded_workspace()
+            .map(|loaded| loaded.workspace.id().as_str().to_string())
+            .map(bounded_control_string);
+        let selected_thread_id = self
+            .conversation_surface()
+            .and_then(ConversationSurfaceState::selected_thread_id)
+            .map(str::to_string)
+            .map(bounded_control_string);
+        let Some(surface) = self.conversation_surface() else {
+            return json!({
+                "status": "not_ready",
+                "message": "Beryl has no active conversation surface.",
+                "selectedWorkspaceId": selected_workspace_id,
+                "selectedThreadId": selected_thread_id,
+                "pendingNewThread": false,
+                "refreshStarted": refresh_started,
+                "refreshing": false,
+                "refreshNeeded": false,
+                "lastError": null,
+                "refreshedAtMillis": 0,
+                "groupCount": 0,
+                "threadCount": 0,
+                "threadsTruncated": false,
+                "groupsTruncated": false,
+                "groups": [],
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            });
+        };
+
+        let inventory = surface.member_thread_inventory();
+        let snapshot = inventory.snapshot();
+        let pending_new_thread = surface.selected_thread_id().is_none();
+        let mut remaining = limit;
+        let group_count = snapshot.groups().len();
+        let thread_count = snapshot
+            .groups()
+            .iter()
+            .map(|group| group.threads().len())
+            .sum::<usize>();
+        let mut returned_thread_count = 0usize;
+        let mut threads_truncated = false;
+        let mut groups_truncated = false;
+        let groups = snapshot
+            .groups()
+            .iter()
+            .enumerate()
+            .filter_map(|(group_index, group)| {
+                if group_index >= limit {
+                    groups_truncated = true;
+                    return None;
+                }
+                Some(group)
+            })
+            .map(|group| {
+                let threads = group
+                    .threads()
+                    .iter()
+                    .filter_map(|thread| {
+                        if remaining == 0 {
+                            threads_truncated = true;
+                            return None;
+                        }
+                        remaining = remaining.saturating_sub(1);
+                        returned_thread_count = returned_thread_count.saturating_add(1);
+                        Some(json!({
+                            "threadId": bounded_control_string(thread.thread_id().as_str().to_string()),
+                            "forkedFromId": thread
+                                .forked_from_id()
+                                .map(|id| bounded_control_string(id.as_str().to_string())),
+                            "title": bounded_control_string(thread.title().to_string()),
+                            "executionTarget": runtime_target_diagnostic(thread.execution_target()),
+                            "createdAtMillis": thread.created_at_millis(),
+                            "updatedAtMillis": thread.updated_at_millis(),
+                            "selected": surface.selected_thread_id()
+                                == Some(thread.thread_id().as_str()),
+                        }))
+                    })
+                    .collect::<Vec<_>>();
+                let (member_key, member_id) = match group.key() {
+                    MemberThreadInventoryMemberKey::ImplicitHome => ("implicit_home", None),
+                    MemberThreadInventoryMemberKey::Explicit(id) => {
+                        ("explicit", Some(bounded_control_string(id.as_str().to_string())))
+                    }
+                };
+                let member_kind = match group.kind() {
+                    MemberThreadInventoryMemberKind::ImplicitHome => "implicit_home",
+                    MemberThreadInventoryMemberKind::Explicit => "explicit",
+                };
+                json!({
+                    "memberKey": member_key,
+                    "memberId": member_id,
+                    "kind": member_kind,
+                    "label": bounded_control_string(group.label().to_string()),
+                    "runtime": bounded_control_string(group.runtime().display_name()),
+                    "canonicalPath": group
+                        .canonical_path()
+                        .map(|path| bounded_control_string(path.display().to_string())),
+                    "threads": threads,
+                })
+            })
+            .collect::<Vec<_>>();
+        if returned_thread_count < thread_count {
+            threads_truncated = true;
+        }
+        let inventory_workspace_id =
+            bounded_control_string(snapshot.workspace_id().as_str().to_string());
+        let refreshed_at_millis = snapshot.refreshed_at_millis();
+        let refreshing = inventory.refreshing();
+        let refresh_needed = inventory.needs_refresh();
+        let last_error = inventory
+            .last_error()
+            .map(|error| bounded_control_string(error.to_string()));
+        let ui_state = self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT);
+
+        json!({
+            "status": "ok",
+            "selectedWorkspaceId": selected_workspace_id,
+            "selectedThreadId": selected_thread_id,
+            "pendingNewThread": pending_new_thread,
+            "inventoryWorkspaceId": inventory_workspace_id,
+            "refreshStarted": refresh_started,
+            "refreshing": refreshing,
+            "refreshNeeded": refresh_needed,
+            "lastError": last_error,
+            "refreshedAtMillis": refreshed_at_millis,
+            "groupCount": group_count,
+            "threadCount": thread_count,
+            "threadsTruncated": threads_truncated,
+            "groupsTruncated": groups_truncated,
+            "groups": groups,
+            "uiState": ui_state,
+        })
+    }
+
+    fn handle_create_new_thread_tool_result(&mut self, cx: &mut Context<Self>) -> Value {
+        let result = self.select_pending_new_thread_from_control(cx);
+        let (status, message) = match result {
+            Ok(status) => (status, None),
+            Err((status, message)) => (status, Some(message)),
+        };
+        json!({
+            "status": status,
+            "message": message.map(bounded_control_string),
+            "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+        })
+    }
+
+    fn handle_start_turn_tool_result(
+        &mut self,
+        arguments: DiagnosticStartTurnArguments,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, (&'static str, String)> {
+        let text = arguments
+            .validated_text()
+            .map_err(|message| ("invalid_arguments", message))?;
+        let composer_busy = {
+            let input = self.conversation_input.read(cx);
+            input.has_marked_text() || !input.text().trim().is_empty() || !input.atoms().is_empty()
+        } || !self.composer_draft.is_empty();
+        if composer_busy {
+            return Ok(json!({
+                "status": "unavailable",
+                "message": "The child composer already contains draft input.",
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            }));
+        }
+
+        self.conversation_input.update(cx, |input, cx| {
+            input.set_text(text.as_str(), cx);
+            input.clear_edit_history();
+        });
+        let accepted = self.queue_turn_from_composer(cx);
+        let (status, message) = if accepted {
+            ("accepted", None)
+        } else {
+            (
+                "unavailable",
+                Some("The child composer submission was not available in the current state."),
+            )
+        };
+        Ok(json!({
+            "status": status,
+            "message": message,
+            "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+        }))
+    }
+
+    fn handle_soft_stop_turn_tool_result(
+        &mut self,
+        arguments: DiagnosticStopTurnArguments,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Value {
+        let current_target = self
+            .conversation_surface()
+            .and_then(|surface| surface.status_line_projection().cancellable_active_turn);
+        if let Some(message) =
+            diagnostic_expected_turn_mismatch(&arguments, current_target.as_ref())
+        {
+            return json!({
+                "status": "stale_turn_target",
+                "message": bounded_control_string(message),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            });
+        }
+
+        match self.begin_soft_stop_selected_turn_from_control(window, cx) {
+            Ok(target) => json!({
+                "status": "accepted",
+                "target": cancellable_turn_ui_state(&target),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            }),
+            Err((kind, message)) => json!({
+                "status": kind,
+                "message": bounded_control_string(message),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            }),
+        }
+    }
+
+    fn handle_hard_stop_turn_tool_result(
+        &mut self,
+        arguments: DiagnosticStopTurnArguments,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Value {
+        let current_turn = self.conversation_surface().and_then(|surface| {
+            let projection = surface.status_line_projection();
+            projection
+                .hard_stop_targets
+                .map(|targets| targets.selected_turn)
+                .or(projection.cancellable_active_turn)
+        });
+        if let Some(message) = diagnostic_expected_turn_mismatch(&arguments, current_turn.as_ref())
+        {
+            return json!({
+                "status": "stale_turn_target",
+                "message": bounded_control_string(message),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            });
+        }
+
+        match self.begin_hard_stop_selected_turn_from_control(window, cx) {
+            Ok(targets) => json!({
+                "status": "accepted",
+                "target": cancellable_turn_ui_state(&targets.selected_turn),
+                "targetCount": targets.targets.len(),
+                "limitationCount": targets.limitations.len(),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            }),
+            Err((kind, message)) => json!({
+                "status": kind,
+                "message": bounded_control_string(message),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            }),
+        }
+    }
+
+    fn select_pending_new_thread_from_control(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<&'static str, (&'static str, String)> {
+        if self.conversation_surface().is_none() {
+            return Err((
+                "not_ready",
+                "Beryl has no active conversation surface.".to_string(),
+            ));
+        }
+        if self
+            .conversation_surface()
+            .is_some_and(|surface| surface.selected_thread_id().is_none())
+        {
+            return Ok("already_selected");
+        }
+        if self.graph_thread_start_receiver.is_some()
+            || self.transcript_branch_receiver.is_some()
+            || self.transcript_edit_commit_receiver.is_some()
+            || self.turn_receiver.is_some()
+            || !self.turn_steering_receivers.is_empty()
+            || self.status_operation_receiver.is_some()
+            || self.thread_activation_receiver.is_some()
+            || self.thread_history_page_receiver.is_some()
+            || self.composer_image_asset_receiver.is_some()
+        {
+            return Err((
+                "unsafe_state",
+                "Beryl has workspace, thread, turn, or composer work in progress.".to_string(),
+            ));
+        }
+
+        let cleared_active_thread = self
+            .workspace_shell_state_mut()
+            .is_some_and(|loaded| loaded.workspace_state.clear_active_thread());
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.start_new_thread();
+        }
+        self.composer_image_label_scan_receiver = None;
+        if cleared_active_thread {
+            self.persist_current_workspace_state(false);
+        }
+        self.notify_transcript_panel(cx);
+        cx.notify();
+        Ok("selected")
     }
 
     fn handle_switch_workspace_tool_result(

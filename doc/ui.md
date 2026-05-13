@@ -342,6 +342,13 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Hard-stop progress behavior: after the three-second hold completes, the row triggers exactly once, shows an in-flight state, and suppresses duplicate soft or hard stop submissions until the current stop request finishes or fails.
 - Turn stop queue behavior: accepted user input fragments queued before or during a stop request remain visible and ordered. If they cannot be delivered to the interrupted turn, they remain queued for the next eligible turn.
 
+### Diagnostic Child Control
+
+- Diagnostic child-control commands do not add visible controls, persistent labels, panels, popups, buttons, or alternate interaction modes to the ordinary workspace UI.
+- Diagnostic child new-thread, turn-submission, soft-stop, hard-stop, thread-listing, thread-activation, popup-closing, transcript-scrolling, and wait commands must drive the same internal application command paths and state transitions as the corresponding visible UI interactions or retained UI projections.
+- Diagnostic child hard-stop requests are explicit supervisor commands and therefore do not render or require the visible three-second hold progress affordance, but they must still target only the exact selected active turn and supported hard-stop targets that the visible popup would allow.
+- Diagnostic child wait commands observe UI state without creating loading UI solely for diagnostics and must return the latest bounded state on timeout.
+
 ### Checklist Sidebar
 
 - Visibility: hidden by default and shown when the user requests it or when a checklist-capable node auto-shows it.

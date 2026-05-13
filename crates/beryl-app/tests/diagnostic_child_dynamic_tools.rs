@@ -26,6 +26,9 @@ mod diagnostic_dynamic_tools {
 #[path = "../src/diagnostic_child_protocol.rs"]
 mod diagnostic_child_protocol;
 
+#[path = "../src/diagnostic_child_control.rs"]
+mod diagnostic_child_control;
+
 mod diagnostic_child_supervisor {
     use std::{fmt, path::PathBuf, time::Duration};
 
@@ -177,9 +180,12 @@ use beryl_backend::{
     parse_dynamic_tool_call_request,
 };
 use diagnostic_child_dynamic_tools::{
-    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
-    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
-    DIAGNOSTIC_CHILD_STATUS_TOOL, dispatch_beryl_diagnostic_child_dynamic_tool_call,
+    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
+    DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
+    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
+    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
+    DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
+    dispatch_beryl_diagnostic_child_dynamic_tool_call,
 };
 use diagnostic_child_supervisor::DiagnosticChildSupervisor;
 use serde_json::{Value, json};
@@ -284,6 +290,191 @@ fn diagnostic_child_control_params_are_normalized_before_protocol_request() {
     assert!(response.success);
     assert_eq!(payload["result"]["command"], "scroll_transcript");
     assert_eq!(payload["result"]["params"]["repeat"], 8);
+
+    child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let start_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({ "berylHomeDir": child.path().display().to_string() }),
+    );
+    let list_request = tool_request(
+        DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
+        json!({ "limit": 999 }),
+    );
+    let turn_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TURN_TOOL,
+        json!({ "text": "diagnostic turn" }),
+    );
+
+    let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &start_request,
+    );
+    let list_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &list_request,
+    );
+    let turn_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &turn_request,
+    );
+    let list_payload = response_json(&list_response);
+    let turn_payload = response_json(&turn_response);
+
+    assert!(list_response.success);
+    assert_eq!(list_payload["result"]["command"], "list_workspace_threads");
+    assert_eq!(list_payload["result"]["params"]["limit"], 128);
+    assert!(turn_response.success);
+    assert_eq!(turn_payload["result"]["command"], "start_turn");
+    assert_eq!(turn_payload["result"]["params"]["text"], "diagnostic turn");
+
+    child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let start_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({ "berylHomeDir": child.path().display().to_string() }),
+    );
+    let missing_identity_request = tool_request(DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, json!({}));
+    let soft_request = tool_request(
+        DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
+        json!({ "expectedThreadId": "thread-a", "expectedTurnId": "turn-a" }),
+    );
+    let hard_request = tool_request(
+        DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
+        json!({ "expectedThreadId": "thread-b", "expectedTurnId": "turn-b" }),
+    );
+
+    let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &start_request,
+    );
+    let missing_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &missing_identity_request,
+    );
+    let soft_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &soft_request,
+    );
+    let hard_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &hard_request,
+    );
+    let missing_payload = response_json(&missing_response);
+    let soft_payload = response_json(&soft_response);
+    let hard_payload = response_json(&hard_response);
+
+    assert!(!missing_response.success);
+    assert_eq!(missing_payload["error"]["kind"], "invalid_arguments");
+    assert!(soft_response.success);
+    assert_eq!(soft_payload["result"]["command"], "soft_stop_turn");
+    assert_eq!(
+        soft_payload["result"]["params"]["expectedThreadId"],
+        "thread-a"
+    );
+    assert_eq!(soft_payload["result"]["params"]["expectedTurnId"], "turn-a");
+    assert!(hard_response.success);
+    assert_eq!(hard_payload["result"]["command"], "hard_stop_turn");
+    assert_eq!(
+        hard_payload["result"]["params"]["expectedThreadId"],
+        "thread-b"
+    );
+    assert_eq!(hard_payload["result"]["params"]["expectedTurnId"], "turn-b");
+
+    child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
+    let specs = beryl_diagnostic_child_dynamic_tool_specs();
+    let list_schema = specs
+        .iter()
+        .find(|spec| spec.name == DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL)
+        .unwrap();
+    let wait_schema = specs
+        .iter()
+        .find(|spec| spec.name == DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL)
+        .unwrap();
+
+    assert_eq!(
+        list_schema.input_schema["properties"]["limit"]["maximum"],
+        diagnostic_child_control::MAX_DIAGNOSTIC_THREAD_LIST_LIMIT
+    );
+    assert_eq!(
+        wait_schema.input_schema["properties"]["limit"]["maximum"],
+        diagnostic_child_control::MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT
+    );
+}
+
+#[test]
+fn diagnostic_stop_turn_arguments_match_exact_thread_and_turn_identity() {
+    let arguments = diagnostic_child_control::DiagnosticStopTurnArguments {
+        expected_thread_id: "thread-a".to_string(),
+        expected_turn_id: "turn-a".to_string(),
+    };
+
+    assert!(arguments.validate().is_ok());
+    assert!(arguments.matches("thread-a", "turn-a"));
+    assert!(!arguments.matches("thread-b", "turn-a"));
+    assert!(!arguments.matches("thread-a", "turn-b"));
+}
+
+#[test]
+fn diagnostic_child_wait_for_state_polls_ui_state_until_timeout() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let start_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({ "berylHomeDir": child.path().display().to_string() }),
+    );
+    let wait_request = tool_request(
+        DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
+        json!({ "predicate": "ready", "timeoutMs": 0, "pollIntervalMs": 25, "limit": 999 }),
+    );
+
+    let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &start_request,
+    );
+    let response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &wait_request,
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["status"], "timeout");
+    assert_eq!(payload["result"]["predicate"], "ready");
+    assert_eq!(payload["result"]["uiState"]["command"], "read_ui_state");
+    assert_eq!(payload["result"]["uiState"]["params"]["limit"], 64);
 
     child.close().unwrap();
     root.close().unwrap();

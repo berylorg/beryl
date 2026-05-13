@@ -125,6 +125,7 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
                 selected_workspace_id: None,
                 selected_thread_id: None,
                 selected_runtime_target: None,
+                turn_state: gui_control_dynamic_tools::TurnUiState::default(),
                 transcript: TranscriptUiState::default(),
                 visible_media: VisibleMediaSnapshot::default(),
                 activity_panel: ActivityPanelUiState::default(),

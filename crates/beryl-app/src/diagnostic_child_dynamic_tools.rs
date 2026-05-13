@@ -1,4 +1,8 @@
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::PathBuf,
+    thread,
+    time::{Duration, Instant},
+};
 
 use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolSpec};
 use serde::Deserialize;
@@ -6,6 +10,15 @@ use serde_json::{Value, json};
 
 use crate::{
     BerylHomeDir,
+    diagnostic_child_control::{
+        DEFAULT_DIAGNOSTIC_THREAD_LIST_LIMIT, DEFAULT_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
+        DEFAULT_DIAGNOSTIC_WAIT_TIMEOUT_MS, DiagnosticStartTurnArguments,
+        DiagnosticStopTurnArguments, DiagnosticThreadListArguments,
+        DiagnosticWaitForStateArguments, DiagnosticWaitPredicate, MAX_DIAGNOSTIC_THREAD_LIST_LIMIT,
+        MAX_DIAGNOSTIC_TURN_ID_BYTES, MAX_DIAGNOSTIC_TURN_TEXT_BYTES,
+        MAX_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS, MAX_DIAGNOSTIC_WAIT_TIMEOUT_MS,
+        MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT, MIN_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
+    },
     diagnostic_child_protocol::DiagnosticChildCommand,
     diagnostic_child_supervisor::{
         DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT, DiagnosticChildIdentity,
@@ -30,6 +43,12 @@ pub const DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL: &str = "read_ui_state";
 pub const DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL: &str = "read_retained_state";
 pub const DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL: &str = "read_visible_media";
 pub const DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL: &str = "read_media_events";
+pub const DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL: &str = "list_workspace_threads";
+pub const DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL: &str = "create_new_thread";
+pub const DIAGNOSTIC_CHILD_START_TURN_TOOL: &str = "start_turn";
+pub const DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL: &str = "soft_stop_turn";
+pub const DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL: &str = "hard_stop_turn";
+pub const DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL: &str = "wait_for_state";
 pub const DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL: &str = "switch_workspace";
 pub const DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL: &str = "switch_thread";
 pub const DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL: &str = "scroll_transcript";
@@ -93,6 +112,36 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             media_events_schema(),
         ),
         diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
+            "List bounded retained thread inventory for the diagnostic child's selected workspace.",
+            thread_list_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL,
+            "Select a pending new-thread draft in the diagnostic child through the ordinary New Thread path.",
+            empty_object_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_START_TURN_TOOL,
+            "Submit bounded text through the diagnostic child's ordinary composer path.",
+            start_turn_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
+            "Request soft stop for the diagnostic child's exact selected active turn.",
+            stop_turn_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
+            "Request hard stop for the diagnostic child's exact selected active turn using probed targets only.",
+            stop_turn_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
+            "Poll bounded diagnostic child UI or turn state until a predicate matches or times out.",
+            wait_for_state_schema(),
+        ),
+        diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
             "Switch the diagnostic child Beryl to an exact child-known workspace id through the ordinary workspace activation path.",
             switch_workspace_schema(),
@@ -128,6 +177,12 @@ pub fn is_beryl_diagnostic_child_dynamic_tool(request: &DynamicToolCallRequest) 
                 | DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
                 | DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
                 | DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+                | DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
+                | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
+                | DIAGNOSTIC_CHILD_START_TURN_TOOL
+                | DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
+                | DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
+                | DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL
                 | DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL
                 | DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
                 | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
@@ -144,6 +199,14 @@ pub fn beryl_diagnostic_child_dynamic_tool_shell_response_timeout(
         && default_timeout < DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT
     {
         return DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT;
+    }
+    if request.namespace() == Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE)
+        && request.tool() == DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL
+    {
+        let timeout = Duration::from_millis(MAX_DIAGNOSTIC_WAIT_TIMEOUT_MS.saturating_add(2_000));
+        if default_timeout < timeout {
+            return timeout;
+        }
     }
     default_timeout
 }
@@ -210,12 +273,21 @@ fn diagnostic_child_tool_result(
             let status = supervisor.status().map_err(map_supervisor_error)?;
             Ok(status_result(status))
         }
+        DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL => {
+            ensure_child_running(supervisor)?;
+            wait_for_state_result(supervisor, request.arguments())
+        }
         DIAGNOSTIC_CHILD_READ_PROCESS_TOOL
         | DIAGNOSTIC_CHILD_READ_MEMORY_TOOL
         | DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL
         | DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
         | DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
         | DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+        | DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
+        | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
+        | DIAGNOSTIC_CHILD_START_TURN_TOOL
+        | DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
+        | DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
         | DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL
         | DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
         | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
@@ -261,6 +333,50 @@ fn child_command_and_params(
             DiagnosticChildCommand::ReadMediaEvents,
             media_events_params(request.arguments())?,
         )),
+        DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL => {
+            let arguments = parse_arguments::<DiagnosticThreadListArguments>(request.arguments())?;
+            Ok((
+                DiagnosticChildCommand::ListWorkspaceThreads,
+                json!({ "limit": arguments.normalized_limit() }),
+            ))
+        }
+        DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL => {
+            parse_arguments::<EmptyArguments>(request.arguments())?;
+            Ok((DiagnosticChildCommand::CreateNewThread, json!({})))
+        }
+        DIAGNOSTIC_CHILD_START_TURN_TOOL => {
+            let arguments = parse_arguments::<DiagnosticStartTurnArguments>(request.arguments())?;
+            let text = arguments.validated_text().map_err(|message| {
+                DiagnosticChildDynamicToolError::new("invalid_arguments", message)
+            })?;
+            Ok((DiagnosticChildCommand::StartTurn, json!({ "text": text })))
+        }
+        DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL => {
+            let arguments = parse_arguments::<DiagnosticStopTurnArguments>(request.arguments())?;
+            arguments.validate().map_err(|message| {
+                DiagnosticChildDynamicToolError::new("invalid_arguments", message)
+            })?;
+            Ok((
+                DiagnosticChildCommand::SoftStopTurn,
+                json!({
+                    "expectedThreadId": arguments.expected_thread_id,
+                    "expectedTurnId": arguments.expected_turn_id,
+                }),
+            ))
+        }
+        DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL => {
+            let arguments = parse_arguments::<DiagnosticStopTurnArguments>(request.arguments())?;
+            arguments.validate().map_err(|message| {
+                DiagnosticChildDynamicToolError::new("invalid_arguments", message)
+            })?;
+            Ok((
+                DiagnosticChildCommand::HardStopTurn,
+                json!({
+                    "expectedThreadId": arguments.expected_thread_id,
+                    "expectedTurnId": arguments.expected_turn_id,
+                }),
+            ))
+        }
         DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL => gui_control_child_command(
             DiagnosticChildCommand::ReadUiState,
             READ_UI_STATE_TOOL,
@@ -325,6 +441,150 @@ fn ensure_child_running(
         DiagnosticChildStatus::Running(_) => Ok(()),
         DiagnosticChildStatus::NotRunning => Err(DiagnosticChildDynamicToolError::not_running()),
     }
+}
+
+fn wait_for_state_result(
+    supervisor: &mut DiagnosticChildSupervisor,
+    arguments: &Value,
+) -> Result<Value, DiagnosticChildDynamicToolError> {
+    let arguments = parse_arguments::<DiagnosticWaitForStateArguments>(arguments)?
+        .normalized()
+        .map_err(|message| DiagnosticChildDynamicToolError::new("invalid_arguments", message))?;
+    let started = Instant::now();
+    let deadline = started + arguments.timeout();
+
+    loop {
+        let latest = supervisor
+            .request(
+                DiagnosticChildCommand::ReadUiState,
+                json!({ "limit": arguments.visible_row_limit() }),
+                DIAGNOSTIC_CHILD_REQUEST_TIMEOUT,
+            )
+            .map_err(map_supervisor_error)?;
+
+        if wait_predicate_matches(&arguments, &latest) {
+            return Ok(wait_result(
+                "matched",
+                &arguments,
+                started.elapsed(),
+                latest,
+            ));
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(wait_result(
+                "timeout",
+                &arguments,
+                started.elapsed(),
+                latest,
+            ));
+        }
+
+        let sleep_for = arguments
+            .poll_interval()
+            .min(deadline.saturating_duration_since(now));
+        if !sleep_for.is_zero() {
+            thread::sleep(sleep_for);
+        }
+    }
+}
+
+fn wait_result(
+    status: &str,
+    arguments: &DiagnosticWaitForStateArguments,
+    elapsed: Duration,
+    ui_state: Value,
+) -> Value {
+    json!({
+        "status": status,
+        "predicate": arguments.predicate,
+        "elapsedMs": elapsed.as_millis(),
+        "uiState": ui_state,
+    })
+}
+
+fn wait_predicate_matches(arguments: &DiagnosticWaitForStateArguments, ui_state: &Value) -> bool {
+    if !wait_target_identity_matches(arguments, ui_state) {
+        return false;
+    }
+
+    match arguments.predicate {
+        DiagnosticWaitPredicate::Ready => string_field(ui_state, "shellState") == Some("ready"),
+        DiagnosticWaitPredicate::WorkspaceSelected => arguments
+            .workspace_id
+            .as_deref()
+            .is_some_and(|workspace_id| {
+                string_field(ui_state, "selectedWorkspaceId") == Some(workspace_id)
+            }),
+        DiagnosticWaitPredicate::ThreadSelected => arguments
+            .thread_id
+            .as_deref()
+            .is_some_and(|thread_id| string_field(ui_state, "selectedThreadId") == Some(thread_id)),
+        DiagnosticWaitPredicate::PendingNewThread => {
+            string_field(ui_state, "shellState") == Some("ready")
+                && ui_state.get("selectedThreadId").is_some_and(Value::is_null)
+        }
+        DiagnosticWaitPredicate::SelectedThreadIdle => {
+            turn_state_field(ui_state, "selectedThreadState") == Some("idle")
+        }
+        DiagnosticWaitPredicate::SelectedThreadActive => {
+            turn_state_field(ui_state, "selectedThreadState") == Some("working")
+        }
+        DiagnosticWaitPredicate::SelectedThreadCompacting => {
+            turn_state_field(ui_state, "selectedThreadState") == Some("compacting")
+        }
+        DiagnosticWaitPredicate::TurnStreamPending => ui_state
+            .get("backgroundWork")
+            .and_then(|state| state.get("turnStreamPending"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        DiagnosticWaitPredicate::NoBackgroundWork => {
+            ui_state
+                .get("backgroundWork")
+                .and_then(|state| state.get("backendWorkReceivers"))
+                .and_then(Value::as_u64)
+                == Some(0)
+        }
+    }
+}
+
+fn wait_target_identity_matches(
+    arguments: &DiagnosticWaitForStateArguments,
+    ui_state: &Value,
+) -> bool {
+    if let Some(workspace_id) = arguments.workspace_id.as_deref()
+        && string_field(ui_state, "selectedWorkspaceId") != Some(workspace_id)
+    {
+        return false;
+    }
+    if let Some(thread_id) = arguments.thread_id.as_deref()
+        && string_field(ui_state, "selectedThreadId") != Some(thread_id)
+    {
+        return false;
+    }
+    if let Some(turn_id) = arguments.turn_id.as_deref() {
+        let active_turn_id = ui_state
+            .get("turnState")
+            .and_then(|state| state.get("cancellableActiveTurn"))
+            .and_then(|turn| turn.get("turnId"))
+            .and_then(Value::as_str);
+        if active_turn_id != Some(turn_id) {
+            return false;
+        }
+    }
+    true
+}
+
+fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value.get(field).and_then(Value::as_str)
+}
+
+fn turn_state_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value
+        .get("turnState")
+        .and_then(|state| state.get(field))
+        .and_then(Value::as_str)
 }
 
 fn start_outcome_result(outcome: DiagnosticChildStartOutcome) -> Value {
@@ -573,6 +833,113 @@ fn media_events_schema() -> Value {
                 "description": "Return events with sequence numbers greater than this value."
             }
         },
+        "additionalProperties": false
+    })
+}
+
+fn thread_list_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": MAX_DIAGNOSTIC_THREAD_LIST_LIMIT,
+                "default": DEFAULT_DIAGNOSTIC_THREAD_LIST_LIMIT
+            }
+        },
+        "additionalProperties": false
+    })
+}
+
+fn start_turn_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_DIAGNOSTIC_TURN_TEXT_BYTES,
+                "description": "Bounded text submitted through the diagnostic child's composer path."
+            }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+    })
+}
+
+fn stop_turn_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "expectedThreadId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_DIAGNOSTIC_TURN_ID_BYTES,
+                "description": "Exact selected backend thread id observed before requesting stop."
+            },
+            "expectedTurnId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_DIAGNOSTIC_TURN_ID_BYTES,
+                "description": "Exact selected active backend turn id observed before requesting stop."
+            }
+        },
+        "required": ["expectedThreadId", "expectedTurnId"],
+        "additionalProperties": false
+    })
+}
+
+fn wait_for_state_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "predicate": {
+                "type": "string",
+                "enum": [
+                    "ready",
+                    "workspace_selected",
+                    "thread_selected",
+                    "pending_new_thread",
+                    "selected_thread_idle",
+                    "selected_thread_active",
+                    "selected_thread_compacting",
+                    "turn_stream_pending",
+                    "no_background_work"
+                ]
+            },
+            "timeoutMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": MAX_DIAGNOSTIC_WAIT_TIMEOUT_MS,
+                "default": DEFAULT_DIAGNOSTIC_WAIT_TIMEOUT_MS
+            },
+            "pollIntervalMs": {
+                "type": "integer",
+                "minimum": MIN_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
+                "maximum": MAX_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
+                "default": DEFAULT_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS
+            },
+            "workspaceId": {
+                "type": "string",
+                "description": "Optional exact selected workspace identity guard."
+            },
+            "threadId": {
+                "type": "string",
+                "description": "Optional exact selected thread identity guard."
+            },
+            "turnId": {
+                "type": "string",
+                "description": "Optional exact selected active turn identity guard."
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT,
+                "default": DEFAULT_DIAGNOSTIC_THREAD_LIST_LIMIT
+            }
+        },
+        "required": ["predicate"],
         "additionalProperties": false
     })
 }

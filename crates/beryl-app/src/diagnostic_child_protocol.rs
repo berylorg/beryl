@@ -12,6 +12,11 @@ pub(crate) const READ_RETAINED_STATE_COMMAND: &str = "read_retained_state";
 pub(crate) const READ_VISIBLE_MEDIA_COMMAND: &str = "read_visible_media";
 pub(crate) const READ_MEDIA_EVENTS_COMMAND: &str = "read_media_events";
 pub(crate) const READ_UI_STATE_COMMAND: &str = "read_ui_state";
+pub(crate) const LIST_WORKSPACE_THREADS_COMMAND: &str = "list_workspace_threads";
+pub(crate) const CREATE_NEW_THREAD_COMMAND: &str = "create_new_thread";
+pub(crate) const START_TURN_COMMAND: &str = "start_turn";
+pub(crate) const SOFT_STOP_TURN_COMMAND: &str = "soft_stop_turn";
+pub(crate) const HARD_STOP_TURN_COMMAND: &str = "hard_stop_turn";
 pub(crate) const SWITCH_WORKSPACE_COMMAND: &str = "switch_workspace";
 pub(crate) const SWITCH_THREAD_COMMAND: &str = "switch_thread";
 pub(crate) const SCROLL_TRANSCRIPT_COMMAND: &str = "scroll_transcript";
@@ -35,6 +40,11 @@ pub(crate) enum DiagnosticChildCommand {
     ReadVisibleMedia,
     ReadMediaEvents,
     ReadUiState,
+    ListWorkspaceThreads,
+    CreateNewThread,
+    StartTurn,
+    SoftStopTurn,
+    HardStopTurn,
     SwitchWorkspace,
     SwitchThread,
     ScrollTranscript,
@@ -113,6 +123,11 @@ impl DiagnosticChildCommand {
             Self::ReadVisibleMedia => READ_VISIBLE_MEDIA_COMMAND,
             Self::ReadMediaEvents => READ_MEDIA_EVENTS_COMMAND,
             Self::ReadUiState => READ_UI_STATE_COMMAND,
+            Self::ListWorkspaceThreads => LIST_WORKSPACE_THREADS_COMMAND,
+            Self::CreateNewThread => CREATE_NEW_THREAD_COMMAND,
+            Self::StartTurn => START_TURN_COMMAND,
+            Self::SoftStopTurn => SOFT_STOP_TURN_COMMAND,
+            Self::HardStopTurn => HARD_STOP_TURN_COMMAND,
             Self::SwitchWorkspace => SWITCH_WORKSPACE_COMMAND,
             Self::SwitchThread => SWITCH_THREAD_COMMAND,
             Self::ScrollTranscript => SCROLL_TRANSCRIPT_COMMAND,
@@ -132,6 +147,11 @@ impl TryFrom<&str> for DiagnosticChildCommand {
             READ_VISIBLE_MEDIA_COMMAND => Ok(Self::ReadVisibleMedia),
             READ_MEDIA_EVENTS_COMMAND => Ok(Self::ReadMediaEvents),
             READ_UI_STATE_COMMAND => Ok(Self::ReadUiState),
+            LIST_WORKSPACE_THREADS_COMMAND => Ok(Self::ListWorkspaceThreads),
+            CREATE_NEW_THREAD_COMMAND => Ok(Self::CreateNewThread),
+            START_TURN_COMMAND => Ok(Self::StartTurn),
+            SOFT_STOP_TURN_COMMAND => Ok(Self::SoftStopTurn),
+            HARD_STOP_TURN_COMMAND => Ok(Self::HardStopTurn),
             SWITCH_WORKSPACE_COMMAND => Ok(Self::SwitchWorkspace),
             SWITCH_THREAD_COMMAND => Ok(Self::SwitchThread),
             SCROLL_TRANSCRIPT_COMMAND => Ok(Self::ScrollTranscript),

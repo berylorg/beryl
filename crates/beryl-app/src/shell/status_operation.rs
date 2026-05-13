@@ -21,7 +21,7 @@ use super::{
     hard_stop::{HardStopOutcome, HardStopUpdate, spawn_hard_stop_worker},
     lifecycle_continuation::context_compaction_queue_failure_message,
     resolve_new_thread_execution_target,
-    status_line::ThreadTurnDefaults,
+    status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets, ThreadTurnDefaults},
     status_operation_state::{
         HardStopHoldSource, HardStopRequestSummary, StatusLineOperationKind,
         StatusLineOperationState, StatusModelListCache, reasoning_effort_for_model_selection,
@@ -577,21 +577,46 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .begin_soft_stop_selected_turn_from_control(window, cx)
+            .is_ok()
+        {
+            cx.stop_propagation();
+        }
+    }
+
+    pub(crate) fn begin_soft_stop_selected_turn_from_control(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<CancellableActiveTurn, (&'static str, String)> {
         if self.turn_stop_receiver.is_some() || self.hard_stop_receiver.is_some() {
-            return;
+            return Err((
+                "turn_stop_pending",
+                "Beryl already has selected-turn stop work in progress.".to_string(),
+            ));
         }
 
         let target = self
             .conversation_surface()
             .and_then(|surface| surface.status_line_projection().cancellable_active_turn);
         if !self.status_line_turn_operations_interactive(target.is_some()) {
-            return;
+            return Err((
+                "turn_stop_unavailable",
+                "The selected child thread has no interruptible active turn.".to_string(),
+            ));
         }
         let Some(target) = target else {
-            return;
+            return Err((
+                "turn_stop_unavailable",
+                "The selected child thread has no interruptible active turn.".to_string(),
+            ));
         };
         let Some(connector) = self.backend_client_connector() else {
-            return;
+            return Err((
+                "backend_unavailable",
+                "Beryl does not have an active managed backend for turn stop.".to_string(),
+            ));
         };
 
         let started = self.conversation_surface_mut().is_some_and(|surface| {
@@ -600,17 +625,20 @@ impl ShellView {
                 .begin_turn_stop_request(target.clone())
         });
         if !started {
-            return;
+            return Err((
+                "turn_stop_pending",
+                "Beryl could not start a duplicate selected-turn stop request.".to_string(),
+            ));
         }
 
         self.turn_stop_receiver = Some(spawn_turn_stop_worker(
             connector,
-            target,
+            target.clone(),
             self.bootstrap.probe_timeout(),
         ));
         self.schedule_poll_if_needed(window, cx);
-        cx.stop_propagation();
         cx.notify();
+        Ok(target)
     }
 
     pub(crate) fn begin_hard_stop_hold_from_status_popup(
@@ -1174,6 +1202,59 @@ impl ShellView {
             self.bootstrap.probe_timeout(),
         ));
         true
+    }
+
+    pub(crate) fn begin_hard_stop_selected_turn_from_control(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<SelectedTurnHardStopTargets, (&'static str, String)> {
+        if self.turn_stop_receiver.is_some() || self.hard_stop_receiver.is_some() {
+            return Err((
+                "turn_stop_pending",
+                "Beryl already has selected-turn stop work in progress.".to_string(),
+            ));
+        }
+
+        let selected_targets = self
+            .conversation_surface()
+            .and_then(|surface| surface.status_line_projection().hard_stop_targets)
+            .filter(|targets| !targets.targets.is_empty());
+        let Some(selected_targets) = selected_targets else {
+            return Err((
+                "hard_stop_unavailable",
+                "The selected child thread has no probed hard-stop targets for its active turn."
+                    .to_string(),
+            ));
+        };
+
+        let Some(connector) = self.backend_client_connector() else {
+            return Err((
+                "backend_unavailable",
+                "Beryl does not have an active managed backend for hard stop.".to_string(),
+            ));
+        };
+
+        let started = self.conversation_surface_mut().is_some_and(|surface| {
+            surface
+                .status_line_operations_mut()
+                .begin_hard_stop_request(selected_targets.clone())
+        });
+        if !started {
+            return Err((
+                "turn_stop_pending",
+                "Beryl could not start a duplicate selected-turn hard-stop request.".to_string(),
+            ));
+        }
+
+        self.hard_stop_receiver = Some(spawn_hard_stop_worker(
+            connector,
+            selected_targets.clone(),
+            self.bootstrap.probe_timeout(),
+        ));
+        self.schedule_poll_if_needed(window, cx);
+        cx.notify();
+        Ok(selected_targets)
     }
 }
 

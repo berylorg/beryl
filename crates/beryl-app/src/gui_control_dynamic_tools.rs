@@ -27,11 +27,34 @@ pub(crate) struct UiStateSnapshot {
     pub selected_workspace_id: Option<String>,
     pub selected_thread_id: Option<String>,
     pub selected_runtime_target: Option<RuntimeTargetDiagnostic>,
+    pub turn_state: TurnUiState,
     pub transcript: TranscriptUiState,
     pub visible_media: VisibleMediaSnapshot,
     pub activity_panel: ActivityPanelUiState,
     pub popups: PopupUiState,
     pub background_work: BackgroundWorkUiState,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnUiState {
+    pub selected_thread_state: String,
+    pub selected_thread_status: Option<String>,
+    pub last_turn_state: String,
+    pub cancellable_active_turn: Option<CancellableTurnUiState>,
+    pub hard_stop_target_count: usize,
+    pub hard_stop_limitation_count: usize,
+    pub turn_stop_request_in_flight: bool,
+    pub hard_stop_request_in_flight: bool,
+    pub hard_stop_hold_active: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CancellableTurnUiState {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

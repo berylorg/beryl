@@ -110,6 +110,14 @@ impl MemberThreadInventorySnapshot {
         &self.groups
     }
 
+    pub(crate) fn workspace_id(&self) -> &BerylWorkspaceId {
+        &self.workspace_id
+    }
+
+    pub(crate) fn refreshed_at_millis(&self) -> u64 {
+        self.refreshed_at_millis
+    }
+
     pub(crate) fn retained_counts(&self) -> MemberThreadInventoryRetainedCounts {
         let threads = self
             .groups

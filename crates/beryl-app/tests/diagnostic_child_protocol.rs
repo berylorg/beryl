@@ -4,10 +4,11 @@ mod diagnostic_child_protocol;
 use std::io::{BufReader, Cursor};
 
 use diagnostic_child_protocol::{
-    BoundedLineRead, CLOSE_POPUPS_COMMAND, DiagnosticChildCommand, DiagnosticProtocolResponse,
-    MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, READ_UI_STATE_COMMAND, SWITCH_WORKSPACE_COMMAND,
-    parse_request_frame, parse_response_frame, read_bounded_line_bytes, request_frame,
-    response_frame,
+    BoundedLineRead, CLOSE_POPUPS_COMMAND, CREATE_NEW_THREAD_COMMAND, DiagnosticChildCommand,
+    DiagnosticProtocolResponse, HARD_STOP_TURN_COMMAND, LIST_WORKSPACE_THREADS_COMMAND,
+    MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, READ_UI_STATE_COMMAND, SOFT_STOP_TURN_COMMAND,
+    START_TURN_COMMAND, SWITCH_WORKSPACE_COMMAND, parse_request_frame, parse_response_frame,
+    read_bounded_line_bytes, request_frame, response_frame,
 };
 use serde_json::json;
 
@@ -120,5 +121,25 @@ fn command_constants_match_protocol_command_names() {
     assert_eq!(
         DiagnosticChildCommand::ClosePopups.as_str(),
         CLOSE_POPUPS_COMMAND
+    );
+    assert_eq!(
+        DiagnosticChildCommand::ListWorkspaceThreads.as_str(),
+        LIST_WORKSPACE_THREADS_COMMAND
+    );
+    assert_eq!(
+        DiagnosticChildCommand::CreateNewThread.as_str(),
+        CREATE_NEW_THREAD_COMMAND
+    );
+    assert_eq!(
+        DiagnosticChildCommand::StartTurn.as_str(),
+        START_TURN_COMMAND
+    );
+    assert_eq!(
+        DiagnosticChildCommand::SoftStopTurn.as_str(),
+        SOFT_STOP_TURN_COMMAND
+    );
+    assert_eq!(
+        DiagnosticChildCommand::HardStopTurn.as_str(),
+        HARD_STOP_TURN_COMMAND
     );
 }

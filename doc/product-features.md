@@ -325,6 +325,17 @@ This document defines the user-visible product behavior for Beryl V1.
 - If an agent turn produces a non-image file artifact that exists on the local filesystem, the GUI represents that artifact as a clickable file link and asks the OS to open it with the default associated application.
 - Local filesystem image references render inline only through native app-server generated-image items or Markdown image syntax with a supported raster target. File bytes referenced by Markdown remain filesystem state; if they disappear or become unreadable, Beryl shows the unavailable fallback instead of treating the reference as a durable attachment.
 
+## Diagnostic Child Live-Test Control
+
+- Diagnostic child live-test controls are supervisor dynamic tools for testing an isolated child Beryl instance. They are not visible end-user controls in the ordinary workspace screen.
+- Diagnostic child thread-listing reports bounded child workspace thread inventory state using the same inventory model that feeds thread selectors and thread-linking UI. It may report stale or refresh-pending inventory state, but it must not synchronously enumerate backend threads on the child UI thread.
+- Diagnostic child new-thread control clears the child active-thread selection into the same pending-new-thread draft state as the `New Thread` button. It does not create a backend thread until a later accepted composer submission creates one through ordinary Beryl behavior.
+- Diagnostic child turn submission injects bounded text into the child composer submission path. Accepted submissions become ordinary user input fragments, including first-message new-thread creation, active-turn steering, compaction-time queueing, composer history, transcript anchoring, draft clearing, and rejection behavior.
+- Diagnostic child turn submission is unavailable when ordinary composer submission would be unavailable, including empty input, unresolved runtime target, disabled new-thread creation, incompatible edit mode, or another disabled submission state.
+- Diagnostic child soft stop uses the same exact selected-thread active-turn interruption behavior as the status-line `Soft stop` action. Request acceptance is not terminal turn completion.
+- Diagnostic child hard stop uses the same selected-turn interruption and exact backend-exposed hard-stop targets as the status-line `Hard stop` action, but the diagnostic tool request itself supplies the deliberate activation in place of the visible three-second hold affordance.
+- Diagnostic child wait-for-state observes bounded child UI and turn-state predicates such as workspace readiness, selected thread identity, active-turn state, idle state, visible transcript count, and inventory availability. Timeout returns the latest bounded child state rather than blocking indefinitely.
+
 ## Surface Notices
 
 - Surface notices are shown one at a time from a bounded queue. Dismissing the visible notice advances to the next queued notice when present.
