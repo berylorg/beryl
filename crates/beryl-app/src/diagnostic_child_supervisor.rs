@@ -16,17 +16,23 @@ use tracing::{debug, warn};
 use crate::{
     BerylHomeDir, BerylHomeDirError,
     diagnostic_child_protocol::{
-        BoundedLineRead, DiagnosticChildCommand, DiagnosticProtocolError,
-        DiagnosticProtocolErrorBody, DiagnosticProtocolResponse,
-        MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, parse_response_frame, read_bounded_line_bytes,
-        request_frame,
+        BoundedLineRead, DIAGNOSTIC_CHILD_PROTOCOL_NAME, DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
+        DiagnosticChildCommand, DiagnosticProtocolError, DiagnosticProtocolErrorBody,
+        DiagnosticProtocolResponse, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, parse_response_frame,
+        read_bounded_line_bytes, request_frame,
     },
 };
+
+#[path = "diagnostic_child_supervisor/launch.rs"]
+mod launch;
+
+pub(crate) use launch::{DiagnosticChildLaunch, MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES};
 
 const CHILD_SHUTDOWN_GRACE_TIMEOUT: Duration = Duration::from_millis(250);
 const CHILD_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) const DIAGNOSTIC_CHILD_STOP_BUDGET: Duration = Duration::from_secs(11);
 pub(crate) const DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(12);
+const DIAGNOSTIC_CHILD_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const STDERR_LOG_LIMIT: usize = 512;
 
@@ -73,8 +79,15 @@ pub(crate) enum DiagnosticChildSupervisorError {
     },
     #[error("failed to resolve current Beryl executable path: {source}")]
     CurrentExecutable { source: io::Error },
-    #[error("failed to spawn diagnostic child Beryl process: {source}")]
-    Spawn { source: io::Error },
+    #[error("invalid diagnostic child executable path {path}: {reason}")]
+    InvalidExecutablePath { path: PathBuf, reason: &'static str },
+    #[error("failed to inspect diagnostic child executable path {path}: {source}")]
+    ExecutablePathAccess { path: PathBuf, source: io::Error },
+    #[error("failed to spawn diagnostic child Beryl process from {executable_path}: {source}")]
+    Spawn {
+        executable_path: PathBuf,
+        source: io::Error,
+    },
     #[error("diagnostic child process did not expose piped stdin")]
     MissingStdin,
     #[error("diagnostic child process did not expose piped stdout")]
@@ -89,6 +102,16 @@ pub(crate) enum DiagnosticChildSupervisorError {
     Protocol(#[from] DiagnosticProtocolError),
     #[error("diagnostic child returned {kind}: {message}")]
     ChildError { kind: String, message: String },
+    #[error("timed out waiting for diagnostic child startup protocol after {timeout:?}")]
+    StartupProtocolTimeout { timeout: Duration },
+    #[error("diagnostic child startup protocol stream ended before readiness")]
+    StartupProtocolEof,
+    #[error("diagnostic child startup protocol returned malformed response: {source}")]
+    StartupProtocolMalformed { source: DiagnosticProtocolError },
+    #[error("diagnostic child startup protocol returned {kind}: {message}")]
+    StartupProtocolRejected { kind: String, message: String },
+    #[error("diagnostic child startup protocol is incompatible: {message}")]
+    StartupProtocolIncompatible { message: String },
     #[error("failed to query diagnostic child process status: {source}")]
     QueryStatus { source: io::Error },
     #[error("failed to terminate diagnostic child process: {source}")]
@@ -133,7 +156,20 @@ impl DiagnosticChildSupervisor {
     pub(crate) fn start(
         &mut self,
         supervisor_home: &BerylHomeDir,
-        child_home: impl Into<PathBuf>,
+        launch: DiagnosticChildLaunch,
+    ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
+        self.start_with_startup_timeout(
+            supervisor_home,
+            launch,
+            DIAGNOSTIC_CHILD_STARTUP_RESPONSE_TIMEOUT,
+        )
+    }
+
+    fn start_with_startup_timeout(
+        &mut self,
+        supervisor_home: &BerylHomeDir,
+        launch: DiagnosticChildLaunch,
+        startup_timeout: Duration,
     ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
         self.clear_if_exited()?;
         if let Some(child) = self.child.as_ref() {
@@ -142,7 +178,7 @@ impl DiagnosticChildSupervisor {
             ));
         }
 
-        let child_home = BerylHomeDir::from_explicit_path(child_home)?;
+        let child_home = BerylHomeDir::from_explicit_path(launch.child_home().to_path_buf())?;
         if same_home_path(supervisor_home.root_dir(), child_home.root_dir()) {
             return Err(DiagnosticChildSupervisorError::HomeCollidesWithSupervisor {
                 child_home: child_home.root_dir().to_path_buf(),
@@ -150,8 +186,7 @@ impl DiagnosticChildSupervisor {
             });
         }
 
-        let executable_path = std::env::current_exe()
-            .map_err(|source| DiagnosticChildSupervisorError::CurrentExecutable { source })?;
+        let executable_path = launch::resolve_executable_path(launch.executable_path())?;
         let mut command = Command::new(&executable_path);
         command
             .arg("--diagnostic-target-stdio")
@@ -163,7 +198,10 @@ impl DiagnosticChildSupervisor {
 
         let child = command
             .spawn()
-            .map_err(|source| DiagnosticChildSupervisorError::Spawn { source })?;
+            .map_err(|source| DiagnosticChildSupervisorError::Spawn {
+                executable_path: executable_path.clone(),
+                source,
+            })?;
         let mut child_guard = SpawnedDiagnosticChildGuard::new(child);
         let host_process_tree = DiagnosticHostProcessTree::create_for_child(child_guard.child())?;
         let stdin = child_guard
@@ -180,7 +218,7 @@ impl DiagnosticChildSupervisor {
             spawn_stderr_logger(stderr);
         }
 
-        let process = DiagnosticChildProcess {
+        let mut process = DiagnosticChildProcess {
             child: child_guard.into_child(),
             stdin,
             stdout_receiver: spawn_stdout_reader(stdout),
@@ -188,9 +226,25 @@ impl DiagnosticChildSupervisor {
             home_dir: child_home,
             executable_path,
         };
+        let request_id = self.next_request_id();
+        if let Err(error) = process.verify_startup_protocol(&request_id, startup_timeout) {
+            return self.handle_startup_verification_failure(process, error, |process| {
+                process.shutdown(Duration::ZERO, CHILD_KILL_TIMEOUT)
+            });
+        }
         let identity = process.identity();
         self.child = Some(process);
         Ok(DiagnosticChildStartOutcome::Started(identity))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn start_for_test(
+        &mut self,
+        supervisor_home: &BerylHomeDir,
+        launch: DiagnosticChildLaunch,
+        startup_timeout: Duration,
+    ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
+        self.start_with_startup_timeout(supervisor_home, launch, startup_timeout)
     }
 
     pub(crate) fn stop(
@@ -242,71 +296,63 @@ impl DiagnosticChildSupervisor {
         timeout: Duration,
     ) -> Result<Value, DiagnosticChildSupervisorError> {
         self.clear_if_exited()?;
-        let request_id = self.next_request_id.to_string();
-        self.next_request_id = self.next_request_id.saturating_add(1);
+        let request_id = self.next_request_id();
         let child = self
             .child
             .as_mut()
             .ok_or(DiagnosticChildSupervisorError::ProtocolEof)?;
 
-        let frame = request_frame(&request_id, command, params)?;
-        child
-            .stdin
-            .write_all(&frame)
-            .and_then(|_| child.stdin.flush())
-            .map_err(|source| DiagnosticChildSupervisorError::WriteRequest { source })?;
-
-        let deadline = Instant::now() + timeout;
-        loop {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-                return Err(DiagnosticChildSupervisorError::RequestTimeout { timeout });
-            };
-            match child.stdout_receiver.recv_timeout(remaining) {
-                Ok(Ok(response)) => {
-                    if response.id() != Some(request_id.as_str()) {
-                        continue;
-                    }
-                    return response.into_result().map_err(child_protocol_error);
-                }
-                Ok(Err(error)) => {
-                    self.child = None;
-                    return Err(DiagnosticChildSupervisorError::Protocol(error));
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    return Err(DiagnosticChildSupervisorError::RequestTimeout { timeout });
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    self.child = None;
-                    return Err(DiagnosticChildSupervisorError::ProtocolEof);
-                }
+        match child.request(&request_id, command, params, timeout) {
+            Err(
+                error @ (DiagnosticChildSupervisorError::Protocol(_)
+                | DiagnosticChildSupervisorError::ProtocolEof),
+            ) => {
+                self.child = None;
+                Err(error)
             }
+            result => result,
         }
+    }
+
+    fn next_request_id(&mut self) -> String {
+        let request_id = self.next_request_id.to_string();
+        self.next_request_id = self.next_request_id.saturating_add(1);
+        request_id
     }
 
     #[cfg(test)]
     pub(crate) fn adopt_child_for_test(
         &mut self,
-        mut child: Child,
+        child: Child,
         home_dir: BerylHomeDir,
         executable_path: PathBuf,
     ) -> Result<(), DiagnosticChildSupervisorError> {
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or(DiagnosticChildSupervisorError::MissingStdin)?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or(DiagnosticChildSupervisorError::MissingStdout)?;
-        self.child = Some(DiagnosticChildProcess {
+        self.child = Some(DiagnosticChildProcess::from_child_for_test(
             child,
-            stdin,
-            stdout_receiver: spawn_stdout_reader(stdout),
-            host_process_tree: DiagnosticHostProcessTree::empty_for_test(),
             home_dir,
             executable_path,
-        });
+        )?);
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn retain_startup_failure_child_for_test(
+        &mut self,
+        child: Child,
+        home_dir: BerylHomeDir,
+        executable_path: PathBuf,
+    ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
+        let process =
+            DiagnosticChildProcess::from_child_for_test(child, home_dir, executable_path)?;
+        self.handle_startup_verification_failure(
+            process,
+            DiagnosticChildSupervisorError::StartupProtocolEof,
+            |_| {
+                Err(DiagnosticChildSupervisorError::RequestTimeout {
+                    timeout: Duration::ZERO,
+                })
+            },
+        )
     }
 
     #[cfg(test)]
@@ -336,6 +382,24 @@ impl DiagnosticChildSupervisor {
             self.child = None;
         }
         Ok(())
+    }
+
+    fn handle_startup_verification_failure(
+        &mut self,
+        mut process: DiagnosticChildProcess,
+        startup_error: DiagnosticChildSupervisorError,
+        shutdown: impl FnOnce(&mut DiagnosticChildProcess) -> Result<(), DiagnosticChildSupervisorError>,
+    ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
+        if let Err(cleanup_error) = shutdown(&mut process) {
+            warn!(
+                %startup_error,
+                %cleanup_error,
+                "failed to clean up diagnostic child after startup verification failure; retaining child for stop retry"
+            );
+            self.child = Some(process);
+            return Err(cleanup_error);
+        }
+        Err(startup_error)
     }
 }
 
@@ -422,6 +486,82 @@ impl DiagnosticChildProcess {
         }
     }
 
+    fn verify_startup_protocol(
+        &mut self,
+        request_id: &str,
+        timeout: Duration,
+    ) -> Result<(), DiagnosticChildSupervisorError> {
+        let result = self
+            .request(
+                request_id,
+                DiagnosticChildCommand::Handshake,
+                serde_json::json!({}),
+                timeout,
+            )
+            .map_err(startup_protocol_error)?;
+        validate_startup_handshake_result(&result)
+    }
+
+    #[cfg(test)]
+    fn from_child_for_test(
+        mut child: Child,
+        home_dir: BerylHomeDir,
+        executable_path: PathBuf,
+    ) -> Result<Self, DiagnosticChildSupervisorError> {
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or(DiagnosticChildSupervisorError::MissingStdin)?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or(DiagnosticChildSupervisorError::MissingStdout)?;
+        Ok(Self {
+            child,
+            stdin,
+            stdout_receiver: spawn_stdout_reader(stdout),
+            host_process_tree: DiagnosticHostProcessTree::empty_for_test(),
+            home_dir,
+            executable_path,
+        })
+    }
+
+    fn request(
+        &mut self,
+        request_id: &str,
+        command: DiagnosticChildCommand,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, DiagnosticChildSupervisorError> {
+        let frame = request_frame(request_id, command, params)?;
+        self.stdin
+            .write_all(&frame)
+            .and_then(|_| self.stdin.flush())
+            .map_err(|source| DiagnosticChildSupervisorError::WriteRequest { source })?;
+
+        let deadline = Instant::now() + timeout;
+        loop {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return Err(DiagnosticChildSupervisorError::RequestTimeout { timeout });
+            };
+            match self.stdout_receiver.recv_timeout(remaining) {
+                Ok(Ok(response)) => {
+                    if response.id() != Some(request_id) {
+                        continue;
+                    }
+                    return response.into_result().map_err(child_protocol_error);
+                }
+                Ok(Err(error)) => return Err(DiagnosticChildSupervisorError::Protocol(error)),
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(DiagnosticChildSupervisorError::RequestTimeout { timeout });
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(DiagnosticChildSupervisorError::ProtocolEof);
+                }
+            }
+        }
+    }
+
     fn has_exited(&mut self) -> Result<bool, DiagnosticChildSupervisorError> {
         self.child
             .try_wait()
@@ -464,6 +604,51 @@ impl DiagnosticChildProcess {
             timeout: kill_timeout,
         })
     }
+}
+
+fn startup_protocol_error(error: DiagnosticChildSupervisorError) -> DiagnosticChildSupervisorError {
+    match error {
+        DiagnosticChildSupervisorError::WriteRequest { source } => {
+            DiagnosticChildSupervisorError::StartupProtocolIncompatible {
+                message: format!("failed to write startup handshake request: {source}"),
+            }
+        }
+        DiagnosticChildSupervisorError::RequestTimeout { timeout } => {
+            DiagnosticChildSupervisorError::StartupProtocolTimeout { timeout }
+        }
+        DiagnosticChildSupervisorError::ProtocolEof => {
+            DiagnosticChildSupervisorError::StartupProtocolEof
+        }
+        DiagnosticChildSupervisorError::Protocol(source) => {
+            DiagnosticChildSupervisorError::StartupProtocolMalformed { source }
+        }
+        DiagnosticChildSupervisorError::ChildError { kind, message } => {
+            DiagnosticChildSupervisorError::StartupProtocolRejected { kind, message }
+        }
+        error => error,
+    }
+}
+
+fn validate_startup_handshake_result(result: &Value) -> Result<(), DiagnosticChildSupervisorError> {
+    let protocol = result.get("protocol").and_then(Value::as_str);
+    let version = result.get("protocolVersion").and_then(Value::as_u64);
+    if protocol != Some(DIAGNOSTIC_CHILD_PROTOCOL_NAME) {
+        return Err(
+            DiagnosticChildSupervisorError::StartupProtocolIncompatible {
+                message: "handshake protocol name did not match Beryl diagnostic child protocol"
+                    .to_string(),
+            },
+        );
+    }
+    if version != Some(DIAGNOSTIC_CHILD_PROTOCOL_VERSION) {
+        return Err(
+            DiagnosticChildSupervisorError::StartupProtocolIncompatible {
+                message: "handshake protocol version did not match supervisor protocol version"
+                    .to_string(),
+            },
+        );
+    }
+    Ok(())
 }
 
 fn spawn_stdout_reader(

@@ -21,9 +21,10 @@ use crate::{
     },
     diagnostic_child_protocol::DiagnosticChildCommand,
     diagnostic_child_supervisor::{
-        DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT, DiagnosticChildIdentity,
+        DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT, DiagnosticChildIdentity, DiagnosticChildLaunch,
         DiagnosticChildStartOutcome, DiagnosticChildStatus, DiagnosticChildStopOutcome,
         DiagnosticChildSupervisor, DiagnosticChildSupervisorError,
+        MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES,
     },
     gui_control_dynamic_tools::{
         CLOSE_POPUPS_TOOL, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, MAX_SCROLL_REPEAT,
@@ -65,7 +66,7 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
     vec![
         diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_START_TOOL,
-            "Start one isolated diagnostic child Beryl process with an explicit Beryl home directory.",
+            "Start one isolated diagnostic child Beryl process with an explicit Beryl home directory and optional executable path.",
             start_schema(),
         ),
         diagnostic_child_tool_spec(
@@ -258,8 +259,24 @@ fn diagnostic_child_tool_result(
         DIAGNOSTIC_CHILD_START_TOOL => {
             let arguments = parse_arguments::<StartArguments>(request.arguments())?;
             let child_home = bounded_non_empty_argument("berylHomeDir", arguments.beryl_home_dir)?;
+            let launch = if let Some(executable_path) = arguments.executable_path {
+                let executable_path =
+                    bounded_non_empty_argument("executablePath", executable_path)?;
+                DiagnosticChildLaunch::new(
+                    PathBuf::from(child_home),
+                    PathBuf::from(executable_path),
+                )
+            } else {
+                DiagnosticChildLaunch::current_executable(PathBuf::from(child_home)).map_err(
+                    |source| {
+                        map_supervisor_error(DiagnosticChildSupervisorError::CurrentExecutable {
+                            source,
+                        })
+                    },
+                )?
+            };
             let outcome = supervisor
-                .start(supervisor_home, PathBuf::from(child_home))
+                .start(supervisor_home, launch)
                 .map_err(map_supervisor_error)?;
             Ok(start_outcome_result(outcome))
         }
@@ -707,8 +724,22 @@ fn map_supervisor_error(error: DiagnosticChildSupervisorError) -> DiagnosticChil
     let message = error.to_string();
     match error {
         DiagnosticChildSupervisorError::BerylHomeDir(_)
-        | DiagnosticChildSupervisorError::HomeCollidesWithSupervisor { .. } => {
+        | DiagnosticChildSupervisorError::HomeCollidesWithSupervisor { .. }
+        | DiagnosticChildSupervisorError::InvalidExecutablePath { .. }
+        | DiagnosticChildSupervisorError::ExecutablePathAccess { .. } => {
             DiagnosticChildDynamicToolError::new("invalid_arguments", message)
+        }
+        DiagnosticChildSupervisorError::Spawn { .. } => {
+            DiagnosticChildDynamicToolError::new("diagnostic_child_spawn_failed", message)
+        }
+        DiagnosticChildSupervisorError::StartupProtocolTimeout { .. } => {
+            DiagnosticChildDynamicToolError::new("diagnostic_child_startup_timeout", message)
+        }
+        DiagnosticChildSupervisorError::StartupProtocolEof
+        | DiagnosticChildSupervisorError::StartupProtocolMalformed { .. }
+        | DiagnosticChildSupervisorError::StartupProtocolRejected { .. }
+        | DiagnosticChildSupervisorError::StartupProtocolIncompatible { .. } => {
+            DiagnosticChildDynamicToolError::new("diagnostic_child_startup_incompatible", message)
         }
         DiagnosticChildSupervisorError::ProtocolEof => {
             DiagnosticChildDynamicToolError::not_running()
@@ -734,6 +765,7 @@ struct EmptyArguments {}
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StartArguments {
     beryl_home_dir: String,
+    executable_path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -795,6 +827,12 @@ fn start_schema() -> Value {
                 "minLength": 1,
                 "maxLength": MAX_DIAGNOSTIC_CHILD_STRING_BYTES,
                 "description": "Explicit isolated Beryl home directory for the diagnostic child."
+            },
+            "executablePath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES,
+                "description": "Optional absolute Beryl executable path for the diagnostic child."
             }
         },
         "required": ["berylHomeDir"],

@@ -5,10 +5,10 @@ use std::io::{BufReader, Cursor};
 
 use diagnostic_child_protocol::{
     BoundedLineRead, CLOSE_POPUPS_COMMAND, CREATE_NEW_THREAD_COMMAND, DiagnosticChildCommand,
-    DiagnosticProtocolResponse, HARD_STOP_TURN_COMMAND, LIST_WORKSPACE_THREADS_COMMAND,
-    MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, READ_UI_STATE_COMMAND, SOFT_STOP_TURN_COMMAND,
-    START_TURN_COMMAND, SWITCH_WORKSPACE_COMMAND, parse_request_frame, parse_response_frame,
-    read_bounded_line_bytes, request_frame, response_frame,
+    DiagnosticProtocolResponse, HANDSHAKE_COMMAND, HARD_STOP_TURN_COMMAND,
+    LIST_WORKSPACE_THREADS_COMMAND, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, READ_UI_STATE_COMMAND,
+    SOFT_STOP_TURN_COMMAND, START_TURN_COMMAND, SWITCH_WORKSPACE_COMMAND, parse_request_frame,
+    parse_response_frame, read_bounded_line_bytes, request_frame, response_frame,
 };
 use serde_json::json;
 
@@ -110,6 +110,10 @@ fn response_frames_replace_oversized_success_payload_with_bounded_error() {
 
 #[test]
 fn command_constants_match_protocol_command_names() {
+    assert_eq!(
+        DiagnosticChildCommand::Handshake.as_str(),
+        HANDSHAKE_COMMAND
+    );
     assert_eq!(
         DiagnosticChildCommand::ReadUiState.as_str(),
         READ_UI_STATE_COMMAND

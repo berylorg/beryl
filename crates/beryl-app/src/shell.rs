@@ -12231,6 +12231,10 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> Result<Value, (&'static str, String)> {
         match request.command() {
+            DiagnosticChildCommand::Handshake => Ok(json!({
+                "protocol": crate::diagnostic_child_protocol::DIAGNOSTIC_CHILD_PROTOCOL_NAME,
+                "protocolVersion": crate::diagnostic_child_protocol::DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
+            })),
             DiagnosticChildCommand::ReadProcess => {
                 parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
                     request.params(),

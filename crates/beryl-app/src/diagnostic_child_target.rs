@@ -9,8 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use serde_json::json;
+
 use crate::diagnostic_child_protocol::{
-    BoundedLineRead, DiagnosticProtocolError, DiagnosticProtocolRequest,
+    BoundedLineRead, DIAGNOSTIC_CHILD_PROTOCOL_NAME, DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
+    DiagnosticChildCommand, DiagnosticProtocolError, DiagnosticProtocolRequest,
     DiagnosticProtocolResponse, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, parse_request_frame,
     read_bounded_line_bytes, write_response_frame,
 };
@@ -163,6 +166,9 @@ fn run_diagnostic_target_stdio_loop(
                 break;
             }
             Ok(BoundedLineRead::Line(line)) => match parse_request_frame(&line) {
+                Ok(Some(request)) if request.command() == DiagnosticChildCommand::Handshake => {
+                    Some(handshake_response(request.id()))
+                }
                 Ok(Some(request)) => Some(shell_sender.request(request)),
                 Ok(None) => None,
                 Err(error) => Some(protocol_error_response(error)),
@@ -191,4 +197,14 @@ fn run_diagnostic_target_stdio_loop(
 
 fn protocol_error_response(error: DiagnosticProtocolError) -> DiagnosticProtocolResponse {
     DiagnosticProtocolResponse::error(None, error.kind(), error.to_string())
+}
+
+fn handshake_response(request_id: &str) -> DiagnosticProtocolResponse {
+    DiagnosticProtocolResponse::success(
+        request_id,
+        json!({
+            "protocol": DIAGNOSTIC_CHILD_PROTOCOL_NAME,
+            "protocolVersion": DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
+        }),
+    )
 }

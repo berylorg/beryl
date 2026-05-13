@@ -30,13 +30,14 @@ mod diagnostic_child_protocol;
 mod diagnostic_child_control;
 
 mod diagnostic_child_supervisor {
-    use std::{fmt, path::PathBuf, time::Duration};
+    use std::{fmt, io, path::PathBuf, time::Duration};
 
     use serde_json::Value;
 
     use crate::{BerylHomeDir, diagnostic_child_protocol::DiagnosticChildCommand};
 
     pub(crate) const DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(12);
+    pub(crate) const MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES: usize = 1024;
 
     #[derive(Default)]
     pub(crate) struct DiagnosticChildSupervisor {
@@ -48,6 +49,12 @@ mod diagnostic_child_supervisor {
         pub pid: u32,
         pub home_dir: PathBuf,
         pub executable_path: PathBuf,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(crate) struct DiagnosticChildLaunch {
+        child_home: PathBuf,
+        executable_path: PathBuf,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,6 +82,21 @@ mod diagnostic_child_supervisor {
             child_home: PathBuf,
             supervisor_home: PathBuf,
         },
+        CurrentExecutable {
+            source: io::Error,
+        },
+        InvalidExecutablePath {
+            path: PathBuf,
+            reason: &'static str,
+        },
+        ExecutablePathAccess {
+            path: PathBuf,
+            source: io::Error,
+        },
+        Spawn {
+            executable_path: PathBuf,
+            source: io::Error,
+        },
         ProtocolEof,
         RequestTimeout {
             timeout: Duration,
@@ -84,22 +106,54 @@ mod diagnostic_child_supervisor {
             message: String,
         },
         Protocol(crate::diagnostic_child_protocol::DiagnosticProtocolError),
+        StartupProtocolTimeout {
+            timeout: Duration,
+        },
+        StartupProtocolEof,
+        StartupProtocolMalformed {
+            source: crate::diagnostic_child_protocol::DiagnosticProtocolError,
+        },
+        StartupProtocolRejected {
+            kind: String,
+            message: String,
+        },
+        StartupProtocolIncompatible {
+            message: String,
+        },
         Other(String),
+    }
+
+    impl DiagnosticChildLaunch {
+        pub(crate) fn new(
+            child_home: impl Into<PathBuf>,
+            executable_path: impl Into<PathBuf>,
+        ) -> Self {
+            Self {
+                child_home: child_home.into(),
+                executable_path: executable_path.into(),
+            }
+        }
+
+        pub(crate) fn current_executable(
+            child_home: impl Into<PathBuf>,
+        ) -> Result<Self, io::Error> {
+            Ok(Self::new(child_home, PathBuf::from("beryl-current.exe")))
+        }
     }
 
     impl DiagnosticChildSupervisor {
         pub(crate) fn start(
             &mut self,
             _supervisor_home: &BerylHomeDir,
-            child_home: impl Into<PathBuf>,
+            launch: DiagnosticChildLaunch,
         ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
             if let Some(identity) = self.identity.clone() {
                 return Ok(DiagnosticChildStartOutcome::AlreadyRunning(identity));
             }
             let identity = DiagnosticChildIdentity {
                 pid: 42,
-                home_dir: child_home.into(),
-                executable_path: PathBuf::from("beryl-test.exe"),
+                home_dir: launch.child_home,
+                executable_path: launch.executable_path,
             };
             self.identity = Some(identity.clone());
             Ok(DiagnosticChildStartOutcome::Started(identity))
@@ -154,6 +208,30 @@ mod diagnostic_child_supervisor {
                     child_home.display(),
                     supervisor_home.display()
                 ),
+                Self::CurrentExecutable { source } => {
+                    write!(
+                        formatter,
+                        "failed to resolve current Beryl executable path: {source}"
+                    )
+                }
+                Self::InvalidExecutablePath { path, reason } => write!(
+                    formatter,
+                    "invalid diagnostic child executable path {}: {reason}",
+                    path.display()
+                ),
+                Self::ExecutablePathAccess { path, source } => write!(
+                    formatter,
+                    "failed to inspect diagnostic child executable path {}: {source}",
+                    path.display()
+                ),
+                Self::Spawn {
+                    executable_path,
+                    source,
+                } => write!(
+                    formatter,
+                    "failed to spawn diagnostic child Beryl process from {}: {source}",
+                    executable_path.display()
+                ),
                 Self::ProtocolEof => write!(formatter, "diagnostic child protocol stream ended"),
                 Self::RequestTimeout { timeout } => write!(
                     formatter,
@@ -163,6 +241,26 @@ mod diagnostic_child_supervisor {
                     write!(formatter, "diagnostic child returned {kind}: {message}")
                 }
                 Self::Protocol(error) => write!(formatter, "{error}"),
+                Self::StartupProtocolTimeout { timeout } => write!(
+                    formatter,
+                    "timed out waiting for diagnostic child startup protocol after {timeout:?}"
+                ),
+                Self::StartupProtocolEof => write!(
+                    formatter,
+                    "diagnostic child startup protocol stream ended before readiness"
+                ),
+                Self::StartupProtocolMalformed { source } => write!(
+                    formatter,
+                    "diagnostic child startup protocol returned malformed response: {source}"
+                ),
+                Self::StartupProtocolRejected { kind, message } => write!(
+                    formatter,
+                    "diagnostic child startup protocol returned {kind}: {message}"
+                ),
+                Self::StartupProtocolIncompatible { message } => write!(
+                    formatter,
+                    "diagnostic child startup protocol is incompatible: {message}"
+                ),
                 Self::Other(message) => write!(formatter, "{message}"),
             }
         }
@@ -255,7 +353,76 @@ fn diagnostic_child_start_returns_identity_and_running_status() {
     assert_eq!(payload["result"]["status"], "started");
     assert_eq!(payload["result"]["child"]["pid"], 42);
     assert!(payload["result"]["child"]["home"].as_str().unwrap().len() <= 1024);
+    assert_eq!(
+        payload["result"]["child"]["executablePath"],
+        "beryl-current.exe"
+    );
 
+    child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_start_forwards_custom_executable_and_preserves_running_identity() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let second_child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let executable_path = child.path().join(format!("custom b{}ryl.exe", '\u{00e9}'));
+    let second_executable_path = second_child.path().join("other beryl.exe");
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let first_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({
+            "berylHomeDir": child.path().display().to_string(),
+            "executablePath": executable_path.display().to_string()
+        }),
+    );
+    let second_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({
+            "berylHomeDir": second_child.path().display().to_string(),
+            "executablePath": second_executable_path.display().to_string()
+        }),
+    );
+
+    let first_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &first_request,
+    );
+    let second_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &second_request,
+    );
+    let first_payload = response_json(&first_response);
+    let second_payload = response_json(&second_response);
+
+    assert!(first_response.success);
+    assert_eq!(first_payload["result"]["status"], "started");
+    assert_eq!(
+        first_payload["result"]["child"]["executablePath"]
+            .as_str()
+            .unwrap(),
+        executable_path.display().to_string()
+    );
+    assert!(second_response.success);
+    assert_eq!(second_payload["result"]["status"], "already_running");
+    assert_eq!(
+        second_payload["result"]["child"]["home"].as_str().unwrap(),
+        first_payload["result"]["child"]["home"].as_str().unwrap()
+    );
+    assert_eq!(
+        second_payload["result"]["child"]["executablePath"]
+            .as_str()
+            .unwrap(),
+        first_payload["result"]["child"]["executablePath"]
+            .as_str()
+            .unwrap()
+    );
+
+    second_child.close().unwrap();
     child.close().unwrap();
     root.close().unwrap();
 }
@@ -411,6 +578,10 @@ fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
 #[test]
 fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
     let specs = beryl_diagnostic_child_dynamic_tool_specs();
+    let start_schema = specs
+        .iter()
+        .find(|spec| spec.name == DIAGNOSTIC_CHILD_START_TOOL)
+        .unwrap();
     let list_schema = specs
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL)
@@ -427,6 +598,14 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
     assert_eq!(
         wait_schema.input_schema["properties"]["limit"]["maximum"],
         diagnostic_child_control::MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT
+    );
+    assert_eq!(
+        start_schema.input_schema["properties"]["executablePath"]["maxLength"],
+        diagnostic_child_supervisor::MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES
+    );
+    assert_eq!(
+        start_schema.input_schema["required"],
+        json!(["berylHomeDir"])
     );
 }
 

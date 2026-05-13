@@ -18,6 +18,7 @@ Provide the Beryl executable entry point and composition root.
 - This crate owns clap-based command-line parsing for executable startup options.
 - This crate forwards normalized bootstrap configuration, including the selected Beryl home directory, into `beryl-app`.
 - This crate owns the diagnostic-target startup mode that launches Beryl as a controlled child process with an explicit isolated Beryl home directory and a stdio control channel.
+- Diagnostic-target startup mode is the compatibility entry point for any Beryl executable selected by a supervisor diagnostic child launch, including a source-built executable that differs from the supervisor process executable.
 - Diagnostic-target startup mode must reserve stdout for bounded protocol frames and route logs to stderr or files.
 - Diagnostic-target startup mode must reject startup without an explicit Beryl home directory because implicit home fallback could collide with the supervisor instance.
 

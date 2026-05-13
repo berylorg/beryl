@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+pub(crate) const HANDSHAKE_COMMAND: &str = "handshake";
 pub(crate) const READ_PROCESS_COMMAND: &str = "read_process";
 pub(crate) const READ_MEMORY_COMMAND: &str = "read_memory";
 pub(crate) const READ_RETAINED_STATE_COMMAND: &str = "read_retained_state";
@@ -22,6 +23,8 @@ pub(crate) const SWITCH_THREAD_COMMAND: &str = "switch_thread";
 pub(crate) const SCROLL_TRANSCRIPT_COMMAND: &str = "scroll_transcript";
 pub(crate) const CLOSE_POPUPS_COMMAND: &str = "close_popups";
 
+pub(crate) const DIAGNOSTIC_CHILD_PROTOCOL_NAME: &str = "beryl_diagnostic_child";
+pub(crate) const DIAGNOSTIC_CHILD_PROTOCOL_VERSION: u64 = 1;
 pub(crate) const MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES: usize = 256 * 1024;
 const MAX_DIAGNOSTIC_PROTOCOL_MESSAGE_BYTES: usize = 512;
 
@@ -34,6 +37,7 @@ pub(crate) struct DiagnosticProtocolRequest {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DiagnosticChildCommand {
+    Handshake,
     ReadProcess,
     ReadMemory,
     ReadRetainedState,
@@ -117,6 +121,7 @@ impl DiagnosticProtocolRequest {
 impl DiagnosticChildCommand {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
+            Self::Handshake => HANDSHAKE_COMMAND,
             Self::ReadProcess => READ_PROCESS_COMMAND,
             Self::ReadMemory => READ_MEMORY_COMMAND,
             Self::ReadRetainedState => READ_RETAINED_STATE_COMMAND,
@@ -141,6 +146,7 @@ impl TryFrom<&str> for DiagnosticChildCommand {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
+            HANDSHAKE_COMMAND => Ok(Self::Handshake),
             READ_PROCESS_COMMAND => Ok(Self::ReadProcess),
             READ_MEMORY_COMMAND => Ok(Self::ReadMemory),
             READ_RETAINED_STATE_COMMAND => Ok(Self::ReadRetainedState),

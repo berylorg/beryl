@@ -328,6 +328,7 @@ This document defines the user-visible product behavior for Beryl V1.
 ## Diagnostic Child Live-Test Control
 
 - Diagnostic child live-test controls are supervisor dynamic tools for testing an isolated child Beryl instance. They are not visible end-user controls in the ordinary workspace screen.
+- Diagnostic child startup uses the supervisor's Beryl executable by default, and may use an explicit compatible Beryl executable path when the operator needs to live-test another build against an isolated copied home.
 - Diagnostic child thread-listing reports bounded child workspace thread inventory state using the same inventory model that feeds thread selectors and thread-linking UI. It may report stale or refresh-pending inventory state, but it must not synchronously enumerate backend threads on the child UI thread.
 - Diagnostic child new-thread control clears the child active-thread selection into the same pending-new-thread draft state as the `New Thread` button. It does not create a backend thread until a later accepted composer submission creates one through ordinary Beryl behavior.
 - Diagnostic child turn submission injects bounded text into the child composer submission path. Accepted submissions become ordinary user input fragments, including first-message new-thread creation, active-turn steering, compaction-time queueing, composer history, transcript anchoring, draft clearing, and rejection behavior.
