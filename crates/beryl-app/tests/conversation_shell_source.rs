@@ -164,6 +164,8 @@ fn backend_unavailable_commands_gate_before_mutating_drafts_or_threads() {
     assert!(inventory_refresh_body.contains("if connectors.is_empty()"));
     assert!(inventory_refresh_body.contains("spawn_member_thread_inventory_worker"));
     assert!(!inventory_refresh_body.contains("begin_open_target"));
+    assert!(!inventory_refresh_body.contains("thread_selector().is_open()"));
+    assert!(shell_source.contains("MemberThreadInventoryEvent::SelectorFreshnessRequested"));
 }
 
 #[test]

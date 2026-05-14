@@ -11,10 +11,11 @@ use beryl_model::{
 };
 use tracing::warn;
 
+use crate::member_thread_inventory::MemberThreadInventoryEvent;
 use crate::member_thread_inventory::{
     MemberThreadInventoryBackendThread, MemberThreadInventoryGroup, MemberThreadInventoryMemberKey,
-    MemberThreadInventoryMemberKind, MemberThreadInventorySnapshot,
-    build_member_thread_inventory_snapshot_for_backend_threads,
+    MemberThreadInventoryMemberKind, MemberThreadInventoryRefreshToken,
+    MemberThreadInventorySnapshot, build_member_thread_inventory_snapshot_for_backend_threads,
     prepare_backend_threads_for_member_thread_inventory,
     retain_scoped_backend_threads_for_inventory_members, thread_fork_parent_metadata_read_error,
     truncate_scoped_backend_threads_for_member_thread_inventory,
@@ -25,6 +26,7 @@ use super::{ShellView, SurfaceNotice, workspace_members};
 pub(super) enum MemberThreadInventoryUpdate {
     Finished {
         workspace_id: BerylWorkspaceId,
+        token: MemberThreadInventoryRefreshToken,
         result: MemberThreadInventoryResult,
     },
 }
@@ -42,6 +44,7 @@ pub(super) enum MemberThreadInventoryResult {
 pub(super) fn spawn_member_thread_inventory_worker(
     connectors: Vec<(WorkspaceId, ManagedBackendClientConnector)>,
     workspace_id: BerylWorkspaceId,
+    token: MemberThreadInventoryRefreshToken,
     workspace_state: WorkspaceConversationState,
     timeout: Duration,
 ) -> Receiver<MemberThreadInventoryUpdate> {
@@ -51,6 +54,7 @@ pub(super) fn spawn_member_thread_inventory_worker(
             run_member_thread_inventory_worker(connectors, &workspace_id, workspace_state, timeout);
         let _ = sender.send(MemberThreadInventoryUpdate::Finished {
             workspace_id,
+            token,
             result,
         });
     });
@@ -206,19 +210,24 @@ impl ShellView {
         match receiver.try_recv() {
             Ok(MemberThreadInventoryUpdate::Finished {
                 workspace_id,
+                token,
                 result,
             }) => {
                 self.member_thread_inventory_receiver = None;
-                self.finish_member_thread_inventory_refresh(&workspace_id, result);
+                self.finish_member_thread_inventory_refresh(&workspace_id, token, result);
                 true
             }
             Err(mpsc::TryRecvError::Empty) => false,
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.member_thread_inventory_receiver = None;
                 if let Some(surface) = self.conversation_surface_mut() {
+                    let token = surface.member_thread_inventory().refresh_token();
                     surface
                         .member_thread_inventory_mut()
-                        .fail_refresh("Beryl lost the background thread inventory refresh task.");
+                        .fail_refresh_for_token(
+                            token,
+                            "Beryl lost the background thread inventory refresh task.",
+                        );
                 }
                 true
             }
@@ -239,9 +248,7 @@ impl ShellView {
             return false;
         }
         if self.conversation_surface().is_some_and(|surface| {
-            surface.thread_selector().is_open()
-                || surface.graph_overlay().visible()
-                || surface.pending_thread_activation_label().is_some()
+            surface.graph_overlay().visible() || surface.pending_thread_activation_label().is_some()
         }) {
             return false;
         }
@@ -267,12 +274,16 @@ impl ShellView {
         if connectors.is_empty() {
             return false;
         }
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface.member_thread_inventory_mut().begin_refresh();
-        }
+        let Some(token) = self
+            .conversation_surface_mut()
+            .map(|surface| surface.member_thread_inventory_mut().begin_refresh())
+        else {
+            return false;
+        };
         self.member_thread_inventory_receiver = Some(spawn_member_thread_inventory_worker(
             connectors,
             workspace_id,
+            token,
             workspace_state,
             self.bootstrap.probe_timeout(),
         ));
@@ -282,6 +293,7 @@ impl ShellView {
     fn finish_member_thread_inventory_refresh(
         &mut self,
         workspace_id: &BerylWorkspaceId,
+        token: MemberThreadInventoryRefreshToken,
         result: MemberThreadInventoryResult,
     ) {
         match result {
@@ -293,6 +305,11 @@ impl ShellView {
                     .loaded_workspace()
                     .is_some_and(|loaded| loaded.workspace.id() == workspace_id)
                 {
+                    return;
+                }
+                if !self.conversation_surface().is_some_and(|surface| {
+                    surface.member_thread_inventory().refresh_token() == token
+                }) {
                     return;
                 }
 
@@ -321,22 +338,26 @@ impl ShellView {
                     self.persist_current_workspace_state(true);
                 }
                 if let Some(surface) = self.conversation_surface_mut() {
-                    surface
+                    if surface
                         .member_thread_inventory_mut()
-                        .finish_refresh(snapshot, &workspace_state);
-                    surface.reconcile_thread_selector_state();
+                        .finish_refresh_for_token(token, snapshot, &workspace_state)
+                    {
+                        surface.reconcile_thread_selector_state();
+                    }
                 }
             }
             MemberThreadInventoryResult::Failed { message } => {
                 warn!(error = %message, "member-thread inventory refresh failed");
                 if let Some(surface) = self.conversation_surface_mut() {
-                    surface
+                    if surface
                         .member_thread_inventory_mut()
-                        .fail_refresh(message.clone());
-                    surface.set_notice(SurfaceNotice::new(
-                        "Thread inventory refresh failed",
-                        message,
-                    ));
+                        .fail_refresh_for_token(token, message.clone())
+                    {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Thread inventory refresh failed",
+                            message,
+                        ));
+                    }
                 }
                 self.block_if_backend_process_dead(
                     "Managed backend disconnected during thread inventory refresh",
@@ -348,6 +369,19 @@ impl ShellView {
     }
 
     pub(super) fn reset_member_thread_inventory_for_workspace_state(&mut self) {
+        self.apply_member_thread_inventory_event(MemberThreadInventoryEvent::MemberSetChanged);
+    }
+
+    pub(super) fn mark_member_thread_inventory_refresh_needed(&mut self) {
+        self.apply_member_thread_inventory_event(
+            MemberThreadInventoryEvent::InventoryContentsChanged,
+        );
+    }
+
+    pub(super) fn apply_member_thread_inventory_event(
+        &mut self,
+        event: MemberThreadInventoryEvent,
+    ) {
         let Some((workspace_id, workspace_state)) = self.loaded_workspace().map(|loaded| {
             (
                 loaded.workspace.id().clone(),
@@ -356,18 +390,20 @@ impl ShellView {
         }) else {
             return;
         };
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface
-                .member_thread_inventory_mut()
-                .reset_for_workspace_state(workspace_id, &workspace_state);
-            surface.close_thread_selector();
-            surface.reconcile_thread_selector_state();
+        if matches!(
+            event,
+            MemberThreadInventoryEvent::MemberSetChanged
+                | MemberThreadInventoryEvent::BackendTargetOpening
+        ) {
+            self.member_thread_inventory_receiver = None;
         }
-    }
-
-    pub(super) fn mark_member_thread_inventory_refresh_needed(&mut self) {
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.member_thread_inventory_mut().mark_refresh_needed();
+            surface.member_thread_inventory_mut().apply_event(
+                event,
+                workspace_id,
+                &workspace_state,
+            );
+            surface.reconcile_thread_selector_state();
         }
     }
 }

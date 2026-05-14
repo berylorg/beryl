@@ -78,8 +78,8 @@ use crate::gui_control_dynamic_tools::{
     scroll_transcript_tool_response, switch_thread_tool_response, ui_state_tool_response,
 };
 use crate::member_thread_inventory::{
-    MemberThreadInventoryMemberKey, MemberThreadInventoryMemberKind, MemberThreadInventoryState,
-    resolved_thread_title,
+    MemberThreadInventoryEvent, MemberThreadInventoryMemberKey, MemberThreadInventoryMemberKind,
+    MemberThreadInventoryState, resolved_thread_title,
 };
 use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
 use crate::text_input::{
@@ -3292,7 +3292,6 @@ impl ConversationSurfaceState {
             self.graph_thread_link_menu.close();
             self.transcript_branch_menu.close();
             self.checklist_thread_start_menu.close();
-            self.member_thread_inventory.mark_refresh_needed();
             self.thread_column_selector_scroll
                 .reconcile(self.thread_selector.columns());
         } else {
@@ -5297,6 +5296,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.apply_member_thread_inventory_event(MemberThreadInventoryEvent::BackendTargetOpening);
         let previous_failure = self.failure_summary();
         let attempt = self.next_attempt;
         self.next_attempt += 1;
@@ -6921,6 +6921,11 @@ impl ShellView {
         let surface_changed = self.conversation_surface_mut().is_some_and(|surface| {
             surface.apply_thread_name_update(&workspace_state, &thread_id, thread_name.as_deref())
         });
+        if workspace_changed || surface_changed {
+            self.apply_member_thread_inventory_event(
+                MemberThreadInventoryEvent::InventoryContentsChanged,
+            );
+        }
 
         title_task_changed || workspace_changed || surface_changed
     }
@@ -10101,14 +10106,19 @@ impl ShellView {
             cx.notify();
             return;
         }
-        let changed = self.conversation_surface_mut().is_some_and(|surface| {
-            surface.toggle_thread_selector();
-            true
-        });
-        if changed {
-            self.schedule_poll_if_needed(window, cx);
-            cx.notify();
+        let Some(opened) = self
+            .conversation_surface_mut()
+            .map(ConversationSurfaceState::toggle_thread_selector)
+        else {
+            return;
+        };
+        if opened {
+            self.apply_member_thread_inventory_event(
+                MemberThreadInventoryEvent::SelectorFreshnessRequested,
+            );
         }
+        self.schedule_poll_if_needed(window, cx);
+        cx.notify();
     }
 
     fn dismiss_surface_notice(

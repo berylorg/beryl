@@ -375,7 +375,7 @@ fn thread_selector_uses_stale_snapshot_while_inventory_refresh_is_pending_or_fai
     let mut inventory = MemberThreadInventoryState::new(workspace_id, &workspace_state);
 
     inventory.finish_refresh(snapshot.clone(), &workspace_state);
-    inventory.begin_refresh();
+    let token = inventory.begin_refresh();
 
     let mut selector = ThreadSelectorState::default();
     selector.open(inventory.snapshot(), None);
@@ -387,7 +387,7 @@ fn thread_selector_uses_stale_snapshot_while_inventory_refresh_is_pending_or_fai
         &ThreadSelectorColumnKey::Members
     );
 
-    inventory.fail_refresh("backend unavailable");
+    inventory.fail_refresh_for_token(token, "backend unavailable");
 
     assert_eq!(inventory.snapshot(), &snapshot);
     assert_eq!(inventory.last_error(), Some("backend unavailable"));

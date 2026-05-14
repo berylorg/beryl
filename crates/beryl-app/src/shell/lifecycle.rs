@@ -13,6 +13,7 @@ use super::{
 use crate::backend_failure::{
     json_rpc_error_detail, non_empty_user_text, source_chain_detail, truncate_user_detail,
 };
+use crate::member_thread_inventory::MemberThreadInventoryEvent;
 use crate::memory_diagnostics::MemoryMilestone;
 use tracing::debug;
 
@@ -172,6 +173,9 @@ impl ShellView {
                     &known_threads,
                     active_thread_id.as_deref(),
                     workspace_backend_state_changed,
+                );
+                self.apply_member_thread_inventory_event(
+                    MemberThreadInventoryEvent::BackendTargetAvailable,
                 );
                 self.begin_account_rate_limits_read();
                 self.repair_selected_thread_title_if_needed(opened.execution_target);
@@ -426,8 +430,10 @@ impl ShellView {
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.clear_pending_thread_activation();
                     surface.set_notice(SurfaceNotice::new("Thread requires rebind", detail));
-                    surface.member_thread_inventory_mut().mark_refresh_needed();
                 }
+                self.apply_member_thread_inventory_event(
+                    MemberThreadInventoryEvent::InventoryContentsChanged,
+                );
             }
             ThreadActivationOutcome::Failed { message } => {
                 MemoryMilestone::new("thread_activation_failed").log();

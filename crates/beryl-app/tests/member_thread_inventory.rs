@@ -991,6 +991,182 @@ fn inventory_sorts_groups_and_uses_stable_thread_tie_breaks() {
 }
 
 #[test]
+fn member_set_event_replaces_implicit_home_inventory_and_invalidates_in_flight_refresh() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .select_runtime(RuntimeMode::HostWindows)
+        .unwrap();
+    let mut inventory = member_thread_inventory::MemberThreadInventoryState::new(
+        workspace_id.clone(),
+        &workspace_state,
+    );
+
+    assert_eq!(
+        inventory.snapshot().groups()[0].kind(),
+        &member_thread_inventory::MemberThreadInventoryMemberKind::ImplicitHome
+    );
+    let stale_token = inventory.begin_refresh();
+
+    workspace_state
+        .designate_primary_execution_target(&first)
+        .unwrap();
+    inventory.apply_event(
+        member_thread_inventory::MemberThreadInventoryEvent::MemberSetChanged,
+        workspace_id.clone(),
+        &workspace_state,
+    );
+
+    assert!(!inventory.refreshing());
+    assert!(inventory.needs_refresh());
+    assert_eq!(inventory.snapshot().groups().len(), 1);
+    assert_eq!(
+        inventory.snapshot().groups()[0].kind(),
+        &member_thread_inventory::MemberThreadInventoryMemberKind::Explicit
+    );
+    assert_eq!(
+        inventory.snapshot().groups()[0].canonical_path(),
+        Some(first.canonical_path())
+    );
+
+    let stale_snapshot = member_thread_inventory::build_member_thread_inventory_snapshot(
+        workspace_id,
+        &workspace_state,
+        member_thread_inventory::empty_groups_for_workspace_state(&workspace_state),
+        vec![summary(
+            "thread_existing",
+            first.canonical_path(),
+            Some("Existing"),
+            1,
+            2,
+        )],
+        50,
+    );
+    assert!(!inventory.finish_refresh_for_token(stale_token, stale_snapshot, &workspace_state));
+    assert!(inventory.snapshot().groups()[0].threads().is_empty());
+}
+
+#[test]
+fn freshness_events_requeue_inventory_without_clearing_snapshot() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&first)
+        .unwrap();
+    let mut inventory = member_thread_inventory::MemberThreadInventoryState::new(
+        workspace_id.clone(),
+        &workspace_state,
+    );
+    let snapshot = member_thread_inventory::build_member_thread_inventory_snapshot(
+        workspace_id.clone(),
+        &workspace_state,
+        member_thread_inventory::empty_groups_for_workspace_state(&workspace_state),
+        vec![summary(
+            "thread_existing",
+            first.canonical_path(),
+            Some("Existing"),
+            1,
+            2,
+        )],
+        50,
+    );
+    inventory.finish_refresh(snapshot.clone(), &workspace_state);
+
+    inventory.apply_event(
+        member_thread_inventory::MemberThreadInventoryEvent::SelectorFreshnessRequested,
+        workspace_id.clone(),
+        &workspace_state,
+    );
+    assert!(inventory.needs_refresh());
+    assert_eq!(inventory.snapshot(), &snapshot);
+
+    let stale_token = inventory.begin_refresh();
+    inventory.apply_event(
+        member_thread_inventory::MemberThreadInventoryEvent::BackendTargetOpening,
+        workspace_id.clone(),
+        &workspace_state,
+    );
+    assert!(!inventory.refreshing());
+    assert!(inventory.needs_refresh());
+    assert_eq!(inventory.snapshot(), &snapshot);
+    assert!(!inventory.fail_refresh_for_token(stale_token, "stale backend failure"));
+
+    inventory.apply_event(
+        member_thread_inventory::MemberThreadInventoryEvent::BackendTargetAvailable,
+        workspace_id,
+        &workspace_state,
+    );
+    assert!(inventory.needs_refresh());
+    assert!(inventory.last_error().is_none());
+}
+
+#[test]
+fn content_change_during_refresh_schedules_follow_up_after_old_snapshot_publishes() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&first)
+        .unwrap();
+    let mut inventory = member_thread_inventory::MemberThreadInventoryState::new(
+        workspace_id.clone(),
+        &workspace_state,
+    );
+    let stale_snapshot = member_thread_inventory::build_member_thread_inventory_snapshot(
+        workspace_id.clone(),
+        &workspace_state,
+        member_thread_inventory::empty_groups_for_workspace_state(&workspace_state),
+        vec![summary(
+            "thread_before_content_change",
+            first.canonical_path(),
+            Some("Before content change"),
+            1,
+            2,
+        )],
+        50,
+    );
+
+    let token = inventory.begin_refresh();
+    inventory.apply_event(
+        member_thread_inventory::MemberThreadInventoryEvent::InventoryContentsChanged,
+        workspace_id,
+        &workspace_state,
+    );
+
+    assert!(inventory.finish_refresh_for_token(token, stale_snapshot, &workspace_state));
+    assert!(!inventory.refreshing());
+    assert!(inventory.needs_refresh());
+}
+
+#[test]
+fn content_change_during_refresh_survives_worker_disconnect_failure() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&first)
+        .unwrap();
+    let mut inventory = member_thread_inventory::MemberThreadInventoryState::new(
+        workspace_id.clone(),
+        &workspace_state,
+    );
+
+    let token = inventory.begin_refresh();
+    inventory.apply_event(
+        member_thread_inventory::MemberThreadInventoryEvent::InventoryContentsChanged,
+        workspace_id,
+        &workspace_state,
+    );
+
+    assert!(inventory.fail_refresh_for_token(token, "worker disconnected"));
+    assert!(!inventory.refreshing());
+    assert!(inventory.needs_refresh());
+    assert_eq!(inventory.last_error(), Some("worker disconnected"));
+}
+
+#[test]
 fn failed_inventory_refresh_records_error_without_requeueing() {
     let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
     let mut workspace_state = WorkspaceConversationState::default();
@@ -1000,8 +1176,8 @@ fn failed_inventory_refresh_records_error_without_requeueing() {
     let mut inventory =
         member_thread_inventory::MemberThreadInventoryState::new(workspace_id, &workspace_state);
 
-    inventory.begin_refresh();
-    inventory.fail_refresh("backend unavailable");
+    let token = inventory.begin_refresh();
+    inventory.fail_refresh_for_token(token, "backend unavailable");
 
     assert!(!inventory.refreshing());
     assert!(!inventory.needs_refresh());

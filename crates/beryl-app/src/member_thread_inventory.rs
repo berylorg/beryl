@@ -61,9 +61,24 @@ pub(crate) struct MemberThreadInventoryBackendThread {
     summary: ThreadSummary,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MemberThreadInventoryEvent {
+    MemberSetChanged,
+    SelectorFreshnessRequested,
+    BackendTargetOpening,
+    BackendTargetAvailable,
+    InventoryContentsChanged,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct MemberThreadInventoryRefreshToken {
+    generation: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MemberThreadInventoryState {
     snapshot: MemberThreadInventorySnapshot,
+    generation: u64,
     refresh_needed: bool,
     refreshing: bool,
     last_error: Option<String>,
@@ -211,6 +226,7 @@ impl MemberThreadInventoryState {
                 workspace_id,
                 workspace_state,
             ),
+            generation: 0,
             refresh_needed: workspace_state.selected_runtime().is_some(),
             refreshing: false,
             last_error: None,
@@ -233,27 +249,64 @@ impl MemberThreadInventoryState {
         self.refresh_needed && !self.refreshing
     }
 
-    pub(crate) fn begin_refresh(&mut self) {
-        self.refreshing = true;
-        self.last_error = None;
+    pub(crate) fn refresh_token(&self) -> MemberThreadInventoryRefreshToken {
+        MemberThreadInventoryRefreshToken {
+            generation: self.generation,
+        }
     }
 
+    pub(crate) fn begin_refresh(&mut self) -> MemberThreadInventoryRefreshToken {
+        self.refreshing = true;
+        self.refresh_needed = false;
+        self.last_error = None;
+        self.refresh_token()
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn finish_refresh(
         &mut self,
-        mut snapshot: MemberThreadInventorySnapshot,
+        snapshot: MemberThreadInventorySnapshot,
         workspace_state: &WorkspaceConversationState,
     ) {
-        snapshot.refresh_thread_titles(workspace_state);
-        self.snapshot = snapshot;
+        let token = self.refresh_token();
         self.refresh_needed = false;
-        self.refreshing = false;
-        self.last_error = None;
+        let _ = self.finish_refresh_for_token(token, snapshot, workspace_state);
     }
 
-    pub(crate) fn fail_refresh(&mut self, error: impl Into<String>) {
+    pub(crate) fn finish_refresh_for_token(
+        &mut self,
+        token: MemberThreadInventoryRefreshToken,
+        mut snapshot: MemberThreadInventorySnapshot,
+        workspace_state: &WorkspaceConversationState,
+    ) -> bool {
+        if token != self.refresh_token() {
+            return false;
+        }
+
+        let refresh_requested_after_begin = self.refresh_needed;
+        snapshot.refresh_thread_titles(workspace_state);
+        let has_refreshable_groups = !snapshot.groups().is_empty();
+        self.snapshot = snapshot;
+        self.refresh_needed = refresh_requested_after_begin && has_refreshable_groups;
         self.refreshing = false;
-        self.refresh_needed = false;
+        self.last_error = None;
+        true
+    }
+
+    pub(crate) fn fail_refresh_for_token(
+        &mut self,
+        token: MemberThreadInventoryRefreshToken,
+        error: impl Into<String>,
+    ) -> bool {
+        if token != self.refresh_token() {
+            return false;
+        }
+
+        let refresh_requested_after_begin = self.refresh_needed;
+        self.refreshing = false;
+        self.refresh_needed = refresh_requested_after_begin && !self.snapshot.groups().is_empty();
         self.last_error = Some(error.into());
+        true
     }
 
     #[allow(dead_code)]
@@ -268,6 +321,7 @@ impl MemberThreadInventoryState {
             self.refresh_needed = !self.snapshot.groups().is_empty();
         }
         self.refreshing = false;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     pub(crate) fn mark_refresh_needed(&mut self) {
@@ -291,11 +345,34 @@ impl MemberThreadInventoryState {
         workspace_id: BerylWorkspaceId,
         workspace_state: &WorkspaceConversationState,
     ) {
+        let generation = self.generation.wrapping_add(1);
         *self = Self::new(workspace_id, workspace_state);
+        self.generation = generation;
     }
 
     pub(crate) fn rekey_workspace_id(&mut self, workspace_id: BerylWorkspaceId) {
         self.snapshot.workspace_id = workspace_id;
+    }
+
+    pub(crate) fn apply_event(
+        &mut self,
+        event: MemberThreadInventoryEvent,
+        workspace_id: BerylWorkspaceId,
+        workspace_state: &WorkspaceConversationState,
+    ) {
+        match event {
+            MemberThreadInventoryEvent::MemberSetChanged => {
+                self.reset_for_workspace_state(workspace_id, workspace_state);
+            }
+            MemberThreadInventoryEvent::SelectorFreshnessRequested
+            | MemberThreadInventoryEvent::BackendTargetAvailable
+            | MemberThreadInventoryEvent::InventoryContentsChanged => {
+                self.mark_refresh_needed();
+            }
+            MemberThreadInventoryEvent::BackendTargetOpening => {
+                self.prepare_for_backend_reopen();
+            }
+        }
     }
 }
 
