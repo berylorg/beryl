@@ -26,6 +26,9 @@ toml.workspace = true
 tracing.workspace = true
 unicode-segmentation.workspace = true
 
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle.workspace = true
 rodio.workspace = true

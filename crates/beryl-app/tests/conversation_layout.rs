@@ -2,7 +2,8 @@
 #[path = "../src/shell/layout.rs"]
 mod layout;
 
-use gpui::px;
+use gpui::{Entity, Pixels, px};
+use gpui_text_input::{TextInput, TextInputAtom, TextInputGeometry};
 
 #[test]
 fn split_layout_clamps_checklist_sidebar_to_minimum_width() {
@@ -46,59 +47,8 @@ fn composer_height_stops_at_half_the_os_window_height() {
 }
 
 #[test]
-fn composer_height_grows_from_wrapped_visual_lines() {
-    let composer_height =
-        layout::composer_height_for_visual_lines(px(700.0), px(760.0), px(20.0), 4);
-
-    assert_eq!(
-        composer_height,
-        px(layout::COMPOSER_OUTER_VERTICAL_PADDING
-            + layout::COMPOSER_INPUT_VERTICAL_CHROME
-            + layout::COMPOSER_INPUT_PAINT_SLACK
-            + 80.0)
-    );
-}
-
-#[test]
-fn composer_input_field_height_wraps_text_height_with_fixed_frame_chrome() {
-    assert_eq!(layout::composer_input_content_height(px(20.0), 2), px(40.0));
-    assert_eq!(
-        layout::composer_input_field_height(px(20.0), 2),
-        px(layout::COMPOSER_INPUT_VERTICAL_CHROME + layout::COMPOSER_INPUT_PAINT_SLACK + 40.0)
-    );
-}
-
-#[test]
-fn composer_input_scroll_content_height_expands_to_visible_text_plane_for_centering() {
-    assert_eq!(
-        layout::composer_input_scroll_content_height(px(20.0), 1, px(36.0)),
-        px(36.0)
-    );
-    assert_eq!(
-        layout::composer_input_scroll_content_height(px(20.0), 5, px(36.0)),
-        px(100.0)
-    );
-}
-
-#[test]
-fn composer_input_centered_text_top_padding_centers_short_content_only() {
-    assert_eq!(
-        layout::composer_input_centered_text_top_padding(px(20.0), 1, px(36.0)),
-        px(8.0)
-    );
-    assert_eq!(
-        layout::composer_input_centered_text_top_padding(px(20.0), 2, px(50.0)),
-        px(5.0)
-    );
-    assert_eq!(
-        layout::composer_input_centered_text_top_padding(px(20.0), 5, px(36.0)),
-        px(0.0)
-    );
-}
-
-#[test]
-fn composer_text_width_reclaims_former_action_space() {
-    let text_width = layout::composer_text_width(px(420.0));
+fn composer_text_input_width_reclaims_former_action_space() {
+    let text_width = layout::composer_text_input_width(px(420.0));
 
     assert_eq!(
         text_width,
@@ -106,6 +56,193 @@ fn composer_text_width_reclaims_former_action_space() {
             - layout::COMPOSER_OUTER_HORIZONTAL_PADDING
             - layout::COMPOSER_INPUT_HORIZONTAL_CHROME)
     );
+}
+
+#[gpui::test]
+fn composer_measurement_uses_dependency_geometry_for_soft_wrap_boundary(
+    cx: &mut gpui::TestAppContext,
+) {
+    let text = "alpha beta gamma delta epsilon zeta";
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+
+    let (geometry, measurement) = composer_measurement(&input, cx, px(150.0), px(700.0));
+
+    assert!(geometry.visual_line_count > 1);
+    assert_eq!(measurement.visual_line_count, geometry.visual_line_count);
+    assert_eq!(measurement.text_content_height, geometry.content_height);
+    assert_eq!(measurement.scroll_limits, geometry.scroll_limits);
+    assert_eq!(measurement.vertical_reveal, geometry.vertical_reveal);
+    assert_eq!(
+        measurement.composer_height,
+        layout::composer_height_for_text_input_geometry(px(700.0), px(760.0), &geometry)
+    );
+}
+
+#[gpui::test]
+fn composer_growth_uses_content_height_before_internal_scroll(cx: &mut gpui::TestAppContext) {
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline("short prompt", "Body", cx));
+    let (_, short_measurement) = composer_measurement(&input, cx, px(360.0), px(700.0));
+
+    input.update(cx, |input, cx| {
+        input.set_text(
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+            cx,
+        );
+    });
+    let (long_geometry, long_measurement) = composer_measurement(&input, cx, px(120.0), px(700.0));
+
+    assert!(long_geometry.visual_line_count > 1);
+    assert!(long_measurement.composer_height > short_measurement.composer_height);
+    assert_eq!(
+        long_measurement.input_render_height,
+        long_measurement.text_content_height
+    );
+    assert_eq!(long_measurement.scroll_limits.max_y, px(0.0));
+}
+
+#[gpui::test]
+fn composer_remeasures_when_sidebar_or_window_changes_width(cx: &mut gpui::TestAppContext) {
+    let text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+
+    let (narrow_geometry, narrow_measurement) =
+        composer_measurement(&input, cx, px(120.0), px(700.0));
+    let (wide_geometry, wide_measurement) = composer_measurement(&input, cx, px(520.0), px(700.0));
+
+    assert!(narrow_geometry.visual_line_count > wide_geometry.visual_line_count);
+    assert!(narrow_measurement.composer_height > wide_measurement.composer_height);
+}
+
+#[gpui::test]
+fn composer_width_remeasure_keeps_capped_endpoint_revealed(cx: &mut gpui::TestAppContext) {
+    let text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda ".repeat(10);
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+
+    let (wide_geometry, _) = composer_measurement(&input, cx, px(360.0), px(120.0));
+    let (narrow_geometry, narrow_measurement) =
+        composer_measurement(&input, cx, px(120.0), px(120.0));
+    let reveal = narrow_measurement
+        .vertical_reveal
+        .expect("multiline reveal data");
+
+    assert!(narrow_geometry.visual_line_count > wide_geometry.visual_line_count);
+    assert!(narrow_measurement.input_render_height < narrow_measurement.text_content_height);
+    assert!(narrow_measurement.scroll_limits.max_y > px(0.0));
+    assert_eq!(narrow_geometry.scroll_offset.y, reveal.scroll_y);
+}
+
+#[gpui::test]
+fn composer_long_unbroken_text_wraps_without_horizontal_scroll(cx: &mut gpui::TestAppContext) {
+    let text = "supercalifragilisticexpialidocious".repeat(4);
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+
+    let (geometry, measurement) = composer_measurement(&input, cx, px(90.0), px(700.0));
+
+    assert!(geometry.visual_line_count > 1);
+    assert_eq!(geometry.scroll_limits.max_x, px(0.0));
+    assert_eq!(measurement.scroll_limits.max_x, px(0.0));
+}
+
+#[gpui::test]
+fn composer_explicit_newlines_size_by_visual_lines(cx: &mut gpui::TestAppContext) {
+    let text = "alpha beta gamma\ndelta epsilon zeta\neta theta";
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+
+    let (geometry, measurement) = composer_measurement(&input, cx, px(120.0), px(700.0));
+
+    assert!(geometry.visual_line_count >= 3);
+    assert_eq!(measurement.visual_line_count, geometry.visual_line_count);
+    assert_eq!(measurement.text_content_height, geometry.content_height);
+}
+
+#[gpui::test]
+fn composer_capped_overflow_uses_dependency_reveal_limits(cx: &mut gpui::TestAppContext) {
+    let text = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen";
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+    input.update(cx, |input, cx| {
+        input.set_selection(text.len()..text.len(), false, cx);
+    });
+
+    let (tail_geometry, tail_measurement) = composer_measurement(&input, cx, px(90.0), px(120.0));
+    let tail_reveal = tail_measurement
+        .vertical_reveal
+        .expect("multiline reveal data");
+
+    assert!(tail_measurement.input_render_height < tail_measurement.text_content_height);
+    assert!(tail_measurement.scroll_limits.max_y > px(0.0));
+    assert_eq!(tail_reveal.max_scroll_y, tail_geometry.scroll_limits.max_y);
+    assert!(tail_reveal.scroll_y > px(0.0));
+
+    input.update(cx, |input, cx| {
+        input.set_selection(0..0, false, cx);
+    });
+    let (_, head_measurement) = composer_measurement(&input, cx, px(90.0), px(120.0));
+    let head_reveal = head_measurement
+        .vertical_reveal
+        .expect("multiline reveal data");
+
+    assert_eq!(head_reveal.scroll_y, px(0.0));
+}
+
+#[gpui::test]
+fn composer_restore_paths_remeasure_current_dependency_state(cx: &mut gpui::TestAppContext) {
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline("short", "Body", cx));
+    let (_, short_measurement) = composer_measurement(&input, cx, px(240.0), px(700.0));
+
+    input.update(cx, |input, cx| {
+        input.set_text(
+            "restored history draft with enough words to wrap after restore",
+            cx,
+        );
+    });
+    let (restored_geometry, restored_measurement) =
+        composer_measurement(&input, cx, px(120.0), px(700.0));
+
+    assert!(restored_geometry.visual_line_count > 1);
+    assert!(restored_measurement.composer_height > short_measurement.composer_height);
+}
+
+#[gpui::test]
+fn composer_image_atoms_participate_in_dependency_geometry(cx: &mut gpui::TestAppContext) {
+    let text = "See [A] before more words that wrap";
+    let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
+    input.update(cx, |input, cx| {
+        input
+            .set_atoms(
+                vec![TextInputAtom::new("composer-image:A:0", 4..7, "[Image A]")],
+                cx,
+            )
+            .unwrap();
+    });
+
+    let (geometry, measurement) = composer_measurement(&input, cx, px(360.0), px(700.0));
+    let atom_bounds = geometry.bounds_for_range(4..7).expect("atom bounds");
+
+    assert!(atom_bounds.size.width > px(0.0));
+    assert_eq!(measurement.visual_line_count, geometry.visual_line_count);
+}
+
+fn composer_measurement(
+    input: &Entity<TextInput>,
+    cx: &mut gpui::VisualTestContext,
+    conversation_column_width: Pixels,
+    main_region_height: Pixels,
+) -> (TextInputGeometry, layout::ComposerInputMeasurement) {
+    let initial_bounds =
+        layout::composer_text_input_bounds(conversation_column_width, main_region_height);
+    let initial_geometry =
+        cx.update(|window, app| input.read(app).measure_geometry(initial_bounds, window));
+    let initial_measurement =
+        layout::composer_input_measurement(main_region_height, px(760.0), &initial_geometry);
+    let final_geometry = cx.update(|window, app| {
+        input
+            .read(app)
+            .measure_geometry(initial_measurement.input_bounds, window)
+    });
+    let measurement =
+        layout::composer_input_measurement(main_region_height, px(760.0), &final_geometry);
+
+    (final_geometry, measurement)
 }
 
 #[test]

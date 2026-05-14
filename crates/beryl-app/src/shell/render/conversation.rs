@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, ScrollHandle, Window, anchored,
-    canvas, div, img, point, prelude::*, px, relative, rgb, rgba,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas, div, img,
+    prelude::*, px, relative, rgb, rgba,
 };
 
 use crate::shell::{
@@ -427,7 +427,8 @@ fn render_workspace_surface(
     let entity = cx.entity();
     let conversation_width = surface.transcript_width();
     let composer_height =
-        composer_height_for_input(surface, conversation_input, conversation_width, window, cx);
+        measure_composer_input(surface, conversation_input, conversation_width, window, cx)
+            .composer_height;
     let split = render_split_surface(
         shell,
         transcript_panel,
@@ -1318,25 +1319,18 @@ fn render_split_surface(
     } else {
         0.0
     };
-    let composer_height = composer_height_for_input(
+    let composer_measurement = measure_composer_input(
         surface,
         conversation_input,
         split_layout.left_width,
         window,
         cx,
     );
+    let composer_height = composer_measurement.composer_height;
 
     let left_panel = render_left_panel(transcript_panel).into_any_element();
-    let composer = render_composer(
-        shell,
-        surface,
-        conversation_input,
-        split_layout.left_width,
-        composer_height,
-        window,
-        cx,
-    )
-    .into_any_element();
+    let composer =
+        render_composer(shell, conversation_input, &composer_measurement, cx).into_any_element();
     let tool_activity_panel = render_tool_activity_panel(shell, surface, composer_height, cx);
     let checklist_sidebar = surface
         .checklist_sidebar_visible()
@@ -1647,87 +1641,48 @@ fn render_checklist_sidebar_panel(
     AnyView::from(checklist_sidebar_panel.clone()).cached(cached_style)
 }
 
-fn composer_height_for_input(
+fn measure_composer_input(
     surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
     conversation_column_width: gpui::Pixels,
     window: &mut Window,
     cx: &mut Context<ShellView>,
-) -> gpui::Pixels {
+) -> layout::ComposerInputMeasurement {
     let available_height = surface
         .layout_bounds
         .map(|bounds| bounds.size.height)
         .unwrap_or_else(|| px(layout::WINDOW_MIN_HEIGHT));
-    let text_width = layout::composer_text_width(conversation_column_width);
-    let visual_line_count = crate::text_input::wrapped_visual_line_count_for_width(
-        conversation_input.read(cx).text(),
-        text_width,
-        window,
-    );
-    layout::composer_height_for_visual_lines(
+    let initial_bounds =
+        layout::composer_text_input_bounds(conversation_column_width, available_height);
+    let initial_geometry = conversation_input
+        .read(cx)
+        .measure_geometry(initial_bounds, window);
+    let initial_measurement = layout::composer_input_measurement(
         available_height,
         window.viewport_size().height,
-        window.line_height(),
-        visual_line_count,
+        &initial_geometry,
+    );
+    let final_geometry = conversation_input
+        .read(cx)
+        .measure_geometry(initial_measurement.input_bounds, window);
+
+    layout::composer_input_measurement(
+        available_height,
+        window.viewport_size().height,
+        &final_geometry,
     )
 }
 
 fn render_composer(
     shell: &ShellView,
-    surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
-    conversation_column_width: gpui::Pixels,
-    composer_height: gpui::Pixels,
-    window: &mut Window,
+    composer_measurement: &layout::ComposerInputMeasurement,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    let text_width = layout::composer_text_width(conversation_column_width);
-    let (draft_text, cursor_offset) = {
-        let input = conversation_input.read(cx);
-        (input.text().to_string(), input.cursor_offset())
-    };
-    let visual_line_count =
-        crate::text_input::wrapped_visual_line_count_for_width(&draft_text, text_width, window);
-    let scroll_handle = surface.composer_scroll_handle();
-    let visible_input_height =
-        (composer_height - px(layout::COMPOSER_OUTER_VERTICAL_PADDING)).max(px(0.0));
-    let visible_text_height =
-        (visible_input_height - px(layout::COMPOSER_INPUT_VERTICAL_CHROME)).max(px(0.0));
-    let text_content_height =
-        layout::composer_input_content_height(window.line_height(), visual_line_count);
-    let scroll_content_height = layout::composer_input_scroll_content_height(
-        window.line_height(),
-        visual_line_count,
-        visible_text_height,
-    );
-    let text_top_padding = layout::composer_input_centered_text_top_padding(
-        window.line_height(),
-        visual_line_count,
-        visible_text_height,
-    );
-    if surface.should_reveal_composer_cursor(
-        &draft_text,
-        cursor_offset,
-        text_width,
-        scroll_content_height,
-        visible_text_height,
-    ) {
-        reveal_composer_cursor(
-            &scroll_handle,
-            &draft_text,
-            cursor_offset,
-            text_width,
-            scroll_content_height,
-            visible_text_height,
-            window,
-        );
-    }
-    let scrollbar_opacity = shell.scrollbar_opacity(&crate::shell::ScrollbarRegion::Composer);
-
     div()
         .relative()
         .w_full()
-        .h(composer_height)
+        .h(composer_measurement.composer_height)
         .min_h(px(layout::COMPOSER_MIN_HEIGHT))
         .key_context(COMPOSER_KEY_CONTEXT)
         .on_action(cx.listener(ShellView::queue_turn_from_composer_action))
@@ -1744,25 +1699,17 @@ fn render_composer(
         .border_color(shell.separator_color())
         .child(render_composer_input_area(
             shell,
-            scroll_handle,
-            scrollbar_opacity,
-            scroll_content_height,
-            text_content_height,
-            text_top_padding,
+            composer_measurement.input_render_height,
+            composer_measurement.text_top_padding,
             conversation_input,
-            cx,
         ))
 }
 
 fn render_composer_input_area(
     shell: &ShellView,
-    scroll_handle: ScrollHandle,
-    scrollbar_opacity: f32,
-    scroll_content_height: gpui::Pixels,
-    text_content_height: gpui::Pixels,
+    input_render_height: gpui::Pixels,
     text_top_padding: gpui::Pixels,
     conversation_input: &Entity<SingleLineInput>,
-    cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     div()
         .absolute()
@@ -1775,28 +1722,20 @@ fn render_composer_input_area(
         .items_end()
         .child(composer_input_scroll_region(
             shell,
-            scroll_handle,
-            scrollbar_opacity,
-            scroll_content_height,
-            text_content_height,
+            input_render_height,
             text_top_padding,
             conversation_input,
-            cx,
         ))
 }
 
 fn composer_input_scroll_region(
     shell: &ShellView,
-    scroll_handle: gpui::ScrollHandle,
-    scrollbar_opacity: f32,
-    scroll_content_height: gpui::Pixels,
-    text_content_height: gpui::Pixels,
+    input_render_height: gpui::Pixels,
     text_top_padding: gpui::Pixels,
     conversation_input: &Entity<SingleLineInput>,
-    cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let focus_input = conversation_input.clone();
-    let mut scroll_region = div()
+    div()
         .relative()
         .flex_1()
         .min_w(px(0.0))
@@ -1815,77 +1754,29 @@ fn composer_input_scroll_region(
             let focus_handle = focus_input.read(cx).tab_focus_handle();
             window.focus(&focus_handle);
         })
-        .on_mouse_move(cx.listener(ShellView::note_composer_scrollbar_motion))
-        .on_scroll_wheel(cx.listener(ShellView::note_composer_scrollbar_scroll))
         .child(
             div()
-                .id("conversation-composer-scroll")
                 .size_full()
                 .min_h(px(0.0))
-                .overflow_y_scroll()
-                .track_scroll(&scroll_handle)
+                .overflow_hidden()
+                .flex()
+                .flex_col()
                 .child(
                     div()
                         .w_full()
                         .min_w(px(0.0))
-                        .h(scroll_content_height)
-                        .min_h(scroll_content_height)
-                        .flex()
-                        .flex_col()
-                        .child(div().w_full().h(text_top_padding).min_h(text_top_padding))
-                        .child(
-                            div()
-                                .w_full()
-                                .min_w(px(0.0))
-                                .h(text_content_height)
-                                .min_h(text_content_height)
-                                .child(conversation_input.clone()),
-                        ),
+                        .h(text_top_padding)
+                        .min_h(text_top_padding),
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .min_w(px(0.0))
+                        .h(input_render_height)
+                        .min_h(input_render_height)
+                        .child(conversation_input.clone()),
                 ),
-        );
-    if let Some(scrollbar) =
-        render_div_scrollbar(&scroll_handle, ScrollbarAxis::Vertical, scrollbar_opacity)
-    {
-        scroll_region = scroll_region.child(scrollbar);
-    }
-    scroll_region
-}
-
-fn reveal_composer_cursor(
-    scroll_handle: &gpui::ScrollHandle,
-    text: &str,
-    cursor_offset: usize,
-    text_width: gpui::Pixels,
-    input_content_height: gpui::Pixels,
-    visible_input_height: gpui::Pixels,
-    window: &mut Window,
-) {
-    if visible_input_height <= px(0.0) || input_content_height <= visible_input_height {
-        scroll_handle.set_offset(point(px(0.0), px(0.0)));
-        return;
-    }
-
-    let cursor_offset = cursor_offset.min(text.len());
-    let prefix = &text[..cursor_offset];
-    let cursor_visual_lines =
-        crate::text_input::wrapped_visual_line_count_for_width(prefix, text_width, window).max(1);
-    let line_height = window.line_height();
-    let cursor_bottom = line_height * cursor_visual_lines as f32;
-    let cursor_top = (cursor_bottom - line_height).max(px(0.0));
-    let current_top = -scroll_handle.offset().y;
-    let current_bottom = current_top + visible_input_height;
-    let desired_top = if cursor_top < current_top {
-        cursor_top
-    } else if cursor_bottom > current_bottom {
-        cursor_bottom - visible_input_height
-    } else {
-        current_top
-    };
-    let max_top = (input_content_height - visible_input_height).max(px(0.0));
-    let next_top = desired_top.clamp(px(0.0), max_top);
-    if (next_top - current_top).abs() > px(0.5) {
-        scroll_handle.set_offset(point(px(0.0), -next_top));
-    }
+        )
 }
 
 fn render_loaded_workspace_composer(
@@ -1895,28 +1786,18 @@ fn render_loaded_workspace_composer(
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let composer_height = px(layout::DEFAULT_COMPOSER_HEIGHT);
-    let text_width = layout::composer_text_width(px(layout::WINDOW_MIN_WIDTH));
-    let visual_line_count = crate::text_input::wrapped_visual_line_count_for_width(
-        conversation_input.read(cx).text(),
-        text_width,
-        window,
-    );
-    let visible_input_height =
-        (composer_height - px(layout::COMPOSER_OUTER_VERTICAL_PADDING)).max(px(0.0));
-    let visible_text_height =
-        (visible_input_height - px(layout::COMPOSER_INPUT_VERTICAL_CHROME)).max(px(0.0));
-    let text_content_height =
-        layout::composer_input_content_height(window.line_height(), visual_line_count);
-    let scroll_content_height = layout::composer_input_scroll_content_height(
-        window.line_height(),
-        visual_line_count,
-        visible_text_height,
-    );
-    let text_top_padding = layout::composer_input_centered_text_top_padding(
-        window.line_height(),
-        visual_line_count,
-        visible_text_height,
-    );
+    let initial_bounds =
+        layout::composer_text_input_bounds(px(layout::WINDOW_MIN_WIDTH), composer_height);
+    let initial_geometry = conversation_input
+        .read(cx)
+        .measure_geometry(initial_bounds, window);
+    let initial_measurement =
+        layout::composer_input_measurement_for_height(composer_height, &initial_geometry);
+    let final_geometry = conversation_input
+        .read(cx)
+        .measure_geometry(initial_measurement.input_bounds, window);
+    let composer_measurement =
+        layout::composer_input_measurement_for_height(composer_height, &final_geometry);
 
     div()
         .relative()
@@ -1928,12 +1809,8 @@ fn render_loaded_workspace_composer(
         .border_color(shell.separator_color())
         .child(render_composer_input_area(
             shell,
-            ScrollHandle::new(),
-            0.0,
-            scroll_content_height,
-            text_content_height,
-            text_top_padding,
+            composer_measurement.input_render_height,
+            composer_measurement.text_top_padding,
             conversation_input,
-            cx,
         ))
 }

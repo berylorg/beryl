@@ -1,7 +1,6 @@
 use std::{
     cell::Cell,
-    collections::{HashMap, HashSet, hash_map::DefaultHasher},
-    hash::{Hash, Hasher},
+    collections::{HashMap, HashSet},
     ops::Range,
     path::PathBuf,
     sync::{
@@ -1054,7 +1053,6 @@ enum ScrollbarRegion {
     WorkspaceMembers,
     Transcript,
     ToolActivity,
-    Composer,
     GraphColumns,
     GraphColumn(GraphColumnKey),
     ThreadSelectorColumns,
@@ -1398,8 +1396,6 @@ struct ConversationSurfaceState {
     graph_column_selector_scroll: ColumnSelectorScrollState<GraphColumnKey>,
     thread_column_selector_scroll: ColumnSelectorScrollState<ThreadSelectorColumnKey>,
     tool_activity_scroll_handle: ScrollHandle,
-    composer_scroll_handle: ScrollHandle,
-    composer_reveal_snapshot: Cell<Option<ComposerRevealSnapshot>>,
     graph_overlay_panel_height: Pixels,
     checklist_sidebar_visibility: ChecklistSidebarVisibilityState,
     checklist_sidebar_ratio: f32,
@@ -1426,15 +1422,6 @@ struct ToolActivityPanelDragState {
     pointer_offset: Pixels,
     min_height: Pixels,
     max_height: Pixels,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-struct ComposerRevealSnapshot {
-    text_hash: u64,
-    cursor_offset: usize,
-    text_width: Pixels,
-    input_content_height: Pixels,
-    visible_input_height: Pixels,
 }
 
 #[derive(Clone)]
@@ -2051,8 +2038,6 @@ impl ConversationSurfaceState {
             graph_column_selector_scroll: ColumnSelectorScrollState::new(),
             thread_column_selector_scroll: ColumnSelectorScrollState::new(),
             tool_activity_scroll_handle: ScrollHandle::new(),
-            composer_scroll_handle: ScrollHandle::new(),
-            composer_reveal_snapshot: Cell::new(None),
             graph_overlay_panel_height: Pixels::ZERO,
             checklist_sidebar_visibility: ChecklistSidebarVisibilityState::default(),
             checklist_sidebar_ratio: DEFAULT_CHECKLIST_SIDEBAR_RATIO,
@@ -2952,10 +2937,6 @@ impl ConversationSurfaceState {
             .unwrap_or_else(|| px(layout::WINDOW_MIN_HEIGHT - 96.0))
     }
 
-    fn composer_scroll_handle(&self) -> ScrollHandle {
-        self.composer_scroll_handle.clone()
-    }
-
     fn release_transcript_submit_anchor(&mut self) -> bool {
         release_forced_submit_anchor(&mut self.transcript_submit_anchor)
     }
@@ -2997,31 +2978,6 @@ impl ConversationSurfaceState {
 
     fn latest_user_prompt_anchor(&self) -> Option<(usize, usize, String)> {
         self.transcript_presentation.latest_user_prompt_anchor()
-    }
-
-    fn should_reveal_composer_cursor(
-        &self,
-        text: &str,
-        cursor_offset: usize,
-        text_width: Pixels,
-        input_content_height: Pixels,
-        visible_input_height: Pixels,
-    ) -> bool {
-        let mut hasher = DefaultHasher::new();
-        text.hash(&mut hasher);
-        let snapshot = ComposerRevealSnapshot {
-            text_hash: hasher.finish(),
-            cursor_offset,
-            text_width,
-            input_content_height,
-            visible_input_height,
-        };
-        if self.composer_reveal_snapshot.get() == Some(snapshot) {
-            return false;
-        }
-
-        self.composer_reveal_snapshot.set(Some(snapshot));
-        true
     }
 
     fn graph_column_scroll_handle(&self, column_index: usize) -> Option<ScrollHandle> {
@@ -3109,8 +3065,6 @@ impl ConversationSurfaceState {
             graph_column_selector_scroll: self.graph_column_selector_scroll.clone(),
             thread_column_selector_scroll: self.thread_column_selector_scroll.clone(),
             tool_activity_scroll_handle: self.tool_activity_scroll_handle.clone(),
-            composer_scroll_handle: self.composer_scroll_handle.clone(),
-            composer_reveal_snapshot: Cell::new(self.composer_reveal_snapshot.get()),
             graph_overlay_panel_height: self.graph_overlay_panel_height,
             checklist_sidebar_visibility: self.checklist_sidebar_visibility.clone(),
             checklist_sidebar_ratio: self.checklist_sidebar_ratio,
@@ -7433,25 +7387,6 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) {
         self.note_scrollbar_activity(ScrollbarRegion::ToolActivity, cx);
-        cx.stop_propagation();
-    }
-
-    fn note_composer_scrollbar_motion(
-        &mut self,
-        _: &MouseMoveEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.note_scrollbar_activity(ScrollbarRegion::Composer, cx);
-    }
-
-    fn note_composer_scrollbar_scroll(
-        &mut self,
-        _: &ScrollWheelEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.note_scrollbar_activity(ScrollbarRegion::Composer, cx);
         cx.stop_propagation();
     }
 

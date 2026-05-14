@@ -6,7 +6,10 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
     let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
     let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
     let split_surface_body = rust_function_body(render_source, "fn render_split_surface");
+    let measure_composer_body = rust_function_body(render_source, "fn measure_composer_input");
     let composer_body = rust_function_body(render_source, "fn render_composer(");
+    let composer_input_area_body =
+        rust_function_body(render_source, "fn render_composer_input_area");
     let loaded_composer_body =
         rust_function_body(render_source, "fn render_loaded_workspace_composer");
 
@@ -19,8 +22,14 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
     assert!(toolbar_body.contains("\"toggle-checklist-sidebar\""));
     assert!(thread_strip_body.contains("\"thread-strip-new-thread\""));
     assert!(split_surface_body.contains("render_composer("));
+    assert!(measure_composer_body.contains("measure_geometry"));
+    assert!(measure_composer_body.contains("composer_input_measurement"));
     assert!(composer_body.contains("render_composer_input_area"));
+    assert!(!composer_body.contains("wrapped_visual_line_count_for_width"));
+    assert!(!composer_body.contains("reveal_composer_cursor"));
+    assert!(!composer_input_area_body.contains("overflow_y_scroll"));
     assert!(loaded_composer_body.contains("render_composer_input_area"));
+    assert!(loaded_composer_body.contains("measure_geometry"));
 }
 
 #[test]

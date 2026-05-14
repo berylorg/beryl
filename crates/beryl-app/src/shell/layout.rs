@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-use gpui::{Pixels, px};
+use gpui::{Bounds, Pixels, point, px, size};
+use gpui_text_input::{TextInputGeometry, TextInputScrollLimits, TextInputVerticalReveal};
 
 pub(crate) const WINDOW_MIN_WIDTH: f32 = 420.0;
 pub(crate) const WINDOW_MIN_HEIGHT: f32 = 320.0;
@@ -118,6 +119,20 @@ pub(crate) struct ThreadSelectorRowWindow {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ComposerInputMeasurement {
+    pub(crate) input_bounds: Bounds<Pixels>,
+    pub(crate) composer_height: Pixels,
+    pub(crate) visible_input_height: Pixels,
+    pub(crate) visible_text_height: Pixels,
+    pub(crate) text_content_height: Pixels,
+    pub(crate) input_render_height: Pixels,
+    pub(crate) text_top_padding: Pixels,
+    pub(crate) visual_line_count: usize,
+    pub(crate) scroll_limits: TextInputScrollLimits,
+    pub(crate) vertical_reveal: Option<TextInputVerticalReveal>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct FixedRowWindow {
     range: Range<usize>,
     top_spacer_height: Pixels,
@@ -179,40 +194,6 @@ pub(crate) fn clamp_composer_height(
     let max_height = transcript_preserving_max.min(window_cap).max(min_height);
 
     desired_composer_height.clamp(min_height, max_height)
-}
-
-pub(crate) fn composer_input_text_height(line_height: Pixels, visual_line_count: usize) -> Pixels {
-    line_height * visual_line_count.max(1) as f32
-}
-
-pub(crate) fn composer_input_field_height(line_height: Pixels, visual_line_count: usize) -> Pixels {
-    px(COMPOSER_INPUT_VERTICAL_CHROME + COMPOSER_INPUT_PAINT_SLACK)
-        + composer_input_text_height(line_height, visual_line_count)
-}
-
-pub(crate) fn composer_input_content_height(
-    line_height: Pixels,
-    visual_line_count: usize,
-) -> Pixels {
-    composer_input_text_height(line_height, visual_line_count)
-}
-
-pub(crate) fn composer_input_scroll_content_height(
-    line_height: Pixels,
-    visual_line_count: usize,
-    visible_text_height: Pixels,
-) -> Pixels {
-    composer_input_content_height(line_height, visual_line_count).max(visible_text_height)
-}
-
-pub(crate) fn composer_input_centered_text_top_padding(
-    line_height: Pixels,
-    visual_line_count: usize,
-    visible_text_height: Pixels,
-) -> Pixels {
-    (composer_input_scroll_content_height(line_height, visual_line_count, visible_text_height)
-        - composer_input_content_height(line_height, visual_line_count))
-        / 2.0
 }
 
 pub(crate) fn tool_activity_panel_height_bounds(
@@ -396,24 +377,76 @@ fn fixed_row_window(
     }
 }
 
-pub(crate) fn composer_height_for_visual_lines(
+pub(crate) fn composer_height_for_text_input_geometry(
     main_region_height: Pixels,
     os_window_height: Pixels,
-    line_height: Pixels,
-    visual_line_count: usize,
+    geometry: &TextInputGeometry,
 ) -> Pixels {
     clamp_composer_height(
         main_region_height,
         os_window_height,
         px(COMPOSER_OUTER_VERTICAL_PADDING)
-            + composer_input_field_height(line_height, visual_line_count),
+            + px(COMPOSER_INPUT_VERTICAL_CHROME + COMPOSER_INPUT_PAINT_SLACK)
+            + geometry.content_height,
     )
 }
 
-pub(crate) fn composer_text_width(conversation_column_width: Pixels) -> Pixels {
+pub(crate) fn composer_text_input_width(conversation_column_width: Pixels) -> Pixels {
     (conversation_column_width
         - px(COMPOSER_OUTER_HORIZONTAL_PADDING + COMPOSER_INPUT_HORIZONTAL_CHROME))
     .max(px(1.0))
+}
+
+pub(crate) fn composer_text_input_bounds(
+    conversation_column_width: Pixels,
+    input_height: Pixels,
+) -> Bounds<Pixels> {
+    Bounds::new(
+        point(px(0.0), px(0.0)),
+        size(
+            composer_text_input_width(conversation_column_width),
+            input_height.max(px(1.0)),
+        ),
+    )
+}
+
+pub(crate) fn composer_input_measurement(
+    main_region_height: Pixels,
+    os_window_height: Pixels,
+    geometry: &TextInputGeometry,
+) -> ComposerInputMeasurement {
+    let composer_height =
+        composer_height_for_text_input_geometry(main_region_height, os_window_height, geometry);
+    composer_input_measurement_for_height(composer_height, geometry)
+}
+
+pub(crate) fn composer_input_measurement_for_height(
+    composer_height: Pixels,
+    geometry: &TextInputGeometry,
+) -> ComposerInputMeasurement {
+    let visible_input_height = (composer_height - px(COMPOSER_OUTER_VERTICAL_PADDING)).max(px(0.0));
+    let visible_text_height =
+        (visible_input_height - px(COMPOSER_INPUT_VERTICAL_CHROME)).max(px(0.0));
+    let text_content_height = geometry.content_height;
+    let input_render_height = text_content_height.min(visible_text_height).max(px(1.0));
+    let text_top_padding = (visible_text_height - input_render_height).max(px(0.0)) / 2.0;
+    let input_bounds = Bounds::new(
+        geometry.bounds.origin,
+        size(geometry.bounds.size.width, input_render_height),
+    );
+
+    ComposerInputMeasurement {
+        input_bounds,
+        composer_height,
+        visible_input_height,
+        visible_text_height,
+        text_content_height,
+        input_render_height,
+        text_top_padding,
+        visual_line_count: geometry.visual_line_count,
+        scroll_limits: geometry.scroll_limits,
+        vertical_reveal: geometry.vertical_reveal,
+    }
 }
 
 pub(crate) fn default_graph_overlay_height(available_height: Pixels) -> Pixels {
