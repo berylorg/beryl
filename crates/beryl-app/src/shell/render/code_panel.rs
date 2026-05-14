@@ -107,7 +107,6 @@ pub(crate) fn render_code_panel(
 ) -> AnyElement {
     let element_key = code_panel_element_key(element_id.clone(), source, language);
     let display_lines = code_panel_display_lines(source, wrap_mode);
-    let selection_enabled = selection.is_some();
     let display_text = match wrap_mode {
         CodePanelWrapMode::Smart { columns } => smart_wrap_for_columns(source, columns),
         CodePanelWrapMode::NoWrap => source.to_string(),
@@ -115,9 +114,6 @@ pub(crate) fn render_code_panel(
     let content_height = resize
         .as_ref()
         .map(|resize| resolved_resizable_code_panel_height(display_text.as_str(), resize));
-    let on_select = scroll_chrome
-        .as_ref()
-        .and_then(|scroll_chrome| scroll_chrome.on_select.clone());
 
     let content = render_code_panel_content(
         element_key,
@@ -146,14 +142,6 @@ pub(crate) fn render_code_panel(
         .overflow_hidden()
         .flex()
         .flex_col();
-    if let Some(on_select) = on_select {
-        panel = panel.on_mouse_down(MouseButton::Left, move |_, _, cx| {
-            on_select(cx);
-            if !selection_enabled {
-                cx.stop_propagation();
-            }
-        });
-    }
 
     if let Some(header) =
         header.filter(|header| code_panel_has_header(header, header_title.as_deref()))
@@ -318,6 +306,7 @@ fn render_code_panel_content(
     content_height: Option<Pixels>,
     selection: Option<CodePanelSelection>,
 ) -> AnyElement {
+    let selection_enabled = selection.is_some();
     match (wrap_mode, content_height) {
         (CodePanelWrapMode::Smart { .. }, None) => {
             render_code_panel_text(display_lines, wrap_mode, foreground, selection, false)
@@ -331,6 +320,7 @@ fn render_code_panel_content(
             },
             scroll_chrome,
             Some(content_height),
+            selection_enabled,
         ),
         (CodePanelWrapMode::NoWrap, None) => render_scrollable_code_panel(
             element_key,
@@ -341,6 +331,7 @@ fn render_code_panel_content(
             },
             scroll_chrome,
             None,
+            selection_enabled,
         ),
         (CodePanelWrapMode::NoWrap, Some(content_height)) => render_scrollable_code_panel(
             element_key,
@@ -351,6 +342,7 @@ fn render_code_panel_content(
             },
             scroll_chrome,
             Some(content_height),
+            selection_enabled,
         ),
     }
 }
@@ -453,6 +445,7 @@ fn render_scrollable_code_panel(
     axes: ScrollbarAxes,
     scroll_chrome: Option<CodePanelScrollChrome>,
     content_height: Option<Pixels>,
+    selection_enabled: bool,
 ) -> AnyElement {
     let mut scrollable = div()
         .id(("code-panel-scroll", element_key))
@@ -482,7 +475,7 @@ fn render_scrollable_code_panel(
                 handle,
                 scrollbar_opacity,
                 on_activity,
-                on_select: _,
+                on_select,
                 vertical_wheel_ownership,
             } = scroll_chrome;
             let stop_scroll_wheel_propagation =
@@ -501,6 +494,14 @@ fn render_scrollable_code_panel(
                             on_activity(cx);
                         }
                     }
+                })
+                .when_some(on_select, |this, on_select| {
+                    this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                        on_select(cx);
+                        if !selection_enabled {
+                            cx.stop_propagation();
+                        }
+                    })
                 })
                 .on_scroll_wheel({
                     let on_activity = on_activity.clone();

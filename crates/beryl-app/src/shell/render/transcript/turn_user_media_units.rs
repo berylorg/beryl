@@ -5,7 +5,6 @@ use gpui::{AnyElement, App, IntoElement, rgb};
 
 use crate::AppearanceSettings;
 use crate::shell::execution_detail::{TurnExecutionRecord, UserInputFragment};
-use crate::shell::transcript_media_runs::{TranscriptMediaRunSegment, markdown_media_run_segments};
 use crate::shell::transcript_selection::transcript_narrative_block_break_before;
 
 use super::{
@@ -24,7 +23,7 @@ use super::{
         InlineMarkdownStyle, TranscriptInlineImageMarker, TranscriptInlineSelectionContext,
     },
     media_blocks::{TranscriptMediaRenderItem, TranscriptMediaRenderLayout},
-    turn_media_units::{push_rendered_block, segment_markdown_key, segment_media_key},
+    turn_media_units::{TranscriptMarkdownRenderUnit, markdown_render_units, push_rendered_block},
 };
 
 pub(super) fn render_user_prompt_units(
@@ -86,20 +85,19 @@ pub(super) fn render_user_prompt_units(
     let block_path = user_prompt_block_path(fragment_index);
     let markdown_key = turn_markdown_key(turn_index, turn, &block_path);
     let markdown = markdown_context.markdown_for(markdown_key.clone(), fragment.text.as_str(), cx);
-    for (segment_index, segment) in markdown_media_run_segments(markdown.as_ref())
-        .into_iter()
-        .enumerate()
-    {
-        match segment {
-            TranscriptMediaRunSegment::Markdown(source) => {
-                let segment_key = segment_markdown_key(&markdown_key, segment_index);
-                let segment_block_path = format!("{block_path}:segment:{segment_index}");
+    for unit in markdown_render_units(&markdown_key, block_path.as_str(), markdown.as_ref()) {
+        match unit {
+            TranscriptMarkdownRenderUnit::Markdown {
+                key,
+                block_path,
+                source,
+            } => {
                 let initial_break_before =
                     transcript_narrative_block_break_before(narrative_copy_block_count.get());
                 let rendered = render_user_prompt_markdown_source(
                     source.as_str(),
-                    segment_key,
-                    segment_block_path,
+                    key,
+                    block_path,
                     appearance,
                     code_panel_state.clone(),
                     markdown_context.clone(),
@@ -122,8 +120,7 @@ pub(super) fn render_user_prompt_units(
                     cx,
                 );
             }
-            TranscriptMediaRunSegment::Media(source) => {
-                let key = segment_media_key(&markdown_key, segment_index);
+            TranscriptMarkdownRenderUnit::Media { key, source } => {
                 let identity =
                     TranscriptMediaRenderIdentity::new(row_identity, key.clone(), &source);
                 pending_media.push(TranscriptMediaRenderItem {

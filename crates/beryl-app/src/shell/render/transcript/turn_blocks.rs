@@ -15,8 +15,11 @@ use super::{
 use super::{
     code_panel_controls::TranscriptCodePanelState,
     image_markdown::markdown_source_with_image_marker_placeholders,
-    item_blocks::collect_item_markdown_code_panel_ids, media_blocks::TranscriptMediaRenderLayout,
-    turn_item_media_units::render_item_units, turn_media_units::flush_media_run,
+    item_blocks::collect_item_markdown_code_panel_ids,
+    media_blocks::TranscriptMediaRenderLayout,
+    turn_item_media_units::render_item_units,
+    turn_media_units::flush_media_run,
+    turn_media_units::{collect_markdown_render_unit_code_panel_ids, markdown_render_units},
     turn_user_media_units::render_user_prompt_units,
 };
 
@@ -139,16 +142,37 @@ pub(super) fn collect_turn_card_markdown_code_panel_ids(
 
                 let block_path = user_prompt_block_path(fragment_index);
                 let markdown_key = turn_markdown_key(turn_index, turn, &block_path);
-                let markdown_source = markdown_source_with_image_marker_placeholders(
-                    fragment.text.as_str(),
-                    fragment.image_markers(),
-                );
-                let markdown = markdown_context.markdown_for(markdown_key, &markdown_source, cx);
-                ids.extend(markdown_code_panel_ids(
-                    row_identity,
-                    block_path.as_str(),
-                    markdown.render_plan(),
-                ));
+                if fragment.image_markers().is_empty() {
+                    let markdown = markdown_context.markdown_for(
+                        markdown_key.clone(),
+                        fragment.text.as_str(),
+                        cx,
+                    );
+                    let units = markdown_render_units(
+                        &markdown_key,
+                        block_path.as_str(),
+                        markdown.as_ref(),
+                    );
+                    collect_markdown_render_unit_code_panel_ids(
+                        row_identity,
+                        units,
+                        markdown_context.clone(),
+                        &mut ids,
+                        cx,
+                    );
+                } else {
+                    let markdown_source = markdown_source_with_image_marker_placeholders(
+                        fragment.text.as_str(),
+                        fragment.image_markers(),
+                    );
+                    let markdown =
+                        markdown_context.markdown_for(markdown_key, &markdown_source, cx);
+                    ids.extend(markdown_code_panel_ids(
+                        row_identity,
+                        block_path.as_str(),
+                        markdown.render_plan(),
+                    ));
+                }
             }
             TurnNarrativeEntry::Item { item_id } => {
                 let Some(item) = turn.item_by_id(item_id) else {

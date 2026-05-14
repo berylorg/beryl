@@ -9,7 +9,6 @@ use crate::shell::execution_detail::{
 };
 use crate::shell::transcript_markdown::TranscriptMarkdownCacheKey;
 use crate::shell::transcript_media::{TranscriptMediaCacheKey, TranscriptMediaSource};
-use crate::shell::transcript_media_runs::{TranscriptMediaRunSegment, markdown_media_run_segments};
 use crate::shell::transcript_selection::transcript_narrative_block_break_before;
 
 use super::{
@@ -27,7 +26,7 @@ use super::{
         agent_message_markdown_style, live_item_complete, render_agent_message, render_item,
     },
     media_blocks::{TranscriptMediaRenderItem, TranscriptMediaRenderLayout},
-    turn_media_units::{push_rendered_block, segment_markdown_key, segment_media_key},
+    turn_media_units::{TranscriptMarkdownRenderUnit, markdown_render_units, push_rendered_block},
 };
 
 pub(super) fn render_item_units(
@@ -189,10 +188,12 @@ fn render_agent_message_units(
     }
 
     let markdown = markdown_context.markdown_for(markdown_key.clone(), source.as_str(), cx);
-    let segments = markdown_media_run_segments(markdown.as_ref());
-    if !segments
+    let style = agent_message_markdown_style(item, appearance.as_ref());
+    let block_path = format!("item:{}:agent-message", item.id);
+    let units = markdown_render_units(&markdown_key, block_path.as_str(), markdown.as_ref());
+    if !units
         .iter()
-        .any(|segment| matches!(segment, TranscriptMediaRunSegment::Media(_)))
+        .any(|unit| matches!(unit, TranscriptMarkdownRenderUnit::Media { .. }))
     {
         render_unsplit_agent_message(
             turn_index,
@@ -216,19 +217,19 @@ fn render_agent_message_units(
         return;
     }
 
-    let style = agent_message_markdown_style(item, appearance.as_ref());
-    let block_path = format!("item:{}:agent-message", item.id);
-    for (segment_index, segment) in segments.into_iter().enumerate() {
-        match segment {
-            TranscriptMediaRunSegment::Markdown(source) => {
-                let segment_key = segment_markdown_key(&markdown_key, segment_index);
-                let segment_block_path = format!("{block_path}:segment:{segment_index}");
+    for unit in units {
+        match unit {
+            TranscriptMarkdownRenderUnit::Markdown {
+                key,
+                block_path,
+                source,
+            } => {
                 let initial_break_before =
                     transcript_narrative_block_break_before(narrative_copy_block_count.get());
                 let rendered = render_item_markdown_source(
                     source.as_str(),
-                    segment_key,
-                    segment_block_path,
+                    key,
+                    block_path,
                     appearance.as_ref(),
                     code_panel_state.clone(),
                     markdown_context.clone(),
@@ -252,8 +253,7 @@ fn render_agent_message_units(
                     cx,
                 );
             }
-            TranscriptMediaRunSegment::Media(source) => {
-                let key = segment_media_key(&markdown_key, segment_index);
+            TranscriptMarkdownRenderUnit::Media { key, source } => {
                 let identity =
                     TranscriptMediaRenderIdentity::new(row_identity, key.clone(), &source);
                 pending_media.push(TranscriptMediaRenderItem {

@@ -18,6 +18,7 @@ use super::{
     TranscriptCodeLayout, indexed_item_markdown_key, item_markdown_key,
     markdown_cache::TranscriptMarkdownRenderContext,
     stream_projection::{TranscriptStreamProjectionContext, TranscriptStreamProjectionKey},
+    turn_media_units::{collect_markdown_render_unit_code_panel_ids, markdown_render_units},
 };
 
 pub(super) fn render_item(
@@ -341,12 +342,9 @@ fn collect_agent_message_code_panel_ids(
     }
 
     let block_path = format!("item:{}:agent-message", item.id);
-    let markdown = markdown_context.markdown_for(markdown_key, source.as_str(), cx);
-    ids.extend(markdown_code_panel_ids(
-        row_identity,
-        block_path.as_str(),
-        markdown.render_plan(),
-    ));
+    let markdown = markdown_context.markdown_for(markdown_key.clone(), source.as_str(), cx);
+    let units = markdown_render_units(&markdown_key, block_path.as_str(), markdown.as_ref());
+    collect_markdown_render_unit_code_panel_ids(row_identity, units, markdown_context, ids, cx);
 }
 
 fn collect_reasoning_code_panel_ids(
