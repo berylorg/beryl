@@ -1,4 +1,5 @@
 use std::{
+    fs, io,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -52,9 +53,14 @@ pub(crate) struct TranscriptImageMenuTarget {
     media_identity: String,
     alt: String,
     format: ImageFormat,
-    bytes: Arc<[u8]>,
-    image: Arc<Image>,
+    source: TranscriptImageMenuSource,
     source_path: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+enum TranscriptImageMenuSource {
+    RetainedBytes { bytes: Arc<[u8]>, image: Arc<Image> },
+    File { path: PathBuf },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -265,8 +271,28 @@ impl TranscriptImageMenuTarget {
             media_identity: media_identity.into(),
             alt: alt.into(),
             format,
-            bytes: bytes.into(),
-            image,
+            source: TranscriptImageMenuSource::RetainedBytes {
+                bytes: bytes.into(),
+                image,
+            },
+            source_path,
+        }
+    }
+
+    pub(crate) fn new_file(
+        row_identity: impl Into<String>,
+        media_identity: impl Into<String>,
+        alt: impl Into<String>,
+        format: ImageFormat,
+        path: PathBuf,
+        source_path: Option<String>,
+    ) -> Self {
+        Self {
+            row_identity: row_identity.into(),
+            media_identity: media_identity.into(),
+            alt: alt.into(),
+            format,
+            source: TranscriptImageMenuSource::File { path },
             source_path,
         }
     }
@@ -288,7 +314,7 @@ impl TranscriptImageMenuTarget {
             && self.format == target.format
             && self.alt == target.alt
             && self.source_path == target.source_path
-            && self.bytes.as_ref() == target.bytes.as_ref()
+            && self.source.matches_loaded_source(&target.source)
     }
 
     pub(crate) fn alt(&self) -> &str {
@@ -300,24 +326,73 @@ impl TranscriptImageMenuTarget {
     }
 
     pub(crate) fn bytes(&self) -> &[u8] {
-        self.bytes.as_ref()
+        self.retained_bytes()
+            .expect("transcript image bytes are only retained for byte-backed menu targets")
+    }
+
+    pub(crate) fn retained_bytes(&self) -> Option<&[u8]> {
+        match &self.source {
+            TranscriptImageMenuSource::RetainedBytes { bytes, .. } => Some(bytes.as_ref()),
+            TranscriptImageMenuSource::File { .. } => None,
+        }
     }
 
     pub(crate) fn bytes_arc(&self) -> Arc<[u8]> {
-        self.bytes.clone()
+        self.retained_bytes_arc()
+            .expect("transcript image bytes are only retained for byte-backed menu targets")
+    }
+
+    pub(crate) fn retained_bytes_arc(&self) -> Option<Arc<[u8]>> {
+        match &self.source {
+            TranscriptImageMenuSource::RetainedBytes { bytes, .. } => Some(bytes.clone()),
+            TranscriptImageMenuSource::File { .. } => None,
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn bytes_ptr(&self) -> *const u8 {
-        self.bytes.as_ptr()
+        self.retained_bytes()
+            .expect("transcript image bytes are only retained for byte-backed menu targets")
+            .as_ptr()
     }
 
-    pub(crate) fn image(&self) -> &Image {
-        self.image.as_ref()
+    pub(crate) fn file_path(&self) -> Option<&Path> {
+        match &self.source {
+            TranscriptImageMenuSource::RetainedBytes { .. } => None,
+            TranscriptImageMenuSource::File { path } => Some(path.as_path()),
+        }
     }
 
-    pub(crate) fn clipboard_item(&self) -> ClipboardItem {
-        ClipboardItem::new_image(self.image())
+    pub(crate) fn image(&self) -> Option<&Image> {
+        match &self.source {
+            TranscriptImageMenuSource::RetainedBytes { image, .. } => Some(image.as_ref()),
+            TranscriptImageMenuSource::File { .. } => None,
+        }
+    }
+
+    pub(crate) fn clipboard_item(&self) -> io::Result<ClipboardItem> {
+        match &self.source {
+            TranscriptImageMenuSource::RetainedBytes { image, .. } => {
+                Ok(ClipboardItem::new_image(image.as_ref()))
+            }
+            TranscriptImageMenuSource::File { path } => {
+                let bytes = fs::read(path)?;
+                let image = Image::from_bytes(self.format, bytes);
+                Ok(ClipboardItem::new_image(&image))
+            }
+        }
+    }
+
+    pub(crate) fn save_to_path(&self, path: PathBuf) -> io::Result<PathBuf> {
+        match &self.source {
+            TranscriptImageMenuSource::RetainedBytes { bytes, .. } => {
+                fs::write(&path, bytes.as_ref())?;
+            }
+            TranscriptImageMenuSource::File { path: source } => {
+                fs::copy(source, &path)?;
+            }
+        }
+        Ok(path)
     }
 
     pub(crate) fn suggested_save_filename(&self) -> String {
@@ -353,6 +428,21 @@ impl TranscriptImageMenuTarget {
 
     pub(crate) fn source_path(&self) -> Option<&str> {
         self.source_path.as_deref()
+    }
+}
+
+impl TranscriptImageMenuSource {
+    fn matches_loaded_source(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::RetainedBytes { bytes, .. },
+                Self::RetainedBytes {
+                    bytes: other_bytes, ..
+                },
+            ) => bytes.as_ref() == other_bytes.as_ref(),
+            (Self::File { path }, Self::File { path: other_path }) => path == other_path,
+            _ => false,
+        }
     }
 }
 

@@ -25,7 +25,7 @@ mod shell {
 
     pub(super) use transcript_presentation::{
         TRANSCRIPT_INITIAL_PRESENTATION_ROWS, TRANSCRIPT_MAX_PRESENTATION_ROWS,
-        transcript_frame_presentation_range,
+        transcript_frame_preload_range, transcript_frame_presentation_range,
     };
     pub(super) use virtual_list::{
         ListAlignment, ListOffset, ListScrollPosition, ListState, test_support,
@@ -100,7 +100,7 @@ mod shell {
 use shell::{
     ListAlignment, ListOffset, ListScrollPosition, ListState, PresentationHarness,
     TRANSCRIPT_INITIAL_PRESENTATION_ROWS, TRANSCRIPT_MAX_PRESENTATION_ROWS, test_support,
-    transcript_frame_presentation_range,
+    transcript_frame_preload_range, transcript_frame_presentation_range,
 };
 
 #[test]
@@ -258,6 +258,53 @@ fn large_media_history_frame_prep_stays_viewport_windowed() {
         "media-heavy frame prep should stay far below total loaded turns"
     );
     assert!(panel_state.active_nested_code_panel_ids.is_empty());
+}
+
+#[test]
+fn transcript_media_preload_range_uses_half_viewport_margin_without_total_history_scan() {
+    let turn_count = 1_000;
+    let row_heights = vec![px(100.0); turn_count];
+    let list_state = measured_list_state(
+        turn_count,
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 10,
+            offset_in_item: px(0.0),
+        }),
+        px(200.0),
+        px(0.0),
+        &row_heights,
+    );
+
+    let visible = list_state.visible_range();
+    let preload = transcript_frame_preload_range(&list_state, turn_count, px(100.0));
+
+    assert_eq!(visible, 10..12);
+    assert_eq!(preload, 9..13);
+    assert!(preload.len() < turn_count / 100);
+}
+
+#[test]
+fn transcript_media_preload_range_is_hard_capped() {
+    let turn_count = 5_000;
+    let row_heights = vec![px(1.0); turn_count];
+    let list_state = measured_list_state(
+        turn_count,
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 2_400,
+            offset_in_item: px(0.0),
+        }),
+        px(100.0),
+        px(0.0),
+        &row_heights,
+    );
+
+    let preload = transcript_frame_preload_range(&list_state, turn_count, px(10_000.0));
+    let visible = list_state.visible_range();
+
+    assert!(preload.len() <= TRANSCRIPT_MAX_PRESENTATION_ROWS);
+    assert!(preload.start <= visible.start);
+    assert!(preload.end >= visible.end);
+    assert!(preload.len() * 10 < turn_count);
 }
 
 #[test]

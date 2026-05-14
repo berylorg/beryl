@@ -9,6 +9,7 @@ mod markdown_cache;
 mod markdown_copy;
 mod media_blocks;
 mod media_cache;
+mod media_preload;
 mod nested_scroll;
 mod selection_context;
 mod selection_highlight;
@@ -64,7 +65,9 @@ use crate::shell::{
         TranscriptMediaLayoutInput, TranscriptMediaSource, transcript_media_layout_metrics,
     },
     transcript_presentation::TranscriptActivityCaret,
-    transcript_presentation::transcript_frame_presentation_range,
+    transcript_presentation::{
+        transcript_frame_preload_range, transcript_frame_presentation_range,
+    },
     transcript_quote_popup::{self, TranscriptQuotePopupState},
     transcript_selection::{
         TranscriptSelectionState, TranscriptTextLineKey, TranscriptTextPoint,
@@ -236,6 +239,18 @@ impl TranscriptPanelDiagnosticSnapshot {
         retained_state.media_cache_entries = Some(self.media_stats.entries);
         retained_state.media_cache_pending_entries = Some(self.media_stats.pending_entries);
         retained_state.media_cache_loaded_entries = Some(self.media_stats.loaded_entries);
+        retained_state.media_cache_loaded_retained_byte_entries =
+            Some(self.media_stats.loaded_retained_byte_entries);
+        retained_state.media_cache_loaded_source_backed_file_entries =
+            Some(self.media_stats.loaded_source_backed_file_entries);
+        retained_state.media_cache_loaded_native_generated_source_backed_file_entries = Some(
+            self.media_stats
+                .loaded_native_generated_source_backed_file_entries,
+        );
+        retained_state.media_cache_loaded_native_generated_retained_byte_entries = Some(
+            self.media_stats
+                .loaded_native_generated_retained_byte_entries,
+        );
         retained_state.media_cache_loaded_image_bytes = Some(self.media_stats.loaded_image_bytes);
         retained_state.media_cache_decoded_image_bytes_estimate =
             Some(self.media_stats.decoded_image_bytes_estimate);
@@ -796,6 +811,50 @@ impl TranscriptPanel {
             && !self.text_selection.is_dragging()
         {
             cx.notify();
+        }
+    }
+
+    fn preload_transcript_media_range(
+        &mut self,
+        preload_range: std::ops::Range<usize>,
+        workspace: &WorkspaceId,
+        media_context: TranscriptMediaRenderContext,
+        markdown_context: TranscriptMarkdownRenderContext,
+        stream_projection_context: TranscriptStreamProjectionContext,
+        media_layout: TranscriptMediaRenderLayout,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.visible_media
+            .borrow_mut()
+            .begin_preload_frame(preload_range.clone());
+        let rows = self
+            .shell
+            .read(cx)
+            .conversation_surface()
+            .map(|surface| {
+                preload_range
+                    .clone()
+                    .filter_map(|index| surface.transcript_presentation().turn_at(index))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        for row in rows {
+            let row_identity = row.identity.as_str().to_string();
+            let media_context = media_context.clone().for_row(row_identity.clone());
+            media_preload::preload_turn_media_runs(
+                row.index,
+                workspace,
+                row.turn,
+                row_identity.as_str(),
+                markdown_context.clone(),
+                media_context,
+                stream_projection_context.clone(),
+                media_layout,
+                window,
+                cx,
+            );
         }
     }
 
@@ -2070,6 +2129,14 @@ impl Render for TranscriptPanel {
             retained_state.media_cache_entries = Some(media_stats.entries);
             retained_state.media_cache_pending_entries = Some(media_stats.pending_entries);
             retained_state.media_cache_loaded_entries = Some(media_stats.loaded_entries);
+            retained_state.media_cache_loaded_retained_byte_entries =
+                Some(media_stats.loaded_retained_byte_entries);
+            retained_state.media_cache_loaded_source_backed_file_entries =
+                Some(media_stats.loaded_source_backed_file_entries);
+            retained_state.media_cache_loaded_native_generated_source_backed_file_entries =
+                Some(media_stats.loaded_native_generated_source_backed_file_entries);
+            retained_state.media_cache_loaded_native_generated_retained_byte_entries =
+                Some(media_stats.loaded_native_generated_retained_byte_entries);
             retained_state.media_cache_loaded_image_bytes = Some(media_stats.loaded_image_bytes);
             retained_state.media_cache_decoded_image_bytes_estimate =
                 Some(media_stats.decoded_image_bytes_estimate);
@@ -2447,11 +2514,32 @@ impl Render for TranscriptPanel {
                                         let image_menu_render_state =
                                             image_menu_render_state.clone();
                                         let transcript_list_state = transcript_list_state.clone();
-                                        move |_, _, cx| {
+                                        let preload_workspace = workspace.clone();
+                                        let preload_media_context = media_context.clone();
+                                        let preload_markdown_context = markdown_context.clone();
+                                        let preload_stream_projection_context =
+                                            stream_projection_context.clone();
+                                        let preload_media_layout = media_layout;
+                                        move |_, window, cx| {
                                             let viewport_bounds =
                                                 transcript_list_state.viewport_bounds();
                                             entity.update(cx, |view, cx| {
                                                 view.finish_text_span_frame(viewport_bounds, cx);
+                                                let preload_range = transcript_frame_preload_range(
+                                                    &transcript_list_state,
+                                                    turn_count,
+                                                    viewport_bounds.size.height * 0.5,
+                                                );
+                                                view.preload_transcript_media_range(
+                                                    preload_range,
+                                                    &preload_workspace,
+                                                    preload_media_context.clone(),
+                                                    preload_markdown_context.clone(),
+                                                    preload_stream_projection_context.clone(),
+                                                    preload_media_layout,
+                                                    window,
+                                                    cx,
+                                                );
                                                 if let Some(target) = image_menu_render_state
                                                     .rendered_loaded_target()
                                                 {

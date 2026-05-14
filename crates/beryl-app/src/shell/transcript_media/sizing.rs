@@ -1,4 +1,4 @@
-use gpui::{Pixels, px};
+use gpui::{DevicePixels, Pixels, Size, px, size};
 
 use super::types::TranscriptMediaLoadOutcome;
 
@@ -51,6 +51,7 @@ pub(crate) enum TranscriptMediaRunAlignment {
 }
 
 const MULTI_IMAGE_TARGET_M_ADVANCES: f32 = 30.0;
+const MEDIA_TILE_BORDER_WIDTH: Pixels = px(1.0);
 
 impl TranscriptMediaNaturalDimensions {
     pub(crate) fn new(width: u32, height: u32) -> Option<Self> {
@@ -109,6 +110,17 @@ pub(crate) fn transcript_media_slot_layout(
     TranscriptMediaSlotLayout::Media(transcript_media_size(input))
 }
 
+pub(crate) fn transcript_media_source_backed_request_size(
+    slot_size: TranscriptMediaSize,
+    window_scale: f32,
+) -> Size<DevicePixels> {
+    let content_size = transcript_media_image_content_size(slot_size);
+    size(
+        DevicePixels((f32::from(content_size.width) * window_scale).round() as i32),
+        DevicePixels((f32::from(content_size.height) * window_scale).round() as i32),
+    )
+}
+
 pub(crate) fn transcript_media_run_alignment(run_length: usize) -> TranscriptMediaRunAlignment {
     if run_length == 1 {
         TranscriptMediaRunAlignment::Center
@@ -119,6 +131,14 @@ pub(crate) fn transcript_media_run_alignment(run_length: usize) -> TranscriptMed
 
 fn multi_image_target_width(conversation_m_advance: Pixels) -> Pixels {
     conversation_m_advance.max(px(0.0)) * MULTI_IMAGE_TARGET_M_ADVANCES
+}
+
+fn transcript_media_image_content_size(slot_size: TranscriptMediaSize) -> TranscriptMediaSize {
+    let border_extent = MEDIA_TILE_BORDER_WIDTH * 2.0;
+    TranscriptMediaSize {
+        width: (slot_size.width - border_extent).max(px(0.0)),
+        height: (slot_size.height - border_extent).max(px(0.0)),
+    }
 }
 
 fn scale_adjusted_natural_width(

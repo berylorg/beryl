@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, fs, sync::Arc, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use beryl_model::workspace::WorkspaceId;
@@ -98,6 +98,10 @@ fn media_cache_stats_report_loaded_image_bytes_and_decoded_estimate() {
     assert_eq!(stats.entries, 1);
     assert_eq!(stats.pending_entries, 0);
     assert_eq!(stats.loaded_entries, 1);
+    assert_eq!(stats.loaded_retained_byte_entries, 1);
+    assert_eq!(stats.loaded_source_backed_file_entries, 0);
+    assert_eq!(stats.loaded_native_generated_source_backed_file_entries, 0);
+    assert_eq!(stats.loaded_native_generated_retained_byte_entries, 0);
     assert_eq!(stats.loaded_image_bytes, bytes.len());
     assert_eq!(stats.decoded_image_bytes_estimate, 3 * 2 * 4);
     assert_eq!(stats.thumbnail_count, 0);
@@ -287,8 +291,11 @@ fn svg_and_non_image_markdown_targets_render_unsupported_without_reading() {
 #[test]
 fn native_generated_image_prefers_saved_path_over_inline_result() {
     let inline_bytes = png_bytes_with_pixel([255, 0, 0, 255]);
-    let saved_bytes = png_bytes_with_pixel([0, 0, 255, 255]);
-    let path = r"C:\outside\fresh.png";
+    let saved_bytes = png_bytes_with_dimensions(3, 2, [0, 0, 255, 255]);
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let saved_path = temp.path().join("fresh.png");
+    fs::write(&saved_path, &saved_bytes).expect("saved image fixture should be written");
+    let path = saved_path.to_string_lossy().to_string();
     let source = TranscriptMediaSource::native_image_generation(
         "image_generation_1",
         Some("Cheshire cat".to_string()),
@@ -296,7 +303,7 @@ fn native_generated_image_prefers_saved_path_over_inline_result() {
         Some(path.to_string()),
         true,
     );
-    let mut reader = FakeReader::with_file(path, saved_bytes.clone());
+    let mut reader = FakeReader::default();
     let mut cache = TranscriptMediaCache::new(8);
 
     let lookup = cache.lookup(
@@ -318,15 +325,28 @@ fn native_generated_image_prefers_saved_path_over_inline_result() {
         .expect("native saved path should load before inline result bytes");
     assert_eq!(image.alt(), "Cheshire cat");
     assert_eq!(image.format(), ImageFormat::Png);
-    assert_eq!(image.bytes(), saved_bytes.as_slice());
-    assert_eq!(image.source_path(), Some(path));
-    assert_eq!(reader.calls, vec![path.to_string()]);
+    assert_eq!(image.retained_bytes(), None);
+    assert_eq!(image.source_backed_file_path(), Some(&saved_path));
+    assert_eq!(image.natural_dimensions().width(), 3);
+    assert_eq!(image.natural_dimensions().height(), 2);
+    assert_eq!(image.source_path(), Some(path.as_str()));
+    assert!(reader.calls.is_empty());
+    let stats = cache.stats();
+    assert_eq!(stats.loaded_image_bytes, 0);
+    assert_eq!(stats.decoded_image_bytes_estimate, 0);
+    assert_eq!(stats.loaded_retained_byte_entries, 0);
+    assert_eq!(stats.loaded_source_backed_file_entries, 1);
+    assert_eq!(stats.loaded_native_generated_source_backed_file_entries, 1);
+    assert_eq!(stats.loaded_native_generated_retained_byte_entries, 0);
 }
 
 #[test]
 fn native_generated_image_saved_path_loads_without_markdown_path_policy() {
-    let path = r"C:\codex\generated-images\cat.png";
-    let bytes = png_bytes();
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let saved_path = temp.path().join("cat.png");
+    let bytes = png_bytes_with_dimensions(2, 1, [0, 0, 0, 255]);
+    fs::write(&saved_path, &bytes).expect("saved image fixture should be written");
+    let path = saved_path.to_string_lossy().to_string();
     let source = TranscriptMediaSource::native_image_generation(
         "image_generation_1",
         Some("Cheshire cat".to_string()),
@@ -334,7 +354,7 @@ fn native_generated_image_saved_path_loads_without_markdown_path_policy() {
         Some(path.to_string()),
         true,
     );
-    let mut reader = FakeReader::with_file(path, bytes.clone());
+    let mut reader = FakeReader::default();
     let mut cache = TranscriptMediaCache::new(8);
 
     let lookup = cache.lookup(
@@ -360,9 +380,125 @@ fn native_generated_image_saved_path_loads_without_markdown_path_policy() {
         .loaded()
         .expect("native saved path should load outside the workspace member");
     assert_eq!(image.alt(), "Cheshire cat");
-    assert_eq!(image.bytes(), bytes.as_slice());
-    assert_eq!(image.source_path(), Some(path));
-    assert_eq!(reader.calls, vec![path.to_string()]);
+    assert_eq!(image.retained_bytes(), None);
+    assert_eq!(image.source_backed_file_path(), Some(&saved_path));
+    assert_eq!(image.natural_dimensions().width(), 2);
+    assert_eq!(image.natural_dimensions().height(), 1);
+    assert_eq!(image.source_path(), Some(path.as_str()));
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
+fn source_backed_preload_candidates_exclude_markdown_and_inline_generated_bytes() {
+    let markdown = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
+    let inline_generated = TranscriptMediaSource::native_image_generation(
+        "image_generation_inline",
+        Some("Inline cat".to_string()),
+        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
+        None,
+        true,
+    );
+    let blank_saved_path = TranscriptMediaSource::native_image_generation(
+        "image_generation_blank",
+        Some("Blank cat".to_string()),
+        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
+        Some("  ".to_string()),
+        true,
+    );
+    let saved_path = TranscriptMediaSource::native_image_generation(
+        "image_generation_saved",
+        Some("Saved cat".to_string()),
+        None::<Arc<String>>,
+        Some(r"c:\generated\cat.png".to_string()),
+        true,
+    );
+
+    assert!(!markdown.is_source_backed_preload_candidate());
+    assert!(!inline_generated.is_source_backed_preload_candidate());
+    assert!(!blank_saved_path.is_source_backed_preload_candidate());
+    assert!(saved_path.is_source_backed_preload_candidate());
+}
+
+#[test]
+fn missing_native_generated_image_saved_path_renders_unavailable_without_backend_read() {
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let saved_path = temp.path().join("missing.png");
+    let path = saved_path.to_string_lossy().to_string();
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_1",
+        Some("Missing cat".to_string()),
+        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
+        Some(path),
+        true,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-missing-path"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let ready = cache.lookup(
+        cache_key("native-missing-path"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    assert_eq!(
+        ready.outcome.fallback_text().as_deref(),
+        Some("Missing cat (file unavailable)")
+    );
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
+fn malformed_native_generated_image_saved_path_renders_unsupported_without_backend_read() {
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let saved_path = temp.path().join("truncated.png");
+    fs::write(&saved_path, truncated_png_with_dimensions(2, 1))
+        .expect("malformed saved image fixture should be written");
+    let path = saved_path.to_string_lossy().to_string();
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_1",
+        Some("Broken cat".to_string()),
+        Some(Arc::new(BASE64_STANDARD.encode(png_bytes()))),
+        Some(path),
+        true,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-malformed-path"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let ready = cache.lookup(
+        cache_key("native-malformed-path"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    assert_eq!(
+        ready.outcome.fallback_text().as_deref(),
+        Some("Broken cat (render not supported)")
+    );
+    assert!(reader.calls.is_empty());
 }
 
 #[test]
@@ -405,11 +541,14 @@ fn completed_native_generated_image_without_bytes_reports_unavailable() {
 
 #[test]
 fn native_generated_image_cache_identity_ignores_inline_result_when_saved_path_is_present() {
-    let path = r"C:\codex\generated-images\cat.png";
-    let saved_bytes = png_bytes();
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let saved_path = temp.path().join("cat.png");
+    let saved_bytes = png_bytes_with_dimensions(2, 2, [0, 0, 0, 255]);
+    fs::write(&saved_path, &saved_bytes).expect("saved image fixture should be written");
+    let path = saved_path.to_string_lossy().to_string();
     let first_result = Arc::new(BASE64_STANDARD.encode(png_bytes_with_pixel([0, 0, 0, 255])));
     let second_result = Arc::new(BASE64_STANDARD.encode(png_bytes_with_pixel([255, 0, 0, 255])));
-    let mut reader = FakeReader::with_file(path, saved_bytes.clone());
+    let mut reader = FakeReader::default();
     let mut cache = TranscriptMediaCache::new(8);
     let key = cache_key("native-path-result");
     let first_source = TranscriptMediaSource::native_image_generation(
@@ -432,10 +571,10 @@ fn native_generated_image_cache_identity_ignores_inline_result_when_saved_path_i
             .display_changed
     );
     let ready = cache.lookup(key.clone(), first_source, host_workspace(), timeout());
-    assert_eq!(
-        ready.outcome.loaded().map(|image| image.bytes()),
-        Some(saved_bytes.as_slice())
-    );
+    let ready_image = ready.outcome.loaded().expect("saved path should load");
+    assert_eq!(ready_image.source_backed_file_path(), Some(&saved_path));
+    assert_eq!(ready_image.natural_dimensions().width(), 2);
+    assert_eq!(ready_image.natural_dimensions().height(), 2);
 
     let second_source = TranscriptMediaSource::native_image_generation(
         "image_generation_1",
@@ -447,10 +586,13 @@ fn native_generated_image_cache_identity_ignores_inline_result_when_saved_path_i
     let unchanged = cache.lookup(key, second_source, host_workspace(), timeout());
     assert!(unchanged.load_request.is_none());
     assert_eq!(
-        unchanged.outcome.loaded().map(|image| image.bytes()),
-        Some(saved_bytes.as_slice())
+        unchanged
+            .outcome
+            .loaded()
+            .and_then(|image| image.source_backed_file_path()),
+        Some(&saved_path)
     );
-    assert_eq!(reader.calls, vec![path.to_string()]);
+    assert!(reader.calls.is_empty());
 }
 
 #[test]
@@ -521,6 +663,11 @@ fn native_generated_image_cache_identity_uses_shared_result_payload_without_save
         Some(second_bytes.as_slice())
     );
     assert!(reader.calls.is_empty());
+    let stats = cache.stats();
+    assert_eq!(stats.loaded_retained_byte_entries, 1);
+    assert_eq!(stats.loaded_source_backed_file_entries, 0);
+    assert_eq!(stats.loaded_native_generated_retained_byte_entries, 1);
+    assert_eq!(stats.loaded_native_generated_source_backed_file_entries, 0);
 }
 
 #[test]
@@ -807,6 +954,12 @@ fn png_bytes_with_dimensions(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> 
         .write_to(&mut bytes, image::ImageFormat::Png)
         .expect("embedded PNG fixture should encode");
     bytes.into_inner()
+}
+
+fn truncated_png_with_dimensions(width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = png_bytes_with_dimensions(width, height, [0, 0, 0, 255]);
+    bytes.truncate(33);
+    bytes
 }
 
 fn oversized_bmp_header(width: u32, height: u32) -> Vec<u8> {

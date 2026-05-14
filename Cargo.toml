@@ -23,9 +23,9 @@ clap = { version = "4.6.1", features = ["derive"] }
 deunicode = "1.6.2"
 getrandom = "0.4.2"
 hex = "0.4.3"
-gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "c70dbf5244396cea7e627a73ffdcf45f19c9642d", default-features = false, features = ["windows-manifest"] }
-gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "c6973c27dd0f23259228914d680a313f665b3f36" }
-gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "c076415e41804812cb031fbe41e8bffcfc8e0a3e" }
+gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "fabbb607f5aff9e69ef6f09d423c5264bee4c9a8", default-features = false, features = ["windows-manifest"] }
+gpui-settings-window = { git = "https://github.com/berylorg/gpui-settings-window.git", rev = "7c2867587ddd3eb014359a783de4117b4295043a" }
+gpui-text-input = { git = "https://github.com/berylorg/gpui-text-input.git", rev = "999929f8c11ca2202ea93cf5ef720c42343edaaf" }
 gpui_sum_tree = "0.2.2"
 image = "0.25.1"
 markdown = { version = "1.0.0", default-features = false }

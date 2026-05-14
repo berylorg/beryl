@@ -349,7 +349,7 @@ fn render_item_markdown_source(
     )
 }
 
-fn generated_image_media_item(
+pub(super) fn generated_image_media_item(
     turn_index: usize,
     turn: &TurnExecutionRecord,
     image: &GeneratedImageDetail,

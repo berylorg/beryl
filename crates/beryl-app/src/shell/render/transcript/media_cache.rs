@@ -86,8 +86,9 @@ impl TranscriptMediaRenderContext {
         event.source_kind = Some(transcript_media_source_kind(&source).to_string());
         event.outcome = Some(transcript_media_outcome_label(&lookup.outcome).to_string());
         if let Some(image) = lookup.outcome.loaded() {
-            event.image_id = Some(image.image_id());
-            event.image_asset_key_hash = Some(image.image_asset_key_hash());
+            event.backing_kind = Some(image.diagnostic_backing_kind().to_string());
+            event.image_id = image.image_id();
+            event.image_asset_key_hash = image.image_asset_key_hash();
         }
         if load_scheduled {
             event.detail = Some("load_scheduled".to_string());
@@ -175,7 +176,9 @@ fn schedule_media_load(
                     let dimensions = image.natural_dimensions();
                     (
                         image.format().mime_type().to_string(),
-                        image.bytes().len(),
+                        image.diagnostic_backing_kind().to_string(),
+                        image.retained_compressed_bytes_len(),
+                        image.retained_decoded_bytes_estimate(),
                         dimensions.width(),
                         dimensions.height(),
                         image.image_id(),
@@ -197,7 +200,9 @@ fn schedule_media_load(
                 event.row_identity = row_identity.clone();
                 if let Some((
                     format,
+                    backing_kind,
                     compressed_bytes,
+                    decoded_bytes_estimate,
                     natural_width,
                     natural_height,
                     image_id,
@@ -205,16 +210,13 @@ fn schedule_media_load(
                 )) = loaded_diagnostic
                 {
                     event.format = Some(format);
-                    event.compressed_bytes = Some(compressed_bytes);
-                    event.decoded_bytes_estimate = Some(
-                        (natural_width as usize)
-                            .saturating_mul(natural_height as usize)
-                            .saturating_mul(4),
-                    );
+                    event.backing_kind = Some(backing_kind);
+                    event.compressed_bytes = compressed_bytes;
+                    event.decoded_bytes_estimate = decoded_bytes_estimate;
                     event.natural_width = Some(natural_width);
                     event.natural_height = Some(natural_height);
-                    event.image_id = Some(image_id);
-                    event.image_asset_key_hash = Some(image_asset_key_hash);
+                    event.image_id = image_id;
+                    event.image_asset_key_hash = image_asset_key_hash;
                 }
                 events.borrow_mut().record(event);
                 release_evicted_media_images(result.evicted_images, events.clone(), cx);

@@ -215,9 +215,13 @@ pub(crate) struct VisibleMediaSnapshot {
     pub frame_generation: u64,
     pub selected_thread_id: Option<String>,
     pub presentation_range: Option<PresentationRangeDiagnostic>,
+    pub preload_range: Option<PresentationRangeDiagnostic>,
     pub items: Vec<VisibleMediaItemDiagnostic>,
     pub item_count: usize,
     pub truncated: bool,
+    pub preloaded_items: Vec<VisibleMediaItemDiagnostic>,
+    pub preloaded_item_count: usize,
+    pub preloaded_truncated: bool,
     pub stale: bool,
     pub preview: PreviewDiagnostic,
 }
@@ -235,6 +239,7 @@ pub(crate) struct VisibleMediaItemDiagnostic {
     pub row_identity: Option<String>,
     pub key: String,
     pub source_kind: String,
+    pub backing_kind: Option<String>,
     pub outcome: String,
     pub format: Option<String>,
     pub compressed_bytes: Option<usize>,
@@ -278,6 +283,7 @@ pub(crate) struct MediaDiagnosticEvent {
     pub row_identity: Option<String>,
     pub key: Option<String>,
     pub source_kind: Option<String>,
+    pub backing_kind: Option<String>,
     pub outcome: Option<String>,
     pub format: Option<String>,
     pub compressed_bytes: Option<usize>,
@@ -295,8 +301,11 @@ pub(crate) struct VisibleMediaDiagnostics {
     frame_generation: u64,
     selected_thread_id: Option<String>,
     presentation_range: Option<Range<usize>>,
+    preload_range: Option<Range<usize>>,
     items: Vec<VisibleMediaItemDiagnostic>,
+    preloaded_items: Vec<VisibleMediaItemDiagnostic>,
     truncated: bool,
+    preloaded_truncated: bool,
     stale: bool,
 }
 
@@ -312,17 +321,29 @@ impl VisibleMediaDiagnostics {
         self.frame_generation = self.frame_generation.saturating_add(1);
         self.selected_thread_id = selected_thread_id.map(truncate_diagnostic_string);
         self.presentation_range = Some(range);
+        self.preload_range = None;
         self.items.clear();
+        self.preloaded_items.clear();
         self.truncated = false;
+        self.preloaded_truncated = false;
         self.stale = false;
+    }
+
+    pub fn begin_preload_frame(&mut self, range: Range<usize>) {
+        self.preload_range = Some(range);
+        self.preloaded_items.clear();
+        self.preloaded_truncated = false;
     }
 
     pub fn clear(&mut self) {
         self.frame_generation = self.frame_generation.saturating_add(1);
         self.selected_thread_id = None;
         self.presentation_range = None;
+        self.preload_range = None;
         self.items.clear();
+        self.preloaded_items.clear();
         self.truncated = false;
+        self.preloaded_truncated = false;
         self.stale = true;
     }
 
@@ -332,6 +353,14 @@ impl VisibleMediaDiagnostics {
             return;
         }
         self.items.push(item.truncated());
+    }
+
+    pub fn record_preloaded_item(&mut self, item: VisibleMediaItemDiagnostic) {
+        if self.preloaded_items.len() >= MAX_VISIBLE_MEDIA_LIMIT {
+            self.preloaded_truncated = true;
+            return;
+        }
+        self.preloaded_items.push(item.truncated());
     }
 
     pub fn snapshot(&self) -> VisibleMediaSnapshot {
@@ -344,9 +373,19 @@ impl VisibleMediaDiagnostics {
                     end: range.end,
                 }
             }),
+            preload_range: self
+                .preload_range
+                .as_ref()
+                .map(|range| PresentationRangeDiagnostic {
+                    start: range.start,
+                    end: range.end,
+                }),
             items: self.items.clone(),
             item_count: self.items.len(),
             truncated: self.truncated,
+            preloaded_items: self.preloaded_items.clone(),
+            preloaded_item_count: self.preloaded_items.len(),
+            preloaded_truncated: self.preloaded_truncated,
             stale: self.stale,
             preview: PreviewDiagnostic::default(),
         }
@@ -389,6 +428,7 @@ impl VisibleMediaItemDiagnostic {
         self.row_identity = self.row_identity.map(truncate_diagnostic_string);
         self.key = truncate_diagnostic_string(self.key);
         self.source_kind = truncate_diagnostic_string(self.source_kind);
+        self.backing_kind = self.backing_kind.map(truncate_diagnostic_string);
         self.outcome = truncate_diagnostic_string(self.outcome);
         self.format = self.format.map(truncate_diagnostic_string);
         self
@@ -403,6 +443,7 @@ impl MediaDiagnosticEvent {
             row_identity: None,
             key: None,
             source_kind: None,
+            backing_kind: None,
             outcome: None,
             format: None,
             compressed_bytes: None,
@@ -421,6 +462,7 @@ impl MediaDiagnosticEvent {
         self.row_identity = self.row_identity.take().map(truncate_diagnostic_string);
         self.key = self.key.take().map(truncate_diagnostic_string);
         self.source_kind = self.source_kind.take().map(truncate_diagnostic_string);
+        self.backing_kind = self.backing_kind.take().map(truncate_diagnostic_string);
         self.outcome = self.outcome.take().map(truncate_diagnostic_string);
         self.format = self.format.take().map(truncate_diagnostic_string);
         self.detail = self.detail.take().map(truncate_diagnostic_string);
@@ -587,7 +629,12 @@ pub(crate) fn visible_media_result(
         snapshot.items.truncate(limit);
         snapshot.truncated = true;
     }
+    if snapshot.preloaded_items.len() > limit {
+        snapshot.preloaded_items.truncate(limit);
+        snapshot.preloaded_truncated = true;
+    }
     snapshot.item_count = snapshot.items.len();
+    snapshot.preloaded_item_count = snapshot.preloaded_items.len();
     snapshot
 }
 

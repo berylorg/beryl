@@ -31,6 +31,10 @@ pub(crate) struct TranscriptMediaCacheStats {
     pub(crate) entries: usize,
     pub(crate) pending_entries: usize,
     pub(crate) loaded_entries: usize,
+    pub(crate) loaded_retained_byte_entries: usize,
+    pub(crate) loaded_source_backed_file_entries: usize,
+    pub(crate) loaded_native_generated_source_backed_file_entries: usize,
+    pub(crate) loaded_native_generated_retained_byte_entries: usize,
     pub(crate) loaded_image_bytes: usize,
     pub(crate) decoded_image_bytes_estimate: usize,
     pub(crate) thumbnail_count: usize,
@@ -69,6 +73,10 @@ struct TranscriptMediaInFlightLoad {
 #[derive(Clone, Copy, Debug, Default)]
 struct TranscriptMediaLoadedStats {
     entries: usize,
+    retained_byte_entries: usize,
+    source_backed_file_entries: usize,
+    native_generated_source_backed_file_entries: usize,
+    native_generated_retained_byte_entries: usize,
     image_bytes: usize,
     decoded_image_bytes_estimate: usize,
 }
@@ -407,6 +415,12 @@ impl TranscriptMediaCache {
                 .filter(|entry| entry.in_flight.is_some())
                 .count(),
             loaded_entries: loaded.entries,
+            loaded_retained_byte_entries: loaded.retained_byte_entries,
+            loaded_source_backed_file_entries: loaded.source_backed_file_entries,
+            loaded_native_generated_source_backed_file_entries: loaded
+                .native_generated_source_backed_file_entries,
+            loaded_native_generated_retained_byte_entries: loaded
+                .native_generated_retained_byte_entries,
             loaded_image_bytes: loaded.image_bytes,
             decoded_image_bytes_estimate: loaded.decoded_image_bytes_estimate,
             thumbnail_count: 0,
@@ -447,27 +461,50 @@ impl TranscriptMediaCache {
             .fold(TranscriptMediaLoadedStats::default(), |mut stats, entry| {
                 if let TranscriptMediaLoadOutcome::Loaded(image) = entry.displayed.as_ref() {
                     stats.entries = stats.entries.saturating_add(1);
-                    stats.image_bytes = stats.image_bytes.saturating_add(image.bytes().len());
-                    stats.decoded_image_bytes_estimate = stats
-                        .decoded_image_bytes_estimate
-                        .saturating_add(decoded_image_bytes_estimate(image));
+                    match image.diagnostic_backing_kind() {
+                        "retained_bytes" => {
+                            stats.retained_byte_entries =
+                                stats.retained_byte_entries.saturating_add(1);
+                            if matches!(
+                                &entry.latest_source,
+                                TranscriptMediaSource::NativeImageGeneration { .. }
+                            ) {
+                                stats.native_generated_retained_byte_entries = stats
+                                    .native_generated_retained_byte_entries
+                                    .saturating_add(1);
+                            }
+                        }
+                        "source_backed_file" => {
+                            stats.source_backed_file_entries =
+                                stats.source_backed_file_entries.saturating_add(1);
+                            if matches!(
+                                &entry.latest_source,
+                                TranscriptMediaSource::NativeImageGeneration { .. }
+                            ) {
+                                stats.native_generated_source_backed_file_entries = stats
+                                    .native_generated_source_backed_file_entries
+                                    .saturating_add(1);
+                            }
+                        }
+                        _ => {}
+                    }
+                    stats.image_bytes = stats
+                        .image_bytes
+                        .saturating_add(image.retained_compressed_bytes_len().unwrap_or_default());
+                    stats.decoded_image_bytes_estimate =
+                        stats.decoded_image_bytes_estimate.saturating_add(
+                            image.retained_decoded_bytes_estimate().unwrap_or_default(),
+                        );
                 }
                 stats
             })
     }
 }
 
-fn decoded_image_bytes_estimate(image: &super::types::TranscriptMediaLoadedImage) -> usize {
-    let dimensions = image.natural_dimensions();
-    (dimensions.width() as usize)
-        .saturating_mul(dimensions.height() as usize)
-        .saturating_mul(4)
-}
-
 impl TranscriptMediaCacheEntry {
     fn loaded_image_handle(self) -> Option<Arc<gpui::Image>> {
         match self.displayed.as_ref() {
-            TranscriptMediaLoadOutcome::Loaded(image) => Some(image.image()),
+            TranscriptMediaLoadOutcome::Loaded(image) => image.retained_image(),
             _ => None,
         }
     }
@@ -501,7 +538,7 @@ fn media_load_outcome_label(outcome: &TranscriptMediaLoadOutcome) -> &'static st
 
 fn media_load_outcome_bytes(outcome: &TranscriptMediaLoadOutcome) -> Option<usize> {
     match outcome {
-        TranscriptMediaLoadOutcome::Loaded(image) => Some(image.bytes().len()),
+        TranscriptMediaLoadOutcome::Loaded(image) => image.retained_compressed_bytes_len(),
         _ => None,
     }
 }

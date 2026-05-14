@@ -9,7 +9,7 @@ impl StateInner {
         self.current_range_with_overdraw(self.overdraw)
     }
 
-    fn current_range_with_overdraw(&self, overdraw: Pixels) -> Range<usize> {
+    pub(super) fn current_range_with_overdraw(&self, overdraw: Pixels) -> Range<usize> {
         let count = self.items.summary().count;
         let Some(bounds) = self.last_layout_bounds else {
             return count..count;

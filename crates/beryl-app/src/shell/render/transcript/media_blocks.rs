@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use beryl_model::workspace::WorkspaceId;
 use gpui::{
-    AnyElement, App, MouseButton, ObjectFit, Pixels, div, img, prelude::*, px, relative, rgb,
+    AnyElement, App, ImageRenderSource, MouseButton, ObjectFit, Pixels, Window, div, img,
+    prelude::*, px, relative, rgb,
 };
 
 use crate::diagnostic_dynamic_tools::VisibleMediaItemDiagnostic;
@@ -11,6 +12,7 @@ use crate::shell::transcript_media::{
     TranscriptMediaCacheKey, TranscriptMediaLoadOutcome, TranscriptMediaRunAlignment,
     TranscriptMediaSize, TranscriptMediaSizingInput, TranscriptMediaSlotLayout,
     TranscriptMediaSource, transcript_media_run_alignment, transcript_media_slot_layout,
+    transcript_media_source_backed_request_size,
 };
 use crate::shell::transcript_media_runs::{TranscriptMediaRunCopyLine, media_run_copy_line};
 use crate::shell::transcript_selection::TranscriptLineCopyText;
@@ -94,11 +96,107 @@ pub(super) fn render_media_run(
     .into_any_element()
 }
 
+pub(super) fn preload_media_run(
+    items: &[TranscriptMediaRenderItem],
+    context: TranscriptMediaRenderContext,
+    execution_target: &WorkspaceId,
+    layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if items
+        .iter()
+        .any(|item| !item.source.is_source_backed_preload_candidate())
+    {
+        return;
+    }
+
+    let resolved_items = items
+        .iter()
+        .map(|item| ResolvedTranscriptMediaRenderItem {
+            source: item.source.clone(),
+            identity: item.identity.clone(),
+            outcome: context.media_for(
+                item.key.clone(),
+                item.source.clone(),
+                execution_target.clone(),
+                cx,
+            ),
+        })
+        .collect::<Vec<_>>();
+    let promoted_index = promoted_media_index(&resolved_items, context.promotion().promoted());
+
+    if let Some(promoted_index) = promoted_index {
+        preload_promoted_media_run(&resolved_items, layout, promoted_index, context, window, cx);
+        return;
+    }
+
+    if resolved_items
+        .iter()
+        .any(|item| item.outcome.fallback_text().is_some())
+    {
+        preload_mixed_media_run(&resolved_items, layout, context, window, cx);
+        return;
+    }
+
+    preload_media_tile_group(
+        &resolved_items,
+        layout,
+        resolved_items.len(),
+        context,
+        window,
+        cx,
+    );
+}
+
 #[derive(Clone)]
 struct ResolvedTranscriptMediaRenderItem {
     source: TranscriptMediaSource,
     identity: TranscriptMediaRenderIdentity,
     outcome: Arc<TranscriptMediaLoadOutcome>,
+}
+
+fn preload_media_item(
+    item: &ResolvedTranscriptMediaRenderItem,
+    sizing: TranscriptMediaSizingInput,
+    context: &TranscriptMediaRenderContext,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let outcome = item.outcome.as_ref();
+    let TranscriptMediaSlotLayout::Media(TranscriptMediaSize { width, height }) =
+        transcript_media_slot_layout(sizing, Some(outcome))
+    else {
+        return;
+    };
+    let Some(image) = outcome.loaded() else {
+        return;
+    };
+    let Some(path) = image.source_backed_file_path() else {
+        return;
+    };
+
+    context
+        .visible_media()
+        .borrow_mut()
+        .record_preloaded_item(visible_media_diagnostic_item(
+            item,
+            Some(outcome),
+            width,
+            height,
+        ));
+
+    let requested_size = transcript_media_source_backed_request_size(
+        TranscriptMediaSize { width, height },
+        sizing.window_scale,
+    );
+    if requested_size.width.0 <= 0 || requested_size.height.0 <= 0 {
+        return;
+    }
+
+    let source = ImageRenderSource::file(path.clone());
+    let request = source.render_request(0, sizing.window_scale, requested_size);
+    window.preload_source_backed_image(source, request, cx);
 }
 
 fn render_media_item(
@@ -139,15 +237,7 @@ fn render_media_item(
     let loaded_target = match (item, outcome) {
         (Some(item), Some(TranscriptMediaLoadOutcome::Loaded(image))) => Some((
             item.identity.clone(),
-            TranscriptImageMenuTarget::new(
-                item.identity.row_identity().to_string(),
-                item.identity.image_menu_identity(),
-                image.alt().to_string(),
-                image.format(),
-                image.bytes_arc(),
-                image.image(),
-                image.source_path().map(str::to_string),
-            ),
+            transcript_image_menu_target_from_loaded_image(&item.identity, image),
         )),
         _ => None,
     };
@@ -159,13 +249,22 @@ fn render_media_item(
     }
 
     let mut tile = tile.child(match outcome {
-        Some(TranscriptMediaLoadOutcome::Loaded(image)) => img(image.image())
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full()
-            .object_fit(ObjectFit::Contain)
-            .into_any_element(),
+        Some(TranscriptMediaLoadOutcome::Loaded(image)) => {
+            let image_element = img(image.gpui_image_source())
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .object_fit(ObjectFit::Contain);
+            if image.source_backed_file_path().is_some() {
+                let fallback = status_text(image.alt(), "file unavailable");
+                image_element
+                    .with_fallback(move || render_media_status(fallback.clone()))
+                    .into_any_element()
+            } else {
+                image_element.into_any_element()
+            }
+        }
         Some(outcome) => render_media_status(
             outcome
                 .fallback_text()
@@ -249,6 +348,45 @@ fn render_mixed_media_run(
     row
 }
 
+fn preload_mixed_media_run(
+    resolved_items: &[ResolvedTranscriptMediaRenderItem],
+    layout: TranscriptMediaRenderLayout,
+    context: TranscriptMediaRenderContext,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let mut media_start = None;
+    let source_run_length = resolved_items.len();
+
+    for (index, item) in resolved_items.iter().enumerate() {
+        if item.outcome.fallback_text().is_some() {
+            if let Some(start) = media_start.take() {
+                preload_media_tile_group(
+                    &resolved_items[start..index],
+                    layout,
+                    source_run_length,
+                    context.clone(),
+                    window,
+                    cx,
+                );
+            }
+        } else if media_start.is_none() {
+            media_start = Some(index);
+        }
+    }
+
+    if let Some(start) = media_start {
+        preload_media_tile_group(
+            &resolved_items[start..],
+            layout,
+            source_run_length,
+            context,
+            window,
+            cx,
+        );
+    }
+}
+
 fn promoted_media_index(
     resolved_items: &[ResolvedTranscriptMediaRenderItem],
     promoted: Option<&TranscriptMediaRenderIdentity>,
@@ -320,6 +458,46 @@ fn render_promoted_media_run(
     row
 }
 
+fn preload_promoted_media_run(
+    resolved_items: &[ResolvedTranscriptMediaRenderItem],
+    layout: TranscriptMediaRenderLayout,
+    promoted_index: usize,
+    context: TranscriptMediaRenderContext,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if promoted_index > 0 {
+        preload_media_tile_group(
+            &resolved_items[..promoted_index],
+            layout,
+            resolved_items.len(),
+            context.clone(),
+            window,
+            cx,
+        );
+    }
+
+    preload_media_tile_group(
+        &resolved_items[promoted_index..promoted_index + 1],
+        layout,
+        1,
+        context.clone(),
+        window,
+        cx,
+    );
+
+    if promoted_index + 1 < resolved_items.len() {
+        preload_media_tile_group(
+            &resolved_items[promoted_index + 1..],
+            layout,
+            resolved_items.len(),
+            context,
+            window,
+            cx,
+        );
+    }
+}
+
 fn render_media_tile_group(
     resolved_items: &[ResolvedTranscriptMediaRenderItem],
     layout: TranscriptMediaRenderLayout,
@@ -372,6 +550,34 @@ fn render_media_tile_group(
     }
 
     row
+}
+
+fn preload_media_tile_group(
+    resolved_items: &[ResolvedTranscriptMediaRenderItem],
+    layout: TranscriptMediaRenderLayout,
+    sizing_run_length: usize,
+    context: TranscriptMediaRenderContext,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    for item in resolved_items {
+        preload_media_item(
+            item,
+            TranscriptMediaSizingInput {
+                run_length: sizing_run_length,
+                padded_content_width: layout.padded_content_width,
+                conversation_m_advance: layout.conversation_m_advance,
+                natural_dimensions: item
+                    .outcome
+                    .loaded()
+                    .map(|image| image.natural_dimensions()),
+                window_scale: layout.window_scale,
+            },
+            &context,
+            window,
+            cx,
+        );
+    }
 }
 
 fn media_selectable_line(
@@ -435,6 +641,44 @@ fn pending_media_text(outcome: &TranscriptMediaLoadOutcome) -> String {
     }
 }
 
+fn status_text(alt: &str, status: &str) -> String {
+    let alt = alt.trim();
+    if alt.is_empty() {
+        format!("({status})")
+    } else {
+        format!("{alt} ({status})")
+    }
+}
+
+fn transcript_image_menu_target_from_loaded_image(
+    identity: &TranscriptMediaRenderIdentity,
+    image: &crate::shell::transcript_media::TranscriptMediaLoadedImage,
+) -> TranscriptImageMenuTarget {
+    let row_identity = identity.row_identity().to_string();
+    let media_identity = identity.image_menu_identity();
+    let source_path = image.source_path().map(str::to_string);
+    if let Some(path) = image.source_backed_file_path() {
+        TranscriptImageMenuTarget::new_file(
+            row_identity,
+            media_identity,
+            image.alt().to_string(),
+            image.format(),
+            path.clone(),
+            source_path,
+        )
+    } else {
+        TranscriptImageMenuTarget::new(
+            row_identity,
+            media_identity,
+            image.alt().to_string(),
+            image.format(),
+            image.bytes_arc(),
+            image.image(),
+            source_path,
+        )
+    }
+}
+
 fn visible_media_diagnostic_item(
     item: &ResolvedTranscriptMediaRenderItem,
     outcome: Option<&TranscriptMediaLoadOutcome>,
@@ -447,20 +691,17 @@ fn visible_media_diagnostic_item(
         row_identity: Some(item.identity.row_identity().to_string()),
         key: item.identity.key().as_str().to_string(),
         source_kind: transcript_media_source_kind(&item.source).to_string(),
+        backing_kind: loaded.map(|image| image.diagnostic_backing_kind().to_string()),
         outcome: transcript_media_outcome_label(outcome).to_string(),
         format: loaded.map(|image| image_format_label(image.format()).to_string()),
-        compressed_bytes: loaded.map(|image| image.bytes().len()),
-        decoded_bytes_estimate: dimensions.map(|dimensions| {
-            (dimensions.width() as usize)
-                .saturating_mul(dimensions.height() as usize)
-                .saturating_mul(4)
-        }),
+        compressed_bytes: loaded.and_then(|image| image.retained_compressed_bytes_len()),
+        decoded_bytes_estimate: loaded.and_then(|image| image.retained_decoded_bytes_estimate()),
         natural_width: dimensions.map(|dimensions| dimensions.width()),
         natural_height: dimensions.map(|dimensions| dimensions.height()),
         displayed_width: f64::from(displayed_width),
         displayed_height: f64::from(displayed_height),
-        image_id: loaded.map(|image| image.image_id()),
-        image_asset_key_hash: loaded.map(|image| image.image_asset_key_hash()),
+        image_id: loaded.and_then(|image| image.image_id()),
+        image_asset_key_hash: loaded.and_then(|image| image.image_asset_key_hash()),
     }
 }
 

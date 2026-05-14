@@ -339,8 +339,13 @@ impl ShellView {
             return;
         };
 
-        copy_transcript_image_to_clipboard(&target, cx);
-        cx.notify();
+        copy_transcript_image_to_clipboard(
+            target,
+            |view: &mut Self, title, detail| {
+                view.set_transcript_branch_notice(title, detail);
+            },
+            cx,
+        );
     }
 
     pub(crate) fn save_transcript_image_as_from_menu(

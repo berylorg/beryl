@@ -1,6 +1,6 @@
 #![allow(dead_code, private_interfaces, unused_imports)]
 
-use std::{path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use beryl_backend::{ThreadItem, TurnInfo, TurnStatus, UserInput, UserMessageItem};
 use gpui::{Bounds, ClipboardEntry, Image, ImageFormat, point, px, size};
@@ -340,7 +340,10 @@ fn shared_turn_menu_accepts_image_target_without_changing_turn_actions() {
         .accept_copy_image()
         .expect("copy image should consume the open image target");
     assert_eq!(copied.row_identity(), image_target.row_identity());
-    assert!(copied.clipboard_item().entries().iter().any(
+    let clipboard_item = copied
+        .clipboard_item()
+        .expect("retained image clipboard item should be created");
+    assert!(clipboard_item.entries().iter().any(
         |entry| matches!(entry, ClipboardEntry::Image(image) if image.bytes == b"image bytes")
     ));
     assert!(!menu.is_open());
@@ -411,6 +414,56 @@ fn image_target_keeps_shared_image_bytes() {
     assert_eq!(target.bytes(), b"image bytes");
     assert_eq!(target.bytes_arc().as_ptr(), bytes_ptr);
     assert_eq!(target.bytes_ptr(), bytes_ptr);
+}
+
+#[test]
+fn image_target_file_source_reads_clipboard_bytes_on_demand() {
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let source_path = temp.path().join("rendered.png");
+    fs::write(&source_path, b"initial image bytes").expect("source image should be written");
+    let target = TranscriptImageMenuTarget::new_file(
+        "thread:thread_a:turn:turn_2",
+        "media:rendered-image",
+        "Rendered image",
+        ImageFormat::Png,
+        source_path.clone(),
+        Some(source_path.to_string_lossy().to_string()),
+    );
+    fs::write(&source_path, b"updated image bytes").expect("source image should be updated");
+
+    let clipboard_item = target
+        .clipboard_item()
+        .expect("file-backed clipboard item should be created");
+
+    assert!(clipboard_item.entries().iter().any(
+        |entry| matches!(entry, ClipboardEntry::Image(image) if image.bytes == b"updated image bytes")
+    ));
+    assert_eq!(target.retained_bytes(), None);
+    assert_eq!(target.file_path(), Some(source_path.as_path()));
+}
+
+#[test]
+fn image_target_file_source_save_copies_authoritative_file_on_demand() {
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let source_path = temp.path().join("rendered.png");
+    let output_path = temp.path().join("copy.png");
+    fs::write(&source_path, b"initial image bytes").expect("source image should be written");
+    let target = TranscriptImageMenuTarget::new_file(
+        "thread:thread_a:turn:turn_2",
+        "media:rendered-image",
+        "Rendered image",
+        ImageFormat::Png,
+        source_path.clone(),
+        Some(source_path.to_string_lossy().to_string()),
+    );
+    fs::write(&source_path, b"updated image bytes").expect("source image should be updated");
+
+    let saved_path = target
+        .save_to_path(output_path.clone())
+        .expect("file-backed image should save");
+
+    assert_eq!(saved_path, output_path);
+    assert_eq!(fs::read(output_path).unwrap(), b"updated image bytes");
 }
 
 #[test]

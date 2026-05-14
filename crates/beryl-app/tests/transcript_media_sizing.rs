@@ -1,12 +1,12 @@
 #[path = "../src/shell/transcript_media.rs"]
 mod transcript_media;
 
-use gpui::px;
+use gpui::{DevicePixels, px};
 use transcript_media::{
     TranscriptMediaLayoutInput, TranscriptMediaLoadOutcome, TranscriptMediaNaturalDimensions,
     TranscriptMediaRunAlignment, TranscriptMediaSizingInput, TranscriptMediaSlotLayout,
     transcript_media_layout_metrics, transcript_media_run_alignment, transcript_media_size,
-    transcript_media_slot_layout,
+    transcript_media_slot_layout, transcript_media_source_backed_request_size,
 };
 
 #[test]
@@ -178,6 +178,23 @@ fn media_layout_keeps_active_conversation_font_metric_for_run_sizing() {
 
     assert_eq!(narrow_size.width, px(210.0));
     assert_eq!(wide_size.width, px(330.0));
+}
+
+#[test]
+fn source_backed_request_size_uses_inner_media_content_box() {
+    let slot_size =
+        transcript_media_size(input(2, 800.0, 13.96875, Some(natural(1536, 1024)), 1.5));
+
+    assert_eq!(slot_size.width, px(419.0625));
+    assert_eq!(slot_size.height, px(279.375));
+    assert_eq!(
+        transcript_media_source_backed_request_size(slot_size, 1.5).width,
+        DevicePixels(626)
+    );
+    assert_eq!(
+        transcript_media_source_backed_request_size(slot_size, 1.5).height,
+        DevicePixels(416)
+    );
 }
 
 #[test]

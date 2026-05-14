@@ -77,6 +77,10 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) media_cache_entries: Option<usize>,
     pub(crate) media_cache_pending_entries: Option<usize>,
     pub(crate) media_cache_loaded_entries: Option<usize>,
+    pub(crate) media_cache_loaded_retained_byte_entries: Option<usize>,
+    pub(crate) media_cache_loaded_source_backed_file_entries: Option<usize>,
+    pub(crate) media_cache_loaded_native_generated_source_backed_file_entries: Option<usize>,
+    pub(crate) media_cache_loaded_native_generated_retained_byte_entries: Option<usize>,
     pub(crate) media_cache_loaded_image_bytes: Option<usize>,
     pub(crate) media_cache_decoded_image_bytes_estimate: Option<usize>,
     pub(crate) media_cache_thumbnail_count: Option<usize>,
@@ -298,6 +302,16 @@ impl MemoryMilestone {
         let media_cache_pending_entries =
             optional_usize(retained_state.media_cache_pending_entries);
         let media_cache_loaded_entries = optional_usize(retained_state.media_cache_loaded_entries);
+        let media_cache_loaded_retained_byte_entries =
+            optional_usize(retained_state.media_cache_loaded_retained_byte_entries);
+        let media_cache_loaded_source_backed_file_entries =
+            optional_usize(retained_state.media_cache_loaded_source_backed_file_entries);
+        let media_cache_loaded_native_generated_source_backed_file_entries = optional_usize(
+            retained_state.media_cache_loaded_native_generated_source_backed_file_entries,
+        );
+        let media_cache_loaded_native_generated_retained_byte_entries = optional_usize(
+            retained_state.media_cache_loaded_native_generated_retained_byte_entries,
+        );
         let media_cache_loaded_image_bytes =
             optional_usize(retained_state.media_cache_loaded_image_bytes);
         let media_cache_decoded_image_bytes_estimate =
@@ -376,6 +390,10 @@ impl MemoryMilestone {
                     media_cache_entries = %media_cache_entries,
                     media_cache_pending_entries = %media_cache_pending_entries,
                     media_cache_loaded_entries = %media_cache_loaded_entries,
+                    media_cache_loaded_retained_byte_entries = %media_cache_loaded_retained_byte_entries,
+                    media_cache_loaded_source_backed_file_entries = %media_cache_loaded_source_backed_file_entries,
+                    media_cache_loaded_native_generated_source_backed_file_entries = %media_cache_loaded_native_generated_source_backed_file_entries,
+                    media_cache_loaded_native_generated_retained_byte_entries = %media_cache_loaded_native_generated_retained_byte_entries,
                     media_cache_loaded_image_bytes = %media_cache_loaded_image_bytes,
                     media_cache_decoded_image_bytes_estimate = %media_cache_decoded_image_bytes_estimate,
                     media_cache_thumbnail_count = %media_cache_thumbnail_count,
@@ -446,6 +464,10 @@ impl MemoryMilestone {
                     media_cache_entries = %media_cache_entries,
                     media_cache_pending_entries = %media_cache_pending_entries,
                     media_cache_loaded_entries = %media_cache_loaded_entries,
+                    media_cache_loaded_retained_byte_entries = %media_cache_loaded_retained_byte_entries,
+                    media_cache_loaded_source_backed_file_entries = %media_cache_loaded_source_backed_file_entries,
+                    media_cache_loaded_native_generated_source_backed_file_entries = %media_cache_loaded_native_generated_source_backed_file_entries,
+                    media_cache_loaded_native_generated_retained_byte_entries = %media_cache_loaded_native_generated_retained_byte_entries,
                     media_cache_loaded_image_bytes = %media_cache_loaded_image_bytes,
                     media_cache_decoded_image_bytes_estimate = %media_cache_decoded_image_bytes_estimate,
                     media_cache_thumbnail_count = %media_cache_thumbnail_count,

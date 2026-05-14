@@ -79,6 +79,11 @@ impl ListState {
         self.0.borrow().current_presentation_range()
     }
 
+    /// The real-content item range intersecting the viewport plus an explicit vertical margin.
+    pub fn range_with_vertical_margin(&self, margin: Pixels) -> Range<usize> {
+        self.0.borrow().current_range_with_overdraw(margin)
+    }
+
     /// Inform the list state that the items in `old_range` have been replaced
     /// by `count` new items that must be recalculated.
     pub fn splice(&self, old_range: Range<usize>, count: usize) {

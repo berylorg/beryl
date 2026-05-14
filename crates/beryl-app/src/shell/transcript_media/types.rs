@@ -1,13 +1,14 @@
 use std::{
     fmt,
     hash::{Hash, Hasher},
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use beryl_backend::ManagedBackendSession;
 use beryl_model::workspace::WorkspaceId;
-use gpui::{Image, ImageFormat, hash as gpui_hash};
+use gpui::{Image, ImageFormat, ImageSource as GpuiImageSource, hash as gpui_hash};
 
 use super::{load::load_transcript_media, sizing::TranscriptMediaNaturalDimensions};
 
@@ -44,10 +45,15 @@ pub(crate) enum TranscriptMediaLoadOutcome {
 pub(crate) struct TranscriptMediaLoadedImage {
     alt: String,
     format: ImageFormat,
-    bytes: Arc<[u8]>,
-    image: Arc<Image>,
+    data: TranscriptMediaLoadedImageData,
     natural_dimensions: TranscriptMediaNaturalDimensions,
     source_path: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TranscriptMediaLoadedImageData {
+    RetainedBytes { bytes: Arc<[u8]>, image: Arc<Image> },
+    SourceBackedFile { path: PathBuf },
 }
 
 pub(crate) trait TranscriptMediaFileReader {
@@ -145,6 +151,16 @@ impl TranscriptMediaSource {
                 .to_string(),
         }
     }
+
+    pub(crate) fn is_source_backed_preload_candidate(&self) -> bool {
+        matches!(
+            self,
+            Self::NativeImageGeneration {
+                saved_path: Some(saved_path),
+                ..
+            } if !saved_path.trim().is_empty()
+        )
+    }
 }
 
 impl TranscriptMediaLoadOutcome {
@@ -184,8 +200,26 @@ impl TranscriptMediaLoadedImage {
         Self {
             alt,
             format,
-            bytes: Arc::from(bytes),
-            image,
+            data: TranscriptMediaLoadedImageData::RetainedBytes {
+                bytes: Arc::from(bytes),
+                image,
+            },
+            natural_dimensions,
+            source_path,
+        }
+    }
+
+    pub(super) fn new_source_backed_file(
+        alt: String,
+        format: ImageFormat,
+        path: PathBuf,
+        natural_dimensions: TranscriptMediaNaturalDimensions,
+        source_path: Option<String>,
+    ) -> Self {
+        Self {
+            alt,
+            format,
+            data: TranscriptMediaLoadedImageData::SourceBackedFile { path },
             natural_dimensions,
             source_path,
         }
@@ -199,24 +233,85 @@ impl TranscriptMediaLoadedImage {
         self.format
     }
 
+    pub(crate) fn retained_bytes(&self) -> Option<&[u8]> {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes { bytes, .. } => Some(bytes.as_ref()),
+            TranscriptMediaLoadedImageData::SourceBackedFile { .. } => None,
+        }
+    }
+
     pub(crate) fn bytes(&self) -> &[u8] {
-        self.bytes.as_ref()
+        self.retained_bytes()
+            .expect("transcript media bytes are only retained for byte-backed images")
+    }
+
+    pub(crate) fn retained_bytes_arc(&self) -> Option<Arc<[u8]>> {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes { bytes, .. } => Some(bytes.clone()),
+            TranscriptMediaLoadedImageData::SourceBackedFile { .. } => None,
+        }
     }
 
     pub(crate) fn bytes_arc(&self) -> Arc<[u8]> {
-        self.bytes.clone()
+        self.retained_bytes_arc()
+            .expect("transcript media bytes are only retained for byte-backed images")
+    }
+
+    pub(crate) fn retained_image(&self) -> Option<Arc<Image>> {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes { image, .. } => Some(image.clone()),
+            TranscriptMediaLoadedImageData::SourceBackedFile { .. } => None,
+        }
     }
 
     pub(crate) fn image(&self) -> Arc<Image> {
-        self.image.clone()
+        self.retained_image()
+            .expect("GPUI Image assets are only retained for byte-backed transcript media")
     }
 
-    pub(crate) fn image_id(&self) -> u64 {
-        self.image.id()
+    pub(crate) fn source_backed_file_path(&self) -> Option<&PathBuf> {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes { .. } => None,
+            TranscriptMediaLoadedImageData::SourceBackedFile { path } => Some(path),
+        }
     }
 
-    pub(crate) fn image_asset_key_hash(&self) -> u64 {
-        gpui_hash(&self.image)
+    pub(crate) fn gpui_image_source(&self) -> GpuiImageSource {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes { image, .. } => {
+                GpuiImageSource::Image(image.clone())
+            }
+            TranscriptMediaLoadedImageData::SourceBackedFile { path } => {
+                GpuiImageSource::file(path.clone())
+            }
+        }
+    }
+
+    pub(crate) fn diagnostic_backing_kind(&self) -> &'static str {
+        match &self.data {
+            TranscriptMediaLoadedImageData::RetainedBytes { .. } => "retained_bytes",
+            TranscriptMediaLoadedImageData::SourceBackedFile { .. } => "source_backed_file",
+        }
+    }
+
+    pub(crate) fn image_id(&self) -> Option<u64> {
+        self.retained_image().map(|image| image.id())
+    }
+
+    pub(crate) fn image_asset_key_hash(&self) -> Option<u64> {
+        self.retained_image().map(|image| gpui_hash(&image))
+    }
+
+    pub(crate) fn retained_compressed_bytes_len(&self) -> Option<usize> {
+        self.retained_bytes().map(<[u8]>::len)
+    }
+
+    pub(crate) fn retained_decoded_bytes_estimate(&self) -> Option<usize> {
+        self.retained_bytes().map(|_| {
+            (self.natural_dimensions.width() as usize)
+                .saturating_mul(self.natural_dimensions.height() as usize)
+                .saturating_mul(4)
+        })
     }
 
     pub(crate) fn natural_dimensions(&self) -> TranscriptMediaNaturalDimensions {

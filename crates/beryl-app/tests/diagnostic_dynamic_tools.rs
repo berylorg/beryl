@@ -28,12 +28,14 @@ use serde_json::{Value, json};
 fn visible_media_diagnostics_caps_items_and_truncates_strings() {
     let mut diagnostics = VisibleMediaDiagnostics::default();
     diagnostics.begin_frame(Some("thread".repeat(200)), 10..20);
+    diagnostics.begin_preload_frame(8..22);
 
     for index in 0..80 {
-        diagnostics.record_item(VisibleMediaItemDiagnostic {
+        let item = VisibleMediaItemDiagnostic {
             row_identity: Some(format!("row-{index}-{}", "x".repeat(700))),
             key: format!("key-{index}-{}", "x".repeat(700)),
             source_kind: "generated_image".to_string(),
+            backing_kind: Some("source_backed_file".to_string()),
             outcome: "loaded".to_string(),
             format: Some("png".to_string()),
             compressed_bytes: Some(12),
@@ -44,7 +46,9 @@ fn visible_media_diagnostics_caps_items_and_truncates_strings() {
             displayed_height: 6.0,
             image_id: Some(index),
             image_asset_key_hash: Some(index + 1),
-        });
+        };
+        diagnostics.record_item(item.clone());
+        diagnostics.record_preloaded_item(item);
     }
 
     let snapshot = diagnostics.snapshot();
@@ -52,6 +56,9 @@ fn visible_media_diagnostics_caps_items_and_truncates_strings() {
     assert_eq!(snapshot.items.len(), 64);
     assert_eq!(snapshot.item_count, 64);
     assert!(snapshot.truncated);
+    assert_eq!(snapshot.preloaded_items.len(), 64);
+    assert_eq!(snapshot.preloaded_item_count, 64);
+    assert!(snapshot.preloaded_truncated);
     assert_eq!(snapshot.selected_thread_id.unwrap().len(), 512);
     assert!(snapshot.items.iter().all(|item| item.key.len() <= 512));
     assert!(
@@ -104,6 +111,7 @@ fn diagnostic_dispatch_caps_visible_media_and_media_events() {
             row_identity: Some(format!("row-{index}")),
             key: format!("key-{index}"),
             source_kind: "generated_image".to_string(),
+            backing_kind: Some("source_backed_file".to_string()),
             outcome: "loaded".to_string(),
             format: Some("png".to_string()),
             compressed_bytes: Some(10),
@@ -124,9 +132,13 @@ fn diagnostic_dispatch_caps_visible_media_and_media_events() {
                 frame_generation: 7,
                 selected_thread_id: Some("thread".to_string()),
                 presentation_range: None,
+                preload_range: None,
                 items: visible_items,
                 item_count: 8,
                 truncated: false,
+                preloaded_items: Vec::new(),
+                preloaded_item_count: 0,
+                preloaded_truncated: false,
                 stale: false,
                 preview: PreviewDiagnostic::default(),
             },
@@ -140,6 +152,10 @@ fn diagnostic_dispatch_caps_visible_media_and_media_events() {
     assert_eq!(
         visible_payload["result"]["items"].as_array().unwrap().len(),
         3
+    );
+    assert_eq!(
+        visible_payload["result"]["items"][0]["backingKind"],
+        "source_backed_file"
     );
     assert_eq!(visible_payload["result"]["itemCount"], 3);
     assert_eq!(visible_payload["result"]["truncated"], true);
@@ -282,6 +298,82 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
 }
 
 #[test]
+fn renderer_diagnostics_serialize_source_backed_image_sections() {
+    let process = ProcessDiagnosticSnapshot {
+        pid: 42,
+        executable_path: Some("beryl.exe".to_string()),
+        beryl_home: Some("C:\\beryl-home".to_string()),
+        selected_workspace_id: Some("workspace_1".to_string()),
+        selected_thread_id: Some("thread_1".to_string()),
+        selected_runtime_target: None,
+        managed_backend_child_pids: Vec::new(),
+    };
+    let mut renderer_window = window_renderer_snapshot(9, true, 1200, 800);
+    renderer_window.source_backed_images = gpui::SourceBackedImageDiagnosticSnapshot {
+        request_count: 1,
+        live_count: 1,
+        requested_this_frame_count: 1,
+        painted_resource_count: 1,
+        live_gpu_bytes_estimate: 64,
+        evicted_resource_count: 2,
+        ..Default::default()
+    };
+    renderer_window.renderer.image_resources = gpui::ImageResourceDiagnosticSnapshot {
+        resource_count: 1,
+        gpu_bytes_estimate: 64,
+        decoded_cpu_bytes_estimate: 0,
+        upload_count: 1,
+        upload_bytes: 64,
+        ..Default::default()
+    };
+
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(READ_RENDERER_DIAGNOSTICS_TOOL, json!({})),
+        DiagnosticToolSnapshot {
+            renderer: RendererDiagnosticSnapshot {
+                target: process.clone(),
+                shell_window: ready_shell_window(9),
+                renderer: gpui::RendererDiagnosticSnapshot {
+                    window_count: 1,
+                    windows: vec![renderer_window],
+                    truncated: false,
+                    loading_asset_count: 0,
+                    decoded_image_assets: gpui::DecodedImageAssetDiagnosticSnapshot::default(),
+                },
+            },
+            process,
+            memory: MemoryDiagnosticSnapshot {
+                counters: None,
+                unavailable_reason: Some("not sampled in test".to_string()),
+                ui: MemoryDiagnosticUiCorrelation::default(),
+            },
+            retained_state: RetainedStateSnapshot::default(),
+            visible_media: VisibleMediaSnapshot::default(),
+            media_events: event_snapshot(0),
+        },
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(
+        payload["result"]["renderer"]["windows"][0]["sourceBackedImages"]["liveCount"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["renderer"]["windows"][0]["sourceBackedImages"]["evictedResourceCount"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["renderer"]["windows"][0]["renderer"]["imageResources"]["resourceCount"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["renderer"]["windows"][0]["renderer"]["imageResources"]["decodedCpuBytesEstimate"],
+        0
+    );
+}
+
+#[test]
 fn renderer_snapshot_merges_current_shell_window_when_app_snapshot_omits_it() {
     let process = ProcessDiagnosticSnapshot {
         pid: 42,
@@ -332,6 +424,53 @@ fn diagnostic_dispatch_rejects_unknown_arguments_without_state_mutation() {
     assert!(!response.success);
     assert_eq!(payload["ok"], false);
     assert_eq!(payload["error"]["kind"], "invalid_arguments");
+}
+
+#[test]
+fn retained_state_summary_reports_source_backed_media_counters() {
+    let mut snapshot = diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0));
+    snapshot.retained_state.media_cache_loaded_entries = Some(10);
+    snapshot
+        .retained_state
+        .media_cache_loaded_retained_byte_entries = Some(2);
+    snapshot
+        .retained_state
+        .media_cache_loaded_source_backed_file_entries = Some(8);
+    snapshot
+        .retained_state
+        .media_cache_loaded_native_generated_source_backed_file_entries = Some(7);
+    snapshot
+        .retained_state
+        .media_cache_loaded_native_generated_retained_byte_entries = Some(1);
+    snapshot.retained_state.media_cache_loaded_image_bytes = Some(123);
+
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
+        snapshot,
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(
+        payload["result"]["retainedState"]["mediaCacheLoadedRetainedByteEntries"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["mediaCacheLoadedSourceBackedFileEntries"],
+        8
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["mediaCacheLoadedNativeGeneratedSourceBackedFileEntries"],
+        7
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["mediaCacheLoadedNativeGeneratedRetainedByteEntries"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["mediaCacheLoadedImageBytes"],
+        123
+    );
 }
 
 #[test]
@@ -447,9 +586,11 @@ fn window_renderer_snapshot(
         surface_usable: device_width > 0 && device_height > 0,
         surface_unusable_reason: (device_width == 0 || device_height == 0)
             .then(|| "zero_device_size".to_string()),
+        source_backed_images: gpui::SourceBackedImageDiagnosticSnapshot::default(),
         renderer: gpui::PlatformRendererDiagnosticSnapshot {
             backend: "test".to_string(),
             resources: Vec::new(),
+            image_resources: gpui::ImageResourceDiagnosticSnapshot::default(),
             atlas: gpui::AtlasDiagnosticSnapshot::default(),
             pipeline_buffers: Vec::new(),
             unavailable_reason: None,

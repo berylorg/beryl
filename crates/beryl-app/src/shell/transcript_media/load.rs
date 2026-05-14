@@ -1,4 +1,6 @@
 use std::{
+    fs::File,
+    io::BufReader,
     io::Cursor,
     path::Path,
     sync::Arc,
@@ -117,15 +119,16 @@ fn load_native_generated_image<R>(
     result: Option<&str>,
     saved_path: Option<&str>,
     complete: bool,
-    _execution_target: &WorkspaceId,
-    reader: &mut R,
-    timeout: Duration,
+    execution_target: &WorkspaceId,
+    _reader: &mut R,
+    _timeout: Duration,
 ) -> TranscriptMediaLoadOutcome
 where
     R: TranscriptMediaFileReader,
 {
     let load_started = Instant::now();
     if let Some(saved_path) = saved_path.filter(|path| !path.trim().is_empty()) {
+        let saved_path = saved_path.trim();
         let Some(format) = raster_image_format_from_path(saved_path) else {
             debug!(
                 source = "native_generated_image",
@@ -137,40 +140,78 @@ where
             );
             return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
         };
-        let read_started = Instant::now();
-        return match reader.read_file_bytes(saved_path, timeout) {
-            Ok(bytes) => {
-                let read_elapsed = read_started.elapsed();
-                let bytes_len = bytes.len();
-                loaded_image(
-                    alt,
-                    format,
-                    bytes,
-                    Some(saved_path.to_string()),
-                    LoadedImageTimingContext {
-                        source: "native_generated_image",
-                        branch: "saved_path",
-                        complete,
-                        load_started,
-                        saved_path_read: Some(read_elapsed),
-                        inline_base64_decode: None,
-                        bytes_len,
-                    },
-                )
-            }
-            Err(_) => {
+        let host_path = execution_target.host_openable_path(Path::new(saved_path));
+        let dimensions_started = Instant::now();
+        let natural_dimensions = match decoded_raster_file_dimensions(format, &host_path) {
+            Ok(dimensions) => dimensions,
+            Err(RasterFileAdmissionError::Unavailable) => {
                 debug!(
                     source = "native_generated_image",
                     branch = "saved_path",
                     complete,
                     outcome = "file_unavailable",
-                    saved_path_read_ms = elapsed_ms(read_started.elapsed()),
+                    host_path = %host_path.display(),
+                    raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
                     total_ms = elapsed_ms(load_started.elapsed()),
                     "generated-image media load finished"
                 );
-                TranscriptMediaLoadOutcome::FileUnavailable { alt }
+                return TranscriptMediaLoadOutcome::FileUnavailable { alt };
+            }
+            Err(RasterFileAdmissionError::Unsupported) => {
+                debug!(
+                    source = "native_generated_image",
+                    branch = "saved_path",
+                    complete,
+                    outcome = "render_not_supported",
+                    host_path = %host_path.display(),
+                    raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+                    total_ms = elapsed_ms(load_started.elapsed()),
+                    "generated-image media load finished"
+                );
+                return TranscriptMediaLoadOutcome::RenderNotSupported { alt };
+            }
+            Err(RasterFileAdmissionError::TooLarge {
+                pixels,
+                decoded_bytes,
+            }) => {
+                debug!(
+                    source = "native_generated_image",
+                    branch = "saved_path",
+                    complete,
+                    outcome = "too_large",
+                    host_path = %host_path.display(),
+                    pixels,
+                    decoded_bytes,
+                    max_pixels = TRANSCRIPT_MEDIA_MAX_IMAGE_PIXELS,
+                    max_decoded_bytes = TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES,
+                    raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+                    total_ms = elapsed_ms(load_started.elapsed()),
+                    "transcript media load rejected after dimension decode"
+                );
+                return TranscriptMediaLoadOutcome::TooLarge { alt };
             }
         };
+        debug!(
+            source = "native_generated_image",
+            branch = "saved_path",
+            complete,
+            outcome = "loaded",
+            host_path = %host_path.display(),
+            width = natural_dimensions.width(),
+            height = natural_dimensions.height(),
+            raster_dimensions_decode_ms = elapsed_ms(dimensions_started.elapsed()),
+            total_ms = elapsed_ms(load_started.elapsed()),
+            "generated-image media load finished"
+        );
+        return TranscriptMediaLoadOutcome::Loaded(
+            TranscriptMediaLoadedImage::new_source_backed_file(
+                alt,
+                format,
+                host_path,
+                natural_dimensions,
+                Some(saved_path.to_string()),
+            ),
+        );
     }
 
     let Some(result) = result.filter(|result| !result.trim().is_empty()) else {
@@ -338,6 +379,13 @@ enum RasterAdmissionError {
     TooLarge { pixels: u64, decoded_bytes: usize },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RasterFileAdmissionError {
+    Unavailable,
+    Unsupported,
+    TooLarge { pixels: u64, decoded_bytes: usize },
+}
+
 fn decoded_raster_dimensions(
     format: ImageFormat,
     bytes: &[u8],
@@ -346,6 +394,51 @@ fn decoded_raster_dimensions(
     let dimensions = image::ImageReader::with_format(Cursor::new(bytes), image_format)
         .into_dimensions()
         .map_err(|_| RasterAdmissionError::Unsupported)?;
+    let natural_dimensions = admit_raster_dimensions(dimensions)?;
+
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image_format);
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES as u64);
+    reader.limits(limits);
+    reader
+        .decode()
+        .map_err(|_| RasterAdmissionError::Unsupported)?;
+    Ok(natural_dimensions)
+}
+
+fn decoded_raster_file_dimensions(
+    format: ImageFormat,
+    path: &Path,
+) -> Result<TranscriptMediaNaturalDimensions, RasterFileAdmissionError> {
+    let file = File::open(path).map_err(|_| RasterFileAdmissionError::Unavailable)?;
+    let dimensions = image::ImageReader::with_format(BufReader::new(file), image_format(format))
+        .into_dimensions()
+        .map_err(|_| RasterFileAdmissionError::Unsupported)?;
+    let natural_dimensions = admit_raster_dimensions(dimensions).map_err(|error| match error {
+        RasterAdmissionError::Unsupported => RasterFileAdmissionError::Unsupported,
+        RasterAdmissionError::TooLarge {
+            pixels,
+            decoded_bytes,
+        } => RasterFileAdmissionError::TooLarge {
+            pixels,
+            decoded_bytes,
+        },
+    })?;
+
+    let file = File::open(path).map_err(|_| RasterFileAdmissionError::Unavailable)?;
+    let mut reader = image::ImageReader::with_format(BufReader::new(file), image_format(format));
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES as u64);
+    reader.limits(limits);
+    reader
+        .decode()
+        .map_err(|_| RasterFileAdmissionError::Unsupported)?;
+    Ok(natural_dimensions)
+}
+
+fn admit_raster_dimensions(
+    dimensions: (u32, u32),
+) -> Result<TranscriptMediaNaturalDimensions, RasterAdmissionError> {
     let decoded_bytes =
         decoded_rgba_bytes(dimensions.0, dimensions.1).ok_or(RasterAdmissionError::TooLarge {
             pixels: u64::MAX,
@@ -361,13 +454,6 @@ fn decoded_raster_dimensions(
         });
     }
 
-    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image_format);
-    let mut limits = image::Limits::default();
-    limits.max_alloc = Some(TRANSCRIPT_MEDIA_MAX_DECODED_IMAGE_BYTES as u64);
-    reader.limits(limits);
-    reader
-        .decode()
-        .map_err(|_| RasterAdmissionError::Unsupported)?;
     TranscriptMediaNaturalDimensions::new(dimensions.0, dimensions.1)
         .ok_or(RasterAdmissionError::Unsupported)
 }
