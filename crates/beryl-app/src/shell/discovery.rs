@@ -23,6 +23,7 @@ use crate::BerylWorkspacePersistence;
 use crate::memory_diagnostics::MemoryMilestone;
 use crate::{WorkspaceGraphRevision, WorkspaceGraphStateSnapshot};
 
+use super::backend_availability::{BackendUnavailable, BackendUnavailableKind};
 use super::execution_detail::TranscriptImagePathResolver;
 use super::lifecycle::blocked_state_for_error;
 use super::thread_activation::{ExistingThreadActivationError, activate_existing_thread_direct};
@@ -36,8 +37,8 @@ use super::workspace_members::{
 };
 use super::workspace_persistence_worker::WorkspacePersistenceFlush;
 use super::{
-    BlockedState, OpenWorkspaceFailure, OpenedWorkspace, RetryTarget, SurfaceNotice,
-    WorkspaceOpenIntent, WorkspaceUpdate,
+    BackendUnavailableFailure, BlockedState, OpenWorkspaceFailure, OpenedWorkspace, RetryTarget,
+    SurfaceNotice, WorkspaceOpenIntent, WorkspaceSurfaceSeed, WorkspaceUpdate,
 };
 
 #[derive(Clone, Debug)]
@@ -133,6 +134,7 @@ pub(super) fn open_workspace_worker(
                 "Retry after pending workspace persistence has completed.".to_string(),
                 "Check the logs for workspace persistence errors.".to_string(),
             ],
+            backend_unavailable: None,
         })));
         return;
     }
@@ -189,6 +191,7 @@ pub(super) fn open_workspace_worker(
                         "Verify that the semantic workspace state is readable.".to_string(),
                         "Retry after restoring workspace storage access.".to_string(),
                     ],
+                    backend_unavailable: None,
                 })));
                 return;
             }
@@ -205,9 +208,26 @@ pub(super) fn open_workspace_worker(
                     "Choose a member inside the selected runtime environment.".to_string(),
                     "Detach overlapping members before changing to a conflicting path.".to_string(),
                 ],
+                backend_unavailable: None,
             })));
             return;
         }
+    }
+
+    let _ = sender.send(WorkspaceUpdate::Detail(
+        "Loading the persisted semantic graph for this workspace".to_string(),
+    ));
+    let surface_seed = load_workspace_surface_seed(&workspace_persistence, &workspace_id);
+    MemoryMilestone::new("workspace_graph_load_done")
+        .workspace_id(workspace_id.as_str())
+        .log();
+
+    if cancellation.is_cancelled() {
+        MemoryMilestone::new("workspace_open_worker_cancelled")
+            .workspace_id(workspace_id.as_str())
+            .note("after_graph_load")
+            .log();
+        return;
     }
 
     let mut last_stage = ManagedBackendStartupStage::LaunchProcess;
@@ -323,15 +343,6 @@ pub(super) fn open_workspace_worker(
             {
                 known_threads.push(thread.summary());
             }
-            let _ = sender.send(WorkspaceUpdate::Detail(
-                "Loading the persisted semantic graph for this workspace".to_string(),
-            ));
-            let (graph_snapshot, graph_warning) =
-                load_workspace_graph(&workspace_persistence, &workspace_id);
-            MemoryMilestone::new("workspace_graph_load_done")
-                .workspace_id(workspace_id.as_str())
-                .log();
-
             Ok(OpenedWorkspace {
                 execution_target,
                 server,
@@ -344,9 +355,9 @@ pub(super) fn open_workspace_worker(
                 selected_thread_image_resolver: selected_thread_history.image_resolver,
                 selected_thread_session_metadata: selected_thread_history.thread_session_metadata,
                 surface_notice: selected_thread_history.surface_notice,
-                graph: graph_snapshot.graph,
-                graph_revision: graph_snapshot.revision,
-                graph_warning,
+                graph: surface_seed.graph,
+                graph_revision: surface_seed.graph_revision,
+                graph_warning: surface_seed.graph_warning,
             })
         }
         Err(error) => {
@@ -355,7 +366,12 @@ pub(super) fn open_workspace_worker(
                 .runtime(execution_target.runtime_mode().display_name())
                 .note(last_stage.display_label())
                 .log();
-            Err(workspace_failure_from_backend(error, last_stage))
+            Err(workspace_failure_from_backend(
+                error,
+                &execution_target,
+                last_stage,
+                surface_seed,
+            ))
         }
     };
 
@@ -394,25 +410,31 @@ fn shutdown_cancelled_opened_workspace(mut opened: OpenedWorkspace) {
     shutdown_cancelled_open_server(&mut opened.server, &opened.execution_target);
 }
 
-fn load_workspace_graph(
+fn load_workspace_surface_seed(
     persistence: &BerylWorkspacePersistence,
     workspace_id: &BerylWorkspaceId,
-) -> (WorkspaceGraphStateSnapshot, Option<String>) {
+) -> WorkspaceSurfaceSeed {
     match persistence.load_workspace_graph_state_snapshot(workspace_id) {
-        Ok(snapshot) => (snapshot, None),
+        Ok(snapshot) => WorkspaceSurfaceSeed {
+            graph: snapshot.graph,
+            graph_revision: snapshot.revision,
+            graph_warning: None,
+        },
         Err(error) => {
             warn!(
                 workspace_id = workspace_id.as_str(),
                 error = %error,
                 "failed to preload persisted semantic graph state"
             );
-            (
-                WorkspaceGraphStateSnapshot::new(
-                    SemanticGraph::default(),
-                    WorkspaceGraphRevision::default(),
-                ),
-                Some(error.to_string()),
-            )
+            let snapshot = WorkspaceGraphStateSnapshot::new(
+                SemanticGraph::default(),
+                WorkspaceGraphRevision::default(),
+            );
+            WorkspaceSurfaceSeed {
+                graph: snapshot.graph,
+                graph_revision: snapshot.revision,
+                graph_warning: Some(error.to_string()),
+            }
         }
     }
 }
@@ -626,6 +648,7 @@ fn resolve_workspace_target(
                 .to_string(),
             detail: "Retry startup discovery instead of backend workspace activation.".to_string(),
             next_steps: vec!["Use the startup retry action.".to_string()],
+            backend_unavailable: None,
         }),
         RetryTarget::WorkspacePrimary => {
             let mut workspace_state =
@@ -641,6 +664,7 @@ fn resolve_workspace_target(
                             "Verify that the semantic workspace state is readable.".to_string(),
                             "Retry after restoring workspace storage access.".to_string(),
                         ],
+                        backend_unavailable: None,
                     })?;
             if reconcile_workspace_member_availability(&mut workspace_state) {
                 persistence.save_workspace_state(workspace_id, &workspace_state).map_err(
@@ -653,6 +677,7 @@ fn resolve_workspace_target(
                             "Verify that the semantic workspace state is writable.".to_string(),
                             "Retry after restoring workspace storage access.".to_string(),
                         ],
+                        backend_unavailable: None,
                     },
                 )?;
             }
@@ -667,6 +692,7 @@ fn resolve_workspace_target(
                         "Attach a host-Windows or WSL-Linux member for this workspace.".to_string(),
                         "Retry after the workspace has a primary member.".to_string(),
                     ],
+                    backend_unavailable: None,
                 })
         }
         RetryTarget::Workspace(workspace) => Ok(workspace.clone()),
@@ -694,6 +720,7 @@ fn workspace_failure_from_path_error(error: WorkspacePathError) -> OpenWorkspace
             "If you selected WSL-Linux, re-check the distro and path.".to_string(),
             "Retry after correcting the workspace path.".to_string(),
         ],
+        backend_unavailable: None,
     }
 }
 
@@ -710,19 +737,36 @@ fn workspace_failure_from_primary_target_error(
                 .to_string(),
             "Retry after correcting the runtime environment or attached members.".to_string(),
         ],
+        backend_unavailable: None,
     }
 }
 
 fn workspace_failure_from_backend(
     error: ManagedBackendError,
+    execution_target: &WorkspaceId,
     stage: ManagedBackendStartupStage,
+    surface_seed: WorkspaceSurfaceSeed,
 ) -> OpenWorkspaceFailure {
+    let kind = BackendUnavailableKind::from_backend_error(&error);
     let blocked = blocked_state_for_error(error, 0, stage);
+    let unavailable = BackendUnavailable::new(
+        kind,
+        blocked.stage,
+        blocked.title,
+        blocked.summary.clone(),
+        blocked.detail.clone(),
+        blocked.next_steps.clone(),
+    );
     OpenWorkspaceFailure {
         stage: blocked.stage,
         title: blocked.title,
         summary: blocked.summary,
         detail: blocked.detail,
         next_steps: blocked.next_steps,
+        backend_unavailable: Some(BackendUnavailableFailure {
+            target: execution_target.clone(),
+            unavailable,
+            surface_seed,
+        }),
     }
 }

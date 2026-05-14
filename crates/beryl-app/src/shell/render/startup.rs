@@ -92,6 +92,7 @@ pub(super) fn render_startup_shell(
         .into_any_element(),
         crate::shell::ShellState::WorkspaceIdle(_)
         | crate::shell::ShellState::WorkspaceLoaded(_)
+        | crate::shell::ShellState::BackendUnavailable(_)
         | crate::shell::ShellState::Ready(_) => {
             div().into_any_element()
         }

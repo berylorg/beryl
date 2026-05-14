@@ -130,6 +130,16 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(message) = self.new_thread_controls_disabled_message() {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(super::SurfaceNotice::new(
+                    "Thread start unavailable",
+                    message,
+                ));
+            }
+            cx.notify();
+            return;
+        }
         let item_node_id = self.conversation_surface().and_then(|surface| {
             surface
                 .checklist_thread_start_menu()

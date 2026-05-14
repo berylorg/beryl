@@ -62,6 +62,20 @@ impl Render for ShellView {
                 window,
                 cx,
             ),
+            super::ShellState::BackendUnavailable(unavailable) => {
+                conversation::render_backend_unavailable_shell(
+                    shell,
+                    unavailable,
+                    &self.transcript_panel,
+                    &self.checklist_sidebar_panel,
+                    &self.wsl_distro_input,
+                    &self.workspace_picker_filter_input,
+                    &self.workspace_rename_input,
+                    &self.conversation_input,
+                    window,
+                    cx,
+                )
+            }
             super::ShellState::Blocked(blocked) if blocked.surface.is_some() => {
                 conversation::render_blocked_shell(
                     shell,

@@ -108,7 +108,8 @@ The settings window is a dedicated top-level OS window separate from the main wo
 The main workspace window is a pinned toolbar strip above a workspace body and a fixed status line strip anchored to the OS window bottom edge. The workspace body contains a thread strip above a left conversation column and, when visible, a right checklist sidebar separated by a draggable sidebar splitter. The conversation column is itself a vertically stacked layout with a stretchable transcript region, an optional activity panel, and a pinned user input panel above the status line strip.
 
 - A freshly created workspace renders through the same main workspace window composition as an initialized workspace on a pending new-thread draft.
-- Runtime or member recovery states may disable submission or show localized recovery information, but they do not replace the main workspace window with a separate fresh-startup shell.
+- Runtime, member, or backend-availability recovery states may disable submission or show localized recovery information, but they do not replace the main workspace window with a separate fresh-startup shell.
+- When the current primary runtime target is backend-unavailable, the main workspace window remains mounted, the workspace picker remains usable, and localized recovery text identifies the affected runtime target.
 
 ### Toolbar Strip
 
@@ -130,8 +131,10 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Manual resize: none.
 - Overflow behavior: strip content must remain within the strip; long thread labels truncate rather than causing outer scrolling.
 - The strip includes a `New Thread` button before the active thread title. Activating it clears the active thread selection without creating a backend thread until the next submitted user input fragment.
+- The `New Thread` button is disabled when the current primary runtime target is backend-unavailable.
 - The strip does not show the default host-Windows runtime as a persistent label; non-host runtime context may be shown when needed for the current execution target.
 - The active thread title is a clickable selector control, not a command button. It opens the thread selector and aligns with the shared button geometry without needing the full resting border/background treatment of `New Thread`.
+- The active thread title control is disabled and uses disabled control styling when the selected or primary runtime target needed for thread activation is backend-unavailable.
 
 ### Conversation Column
 
@@ -279,6 +282,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Overflow behavior: the panel itself stays pinned above the status line strip; when the wrapped draft content exceeds the panel's maximum height, the text-entry internals own vertical scrolling and keep the caret and active selection endpoint reachable.
 - Field sizing: the visible text-entry field uses the panel's automatically computed height while preserving the panel decoration.
 - The user input panel uses one composer layout for pending new-thread drafts and selected conversation threads. Submission-unavailable states must not add a separate disabled action button beside the composer.
+- Backend-unavailable behavior: when the selected runtime target or pending-new-thread primary runtime target is backend-unavailable, the composer field renders disabled, does not accept submission, and preserves the current draft text, image markers, caret, selection, and undo history.
 - Draft caret memory: the user input field preserves a last known insertion position that transcript quote actions can use even while the transcript has focus.
 - External draft insertion behavior: transcript quote insertion updates the draft content and saved insertion position without forcing keyboard focus into the user input field.
 - Image paste behavior: image clipboard paste inserts an image marker at the caret or replaces the selected draft range when the selected thread's next image label is known. Text-only fields continue to use ordinary text paste behavior.
@@ -310,7 +314,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Active-submit behavior: if the selected thread has an ordinary active parent turn, an accepted draft is rendered immediately as a distinct user input fragment and delivered through active-turn steering when the active backend turn id is known.
 - Compaction-submit behavior: if selected-thread context compaction is active, an accepted draft is rendered immediately as a distinct user input fragment and queued for the next backend turn instead of being sent through active-turn steering.
 - Queued-submit behavior: multiple drafts accepted while waiting for a turn id, waiting for compaction completion, or recovering from a non-steerable active turn remain separate visible user blocks and are delivered in accepted order when Beryl can start or steer the appropriate backend turn.
-- Rejected-submit behavior: if submission is rejected, such as for an empty draft or a disabled submission state, the draft field is not cleared.
+- Rejected-submit behavior: if submission is rejected, such as for an empty draft, a backend-unavailable target, or another disabled submission state, the draft field is not cleared.
 - Newline behavior: when the user input field is focused, `Shift+Enter` inserts a newline into the draft instead of submitting it.
 
 ### Status Line Strip
@@ -322,7 +326,8 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Separator: the strip uses the same edge-to-edge horizontal separator treatment as the toolbar strip.
 - Cell layout: the strip contains three left-to-right cells for model/reasoning, context space left, and last-turn state.
 - Model/reasoning: displays the selected thread's active or pending model together with the selected thread's active or pending reasoning effort. When the workspace is on a pending new-thread draft, it displays the explicit draft selection if one exists; otherwise it displays the current effective backend defaults that would be used for the draft's first submitted turn. It uses `Unknown` for values that are unavailable from thread state or backend configuration, and it does not infer effective reasoning from model-list menu defaults.
-- Model/reasoning interaction: activating the cell opens the model/reasoning popup when a backend conversation thread is selected and idle, or when the workspace is on a pending new-thread draft. With an active selected-thread turn, the cell is non-clickable.
+- Model/reasoning unavailable behavior: when the selected runtime target is backend-unavailable and no exact backend-derived values are already known, the cell displays `Unavailable` or `Unknown` without launching or probing a backend.
+- Model/reasoning interaction: activating the cell opens the model/reasoning popup when a backend conversation thread is selected and idle, or when the workspace is on a pending new-thread draft. With an active selected-thread turn or backend-unavailable selected runtime target, the cell is non-clickable.
 - Model/reasoning popup behavior: the popup lists backend-supported models and restricts reasoning choices to the selected model's supported reasoning efforts. Choosing a model or reasoning effort updates the selected thread's pending turn defaults, or the pending new-thread draft's first-turn defaults when no backend thread exists yet; the change applies to the next submitted turn for that thread and later turns, not to global Codex configuration.
 - Context space left: displays a percentage only when the selected thread has exact token usage with a positive model context window.
 - Context account limits: when exact account rate-limit status is available, the same cell appends the active-model short-window and weekly remaining percentages after the context percentage, for example `100% 5h 91% Weekly 98%` or `100% Daily 85% Weekly 45%`.
@@ -332,10 +337,10 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Context formula: use the latest exact selected-thread token usage available to the GUI and compute `((modelContextWindow - last.inputTokens) / modelContextWindow) * 100`, clamped to `0..100`; do not use cumulative `tokenUsage.total` for this percentage.
 - Context fallback: displays `Unknown` before exact token usage is available, when the model context window is missing or non-positive, or when the selected thread changes to a thread without known exact usage.
 - Context refresh behavior: switching threads must not submit user input, start a backend turn, or mutate backend-owned conversation history to fill the context cell.
-- Context interaction: activating the cell opens the context operations popup only when a backend conversation thread is selected and the selected thread is idle. With no selected thread or an active selected-thread turn, the cell is non-clickable.
+- Context interaction: activating the cell opens the context operations popup only when a backend conversation thread is selected, the selected thread is idle, and the selected runtime target is backend-available. With no selected thread, an active selected-thread turn, or a backend-unavailable selected runtime target, the cell is non-clickable.
 - Context operations popup behavior: the initial popup contains `Compact`, which starts backend context compaction for the selected thread and then closes or reports request failure through normal popup feedback. The request acceptance response is not itself compaction completion.
 - Last-turn state: displays `compacting` while selected-thread context compaction is active, `working` while a parent turn is active, `ok` after the latest completed turn, `error` after the latest failed or interrupted turn, and `Unknown` before any turn state is known.
-- Last-turn interaction: activating the cell opens the turn operations popup only when the selected backend conversation thread has an active ordinary turn with a known interruptible backend turn id, or when selected-thread context compaction is active with a known interruptible backend turn id. Otherwise the cell is non-clickable.
+- Last-turn interaction: activating the cell opens the turn operations popup only when the selected runtime target is backend-available and either the selected backend conversation thread has an active ordinary turn with a known interruptible backend turn id or selected-thread context compaction is active with a known interruptible backend turn id. Otherwise the cell is non-clickable.
 - Turn operations popup behavior: the popup contains `Soft stop`, which requests backend interruption for the exact selected-thread active turn and then closes or reports request failure through normal popup feedback. Request acceptance is not itself terminal interrupted state.
 - Hard-stop row behavior: when hard-stop targets are known and supported, the popup also contains `Hard stop`. Pressing and holding the row for three seconds activates the hard-stop request; while held, the row background fills from left to right to show progress. Releasing early, moving outside the row, closing the popup, focus loss, or selected active-turn target change cancels the hold. Keyboard activation must provide the same three-second hold affordance for the focused row.
 - Hard-stop disabled behavior: when the selected active turn is soft-stoppable but no exact backend-exposed hard-stop target is known, the hard-stop row is disabled or omitted rather than pretending to terminate unknown tools.
@@ -346,6 +351,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 
 - Diagnostic child-control commands do not add visible controls, persistent labels, panels, popups, buttons, or alternate interaction modes to the ordinary workspace UI.
 - Diagnostic child new-thread, turn-submission, soft-stop, hard-stop, thread-listing, thread-activation, popup-closing, transcript-scrolling, and wait commands must drive the same internal application command paths and state transitions as the corresponding visible UI interactions or retained UI projections.
+- Diagnostic child UI-state and command results must report backend-unavailable workspace state and backend-unavailable submission or thread-listing rejection distinctly from ready, opening, workspace-idle, and blocked shell states.
 - Diagnostic child hard-stop requests are explicit supervisor commands and therefore do not render or require the visible three-second hold progress affordance, but they must still target only the exact selected active turn and supported hard-stop targets that the visible popup would allow.
 - Diagnostic child wait commands observe UI state without creating loading UI solely for diagnostics and must return the latest bounded state on timeout.
 
@@ -390,7 +396,8 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Manual resize: none in V1.
 - Overflow behavior: follows the column selector container and column overflow rules.
 - Data behavior: renders from the latest member-thread inventory snapshot and does not synchronously query `codex app-server`.
-- Refresh behavior: opening the selector may request a background member-thread inventory refresh; stale snapshot content remains visible while the refresh is pending or failed.
+- Refresh behavior: opening the selector may request a background member-thread inventory refresh only for backend-available runtime targets; stale snapshot content remains visible while the refresh is pending, unavailable, or failed.
+- Backend-unavailable behavior: when the runtime target needed by the active thread selector is backend-unavailable, the selector trigger is disabled. If a selector is already open when a target becomes backend-unavailable, affected member or thread rows render disabled and cannot activate stale inventory rows.
 - Single-member behavior: when the active workspace has exactly one available member, including the implicit home member case, the selector opens directly to that member's root/orphan thread column.
 - Multi-member behavior: when the active workspace has more than one available member, the first column lists members and selecting a member opens that member's root/orphan thread column.
 - Root/orphan thread behavior: the first thread column for a member lists threads whose backend fork parent is absent from that same member group, including threads with no parent metadata and threads whose parent is missing, filtered out, stale, malformed, or grouped under another member.
@@ -402,7 +409,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Thread-sorting behavior: thread rows sort by newest backend update time in the row's visible branch subtree so a root with a recently updated fork remains near recent work.
 - Refresh-reconciliation behavior: when a refreshed inventory snapshot changes available rows while the selector is open, the selected column path is reconciled by durable member and thread identity; invalid fork columns are pruned without activating or selecting a different thread.
 - Active-row behavior: the currently active thread row is visibly highlighted.
-- Activation behavior: double-clicking a thread row or pressing `Enter` on a selected thread row activates that exact Codex thread in the transcript, including when the row also opens a fork column on single-click.
+- Activation behavior: double-clicking a thread row or pressing `Enter` on a selected thread row activates that exact Codex thread in the transcript, including when the row also opens a fork column on single-click. Activation is disabled for rows whose runtime target is backend-unavailable.
 - Activation-pending behavior: after an activation request is accepted, the selector closes and the transcript region shows the pending thread activation state until the backend resume and initial transcript page load succeed or fail.
 - Exact-selection behavior: if the selected thread is no longer available, cannot be reopened, is outside current workspace scope, or resumes with a recorded working directory that does not match the expected execution target, the workspace reports the standard rebind or activation failure path and does not activate a different thread.
 
@@ -496,6 +503,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Runtime-selector behavior: the default-runtime selector occupies the fixed row above the member list and also chooses the runtime for the next attached member. There is no independent member filter field.
 - Runtime-dropdown behavior: activating the runtime selector opens an attached selector dropdown. The opened dropdown and trigger share one continuous outer boundary with aligned left and right walls. WSL distro selector rows are labeled with a `WSL: ` prefix.
 - Runtime-enabled behavior: the runtime selector remains enabled when explicit workspace members exist because changing it affects future member attachment and implicit home fallback, not existing runtime-bound members.
+- Backend-unavailable behavior: backend-unavailable state for the current primary runtime target does not disable the runtime selector, `Attach member`, detach actions, or `Make primary` actions for backend-available member paths.
 - No-runtime behavior: when no default runtime environment is selected, the runtime selector is enabled and the `Attach member` row is disabled until the user chooses host-Windows or one WSL distro.
 - Member-row behavior: each member row uses the same text hierarchy as a workspace row. The primary line is a display label derived from the member directory or implicit-home role, and the secondary line is the full filesystem path. Long labels and paths soft-wrap and may grow the row vertically instead of truncating to ellipses.
 - Unavailable-member behavior: unavailable explicit member rows remain in the list. Their primary line appends `- path not found` to the normal display label, their secondary line remains the persisted full filesystem path, and they do not expose `Make primary`.

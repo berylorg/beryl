@@ -314,26 +314,76 @@ fn turn_stop_request_state_tracks_failures_by_target_and_clears_on_completion() 
 #[test]
 fn model_list_cache_tracks_load_success_failure_and_lookup_aliases() {
     let mut cache = StatusModelListCache::default();
+    let target = WorkspaceId::host_windows("C:\\work\\beryl");
+    let other_target = WorkspaceId::wsl_linux("Ubuntu", "/home/user/beryl");
 
-    assert!(cache.should_load());
-    cache.begin_loading();
+    assert!(cache.should_load_for(&target));
+    cache.begin_loading_for(target.clone());
     assert!(cache.loading());
-    assert!(!cache.should_load());
+    assert!(!cache.should_load_for(&target));
+    assert!(!cache.should_load_for(&other_target));
 
     cache.finish_failed("model/list failed".to_string());
     assert!(!cache.loading());
     assert_eq!(cache.last_error(), Some("model/list failed"));
-    assert!(cache.should_load());
+    assert_eq!(cache.target(), Some(&target));
+    assert!(cache.should_load_for(&target));
 
-    cache.begin_loading();
+    cache.begin_loading_for(target.clone());
     cache.finish_loaded(vec![model("gpt-5.5-id", "gpt-5.5", "GPT-5.5")]);
     assert!(!cache.loading());
     assert_eq!(cache.last_error(), None);
-    assert!(!cache.should_load());
+    assert_eq!(cache.target(), Some(&target));
+    assert!(!cache.should_load_for(&target));
+    assert!(cache.should_load_for(&other_target));
     assert!(cache.find_model("gpt-5.5-id").is_some());
     assert!(cache.find_model("gpt-5.5").is_some());
     assert!(cache.find_model("GPT-5.5").is_some());
     assert!(cache.find_model("gpt-4.9").is_none());
+}
+
+#[test]
+fn model_list_cache_reloads_when_runtime_target_changes() {
+    let mut cache = StatusModelListCache::default();
+    let host_target = WorkspaceId::host_windows("C:\\work\\beryl");
+    let wsl_target = WorkspaceId::wsl_linux("Ubuntu", "/home/user/beryl");
+
+    cache.begin_loading_for(host_target.clone());
+    cache.finish_loaded(vec![model("host-id", "host-model", "Host Model")]);
+    assert_eq!(cache.target(), Some(&host_target));
+    assert!(!cache.should_load_for(&host_target));
+    assert!(cache.should_load_for(&wsl_target));
+    assert!(cache.find_model("host-model").is_some());
+
+    cache.begin_loading_for(wsl_target.clone());
+    assert_eq!(cache.target(), Some(&wsl_target));
+    assert!(cache.find_model("host-model").is_none());
+
+    cache.finish_loaded(vec![model("wsl-id", "wsl-model", "WSL Model")]);
+    assert_eq!(cache.target(), Some(&wsl_target));
+    assert!(cache.find_model("wsl-model").is_some());
+    assert!(cache.find_model("host-model").is_none());
+}
+
+#[test]
+fn model_list_cache_discards_loaded_models_without_runtime_target() {
+    let mut cache = StatusModelListCache::default();
+
+    cache.finish_loaded_with_config(
+        vec![model("targetless-id", "targetless-model", "Targetless")],
+        BackendConfigDefaults {
+            model: Some("targetless-model".to_string()),
+            model_reasoning_effort: Some("high".to_string()),
+        },
+    );
+
+    assert_eq!(cache.target(), None);
+    assert_eq!(cache.models(), None);
+    assert!(cache.effective_default_turn_defaults().is_none());
+    assert_eq!(
+        cache.last_error(),
+        Some("Beryl discarded a model list loaded without a runtime target.")
+    );
 }
 
 #[test]
@@ -376,7 +426,8 @@ fn model_list_cache_uses_config_defaults_for_effective_new_thread_reasoning() {
     visible.default_reasoning_effort = Some("low".to_string());
 
     let mut cache = StatusModelListCache::default();
-    cache.finish_loaded_with_config(
+    cache.finish_loaded_for_target(
+        WorkspaceId::host_windows("C:\\work\\beryl"),
         vec![visible, hidden_default],
         BackendConfigDefaults {
             model: Some("gpt-5.5".to_string()),
@@ -399,7 +450,11 @@ fn model_list_cache_uses_model_list_only_for_model_fallback() {
     visible.default_reasoning_effort = Some("high".to_string());
 
     let mut cache = StatusModelListCache::default();
-    cache.finish_loaded(vec![hidden, visible]);
+    cache.finish_loaded_for_target(
+        WorkspaceId::host_windows("C:\\work\\beryl"),
+        vec![hidden, visible],
+        BackendConfigDefaults::default(),
+    );
 
     let defaults = cache.effective_default_turn_defaults().unwrap();
     assert_eq!(defaults.model(), Some("gpt-visible"));
@@ -414,7 +469,8 @@ fn model_list_cache_keeps_reasoning_unknown_when_config_reasoning_is_absent() {
     default_model.default_reasoning_effort = Some("medium".to_string());
 
     let mut cache = StatusModelListCache::default();
-    cache.finish_loaded_with_config(
+    cache.finish_loaded_for_target(
+        WorkspaceId::host_windows("C:\\work\\beryl"),
         vec![default_model],
         BackendConfigDefaults {
             model: Some("gpt-5.5".to_string()),

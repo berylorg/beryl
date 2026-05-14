@@ -48,6 +48,10 @@ pub(crate) struct DiagnosticWaitForStateArguments {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum DiagnosticWaitPredicate {
     Ready,
+    BackendUnavailable,
+    WorkspaceIdle,
+    Opening,
+    Blocked,
     WorkspaceSelected,
     ThreadSelected,
     PendingNewThread,

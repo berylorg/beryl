@@ -9,6 +9,7 @@ use beryl_backend::{
     ApprovalRequest, BackendConfigDefaults, ManagedBackendClientConnector, ManagedBackendSession,
     ModelInfo, ThreadStatus, TurnStreamEvent,
 };
+use beryl_model::workspace::WorkspaceId;
 use gpui::{
     Bounds, ClickEvent, Context, KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseUpEvent, Pixels,
     Window,
@@ -20,7 +21,6 @@ use super::{
     context_compaction::ContextCompactionStreamState,
     hard_stop::{HardStopOutcome, HardStopUpdate, spawn_hard_stop_worker},
     lifecycle_continuation::context_compaction_queue_failure_message,
-    resolve_new_thread_execution_target,
     status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets, ThreadTurnDefaults},
     status_operation_state::{
         HardStopHoldSource, HardStopRequestSummary, StatusLineOperationKind,
@@ -292,6 +292,15 @@ impl ShellView {
     }
 
     pub(crate) fn sync_new_thread_defaults_from_model_cache(&mut self) -> bool {
+        let Some(cache_target) = self.status_model_cache.target() else {
+            return false;
+        };
+        let Ok(current_new_thread_target) = self.current_new_thread_target() else {
+            return false;
+        };
+        if &current_new_thread_target != cache_target {
+            return false;
+        }
         let defaults = self.status_model_cache.effective_default_turn_defaults();
         self.conversation_surface_mut()
             .is_some_and(|surface| surface.set_effective_new_thread_defaults(defaults))
@@ -480,6 +489,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.status_line_backend_operation_available() {
+            return;
+        }
         self.status_model_cache = StatusModelListCache::default();
         self.begin_status_model_list_load_if_needed(window, cx);
         cx.notify();
@@ -492,6 +504,13 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let available = self
+            .conversation_surface()
+            .map(|surface| surface.status_line_projection().model_reasoning_available)
+            .unwrap_or(false);
+        if !self.status_line_model_reasoning_interactive(available) {
+            return;
+        }
         let thread_id = self
             .conversation_surface()
             .and_then(|surface| surface.selected_thread_id().map(str::to_string));
@@ -519,6 +538,13 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let available = self
+            .conversation_surface()
+            .map(|surface| surface.status_line_projection().model_reasoning_available)
+            .unwrap_or(false);
+        if !self.status_line_model_reasoning_interactive(available) {
+            return;
+        }
         let thread_id = self
             .conversation_surface()
             .and_then(|surface| surface.selected_thread_id().map(str::to_string));
@@ -555,6 +581,9 @@ impl ShellView {
             return;
         };
         let Some(connector) = self.backend_client_connector() else {
+            if let Some(block) = self.current_conversation_submission_block() {
+                self.report_backend_operation_block("Context unavailable", block, cx);
+            }
             return;
         };
 
@@ -893,7 +922,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.status_model_cache.should_load() || self.status_operation_receiver.is_some() {
+        if self.status_operation_receiver.is_some() {
             return;
         }
 
@@ -903,10 +932,13 @@ impl ShellView {
             return;
         };
 
-        let config_cwd = self
-            .pending_new_thread_config_cwd()
-            .unwrap_or_else(|| connector.launch_spec().cwd().to_path_buf());
-        self.status_model_cache.begin_loading();
+        let target = self.status_model_list_target_for_connector(&connector);
+        if !self.status_model_cache.should_load_for(&target) {
+            return;
+        }
+
+        let config_cwd = self.status_model_list_config_cwd_for_connector(&connector);
+        self.status_model_cache.begin_loading_for(target);
         self.status_operation_receiver = Some(spawn_status_model_list_worker(
             connector,
             config_cwd,
@@ -936,16 +968,31 @@ impl ShellView {
         }
     }
 
-    fn pending_new_thread_config_cwd(&self) -> Option<PathBuf> {
-        let ShellState::Ready(ready) = &self.state else {
-            return None;
-        };
-        let execution_target = resolve_new_thread_execution_target(
-            &ready.loaded_workspace.workspace_state,
-            &ready.execution_target,
-        )
-        .unwrap_or_else(|_| ready.execution_target.clone());
-        Some(execution_target.canonical_path().to_path_buf())
+    fn status_model_list_config_cwd_for_connector(
+        &self,
+        connector: &ManagedBackendClientConnector,
+    ) -> PathBuf {
+        self.status_model_list_target_for_connector(connector)
+            .canonical_path()
+            .to_path_buf()
+    }
+
+    fn status_model_list_target_for_connector(
+        &self,
+        connector: &ManagedBackendClientConnector,
+    ) -> WorkspaceId {
+        self.current_conversation_submission_target()
+            .ok()
+            .filter(|target| {
+                target.runtime_mode() == connector.launch_spec().runtime_mode()
+                    && target.canonical_path() == connector.launch_spec().cwd()
+            })
+            .unwrap_or_else(|| {
+                WorkspaceId::from_parts(
+                    connector.launch_spec().runtime_mode().clone(),
+                    connector.launch_spec().cwd().to_path_buf(),
+                )
+            })
     }
 
     fn finish_context_compaction(&mut self, outcome: ContextCompactionOutcome) {
@@ -1123,6 +1170,12 @@ impl ShellView {
             event => {
                 let execution_target = match &self.state {
                     ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+                    ShellState::BackendUnavailable(unavailable) => {
+                        Self::selected_thread_registered_execution_target(
+                            &unavailable.loaded_workspace,
+                            &unavailable.surface,
+                        )
+                    }
                     _ => None,
                 };
                 if let Some(surface) = self.conversation_surface_mut() {

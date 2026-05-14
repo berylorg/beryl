@@ -222,6 +222,7 @@ impl ShellView {
             | ShellState::Opening(_)
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
+            | ShellState::BackendUnavailable(_)
             | ShellState::Blocked(_) => None,
         };
         let connector = self.backend_client_connector();

@@ -312,6 +312,10 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(block) = self.current_conversation_submission_block() {
+            self.report_backend_operation_block("Thread edit unavailable", block, cx);
+            return;
+        }
         let Some(request) = self
             .conversation_surface_mut()
             .and_then(|surface| surface.transcript_branch_menu_mut().accept_edit())
@@ -437,10 +441,13 @@ impl ShellView {
         }
 
         let Some(connector) = self.backend_client_connector() else {
-            self.set_transcript_branch_notice(
-                "Thread branch unavailable",
-                "Beryl does not have an active managed backend for this workspace.",
-            );
+            let detail = self
+                .current_conversation_submission_block()
+                .map(|block| block.message)
+                .unwrap_or_else(|| {
+                    "Beryl does not have an active managed backend for this workspace.".to_string()
+                });
+            self.set_transcript_branch_notice("Thread branch unavailable", detail);
             return;
         };
 

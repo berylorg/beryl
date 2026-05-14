@@ -150,37 +150,40 @@ fn members_column_actions_route_primary_detach_and_attach_guard() {
 }
 
 #[test]
-fn idle_runtime_or_member_activation_opens_primary_workspace_target() {
+fn runtime_or_member_activation_opens_primary_workspace_target_from_loaded_shell() {
     let shell_source = include_str!("../src/shell.rs");
     let render_source = include_str!("../src/shell/render/workspace_picker.rs");
-    let helper_body = rust_function_body(
-        shell_source,
-        "fn begin_idle_primary_workspace_open_if_executable",
-    );
+    let helper_body =
+        rust_function_body(shell_source, "fn begin_primary_workspace_open_if_selected");
     let runtime_body = rust_function_body(shell_source, "fn select_workspace_runtime");
     let attach_body = rust_function_body(shell_source, "fn attach_workspace_member");
+    let primary_body = rust_function_body(shell_source, "fn make_workspace_member_primary");
     let begin_attach_body =
         rust_function_body(shell_source, "fn begin_workspace_member_attach_resolution");
     let finish_attach_body =
         rust_function_body(shell_source, "fn finish_workspace_member_attach_resolution");
     let finish_prompt_body =
         rust_function_body(shell_source, "fn finish_workspace_member_path_prompt");
+    let workspace_shell_state_mut_body =
+        rust_function_body(shell_source, "fn workspace_shell_state_mut");
     let runtime_row_body = rust_function_body(render_source, "fn render_runtime_selector_row");
 
-    assert!(helper_body.contains("ShellState::WorkspaceIdle"));
-    assert!(helper_body.contains("selected_runtime().is_some()"));
+    assert!(workspace_shell_state_mut_body.contains("ShellState::BackendUnavailable"));
+    assert!(helper_body.contains("workspace_shell_state_mut()"));
+    assert!(helper_body.contains("selected_runtime().is_none()"));
     assert!(helper_body.contains("workspace_picker.close()"));
-    assert!(helper_body.contains("ShellState::WorkspaceLoaded"));
     assert!(helper_body.contains("RetryTarget::WorkspacePrimary"));
     assert!(helper_body.contains("begin_open_target"));
     assert!(!helper_body.contains("WorkspaceOpenIntent::UseAsPrimaryMember"));
 
-    assert!(runtime_body.contains("begin_idle_primary_workspace_open_if_executable(window, cx)"));
+    assert!(runtime_body.contains("begin_primary_workspace_open_if_selected(window, cx)"));
     assert!(!runtime_body.contains("WorkspaceOpenIntent::UseAsPrimaryMember"));
     assert!(runtime_row_body.contains("select_workspace_runtime(runtime.clone(), window, cx)"));
 
-    assert!(attach_body.contains("begin_idle_primary_workspace_open_if_executable(window, cx)"));
+    assert!(attach_body.contains("begin_primary_workspace_open_if_selected(window, cx)"));
     assert!(!attach_body.contains("WorkspaceOpenIntent::UseAsPrimaryMember"));
+    assert!(primary_body.contains("begin_primary_workspace_open_if_selected(window, cx)"));
+    assert!(!primary_body.contains("WorkspaceOpenIntent::UseAsPrimaryMember"));
     assert!(begin_attach_body.contains("window.window_handle()"));
     assert!(begin_attach_body.contains("cx.update_window"));
     assert!(finish_attach_body.contains("attach_workspace_member(execution_target, window, cx)"));

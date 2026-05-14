@@ -27,12 +27,21 @@ pub(crate) struct UiStateSnapshot {
     pub selected_workspace_id: Option<String>,
     pub selected_thread_id: Option<String>,
     pub selected_runtime_target: Option<RuntimeTargetDiagnostic>,
+    pub backend_unavailable: Option<BackendUnavailableUiState>,
     pub turn_state: TurnUiState,
     pub transcript: TranscriptUiState,
     pub visible_media: VisibleMediaSnapshot,
     pub activity_panel: ActivityPanelUiState,
     pub popups: PopupUiState,
     pub background_work: BackgroundWorkUiState,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackendUnavailableUiState {
+    pub kind: String,
+    pub message: String,
+    pub runtime_target: RuntimeTargetDiagnostic,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

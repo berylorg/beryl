@@ -68,6 +68,7 @@ impl ShellView {
             | ShellState::Opening(_)
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
+            | ShellState::BackendUnavailable(_)
             | ShellState::Blocked(_) => false,
         }
     }
@@ -186,6 +187,7 @@ impl ShellView {
             | ShellState::Opening(_)
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
+            | ShellState::BackendUnavailable(_)
             | ShellState::Blocked(_) => false,
         };
 

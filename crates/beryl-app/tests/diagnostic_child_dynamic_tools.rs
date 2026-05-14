@@ -646,6 +646,34 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
         wait_schema.input_schema["properties"]["limit"]["maximum"],
         diagnostic_child_control::MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT
     );
+    assert!(
+        wait_schema.input_schema["properties"]["predicate"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "backend_unavailable")
+    );
+    assert!(
+        wait_schema.input_schema["properties"]["predicate"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "workspace_idle")
+    );
+    assert!(
+        wait_schema.input_schema["properties"]["predicate"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "opening")
+    );
+    assert!(
+        wait_schema.input_schema["properties"]["predicate"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "blocked")
+    );
     assert_eq!(
         start_schema.input_schema["properties"]["executablePath"]["maxLength"],
         diagnostic_child_supervisor::MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES
@@ -654,6 +682,48 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
         start_schema.input_schema["required"],
         json!(["berylHomeDir"])
     );
+}
+
+#[test]
+fn diagnostic_wait_state_accepts_backend_unavailable_predicate() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let start_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({ "berylHomeDir": child.path().display().to_string() }),
+    );
+    let wait_request = tool_request(
+        DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
+        json!({
+            "predicate": "backend_unavailable",
+            "timeoutMs": 0,
+            "pollIntervalMs": 25,
+            "limit": 999
+        }),
+    );
+
+    let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &start_request,
+    );
+    let response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &wait_request,
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["status"], "timeout");
+    assert_eq!(payload["result"]["predicate"], "backend_unavailable");
+    assert_eq!(payload["result"]["uiState"]["command"], "read_ui_state");
+    assert_eq!(payload["result"]["uiState"]["params"]["limit"], 64);
+
+    child.close().unwrap();
+    root.close().unwrap();
 }
 
 #[test]

@@ -8,6 +8,8 @@ This document defines the user-visible product behavior for Beryl V1.
 - If the previously active workspace is unavailable, deleted, or otherwise cannot be resumed, Beryl creates and opens a fresh untitled workspace instead.
 - Missing or unavailable workspace member paths do not make the previously active workspace unavailable; Beryl opens the workspace, keeps those members attached, marks them invalid, and applies the durable primary fallback rules.
 - A fresh untitled workspace starts with host-Windows as the default runtime, no explicit workspace members, and the host user's home directory exposed as the implicit primary workspace member.
+- Successful workspace startup requires GUI-owned workspace state, not a successful `codex app-server` launch for the current primary runtime target.
+- If the current primary runtime target cannot launch or probe a compatible `codex app-server` during startup, Beryl still opens the workspace screen, keeps workspace and member management available, and disables conversation operations for that target.
 - Normal successful startup does not require a dedicated startup screen before the workspace window appears.
 - Beryl stores persisted workspaces under the configured Beryl home directory, whose default is `~/.beryl`.
 - New workspaces begin untitled and there may be any number of untitled workspaces.
@@ -57,13 +59,17 @@ This document defines the user-visible product behavior for Beryl V1.
 - Additional non-primary workspace members remain attached so the model can discover them as related workspace context through Beryl-provided app-server dynamic workspace metadata tools.
 - Changing the default runtime environment affects future member attachment and implicit home fallback only; it does not move existing members, change existing thread refs, or restrict the workspace to one runtime.
 - If no default runtime environment is selected in a legacy or recovery state, Beryl requires default-runtime selection before creating a new thread or attaching the first workspace member.
+- Backend availability is tracked per runtime target. Missing `codex`, failed launch, failed probe, or incompatible app-server capabilities for host-Windows or one WSL distro disable only that target's backend-required conversation operations.
+- A backend-unavailable runtime target is distinct from a missing default runtime and from an unavailable workspace-member path. It does not detach members, change the default runtime, promote another primary member, or silently rebind existing threads.
+- A usable WSL runtime target remains attachable, primary-selectable, and conversation-capable while the host-Windows target is backend-unavailable, and the same isolation applies between WSL distro targets.
 - Beryl stores images pasted into the composer as durable workspace-local image assets under the configured Beryl home directory, whose default is `~/.beryl`, so accepted transcript markers can still open previews after app restart.
 - When submitting pasted images, Beryl gives Codex a real image path readable by the selected backend runtime. Host-Windows submissions use a host-readable asset path; WSL submissions use the selected distro's readable path to that same asset, such as its mounted view of the host profile directory, and fail visibly if that mapping cannot be validated.
 - A conversation thread remains a backend-owned resource rather than a Beryl-owned graph node.
 - Beryl uses backend-provided thread names as the preferred non-manual title source for listing and linking conversation threads.
 - Beryl consumes backend thread names from thread metadata, member-thread inventory refreshes, and live backend thread-name update notifications.
 - Beryl-created threads without a manual GUI-local title or backend-provided thread name become eligible for an automatic model-generated title after the first submitted user input fragment and backend thread id are known, including threads Beryl created before that fragment through graph or checklist start actions.
-- Automatic Beryl thread-title generation runs on a background backend client connection, does not wait for the first assistant response or terminal turn state, and does not block transcript streaming, turn completion, or selector rendering.
+- Automatic Beryl thread-title generation runs on a background backend client connection for the target thread's runtime target, does not wait for the first assistant response or terminal turn state, and does not block transcript streaming, turn completion, or selector rendering.
+- Automatic Beryl thread-title generation is disabled while that runtime target is backend-unavailable; the thread remains untitled unless another title source exists.
 - Beryl runs automatic thread-title generation through one internal title-generation maintenance path that creates a fresh app-server ephemeral thread for each title attempt; that maintenance thread never appears in thread selectors, member-thread inventories, semantic graph thread refs, active-thread state, or transcript UI.
 - Title-generation maintenance threads use only Beryl's fixed title-generation instructions and do not receive the global developer-instructions setting.
 - Beryl requests lifecycle cleanup for each title-generation maintenance thread after its title attempt completes or fails.
@@ -100,16 +106,17 @@ This document defines the user-visible product behavior for Beryl V1.
 - A thread is listed under a member only when the backend thread summary's recorded runtime and working directory exactly match that member's runtime and canonical path.
 - Member-thread inventory refresh runs in the background and atomically swaps complete snapshots into UI state, so opening a thread-linking menu or thread selector never blocks on `codex app-server`.
 - The thread selector uses the same member-thread inventory snapshot as thread-linking UI.
-- Opening the thread selector may request a background member-thread inventory refresh, but it displays the latest available snapshot while refresh is pending or after refresh failure.
+- Opening the thread selector may request a background member-thread inventory refresh for backend-available targets, but it displays the latest available snapshot while refresh is pending, unavailable, or after refresh failure.
 - Threads inside each member group are ordered by `last updated` descending.
 - If no conversation thread is active and the user submits input from the workspace screen, Beryl creates and activates a new standalone Codex thread for the current workspace using the current primary workspace member.
-- Starting a new Codex thread requires a default runtime environment and a resolved primary workspace member.
+- Starting a new Codex thread requires a default runtime environment, a resolved primary workspace member, and a backend-available runtime target for that member.
+- Composer submission, `New Thread`, graph-started thread creation, checklist-started thread creation, branch, edit, active-turn steering, context compaction, and lifecycle continuation are unavailable while their selected runtime target is backend-unavailable.
 - When the global developer-instructions setting is non-empty, Beryl sends the latest applied value as hidden developer-instructions context with each top-level user message, including messages sent to existing threads and the first message that creates a new user-facing persistent Codex thread.
 - Automatic lifecycle continuation after `yield(phase_continue)` also sends the latest applied developer-instructions setting with Beryl's generated continuation message.
 - Blank or whitespace-only developer-instructions settings are disabled and clear Beryl's custom developer-instructions context for later top-level user messages. Developer instructions are not sent with subagent requests, active-turn steering, title-generation maintenance, inventory refresh, context-compaction requests themselves, or other background/status-only work.
 - Developer-instructions settings are applied at send time, so existing threads, retries, and regeneration-style replacement starts use the current setting without copying the injected instructions into user-visible transcript history or user-message text.
 - If Beryl cannot determine the effective model required by the backend's hidden developer-instructions mechanism, it omits the hidden developer-instructions request data rather than guessing a model.
-- Activating an existing thread from the thread selector or from a graph thread ref reopens that exact backend thread by id and does not fall back to another thread if the selected thread is unavailable.
+- Activating an existing thread from the thread selector or from a graph thread ref reopens that exact backend thread by id and does not fall back to another thread or runtime target if the selected thread or its runtime target is unavailable.
 - Existing-thread activation shows an immediate pending state while the backend resume and initial transcript page load are in progress.
 - Existing-thread activation does not require enumerating all backend threads before the selected thread can begin reopening.
 - Selecting a valid thread-ref item in the graph explorer activates that Codex thread in the transcript.
@@ -225,6 +232,7 @@ This document defines the user-visible product behavior for Beryl V1.
 - The bottom status line strip sits between the user input panel and the OS window bottom edge and uses the same edge-to-edge separator treatment as the main toolbar.
 - The status line strip contains three left-to-right cells: model/reasoning, context space left, and last-turn state.
 - The model/reasoning cell displays the selected thread's active or pending model and reasoning effort. After `New Thread` clears the active backend thread, the cell displays the explicit new-thread draft selection if one exists; otherwise it displays the current effective backend defaults that would be used for the first submitted turn. It uses `Unknown` when the backend configuration does not expose an effective value, and it does not infer the effective reasoning value from model-list menu defaults.
+- Backend-derived status values display as unavailable or `Unknown` without launching or probing a backend when the selected runtime target is backend-unavailable.
 - When a backend conversation thread is selected and idle, or when the workspace is on a pending new-thread draft, activating the model/reasoning cell opens a popup for choosing model and reasoning effort.
 - Model/reasoning changes apply only to the selected thread or pending new-thread draft, affect the next submitted turn for that thread and later turns, and do not change global Codex configuration.
 - A pending new-thread draft with no explicit model/reasoning selection follows changes to the current effective backend defaults until the first submitted turn or until the user chooses an explicit draft selection.
@@ -332,7 +340,7 @@ This document defines the user-visible product behavior for Beryl V1.
 - Diagnostic child thread-listing reports bounded child workspace thread inventory state using the same inventory model that feeds thread selectors and thread-linking UI. It may report stale or refresh-pending inventory state, but it must not synchronously enumerate backend threads on the child UI thread.
 - Diagnostic child new-thread control clears the child active-thread selection into the same pending-new-thread draft state as the `New Thread` button. It does not create a backend thread until a later accepted composer submission creates one through ordinary Beryl behavior.
 - Diagnostic child turn submission injects bounded text into the child composer submission path. Accepted submissions become ordinary user input fragments, including first-message new-thread creation, active-turn steering, compaction-time queueing, composer history, transcript anchoring, draft clearing, and rejection behavior.
-- Diagnostic child turn submission is unavailable when ordinary composer submission would be unavailable, including empty input, unresolved runtime target, disabled new-thread creation, incompatible edit mode, or another disabled submission state.
+- Diagnostic child turn submission is unavailable when ordinary composer submission would be unavailable, including empty input, unresolved runtime target, backend-unavailable runtime target, disabled new-thread creation, incompatible edit mode, or another disabled submission state.
 - Diagnostic child soft stop uses the same exact selected-thread active-turn interruption behavior as the status-line `Soft stop` action. Request acceptance is not terminal turn completion.
 - Diagnostic child hard stop uses the same selected-turn interruption and exact backend-exposed hard-stop targets as the status-line `Hard stop` action, but the diagnostic tool request itself supplies the deliberate activation in place of the visible three-second hold affordance.
 - Diagnostic child wait-for-state observes bounded child UI and turn-state predicates such as workspace readiness, selected thread identity, active-turn state, idle state, visible transcript count, and inventory availability. Timeout returns the latest bounded child state rather than blocking indefinitely.
@@ -413,6 +421,7 @@ This document defines the user-visible product behavior for Beryl V1.
 
 - If the foreground backend connection or managed backend process is lost, the GUI keeps the current Beryl workspace, semantic graph state, checklist selection state, runtime-environment state, workspace-member state, and active transcript selection intact.
 - If a background backend connection used for title generation, inventory refresh, or lazy maintenance fails while the managed backend process remains available, Beryl reports or logs only that background operation's failure and keeps the active conversation usable.
+- Backend launch, probe, or compatibility failure before a usable connection exists is reported as backend-unavailable state for that runtime target, not as application startup failure.
 - On backend disconnect, the GUI presents a blocking recovery path rather than silently switching to another backend process.
 - Recovery actions may include relaunching a managed backend for the same workspace runtime environment and resumed thread binding or closing the application instance.
 - The GUI must not silently switch the user to a different backend process after a disconnect.

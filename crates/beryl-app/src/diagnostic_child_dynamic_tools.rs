@@ -556,6 +556,14 @@ fn wait_predicate_matches(arguments: &DiagnosticWaitForStateArguments, ui_state:
 
     match arguments.predicate {
         DiagnosticWaitPredicate::Ready => string_field(ui_state, "shellState") == Some("ready"),
+        DiagnosticWaitPredicate::BackendUnavailable => {
+            string_field(ui_state, "shellState") == Some("backend_unavailable")
+        }
+        DiagnosticWaitPredicate::WorkspaceIdle => {
+            string_field(ui_state, "shellState") == Some("workspace_idle")
+        }
+        DiagnosticWaitPredicate::Opening => string_field(ui_state, "shellState") == Some("opening"),
+        DiagnosticWaitPredicate::Blocked => string_field(ui_state, "shellState") == Some("blocked"),
         DiagnosticWaitPredicate::WorkspaceSelected => arguments
             .workspace_id
             .as_deref()
@@ -984,6 +992,10 @@ fn wait_for_state_schema() -> Value {
                 "type": "string",
                 "enum": [
                     "ready",
+                    "backend_unavailable",
+                    "workspace_idle",
+                    "opening",
+                    "blocked",
                     "workspace_selected",
                     "thread_selected",
                     "pending_new_thread",

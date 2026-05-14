@@ -184,6 +184,12 @@ impl ShellView {
         };
         self.notify_checklist_sidebar_panel(cx);
 
+        if let Some(block) = self.backend_required_target_block(&execution_target) {
+            self.set_graph_thread_start_notice("Thread start unavailable", block.message);
+            cx.notify();
+            return;
+        }
+
         let Some(connector) = self.backend_client_connector_for_execution_target(&execution_target)
         else {
             self.set_graph_thread_start_notice(
@@ -267,6 +273,51 @@ impl ShellView {
                             ) {
                                 Ok(execution_target) => Some((
                                     ready.loaded_workspace.workspace.id().clone(),
+                                    execution_target,
+                                    graph,
+                                    graph_revision,
+                                )),
+                                Err(error) => {
+                                    notice = Some((
+                                        "Thread start unavailable".to_string(),
+                                        error.to_string(),
+                                    ));
+                                    None
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ShellState::BackendUnavailable(unavailable) => {
+                let graph = unavailable.surface.graph_overlay().graph().clone();
+                let graph_revision = unavailable.surface.graph_overlay().revision();
+                match graph.node(node_id) {
+                    None => {
+                        notice = Some((
+                            "Thread start unavailable".to_string(),
+                            "That semantic node is no longer available.".to_string(),
+                        ));
+                        None
+                    }
+                    Some(node) => {
+                        let can_start_thread = source.can_start(node);
+                        if let Some(column_index) = column_index {
+                            changed |= unavailable.surface.select_graph_node(column_index, node_id);
+                        }
+                        if !can_start_thread {
+                            notice = Some((
+                                "Thread start unavailable".to_string(),
+                                source.non_startable_detail().to_string(),
+                            ));
+                            None
+                        } else {
+                            match resolve_new_thread_execution_target(
+                                &unavailable.loaded_workspace.workspace_state,
+                                &unavailable.execution_target,
+                            ) {
+                                Ok(execution_target) => Some((
+                                    unavailable.loaded_workspace.workspace.id().clone(),
                                     execution_target,
                                     graph,
                                     graph_revision,

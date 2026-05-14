@@ -67,8 +67,8 @@ use crate::diagnostic_dynamic_tools::{
     renderer_snapshot_with_shell_window, visible_media_result,
 };
 use crate::gui_control_dynamic_tools::{
-    ActivityPanelUiState, BackgroundWorkUiState, CancellableTurnUiState, ClosePopupsResult,
-    DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, PopupUiState,
+    ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CancellableTurnUiState,
+    ClosePopupsResult, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, PopupUiState,
     SETTINGS_WINDOW_POPUP_CLOSE_REASON, ScrollTranscriptArguments, ScrollTranscriptCommand,
     ScrollTranscriptResult, SwitchThreadArguments, SwitchThreadResult, SwitchWorkspaceArguments,
     SwitchWorkspaceResult, TranscriptScrollPositionDiagnostic, TranscriptUiState, TurnUiState,
@@ -89,6 +89,8 @@ use crate::text_input::{
     TextInputSelectionExport,
 };
 use crate::{AppBootstrap, WorkspaceActivityPanelMode, WorkspaceGraphRevision, WorkspaceUiState};
+
+use self::backend_availability::{BackendAvailabilityRecord, BackendUnavailable};
 
 const COMPOSER_KEY_CONTEXT: &str = "ConversationComposer";
 const APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -340,6 +342,7 @@ gpui::actions!(
 );
 
 mod account_rate_limits;
+mod backend_availability;
 mod checklist_sidebar_panel_state;
 mod checklist_sidebar_projection;
 mod checklist_sidebar_visibility;
@@ -1172,6 +1175,7 @@ enum ShellState {
     Opening(OpeningState),
     WorkspaceIdle(IdleWorkspaceState),
     WorkspaceLoaded(LoadedWorkspaceState),
+    BackendUnavailable(BackendUnavailableState),
     Ready(ReadyState),
     Blocked(BlockedState),
 }
@@ -1227,6 +1231,7 @@ struct LoadedWorkspaceState {
     workspace_picker: workspace_picker::WorkspacePickerState,
     workspace_runtime_selector_distro_list: workspace_picker::RuntimeSelectorDistroList,
     workspace_members: workspace_members::WorkspaceMembersState,
+    backend_availability: HashMap<WorkspaceId, BackendAvailabilityRecord>,
     workspace_picker_scroll_handle: ScrollHandle,
     workspace_members_scroll_handle: ScrollHandle,
 }
@@ -1250,6 +1255,16 @@ struct ReadyState {
     process_id: Option<u32>,
     report: ManagedBackendProbeReport,
     cleared_failure: Option<FailureSummary>,
+    surface: ConversationSurfaceState,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+struct BackendUnavailableState {
+    attempt: u32,
+    loaded_workspace: LoadedWorkspaceState,
+    execution_target: WorkspaceId,
+    availability: BackendAvailabilityRecord,
     surface: ConversationSurfaceState,
 }
 
@@ -1285,6 +1300,12 @@ enum ThreadActivationStart {
     Started,
     AlreadySelected,
     Rejected { kind: &'static str, message: String },
+}
+
+#[derive(Clone)]
+struct BackendOperationBlock {
+    kind: &'static str,
+    message: String,
 }
 
 #[derive(Deserialize)]
@@ -1578,12 +1599,27 @@ struct OpenedWorkspace {
     graph_warning: Option<String>,
 }
 
+#[derive(Clone)]
+struct WorkspaceSurfaceSeed {
+    graph: SemanticGraph,
+    graph_revision: WorkspaceGraphRevision,
+    graph_warning: Option<String>,
+}
+
 struct OpenWorkspaceFailure {
     stage: Option<ManagedBackendStartupStage>,
     title: &'static str,
     summary: String,
     detail: String,
     next_steps: Vec<String>,
+    backend_unavailable: Option<BackendUnavailableFailure>,
+}
+
+#[derive(Clone)]
+struct BackendUnavailableFailure {
+    target: WorkspaceId,
+    unavailable: BackendUnavailable,
+    surface_seed: WorkspaceSurfaceSeed,
 }
 
 const DEFAULT_CHECKLIST_SIDEBAR_RATIO: f32 = 0.34;
@@ -1710,6 +1746,7 @@ impl LoadedWorkspaceState {
             workspace_runtime_selector_distro_list:
                 workspace_picker::RuntimeSelectorDistroList::default(),
             workspace_members: workspace_members::WorkspaceMembersState::default(),
+            backend_availability: HashMap::new(),
             workspace_picker_scroll_handle: ScrollHandle::new(),
             workspace_members_scroll_handle: ScrollHandle::new(),
         }
@@ -1717,6 +1754,52 @@ impl LoadedWorkspaceState {
 
     fn selected_runtime(&self) -> Option<&beryl_model::workspace::RuntimeMode> {
         self.workspace_state.selected_runtime()
+    }
+
+    #[allow(dead_code)]
+    fn backend_availability(&self, target: &WorkspaceId) -> Option<&BackendAvailabilityRecord> {
+        self.backend_availability.get(target)
+    }
+
+    #[allow(dead_code)]
+    fn backend_availability_or_not_tried(&self, target: &WorkspaceId) -> BackendAvailabilityRecord {
+        self.backend_availability
+            .get(target)
+            .cloned()
+            .unwrap_or_else(|| BackendAvailabilityRecord::not_tried(target.clone()))
+    }
+
+    fn record_backend_launching(
+        &mut self,
+        target: WorkspaceId,
+        attempt: u32,
+        progress: &ManagedBackendStartupProgress,
+    ) -> BackendAvailabilityRecord {
+        let record = BackendAvailabilityRecord::launching(target.clone(), attempt, progress);
+        self.backend_availability.insert(target, record.clone());
+        record
+    }
+
+    fn record_backend_available(
+        &mut self,
+        target: WorkspaceId,
+        attempt: u32,
+        process_id: Option<u32>,
+    ) -> BackendAvailabilityRecord {
+        let record = BackendAvailabilityRecord::available(target.clone(), attempt, process_id);
+        self.backend_availability.insert(target, record.clone());
+        record
+    }
+
+    fn record_backend_unavailable(
+        &mut self,
+        target: WorkspaceId,
+        attempt: u32,
+        unavailable: BackendUnavailable,
+    ) -> BackendAvailabilityRecord {
+        let record = BackendAvailabilityRecord::unavailable(target.clone(), attempt, unavailable);
+        self.backend_availability.insert(target, record.clone());
+        record
     }
 
     fn explicit_members(&self) -> &[beryl_model::workspace::WorkspaceMember] {
@@ -3996,6 +4079,13 @@ impl ConversationSurfaceState {
         Some(queue)
     }
 
+    fn pending_turn_input_queue_target_for_thread(&self, thread_id: &str) -> Option<&WorkspaceId> {
+        self.pending_turn_input_queue
+            .as_ref()
+            .filter(|queue| queue.is_for_thread(thread_id))
+            .map(PendingTurnInputQueue::execution_target)
+    }
+
     fn invalidate_stream_turns(
         &mut self,
         thread_id: &str,
@@ -4952,7 +5042,8 @@ impl ShellView {
             | ShellState::Picker(_)
             | ShellState::Opening(_)
             | ShellState::WorkspaceIdle(_)
-            | ShellState::WorkspaceLoaded(_) => None,
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::BackendUnavailable(_) => None,
         };
         if let Some(target) = target {
             self.shutdown_backend_server_for_target_in_background(&target, reason);
@@ -5146,22 +5237,21 @@ impl ShellView {
         self.begin_open_target_with_intent(target, WorkspaceOpenIntent::None, window, cx);
     }
 
-    fn begin_idle_primary_workspace_open_if_executable(
+    fn begin_primary_workspace_open_if_selected(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let mut loaded = match &self.state {
-            ShellState::WorkspaceIdle(idle)
-                if idle.loaded_workspace.selected_runtime().is_some() =>
-            {
-                idle.loaded_workspace.clone()
+        let can_open = self.workspace_shell_state_mut().is_some_and(|loaded| {
+            if loaded.selected_runtime().is_none() {
+                return false;
             }
-            _ => return false,
-        };
-
-        loaded.workspace_picker.close();
-        self.state = ShellState::WorkspaceLoaded(loaded);
+            loaded.workspace_picker.close();
+            true
+        });
+        if !can_open {
+            return false;
+        }
         self.begin_open_target(RetryTarget::WorkspacePrimary, window, cx);
         true
     }
@@ -5682,6 +5772,7 @@ impl ShellView {
                             "Retry the same workspace selection.".to_string(),
                             "Close Beryl if you want to stop here.".to_string(),
                         ],
+                        backend_unavailable: None,
                     }));
                     updated = true;
                     break;
@@ -5708,6 +5799,12 @@ impl ShellView {
                 }
                 WorkspaceUpdate::Progress(progress) => {
                     if let ShellState::Opening(opening) = &mut self.state {
+                        let target = opening.target.workspace();
+                        opening.loaded_workspace.record_backend_launching(
+                            target,
+                            opening.attempt,
+                            &progress,
+                        );
                         opening.progress = Some(progress.clone());
                         opening.detail = match progress.detail() {
                             Some(detail) => {
@@ -5997,6 +6094,12 @@ impl ShellView {
                 TurnWorkerUpdate::Event(event) => {
                     let execution_target = match &self.state {
                         ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+                        ShellState::BackendUnavailable(unavailable) => {
+                            Self::selected_thread_registered_execution_target(
+                                &unavailable.loaded_workspace,
+                                &unavailable.surface,
+                            )
+                        }
                         _ => None,
                     };
                     let started_turn = match &event {
@@ -6516,10 +6619,12 @@ impl ShellView {
             return false;
         }
 
-        let Some(connector) = self.backend_client_connector() else {
+        let Some(connector) = self.backend_client_connector_for_execution_target(&execution_target)
+        else {
             warn!(
                 thread_id = candidate.target_thread_id(),
-                "skipping automatic thread-title generation because no backend connector is available"
+                runtime_target = %execution_target.display_label(),
+                "skipping automatic thread-title generation because no backend connector is available for the target"
             );
             return false;
         };
@@ -7251,6 +7356,10 @@ impl ShellView {
             ShellState::Ready(ready) => Some((
                 ready.loaded_workspace.workspace.id().clone(),
                 ready.execution_target.runtime_mode().clone(),
+            )),
+            ShellState::BackendUnavailable(unavailable) => Some((
+                unavailable.loaded_workspace.workspace.id().clone(),
+                connector.launch_spec().runtime_mode().clone(),
             )),
             ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
@@ -9085,6 +9194,10 @@ impl ShellView {
                 ready.loaded_workspace.workspace.id().clone(),
                 ready.execution_target.clone(),
             ),
+            ShellState::BackendUnavailable(unavailable) => (
+                unavailable.loaded_workspace.workspace.id().clone(),
+                unavailable.execution_target.clone(),
+            ),
             ShellState::Discovering(_)
             | ShellState::Picker(_)
             | ShellState::Opening(_)
@@ -9102,6 +9215,20 @@ impl ShellView {
         let thread_id = target.thread_id.as_str().to_string();
         let label = target.label;
         let execution_target = target.execution_target;
+
+        if let Some(block) = self.known_backend_unavailable_block_for_target(&execution_target) {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread activation unavailable",
+                    block.message.clone(),
+                ));
+                cx.notify();
+            }
+            return ThreadActivationStart::Rejected {
+                kind: block.kind,
+                message: block.message,
+            };
+        }
 
         let connector = self.backend_client_connector_for_execution_target(&execution_target);
         if current_execution_target != execution_target && connector.is_none() {
@@ -9129,15 +9256,23 @@ impl ShellView {
         }
 
         let Some(connector) = connector else {
-            let message =
-                "Beryl does not have an active managed backend for this execution target.";
+            let message = self
+                .backend_required_target_block(&execution_target)
+                .map(|block| block.message)
+                .unwrap_or_else(|| {
+                    "Beryl does not have an active managed backend for this execution target."
+                        .to_string()
+                });
             if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new("Thread activation failed", message));
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread activation unavailable",
+                    message.clone(),
+                ));
                 cx.notify();
             }
             return ThreadActivationStart::Rejected {
                 kind: "backend_unavailable",
-                message: message.to_string(),
+                message,
             };
         };
         let Some(persistence) = self.workspace_persistence_for_worker() else {
@@ -9232,6 +9367,27 @@ impl ShellView {
                     ),
                 )
             }
+            ShellState::BackendUnavailable(unavailable) => {
+                let Some(thread_ref) = unavailable
+                    .surface
+                    .graph_overlay()
+                    .graph()
+                    .thread_ref(&thread_ref_id)
+                else {
+                    return;
+                };
+                (
+                    unavailable.execution_target.clone(),
+                    graph_thread_ref_availability(
+                        &unavailable.loaded_workspace.workspace_state,
+                        thread_ref,
+                        unavailable
+                            .loaded_workspace
+                            .resolved_implicit_home_execution_target()
+                            .as_ref(),
+                    ),
+                )
+            }
             ShellState::Discovering(_)
             | ShellState::Picker(_)
             | ShellState::Opening(_)
@@ -9248,6 +9404,17 @@ impl ShellView {
                         .detail()
                         .unwrap_or("That thread link is unavailable.")
                         .to_string(),
+                ));
+                cx.notify();
+            }
+            return;
+        }
+
+        if let Some(block) = self.known_backend_unavailable_block_for_target(&execution_target) {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread activation unavailable",
+                    block.message,
                 ));
                 cx.notify();
             }
@@ -9278,11 +9445,15 @@ impl ShellView {
         }
 
         let Some(connector) = connector else {
+            let message = self
+                .backend_required_target_block(&execution_target)
+                .map(|block| block.message)
+                .unwrap_or_else(|| {
+                    "Beryl does not have an active managed backend for this execution target."
+                        .to_string()
+                });
             if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation failed",
-                    "Beryl does not have an active managed backend for this execution target.",
-                ));
+                surface.set_notice(SurfaceNotice::new("Thread activation unavailable", message));
                 cx.notify();
             }
             return;
@@ -9391,7 +9562,7 @@ impl ShellView {
             return;
         }
 
-        if matches!(&self.state, ShellState::WorkspaceLoaded(_)) {
+        if self.workspace_shell_state().is_some() {
             self.begin_workspace_member_attach_resolution(
                 WorkspaceMemberAttachRequest::HostPath {
                     path: PathBuf::from(path),
@@ -9442,7 +9613,7 @@ impl ShellView {
             Ok(true) => {
                 self.persist_current_workspace_state(true);
                 self.reset_member_thread_inventory_for_workspace_state();
-                if !self.begin_idle_primary_workspace_open_if_executable(window, cx) {
+                if !self.begin_primary_workspace_open_if_selected(window, cx) {
                     self.begin_implicit_home_path_resolution_if_needed(cx);
                 }
             }
@@ -9501,7 +9672,7 @@ impl ShellView {
             return;
         }
 
-        if matches!(&self.state, ShellState::WorkspaceLoaded(_)) {
+        if self.workspace_shell_state().is_some() {
             self.begin_workspace_member_attach_resolution(
                 WorkspaceMemberAttachRequest::WslPath {
                     distro_name,
@@ -9546,6 +9717,13 @@ impl ShellView {
                     cx,
                 );
             }
+            ShellState::BackendUnavailable(unavailable) => {
+                self.begin_open_target(
+                    RetryTarget::Workspace(unavailable.execution_target.clone()),
+                    window,
+                    cx,
+                );
+            }
             _ => {}
         }
     }
@@ -9575,7 +9753,7 @@ impl ShellView {
                 }
                 self.persist_current_workspace_state(true);
                 self.reset_member_thread_inventory_for_workspace_state();
-                let _ = self.begin_idle_primary_workspace_open_if_executable(window, cx);
+                let _ = self.begin_primary_workspace_open_if_selected(window, cx);
             }
             Ok(false) => {
                 self.set_workspace_members_notice("That workspace member is already attached.");
@@ -9779,7 +9957,7 @@ impl ShellView {
         &mut self,
         member_id: WorkspaceMemberId,
         _: &gpui::ClickEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let result = {
@@ -9794,6 +9972,8 @@ impl ShellView {
         match result {
             Ok(true) => {
                 self.persist_current_workspace_state(true);
+                self.reset_member_thread_inventory_for_workspace_state();
+                let _ = self.begin_primary_workspace_open_if_selected(window, cx);
             }
             Ok(false) => {}
             Err(error) => {
@@ -9914,6 +10094,13 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(message) = self.thread_selector_controls_disabled_message() {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new("Thread selector unavailable", message));
+            }
+            cx.notify();
+            return;
+        }
         let changed = self.conversation_surface_mut().is_some_and(|surface| {
             surface.toggle_thread_selector();
             true
@@ -9965,6 +10152,10 @@ impl ShellView {
             || self.thread_history_page_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
         {
+            return;
+        }
+        if let Some(block) = self.current_new_thread_block() {
+            self.report_backend_operation_block("New thread unavailable", block, cx);
             return;
         }
 
@@ -10038,6 +10229,10 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(block) = self.current_conversation_submission_block() {
+            self.report_backend_operation_block("Composer unavailable", block, cx);
+            return;
+        }
         let Some(selection) = self.conversation_input.read(cx).selection_export() else {
             cx.propagate();
             return;
@@ -10128,6 +10323,10 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) {
         if self.conversation_input.read(cx).has_marked_text() {
+            return;
+        }
+        if let Some(block) = self.current_conversation_submission_block() {
+            self.report_backend_operation_block("Composer unavailable", block, cx);
             return;
         }
 
@@ -10708,18 +10907,9 @@ impl ShellView {
     }
 
     fn composer_image_delivery_runtime_mode(&self) -> Result<Option<RuntimeMode>, String> {
-        let ShellState::Ready(ready) = &self.state else {
-            return Ok(None);
-        };
-        if ready.surface.selected_thread_id().is_some() {
-            return Ok(Some(ready.execution_target.runtime_mode().clone()));
-        }
-
-        let execution_target = resolve_new_thread_execution_target(
-            &ready.loaded_workspace.workspace_state,
-            &ready.execution_target,
-        )
-        .map_err(|error| error.to_string())?;
+        let execution_target = self
+            .current_conversation_submission_target()
+            .map_err(|block| block.message)?;
         Ok(Some(execution_target.runtime_mode().clone()))
     }
 
@@ -10750,6 +10940,10 @@ impl ShellView {
                         return;
                     }
                 };
+                if let Some(block) = self.current_conversation_submission_block() {
+                    self.report_backend_operation_block("Composer unavailable", block, cx);
+                    return;
+                }
                 self.mark_accepted_composer_image_assets_retained(staged.draft());
                 let accepted_draft = staged.draft().with_durable_image_references();
 
@@ -10959,6 +11153,10 @@ impl ShellView {
         {
             return false;
         }
+        if let Some(block) = self.current_conversation_submission_block() {
+            self.report_backend_operation_block("Composer unavailable", block, cx);
+            return false;
+        }
 
         self.sync_composer_draft_from_input(cx);
         let Some(accepted_draft) = self.composer_draft.accepted() else {
@@ -11020,6 +11218,10 @@ impl ShellView {
         }
 
         if self.turn_receiver.is_some() {
+            if let Some(block) = self.current_conversation_submission_block() {
+                self.report_backend_operation_block("Composer unavailable", block, cx);
+                return false;
+            }
             if self.queue_active_turn_steering_from_composer(fragment, cx) {
                 self.notify_transcript_panel(cx);
                 return true;
@@ -11088,33 +11290,95 @@ impl ShellView {
             }
             ShellState::WorkspaceIdle(_) => return false,
             ShellState::WorkspaceLoaded(_) => return false,
+            ShellState::BackendUnavailable(unavailable) => {
+                let selected_thread_id =
+                    unavailable.surface.selected_thread_id().map(str::to_string);
+                let automatic_title_generation_allowed = selected_thread_id
+                    .as_deref()
+                    .map(|thread_id| {
+                        unavailable
+                            .loaded_workspace
+                            .workspace_state
+                            .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                                thread_id.to_string(),
+                            ))
+                    })
+                    .unwrap_or(true);
+                let turn_options = unavailable
+                    .surface
+                    .pending_turn_start_options(selected_thread_id.as_deref());
+                let workspace = if selected_thread_id.is_some() {
+                    Self::selected_thread_registered_execution_target(
+                        &unavailable.loaded_workspace,
+                        &unavailable.surface,
+                    )
+                    .unwrap_or_else(|| unavailable.execution_target.clone())
+                } else {
+                    match resolve_new_thread_execution_target(
+                        &unavailable.loaded_workspace.workspace_state,
+                        &unavailable.execution_target,
+                    ) {
+                        Ok(execution_target) => execution_target,
+                        Err(error) => {
+                            if let Some(surface) = self.conversation_surface_mut() {
+                                surface.set_notice(SurfaceNotice::new(
+                                    "New thread unavailable",
+                                    error.to_string(),
+                                ));
+                                cx.notify();
+                            }
+                            return false;
+                        }
+                    }
+                };
+                (
+                    unavailable.loaded_workspace.workspace.id().clone(),
+                    workspace,
+                    selected_thread_id,
+                    automatic_title_generation_allowed,
+                    turn_options,
+                )
+            }
             ShellState::Blocked(_) => return false,
             ShellState::Discovering(_) | ShellState::Picker(_) | ShellState::Opening(_) => {
                 return false;
             }
         };
 
+        let Some(connector) = self.backend_client_connector_for_execution_target(&workspace) else {
+            let block = self
+                .backend_required_target_block(&workspace)
+                .unwrap_or_else(|| BackendOperationBlock {
+                    kind: "backend_unavailable",
+                    message: format!(
+                        "Beryl does not have an active managed backend for {}.",
+                        workspace.display_label()
+                    ),
+                });
+            self.report_backend_operation_block("Composer unavailable", block, cx);
+            return false;
+        };
         let turn_options = self.turn_options_with_current_developer_instructions(
             selected_thread_id.as_deref(),
             turn_options,
         );
 
-        if let ShellState::Ready(ready) = &mut self.state {
-            ready.surface.begin_turn(fragment.clone());
+        match &mut self.state {
+            ShellState::Ready(ready) => ready.surface.begin_turn(fragment.clone()),
+            ShellState::BackendUnavailable(unavailable) => {
+                unavailable.surface.begin_turn(fragment.clone())
+            }
+            ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_)
+            | ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_) => {}
         }
         self.clear_composer_draft(cx);
 
         self.notify_transcript_panel(cx);
 
-        let Some(connector) = self.backend_client_connector_for_execution_target(&workspace) else {
-            if let Some(surface) = self.conversation_surface_mut() {
-                let _ = surface.finish_turn_failure(
-                    "Beryl does not have an active managed backend for the resolved workspace member.",
-                );
-            }
-            self.notify_transcript_panel(cx);
-            return true;
-        };
         let Some(persistence) = self.workspace_persistence_for_worker() else {
             if let Some(surface) = self.conversation_surface_mut() {
                 let _ = surface.finish_turn_failure(
@@ -11188,6 +11452,52 @@ impl ShellView {
                     }
                 }
             }
+            ShellState::BackendUnavailable(unavailable) => {
+                let Some(target) = unavailable.surface.selected_active_turn_steering_target()
+                else {
+                    return false;
+                };
+                let pending_steering_fragment =
+                    SteeringInputFragment::from_user_input_fragment(target.turn_index, &fragment);
+                if target.turn_id.is_none() {
+                    match unavailable.surface.pending_active_turn_steering_admission(
+                        &target.thread_id,
+                        target.turn_index,
+                        &pending_steering_fragment,
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => return false,
+                        Err(error) => {
+                            unavailable
+                                .surface
+                                .report_pending_input_admission_error(error);
+                            return false;
+                        }
+                    }
+                }
+                let Some(steering_fragment) = unavailable
+                    .surface
+                    .append_active_turn_steering_fragment(&target, fragment)
+                else {
+                    return false;
+                };
+                match target.turn_id {
+                    Some(turn_id) => Some((target.thread_id, turn_id, vec![steering_fragment])),
+                    None => {
+                        if !unavailable
+                            .surface
+                            .queue_pending_active_turn_steering_fragment(
+                                target.thread_id,
+                                target.turn_index,
+                                steering_fragment,
+                            )
+                        {
+                            return false;
+                        }
+                        None
+                    }
+                }
+            }
             ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
             | ShellState::Blocked(_)
@@ -11236,6 +11546,35 @@ impl ShellView {
                         turn_options,
                     )
                 }
+                ShellState::BackendUnavailable(unavailable) => {
+                    let Some(thread_id) = unavailable
+                        .surface
+                        .selected_thread_context_compaction_id()
+                        .map(str::to_string)
+                    else {
+                        return false;
+                    };
+                    let automatic_title_generation_allowed = unavailable
+                        .loaded_workspace
+                        .workspace_state
+                        .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                            thread_id.clone(),
+                        ));
+                    let turn_options = unavailable
+                        .surface
+                        .pending_turn_start_options(Some(thread_id.as_str()));
+                    let execution_target = Self::registered_thread_execution_target(
+                        &unavailable.loaded_workspace,
+                        &thread_id,
+                    )
+                    .unwrap_or_else(|| unavailable.execution_target.clone());
+                    (
+                        thread_id,
+                        execution_target,
+                        automatic_title_generation_allowed,
+                        turn_options,
+                    )
+                }
                 ShellState::WorkspaceIdle(_)
                 | ShellState::WorkspaceLoaded(_)
                 | ShellState::Blocked(_)
@@ -11252,6 +11591,15 @@ impl ShellView {
                 turn_options,
                 fragment,
             ),
+            ShellState::BackendUnavailable(unavailable) => {
+                unavailable.surface.queue_pending_turn_fragment(
+                    thread_id,
+                    execution_target,
+                    automatic_title_generation_allowed,
+                    turn_options,
+                    fragment,
+                )
+            }
             ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
             | ShellState::Blocked(_)
@@ -11286,10 +11634,16 @@ impl ShellView {
         }
 
         let Some(connector) = self.backend_client_connector() else {
+            let detail = self
+                .current_conversation_submission_block()
+                .map(|block| block.message)
+                .unwrap_or_else(|| {
+                    "Beryl does not have an active managed backend for this workspace.".to_string()
+                });
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
                     "Lifecycle continuation unavailable",
-                    "Beryl does not have an active managed backend for this workspace.",
+                    detail,
                 ));
             }
             return false;
@@ -11327,6 +11681,27 @@ impl ShellView {
                     turn_options,
                 )
             }
+            ShellState::BackendUnavailable(unavailable) => {
+                let automatic_title_generation_allowed = unavailable
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        thread_id.clone(),
+                    ));
+                let turn_options = unavailable
+                    .surface
+                    .pending_turn_start_options(Some(thread_id.as_str()));
+                let execution_target = Self::registered_thread_execution_target(
+                    &unavailable.loaded_workspace,
+                    &thread_id,
+                )
+                .unwrap_or_else(|| unavailable.execution_target.clone());
+                (
+                    execution_target,
+                    automatic_title_generation_allowed,
+                    turn_options,
+                )
+            }
             ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
             | ShellState::Blocked(_)
@@ -11343,6 +11718,15 @@ impl ShellView {
                 turn_options,
                 request.resume_fragment(),
             ),
+            ShellState::BackendUnavailable(unavailable) => {
+                unavailable.surface.queue_pending_turn_fragment(
+                    thread_id.clone(),
+                    execution_target,
+                    automatic_title_generation_allowed,
+                    turn_options,
+                    request.resume_fragment(),
+                )
+            }
             ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
             | ShellState::Blocked(_)
@@ -11417,29 +11801,66 @@ impl ShellView {
         message: String,
     ) -> bool {
         let mut queued = false;
-        if let ShellState::Ready(ready) = &mut self.state {
-            let automatic_title_generation_allowed = ready
-                .loaded_workspace
-                .workspace_state
-                .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+        match &mut self.state {
+            ShellState::Ready(ready) => {
+                let automatic_title_generation_allowed = ready
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        thread_id.clone(),
+                    ));
+                let turn_options = ready
+                    .surface
+                    .pending_turn_start_options(Some(thread_id.as_str()));
+                queued = ready.surface.move_steering_fragments_to_pending_turn(
                     thread_id.clone(),
-                ));
-            let turn_options = ready
-                .surface
-                .pending_turn_start_options(Some(thread_id.as_str()));
-            queued = ready.surface.move_steering_fragments_to_pending_turn(
-                thread_id.clone(),
-                ready.execution_target.clone(),
-                automatic_title_generation_allowed,
-                turn_options,
-                fragments,
-            );
-            if queued {
-                ready.surface.set_notice(SurfaceNotice::new(
-                    "Input queued for next turn",
-                    message.clone(),
-                ));
+                    ready.execution_target.clone(),
+                    automatic_title_generation_allowed,
+                    turn_options,
+                    fragments,
+                );
+                if queued {
+                    ready.surface.set_notice(SurfaceNotice::new(
+                        "Input queued for next turn",
+                        message.clone(),
+                    ));
+                }
             }
+            ShellState::BackendUnavailable(unavailable) => {
+                let automatic_title_generation_allowed = unavailable
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        thread_id.clone(),
+                    ));
+                let turn_options = unavailable
+                    .surface
+                    .pending_turn_start_options(Some(thread_id.as_str()));
+                let execution_target = Self::registered_thread_execution_target(
+                    &unavailable.loaded_workspace,
+                    &thread_id,
+                )
+                .unwrap_or_else(|| unavailable.execution_target.clone());
+                queued = unavailable.surface.move_steering_fragments_to_pending_turn(
+                    thread_id.clone(),
+                    execution_target,
+                    automatic_title_generation_allowed,
+                    turn_options,
+                    fragments,
+                );
+                if queued {
+                    unavailable.surface.set_notice(SurfaceNotice::new(
+                        "Input queued for next turn",
+                        message.clone(),
+                    ));
+                }
+            }
+            ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_)
+            | ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_) => {}
         }
 
         if queued && self.turn_receiver.is_none() {
@@ -11458,6 +11879,21 @@ impl ShellView {
             return false;
         }
 
+        let Some(workspace) = self
+            .conversation_surface()
+            .and_then(|surface| surface.pending_turn_input_queue_target_for_thread(thread_id))
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(connector) = self.backend_client_connector_for_execution_target(&workspace) else {
+            if let Some(block) = self.backend_required_target_block(&workspace)
+                && let Some(surface) = self.conversation_surface_mut()
+            {
+                surface.set_notice(SurfaceNotice::new("Input queue unavailable", block.message));
+            }
+            return false;
+        };
         let Some(queue) = self
             .conversation_surface_mut()
             .and_then(|surface| surface.take_pending_turn_input_queue_for_thread(thread_id))
@@ -11465,16 +11901,6 @@ impl ShellView {
             return false;
         };
 
-        let Some(connector) = self.backend_client_connector() else {
-            if let Some(surface) = self.conversation_surface_mut() {
-                let _ = surface.finish_turn_failure(
-                    "Beryl does not have an active managed backend for this workspace.",
-                );
-            }
-            return true;
-        };
-
-        let workspace = queue.execution_target().clone();
         let Some(beryl_workspace_id) = self
             .loaded_workspace()
             .map(|loaded| loaded.workspace.id().clone())
@@ -11596,6 +12022,7 @@ impl ShellView {
             | ShellState::Opening(_)
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
+            | ShellState::BackendUnavailable(_)
             | ShellState::Ready(_)
             | ShellState::Blocked(_) => None,
         }
@@ -11605,6 +12032,7 @@ impl ShellView {
         match &mut self.state {
             ShellState::WorkspaceIdle(idle) => Some(&mut idle.loaded_workspace),
             ShellState::WorkspaceLoaded(loaded) => Some(loaded),
+            ShellState::BackendUnavailable(unavailable) => Some(&mut unavailable.loaded_workspace),
             ShellState::Ready(ready) => Some(&mut ready.loaded_workspace),
             ShellState::Blocked(blocked) => blocked.loaded_workspace.as_mut(),
             ShellState::Discovering(_) | ShellState::Picker(_) | ShellState::Opening(_) => None,
@@ -11615,6 +12043,7 @@ impl ShellView {
         match &self.state {
             ShellState::WorkspaceIdle(idle) => Some(&idle.loaded_workspace),
             ShellState::WorkspaceLoaded(loaded) => Some(loaded),
+            ShellState::BackendUnavailable(unavailable) => Some(&unavailable.loaded_workspace),
             ShellState::Ready(ready) => Some(&ready.loaded_workspace),
             ShellState::Blocked(blocked) => blocked.loaded_workspace.as_ref(),
             ShellState::Discovering(_) | ShellState::Picker(_) | ShellState::Opening(_) => None,
@@ -11624,6 +12053,199 @@ impl ShellView {
     fn set_workspace_members_notice(&mut self, notice: impl Into<String>) {
         if let Some(loaded) = self.workspace_shell_state_mut() {
             loaded.set_workspace_members_notice(notice);
+        }
+    }
+
+    fn known_backend_unavailable_block_for_target(
+        &self,
+        target: &WorkspaceId,
+    ) -> Option<BackendOperationBlock> {
+        let reason = self
+            .workspace_shell_state()
+            .and_then(|loaded| loaded.backend_availability(target))
+            .and_then(BackendAvailabilityRecord::unavailable_reason)?;
+        let detail = if reason.detail().trim().is_empty() {
+            reason.summary().to_string()
+        } else if reason.detail() == reason.summary() {
+            reason.detail().to_string()
+        } else {
+            format!("{} {}", reason.summary(), reason.detail())
+        };
+        Some(BackendOperationBlock {
+            kind: "backend_unavailable",
+            message: format!(
+                "Backend unavailable for {}. {detail}",
+                target.display_label()
+            ),
+        })
+    }
+
+    fn backend_required_target_block(&self, target: &WorkspaceId) -> Option<BackendOperationBlock> {
+        if let Some(block) = self.known_backend_unavailable_block_for_target(target) {
+            return Some(block);
+        }
+
+        if self
+            .backend_client_connector_for_execution_target(target)
+            .is_some()
+        {
+            return None;
+        }
+
+        Some(BackendOperationBlock {
+            kind: "backend_unavailable",
+            message: format!(
+                "Beryl does not have an active managed backend for {}.",
+                target.display_label()
+            ),
+        })
+    }
+
+    fn current_new_thread_target(&self) -> Result<WorkspaceId, BackendOperationBlock> {
+        match &self.state {
+            ShellState::Ready(ready) => resolve_new_thread_execution_target(
+                &ready.loaded_workspace.workspace_state,
+                &ready.execution_target,
+            )
+            .map_err(|error| BackendOperationBlock {
+                kind: "not_ready",
+                message: error.to_string(),
+            }),
+            ShellState::BackendUnavailable(unavailable) => resolve_new_thread_execution_target(
+                &unavailable.loaded_workspace.workspace_state,
+                &unavailable.execution_target,
+            )
+            .map_err(|error| BackendOperationBlock {
+                kind: "not_ready",
+                message: error.to_string(),
+            }),
+            ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_)
+            | ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_) => Err(BackendOperationBlock {
+                kind: "not_ready",
+                message: "Beryl is not on a ready conversation surface.".to_string(),
+            }),
+        }
+    }
+
+    fn current_conversation_submission_target(&self) -> Result<WorkspaceId, BackendOperationBlock> {
+        match &self.state {
+            ShellState::Ready(ready) => {
+                if ready.surface.selected_thread_id().is_some() {
+                    Ok(ready.execution_target.clone())
+                } else {
+                    self.current_new_thread_target()
+                }
+            }
+            ShellState::BackendUnavailable(unavailable) => {
+                if unavailable.surface.selected_thread_id().is_some() {
+                    Ok(Self::selected_thread_registered_execution_target(
+                        &unavailable.loaded_workspace,
+                        &unavailable.surface,
+                    )
+                    .unwrap_or_else(|| unavailable.execution_target.clone()))
+                } else {
+                    self.current_new_thread_target()
+                }
+            }
+            ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_)
+            | ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_) => Err(BackendOperationBlock {
+                kind: "not_ready",
+                message: "Beryl is not on a ready conversation surface.".to_string(),
+            }),
+        }
+    }
+
+    fn current_conversation_submission_block(&self) -> Option<BackendOperationBlock> {
+        match self.current_conversation_submission_target() {
+            Ok(target) => self.backend_required_target_block(&target),
+            Err(block) => Some(block),
+        }
+    }
+
+    fn current_new_thread_block(&self) -> Option<BackendOperationBlock> {
+        match self.current_new_thread_target() {
+            Ok(target) => self.backend_required_target_block(&target),
+            Err(block) => Some(block),
+        }
+    }
+
+    fn registered_thread_execution_target(
+        loaded: &LoadedWorkspaceState,
+        thread_id: &str,
+    ) -> Option<WorkspaceId> {
+        loaded
+            .workspace_state
+            .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+            .map(|thread| thread.execution_target().clone())
+    }
+
+    fn selected_thread_registered_execution_target(
+        loaded: &LoadedWorkspaceState,
+        surface: &ConversationSurfaceState,
+    ) -> Option<WorkspaceId> {
+        Self::registered_thread_execution_target(loaded, surface.selected_thread_id()?)
+    }
+
+    fn report_backend_operation_block(
+        &mut self,
+        title: impl Into<String>,
+        block: BackendOperationBlock,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.set_notice(SurfaceNotice::new(title, block.message));
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn backend_controls_disabled_message(&self) -> Option<String> {
+        match &self.state {
+            ShellState::Blocked(blocked) if blocked.surface.is_some() => {
+                Some(blocked.summary.clone())
+            }
+            ShellState::Ready(_) | ShellState::BackendUnavailable(_) => self
+                .current_conversation_submission_block()
+                .map(|block| block.message),
+            ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_)
+            | ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_) => None,
+        }
+    }
+
+    pub(crate) fn new_thread_controls_disabled_message(&self) -> Option<String> {
+        if let ShellState::Blocked(blocked) = &self.state
+            && blocked.surface.is_some()
+        {
+            return Some(blocked.summary.clone());
+        }
+
+        self.current_new_thread_block().map(|block| block.message)
+    }
+
+    pub(crate) fn thread_selector_controls_disabled_message(&self) -> Option<String> {
+        match &self.state {
+            ShellState::Blocked(blocked) if blocked.surface.is_some() => {
+                Some(blocked.summary.clone())
+            }
+            ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_)
+            | ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::BackendUnavailable(_)
+            | ShellState::Ready(_)
+            | ShellState::Blocked(_) => None,
         }
     }
 
@@ -11652,6 +12274,11 @@ impl ShellView {
         match &self.state {
             ShellState::Ready(ready) if &ready.execution_target == execution_target => {
                 ready.surface.selected_thread_id().map(str::to_string)
+            }
+            ShellState::BackendUnavailable(unavailable)
+                if &unavailable.execution_target == execution_target =>
+            {
+                unavailable.surface.selected_thread_id().map(str::to_string)
             }
             ShellState::Blocked(blocked) if matches!(&blocked.target, RetryTarget::Workspace(target) if target == execution_target) => {
                 blocked
@@ -11725,6 +12352,11 @@ impl ShellView {
         let RetryTarget::Workspace(execution_target) = target else {
             return None;
         };
+        if let ShellState::BackendUnavailable(unavailable) = &self.state
+            && &unavailable.execution_target == execution_target
+        {
+            return Some(unavailable.surface.snapshot_for_backend_reopen());
+        }
         let ShellState::Blocked(blocked) = &self.state else {
             return None;
         };
@@ -12023,6 +12655,7 @@ impl ShellView {
 
     fn conversation_surface_mut(&mut self) -> Option<&mut ConversationSurfaceState> {
         match &mut self.state {
+            ShellState::BackendUnavailable(unavailable) => Some(&mut unavailable.surface),
             ShellState::Ready(ready) => Some(&mut ready.surface),
             ShellState::Blocked(blocked) => blocked.surface.as_mut(),
             ShellState::Discovering(_)
@@ -12043,9 +12676,13 @@ impl ShellView {
 
     pub(super) fn backend_client_connector(&self) -> Option<ManagedBackendClientConnector> {
         let execution_target = match &self.state {
-            ShellState::Ready(ready) => Some(&ready.execution_target),
+            ShellState::Ready(ready) if ready.surface.selected_thread_id().is_some() => {
+                Some(ready.execution_target.clone())
+            }
+            ShellState::Ready(_) => self.current_new_thread_target().ok(),
+            ShellState::BackendUnavailable(_) => self.current_conversation_submission_target().ok(),
             ShellState::Blocked(blocked) => match &blocked.target {
-                RetryTarget::Workspace(workspace) => Some(workspace),
+                RetryTarget::Workspace(workspace) => Some(workspace.clone()),
                 _ => None,
             },
             ShellState::Discovering(_)
@@ -12054,13 +12691,21 @@ impl ShellView {
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_) => None,
         }?;
-        self.backend_client_connector_for_execution_target(execution_target)
+        self.backend_client_connector_for_execution_target(&execution_target)
     }
 
     pub(super) fn backend_client_connector_for_execution_target(
         &self,
         execution_target: &WorkspaceId,
     ) -> Option<ManagedBackendClientConnector> {
+        if self
+            .workspace_shell_state()
+            .and_then(|loaded| loaded.backend_availability(execution_target))
+            .and_then(BackendAvailabilityRecord::unavailable_reason)
+            .is_some()
+        {
+            return None;
+        }
         self.backend_servers
             .get(execution_target)
             .map(ManagedBackendServer::client_connector)
@@ -12071,6 +12716,12 @@ impl ShellView {
     ) -> Vec<(WorkspaceId, ManagedBackendClientConnector)> {
         self.backend_servers
             .iter()
+            .filter(|(execution_target, _)| {
+                self.workspace_shell_state()
+                    .and_then(|loaded| loaded.backend_availability(execution_target))
+                    .and_then(BackendAvailabilityRecord::unavailable_reason)
+                    .is_none()
+            })
             .map(|(execution_target, server)| (execution_target.clone(), server.client_connector()))
             .collect()
     }
@@ -12393,6 +13044,9 @@ impl ShellView {
             .map(bounded_control_string);
         let selected_runtime_target = match &self.state {
             ShellState::Ready(ready) => Some(runtime_target_diagnostic(&ready.execution_target)),
+            ShellState::BackendUnavailable(unavailable) => {
+                Some(runtime_target_diagnostic(&unavailable.execution_target))
+            }
             ShellState::Blocked(blocked) => {
                 Some(runtime_target_diagnostic(&blocked.target.workspace()))
             }
@@ -12402,6 +13056,7 @@ impl ShellView {
             | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_) => None,
         };
+        let backend_unavailable = self.backend_unavailable_ui_state();
         let mut visible_media = panel_snapshot.visible_media;
         visible_media.preview.composer_image_preview = self.composer_image_preview_diagnostic();
 
@@ -12411,6 +13066,7 @@ impl ShellView {
             selected_workspace_id,
             selected_thread_id,
             selected_runtime_target,
+            backend_unavailable,
             turn_state: self.turn_ui_state(),
             transcript: self.transcript_ui_state(visible_row_limit),
             visible_media,
@@ -12425,6 +13081,33 @@ impl ShellView {
                     || matches!(self.state, ShellState::Opening(_)),
             },
         }
+    }
+
+    fn backend_unavailable_ui_state(&self) -> Option<BackendUnavailableUiState> {
+        let ShellState::BackendUnavailable(unavailable) = &self.state else {
+            return None;
+        };
+        let block = self
+            .known_backend_unavailable_block_for_target(&unavailable.execution_target)
+            .unwrap_or_else(|| BackendOperationBlock {
+                kind: "backend_unavailable",
+                message: format!(
+                    "Backend unavailable for {}.",
+                    unavailable.execution_target.display_label()
+                ),
+            });
+        let kind = unavailable
+            .availability
+            .unavailable_reason()
+            .map(|reason| reason.kind().diagnostic_label())
+            .unwrap_or(block.kind)
+            .to_string();
+
+        Some(BackendUnavailableUiState {
+            kind,
+            message: bounded_control_string(block.message),
+            runtime_target: runtime_target_diagnostic(&unavailable.execution_target),
+        })
     }
 
     fn turn_ui_state(&self) -> TurnUiState {
@@ -12476,6 +13159,7 @@ impl ShellView {
             ShellState::Opening(_) => "opening",
             ShellState::WorkspaceIdle(_) => "workspace_idle",
             ShellState::WorkspaceLoaded(_) => "workspace_loaded",
+            ShellState::BackendUnavailable(_) => "backend_unavailable",
             ShellState::Ready(_) => "ready",
             ShellState::Blocked(_) => "blocked",
         }
@@ -12612,6 +13296,39 @@ impl ShellView {
             .and_then(ConversationSurfaceState::selected_thread_id)
             .map(str::to_string)
             .map(bounded_control_string);
+        if let ShellState::BackendUnavailable(unavailable) = &self.state {
+            let block = self
+                .known_backend_unavailable_block_for_target(&unavailable.execution_target)
+                .unwrap_or_else(|| BackendOperationBlock {
+                    kind: "backend_unavailable",
+                    message: format!(
+                        "Backend unavailable for {}.",
+                        unavailable.execution_target.display_label()
+                    ),
+                });
+            return json!({
+                "status": block.kind,
+                "message": bounded_control_string(block.message),
+                "selectedWorkspaceId": selected_workspace_id,
+                "selectedThreadId": selected_thread_id,
+                "pendingNewThread": unavailable.surface.selected_thread_id().is_none(),
+                "refreshStarted": refresh_started,
+                "refreshing": false,
+                "refreshNeeded": unavailable.surface.member_thread_inventory().needs_refresh(),
+                "lastError": null,
+                "refreshedAtMillis": unavailable
+                    .surface
+                    .member_thread_inventory()
+                    .snapshot()
+                    .refreshed_at_millis(),
+                "groupCount": 0,
+                "threadCount": 0,
+                "threadsTruncated": false,
+                "groupsTruncated": false,
+                "groups": [],
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            });
+        }
         let Some(surface) = self.conversation_surface() else {
             return json!({
                 "status": "not_ready",
@@ -12770,6 +13487,13 @@ impl ShellView {
                 "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
             }));
         }
+        if let Some(block) = self.current_conversation_submission_block() {
+            return Ok(json!({
+                "status": block.kind,
+                "message": bounded_control_string(block.message),
+                "uiState": self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
+            }));
+        }
 
         self.conversation_input.update(cx, |input, cx| {
             input.set_text(text.as_str(), cx);
@@ -12877,6 +13601,9 @@ impl ShellView {
             .is_some_and(|surface| surface.selected_thread_id().is_none())
         {
             return Ok("already_selected");
+        }
+        if let Some(block) = self.current_new_thread_block() {
+            return Err((block.kind, block.message));
         }
         if self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
@@ -13287,6 +14014,7 @@ impl ShellView {
     fn process_diagnostic_snapshot(&self) -> ProcessDiagnosticSnapshot {
         let selected_target = match &self.state {
             ShellState::Ready(ready) => Some(&ready.execution_target),
+            ShellState::BackendUnavailable(unavailable) => Some(&unavailable.execution_target),
             _ => None,
         };
         let selected_workspace_id = self
@@ -13674,6 +14402,45 @@ impl ShellView {
                     .transcript_content_release_row_identities()
                     .to_vec(),
             }),
+            ShellState::BackendUnavailable(unavailable) => {
+                Some(render::transcript::TranscriptPanelSnapshot {
+                    workspace_id: Some(unavailable.loaded_workspace.workspace.id().clone()),
+                    workspace: unavailable.execution_target.clone(),
+                    appearance: self.appearance_settings(),
+                    selected_thread_present: unavailable.surface.selected_thread().is_some(),
+                    selected_thread_id: unavailable
+                        .surface
+                        .selected_thread_id()
+                        .map(str::to_string),
+                    pending_thread_activation_label: unavailable
+                        .surface
+                        .pending_thread_activation_label()
+                        .map(str::to_string),
+                    transcript_width: unavailable.surface.transcript_width(),
+                    transcript_list_state: unavailable.surface.transcript_list_state(),
+                    submit_anchor: unavailable.surface.transcript_submit_anchor_snapshot(),
+                    loaded_history_anchor_pending: unavailable
+                        .surface
+                        .loaded_history_anchor_pending(),
+                    older_history_loading: unavailable.surface.older_history_loading(),
+                    metrics: tracing::enabled!(tracing::Level::DEBUG).then(|| {
+                        unavailable
+                            .surface
+                            .transcript_presentation()
+                            .render_metrics()
+                    }),
+                    activity_caret: unavailable.surface.transcript_activity_caret(),
+                    transcript_edit_mode: unavailable.surface.transcript_edit_mode_snapshot(),
+                    transcript_reset_generation: unavailable.surface.transcript_reset_generation(),
+                    content_release_generation: unavailable
+                        .surface
+                        .transcript_content_release_generation(),
+                    content_release_row_identities: unavailable
+                        .surface
+                        .transcript_content_release_row_identities()
+                        .to_vec(),
+                })
+            }
             ShellState::Blocked(blocked) => blocked.surface.as_ref().map(|surface| {
                 render::transcript::TranscriptPanelSnapshot {
                     workspace_id: blocked
@@ -13713,6 +14480,7 @@ impl ShellView {
 
     fn conversation_surface(&self) -> Option<&ConversationSurfaceState> {
         match &self.state {
+            ShellState::BackendUnavailable(unavailable) => Some(&unavailable.surface),
             ShellState::Ready(ready) => Some(&ready.surface),
             ShellState::Blocked(blocked) => blocked.surface.as_ref(),
             ShellState::Discovering(_)

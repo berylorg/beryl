@@ -1,10 +1,14 @@
 use std::time::Instant;
 
+use beryl_backend::{HardStopCapabilities, ThreadSummary};
+use beryl_model::conversation::RegisteredConversationThread;
+use beryl_model::workspace::WorkspaceId;
+
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
-    BlockedState, ConversationSurfaceState, FailureSummary, OpenWorkspaceFailure, OpenedWorkspace,
-    RetryTarget, ShellState, ShellView, SurfaceNotice, ThreadHistoryPageOutcome,
-    TurnCompletionSoundCandidate,
+    BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
+    OpenWorkspaceFailure, OpenedWorkspace, RetryTarget, ShellState, ShellView, SurfaceNotice,
+    ThreadHistoryPageOutcome, TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
 };
 use crate::backend_failure::{
     json_rpc_error_detail, non_empty_user_text, source_chain_detail, truncate_user_detail,
@@ -72,6 +76,11 @@ impl ShellView {
                     false
                 };
                 let process_id = opened.server.process_id();
+                loaded_workspace.record_backend_available(
+                    opened.execution_target.clone(),
+                    attempt,
+                    process_id,
+                );
                 let workspace_id_for_log = loaded_workspace.workspace.id().as_str().to_string();
                 let active_thread_id = opened.selected_thread_id.clone().or_else(|| {
                     opened
@@ -122,7 +131,8 @@ impl ShellView {
                 {
                     surface.close_thread_selector();
                 }
-                self.status_model_cache.finish_loaded_with_config(
+                self.status_model_cache.finish_loaded_for_target(
+                    opened.execution_target.clone(),
                     opened.report.model_list().to_vec(),
                     opened.report.config_defaults().clone(),
                 );
@@ -181,6 +191,29 @@ impl ShellView {
                     detail = %error.detail,
                     "workspace open failed"
                 );
+                if let Some(backend_unavailable) = error.backend_unavailable.as_ref() {
+                    let availability = loaded_workspace.record_backend_unavailable(
+                        backend_unavailable.target.clone(),
+                        attempt,
+                        backend_unavailable.unavailable.clone(),
+                    );
+                    let surface = preserved_surface.unwrap_or_else(|| {
+                        seed_backend_unavailable_surface(
+                            &loaded_workspace,
+                            &backend_unavailable.target,
+                            backend_unavailable.surface_seed.clone(),
+                        )
+                    });
+                    self.cancel_thread_title_workers();
+                    self.state = ShellState::BackendUnavailable(super::BackendUnavailableState {
+                        attempt,
+                        loaded_workspace,
+                        execution_target: backend_unavailable.target.clone(),
+                        availability,
+                        surface,
+                    });
+                    return;
+                }
                 let disconnect = preserved_surface.is_some();
                 self.cancel_thread_title_workers();
                 self.state = ShellState::Blocked(BlockedState {
@@ -240,6 +273,14 @@ impl ShellView {
     pub(super) fn failure_summary(&self) -> Option<FailureSummary> {
         match &self.state {
             ShellState::Blocked(blocked) => Some(blocked.failure_summary()),
+            ShellState::BackendUnavailable(unavailable) => unavailable
+                .availability
+                .unavailable_reason()
+                .map(|reason| FailureSummary {
+                    stage: reason.stage(),
+                    title: reason.title(),
+                    summary: reason.summary().to_string(),
+                }),
             ShellState::Ready(ready) => ready.cleared_failure.clone(),
             ShellState::Opening(opening) => opening.previous_failure.clone(),
             ShellState::Discovering(_)
@@ -310,6 +351,7 @@ impl ShellView {
                 }
                 let active_execution_target = match &self.state {
                     ShellState::Ready(ready) => Some(ready.execution_target.clone()),
+                    ShellState::BackendUnavailable(_) => Some(execution_target.clone()),
                     ShellState::Discovering(_)
                     | ShellState::Picker(_)
                     | ShellState::Opening(_)
@@ -514,6 +556,66 @@ impl ShellView {
             disconnect: true,
             surface: Some(surface),
         });
+    }
+}
+
+fn seed_backend_unavailable_surface(
+    loaded_workspace: &LoadedWorkspaceState,
+    execution_target: &WorkspaceId,
+    seed: WorkspaceSurfaceSeed,
+) -> ConversationSurfaceState {
+    let (known_threads, selected_thread_id) =
+        unavailable_surface_thread_seed(loaded_workspace, execution_target);
+    ConversationSurfaceState::seeded(
+        loaded_workspace.workspace.id().clone(),
+        &loaded_workspace.workspace_state,
+        &loaded_workspace.workspace_ui_state,
+        known_threads,
+        HardStopCapabilities::default(),
+        None,
+        None,
+        Default::default(),
+        selected_thread_id,
+        None,
+        None,
+        seed.graph,
+        seed.graph_revision,
+        seed.graph_warning,
+    )
+}
+
+fn unavailable_surface_thread_seed(
+    loaded_workspace: &LoadedWorkspaceState,
+    execution_target: &WorkspaceId,
+) -> (Vec<ThreadSummary>, Option<String>) {
+    let Some(thread) = loaded_workspace
+        .workspace_state
+        .active_thread_registration()
+    else {
+        return (Vec::new(), None);
+    };
+    if thread.requires_rebind() || thread.execution_target() != execution_target {
+        return (Vec::new(), None);
+    }
+
+    let summary = thread_summary_from_registration(thread);
+    let selected_thread_id = summary.id.clone();
+    (vec![summary], Some(selected_thread_id))
+}
+
+fn thread_summary_from_registration(thread: &RegisteredConversationThread) -> ThreadSummary {
+    ThreadSummary {
+        id: thread.thread_id().as_str().to_string(),
+        forked_from_id: None,
+        cwd: thread.execution_target().canonical_path().to_path_buf(),
+        preview: thread.preview().to_string(),
+        name: thread.backend_name().map(str::to_string),
+        agent_nickname: None,
+        path: None,
+        created_at: thread.created_at_millis(),
+        updated_at: thread.updated_at_millis(),
+        model_provider: String::new(),
+        ephemeral: false,
     }
 }
 

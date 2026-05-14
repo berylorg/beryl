@@ -17,11 +17,12 @@ use beryl_backend::{
 };
 use diagnostic_dynamic_tools::VisibleMediaSnapshot;
 use gui_control_dynamic_tools::{
-    ActivityPanelUiState, BackgroundWorkUiState, CLOSE_POPUPS_TOOL, ClosePopupsResult,
-    GuiControlToolRequest, PopupUiState, SCROLL_TRANSCRIPT_TOOL,
-    SETTINGS_WINDOW_POPUP_CLOSE_REASON, SWITCH_THREAD_TOOL, SWITCH_WORKSPACE_TOOL,
-    ScrollTranscriptCommand, TranscriptUiState, UiStateSnapshot, close_popups_tool_response,
-    parse_beryl_gui_control_dynamic_tool_request,
+    ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CLOSE_POPUPS_TOOL,
+    ClosePopupsResult, GuiControlToolRequest, PopupUiState, READ_UI_STATE_TOOL,
+    SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON, SWITCH_THREAD_TOOL,
+    SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState, UiStateSnapshot,
+    close_popups_tool_response, parse_beryl_gui_control_dynamic_tool_request,
+    ui_state_tool_response,
 };
 use serde_json::{Value, json};
 
@@ -125,6 +126,7 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
                 selected_workspace_id: None,
                 selected_thread_id: None,
                 selected_runtime_target: None,
+                backend_unavailable: None,
                 turn_state: gui_control_dynamic_tools::TurnUiState::default(),
                 transcript: TranscriptUiState::default(),
                 visible_media: VisibleMediaSnapshot::default(),
@@ -149,6 +151,49 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
     assert_eq!(
         payload["result"]["uiState"]["popups"]["settingsWindowTransientPopupOpen"],
         false
+    );
+}
+
+#[test]
+fn ui_state_response_reports_backend_unavailable_reason() {
+    let runtime_target = diagnostic_dynamic_tools::RuntimeTargetDiagnostic {
+        runtime: "Host Windows".to_string(),
+        canonical_path: r"C:\Users\operator".to_string(),
+        display_label: r"Host Windows:C:\Users\operator".to_string(),
+    };
+    let request = tool_request(READ_UI_STATE_TOOL, json!({ "limit": 1 }));
+    let response = ui_state_tool_response(
+        &request,
+        UiStateSnapshot {
+            shell_state: "backend_unavailable".to_string(),
+            selected_surface: "conversation".to_string(),
+            selected_workspace_id: Some("untitled-1".to_string()),
+            selected_thread_id: None,
+            selected_runtime_target: Some(runtime_target.clone()),
+            backend_unavailable: Some(BackendUnavailableUiState {
+                kind: "missing_executable".to_string(),
+                message: "Backend unavailable for Host Windows.".to_string(),
+                runtime_target,
+            }),
+            turn_state: gui_control_dynamic_tools::TurnUiState::default(),
+            transcript: TranscriptUiState::default(),
+            visible_media: VisibleMediaSnapshot::default(),
+            activity_panel: ActivityPanelUiState::default(),
+            popups: PopupUiState::default(),
+            background_work: BackgroundWorkUiState::default(),
+        },
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["shellState"], "backend_unavailable");
+    assert_eq!(
+        payload["result"]["backendUnavailable"]["kind"],
+        "missing_executable"
+    );
+    assert_eq!(
+        payload["result"]["backendUnavailable"]["runtimeTarget"]["canonicalPath"],
+        r"C:\Users\operator"
     );
 }
 

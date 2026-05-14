@@ -235,11 +235,14 @@ pub(super) fn render_checklist_thread_start_menu(
     shell: &ShellView,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
+    new_thread_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
     let menu = surface.checklist_thread_start_menu().active()?;
     let entity = cx.entity();
-    let content = if loaded.selected_runtime().is_some() {
+    let content = if let Some(message) = new_thread_controls_disabled {
+        disabled_menu_content(shell, message).into_any_element()
+    } else if loaded.selected_runtime().is_some() {
         render_start_thread_menu_content(shell, cx).into_any_element()
     } else {
         disabled_menu_content(
@@ -418,7 +421,8 @@ fn render_start_thread_menu_content(
         ))
 }
 
-fn disabled_menu_content(shell: &ShellView, message: &'static str) -> impl IntoElement {
+fn disabled_menu_content(shell: &ShellView, message: impl Into<String>) -> impl IntoElement {
+    let message = message.into();
     div()
         .flex()
         .flex_col()

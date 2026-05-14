@@ -440,6 +440,35 @@ fn thread_selector_reconciles_columns_when_a_refreshed_snapshot_drops_a_member()
 }
 
 #[test]
+fn thread_selector_drops_activation_target_when_refresh_removes_selected_thread() {
+    let (workspace_id, workspace_state, first) = workspace_with_single_member();
+    let thread_id = ConversationThreadId::new("thread_a");
+    let initial_snapshot = build_member_thread_inventory_snapshot(
+        workspace_id.clone(),
+        &workspace_state,
+        empty_groups_for_workspace_state(&workspace_state),
+        vec![summary("thread_a", first.canonical_path())],
+        50,
+    );
+    let refreshed_snapshot = build_member_thread_inventory_snapshot(
+        workspace_id,
+        &workspace_state,
+        empty_groups_for_workspace_state(&workspace_state),
+        Vec::new(),
+        60,
+    );
+    let mut selector = ThreadSelectorState::default();
+
+    selector.open(&initial_snapshot, None);
+    selector.select_thread(0, thread_id);
+    assert!(selector.selected_activation_target().is_some());
+
+    selector.reconcile_snapshot(&refreshed_snapshot);
+
+    assert!(selector.selected_activation_target().is_none());
+}
+
+#[test]
 fn thread_selector_selected_thread_builds_exact_activation_request() {
     let (workspace_id, workspace_state, first, _) = workspace_with_two_members();
     let snapshot = build_member_thread_inventory_snapshot(

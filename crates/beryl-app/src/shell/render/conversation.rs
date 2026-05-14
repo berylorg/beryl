@@ -5,9 +5,9 @@ use gpui::{
 };
 
 use crate::shell::{
-    BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode, ConversationSurfaceState,
-    IdleWorkspaceState, LoadedWorkspaceState, ReadyState, ShellView, SurfaceNotice,
-    image_preview_popup, layout,
+    BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
+    ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState, ShellView,
+    SurfaceNotice, image_preview_popup, layout,
     status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
     status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
     tool_activity::ToolActivityRowStatus,
@@ -19,8 +19,8 @@ use super::checklist_sidebar::{
     render_checklist_thread_start_menu_listeners,
 };
 use super::common::{
-    button, card, inline_notice, secondary_button, secondary_button_with_active_state,
-    section_label, toolbar_controls_strip,
+    button, card, disabled_secondary_button, inline_notice, secondary_button,
+    secondary_button_with_active_state, section_label, toolbar_controls_strip,
 };
 use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
@@ -65,6 +65,71 @@ pub(super) fn render_ready_shell(
         workspace_rename_input,
         conversation_input,
         None,
+        None,
+        window,
+        cx,
+    )
+}
+
+pub(super) fn render_backend_unavailable_shell(
+    shell: &ShellView,
+    unavailable: &BackendUnavailableState,
+    transcript_panel: &Entity<TranscriptPanel>,
+    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
+    wsl_distro_input: &Entity<SingleLineInput>,
+    workspace_picker_filter_input: &Entity<SingleLineInput>,
+    workspace_rename_input: &Entity<SingleLineInput>,
+    conversation_input: &Entity<SingleLineInput>,
+    window: &mut Window,
+    cx: &mut Context<ShellView>,
+) -> gpui::AnyElement {
+    let reason = unavailable.availability.unavailable_reason();
+    let summary = reason
+        .map(|reason| reason.summary())
+        .unwrap_or("The backend for this runtime target is unavailable.");
+    let title = reason
+        .map(|reason| reason.title())
+        .unwrap_or("Backend unavailable");
+    let detail = reason
+        .map(|reason| reason.detail())
+        .unwrap_or("Beryl has not received detailed backend availability information.");
+    let empty_next_steps: &[String] = &[];
+    let next_steps = reason
+        .map(|reason| reason.next_steps())
+        .unwrap_or(empty_next_steps);
+    let banner = div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .child(inline_notice(summary, rgb(0x3f1d1d), rgb(0xfecaca)))
+        .child(div().text_sm().text_color(rgb(0xfecaca)).child(format!(
+            "Target: {}",
+            unavailable.execution_target.display_label()
+        )))
+        .child(button(
+            shell,
+            "retry-backend-unavailable-inline",
+            "Retry Backend",
+            cx.listener(ShellView::retry_workspace),
+        ))
+        .into_any_element();
+
+    render_workspace_surface(
+        shell,
+        &unavailable.loaded_workspace,
+        unavailable.loaded_workspace.workspace.title(),
+        &unavailable.execution_target,
+        None,
+        "backend unavailable",
+        &unavailable.surface,
+        transcript_panel,
+        checklist_sidebar_panel,
+        wsl_distro_input,
+        workspace_picker_filter_input,
+        workspace_rename_input,
+        conversation_input,
+        shell.backend_controls_disabled_message(),
+        Some((title, detail, next_steps, banner)),
         window,
         cx,
     )
@@ -377,6 +442,7 @@ pub(super) fn render_blocked_shell(
         workspace_picker_filter_input,
         workspace_rename_input,
         conversation_input,
+        Some(blocked.summary.clone()),
         Some((
             blocked.title,
             blocked.detail.as_str(),
@@ -402,10 +468,13 @@ fn render_workspace_surface(
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
     conversation_input: &Entity<SingleLineInput>,
+    backend_controls_disabled: Option<String>,
     blocked: Option<(&'static str, &str, &[String], gpui::AnyElement)>,
     window: &mut Window,
     cx: &mut Context<ShellView>,
 ) -> gpui::AnyElement {
+    let new_thread_controls_disabled = shell.new_thread_controls_disabled_message();
+    let thread_selector_controls_disabled = shell.thread_selector_controls_disabled_message();
     let toolbar = render_toolbar(
         shell,
         loaded_workspace,
@@ -413,6 +482,7 @@ fn render_workspace_surface(
         execution_target,
         surface,
         blocked.is_some(),
+        backend_controls_disabled.as_deref(),
         cx,
     )
     .into_any_element();
@@ -421,6 +491,8 @@ fn render_workspace_surface(
         execution_target,
         &loaded_workspace.workspace_state,
         surface,
+        new_thread_controls_disabled.as_deref(),
+        thread_selector_controls_disabled.as_deref(),
         cx,
     )
     .into_any_element();
@@ -435,6 +507,7 @@ fn render_workspace_surface(
         surface,
         conversation_input,
         checklist_sidebar_panel,
+        backend_controls_disabled.as_deref(),
         window,
         cx,
     )
@@ -498,7 +571,15 @@ fn render_workspace_surface(
         workspace_body = workspace_body.child(overlay);
     }
 
-    let status_line = render_status_line(shell, surface.status_line_projection(), cx);
+    let status_line = render_status_line(
+        shell,
+        if backend_controls_disabled.is_some() {
+            StatusLineProjection::unknown()
+        } else {
+            surface.status_line_projection()
+        },
+        cx,
+    );
 
     let mut body = div()
         .size_full()
@@ -591,13 +672,18 @@ fn render_workspace_surface(
 
     if surface.checklist_thread_start_menu().is_open() {
         body = body.child(render_checklist_thread_start_menu_listeners(cx));
-        if let Some(menu) = render_checklist_thread_start_menu(shell, loaded_workspace, surface, cx)
-        {
+        if let Some(menu) = render_checklist_thread_start_menu(
+            shell,
+            loaded_workspace,
+            surface,
+            new_thread_controls_disabled.as_deref(),
+            cx,
+        ) {
             body = body.child(menu);
         }
     }
 
-    if surface.thread_selector().is_open() {
+    if surface.thread_selector().is_open() && thread_selector_controls_disabled.is_none() {
         body = body.child(render_thread_selector_listeners(cx));
         if let Some(overlay) =
             render_thread_selector_overlay(shell, loaded_workspace, surface, window, cx)
@@ -619,7 +705,7 @@ fn render_workspace_surface(
             body = body.child(overlay);
         }
     }
-    if surface.status_line_operations().is_open() {
+    if surface.status_line_operations().is_open() && backend_controls_disabled.is_none() {
         body = body.child(render_status_operation_listeners(cx));
         if let Some(popup) =
             render_status_operation_popup(shell, surface, shell.status_model_cache(), cx)
@@ -960,6 +1046,7 @@ fn render_toolbar(
     _execution_target: &beryl_model::workspace::WorkspaceId,
     surface: &ConversationSurfaceState,
     blocked: bool,
+    _backend_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     toolbar_controls_strip(
@@ -1017,9 +1104,13 @@ fn render_thread_strip(
     workspace: &beryl_model::workspace::WorkspaceId,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
     surface: &ConversationSurfaceState,
+    new_thread_controls_disabled: Option<&str>,
+    thread_selector_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let entity = cx.entity();
+    let new_thread_enabled = new_thread_controls_disabled.is_none();
+    let thread_selector_enabled = thread_selector_controls_disabled.is_none();
     let active_label = surface
         .pending_thread_activation_label()
         .map(|label| format!("Opening {label}"))
@@ -1036,12 +1127,18 @@ fn render_thread_strip(
         .items_center()
         .gap_3()
         .px_4()
-        .child(thread_strip_action(
-            shell,
-            "thread-strip-new-thread",
-            "New Thread",
-            cx.listener(ShellView::start_new_thread),
-        ))
+        .child(if new_thread_enabled {
+            thread_strip_action(
+                shell,
+                "thread-strip-new-thread",
+                "New Thread",
+                cx.listener(ShellView::start_new_thread),
+            )
+            .into_any_element()
+        } else {
+            disabled_secondary_button(shell, "thread-strip-new-thread", "New Thread")
+                .into_any_element()
+        })
         .child(
             div()
                 .flex_1()
@@ -1087,21 +1184,27 @@ fn render_thread_strip(
                                 .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
                                 .flex()
                                 .items_center()
-                                .hover({
-                                    let theme = shell.secondary_button_theme();
-                                    move |style| style.bg(theme.hover.background)
+                                .when(thread_selector_enabled, |this| {
+                                    this.hover({
+                                        let theme = shell.secondary_button_theme();
+                                        move |style| style.bg(theme.hover.background)
+                                    })
                                 })
-                                .active({
-                                    let theme = shell.secondary_button_theme();
-                                    move |style| style.bg(theme.active.background)
+                                .when(thread_selector_enabled, |this| {
+                                    this.active({
+                                        let theme = shell.secondary_button_theme();
+                                        move |style| style.bg(theme.active.background)
+                                    })
                                 })
-                                .cursor_pointer()
+                                .when(thread_selector_enabled, |this| this.cursor_pointer())
                                 .child(
                                     div()
                                         .min_w(px(0.0))
                                         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                                         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
-                                        .text_color(if surface.thread_selector().is_open() {
+                                        .text_color(if !thread_selector_enabled {
+                                            shell.secondary_button_theme().disabled.foreground
+                                        } else if surface.thread_selector().is_open() {
                                             rgb(0x7dd3fc)
                                         } else {
                                             rgb(0xe2e8f0)
@@ -1110,7 +1213,9 @@ fn render_thread_strip(
                                         .truncate()
                                         .child(active_label),
                                 )
-                                .on_click(cx.listener(ShellView::toggle_thread_selector)),
+                                .when(thread_selector_enabled, |this| {
+                                    this.on_click(cx.listener(ShellView::toggle_thread_selector))
+                                }),
                         ),
                 ),
         )
@@ -1294,6 +1399,7 @@ fn render_split_surface(
     surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
     checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
+    backend_controls_disabled: Option<&str>,
     window: &mut Window,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -1329,8 +1435,14 @@ fn render_split_surface(
     let composer_height = composer_measurement.composer_height;
 
     let left_panel = render_left_panel(transcript_panel).into_any_element();
-    let composer =
-        render_composer(shell, conversation_input, &composer_measurement, cx).into_any_element();
+    let composer = render_composer(
+        shell,
+        conversation_input,
+        &composer_measurement,
+        backend_controls_disabled,
+        cx,
+    )
+    .into_any_element();
     let tool_activity_panel = render_tool_activity_panel(shell, surface, composer_height, cx);
     let checklist_sidebar = surface
         .checklist_sidebar_visible()
@@ -1677,32 +1789,40 @@ fn render_composer(
     shell: &ShellView,
     conversation_input: &Entity<SingleLineInput>,
     composer_measurement: &layout::ComposerInputMeasurement,
+    backend_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    div()
+    let enabled = backend_controls_disabled.is_none();
+    conversation_input.update(cx, |input, cx| input.set_enabled(enabled, cx));
+    let mut composer = div()
         .relative()
         .w_full()
         .h(composer_measurement.composer_height)
         .min_h(px(layout::COMPOSER_MIN_HEIGHT))
-        .key_context(COMPOSER_KEY_CONTEXT)
-        .on_action(cx.listener(ShellView::queue_turn_from_composer_action))
-        .on_action(cx.listener(ShellView::queue_turn_from_composer_text_enter_action))
-        .on_action(cx.listener(ShellView::copy_composer_selection_action))
-        .on_action(cx.listener(ShellView::cut_composer_selection_action))
-        .on_action(cx.listener(ShellView::paste_composer_clipboard_image_action))
-        .on_action(cx.listener(ShellView::browse_composer_history_previous_action))
-        .on_action(cx.listener(ShellView::browse_composer_history_next_action))
-        .on_action(cx.listener(ShellView::jump_transcript_turn_up_action))
-        .on_action(cx.listener(ShellView::jump_transcript_turn_down_action))
         .bg(shell.input_panel_background())
         .border_t_1()
-        .border_color(shell.separator_color())
-        .child(render_composer_input_area(
-            shell,
-            composer_measurement.input_render_height,
-            composer_measurement.text_top_padding,
-            conversation_input,
-        ))
+        .border_color(shell.separator_color());
+    if enabled {
+        composer = composer
+            .key_context(COMPOSER_KEY_CONTEXT)
+            .on_action(cx.listener(ShellView::queue_turn_from_composer_action))
+            .on_action(cx.listener(ShellView::queue_turn_from_composer_text_enter_action))
+            .on_action(cx.listener(ShellView::copy_composer_selection_action))
+            .on_action(cx.listener(ShellView::cut_composer_selection_action))
+            .on_action(cx.listener(ShellView::paste_composer_clipboard_image_action))
+            .on_action(cx.listener(ShellView::browse_composer_history_previous_action))
+            .on_action(cx.listener(ShellView::browse_composer_history_next_action))
+            .on_action(cx.listener(ShellView::jump_transcript_turn_up_action))
+            .on_action(cx.listener(ShellView::jump_transcript_turn_down_action));
+    }
+    composer.child(render_composer_input_area(
+        shell,
+        composer_measurement.input_render_height,
+        composer_measurement.text_top_padding,
+        conversation_input,
+        backend_controls_disabled,
+        cx,
+    ))
 }
 
 fn render_composer_input_area(
@@ -1710,6 +1830,8 @@ fn render_composer_input_area(
     input_render_height: gpui::Pixels,
     text_top_padding: gpui::Pixels,
     conversation_input: &Entity<SingleLineInput>,
+    backend_controls_disabled: Option<&str>,
+    cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     div()
         .absolute()
@@ -1725,6 +1847,8 @@ fn render_composer_input_area(
             input_render_height,
             text_top_padding,
             conversation_input,
+            backend_controls_disabled,
+            cx,
         ))
 }
 
@@ -1733,9 +1857,13 @@ fn composer_input_scroll_region(
     input_render_height: gpui::Pixels,
     text_top_padding: gpui::Pixels,
     conversation_input: &Entity<SingleLineInput>,
+    backend_controls_disabled: Option<&str>,
+    cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
+    let enabled = backend_controls_disabled.is_none();
+    conversation_input.update(cx, |input, cx| input.set_enabled(enabled, cx));
     let focus_input = conversation_input.clone();
-    div()
+    let mut region = div()
         .relative()
         .flex_1()
         .min_w(px(0.0))
@@ -1745,15 +1873,32 @@ fn composer_input_scroll_region(
         .pt(px(4.0))
         .pb(px(8.0))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
-        .bg(shell.input_background())
-        .border_1()
-        .border_color(shell.input_border())
-        .text_color(shell.input_foreground())
-        .cursor(CursorStyle::IBeam)
-        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-            let focus_handle = focus_input.read(cx).tab_focus_handle();
-            window.focus(&focus_handle);
+        .bg(if enabled {
+            shell.input_background()
+        } else {
+            rgba(0x111827cc)
         })
+        .border_1()
+        .border_color(if enabled {
+            shell.input_border()
+        } else {
+            shell.secondary_button_theme().disabled.border
+        })
+        .text_color(if enabled {
+            shell.input_foreground()
+        } else {
+            shell.secondary_button_theme().disabled.foreground
+        });
+    if enabled {
+        region = region.cursor(CursorStyle::IBeam).on_mouse_down(
+            MouseButton::Left,
+            move |_, window, cx| {
+                let focus_handle = focus_input.read(cx).tab_focus_handle();
+                window.focus(&focus_handle);
+            },
+        );
+    }
+    region
         .child(
             div()
                 .size_full()
@@ -1777,6 +1922,16 @@ fn composer_input_scroll_region(
                         .child(conversation_input.clone()),
                 ),
         )
+        .when(!enabled, |this| {
+            this.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .bg(rgba(0x02061766)),
+            )
+        })
 }
 
 fn render_loaded_workspace_composer(
@@ -1812,5 +1967,7 @@ fn render_loaded_workspace_composer(
             composer_measurement.input_render_height,
             composer_measurement.text_top_padding,
             conversation_input,
+            Some("Workspace backend is not ready."),
+            cx,
         ))
 }
