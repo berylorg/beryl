@@ -32,7 +32,9 @@ impl CodePanelSyntaxTheme {
 
     fn foreground_for_role(self, role: SyntaxTokenRole) -> Rgba {
         match role {
-            SyntaxTokenRole::MarkupHeadingMarker => self.heading_foreground,
+            SyntaxTokenRole::MarkupHeadingMarker | SyntaxTokenRole::SyntaxSectionHeader => {
+                self.heading_foreground
+            }
             SyntaxTokenRole::MarkupEmphasisDelimiter => self.emphasis_foreground,
             SyntaxTokenRole::MarkupStrongDelimiter => self.strong_emphasis_foreground,
             SyntaxTokenRole::MarkupCodeBlock | SyntaxTokenRole::MarkupCodeSpan => {
@@ -40,8 +42,15 @@ impl CodePanelSyntaxTheme {
             }
             SyntaxTokenRole::MarkupFenceInfo
             | SyntaxTokenRole::MarkupLinkText
-            | SyntaxTokenRole::MarkupLinkDestination => self.link_foreground,
-            SyntaxTokenRole::Escape => self.escape_foreground,
+            | SyntaxTokenRole::MarkupLinkDestination
+            | SyntaxTokenRole::SyntaxKey => self.link_foreground,
+            SyntaxTokenRole::SyntaxString => self.emphasis_foreground,
+            SyntaxTokenRole::SyntaxBoolean
+            | SyntaxTokenRole::SyntaxNull
+            | SyntaxTokenRole::SyntaxDateTime
+            | SyntaxTokenRole::SyntaxError => self.strong_emphasis_foreground,
+            SyntaxTokenRole::SyntaxNumber => self.code_foreground,
+            SyntaxTokenRole::Escape | SyntaxTokenRole::SyntaxEscape => self.escape_foreground,
             SyntaxTokenRole::MarkupQuoteMarker
             | SyntaxTokenRole::MarkupListMarker
             | SyntaxTokenRole::MarkupThematicBreak
@@ -49,7 +58,10 @@ impl CodePanelSyntaxTheme {
             | SyntaxTokenRole::MarkupCodeSpanDelimiter
             | SyntaxTokenRole::MarkupImageMarker
             | SyntaxTokenRole::MarkupPunctuation
-            | SyntaxTokenRole::MarkupHtml => self.structural_foreground,
+            | SyntaxTokenRole::MarkupHtml
+            | SyntaxTokenRole::SyntaxStructuralPunctuation
+            | SyntaxTokenRole::SyntaxComment
+            | SyntaxTokenRole::SyntaxAssignment => self.structural_foreground,
         }
     }
 }

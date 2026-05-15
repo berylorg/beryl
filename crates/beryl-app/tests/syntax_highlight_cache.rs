@@ -3,7 +3,9 @@ mod syntax_highlighting;
 
 use std::{collections::HashSet, sync::Arc};
 
-use syntax_highlighting::{SyntaxHighlightCache, SyntaxHighlightRequest, SyntaxTokenRole};
+use syntax_highlighting::{
+    SyntaxHighlightCache, SyntaxHighlightRequest, SyntaxLanguage, SyntaxTokenRole,
+};
 
 fn roles(highlight: &syntax_highlighting::SyntaxHighlight) -> Vec<SyntaxTokenRole> {
     highlight
@@ -121,6 +123,166 @@ fn highlight_cache_drops_pending_markdown_when_label_becomes_plain() {
     let stats = cache.stats();
     assert_eq!(stats.uncached_plain_lookups, 2);
     assert_eq!(stats.stale_completions, 1);
+}
+
+#[test]
+fn highlight_cache_switches_one_owner_between_registered_languages_without_stale_reuse() {
+    let mut cache = SyntaxHighlightCache::new(8, 4096);
+
+    let markdown = complete_ready_highlight(&mut cache, "panel:1", "# heading", Some("markdown"));
+    assert_eq!(markdown.language(), Some(SyntaxLanguage::Markdown));
+    assert_eq!(
+        roles(markdown.as_ref()),
+        vec![SyntaxTokenRole::MarkupHeadingMarker]
+    );
+
+    for (label, language, source) in [
+        ("json", SyntaxLanguage::Json, r#"{"same": true}"#),
+        (
+            "jsonl",
+            SyntaxLanguage::Jsonl,
+            r#"{"same": true}
+false"#,
+        ),
+        ("toml", SyntaxLanguage::Toml, "same = true"),
+        ("ini", SyntaxLanguage::WindowsIni, "same=true"),
+    ] {
+        let pending = cache.lookup("panel:1", source, Some(label));
+        assert!(pending.highlight.is_plain());
+        assert_eq!(cache.stats().entries, 1);
+        let request = pending
+            .highlight_request
+            .expect("registered language switch should schedule highlighting");
+        let result = complete_request(&mut cache, request);
+        assert!(result.display_changed);
+        assert!(!result.stale);
+
+        let ready = cache.lookup("panel:1", source, Some(label));
+        assert!(ready.highlight_request.is_none());
+        assert_eq!(ready.highlight.language(), Some(language));
+        if matches!(
+            language,
+            SyntaxLanguage::Json | SyntaxLanguage::Jsonl | SyntaxLanguage::Toml
+        ) {
+            let ready_roles = roles(ready.highlight.as_ref());
+            assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxKey));
+            assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxBoolean));
+        } else {
+            let ready_roles = roles(ready.highlight.as_ref());
+            assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxKey));
+            assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxAssignment));
+            assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxString));
+        }
+        assert_eq!(cache.stats().entries, 1);
+    }
+
+    let unsupported = cache.lookup("panel:1", "same source", Some("json5"));
+    assert!(unsupported.highlight.is_plain());
+    assert!(unsupported.highlight_request.is_none());
+    assert_eq!(cache.stats().entries, 0);
+}
+
+#[test]
+fn highlight_cache_rejects_pending_completion_after_registered_language_switch() {
+    let mut cache = SyntaxHighlightCache::new(8, 4096);
+
+    let json = cache.lookup("panel:1", r#"{"same": true}"#, Some("json"));
+    let stale_json_request = json
+        .highlight_request
+        .expect("JSON lookup should schedule highlighting");
+
+    let toml = cache.lookup("panel:1", "same = true", Some("toml"));
+    let toml_request = toml
+        .highlight_request
+        .expect("switching to TOML should schedule a replacement highlight");
+    assert!(toml.highlight.is_plain());
+    assert_eq!(cache.stats().entries, 1);
+    assert_eq!(cache.stats().pending_entries, 1);
+
+    let stale = complete_request(&mut cache, stale_json_request);
+    assert!(stale.stale);
+    assert!(!stale.display_changed);
+    assert!(stale.follow_up_request.is_none());
+    assert_eq!(cache.stats().entries, 1);
+    assert_eq!(cache.stats().pending_entries, 1);
+
+    let ready_result = complete_request(&mut cache, toml_request);
+    assert!(ready_result.display_changed);
+    assert!(!ready_result.stale);
+
+    let ready = cache.lookup("panel:1", "same = true", Some("toml"));
+    assert_eq!(ready.highlight.language(), Some(SyntaxLanguage::Toml));
+    let ready_roles = roles(ready.highlight.as_ref());
+    assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxKey));
+    assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxAssignment));
+    assert!(ready_roles.contains(&SyntaxTokenRole::SyntaxBoolean));
+}
+
+#[test]
+fn highlight_cache_rejects_pending_config_completion_after_label_becomes_plain() {
+    let mut cache = SyntaxHighlightCache::new(8, 4096);
+
+    let ini = cache.lookup("panel:1", "same=true", Some("ini"));
+    let stale_ini_request = ini
+        .highlight_request
+        .expect("INI lookup should schedule highlighting");
+
+    let unsupported = cache.lookup("panel:1", "same=true", Some("json5"));
+    assert!(unsupported.highlight.is_plain());
+    assert!(unsupported.highlight_request.is_none());
+    assert_eq!(cache.stats().entries, 0);
+    assert_eq!(cache.stats().pending_entries, 0);
+
+    let stale = complete_request(&mut cache, stale_ini_request);
+    assert!(stale.stale);
+    assert!(!stale.display_changed);
+    assert!(stale.follow_up_request.is_none());
+}
+
+#[test]
+fn highlight_cache_bounds_entries_across_registered_config_languages() {
+    let mut cache = SyntaxHighlightCache::new(3, 4096);
+
+    for (owner_id, source, label) in [
+        ("panel:json", r#"{"same": true}"#, "json"),
+        ("panel:jsonl", "{\"same\": true}\nfalse", "jsonl"),
+        ("panel:toml", "same = true", "toml"),
+        ("panel:ini", "same=true", "ini"),
+    ] {
+        complete_ready_highlight(&mut cache, owner_id, source, Some(label));
+    }
+
+    let stats = cache.stats();
+    assert_eq!(stats.entries, 3);
+    assert_eq!(stats.evictions, 1);
+
+    let evicted = cache.lookup("panel:json", r#"{"same": true}"#, Some("json"));
+    assert!(evicted.highlight_request.is_some());
+}
+
+#[test]
+fn highlight_cache_does_not_schedule_oversized_config_sources_on_render_lookup() {
+    let mut cache = SyntaxHighlightCache::new(8, 32);
+    let long = "x".repeat(64);
+    let cases = [
+        ("json", format!(r#"{{"long":"{long}"}}"#)),
+        ("jsonl", format!(r#"{{"long":"{long}"}}"#)),
+        ("toml", format!("long = \"{long}\"")),
+        ("ini", format!("long={long}")),
+    ];
+
+    for (label, source) in cases {
+        let lookup = cache.lookup("panel:1", source.as_str(), Some(label));
+        assert!(lookup.highlight.is_plain());
+        assert!(lookup.highlight_request.is_none());
+        assert_eq!(cache.stats().entries, 0);
+        assert_eq!(cache.stats().pending_entries, 0);
+    }
+
+    let stats = cache.stats();
+    assert_eq!(stats.scheduled_highlights, 0);
+    assert_eq!(stats.uncached_oversize_lookups, 4);
+    assert_eq!(stats.represented_source_bytes, 0);
 }
 
 #[test]

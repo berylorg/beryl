@@ -17,6 +17,10 @@ pub(crate) fn normalize_syntax_language(syntax_label: Option<&str>) -> Option<Sy
 
     match first_word.to_ascii_lowercase().as_str() {
         "markdown" | "md" | "mdown" | "mkd" | "mkdn" | "gfm" => Some(SyntaxLanguage::Markdown),
+        "json" => Some(SyntaxLanguage::Json),
+        "jsonl" | "ndjson" => Some(SyntaxLanguage::Jsonl),
+        "toml" => Some(SyntaxLanguage::Toml),
+        "ini" => Some(SyntaxLanguage::WindowsIni),
         _ => None,
     }
 }

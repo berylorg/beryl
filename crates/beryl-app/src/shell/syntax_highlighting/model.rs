@@ -3,12 +3,20 @@ use std::{hash::Hash, ops::Range};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum SyntaxLanguage {
     Markdown,
+    Json,
+    Jsonl,
+    Toml,
+    WindowsIni,
 }
 
 impl SyntaxLanguage {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Markdown => "markdown",
+            Self::Json => "json",
+            Self::Jsonl => "jsonl",
+            Self::Toml => "toml",
+            Self::WindowsIni => "ini",
         }
     }
 }
@@ -32,6 +40,18 @@ pub(crate) enum SyntaxTokenRole {
     MarkupPunctuation,
     MarkupHtml,
     Escape,
+    SyntaxStructuralPunctuation,
+    SyntaxKey,
+    SyntaxString,
+    SyntaxNumber,
+    SyntaxBoolean,
+    SyntaxNull,
+    SyntaxDateTime,
+    SyntaxComment,
+    SyntaxSectionHeader,
+    SyntaxAssignment,
+    SyntaxEscape,
+    SyntaxError,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

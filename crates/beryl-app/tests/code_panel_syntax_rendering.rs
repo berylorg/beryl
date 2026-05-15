@@ -17,7 +17,10 @@ mod scrollbars;
 
 use code_panel::{CodePanelSyntaxTheme, CodePanelWrapMode};
 use gpui::{Rgba, TextRun, px, rgb};
-use syntax_highlighting::{SyntaxHighlight, SyntaxHighlightCache, highlight_syntax};
+use syntax_highlighting::{
+    SyntaxHighlight, SyntaxHighlightCache, SyntaxLanguage, SyntaxToken, SyntaxTokenRole,
+    highlight_syntax,
+};
 
 fn theme() -> CodePanelSyntaxTheme {
     CodePanelSyntaxTheme {
@@ -113,6 +116,50 @@ fn theme_changes_affect_rendered_token_styles() {
     assert_ne!(first_runs[1].color, second_runs[1].color);
     assert_run(&second_runs[0], 1, rgb(0xa0a0a0));
     assert_run(&second_runs[1], 8, rgb(0xb0b0b0));
+}
+
+#[test]
+fn config_language_token_roles_have_intentional_theme_mappings() {
+    let roles = [
+        SyntaxTokenRole::SyntaxStructuralPunctuation,
+        SyntaxTokenRole::SyntaxKey,
+        SyntaxTokenRole::SyntaxString,
+        SyntaxTokenRole::SyntaxNumber,
+        SyntaxTokenRole::SyntaxBoolean,
+        SyntaxTokenRole::SyntaxNull,
+        SyntaxTokenRole::SyntaxDateTime,
+        SyntaxTokenRole::SyntaxComment,
+        SyntaxTokenRole::SyntaxSectionHeader,
+        SyntaxTokenRole::SyntaxAssignment,
+        SyntaxTokenRole::SyntaxEscape,
+        SyntaxTokenRole::SyntaxError,
+    ];
+    let source = "abcdefghijkl";
+    let highlight = SyntaxHighlight::new(
+        SyntaxLanguage::Json,
+        roles
+            .iter()
+            .enumerate()
+            .map(|(index, role)| SyntaxToken::new(*role, index..index + 1))
+            .collect(),
+    );
+
+    let (text, runs) = styled_line_parts_for_highlight(source, &highlight, theme());
+
+    assert_eq!(text, source);
+    assert_eq!(runs.len(), roles.len());
+    assert_run(&runs[0], 1, rgb(0x202020));
+    assert_run(&runs[1], 1, rgb(0x707070));
+    assert_run(&runs[2], 1, rgb(0x404040));
+    assert_run(&runs[3], 1, rgb(0x606060));
+    assert_run(&runs[4], 1, rgb(0x505050));
+    assert_run(&runs[5], 1, rgb(0x505050));
+    assert_run(&runs[6], 1, rgb(0x505050));
+    assert_run(&runs[7], 1, rgb(0x202020));
+    assert_run(&runs[8], 1, rgb(0x303030));
+    assert_run(&runs[9], 1, rgb(0x202020));
+    assert_run(&runs[10], 1, rgb(0x808080));
+    assert_run(&runs[11], 1, rgb(0x505050));
 }
 
 #[test]
