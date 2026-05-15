@@ -250,14 +250,18 @@ pub(super) fn secondary_labeled_cycle_button_with_active_state(
 ) -> gpui::Stateful<gpui::Div> {
     let label = label.into();
     let value_label = value_label.into();
+    let id = id.into();
     let theme = shell.secondary_button_theme();
     let visual_state = if active {
         ChromeButtonVisualState::Active
     } else {
         ChromeButtonVisualState::Normal
     };
-    let divider_color = shell.separator_color();
+    let button_state = visual_state.theme_state(theme);
+    let divider_group_id: SharedString = format!("{id}-divider").into();
+    let divider_element_id: SharedString = format!("{divider_group_id}-element").into();
     themed_button_container(theme, visual_state, id)
+        .group(divider_group_id.clone())
         .overflow_hidden()
         .child(
             div()
@@ -268,7 +272,17 @@ pub(super) fn secondary_labeled_cycle_button_with_active_state(
                 .justify_center()
                 .child(label),
         )
-        .child(div().h_full().w(px(1.0)).bg(divider_color))
+        .child(
+            div()
+                .h_full()
+                .w(px(1.0))
+                .bg(button_state.border)
+                .id(divider_element_id)
+                .group_hover(divider_group_id.clone(), move |style| {
+                    style.bg(theme.hover.border)
+                })
+                .group_active(divider_group_id, move |style| style.bg(theme.active.border)),
+        )
         .child(
             div()
                 .h_full()

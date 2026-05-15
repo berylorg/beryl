@@ -50,7 +50,13 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
     assert!(activity_mode_body.contains("\"Activity\""));
     assert!(toolbar_body.contains("surface.tool_activity_panel_mode().value_label()"));
     assert!(labeled_cycle_button_body.contains("shell.secondary_button_theme()"));
-    assert!(labeled_cycle_button_body.contains("shell.separator_color()"));
+    assert!(labeled_cycle_button_body.contains("visual_state.theme_state(theme)"));
+    assert!(labeled_cycle_button_body.contains(".bg(button_state.border)"));
+    assert!(labeled_cycle_button_body.contains(".group_hover("));
+    assert!(labeled_cycle_button_body.contains("theme.hover.border"));
+    assert!(labeled_cycle_button_body.contains(".group_active("));
+    assert!(labeled_cycle_button_body.contains("theme.active.border"));
+    assert!(!labeled_cycle_button_body.contains("shell.separator_color()"));
     assert!(labeled_cycle_button_body.contains(".on_click("));
     assert!(labeled_cycle_button_body.contains(".w(px(1.0))"));
     assert!(themed_button_base_body.contains("themed_button_container"));
