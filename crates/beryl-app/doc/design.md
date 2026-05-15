@@ -251,6 +251,7 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 
 - This crate owns the native `gpui` presentation of parsed transcript Markdown structures.
 - Transcript presentation uses application appearance roles for conversation text, commentary foreground, reasoning foreground, Markdown headers, code, emphasis, and strong emphasis. Final-answer assistant messages use conversation text as their base foreground unless a more specific Markdown role overrides it.
+- Transcript Markdown list indentation is typography-relative. The root list marker-leading margin is `1.5M`, where `M` is the measured glyph advance of `M` in the active list item text font and size. Marker/body gaps and marker columns are derived from that same metric so unordered and ordered list spacing tracks transcript typography rather than fixed pixel constants.
 - Transcript presentation may use textual fallback elements for semantic structures that do not yet have dedicated UI renderers, including math spans or math blocks.
 - Transcript code blocks are rendered through the application code-panel presentation path.
 - This crate owns the Beryl syntax highlighter used by code panels. The highlighter is parser-backed, uses Beryl-owned language parsers, and does not delegate syntax classification to a third-party syntax-highlighting engine.

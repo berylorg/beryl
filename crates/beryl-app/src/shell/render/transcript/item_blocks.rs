@@ -1,7 +1,7 @@
 use std::{cell::Cell, collections::HashSet, rc::Rc, sync::Arc, time::Instant};
 
 use beryl_model::workspace::WorkspaceId;
-use gpui::{AnyElement, App, Rgba, div, prelude::*, rgb};
+use gpui::{AnyElement, App, Pixels, Rgba, div, prelude::*, rgb};
 
 use crate::shell::execution_detail::{
     AgentMessageDetail, ExecutionItem, ReasoningDetail, TurnExecutionRecord, TurnExecutionStatus,
@@ -31,6 +31,7 @@ pub(super) fn render_item(
     markdown_context: TranscriptMarkdownRenderContext,
     stream_projection_context: TranscriptStreamProjectionContext,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     row_identity: &str,
     initial_break_before: usize,
     selection_order: Rc<Cell<usize>>,
@@ -49,6 +50,7 @@ pub(super) fn render_item(
             selection_order,
             appearance.as_ref(),
             code_layout,
+            conversation_m_advance,
             cx,
         ),
         ExecutionItem::Reasoning(item) => render_reasoning(
@@ -63,6 +65,7 @@ pub(super) fn render_item(
             selection_order,
             appearance.as_ref(),
             code_layout,
+            conversation_m_advance,
             cx,
         ),
         ExecutionItem::CommandExecution(_)
@@ -84,6 +87,7 @@ pub(super) fn render_agent_message(
     selection_order: Rc<Cell<usize>>,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     cx: &mut App,
 ) -> Option<gpui::AnyElement> {
     let markdown_style = agent_message_markdown_style(item, appearance);
@@ -116,6 +120,7 @@ pub(super) fn render_agent_message(
         markdown.render_plan(),
         appearance,
         code_layout,
+        conversation_m_advance,
         markdown_style,
         code_panel_state.controls_for(
             row_identity.to_string(),
@@ -154,6 +159,7 @@ pub(super) fn render_reasoning(
     selection_order: Rc<Cell<usize>>,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     cx: &mut App,
 ) -> Option<AnyElement> {
     let rendered_reasoning_block_count = Rc::new(Cell::new(0usize));
@@ -173,6 +179,7 @@ pub(super) fn render_reasoning(
         selection_order.clone(),
         appearance,
         code_layout,
+        conversation_m_advance,
         cx,
     );
     blocks.extend(markdown_reasoning_blocks(
@@ -191,6 +198,7 @@ pub(super) fn render_reasoning(
         selection_order,
         appearance,
         code_layout,
+        conversation_m_advance,
         cx,
     ));
 
@@ -224,6 +232,7 @@ fn markdown_reasoning_blocks(
     selection_order: Rc<Cell<usize>>,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     cx: &mut App,
 ) -> Vec<AnyElement> {
     items
@@ -264,6 +273,7 @@ fn markdown_reasoning_blocks(
                 markdown.render_plan(),
                 appearance,
                 code_layout,
+                conversation_m_advance,
                 InlineMarkdownStyle::conversation_foreground(transcript_foreground(
                     &appearance.transcript_reasoning,
                     rgb(0xe2e8f0),

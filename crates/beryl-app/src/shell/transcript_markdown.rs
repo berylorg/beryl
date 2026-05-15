@@ -10,6 +10,8 @@ mod code_panels;
 mod inline_render;
 #[path = "transcript_markdown/ir.rs"]
 mod ir;
+#[path = "transcript_markdown/list_layout.rs"]
+mod list_layout;
 #[path = "transcript_markdown/parser.rs"]
 mod parser;
 #[path = "transcript_markdown/source_spans.rs"]
@@ -24,6 +26,8 @@ pub(crate) use code_panels::*;
 #[allow(unused_imports)]
 pub(crate) use inline_render::*;
 pub(crate) use ir::*;
+#[allow(unused_imports)]
+pub(crate) use list_layout::*;
 #[allow(unused_imports)]
 pub(crate) use source_spans::*;
 

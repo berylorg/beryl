@@ -96,6 +96,102 @@ fn markdown_prompt_anchor_accounts_for_wrapping_and_fallback_nodes() {
 }
 
 #[test]
+fn markdown_prompt_anchor_wraps_root_list_body_after_marker_offset() {
+    let source = "- 1234567890";
+    let line_height = px(20.0);
+    let unwrapped =
+        transcript_anchor::test_support::prompt_last_line_top_offset_from_markdown_char_width(
+            1,
+            source,
+            px(100.0),
+            80,
+            px(8.0),
+            line_height,
+            px(30.0),
+            px(18.0),
+            px(12.0),
+        );
+    let wrapped =
+        transcript_anchor::test_support::prompt_last_line_top_offset_from_markdown_char_width(
+            1,
+            source,
+            px(99.0),
+            80,
+            px(8.0),
+            line_height,
+            px(30.0),
+            px(18.0),
+            px(12.0),
+        );
+
+    assert_eq!(wrapped - unwrapped, line_height);
+}
+
+#[test]
+fn markdown_prompt_anchor_wraps_nested_list_body_after_recursive_offsets() {
+    let source = "- parent\n  - 1234567890";
+    let line_height = px(20.0);
+    let unwrapped =
+        transcript_anchor::test_support::prompt_last_line_top_offset_from_markdown_char_width(
+            1,
+            source,
+            px(120.0),
+            80,
+            px(8.0),
+            line_height,
+            px(30.0),
+            px(18.0),
+            px(12.0),
+        );
+    let wrapped =
+        transcript_anchor::test_support::prompt_last_line_top_offset_from_markdown_char_width(
+            1,
+            source,
+            px(119.0),
+            80,
+            px(8.0),
+            line_height,
+            px(30.0),
+            px(18.0),
+            px(12.0),
+        );
+
+    assert_eq!(wrapped - unwrapped, line_height);
+}
+
+#[test]
+fn markdown_prompt_anchor_uses_widest_ordered_marker_for_body_width() {
+    let source = "9. short\n10. 1234567890";
+    let line_height = px(20.0);
+    let unwrapped =
+        transcript_anchor::test_support::prompt_last_line_top_offset_from_markdown_char_width(
+            1,
+            source,
+            px(114.0),
+            80,
+            px(8.0),
+            line_height,
+            px(30.0),
+            px(18.0),
+            px(12.0),
+        );
+    let wrapped =
+        transcript_anchor::test_support::prompt_last_line_top_offset_from_markdown_char_width(
+            1,
+            source,
+            px(113.0),
+            80,
+            px(8.0),
+            line_height,
+            px(30.0),
+            px(18.0),
+            px(12.0),
+        );
+
+    assert_eq!(wrapped - unwrapped, line_height);
+}
+
+#[test]
 fn trailing_slack_stays_below_visible_transcript_height() {
     assert_eq!(
         transcript_anchor::trailing_scroll_slack(px(240.0), None),

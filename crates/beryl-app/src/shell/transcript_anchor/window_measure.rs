@@ -9,11 +9,16 @@ use super::{CODE_FONT_FAMILY, CODE_FONT_SIZE_REM, CODE_HEADER_FONT_SIZE_REM};
 pub(super) struct WindowPromptMeasurer<'a, 'w> {
     appearance: &'a AppearanceSettings,
     window: &'w mut Window,
+    conversation_m_advance: Option<Pixels>,
 }
 
 impl<'a, 'w> WindowPromptMeasurer<'a, 'w> {
     pub(super) fn new(appearance: &'a AppearanceSettings, window: &'w mut Window) -> Self {
-        Self { appearance, window }
+        Self {
+            appearance,
+            window,
+            conversation_m_advance: None,
+        }
     }
 
     fn role_settings(
@@ -109,6 +114,36 @@ impl PromptTextMeasurer for WindowPromptMeasurer<'_, '_> {
                     .max(1)
             })
             .unwrap_or(1)
+    }
+
+    fn conversation_m_advance(&mut self) -> Pixels {
+        if let Some(width) = self.conversation_m_advance {
+            return width;
+        }
+
+        let role = AnchorBlockRole::Conversation;
+        let style = self.text_style_for_block_role(role);
+        let run = TextRun {
+            len: "M".len(),
+            font: self.font_for_role(InlineRenderRole::Conversation, role),
+            color: style.color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let width = self
+            .window
+            .text_system()
+            .shape_line(
+                "M".into(),
+                style.font_size.to_pixels(self.window.rem_size()),
+                &[run],
+                None,
+            )
+            .width
+            .max(px(1.0));
+        self.conversation_m_advance = Some(width);
+        width
     }
 
     fn block_line_height(&self, role: AnchorBlockRole) -> Pixels {

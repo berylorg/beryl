@@ -1,11 +1,13 @@
-use gpui::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
+use gpui::{AnyElement, App, FontWeight, Pixels, div, prelude::*, px, rgb};
 
 use crate::AppearanceSettings;
 use crate::shell::rgba_from_role_color;
 use crate::shell::transcript_markdown::{
-    BlockRenderCode, BlockRenderList, BlockRenderListItem, BlockRenderNode, BlockRenderPlan,
-    InlineRenderLine, InlineRenderRole, MarkdownSourceSpan, markdown_code_panel_block_path,
+    BlockRenderCode, BlockRenderList, BlockRenderListItem, BlockRenderListKind, BlockRenderNode,
+    BlockRenderPlan, InlineRenderLine, InlineRenderRole, MARKDOWN_LIST_LEADING_MARGIN_M,
+    MARKDOWN_LIST_MARKER_BODY_GAP_M, MarkdownSourceSpan, markdown_code_panel_block_path,
     markdown_code_panel_block_quote_path, markdown_code_panel_list_item_path,
+    markdown_list_marker_width_m,
 };
 
 use super::super::code_panel::{
@@ -25,12 +27,11 @@ use super::inline_markdown::{
 };
 use super::text_blocks::labeled_code_block;
 
-const LIST_MARKER_WIDTH: f32 = 32.0;
-
 pub(super) fn render_markdown_plan_with_style_and_selection(
     plan: &BlockRenderPlan,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: TranscriptCodePanelControls,
     selection_context: TranscriptInlineSelectionContext,
@@ -40,6 +41,7 @@ pub(super) fn render_markdown_plan_with_style_and_selection(
         plan,
         appearance,
         code_layout,
+        conversation_m_advance,
         style,
         Some(code_panel_controls),
         Some(selection_context),
@@ -54,6 +56,7 @@ pub(super) fn markdown_prose_block_with_selection(
     background: gpui::Rgba,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: TranscriptCodePanelControls,
     selection_context: TranscriptInlineSelectionContext,
@@ -65,6 +68,7 @@ pub(super) fn markdown_prose_block_with_selection(
         background,
         appearance,
         code_layout,
+        conversation_m_advance,
         style,
         Some(code_panel_controls),
         Some(selection_context),
@@ -79,6 +83,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
     background: gpui::Rgba,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: TranscriptCodePanelControls,
     selection_context: TranscriptInlineSelectionContext,
@@ -91,6 +96,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
         background,
         appearance,
         code_layout,
+        conversation_m_advance,
         style,
         Some(code_panel_controls),
         Some(selection_context),
@@ -105,6 +111,7 @@ fn markdown_prose_block_inner(
     background: gpui::Rgba,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     selection_context: Option<TranscriptInlineSelectionContext>,
@@ -135,6 +142,7 @@ fn markdown_prose_block_inner(
             plan,
             appearance,
             code_layout,
+            conversation_m_advance,
             style,
             code_panel_controls,
             selection_context,
@@ -148,6 +156,7 @@ fn render_markdown_plan(
     plan: &BlockRenderPlan,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     selection_context: Option<TranscriptInlineSelectionContext>,
@@ -158,6 +167,7 @@ fn render_markdown_plan(
         plan.blocks.as_slice(),
         appearance,
         code_layout,
+        conversation_m_advance,
         BlockSpacing::Normal,
         style,
         code_panel_controls,
@@ -187,6 +197,7 @@ fn render_block_sequence(
     blocks: &[BlockRenderNode],
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     spacing: BlockSpacing,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
@@ -217,6 +228,7 @@ fn render_block_sequence(
                 block,
                 appearance,
                 code_layout,
+                conversation_m_advance,
                 style,
                 code_panel_controls.clone(),
                 structural_path,
@@ -233,6 +245,7 @@ fn render_block(
     block: &BlockRenderNode,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     structural_path: String,
@@ -256,6 +269,7 @@ fn render_block(
             list,
             appearance,
             code_layout,
+            conversation_m_advance,
             style,
             code_panel_controls,
             structural_path,
@@ -267,6 +281,7 @@ fn render_block(
             blocks,
             appearance,
             code_layout,
+            conversation_m_advance,
             style,
             code_panel_controls,
             structural_path,
@@ -375,6 +390,7 @@ fn render_list(
     list: &BlockRenderList,
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     structural_path: String,
@@ -387,7 +403,15 @@ fn render_list(
     } else {
         BlockSpacing::Normal
     };
-    let mut container = div().w_full().min_w(px(0.0)).flex().flex_col();
+    let marker_width = list_marker_width(list, conversation_m_advance);
+    let marker_align_end = matches!(list.kind, BlockRenderListKind::Ordered { .. })
+        && list_marker_char_counts_vary(list);
+    let mut container = div()
+        .w_full()
+        .min_w(px(0.0))
+        .pl(conversation_m_advance * MARKDOWN_LIST_LEADING_MARGIN_M)
+        .flex()
+        .flex_col();
     container = match spacing {
         BlockSpacing::Normal => container.gap_2(),
         BlockSpacing::Tight => container.gap_1(),
@@ -405,6 +429,9 @@ fn render_list(
                 appearance,
                 code_layout,
                 spacing,
+                marker_width,
+                marker_align_end,
+                conversation_m_advance,
                 style,
                 code_panel_controls.clone(),
                 markdown_code_panel_list_item_path(structural_path.as_str(), index),
@@ -421,6 +448,9 @@ fn render_list_item(
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
     spacing: BlockSpacing,
+    marker_width: Pixels,
+    marker_align_end: bool,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     structural_path: String,
@@ -431,26 +461,34 @@ fn render_list_item(
     let item_selection_context = selection_context
         .as_ref()
         .map(|context| context.with_pending_prefix(format!("{} ", item.marker)));
+    let mut marker = div()
+        .flex_none()
+        .w(marker_width)
+        .flex()
+        .text_size(px(appearance.conversation_text.font_size))
+        .font_family(appearance.conversation_text.font_family.clone())
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(0x94a3b8));
+    if marker_align_end {
+        marker = marker.justify_end();
+    }
 
     div()
         .w_full()
         .min_w(px(0.0))
         .flex()
         .items_start()
-        .gap_2()
+        .child(marker.child(item.marker.clone()))
         .child(
             div()
                 .flex_none()
-                .w(px(LIST_MARKER_WIDTH))
-                .text_sm()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(0x94a3b8))
-                .child(item.marker.clone()),
+                .w(conversation_m_advance * MARKDOWN_LIST_MARKER_BODY_GAP_M),
         )
         .child(div().flex_1().min_w(px(0.0)).child(render_block_sequence(
             item.blocks.as_slice(),
             appearance,
             code_layout,
+            conversation_m_advance,
             spacing,
             style,
             code_panel_controls,
@@ -462,10 +500,27 @@ fn render_list_item(
         .into_any_element()
 }
 
+fn list_marker_width(list: &BlockRenderList, conversation_m_advance: Pixels) -> Pixels {
+    conversation_m_advance
+        * markdown_list_marker_width_m(
+            list.kind,
+            list.items.iter().map(|item| item.marker.chars().count()),
+        )
+}
+
+fn list_marker_char_counts_vary(list: &BlockRenderList) -> bool {
+    let mut counts = list.items.iter().map(|item| item.marker.chars().count());
+    let Some(first) = counts.next() else {
+        return false;
+    };
+    counts.any(|count| count != first)
+}
+
 fn render_block_quote(
     blocks: &[BlockRenderNode],
     appearance: &AppearanceSettings,
     code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     structural_path: String,
@@ -486,6 +541,7 @@ fn render_block_quote(
             blocks,
             appearance,
             code_layout,
+            conversation_m_advance,
             BlockSpacing::Normal,
             style,
             code_panel_controls,

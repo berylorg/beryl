@@ -2,14 +2,15 @@ use gpui::{Pixels, px};
 
 use super::super::transcript_markdown::{
     BlockRenderCode, BlockRenderList, BlockRenderNode, BlockRenderPlan, InlineRenderFragment,
-    InlineRenderLine, InlineRenderRole, InlineRenderStyle,
+    InlineRenderLine, InlineRenderRole, InlineRenderStyle, MARKDOWN_LIST_LEADING_MARGIN_M,
+    MARKDOWN_LIST_MARKER_BODY_GAP_M, markdown_list_marker_width_m,
 };
 use super::{
     CODE_PANEL_BORDER, CODE_PANEL_CONTENT_PADDING, CODE_PANEL_HEADER_CONTENT_BORDER,
-    CODE_PANEL_HEADER_VERTICAL_PADDING, MARKDOWN_HEADING_BOTTOM_PADDING, MARKDOWN_LIST_MARKER_GAP,
-    MARKDOWN_LIST_MARKER_WIDTH, MARKDOWN_NORMAL_BLOCK_GAP, MARKDOWN_QUOTE_BORDER,
-    MARKDOWN_QUOTE_PADDING_LEFT, MARKDOWN_QUOTE_PADDING_VERTICAL, MARKDOWN_THEMATIC_BREAK_HEIGHT,
-    MARKDOWN_THEMATIC_BREAK_MARGIN_VERTICAL, MARKDOWN_TIGHT_BLOCK_GAP, prompt_lines,
+    CODE_PANEL_HEADER_VERTICAL_PADDING, MARKDOWN_HEADING_BOTTOM_PADDING, MARKDOWN_NORMAL_BLOCK_GAP,
+    MARKDOWN_QUOTE_BORDER, MARKDOWN_QUOTE_PADDING_LEFT, MARKDOWN_QUOTE_PADDING_VERTICAL,
+    MARKDOWN_THEMATIC_BREAK_HEIGHT, MARKDOWN_THEMATIC_BREAK_MARGIN_VERTICAL,
+    MARKDOWN_TIGHT_BLOCK_GAP, prompt_lines,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,6 +56,8 @@ pub(super) trait PromptTextMeasurer {
         role: AnchorBlockRole,
         wrap_width: Pixels,
     ) -> usize;
+
+    fn conversation_m_advance(&mut self) -> Pixels;
 
     fn block_line_height(&self, role: AnchorBlockRole) -> Pixels;
 
@@ -280,8 +283,8 @@ fn measure_list(
     } else {
         BlockSpacing::Normal
     };
-    let child_width =
-        (width - px(MARKDOWN_LIST_MARKER_WIDTH + MARKDOWN_LIST_MARKER_GAP)).max(px(1.0));
+    let conversation_m_advance = measurer.conversation_m_advance();
+    let child_width = (width - list_item_body_offset(list, conversation_m_advance)).max(px(1.0));
     let marker_height = measurer.block_line_height(AnchorBlockRole::Conversation);
     let mut cursor = px(0.0);
     let mut last_line_top = px(0.0);
@@ -306,6 +309,20 @@ fn measure_list(
         height: cursor,
         last_line_top,
     }
+}
+
+fn list_item_body_offset(list: &BlockRenderList, conversation_m_advance: Pixels) -> Pixels {
+    conversation_m_advance * MARKDOWN_LIST_LEADING_MARGIN_M
+        + list_marker_width(list, conversation_m_advance)
+        + conversation_m_advance * MARKDOWN_LIST_MARKER_BODY_GAP_M
+}
+
+fn list_marker_width(list: &BlockRenderList, conversation_m_advance: Pixels) -> Pixels {
+    conversation_m_advance
+        * markdown_list_marker_width_m(
+            list.kind,
+            list.items.iter().map(|item| item.marker.chars().count()),
+        )
 }
 
 fn measure_code_block(

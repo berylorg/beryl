@@ -25,8 +25,6 @@ const TURN_CARD_BLOCK_GAP: f32 = 12.0;
 const MARKDOWN_NORMAL_BLOCK_GAP: f32 = 8.0;
 const MARKDOWN_TIGHT_BLOCK_GAP: f32 = 4.0;
 const MARKDOWN_HEADING_BOTTOM_PADDING: f32 = 4.0;
-const MARKDOWN_LIST_MARKER_WIDTH: f32 = 32.0;
-const MARKDOWN_LIST_MARKER_GAP: f32 = 8.0;
 const MARKDOWN_QUOTE_BORDER: f32 = 2.0;
 const MARKDOWN_QUOTE_PADDING_LEFT: f32 = 12.0;
 const MARKDOWN_QUOTE_PADDING_VERTICAL: f32 = 4.0;
@@ -214,7 +212,7 @@ fn prompt_lines(text: &str) -> Vec<String> {
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) mod test_support {
-    use gpui::Pixels;
+    use gpui::{Pixels, px};
 
     use super::super::transcript_markdown::InlineRenderLine;
     use super::markdown_layout::{AnchorBlockRole, PromptTextMeasurer, prompt_markdown_layout};
@@ -253,6 +251,7 @@ pub(crate) mod test_support {
             code_header_line_height,
             inline_columns: None,
             code_columns: transcript_code_columns,
+            conversation_m_advance: px(8.0),
         };
         prompt_content_top_offset(turn_index)
             + prompt_markdown_layout(source, prompt_width, transcript_code_columns, &mut measurer)
@@ -278,6 +277,31 @@ pub(crate) mod test_support {
             code_header_line_height,
             inline_columns: Some(inline_columns.max(1)),
             code_columns: code_columns.max(1),
+            conversation_m_advance: px(8.0),
+        };
+        prompt_content_top_offset(turn_index)
+            + prompt_markdown_layout(source, prompt_width, transcript_code_columns, &mut measurer)
+                .last_line_top
+    }
+
+    pub(crate) fn prompt_last_line_top_offset_from_markdown_char_width(
+        turn_index: usize,
+        source: &str,
+        prompt_width: Pixels,
+        transcript_code_columns: usize,
+        inline_char_width: Pixels,
+        line_height: Pixels,
+        heading_line_height: Pixels,
+        code_line_height: Pixels,
+        code_header_line_height: Pixels,
+    ) -> Pixels {
+        let mut measurer = CharWidthPromptMeasurer {
+            line_height,
+            heading_line_height,
+            code_line_height,
+            code_header_line_height,
+            inline_char_width,
+            code_columns: transcript_code_columns.max(1),
         };
         prompt_content_top_offset(turn_index)
             + prompt_markdown_layout(source, prompt_width, transcript_code_columns, &mut measurer)
@@ -291,6 +315,7 @@ pub(crate) mod test_support {
         code_header_line_height: Pixels,
         inline_columns: Option<usize>,
         code_columns: usize,
+        conversation_m_advance: Pixels,
     }
 
     impl PromptTextMeasurer for FixedPromptMeasurer {
@@ -309,6 +334,59 @@ pub(crate) mod test_support {
                 .map(|fragment| fragment.text.chars().count())
                 .sum::<usize>();
             len.max(1).div_ceil(columns)
+        }
+
+        fn conversation_m_advance(&mut self) -> Pixels {
+            self.conversation_m_advance
+        }
+
+        fn block_line_height(&self, role: AnchorBlockRole) -> Pixels {
+            match role {
+                AnchorBlockRole::Conversation => self.line_height,
+                AnchorBlockRole::Heading { .. } => self.heading_line_height,
+            }
+        }
+
+        fn code_line_height(&self) -> Pixels {
+            self.code_line_height
+        }
+
+        fn code_header_line_height(&self) -> Pixels {
+            self.code_header_line_height
+        }
+
+        fn code_columns_for_width(&mut self, _wrap_width: Pixels) -> usize {
+            self.code_columns
+        }
+    }
+
+    struct CharWidthPromptMeasurer {
+        line_height: Pixels,
+        heading_line_height: Pixels,
+        code_line_height: Pixels,
+        code_header_line_height: Pixels,
+        inline_char_width: Pixels,
+        code_columns: usize,
+    }
+
+    impl PromptTextMeasurer for CharWidthPromptMeasurer {
+        fn inline_visual_line_count(
+            &mut self,
+            line: &InlineRenderLine,
+            _role: AnchorBlockRole,
+            wrap_width: Pixels,
+        ) -> usize {
+            let columns = ((wrap_width / self.inline_char_width).floor() as usize).max(1);
+            let len = line
+                .fragments
+                .iter()
+                .map(|fragment| fragment.text.chars().count())
+                .sum::<usize>();
+            len.max(1).div_ceil(columns)
+        }
+
+        fn conversation_m_advance(&mut self) -> Pixels {
+            self.inline_char_width
         }
 
         fn block_line_height(&self, role: AnchorBlockRole) -> Pixels {
