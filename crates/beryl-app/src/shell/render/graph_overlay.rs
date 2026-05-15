@@ -1,7 +1,4 @@
-use std::{
-    hash::{Hash, Hasher},
-    rc::Rc,
-};
+use std::hash::{Hash, Hasher};
 
 use gpui::{
     AnyElement, AnyView, App, Context, CursorStyle, DispatchPhase, ElementId, InteractiveElement,
@@ -21,7 +18,7 @@ mod rows;
 
 use super::column_selector::render_column_selector_trail;
 use super::common::card;
-use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
 use rows::render_graph_node_tree;
 
 const GRAPH_OVERLAY_TOGGLE_KEYSTROKE: &str = "ctrl-shift-g";
@@ -329,7 +326,8 @@ fn render_graph_columns(
 ) -> impl IntoElement {
     let overlay = surface.graph_overlay();
     let scroll_handle = surface.graph_columns_scroll_handle();
-    let scrollbar_opacity = shell.scrollbar_opacity(&ScrollbarRegion::GraphColumns);
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::GraphColumns, cx);
     let columns = overlay
         .columns()
         .iter()
@@ -355,7 +353,7 @@ fn render_graph_columns(
         GRAPH_OVERLAY_COLUMN_GAP,
         columns,
         scroll_handle,
-        scrollbar_opacity,
+        scrollbar_visibility,
         cx,
     )
 }
@@ -374,8 +372,8 @@ fn render_graph_column(
         .graph_column_scroll_handle(column_index)
         .unwrap_or_default();
     let column_key = column.root_key().clone();
-    let scrollbar_opacity =
-        shell.scrollbar_opacity(&ScrollbarRegion::GraphColumn(column_key.clone()));
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::GraphColumn(column_key.clone()), cx);
     let semantic_node_tooltips_allowed =
         semantic_node_summary_tooltip_allowed(surface.graph_thread_link_menu().is_open());
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
@@ -500,24 +498,11 @@ fn render_graph_column(
                                 .overflow_y_scroll()
                                 .child(body),
                         );
-                    let scrollbar_activity: ScrollbarActivityCallback = {
-                        let entity = cx.entity();
-                        let column_key = column_key.clone();
-                        Rc::new(move |_: &mut Window, cx: &mut App| {
-                            entity.update(cx, |view, cx| {
-                                view.note_scrollbar_activity(
-                                    ScrollbarRegion::GraphColumn(column_key.clone()),
-                                    cx,
-                                );
-                            });
-                        })
-                    };
                     if let Some(scrollbar) = render_div_scrollbar(
                         ("graph-column-scrollbar", column_index),
                         &scroll_handle,
                         ScrollbarAxis::Vertical,
-                        scrollbar_opacity,
-                        Some(scrollbar_activity),
+                        scrollbar_visibility,
                     ) {
                         scroll_region = scroll_region.child(scrollbar);
                     }

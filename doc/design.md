@@ -76,6 +76,7 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - The application stack must not depend on web browser technology, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native libraries.
 - Beryl consumes the standalone `gpui-text-input` crate for app-neutral text editing mechanics used by GUI text fields. Beryl-owned code adapts that behavior for application-specific composer behavior, including image markers, transcript quote insertion, submit policy, backend input serialization, and workspace image assets.
 - Beryl consumes the standalone `gpui-settings-window` crate for generic settings-window presentation and interaction mechanics, including a preheated show/hide OS settings window, left-side section navigation, right-side key-value settings rows, color-value input fields, and the in-window color picker.
+- Beryl consumes the standalone `gpui-scrollbar` crate for app-neutral scrollbar geometry, thumb rendering, managed visibility and fade behavior, thumb dragging, and vertical scrollbar-lane page-click dispatch.
 - Beryl owns the application-specific settings schema, staged settings draft, validation, apply behavior, and persistence; the reusable settings-window crate does not own Beryl settings data or storage.
 - Beryl's settings schema includes appearance settings, app-wide operation preferences, app-wide notification preferences, and app-wide developer-instructions preferences. Operation preferences, notification preferences, and developer-instructions preferences are GUI-owned user settings rather than workspace-scoped state or backend-owned Codex configuration.
 - Beryl owns one appearance theme schema for both the main workspace window and the settings window. The active theme is the source for Beryl-owned main-window chrome and for the app-neutral visual theme passed into `gpui-settings-window`.
@@ -411,7 +412,12 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Streaming scroll surfaces may expose a trailing virtual scroll allowance so a caller-selected content line can remain reachable and visually anchoring while content below that line is shorter than the viewport.
 - Trailing virtual scroll allowance is scroll geometry, not semantic content; it must not appear as transcript history, graph data, checklist data, backend output, or another user-visible content record.
 - Streaming scroll state must distinguish bottom-following, content-anchored, and virtual-tail positions so live content growth cannot accidentally preserve a durable anchor inside empty trailing space.
-- Reusable scrollbar direct manipulation must preserve the owning scroll surface's scroll-state semantics, including special top, bottom, bottom-following, and virtual-tail behavior, rather than applying generic offset clamping outside the owning scroll model.
+- Scrollbar direct manipulation must route through the owning scroll surface's scroll-state callbacks rather than applying generic offset clamping outside the owning scroll model.
+- Keyboard scrolling commands belong to the scrollable viewport selected by focus or shell routing, not to scrollbar chrome.
+- Pointer-wheel and touchpad scrolling belong to the routed scrollable viewport, while scrollbar thumb dragging and lane clicks belong to scrollbar chrome and call back into that viewport's scroll model.
+- Reusable scrollbar fade and activity timing belongs to scrollbar chrome; scrollable viewports or their integrating surfaces report app-neutral viewport activity into that chrome without moving scroll-state ownership out of the viewport.
+- Reusable scrollbar fade interpolation must follow the `gpui` window presentation cadence; coarse lifecycle timers may schedule fade phase boundaries, but visible opacity animation is driven by scrollbar chrome requesting presentation frames while transitions are active.
+- The main shell transcript owns its special top, bottom, bottom-following, and virtual-tail scroll behavior. Other scroll surfaces do not inherit those transcript-specific edge rules from the reusable scrollbar.
 - Reusable virtual-list behavior is owned by Beryl application code layered on `gpui` public element APIs; modifying the third-party `gpui` fork is not part of the target scroll design.
 
 ### Provenance

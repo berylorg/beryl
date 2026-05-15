@@ -275,7 +275,8 @@ This document defines the user-visible product behavior for Beryl V1.
 - After pointer movement and scrolling both stop, the scrollbar thumb fades in and out around a short inactivity delay instead of appearing or disappearing abruptly, with opacity interpolation that tracks successive render frames while the transition is active.
 - Users can drag the visible scrollbar thumb by click-and-hold to directly change the owning surface's scroll position.
 - Clicking the invisible vertical scrollbar lane outside the current thumb scrolls one full viewport height toward the click: above the thumb scrolls up, and below the thumb scrolls down.
-- Scrollbar dragging and lane clicks follow the same top and bottom edge behavior as the owning scroll surface, including transcript bottom-following and virtual-tail behavior where applicable.
+- Keyboard scrolling acts on the currently focused or routed scrollable area rather than on the scrollbar overlay.
+- Scrollbar dragging and lane clicks follow the owning scroll surface's bounds. The main transcript keeps its transcript-specific bottom-following and virtual-tail behavior; other scrollable surfaces do not inherit those transcript rules.
 - Streaming scroll surfaces may provide a bounded virtual trailing scroll allowance that lets the user scroll slightly past the last content line without losing visual orientation.
 - Virtual trailing scroll allowance is not content; it affects scroll reach and scrollbar geometry without adding a visible content row.
 - Hovering an overflowed code block or other nested transcript scroll container may reveal that container's scrollbar according to the same fade rules, even while the transcript still owns vertical wheel scrolling.

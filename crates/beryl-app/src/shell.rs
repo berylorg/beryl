@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     ops::Range,
     path::PathBuf,
+    rc::Rc,
     sync::{
         Arc, Mutex,
         mpsc::{self, Receiver, RecvTimeoutError, TryRecvError},
@@ -28,8 +29,11 @@ use beryl_model::workspace::{
 use gpui::{
     App, Application, AsyncApp, Bounds, ClipboardItem, Context, Entity, Image, KeyBinding,
     KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions,
-    Pixels, Point, PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent, Task, WeakEntity,
-    Window, WindowBounds, WindowOptions, prelude::*, px, rgb, size,
+    Pixels, Point, PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent, WeakEntity, Window,
+    WindowBounds, WindowOptions, prelude::*, px, rgb, size,
+};
+use gpui_scrollbar::{
+    ScrollbarVisibilityPolicy, ScrollbarVisibilityState, ScrollbarVisibilityUpdateCallback,
 };
 use gpui_settings_window::{
     SettingsWindowEvent, SettingsWindowHandle, SettingsWindowOpenDisposition, open_settings_window,
@@ -94,7 +98,6 @@ use crate::{
 };
 
 use self::backend_availability::{BackendAvailabilityRecord, BackendUnavailable};
-
 const COMPOSER_KEY_CONTEXT: &str = "ConversationComposer";
 const APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -816,7 +819,7 @@ struct ShellView {
     transcript_panel: Entity<render::transcript::TranscriptPanel>,
     checklist_sidebar_panel: Entity<render::checklist_sidebar::ChecklistSidebarPanel>,
     startup_scroll_handle: ScrollHandle,
-    scrollbar_activity: HashMap<ScrollbarRegion, ScrollbarActivity>,
+    scrollbar_visibility: HashMap<ScrollbarRegion, ScrollbarVisibilityState>,
     next_attempt: u32,
 }
 
@@ -1059,118 +1062,15 @@ enum ScrollbarRegion {
     Startup,
     WorkspacePicker,
     WorkspaceMembers,
+    WorkspaceRuntimeSelector,
     Transcript,
     ToolActivity,
+    GraphThreadLinkMenu,
+    StatusOperation,
     GraphColumns,
     GraphColumn(GraphColumnKey),
     ThreadSelectorColumns,
     ThreadSelectorColumn(ThreadSelectorColumnKey),
-}
-
-struct ScrollbarActivity {
-    generation: u64,
-    last_activity_at: Option<Instant>,
-    transition: Option<ScrollbarTransition>,
-    animation_task: Option<Task<()>>,
-}
-
-struct ScrollbarTransition {
-    started_at: Instant,
-    from_opacity: f32,
-    to_opacity: f32,
-}
-
-impl Default for ScrollbarActivity {
-    fn default() -> Self {
-        Self {
-            generation: 0,
-            last_activity_at: None,
-            transition: None,
-            animation_task: None,
-        }
-    }
-}
-
-impl ScrollbarActivity {
-    fn record_activity(&mut self) -> u64 {
-        let now = Instant::now();
-        let current_opacity = self.opacity(now);
-        self.generation = self.generation.saturating_add(1);
-        self.last_activity_at = Some(now);
-        self.transition = if current_opacity >= (1.0 - f32::EPSILON) {
-            None
-        } else {
-            Some(ScrollbarTransition {
-                started_at: now,
-                from_opacity: current_opacity,
-                to_opacity: 1.0,
-            })
-        };
-        self.animation_task = None;
-        self.generation
-    }
-
-    fn opacity(&self, now: Instant) -> f32 {
-        if let Some(transition) = &self.transition {
-            transition.opacity(now)
-        } else if self.last_activity_at.is_some() {
-            1.0
-        } else {
-            0.0
-        }
-    }
-
-    fn is_animating(&self, now: Instant) -> bool {
-        self.transition
-            .as_ref()
-            .is_some_and(|transition| transition.is_active(now))
-    }
-}
-
-impl ScrollbarTransition {
-    fn duration(&self) -> Duration {
-        let delta = (self.to_opacity - self.from_opacity).abs();
-        if delta <= f32::EPSILON {
-            return Duration::ZERO;
-        }
-
-        let duration = SCROLLBAR_FADE_DURATION.mul_f32(delta);
-        if duration.is_zero() {
-            Duration::from_millis(1)
-        } else {
-            duration
-        }
-    }
-
-    fn progress(&self, now: Instant) -> f32 {
-        let duration = self.duration();
-        if duration.is_zero() {
-            return 1.0;
-        }
-
-        let elapsed = now.saturating_duration_since(self.started_at);
-        (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0)
-    }
-
-    fn opacity(&self, now: Instant) -> f32 {
-        let progress = self.progress(now);
-        let eased_progress = progress * progress * (3.0 - (2.0 * progress));
-        self.from_opacity + ((self.to_opacity - self.from_opacity) * eased_progress)
-    }
-
-    fn is_active(&self, now: Instant) -> bool {
-        self.progress(now) < 1.0
-    }
-
-    fn remaining_duration(&self, now: Instant) -> Option<Duration> {
-        let duration = self.duration();
-        if duration.is_zero() {
-            return None;
-        }
-
-        let elapsed = now.saturating_duration_since(self.started_at);
-        duration.checked_sub(elapsed)
-    }
 }
 
 #[allow(dead_code)]
@@ -1239,6 +1139,7 @@ struct LoadedWorkspaceState {
     backend_availability: HashMap<WorkspaceId, BackendAvailabilityRecord>,
     workspace_picker_scroll_handle: ScrollHandle,
     workspace_members_scroll_handle: ScrollHandle,
+    workspace_runtime_selector_scroll_handle: ScrollHandle,
 }
 
 struct OpeningState {
@@ -1422,6 +1323,8 @@ struct ConversationSurfaceState {
     graph_column_selector_scroll: ColumnSelectorScrollState<GraphColumnKey>,
     thread_column_selector_scroll: ColumnSelectorScrollState<ThreadSelectorColumnKey>,
     tool_activity_scroll_handle: ScrollHandle,
+    graph_thread_link_menu_scroll_handle: ScrollHandle,
+    status_operation_scroll_handle: ScrollHandle,
     graph_overlay_panel_height: Pixels,
     checklist_sidebar_visibility: ChecklistSidebarVisibilityState,
     checklist_sidebar_ratio: f32,
@@ -1629,9 +1532,6 @@ struct BackendUnavailableFailure {
 
 const DEFAULT_CHECKLIST_SIDEBAR_RATIO: f32 = 0.34;
 const GRAPH_OVERLAY_TOGGLE_KEYSTROKE: &str = "ctrl-shift-g";
-const SCROLLBAR_FADE_DELAY: Duration = Duration::from_secs(2);
-const SCROLLBAR_FADE_DURATION: Duration = Duration::from_millis(180);
-
 fn column_selector_scrollbar_region(surface: ColumnSelectorSurface) -> ScrollbarRegion {
     match surface {
         ColumnSelectorSurface::GraphOverlay => ScrollbarRegion::GraphColumns,
@@ -1754,6 +1654,7 @@ impl LoadedWorkspaceState {
             backend_availability: HashMap::new(),
             workspace_picker_scroll_handle: ScrollHandle::new(),
             workspace_members_scroll_handle: ScrollHandle::new(),
+            workspace_runtime_selector_scroll_handle: ScrollHandle::new(),
         }
     }
 
@@ -2011,6 +1912,14 @@ impl LoadedWorkspaceState {
         self.workspace_members_scroll_handle = ScrollHandle::new();
     }
 
+    fn workspace_runtime_selector_scroll_handle(&self) -> ScrollHandle {
+        self.workspace_runtime_selector_scroll_handle.clone()
+    }
+
+    fn reset_workspace_runtime_selector_scroll(&mut self) {
+        self.workspace_runtime_selector_scroll_handle = ScrollHandle::new();
+    }
+
     fn workspace_members_notice(&self) -> Option<&str> {
         self.workspace_members_notice.as_deref()
     }
@@ -2126,6 +2035,8 @@ impl ConversationSurfaceState {
             graph_column_selector_scroll: ColumnSelectorScrollState::new(),
             thread_column_selector_scroll: ColumnSelectorScrollState::new(),
             tool_activity_scroll_handle: ScrollHandle::new(),
+            graph_thread_link_menu_scroll_handle: ScrollHandle::new(),
+            status_operation_scroll_handle: ScrollHandle::new(),
             graph_overlay_panel_height: Pixels::ZERO,
             checklist_sidebar_visibility: ChecklistSidebarVisibilityState::default(),
             checklist_sidebar_ratio: DEFAULT_CHECKLIST_SIDEBAR_RATIO,
@@ -2548,6 +2459,22 @@ impl ConversationSurfaceState {
 
     fn tool_activity_scroll_handle(&self) -> ScrollHandle {
         self.tool_activity_scroll_handle.clone()
+    }
+
+    fn graph_thread_link_menu_scroll_handle(&self) -> ScrollHandle {
+        self.graph_thread_link_menu_scroll_handle.clone()
+    }
+
+    fn reset_graph_thread_link_menu_scroll(&mut self) {
+        self.graph_thread_link_menu_scroll_handle = ScrollHandle::new();
+    }
+
+    fn status_operation_scroll_handle(&self) -> ScrollHandle {
+        self.status_operation_scroll_handle.clone()
+    }
+
+    fn reset_status_operation_scroll(&mut self) {
+        self.status_operation_scroll_handle = ScrollHandle::new();
     }
 
     fn cycle_tool_activity_panel_mode(&mut self) {
@@ -3153,6 +3080,8 @@ impl ConversationSurfaceState {
             graph_column_selector_scroll: self.graph_column_selector_scroll.clone(),
             thread_column_selector_scroll: self.thread_column_selector_scroll.clone(),
             tool_activity_scroll_handle: self.tool_activity_scroll_handle.clone(),
+            graph_thread_link_menu_scroll_handle: self.graph_thread_link_menu_scroll_handle.clone(),
+            status_operation_scroll_handle: self.status_operation_scroll_handle.clone(),
             graph_overlay_panel_height: self.graph_overlay_panel_height,
             checklist_sidebar_visibility: self.checklist_sidebar_visibility.clone(),
             checklist_sidebar_ratio: self.checklist_sidebar_ratio,
@@ -4697,7 +4626,7 @@ impl ShellView {
             transcript_panel,
             checklist_sidebar_panel,
             startup_scroll_handle: ScrollHandle::new(),
-            scrollbar_activity: HashMap::new(),
+            scrollbar_visibility: HashMap::new(),
             next_attempt: 1,
         };
 
@@ -7291,19 +7220,19 @@ impl ShellView {
     fn note_startup_scrollbar_motion(
         &mut self,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::Startup, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::Startup, window, cx);
     }
 
     fn note_startup_scrollbar_scroll(
         &mut self,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::Startup, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::Startup, window, cx);
     }
 
     fn release_transcript_submit_anchor(&mut self, cx: &mut Context<Self>) {
@@ -7316,11 +7245,16 @@ impl ShellView {
         }
     }
 
-    fn note_transcript_scroll(&mut self, is_scrolled: bool, cx: &mut Context<Self>) {
+    fn note_transcript_scroll(
+        &mut self,
+        is_scrolled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.set_transcript_user_scrolled(is_scrolled);
         }
-        self.note_scrollbar_activity(ScrollbarRegion::Transcript, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
     }
 
     fn note_transcript_scroll_event(
@@ -7329,7 +7263,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_transcript_scroll(event.is_scrolled, cx);
+        self.note_transcript_scroll(event.is_scrolled, window, cx);
         self.begin_older_thread_history_page_if_needed(event, window, cx);
     }
 
@@ -7457,55 +7391,109 @@ impl ShellView {
     fn note_workspace_picker_scrollbar_motion(
         &mut self,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::WorkspacePicker, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::WorkspacePicker, window, cx);
     }
 
     fn note_workspace_picker_scrollbar_scroll(
         &mut self,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::WorkspacePicker, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::WorkspacePicker, window, cx);
     }
 
     fn note_workspace_members_scrollbar_motion(
         &mut self,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::WorkspaceMembers, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::WorkspaceMembers, window, cx);
     }
 
     fn note_workspace_members_scrollbar_scroll(
         &mut self,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::WorkspaceMembers, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::WorkspaceMembers, window, cx);
+    }
+
+    fn note_workspace_runtime_selector_scrollbar_motion(
+        &mut self,
+        _: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(ScrollbarRegion::WorkspaceRuntimeSelector, window, cx);
+    }
+
+    fn note_workspace_runtime_selector_scrollbar_scroll(
+        &mut self,
+        _: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(ScrollbarRegion::WorkspaceRuntimeSelector, window, cx);
+    }
+
+    fn note_graph_thread_link_menu_scrollbar_motion(
+        &mut self,
+        _: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(ScrollbarRegion::GraphThreadLinkMenu, window, cx);
+    }
+
+    fn note_graph_thread_link_menu_scrollbar_scroll(
+        &mut self,
+        _: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(ScrollbarRegion::GraphThreadLinkMenu, window, cx);
+    }
+
+    fn note_status_operation_scrollbar_motion(
+        &mut self,
+        _: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(ScrollbarRegion::StatusOperation, window, cx);
+    }
+
+    fn note_status_operation_scrollbar_scroll(
+        &mut self,
+        _: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(ScrollbarRegion::StatusOperation, window, cx);
     }
 
     fn note_tool_activity_scrollbar_motion(
         &mut self,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::ToolActivity, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::ToolActivity, window, cx);
     }
 
     fn note_tool_activity_scrollbar_scroll(
         &mut self,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::ToolActivity, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::ToolActivity, window, cx);
         cx.stop_propagation();
     }
 
@@ -7513,60 +7501,68 @@ impl ShellView {
         &mut self,
         surface: ColumnSelectorSurface,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(column_selector_scrollbar_region(surface), cx);
+        self.note_scrollbar_activity(column_selector_scrollbar_region(surface), window, cx);
     }
 
     fn note_column_selector_horizontal_scrollbar_scroll(
         &mut self,
         surface: ColumnSelectorSurface,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(column_selector_scrollbar_region(surface), cx);
+        self.note_scrollbar_activity(column_selector_scrollbar_region(surface), window, cx);
     }
 
     fn note_graph_column_scrollbar_motion(
         &mut self,
         column_key: GraphColumnKey,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::GraphColumn(column_key), cx);
+        self.note_scrollbar_activity(ScrollbarRegion::GraphColumn(column_key), window, cx);
     }
 
     fn note_graph_column_scrollbar_scroll(
         &mut self,
         column_key: GraphColumnKey,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::GraphColumn(column_key), cx);
+        self.note_scrollbar_activity(ScrollbarRegion::GraphColumn(column_key), window, cx);
     }
 
     fn note_thread_selector_column_scrollbar_motion(
         &mut self,
         column_key: ThreadSelectorColumnKey,
         _: &MouseMoveEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::ThreadSelectorColumn(column_key), cx);
+        self.note_scrollbar_activity(
+            ScrollbarRegion::ThreadSelectorColumn(column_key),
+            window,
+            cx,
+        );
     }
 
     fn note_thread_selector_column_scrollbar_scroll(
         &mut self,
         column_key: ThreadSelectorColumnKey,
         _: &ScrollWheelEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.note_scrollbar_activity(ScrollbarRegion::ThreadSelectorColumn(column_key), cx);
+        self.note_scrollbar_activity(
+            ScrollbarRegion::ThreadSelectorColumn(column_key),
+            window,
+            cx,
+        );
     }
 
     fn activate_workspace_picker_item(
@@ -7753,12 +7749,16 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) {
         if let Some(loaded) = self.loaded_workspace_mut() {
+            let was_open = loaded.workspace_picker.runtime_selector_dropdown_is_open();
             let item_count = workspace_picker::runtime_selector_item_count(
                 loaded.runtime_selector_distro_list().distro_names(),
             );
             loaded
                 .workspace_picker
                 .toggle_runtime_selector_dropdown(item_count);
+            if !was_open && loaded.workspace_picker.runtime_selector_dropdown_is_open() {
+                loaded.reset_workspace_runtime_selector_scroll();
+            }
             loaded
                 .workspace_picker
                 .set_focused_column(workspace_picker::WorkspacePickerFocusedColumn::Members);
@@ -9116,7 +9116,7 @@ impl ShellView {
             .conversation_surface_mut()
             .is_some_and(|surface| surface.select_graph_node(column_index, &node_id));
         if changed {
-            self.prune_graph_scrollbar_activity();
+            self.prune_graph_scrollbar_visibility();
             self.notify_checklist_sidebar_panel(cx);
             cx.notify();
         }
@@ -9135,7 +9135,7 @@ impl ShellView {
             surface.select_graph_soft_link(column_index, &link_id, &target_node_id)
         });
         if changed {
-            self.prune_graph_scrollbar_activity();
+            self.prune_graph_scrollbar_visibility();
             self.notify_checklist_sidebar_panel(cx);
             cx.notify();
         }
@@ -11135,24 +11135,25 @@ impl ShellView {
     fn jump_transcript_turn_up_action(
         &mut self,
         _: &JumpTranscriptTurnUp,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.jump_transcript_turn(TranscriptTurnJumpDirection::Up, cx);
+        self.jump_transcript_turn(TranscriptTurnJumpDirection::Up, window, cx);
     }
 
     fn jump_transcript_turn_down_action(
         &mut self,
         _: &JumpTranscriptTurnDown,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.jump_transcript_turn(TranscriptTurnJumpDirection::Down, cx);
+        self.jump_transcript_turn(TranscriptTurnJumpDirection::Down, window, cx);
     }
 
     fn jump_transcript_turn(
         &mut self,
         direction: TranscriptTurnJumpDirection,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let did_scroll = self.conversation_surface_mut().is_some_and(|surface| {
@@ -11170,7 +11171,7 @@ impl ShellView {
         });
 
         if did_scroll {
-            self.note_scrollbar_activity(ScrollbarRegion::Transcript, cx);
+            self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
         }
     }
 
@@ -12597,7 +12598,7 @@ impl ShellView {
                             updated = true;
                         }
                         if graph_changed {
-                            self.prune_graph_scrollbar_activity();
+                            self.prune_graph_scrollbar_visibility();
                         }
                     }
                     Some(GraphCommitApplication::RecoveryRequired { reason }) => {
@@ -12646,7 +12647,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.finish_graph_mutation(update.graph, update.revision, update.warning);
         }
-        self.prune_graph_scrollbar_activity();
+        self.prune_graph_scrollbar_visibility();
         true
     }
 
@@ -12996,7 +12997,7 @@ impl ShellView {
                         .map_err(|error| (error.kind(), error.to_string()))?;
                 match parsed {
                     GuiControlToolRequest::ScrollTranscript(arguments) => Ok(json!(
-                        self.handle_scroll_transcript_tool_result(arguments, cx)
+                        self.handle_scroll_transcript_tool_result(arguments, window, cx)
                     )),
                     _ => Err((
                         "internal",
@@ -13051,7 +13052,7 @@ impl ShellView {
             }
             GuiControlToolRequest::ScrollTranscript(arguments) => scroll_transcript_tool_response(
                 request,
-                self.handle_scroll_transcript_tool_result(arguments, cx),
+                self.handle_scroll_transcript_tool_result(arguments, window, cx),
             ),
             GuiControlToolRequest::ClosePopups => {
                 close_popups_tool_response(request, self.handle_close_popups_tool_result(cx))
@@ -13858,11 +13859,12 @@ impl ShellView {
     fn handle_scroll_transcript_tool_result(
         &mut self,
         arguments: ScrollTranscriptArguments,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ScrollTranscriptResult {
         let command = arguments.command;
         let repeat = arguments.repeat;
-        let result = self.apply_transcript_scroll_command(command, repeat, cx);
+        let result = self.apply_transcript_scroll_command(command, repeat, window, cx);
         let (status, message) = match result {
             Ok(()) => ("applied".to_string(), None),
             Err(message) => ("unavailable".to_string(), Some(message)),
@@ -13880,6 +13882,7 @@ impl ShellView {
         &mut self,
         command: ScrollTranscriptCommand,
         repeat: usize,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let Some(surface) = self.conversation_surface_mut() else {
@@ -13926,7 +13929,7 @@ impl ShellView {
                 surface.set_transcript_user_scrolled(!at_bottom);
             }
         }
-        self.note_scrollbar_activity(ScrollbarRegion::Transcript, cx);
+        self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
         self.notify_transcript_panel(cx);
         Ok(())
     }
@@ -14232,142 +14235,55 @@ impl ShellView {
         true
     }
 
-    fn scrollbar_opacity(&self, region: &ScrollbarRegion) -> f32 {
-        self.scrollbar_activity
+    fn scrollbar_visibility_policy(
+        &self,
+        region: &ScrollbarRegion,
+        cx: &mut Context<Self>,
+    ) -> ScrollbarVisibilityPolicy {
+        self.scrollbar_visibility_policy_for_entity(region, cx.entity())
+    }
+
+    fn scrollbar_visibility_policy_for_entity(
+        &self,
+        region: &ScrollbarRegion,
+        entity: Entity<Self>,
+    ) -> ScrollbarVisibilityPolicy {
+        let state = self
+            .scrollbar_visibility
             .get(region)
-            .map_or(0.0, |activity| activity.opacity(Instant::now()))
+            .cloned()
+            .unwrap_or_default();
+        state.managed(Self::scrollbar_visibility_update_callback(
+            region.clone(),
+            entity,
+        ))
     }
 
-    fn scrollbar_animating(&self, region: &ScrollbarRegion) -> bool {
-        self.scrollbar_activity
-            .get(region)
-            .is_some_and(|activity| activity.is_animating(Instant::now()))
-    }
-
-    fn shell_scrollbars_animating(&self) -> bool {
-        let now = Instant::now();
-        self.scrollbar_activity.iter().any(|(region, activity)| {
-            !matches!(region, ScrollbarRegion::Transcript) && activity.is_animating(now)
-        })
-    }
-
-    fn note_scrollbar_activity(&mut self, region: ScrollbarRegion, cx: &mut Context<Self>) {
-        let generation = self
-            .scrollbar_activity
+    fn note_scrollbar_activity(
+        &mut self,
+        region: ScrollbarRegion,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let state = self
+            .scrollbar_visibility
             .entry(region.clone())
             .or_default()
-            .record_activity();
-        self.schedule_scrollbar_animation(region.clone(), generation, cx);
+            .clone();
+        let on_update = Self::scrollbar_visibility_update_callback(region.clone(), cx.entity());
+        state.record_viewport_activity(window, cx, on_update);
         self.notify_scrollbar_region(&region, cx);
     }
 
-    fn schedule_scrollbar_animation(
-        &mut self,
+    fn scrollbar_visibility_update_callback(
         region: ScrollbarRegion,
-        generation: u64,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(next_delay) = self.next_scrollbar_animation_delay(&region, generation) else {
-            return;
-        };
-
-        let animation_region = region.clone();
-        let animation_task = cx.spawn(move |view: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let mut cx = cx.clone();
-            async move {
-                cx.background_executor().timer(next_delay).await;
-                let _ = view.update(&mut cx, |view: &mut Self, cx: &mut Context<Self>| {
-                    view.advance_scrollbar_animation(&animation_region, generation, cx);
-                });
-            }
-        });
-
-        if let Some(activity) = self.scrollbar_activity.get_mut(&region) {
-            activity.animation_task = Some(animation_task);
-        }
-    }
-
-    fn next_scrollbar_animation_delay(
-        &self,
-        region: &ScrollbarRegion,
-        generation: u64,
-    ) -> Option<Duration> {
-        let now = Instant::now();
-        let activity = self.scrollbar_activity.get(region)?;
-        if activity.generation != generation {
-            return None;
-        }
-
-        if let Some(transition) = &activity.transition {
-            return transition.remaining_duration(now);
-        }
-
-        let last_activity_at = activity.last_activity_at?;
-        let fade_deadline = last_activity_at + SCROLLBAR_FADE_DELAY;
-        (now < fade_deadline).then_some(fade_deadline.saturating_duration_since(now))
-    }
-
-    fn advance_scrollbar_animation(
-        &mut self,
-        region: &ScrollbarRegion,
-        generation: u64,
-        cx: &mut Context<Self>,
-    ) {
-        let now = Instant::now();
-        let Some(activity) = self.scrollbar_activity.get_mut(region) else {
-            return;
-        };
-        if activity.generation != generation {
-            return;
-        }
-        activity.animation_task = None;
-
-        let mut should_notify = false;
-        if let Some(transition) = &activity.transition {
-            if !transition.is_active(now) {
-                let target_opacity = transition.to_opacity;
-                activity.transition = None;
-                should_notify = true;
-                if target_opacity <= 0.0 {
-                    activity.last_activity_at = None;
-                }
-            }
-        }
-
-        if activity.transition.is_none() {
-            let Some(last_activity_at) = activity.last_activity_at else {
-                if should_notify {
-                    self.notify_scrollbar_region(region, cx);
-                }
-                return;
-            };
-            let fade_deadline = last_activity_at + SCROLLBAR_FADE_DELAY;
-            if now >= fade_deadline {
-                let current_opacity = activity.opacity(now);
-                if current_opacity <= 0.0 {
-                    activity.last_activity_at = None;
-                } else {
-                    activity.transition = Some(ScrollbarTransition {
-                        started_at: now,
-                        from_opacity: current_opacity,
-                        to_opacity: 0.0,
-                    });
-                    should_notify = true;
-                }
-            }
-        }
-
-        if should_notify {
-            self.notify_scrollbar_region(region, cx);
-        }
-
-        if self
-            .scrollbar_activity
-            .get(region)
-            .is_some_and(|activity| activity.generation == generation)
-        {
-            self.schedule_scrollbar_animation(region.clone(), generation, cx);
-        }
+        entity: Entity<Self>,
+    ) -> ScrollbarVisibilityUpdateCallback {
+        Rc::new(move |_: &mut Window, cx: &mut App| {
+            entity.update(cx, |view, cx| {
+                view.notify_scrollbar_region(&region, cx);
+            });
+        })
     }
 
     fn notify_scrollbar_region(&self, region: &ScrollbarRegion, cx: &mut Context<Self>) {
@@ -14377,7 +14293,7 @@ impl ShellView {
         }
     }
 
-    fn prune_graph_scrollbar_activity(&mut self) {
+    fn prune_graph_scrollbar_visibility(&mut self) {
         let active_graph_columns: Vec<_> = self
             .conversation_surface()
             .map(|surface| {
@@ -14388,8 +14304,8 @@ impl ShellView {
                     .collect()
             })
             .unwrap_or_default();
-        self.scrollbar_activity.retain(|region, _| match region {
-            ScrollbarRegion::GraphColumn(column_key) => active_graph_columns.contains(column_key),
+        self.scrollbar_visibility.retain(|region, _| match region {
+            ScrollbarRegion::GraphColumn(column_key) => active_graph_columns.contains(&column_key),
             _ => true,
         });
     }

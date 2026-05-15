@@ -38,10 +38,11 @@ impl ShellView {
             surface
                 .graph_thread_link_menu_mut()
                 .open_node(node_id.clone(), event.position);
+            surface.reset_graph_thread_link_menu_scroll();
             changed
         });
         if changed {
-            self.prune_graph_scrollbar_activity();
+            self.prune_graph_scrollbar_visibility();
             self.notify_checklist_sidebar_panel(cx);
         }
         cx.stop_propagation();
@@ -74,10 +75,11 @@ impl ShellView {
                 thread_ref_id.clone(),
                 event.position,
             );
+            surface.reset_graph_thread_link_menu_scroll();
             changed
         });
         if changed {
-            self.prune_graph_scrollbar_activity();
+            self.prune_graph_scrollbar_visibility();
             self.notify_checklist_sidebar_panel(cx);
         }
         cx.stop_propagation();
@@ -92,6 +94,7 @@ impl ShellView {
     ) {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.graph_thread_link_menu_mut().set_link_threads_view();
+            surface.reset_graph_thread_link_menu_scroll();
             cx.notify();
         }
     }
@@ -107,6 +110,7 @@ impl ShellView {
             surface
                 .graph_thread_link_menu_mut()
                 .set_member_threads_view(member);
+            surface.reset_graph_thread_link_menu_scroll();
             cx.notify();
         }
     }
@@ -123,6 +127,7 @@ impl ShellView {
             surface
                 .graph_thread_link_menu_mut()
                 .set_rebind_member_threads_view(thread_ref_id, member);
+            surface.reset_graph_thread_link_menu_scroll();
             cx.notify();
         }
     }
@@ -135,6 +140,7 @@ impl ShellView {
     ) {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.graph_thread_link_menu_mut().set_link_threads_view();
+            surface.reset_graph_thread_link_menu_scroll();
             cx.notify();
         }
     }
@@ -150,6 +156,7 @@ impl ShellView {
             surface
                 .graph_thread_link_menu_mut()
                 .set_rebind_threads_view(thread_ref_id);
+            surface.reset_graph_thread_link_menu_scroll();
             cx.notify();
         }
     }
@@ -162,6 +169,7 @@ impl ShellView {
     ) {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.graph_thread_link_menu_mut().set_root_view();
+            surface.reset_graph_thread_link_menu_scroll();
             cx.notify();
         }
     }

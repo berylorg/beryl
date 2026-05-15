@@ -20,6 +20,7 @@ mod styled_text;
 #[path = "code_panel/syntax_projection.rs"]
 mod syntax_projection;
 
+use super::scrollbars::ScrollbarVisibilityPolicy;
 use crate::shell::{layout, syntax_highlighting::SyntaxHighlight};
 
 use body::render_code_panel_content;
@@ -110,7 +111,7 @@ pub(crate) struct CodePanelSelectableLine {
 #[derive(Clone)]
 pub(crate) struct CodePanelScrollChrome {
     pub handle: ScrollHandle,
-    pub scrollbar_opacity: f32,
+    pub scrollbar_visibility: ScrollbarVisibilityPolicy,
     pub on_activity: Option<CodePanelAction>,
     pub on_select: Option<CodePanelAction>,
     pub vertical_wheel_ownership: CodePanelVerticalWheelOwnership,

@@ -1,11 +1,9 @@
-mod scrollbar;
-
 use std::rc::Rc;
 
 use beryl_model::semantic_graph::ChecklistItemStatus;
 use gpui::{
-    AnyElement, Context, DispatchPhase, Entity, KeyDownEvent, MouseButton, MouseDownEvent, Render,
-    ScrollHandle, Window, anchored, canvas, div, point, prelude::*, px, rgb,
+    AnyElement, App, Context, DispatchPhase, Entity, KeyDownEvent, MouseButton, MouseDownEvent,
+    Render, ScrollHandle, Window, anchored, canvas, div, point, prelude::*, px, rgb,
 };
 
 use crate::shell::{
@@ -15,17 +13,19 @@ use crate::shell::{
     layout,
 };
 
-use self::scrollbar::SidebarScrollbarActivity;
 use super::{
     common::{disabled_secondary_button, secondary_button},
-    scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar},
+    scrollbars::{
+        ScrollbarAxis, ScrollbarVisibilityPolicy, ScrollbarVisibilityState,
+        ScrollbarVisibilityUpdateCallback, render_div_scrollbar,
+    },
 };
 
 pub(crate) struct ChecklistSidebarPanel {
     shell: Entity<ShellView>,
     scroll_handle: ScrollHandle,
     projection_state: ChecklistSidebarPanelState,
-    scrollbar_activity: SidebarScrollbarActivity,
+    scrollbar_visibility: ScrollbarVisibilityState,
 }
 
 #[derive(Clone)]
@@ -48,8 +48,41 @@ impl ChecklistSidebarPanel {
             shell,
             scroll_handle: ScrollHandle::new(),
             projection_state: ChecklistSidebarPanelState::default(),
-            scrollbar_activity: SidebarScrollbarActivity::default(),
+            scrollbar_visibility: ScrollbarVisibilityState::default(),
         }
+    }
+
+    fn scrollbar_update_callback(entity: Entity<Self>) -> ScrollbarVisibilityUpdateCallback {
+        Rc::new(move |_: &mut Window, cx: &mut App| {
+            entity.update(cx, |_, cx| {
+                cx.notify();
+            });
+        })
+    }
+
+    fn note_scrollbar_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let on_update = Self::scrollbar_update_callback(cx.entity());
+        self.scrollbar_visibility
+            .record_viewport_activity(window, cx, on_update);
+        cx.notify();
+    }
+
+    fn note_scrollbar_motion(
+        &mut self,
+        _: &gpui::MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(window, cx);
+    }
+
+    fn note_scrollbar_scroll(
+        &mut self,
+        _: &gpui::ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.note_scrollbar_activity(window, cx);
     }
 
     fn snapshot(&self, cx: &mut Context<Self>) -> ChecklistSidebarSnapshot {
@@ -99,18 +132,16 @@ impl ChecklistSidebarPanel {
 }
 
 impl Render for ChecklistSidebarPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.snapshot(cx);
         self.sync_projection_scroll(snapshot.projection.as_ref());
-        if self.scrollbar_animating() {
-            window.request_animation_frame();
-        }
 
         render_checklist_sidebar(
             snapshot,
             self.shell.clone(),
             self.scroll_handle.clone(),
-            self.scrollbar_opacity(),
+            self.scrollbar_visibility
+                .managed(Self::scrollbar_update_callback(cx.entity())),
             cx,
         )
         .into_any_element()
@@ -121,7 +152,7 @@ fn render_checklist_sidebar(
     snapshot: ChecklistSidebarSnapshot,
     shell_entity: Entity<ShellView>,
     scroll_handle: ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     cx: &mut Context<ChecklistSidebarPanel>,
 ) -> impl IntoElement {
     let projection = snapshot.projection.as_ref();
@@ -166,20 +197,11 @@ fn render_checklist_sidebar(
                 .pb_4()
                 .child(body),
         );
-    let scrollbar_activity: ScrollbarActivityCallback = {
-        let entity = cx.entity();
-        Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
-            entity.update(cx, |view, cx| {
-                view.note_scrollbar_direct_interaction(cx);
-            });
-        })
-    };
     if let Some(scrollbar) = render_div_scrollbar(
         "checklist-sidebar-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
-        scrollbar_opacity,
-        Some(scrollbar_activity),
+        scrollbar_visibility,
     ) {
         scroll_region = scroll_region.child(scrollbar);
     }

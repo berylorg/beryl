@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use beryl_model::conversation::PrimaryWorkspaceMember;
 use beryl_model::workspace::{RuntimeMode, WorkspaceMember};
 use gpui::{
@@ -15,7 +13,7 @@ use super::code_panel::CODE_FONT_FAMILY;
 use super::common::{
     button, disabled_secondary_button, framed_text_input, inline_notice, secondary_button,
 };
-use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar};
 use super::workspace_picker_row_menu::{
     render_workspace_row_action_menu, render_workspace_row_action_trigger,
 };
@@ -123,8 +121,10 @@ pub(super) fn render_workspace_picker_overlay(
     let entity = cx.entity();
     let picker_scroll_handle = loaded.workspace_picker_scroll_handle();
     let members_scroll_handle = loaded.workspace_members_scroll_handle();
-    let picker_scrollbar_opacity = shell.scrollbar_opacity(&ScrollbarRegion::WorkspacePicker);
-    let members_scrollbar_opacity = shell.scrollbar_opacity(&ScrollbarRegion::WorkspaceMembers);
+    let picker_scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::WorkspacePicker, cx);
+    let members_scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::WorkspaceMembers, cx);
     let filter_text = workspace_filter_input.read(cx).text().to_string();
     let visible_workspace_indices = workspace_picker::filtered_workspace_indices(
         &loaded.known_workspaces,
@@ -181,7 +181,7 @@ pub(super) fn render_workspace_picker_overlay(
         workspace_filter_input,
         rows,
         picker_scroll_handle,
-        picker_scrollbar_opacity,
+        picker_scrollbar_visibility,
         popup_layout.workspaces_column_width,
         popup_layout.workspaces_list_height,
         cx,
@@ -190,7 +190,7 @@ pub(super) fn render_workspace_picker_overlay(
         shell,
         loaded,
         members_scroll_handle,
-        members_scrollbar_opacity,
+        members_scrollbar_visibility,
         popup_layout.members_column_width,
         popup_layout.members_list_height,
         popup_layout.runtime_selector_dropdown_height,
@@ -260,7 +260,7 @@ fn render_workspaces_column(
     workspace_filter_input: &Entity<SingleLineInput>,
     rows: gpui::Div,
     picker_scroll_handle: gpui::ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     column_width: gpui::Pixels,
     list_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
@@ -298,7 +298,7 @@ fn render_workspaces_column(
         .child(render_scrollable_workspace_rows(
             rows,
             picker_scroll_handle,
-            scrollbar_opacity,
+            scrollbar_visibility,
             list_height,
             cx,
         ))
@@ -309,7 +309,7 @@ fn render_members_column(
     shell: &ShellView,
     loaded: &LoadedWorkspaceState,
     members_scroll_handle: gpui::ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     column_width: gpui::Pixels,
     list_height: gpui::Pixels,
     runtime_selector_dropdown_height: gpui::Pixels,
@@ -350,7 +350,7 @@ fn render_members_column(
                     shell,
                     loaded,
                     members_scroll_handle,
-                    scrollbar_opacity,
+                    scrollbar_visibility,
                     list_height,
                     cx,
                 ))
@@ -405,11 +405,10 @@ fn render_column_header(
 fn render_scrollable_workspace_rows(
     rows: gpui::Div,
     picker_scroll_handle: gpui::ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     list_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    let scrollbar_activity = shell_scrollbar_activity(cx, ScrollbarRegion::WorkspacePicker);
     let mut scroll_region = div()
         .relative()
         .h(list_height)
@@ -429,8 +428,7 @@ fn render_scrollable_workspace_rows(
         "workspace-picker-scrollbar",
         &picker_scroll_handle,
         ScrollbarAxis::Vertical,
-        scrollbar_opacity,
-        Some(scrollbar_activity),
+        scrollbar_visibility,
     ) {
         scroll_region = scroll_region.child(scrollbar);
     }
@@ -586,35 +584,33 @@ fn render_runtime_selector_dropdown(
     let entity = cx.entity();
     let distro_list = loaded.runtime_selector_distro_list();
     let dropdown = loaded.workspace_picker.runtime_selector_dropdown();
-
-    div()
-        .absolute()
-        .top(px(
-            layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_COLUMN_TOP,
-        ))
-        .left(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
-        .right(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
-        .on_children_prepainted(move |children, _, cx| {
-            let bounds = children.first().copied();
-            entity.update(cx, |view, cx| {
-                view.record_workspace_runtime_selector_dropdown_bounds(bounds, cx)
-            });
-        })
+    let scroll_handle = loaded.workspace_runtime_selector_scroll_handle();
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::WorkspaceRuntimeSelector, cx);
+    let mut dropdown_panel = div()
+        .id("workspace-runtime-selector-dropdown")
+        .relative()
+        .w_full()
+        .h(dropdown_height)
+        .min_h(px(0.0))
+        .occlude()
+        .overflow_hidden()
+        .bg(shell.popup_surface_background())
+        .border_1()
+        .border_color(shell.secondary_button_theme().active.border)
+        .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
+        .rounded_tl(px(0.0))
+        .rounded_tr(px(0.0))
+        .shadow_lg()
+        .on_mouse_move(cx.listener(ShellView::note_workspace_runtime_selector_scrollbar_motion))
+        .on_scroll_wheel(cx.listener(ShellView::note_workspace_runtime_selector_scrollbar_scroll))
         .child(
             div()
-                .id("workspace-runtime-selector-dropdown")
-                .w_full()
-                .h(dropdown_height)
+                .id("workspace-runtime-selector-dropdown-scroll")
+                .size_full()
                 .min_h(px(0.0))
-                .occlude()
+                .track_scroll(&scroll_handle)
                 .overflow_y_scroll()
-                .bg(shell.popup_surface_background())
-                .border_1()
-                .border_color(shell.secondary_button_theme().active.border)
-                .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
-                .rounded_tl(px(0.0))
-                .rounded_tr(px(0.0))
-                .shadow_lg()
                 .child(render_runtime_selector_row(
                     shell,
                     loaded,
@@ -630,7 +626,30 @@ fn render_runtime_selector_dropdown(
                     cx,
                     distro_list,
                 )),
-        )
+        );
+    if let Some(scrollbar) = render_div_scrollbar(
+        "workspace-runtime-selector-scrollbar",
+        &scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_visibility,
+    ) {
+        dropdown_panel = dropdown_panel.child(scrollbar);
+    }
+
+    div()
+        .absolute()
+        .top(px(
+            layout::WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_COLUMN_TOP,
+        ))
+        .left(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
+        .right(px(layout::WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X))
+        .on_children_prepainted(move |children, _, cx| {
+            let bounds = children.first().copied();
+            entity.update(cx, |view, cx| {
+                view.record_workspace_runtime_selector_dropdown_bounds(bounds, cx)
+            });
+        })
+        .child(dropdown_panel)
 }
 
 fn render_runtime_selector_wsl_rows(
@@ -774,11 +793,10 @@ fn render_scrollable_member_rows(
     shell: &ShellView,
     loaded: &LoadedWorkspaceState,
     members_scroll_handle: gpui::ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     list_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    let scrollbar_activity = shell_scrollbar_activity(cx, ScrollbarRegion::WorkspaceMembers);
     let mut scroll_region = div()
         .relative()
         .h(list_height)
@@ -798,24 +816,11 @@ fn render_scrollable_member_rows(
         "workspace-members-scrollbar",
         &members_scroll_handle,
         ScrollbarAxis::Vertical,
-        scrollbar_opacity,
-        Some(scrollbar_activity),
+        scrollbar_visibility,
     ) {
         scroll_region = scroll_region.child(scrollbar);
     }
     scroll_region
-}
-
-fn shell_scrollbar_activity(
-    cx: &mut Context<ShellView>,
-    region: ScrollbarRegion,
-) -> ScrollbarActivityCallback {
-    let entity = cx.entity();
-    Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
-        entity.update(cx, |view, cx| {
-            view.note_scrollbar_activity(region.clone(), cx);
-        });
-    })
 }
 
 fn render_member_rows(

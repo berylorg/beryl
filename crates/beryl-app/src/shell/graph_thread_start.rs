@@ -343,7 +343,7 @@ impl ShellView {
         };
 
         if changed {
-            self.prune_graph_scrollbar_activity();
+            self.prune_graph_scrollbar_visibility();
         }
         if let Some((title, detail)) = notice {
             self.set_graph_thread_start_notice(title, detail);

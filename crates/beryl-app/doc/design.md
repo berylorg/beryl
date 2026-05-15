@@ -240,8 +240,11 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 
 ## Streaming Scroll Surfaces
 
-- This crate owns reusable `gpui`-based scroll support for streaming surfaces that need bounded virtual trailing scroll allowance.
-- This crate owns reusable scrollbar direct-manipulation behavior for Beryl-rendered scroll surfaces, including thumb dragging and vertical scrollbar-lane paging, instead of requiring per-surface custom scrollbar interaction logic.
+- This crate owns Beryl's reusable `gpui`-based scroll support for streaming surfaces that need bounded virtual trailing scroll allowance.
+- This crate consumes app-neutral scrollbar primitives for Beryl-rendered scroll surfaces, including thumb geometry, thumb dragging, and vertical scrollbar-lane paging.
+- This crate owns the Beryl-specific integration around those primitives: activity callbacks, fade state, theme-to-style mapping, shell notification routing, and callback wiring into each surface's scroll model.
+- Keyboard scrolling belongs to the routed scrollable viewport or integrating shell surface rather than to scrollbar chrome.
+- The main shell transcript owns its special top, bottom, bottom-following, and virtual-tail scroll semantics. Other Beryl scroll surfaces do not inherit those transcript-specific edge rules from the shared scrollbar affordance.
 - The reusable virtual-list primitive is Beryl-owned application code built on `gpui` public element APIs; virtual trailing allowance is not implemented by patching the third-party `gpui` fork.
 - Virtual trailing scroll allowance is part of scroll geometry rather than the content model; list item counts, visible item ranges, and rendered content children remain real-content-only.
 - The effective trailing allowance is bounded by the viewport and by caller-provided content-anchor geometry so empty scroll space cannot displace all real content from the viewport.

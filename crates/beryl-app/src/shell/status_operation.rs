@@ -359,6 +359,7 @@ impl ShellView {
             surface
                 .status_line_operations_mut()
                 .open(StatusLineOperationKind::ModelReasoning, event.position);
+            surface.reset_status_operation_scroll();
         }
         self.begin_status_model_list_load_if_needed(window, cx);
         cx.stop_propagation();
@@ -387,6 +388,7 @@ impl ShellView {
             surface
                 .status_line_operations_mut()
                 .open(StatusLineOperationKind::Context, event.position);
+            surface.reset_status_operation_scroll();
         }
         cx.stop_propagation();
         cx.notify();
@@ -419,6 +421,7 @@ impl ShellView {
             surface
                 .status_line_operations_mut()
                 .open(StatusLineOperationKind::TurnOperations, event.position);
+            surface.reset_status_operation_scroll();
         }
         cx.stop_propagation();
         cx.notify();

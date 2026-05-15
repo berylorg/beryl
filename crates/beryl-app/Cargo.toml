@@ -10,6 +10,7 @@ base64.workspace = true
 beryl-backend.workspace = true
 beryl-model.workspace = true
 gpui.workspace = true
+gpui-scrollbar.workspace = true
 gpui-settings-window.workspace = true
 gpui-text-input.workspace = true
 image.workspace = true

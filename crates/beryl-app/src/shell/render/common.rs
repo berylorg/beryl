@@ -6,15 +6,14 @@ use gpui::{
 use crate::shell::{ChromeButtonTheme, ShellView, layout};
 use crate::text_input::SingleLineInput;
 
-use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar};
 
 pub(super) fn startup_shell_frame(
     shell: &ShellView,
     scroll_handle: &ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     on_scrollbar_mouse_move: impl Fn(&gpui::MouseMoveEvent, &mut Window, &mut App) + 'static,
     on_scrollbar_scroll_wheel: impl Fn(&gpui::ScrollWheelEvent, &mut Window, &mut App) + 'static,
-    on_scrollbar_activity: ScrollbarActivityCallback,
     title: &'static str,
     subtitle: &'static str,
     body: impl IntoElement,
@@ -61,8 +60,7 @@ pub(super) fn startup_shell_frame(
         "beryl-shell-scrollbar-vertical",
         scroll_handle,
         ScrollbarAxis::Vertical,
-        scrollbar_opacity,
-        Some(on_scrollbar_activity.clone()),
+        scrollbar_visibility.clone(),
     ) {
         scroll_region = scroll_region.child(vertical_scrollbar);
     }
@@ -70,8 +68,7 @@ pub(super) fn startup_shell_frame(
         "beryl-shell-scrollbar-horizontal",
         scroll_handle,
         ScrollbarAxis::Horizontal,
-        scrollbar_opacity,
-        Some(on_scrollbar_activity),
+        scrollbar_visibility,
     ) {
         scroll_region = scroll_region.child(horizontal_scrollbar);
     }

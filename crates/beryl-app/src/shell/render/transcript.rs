@@ -102,8 +102,8 @@ use super::super::virtual_list::{
     ListOffset, ListScrollEvent, ListScrollPosition, ListState, list,
 };
 use super::scrollbars::{
-    ScrollbarActivityCallback, ScrollbarInteraction, ScrollbarScrollState,
-    render_interactive_vertical_scrollbar,
+    ScrollDirection, ScrollbarInteraction, ScrollbarScrollState, ScrollbarVisibilityState,
+    ScrollbarVisibilityUpdateCallback, render_interactive_vertical_scrollbar,
 };
 use super::{
     code_panel,
@@ -120,8 +120,6 @@ const BORDERED_CODE_PANEL_HORIZONTAL_PADDING: f32 = 24.0;
 const TRANSCRIPT_CODE_PANEL_MIN_HEIGHT: f32 = 64.0;
 const TRANSCRIPT_CODE_PANEL_DEFAULT_MAX_HEIGHT: f32 = 360.0;
 const TRANSCRIPT_CODE_PANEL_MAX_HEIGHT_RATIO: f32 = 0.7;
-const CODE_PANEL_SCROLLBAR_FADE_DELAY: Duration = Duration::from_secs(2);
-const CODE_PANEL_SCROLLBAR_FADE_DURATION: Duration = Duration::from_millis(180);
 const CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES: usize = 512;
 const TRANSCRIPT_KEY_CONTEXT: &str = "TranscriptPanel";
 const TRANSCRIPT_SELECTION_HIGHLIGHT_COLOR: gpui::Rgba = gpui::Rgba {
@@ -196,7 +194,7 @@ pub(crate) struct TranscriptPanel {
     markdown_cache_scope: Option<TranscriptMarkdownCacheScope>,
     stream_projection: Rc<RefCell<TranscriptStreamProjection>>,
     code_panel_scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-    code_panel_scrollbar_activity: HashMap<String, CodePanelScrollbarActivity>,
+    code_panel_scrollbar_visibility: HashMap<String, ScrollbarVisibilityState>,
     nested_scroll_ownership: TranscriptNestedScrollOwnership,
     nested_code_panel_selected_during_mouse_down: bool,
     code_panel_resize_drag: Option<CodePanelResizeDragState>,
@@ -471,19 +469,6 @@ struct TranscriptTextLineHitGeometry {
     image_markers: Vec<TranscriptSelectableImageMarker>,
 }
 
-struct CodePanelScrollbarActivity {
-    generation: u64,
-    last_activity_at: Option<Instant>,
-    transition: Option<CodePanelScrollbarTransition>,
-    animation_task: Option<Task<()>>,
-}
-
-struct CodePanelScrollbarTransition {
-    started_at: Instant,
-    from_opacity: f32,
-    to_opacity: f32,
-}
-
 struct TranscriptImagePreviewPopupState {
     request_id: u64,
     label: String,
@@ -519,99 +504,6 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub content_release_row_identities: Vec<String>,
 }
 
-impl Default for CodePanelScrollbarActivity {
-    fn default() -> Self {
-        Self {
-            generation: 0,
-            last_activity_at: None,
-            transition: None,
-            animation_task: None,
-        }
-    }
-}
-
-impl CodePanelScrollbarActivity {
-    fn record_activity(&mut self) -> u64 {
-        let now = Instant::now();
-        let current_opacity = self.opacity(now);
-        self.generation = self.generation.saturating_add(1);
-        self.last_activity_at = Some(now);
-        self.transition = if current_opacity >= (1.0 - f32::EPSILON) {
-            None
-        } else {
-            Some(CodePanelScrollbarTransition {
-                started_at: now,
-                from_opacity: current_opacity,
-                to_opacity: 1.0,
-            })
-        };
-        self.animation_task = None;
-        self.generation
-    }
-
-    fn opacity(&self, now: Instant) -> f32 {
-        if let Some(transition) = &self.transition {
-            transition.opacity(now)
-        } else if self.last_activity_at.is_some() {
-            1.0
-        } else {
-            0.0
-        }
-    }
-
-    fn is_animating(&self, now: Instant) -> bool {
-        self.transition
-            .as_ref()
-            .is_some_and(|transition| transition.is_active(now))
-    }
-}
-
-impl CodePanelScrollbarTransition {
-    fn duration(&self) -> Duration {
-        let delta = (self.to_opacity - self.from_opacity).abs();
-        if delta <= f32::EPSILON {
-            return Duration::ZERO;
-        }
-
-        let duration = CODE_PANEL_SCROLLBAR_FADE_DURATION.mul_f32(delta);
-        if duration.is_zero() {
-            Duration::from_millis(1)
-        } else {
-            duration
-        }
-    }
-
-    fn progress(&self, now: Instant) -> f32 {
-        let duration = self.duration();
-        if duration.is_zero() {
-            return 1.0;
-        }
-
-        let elapsed = now.saturating_duration_since(self.started_at);
-        (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0)
-    }
-
-    fn opacity(&self, now: Instant) -> f32 {
-        let progress = self.progress(now);
-        let eased_progress = progress * progress * (3.0 - (2.0 * progress));
-        self.from_opacity + ((self.to_opacity - self.from_opacity) * eased_progress)
-    }
-
-    fn is_active(&self, now: Instant) -> bool {
-        self.progress(now) < 1.0
-    }
-
-    fn remaining_duration(&self, now: Instant) -> Option<Duration> {
-        let duration = self.duration();
-        if duration.is_zero() {
-            return None;
-        }
-
-        let elapsed = now.saturating_duration_since(self.started_at);
-        duration.checked_sub(elapsed)
-    }
-}
-
 impl Focusable for TranscriptPanel {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -634,7 +526,7 @@ impl TranscriptPanel {
             markdown_cache_scope: None,
             stream_projection: Rc::new(RefCell::new(TranscriptStreamProjection::default())),
             code_panel_scroll_handles: Rc::new(RefCell::new(HashMap::new())),
-            code_panel_scrollbar_activity: HashMap::new(),
+            code_panel_scrollbar_visibility: HashMap::new(),
             nested_scroll_ownership: TranscriptNestedScrollOwnership::default(),
             nested_code_panel_selected_during_mouse_down: false,
             code_panel_resize_drag: None,
@@ -1573,7 +1465,7 @@ impl TranscriptPanel {
         self.code_panel_scroll_handles
             .borrow_mut()
             .retain(|panel_id, _| visible_panel_ids.contains(panel_id));
-        self.code_panel_scrollbar_activity
+        self.code_panel_scrollbar_visibility
             .retain(|panel_id, _| visible_panel_ids.contains(panel_id));
     }
 
@@ -1715,16 +1607,19 @@ impl TranscriptPanel {
             .collect()
     }
 
-    fn scoped_code_panel_scrollbar_opacities(
-        &self,
+    fn scoped_code_panel_scrollbar_visibility(
+        &mut self,
         visible_panel_ids: &HashSet<String>,
-    ) -> HashMap<String, f32> {
+    ) -> HashMap<String, ScrollbarVisibilityState> {
         visible_panel_ids
             .iter()
-            .filter_map(|panel_id| {
-                self.code_panel_scrollbar_activity
-                    .get(panel_id)
-                    .map(|activity| (panel_id.clone(), activity.opacity(Instant::now())))
+            .map(|panel_id| {
+                let state = self
+                    .code_panel_scrollbar_visibility
+                    .entry(panel_id.clone())
+                    .or_default()
+                    .clone();
+                (panel_id.clone(), state)
             })
             .collect()
     }
@@ -1845,13 +1740,6 @@ impl TranscriptPanel {
         }
     }
 
-    fn code_panel_scrollbars_animating(&self) -> bool {
-        let now = Instant::now();
-        self.code_panel_scrollbar_activity
-            .values()
-            .any(|activity| activity.is_animating(now))
-    }
-
     fn sync_activity_caret_blink(
         &mut self,
         caret_present: bool,
@@ -1900,15 +1788,37 @@ impl TranscriptPanel {
     }
 
     fn note_code_panel_scrollbar_activity(&mut self, panel_key: String, cx: &mut Context<Self>) {
-        self.nested_scroll_ownership
-            .record_scrollbar_activity(panel_key.as_str());
-        let generation = self
-            .code_panel_scrollbar_activity
-            .entry(panel_key.clone())
+        if self
+            .nested_scroll_ownership
+            .record_scrollbar_activity(panel_key.as_str())
+        {
+            cx.notify();
+        }
+    }
+
+    fn record_code_panel_scrollbar_visibility(
+        &mut self,
+        panel_key: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let state = self
+            .code_panel_scrollbar_visibility
+            .entry(panel_key)
             .or_default()
-            .record_activity();
-        self.schedule_code_panel_scrollbar_animation(panel_key, generation, cx);
-        cx.notify();
+            .clone();
+        let on_update = Self::code_panel_scrollbar_update_callback(cx.entity());
+        state.record_viewport_activity(window, cx, on_update);
+    }
+
+    pub(super) fn code_panel_scrollbar_update_callback(
+        entity: Entity<Self>,
+    ) -> ScrollbarVisibilityUpdateCallback {
+        Rc::new(move |_: &mut Window, cx: &mut App| {
+            entity.update(cx, |_, cx| {
+                cx.notify();
+            });
+        })
     }
 
     fn scroll_selected_nested_code_panel(
@@ -1942,123 +1852,9 @@ impl TranscriptPanel {
             event.delta.pixel_delta(window.line_height()),
         );
         handle.set_offset(next_offset);
+        self.record_code_panel_scrollbar_visibility(panel_key.clone(), window, cx);
         self.note_code_panel_scrollbar_activity(panel_key, cx);
         true
-    }
-
-    fn schedule_code_panel_scrollbar_animation(
-        &mut self,
-        panel_key: String,
-        generation: u64,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(next_delay) =
-            self.next_code_panel_scrollbar_animation_delay(&panel_key, generation)
-        else {
-            return;
-        };
-
-        let animation_panel_key = panel_key.clone();
-        let animation_task = cx.spawn(move |view: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let mut cx = cx.clone();
-            async move {
-                cx.background_executor().timer(next_delay).await;
-                let _ = view.update(&mut cx, |view: &mut Self, cx: &mut Context<Self>| {
-                    view.advance_code_panel_scrollbar_animation(
-                        animation_panel_key.as_str(),
-                        generation,
-                        cx,
-                    );
-                });
-            }
-        });
-
-        if let Some(activity) = self.code_panel_scrollbar_activity.get_mut(&panel_key) {
-            activity.animation_task = Some(animation_task);
-        }
-    }
-
-    fn next_code_panel_scrollbar_animation_delay(
-        &self,
-        panel_key: &str,
-        generation: u64,
-    ) -> Option<Duration> {
-        let now = Instant::now();
-        let activity = self.code_panel_scrollbar_activity.get(panel_key)?;
-        if activity.generation != generation {
-            return None;
-        }
-
-        if let Some(transition) = &activity.transition {
-            return transition.remaining_duration(now);
-        }
-
-        let last_activity_at = activity.last_activity_at?;
-        let fade_deadline = last_activity_at + CODE_PANEL_SCROLLBAR_FADE_DELAY;
-        (now < fade_deadline).then_some(fade_deadline.saturating_duration_since(now))
-    }
-
-    fn advance_code_panel_scrollbar_animation(
-        &mut self,
-        panel_key: &str,
-        generation: u64,
-        cx: &mut Context<Self>,
-    ) {
-        let now = Instant::now();
-        let Some(activity) = self.code_panel_scrollbar_activity.get_mut(panel_key) else {
-            return;
-        };
-        if activity.generation != generation {
-            return;
-        }
-        activity.animation_task = None;
-
-        let mut should_notify = false;
-        if let Some(transition) = &activity.transition {
-            if !transition.is_active(now) {
-                let target_opacity = transition.to_opacity;
-                activity.transition = None;
-                should_notify = true;
-                if target_opacity <= 0.0 {
-                    activity.last_activity_at = None;
-                }
-            }
-        }
-
-        if activity.transition.is_none() {
-            let Some(last_activity_at) = activity.last_activity_at else {
-                if should_notify {
-                    cx.notify();
-                }
-                return;
-            };
-            let fade_deadline = last_activity_at + CODE_PANEL_SCROLLBAR_FADE_DELAY;
-            if now >= fade_deadline {
-                let current_opacity = activity.opacity(now);
-                if current_opacity <= 0.0 {
-                    activity.last_activity_at = None;
-                } else {
-                    activity.transition = Some(CodePanelScrollbarTransition {
-                        started_at: now,
-                        from_opacity: current_opacity,
-                        to_opacity: 0.0,
-                    });
-                    should_notify = true;
-                }
-            }
-        }
-
-        if should_notify {
-            cx.notify();
-        }
-
-        if self
-            .code_panel_scrollbar_activity
-            .get(panel_key)
-            .is_some_and(|activity| activity.generation == generation)
-        {
-            self.schedule_code_panel_scrollbar_animation(panel_key.to_string(), generation, cx);
-        }
     }
 
     fn release_evicted_media_images(&self, images: Vec<Arc<Image>>, cx: &mut App) {
@@ -2293,8 +2089,8 @@ impl Render for TranscriptPanel {
         let resized_panel_heights =
             Arc::new(self.scoped_resized_panel_heights(&active_nested_code_panel_ids));
         let code_panel_scroll_handles = self.code_panel_scroll_handles.clone();
-        let code_panel_scrollbar_opacities =
-            Arc::new(self.scoped_code_panel_scrollbar_opacities(&active_nested_code_panel_ids));
+        let code_panel_scrollbar_visibility =
+            Arc::new(self.scoped_code_panel_scrollbar_visibility(&active_nested_code_panel_ids));
         let syntax_highlight_cache = self.syntax_highlight_cache.clone();
         let code_panel_projection_cache = self.code_panel_projection_cache.clone();
         let transcript_panel_height = self
@@ -2411,18 +2207,10 @@ impl Render for TranscriptPanel {
             cx,
         );
         let activity_caret_opacity = self.activity_caret_blink.opacity();
-        let scrollbar_opacity = self
-            .shell
-            .read(cx)
-            .scrollbar_opacity(&ScrollbarRegion::Transcript);
-        if self
-            .shell
-            .read(cx)
-            .scrollbar_animating(&ScrollbarRegion::Transcript)
-            || self.code_panel_scrollbars_animating()
-        {
-            window.request_animation_frame();
-        }
+        let scrollbar_visibility = self.shell.read(cx).scrollbar_visibility_policy_for_entity(
+            &ScrollbarRegion::Transcript,
+            self.shell.clone(),
+        );
 
         div()
             .relative()
@@ -2539,10 +2327,11 @@ impl Render for TranscriptPanel {
                                     .min_h(px(0.0))
                                     .on_mouse_move({
                                         let shell = shell.clone();
-                                        move |_, _, cx| {
+                                        move |_, window, cx| {
                                             shell.update(cx, |view, cx| {
                                                 view.note_scrollbar_activity(
                                                     ScrollbarRegion::Transcript,
+                                                    window,
                                                     cx,
                                                 );
                                             });
@@ -2550,10 +2339,11 @@ impl Render for TranscriptPanel {
                                     })
                                     .on_scroll_wheel({
                                         let shell = shell.clone();
-                                        move |_, _, cx| {
+                                        move |_, window, cx| {
                                             shell.update(cx, |view, cx| {
                                                 view.note_scrollbar_activity(
                                                     ScrollbarRegion::Transcript,
+                                                    window,
                                                     cx,
                                                 );
                                             });
@@ -2696,8 +2486,8 @@ impl Render for TranscriptPanel {
                                                 resized_panel_heights.clone();
                                             let code_panel_scroll_handles =
                                                 code_panel_scroll_handles.clone();
-                                            let code_panel_scrollbar_opacities =
-                                                code_panel_scrollbar_opacities.clone();
+                                            let code_panel_scrollbar_visibility =
+                                                code_panel_scrollbar_visibility.clone();
                                             let selected_nested_code_panel_id =
                                                 row_selected_nested_code_panel_id.clone();
                                             let syntax_highlight_cache =
@@ -2756,7 +2546,7 @@ impl Render for TranscriptPanel {
                                                         soft_wrapped_panel_keys,
                                                         resized_panel_heights,
                                                         code_panel_scroll_handles,
-                                                        code_panel_scrollbar_opacities,
+                                                        code_panel_scrollbar_visibility,
                                                         selected_nested_code_panel_id,
                                                         syntax_highlight_cache,
                                                         code_panel_projection_cache,
@@ -2802,10 +2592,10 @@ impl Render for TranscriptPanel {
                                 {
                                     scroll_region = scroll_region.child(image_popup);
                                 }
-                                let scrollbar_activity: ScrollbarActivityCallback = {
+                                let scrollbar_owner_update = {
                                     let shell = shell.clone();
                                     let transcript_list_state = transcript_list_state.clone();
-                                    Rc::new(move |window, cx| {
+                                    move |window: &mut Window, cx: &mut App| {
                                         let is_scrolled = !matches!(
                                             transcript_list_state.scroll_position(),
                                             ListScrollPosition::Bottom
@@ -2819,7 +2609,7 @@ impl Render for TranscriptPanel {
                                             view.release_transcript_submit_anchor(cx);
                                             view.note_transcript_scroll_event(&event, window, cx);
                                         });
-                                    })
+                                    }
                                 };
                                 let scrollbar_interaction = ScrollbarInteraction::new(
                                     {
@@ -2830,8 +2620,11 @@ impl Render for TranscriptPanel {
                                                     .viewport_bounds(),
                                                 max_offset: transcript_list_state
                                                     .max_offset_for_scrollbar(),
-                                                offset: transcript_list_state
-                                                    .scroll_px_offset_for_scrollbar(),
+                                                scroll_offset: {
+                                                    let offset = transcript_list_state
+                                                        .scroll_px_offset_for_scrollbar();
+                                                    point(px(0.0), -offset.y)
+                                                },
                                             })
                                         }
                                     },
@@ -2846,7 +2639,11 @@ impl Render for TranscriptPanel {
                                     },
                                     {
                                         let transcript_list_state = transcript_list_state.clone();
-                                        move |distance| {
+                                        move |direction, distance| {
+                                            let distance = match direction {
+                                                ScrollDirection::Backward => -distance,
+                                                ScrollDirection::Forward => distance,
+                                            };
                                             transcript_list_state.scroll_by(distance);
                                         }
                                     },
@@ -2862,14 +2659,14 @@ impl Render for TranscriptPanel {
                                             transcript_list_state.scrollbar_drag_ended();
                                         }
                                     },
-                                    Some(scrollbar_activity),
+                                    scrollbar_owner_update,
                                 );
                                 if let Some(scrollbar) = render_interactive_vertical_scrollbar(
                                     "transcript-scrollbar",
                                     bounds.size.height,
                                     max_offset.height,
                                     -offset.y,
-                                    scrollbar_opacity,
+                                    scrollbar_visibility.clone(),
                                     scrollbar_interaction,
                                 ) {
                                     scroll_region = scroll_region.child(scrollbar);
@@ -2919,7 +2716,7 @@ fn render_turn(
     soft_wrapped_panel_keys: Arc<HashSet<String>>,
     resized_panel_heights: Arc<HashMap<String, Pixels>>,
     code_panel_scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-    code_panel_scrollbar_opacities: Arc<HashMap<String, f32>>,
+    code_panel_scrollbar_visibility: Arc<HashMap<String, ScrollbarVisibilityState>>,
     selected_nested_code_panel_id: Arc<Option<String>>,
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     code_panel_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
@@ -2987,7 +2784,7 @@ fn render_turn(
             soft_wrapped_panel_keys,
             resized_panel_heights,
             code_panel_scroll_handles,
-            code_panel_scrollbar_opacities,
+            code_panel_scrollbar_visibility,
             selected_nested_code_panel_id,
             syntax_highlight_cache,
             code_panel_projection_cache,

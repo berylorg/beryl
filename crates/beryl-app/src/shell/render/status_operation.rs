@@ -8,7 +8,7 @@ use gpui::{
 use std::time::Instant;
 
 use crate::shell::{
-    ConversationSurfaceState, ShellView, layout,
+    ConversationSurfaceState, ScrollbarRegion, ShellView, layout,
     status_operation_state::{
         HardStopRequestSummary, StatusLineOperationKind, StatusModelListCache,
         reasoning_effort_for_model_selection,
@@ -16,6 +16,7 @@ use crate::shell::{
 };
 
 use super::common::{disabled_secondary_button, secondary_button};
+use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
 
 pub(super) fn render_status_operation_listeners(cx: &mut Context<ShellView>) -> impl IntoElement {
     let entity = cx.entity();
@@ -92,6 +93,42 @@ pub(super) fn render_status_operation_popup(
             render_turn_operations_menu(shell, surface, cx).into_any_element()
         }
     };
+    let scroll_handle = surface.status_operation_scroll_handle();
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::StatusOperation, cx);
+    let mut panel = div()
+        .id("status-operation-popup")
+        .relative()
+        .w(px(340.0))
+        .max_h(px(420.0))
+        .overflow_hidden()
+        .occlude()
+        .rounded_lg()
+        .border_1()
+        .border_color(shell.surface_border())
+        .bg(shell.popup_surface_background())
+        .shadow_lg()
+        .on_mouse_move(cx.listener(ShellView::note_status_operation_scrollbar_motion))
+        .on_scroll_wheel(cx.listener(ShellView::note_status_operation_scrollbar_scroll))
+        .child(
+            div()
+                .id("status-operation-popup-scroll")
+                .w_full()
+                .max_h(px(420.0))
+                .min_h(px(0.0))
+                .track_scroll(&scroll_handle)
+                .overflow_y_scroll()
+                .p_2()
+                .child(content),
+        );
+    if let Some(scrollbar) = render_div_scrollbar(
+        "status-operation-scrollbar",
+        &scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_visibility,
+    ) {
+        panel = panel.child(scrollbar);
+    }
 
     Some(
         anchored()
@@ -105,21 +142,7 @@ pub(super) fn render_status_operation_popup(
                             view.record_status_operation_bounds(bounds, cx);
                         });
                     })
-                    .child(
-                        div()
-                            .id("status-operation-popup")
-                            .w(px(340.0))
-                            .max_h(px(420.0))
-                            .overflow_y_scroll()
-                            .occlude()
-                            .rounded_lg()
-                            .border_1()
-                            .border_color(shell.surface_border())
-                            .bg(shell.popup_surface_background())
-                            .shadow_lg()
-                            .p_2()
-                            .child(content),
-                    ),
+                    .child(panel),
             )
             .into_any_element(),
     )

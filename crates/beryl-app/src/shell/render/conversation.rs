@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use gpui::{
     AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas, div, img,
@@ -8,8 +6,8 @@ use gpui::{
 
 use crate::shell::{
     BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
-    ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState, ShellView,
-    SurfaceNotice, image_preview_popup, layout,
+    ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
+    ScrollbarRegion, ShellView, SurfaceNotice, image_preview_popup, layout,
     status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
     status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
     tool_activity::ToolActivityRowStatus,
@@ -28,7 +26,7 @@ use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
 };
 use super::graph_overlay::{render_graph_overlay, render_graph_overlay_listeners};
-use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
 use super::status_operation::{render_status_operation_listeners, render_status_operation_popup};
 use super::thread_selector::{render_thread_selector_listeners, render_thread_selector_overlay};
 use super::transcript::TranscriptPanel;
@@ -149,6 +147,90 @@ pub(super) fn render_idle_workspace_shell(
 ) -> gpui::AnyElement {
     let loaded = &idle.loaded_workspace;
     let workspace_members_scroll_handle = loaded.workspace_members_scroll_handle();
+    let workspace_members_scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::WorkspaceMembers, cx);
+    let mut workspace_members_scroll_region = div()
+        .relative()
+        .size_full()
+        .min_h(px(0.0))
+        .on_mouse_move(cx.listener(ShellView::note_workspace_members_scrollbar_motion))
+        .on_scroll_wheel(cx.listener(ShellView::note_workspace_members_scrollbar_scroll))
+        .child(
+            div()
+                .id("idle-workspace-members-scroll")
+                .size_full()
+                .min_h(px(0.0))
+                .track_scroll(&workspace_members_scroll_handle)
+                .overflow_y_scroll()
+                .child(
+                    div()
+                        .w_full()
+                        .flex()
+                        .flex_col()
+                        .gap_4()
+                        .child(section_label("Workspace Members"))
+                        .when_some(loaded.startup_warning.as_ref(), |this, warning| {
+                            this.child(inline_notice(warning, rgb(0x172554), rgb(0xbfdbfe)))
+                        })
+                        .child(card(
+                            shell,
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .child("No runtime environment selected"),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(rgb(0xcbd5e1))
+                                        .child(format!(
+                                            "Beryl opened the legacy semantic workspace '{}', but it does not have a selected runtime environment.",
+                                            loaded.workspace.title()
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(rgb(0x94a3b8))
+                                        .child(
+                                            "Select a host-Windows or WSL-Linux runtime in Workspaces before starting a transcript in this workspace.",
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .gap_3()
+                                        .child(secondary_button(
+                                            shell,
+                                            "workspaces-inline",
+                                            "Workspaces",
+                                            cx.listener(ShellView::toggle_workspace_picker),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(rgb(0x94a3b8))
+                                        .child(
+                                            "Workspace switching stays in the toolbar Workspaces popup rather than a dedicated full-screen picker.",
+                                        ),
+                                ),
+                        )),
+                ),
+        );
+    if let Some(scrollbar) = render_div_scrollbar(
+        "idle-workspace-members-scrollbar",
+        &workspace_members_scroll_handle,
+        ScrollbarAxis::Vertical,
+        workspace_members_scrollbar_visibility,
+    ) {
+        workspace_members_scroll_region = workspace_members_scroll_region.child(scrollbar);
+    }
 
     let mut root = div()
         .size_full()
@@ -196,74 +278,7 @@ pub(super) fn render_idle_workspace_shell(
                 .min_h(px(0.0))
                 .px_4()
                 .py_4()
-                .child(
-                    div()
-                        .id("idle-workspace-members-scroll")
-                        .size_full()
-                        .min_h(px(0.0))
-                        .track_scroll(&workspace_members_scroll_handle)
-                        .overflow_y_scroll()
-                        .child(
-                            div()
-                                .w_full()
-                                .flex()
-                                .flex_col()
-                                .gap_4()
-                                .child(section_label("Workspace Members"))
-                                .when_some(loaded.startup_warning.as_ref(), |this, warning| {
-                                    this.child(inline_notice(warning, rgb(0x172554), rgb(0xbfdbfe)))
-                                })
-                                .child(card(
-                                    shell,
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_3()
-                                        .child(
-                                            div()
-                                                .text_lg()
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                .child("No runtime environment selected"),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(rgb(0xcbd5e1))
-                                                .child(format!(
-                                                    "Beryl opened the legacy semantic workspace '{}', but it does not have a selected runtime environment.",
-                                                    loaded.workspace.title()
-                                                )),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(rgb(0x94a3b8))
-                                                .child(
-                                                    "Select a host-Windows or WSL-Linux runtime in Workspaces before starting a transcript in this workspace.",
-                                                ),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .gap_3()
-                                                .child(secondary_button(
-                                                    shell,
-                                                    "workspaces-inline",
-                                                    "Workspaces",
-                                                    cx.listener(ShellView::toggle_workspace_picker),
-                                                )),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(rgb(0x94a3b8))
-                                                .child(
-                                                    "Workspace switching stays in the toolbar Workspaces popup rather than a dedicated full-screen picker.",
-                                                ),
-                                        ),
-                                )),
-                        ),
-                ),
+                .child(workspace_members_scroll_region),
         )
         .child(render_loaded_workspace_composer(
             shell,
@@ -271,7 +286,11 @@ pub(super) fn render_idle_workspace_shell(
             window,
             cx,
         ))
-        .child(render_status_line(shell, StatusLineProjection::unknown(), cx));
+        .child(render_status_line(
+            shell,
+            StatusLineProjection::unknown(),
+            cx,
+        ));
 
     if loaded.workspace_picker.is_open() {
         root = root.child(render_workspace_picker_listeners(cx));
@@ -1562,7 +1581,8 @@ fn render_tool_activity_panel(
         layout::TOOL_ACTIVITY_OVERSCAN_ROWS,
     );
     let rows = surface.tool_activity_row_window(row_window.range.clone());
-    let scrollbar_opacity = shell.scrollbar_opacity(&crate::shell::ScrollbarRegion::ToolActivity);
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&crate::shell::ScrollbarRegion::ToolActivity, cx);
 
     let mut row_list = div()
         .w_full()
@@ -1619,20 +1639,11 @@ fn render_tool_activity_panel(
             composer_height,
         ));
 
-    let scrollbar_activity: ScrollbarActivityCallback = {
-        let entity = entity.clone();
-        Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
-            entity.update(cx, |view, cx| {
-                view.note_scrollbar_activity(crate::shell::ScrollbarRegion::ToolActivity, cx);
-            });
-        })
-    };
     if let Some(scrollbar) = render_div_scrollbar(
         "tool-activity-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
-        scrollbar_opacity,
-        Some(scrollbar_activity),
+        scrollbar_visibility,
     ) {
         panel = panel.child(scrollbar);
     }

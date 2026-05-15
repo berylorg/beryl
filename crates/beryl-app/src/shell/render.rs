@@ -23,9 +23,6 @@ use super::ShellView;
 
 impl Render for ShellView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.shell_scrollbars_animating() {
-            window.request_animation_frame();
-        }
         let shell = &*self;
         match &self.state {
             super::ShellState::WorkspaceIdle(idle) => conversation::render_idle_workspace_shell(

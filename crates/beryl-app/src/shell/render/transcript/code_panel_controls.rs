@@ -19,6 +19,7 @@ use super::super::{
         CodePanelScrollChrome, CodePanelVerticalWheelOwnership, CodePanelWrapMode,
     },
     code_panel_projection_cache::{CodePanelProjectionCache, CodePanelProjectionRequest},
+    scrollbars::ScrollbarVisibilityState,
 };
 use super::{TRANSCRIPT_CODE_PANEL_MIN_HEIGHT, TranscriptCodeLayout, TranscriptPanel};
 
@@ -28,7 +29,7 @@ pub(super) struct TranscriptCodePanelState {
     soft_wrapped_panel_keys: Arc<HashSet<String>>,
     resized_panel_heights: Arc<HashMap<String, Pixels>>,
     scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-    scrollbar_opacities: Arc<HashMap<String, f32>>,
+    scrollbar_visibility: Arc<HashMap<String, ScrollbarVisibilityState>>,
     selected_nested_code_panel_id: Arc<Option<String>>,
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
@@ -47,7 +48,7 @@ impl TranscriptCodePanelState {
         soft_wrapped_panel_keys: Arc<HashSet<String>>,
         resized_panel_heights: Arc<HashMap<String, Pixels>>,
         scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-        scrollbar_opacities: Arc<HashMap<String, f32>>,
+        scrollbar_visibility: Arc<HashMap<String, ScrollbarVisibilityState>>,
         selected_nested_code_panel_id: Arc<Option<String>>,
         syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
         display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
@@ -57,7 +58,7 @@ impl TranscriptCodePanelState {
             soft_wrapped_panel_keys,
             resized_panel_heights,
             scroll_handles,
-            scrollbar_opacities,
+            scrollbar_visibility,
             selected_nested_code_panel_id,
             syntax_highlight_cache,
             display_projection_cache,
@@ -164,12 +165,15 @@ impl TranscriptCodePanelControls {
 
         CodePanelScrollChrome {
             handle,
-            scrollbar_opacity: self
+            scrollbar_visibility: self
                 .state
-                .scrollbar_opacities
+                .scrollbar_visibility
                 .get(panel_id)
-                .copied()
-                .unwrap_or(0.0),
+                .cloned()
+                .unwrap_or_default()
+                .managed(TranscriptPanel::code_panel_scrollbar_update_callback(
+                    self.state.entity.clone(),
+                )),
             on_activity: Some(Arc::new(move |cx: &mut App| {
                 activity_entity.update(cx, |view, cx| {
                     view.note_code_panel_scrollbar_activity(activity_panel_key.clone(), cx);

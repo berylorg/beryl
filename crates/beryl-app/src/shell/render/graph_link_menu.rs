@@ -12,7 +12,7 @@ use crate::{
         MemberThreadInventoryGroup, MemberThreadInventorySnapshot, MemberThreadInventoryThread,
     },
     shell::{
-        ConversationSurfaceState, LoadedWorkspaceState, ShellView,
+        ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellView,
         graph_link_menu::GraphThreadLinkMenuView,
         graph_node_action_policy::{
             GRAPH_NODE_ACTION_BUSY_REASON, GRAPH_NODE_ACTION_STALE_REASON,
@@ -27,6 +27,7 @@ use super::graph_link_menu_rows::{
     action_row, actions_back_row, back_row, delete_leaf_row, delete_recursive_hold_row,
     disabled_action_row, disabled_menu_row, menu_header, status_row,
 };
+use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
 
 #[derive(Clone)]
 enum ThreadLinkMenuMode {
@@ -132,6 +133,42 @@ pub(super) fn render_graph_thread_link_menu(
     let menu = surface.graph_thread_link_menu().active()?;
     let entity = cx.entity();
     let content = render_menu_content(shell, loaded, surface, menu.view(), cx);
+    let scroll_handle = surface.graph_thread_link_menu_scroll_handle();
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::GraphThreadLinkMenu, cx);
+    let mut panel = div()
+        .id("graph-thread-link-menu-panel")
+        .relative()
+        .w(px(292.0))
+        .max_h(px(360.0))
+        .overflow_hidden()
+        .occlude()
+        .rounded_lg()
+        .border_1()
+        .border_color(shell.surface_border())
+        .bg(shell.popup_surface_background())
+        .shadow_lg()
+        .on_mouse_move(cx.listener(ShellView::note_graph_thread_link_menu_scrollbar_motion))
+        .on_scroll_wheel(cx.listener(ShellView::note_graph_thread_link_menu_scrollbar_scroll))
+        .child(
+            div()
+                .id("graph-thread-link-menu-scroll")
+                .w_full()
+                .max_h(px(360.0))
+                .min_h(px(0.0))
+                .track_scroll(&scroll_handle)
+                .overflow_y_scroll()
+                .p_2()
+                .child(content),
+        );
+    if let Some(scrollbar) = render_div_scrollbar(
+        "graph-thread-link-menu-scrollbar",
+        &scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_visibility,
+    ) {
+        panel = panel.child(scrollbar);
+    }
 
     Some(
         anchored()
@@ -145,21 +182,7 @@ pub(super) fn render_graph_thread_link_menu(
                             view.record_graph_thread_link_menu_bounds(bounds, cx)
                         });
                     })
-                    .child(
-                        div()
-                            .id("graph-thread-link-menu-panel")
-                            .w(px(292.0))
-                            .max_h(px(360.0))
-                            .overflow_y_scroll()
-                            .occlude()
-                            .rounded_lg()
-                            .border_1()
-                            .border_color(shell.surface_border())
-                            .bg(shell.popup_surface_background())
-                            .shadow_lg()
-                            .p_2()
-                            .child(content),
-                    ),
+                    .child(panel),
             )
             .into_any_element(),
     )

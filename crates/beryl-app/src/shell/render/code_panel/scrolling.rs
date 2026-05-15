@@ -1,11 +1,9 @@
-use std::rc::Rc;
-
 use gpui::{
     AnyElement, IsZero, MouseButton, Overflow, Pixels, Point, Size, StatefulInteractiveElement,
     div, point, prelude::*, px,
 };
 
-use super::super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
+use super::super::scrollbars::{ScrollbarAxis, render_div_scrollbar_with_owner_update};
 use super::{CodePanelScrollChrome, CodePanelScrollOverflow, CodePanelVerticalWheelOwnership};
 
 #[derive(Clone, Copy)]
@@ -48,16 +46,11 @@ pub(super) fn render_scrollable_code_panel(
         Some(scroll_chrome) => {
             let CodePanelScrollChrome {
                 handle,
-                scrollbar_opacity,
+                scrollbar_visibility,
                 on_activity,
                 on_select,
                 vertical_wheel_ownership,
             } = scroll_chrome;
-            let scrollbar_activity = on_activity.clone().map(|on_activity| {
-                Rc::new(move |_: &mut gpui::Window, cx: &mut gpui::App| {
-                    on_activity(cx);
-                }) as ScrollbarActivityCallback
-            });
             let stop_scroll_wheel_propagation =
                 code_panel_stops_scroll_wheel_propagation(axes, vertical_wheel_ownership);
             let mut scroll_region = div()
@@ -69,7 +62,9 @@ pub(super) fn render_scrollable_code_panel(
                 })
                 .on_mouse_move({
                     let on_activity = on_activity.clone();
-                    move |_, _, cx| {
+                    let scrollbar_visibility = scrollbar_visibility.clone();
+                    move |_, window, cx| {
+                        scrollbar_visibility.record_viewport_activity(window, cx);
                         if let Some(on_activity) = on_activity.as_ref() {
                             on_activity(cx);
                         }
@@ -85,7 +80,9 @@ pub(super) fn render_scrollable_code_panel(
                 })
                 .on_scroll_wheel({
                     let on_activity = on_activity.clone();
-                    move |_, _, cx| {
+                    let scrollbar_visibility = scrollbar_visibility.clone();
+                    move |_, window, cx| {
+                        scrollbar_visibility.record_viewport_activity(window, cx);
                         if let Some(on_activity) = on_activity.as_ref() {
                             on_activity(cx);
                         }
@@ -96,23 +93,34 @@ pub(super) fn render_scrollable_code_panel(
                 })
                 .child(scrollable.track_scroll(&handle).child(content));
             if axes.vertical {
-                if let Some(scrollbar) = render_div_scrollbar(
+                if let Some(scrollbar) = render_div_scrollbar_with_owner_update(
                     ("code-panel-scrollbar-vertical", element_key),
                     &handle,
                     ScrollbarAxis::Vertical,
-                    scrollbar_opacity,
-                    scrollbar_activity.clone(),
+                    scrollbar_visibility.clone(),
+                    {
+                        let on_activity = on_activity.clone();
+                        move |_: &mut gpui::Window, cx: &mut gpui::App| {
+                            if let Some(on_activity) = on_activity.as_ref() {
+                                on_activity(cx);
+                            }
+                        }
+                    },
                 ) {
                     scroll_region = scroll_region.child(scrollbar);
                 }
             }
             if axes.horizontal {
-                if let Some(scrollbar) = render_div_scrollbar(
+                if let Some(scrollbar) = render_div_scrollbar_with_owner_update(
                     ("code-panel-scrollbar-horizontal", element_key),
                     &handle,
                     ScrollbarAxis::Horizontal,
-                    scrollbar_opacity,
-                    scrollbar_activity,
+                    scrollbar_visibility,
+                    move |_: &mut gpui::Window, cx: &mut gpui::App| {
+                        if let Some(on_activity) = on_activity.as_ref() {
+                            on_activity(cx);
+                        }
+                    },
                 ) {
                     scroll_region = scroll_region.child(scrollbar);
                 }

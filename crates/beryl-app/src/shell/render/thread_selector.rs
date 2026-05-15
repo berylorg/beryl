@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use gpui::{
     AnyElement, Context, DispatchPhase, ElementId, InteractiveElement, KeyDownEvent,
     MouseDownEvent, ScrollHandle, StatefulInteractiveElement, Window, anchored, canvas, div, point,
@@ -21,7 +19,7 @@ use crate::{
 
 use super::{
     column_selector::render_column_selector_trail,
-    scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar},
+    scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar},
 };
 
 const THREAD_SELECTOR_COLUMN_WIDTH: f32 = 284.0;
@@ -216,7 +214,8 @@ fn render_columns(
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let scroll_handle = surface.thread_selector_columns_scroll_handle();
-    let scrollbar_opacity = shell.scrollbar_opacity(&ScrollbarRegion::ThreadSelectorColumns);
+    let scrollbar_visibility =
+        shell.scrollbar_visibility_policy(&ScrollbarRegion::ThreadSelectorColumns, cx);
     let columns = surface
         .thread_selector()
         .columns()
@@ -236,7 +235,7 @@ fn render_columns(
             THREAD_SELECTOR_COLUMN_GAP,
             columns,
             scroll_handle,
-            scrollbar_opacity,
+            scrollbar_visibility,
             cx,
         ))
 }
@@ -252,8 +251,10 @@ fn render_column(
     let scroll_handle = surface
         .thread_selector_column_scroll_handle(column_index)
         .unwrap_or_else(ScrollHandle::new);
-    let scrollbar_opacity =
-        shell.scrollbar_opacity(&ScrollbarRegion::ThreadSelectorColumn(column_key.clone()));
+    let scrollbar_visibility = shell.scrollbar_visibility_policy(
+        &ScrollbarRegion::ThreadSelectorColumn(column_key.clone()),
+        cx,
+    );
     let header_label = column_header_label(surface, &column_key);
 
     div()
@@ -297,7 +298,7 @@ fn render_column(
                     column,
                     column_key,
                     scroll_handle,
-                    scrollbar_opacity,
+                    scrollbar_visibility,
                     cx,
                 )),
         )
@@ -310,7 +311,7 @@ fn render_column_rows(
     column: &ThreadSelectorColumnState,
     column_key: ThreadSelectorColumnKey,
     scroll_handle: ScrollHandle,
-    scrollbar_opacity: f32,
+    scrollbar_visibility: ScrollbarVisibilityPolicy,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let viewport_height = thread_selector_row_viewport_height(&scroll_handle);
@@ -381,18 +382,6 @@ fn render_column_rows(
                 .overflow_y_scroll()
                 .child(rows),
         );
-    let scrollbar_activity: ScrollbarActivityCallback = {
-        let entity = cx.entity();
-        let column_key = column_key.clone();
-        Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
-            entity.update(cx, |view, cx| {
-                view.note_scrollbar_activity(
-                    ScrollbarRegion::ThreadSelectorColumn(column_key.clone()),
-                    cx,
-                );
-            });
-        })
-    };
     if let Some(scrollbar) = render_div_scrollbar(
         (
             ElementId::from(("thread-selector-column-scrollbar", column_index)),
@@ -400,8 +389,7 @@ fn render_column_rows(
         ),
         &scroll_handle,
         ScrollbarAxis::Vertical,
-        scrollbar_opacity,
-        Some(scrollbar_activity),
+        scrollbar_visibility,
     ) {
         scroll_region = scroll_region.child(scrollbar);
     }
