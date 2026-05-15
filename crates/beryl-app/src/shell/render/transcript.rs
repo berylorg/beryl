@@ -98,8 +98,13 @@ use self::{
         collect_turn_card_markdown_code_panel_ids, render_turn_card, user_prompt_block_path,
     },
 };
-use super::super::virtual_list::{ListOffset, ListState, list};
-use super::scrollbars::render_vertical_scrollbar;
+use super::super::virtual_list::{
+    ListOffset, ListScrollEvent, ListScrollPosition, ListState, list,
+};
+use super::scrollbars::{
+    ScrollbarActivityCallback, ScrollbarInteraction, ScrollbarScrollState,
+    render_interactive_vertical_scrollbar,
+};
 use super::{
     code_panel,
     code_panel_projection_cache::{CodePanelProjectionCache, CodePanelProjectionCacheStats},
@@ -2658,14 +2663,15 @@ impl Render for TranscriptPanel {
                                             }
                                         }
                                     })
-                                    .child(
+                                    .child({
+                                        let row_shell = shell.clone();
                                         list(transcript_list_state.clone(), move |index, _, cx| {
                                             let row_started = Instant::now();
                                             if index >= turn_count {
                                                 return div().into_any_element();
                                             }
 
-                                            let row = shell
+                                            let row = row_shell
                                                 .read(cx)
                                                 .conversation_surface()
                                                 .and_then(|surface| {
@@ -2779,8 +2785,8 @@ impl Render for TranscriptPanel {
 
                                             element
                                         })
-                                        .size_full(),
-                                    );
+                                        .size_full()
+                                    });
                                 let bounds = transcript_list_state.viewport_bounds();
                                 let max_offset = transcript_list_state.max_offset_for_scrollbar();
                                 let offset = transcript_list_state.scroll_px_offset_for_scrollbar();
@@ -2796,11 +2802,75 @@ impl Render for TranscriptPanel {
                                 {
                                     scroll_region = scroll_region.child(image_popup);
                                 }
-                                if let Some(scrollbar) = render_vertical_scrollbar(
+                                let scrollbar_activity: ScrollbarActivityCallback = {
+                                    let shell = shell.clone();
+                                    let transcript_list_state = transcript_list_state.clone();
+                                    Rc::new(move |window, cx| {
+                                        let is_scrolled = !matches!(
+                                            transcript_list_state.scroll_position(),
+                                            ListScrollPosition::Bottom
+                                        );
+                                        let event = ListScrollEvent {
+                                            visible_range: transcript_list_state.visible_range(),
+                                            count: transcript_list_state.item_count(),
+                                            is_scrolled,
+                                        };
+                                        shell.update(cx, |view, cx| {
+                                            view.release_transcript_submit_anchor(cx);
+                                            view.note_transcript_scroll_event(&event, window, cx);
+                                        });
+                                    })
+                                };
+                                let scrollbar_interaction = ScrollbarInteraction::new(
+                                    {
+                                        let transcript_list_state = transcript_list_state.clone();
+                                        move || {
+                                            Some(ScrollbarScrollState {
+                                                viewport_bounds: transcript_list_state
+                                                    .viewport_bounds(),
+                                                max_offset: transcript_list_state
+                                                    .max_offset_for_scrollbar(),
+                                                offset: transcript_list_state
+                                                    .scroll_px_offset_for_scrollbar(),
+                                            })
+                                        }
+                                    },
+                                    {
+                                        let transcript_list_state = transcript_list_state.clone();
+                                        move |scroll_offset| {
+                                            transcript_list_state.set_offset_from_scrollbar(point(
+                                                px(0.0),
+                                                -scroll_offset,
+                                            ));
+                                        }
+                                    },
+                                    {
+                                        let transcript_list_state = transcript_list_state.clone();
+                                        move |distance| {
+                                            transcript_list_state.scroll_by(distance);
+                                        }
+                                    },
+                                    {
+                                        let transcript_list_state = transcript_list_state.clone();
+                                        move || {
+                                            transcript_list_state.scrollbar_drag_started();
+                                        }
+                                    },
+                                    {
+                                        let transcript_list_state = transcript_list_state.clone();
+                                        move || {
+                                            transcript_list_state.scrollbar_drag_ended();
+                                        }
+                                    },
+                                    Some(scrollbar_activity),
+                                );
+                                if let Some(scrollbar) = render_interactive_vertical_scrollbar(
+                                    "transcript-scrollbar",
                                     bounds.size.height,
                                     max_offset.height,
                                     -offset.y,
                                     scrollbar_opacity,
+                                    scrollbar_interaction,
                                 ) {
                                     scroll_region = scroll_region.child(scrollbar);
                                 }

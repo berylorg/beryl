@@ -411,6 +411,7 @@ Agent execution, transcript history, and Codex-owned state flow through `codex a
 - Streaming scroll surfaces may expose a trailing virtual scroll allowance so a caller-selected content line can remain reachable and visually anchoring while content below that line is shorter than the viewport.
 - Trailing virtual scroll allowance is scroll geometry, not semantic content; it must not appear as transcript history, graph data, checklist data, backend output, or another user-visible content record.
 - Streaming scroll state must distinguish bottom-following, content-anchored, and virtual-tail positions so live content growth cannot accidentally preserve a durable anchor inside empty trailing space.
+- Reusable scrollbar direct manipulation must preserve the owning scroll surface's scroll-state semantics, including special top, bottom, bottom-following, and virtual-tail behavior, rather than applying generic offset clamping outside the owning scroll model.
 - Reusable virtual-list behavior is owned by Beryl application code layered on `gpui` public element APIs; modifying the third-party `gpui` fork is not part of the target scroll design.
 
 ### Provenance

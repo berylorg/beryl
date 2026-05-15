@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use gpui::{Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
 
 use gpui::ScrollHandle;
@@ -12,6 +14,7 @@ use super::common::{
     button, card, framed_text_input, info_line, inline_notice, primary_actions, section_label,
     startup_shell_frame,
 };
+use super::scrollbars::ScrollbarActivityCallback;
 
 pub(super) fn render_startup_shell(
     shell: &ShellView,
@@ -29,6 +32,7 @@ pub(super) fn render_startup_shell(
             startup_scrollbar_opacity,
             cx.listener(ShellView::note_startup_scrollbar_motion),
             cx.listener(ShellView::note_startup_scrollbar_scroll),
+            startup_scrollbar_activity(cx),
             "Beryl",
             "Beryl is loading semantic workspace startup state before the main workspace shell appears.",
             render_discovering(discovering),
@@ -45,6 +49,7 @@ pub(super) fn render_startup_shell(
                 startup_scrollbar_opacity,
                 cx.listener(ShellView::note_startup_scrollbar_motion),
                 cx.listener(ShellView::note_startup_scrollbar_scroll),
+                startup_scrollbar_activity(cx),
                 "Beryl",
                 "Select one workspace to bind to this window. Beryl keeps startup and recovery separate from the ready conversation surface.",
                 body,
@@ -58,6 +63,7 @@ pub(super) fn render_startup_shell(
             startup_scrollbar_opacity,
             cx.listener(ShellView::note_startup_scrollbar_motion),
             cx.listener(ShellView::note_startup_scrollbar_scroll),
+            startup_scrollbar_activity(cx),
             "Beryl",
             "Beryl is opening the selected workspace and preparing the managed backend before the conversation surface can appear.",
             render_opening(opening),
@@ -70,6 +76,7 @@ pub(super) fn render_startup_shell(
             startup_scrollbar_opacity,
             cx.listener(ShellView::note_startup_scrollbar_motion),
             cx.listener(ShellView::note_startup_scrollbar_scroll),
+            startup_scrollbar_activity(cx),
             "Beryl",
             "Startup and recovery failures still block workspace activation until the managed backend can be used safely.",
             render_blocked(blocked),
@@ -118,6 +125,15 @@ pub(super) fn workspace_choice_origin(choice: &WorkspaceChoice) -> String {
         (false, false, true) => "last opened workspace".to_string(),
         (false, false, false) => "workspace selection".to_string(),
     }
+}
+
+fn startup_scrollbar_activity(cx: &mut Context<ShellView>) -> ScrollbarActivityCallback {
+    let entity = cx.entity();
+    Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
+        entity.update(cx, |view, cx| {
+            view.note_scrollbar_activity(ScrollbarRegion::Startup, cx);
+        });
+    })
 }
 
 fn render_discovering(discovering: &DiscoveringState) -> impl IntoElement {

@@ -1,9 +1,11 @@
+use std::rc::Rc;
+
 use gpui::{
     AnyElement, IsZero, MouseButton, Overflow, Pixels, Point, Size, StatefulInteractiveElement,
     div, point, prelude::*, px,
 };
 
-use super::super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
 use super::{CodePanelScrollChrome, CodePanelScrollOverflow, CodePanelVerticalWheelOwnership};
 
 #[derive(Clone, Copy)]
@@ -51,6 +53,11 @@ pub(super) fn render_scrollable_code_panel(
                 on_select,
                 vertical_wheel_ownership,
             } = scroll_chrome;
+            let scrollbar_activity = on_activity.clone().map(|on_activity| {
+                Rc::new(move |_: &mut gpui::Window, cx: &mut gpui::App| {
+                    on_activity(cx);
+                }) as ScrollbarActivityCallback
+            });
             let stop_scroll_wheel_propagation =
                 code_panel_stops_scroll_wheel_propagation(axes, vertical_wheel_ownership);
             let mut scroll_region = div()
@@ -89,16 +96,24 @@ pub(super) fn render_scrollable_code_panel(
                 })
                 .child(scrollable.track_scroll(&handle).child(content));
             if axes.vertical {
-                if let Some(scrollbar) =
-                    render_div_scrollbar(&handle, ScrollbarAxis::Vertical, scrollbar_opacity)
-                {
+                if let Some(scrollbar) = render_div_scrollbar(
+                    ("code-panel-scrollbar-vertical", element_key),
+                    &handle,
+                    ScrollbarAxis::Vertical,
+                    scrollbar_opacity,
+                    scrollbar_activity.clone(),
+                ) {
                     scroll_region = scroll_region.child(scrollbar);
                 }
             }
             if axes.horizontal {
-                if let Some(scrollbar) =
-                    render_div_scrollbar(&handle, ScrollbarAxis::Horizontal, scrollbar_opacity)
-                {
+                if let Some(scrollbar) = render_div_scrollbar(
+                    ("code-panel-scrollbar-horizontal", element_key),
+                    &handle,
+                    ScrollbarAxis::Horizontal,
+                    scrollbar_opacity,
+                    scrollbar_activity,
+                ) {
                     scroll_region = scroll_region.child(scrollbar);
                 }
             }

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use beryl_model::conversation::PrimaryWorkspaceMember;
 use beryl_model::workspace::{RuntimeMode, WorkspaceMember};
 use gpui::{
@@ -13,7 +15,7 @@ use super::code_panel::CODE_FONT_FAMILY;
 use super::common::{
     button, disabled_secondary_button, framed_text_input, inline_notice, secondary_button,
 };
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
 use super::workspace_picker_row_menu::{
     render_workspace_row_action_menu, render_workspace_row_action_trigger,
 };
@@ -407,6 +409,7 @@ fn render_scrollable_workspace_rows(
     list_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
+    let scrollbar_activity = shell_scrollbar_activity(cx, ScrollbarRegion::WorkspacePicker);
     let mut scroll_region = div()
         .relative()
         .h(list_height)
@@ -423,9 +426,11 @@ fn render_scrollable_workspace_rows(
                 .child(rows),
         );
     if let Some(scrollbar) = render_div_scrollbar(
+        "workspace-picker-scrollbar",
         &picker_scroll_handle,
         ScrollbarAxis::Vertical,
         scrollbar_opacity,
+        Some(scrollbar_activity),
     ) {
         scroll_region = scroll_region.child(scrollbar);
     }
@@ -773,6 +778,7 @@ fn render_scrollable_member_rows(
     list_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
+    let scrollbar_activity = shell_scrollbar_activity(cx, ScrollbarRegion::WorkspaceMembers);
     let mut scroll_region = div()
         .relative()
         .h(list_height)
@@ -789,13 +795,27 @@ fn render_scrollable_member_rows(
                 .child(render_member_rows(shell, loaded, cx)),
         );
     if let Some(scrollbar) = render_div_scrollbar(
+        "workspace-members-scrollbar",
         &members_scroll_handle,
         ScrollbarAxis::Vertical,
         scrollbar_opacity,
+        Some(scrollbar_activity),
     ) {
         scroll_region = scroll_region.child(scrollbar);
     }
     scroll_region
+}
+
+fn shell_scrollbar_activity(
+    cx: &mut Context<ShellView>,
+    region: ScrollbarRegion,
+) -> ScrollbarActivityCallback {
+    let entity = cx.entity();
+    Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
+        entity.update(cx, |view, cx| {
+            view.note_scrollbar_activity(region.clone(), cx);
+        });
+    })
 }
 
 fn render_member_rows(

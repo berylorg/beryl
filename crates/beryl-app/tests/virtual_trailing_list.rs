@@ -77,6 +77,43 @@ fn visible_range_remains_content_only_inside_virtual_tail() {
 }
 
 #[test]
+fn page_scroll_by_viewport_enters_virtual_tail_without_fake_items() {
+    let state = ListState::new(3, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(20.0), px(20.0), px(20.0)]);
+    test_support::set_viewport_height(&state, px(40.0));
+    state.set_virtual_trailing_scroll_allowance(px(30.0));
+
+    state.scroll_by(px(40.0));
+
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::VirtualTail {
+            offset_from_content_end: px(30.0)
+        }
+    );
+    assert_eq!(state.item_count(), 3);
+    assert_eq!(test_support::visible_range(&state), 2..3);
+}
+
+#[test]
+fn scrollbar_drag_keeps_scrollbar_height_stable_until_ended() {
+    let state = ListState::new(3, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(20.0), px(20.0), px(20.0)]);
+    test_support::set_viewport_height(&state, px(40.0));
+    state.set_virtual_trailing_scroll_allowance(px(30.0));
+    let max_before_drag = state.max_offset_for_scrollbar();
+
+    state.scrollbar_drag_started();
+    state.set_virtual_trailing_scroll_allowance(px(80.0));
+
+    assert_eq!(state.max_offset_for_scrollbar(), max_before_drag);
+
+    state.scrollbar_drag_ended();
+
+    assert_eq!(state.max_offset_for_scrollbar().height, px(100.0));
+}
+
+#[test]
 fn short_content_scroll_to_real_start_preserves_virtual_tail_intent() {
     let state = ListState::new(1, ListAlignment::Bottom, px(10.0));
     test_support::set_measured_item_heights(&state, &[px(80.0)]);

@@ -6,7 +6,7 @@ use gpui::{
 use crate::shell::{ChromeButtonTheme, ShellView, layout};
 use crate::text_input::SingleLineInput;
 
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
 
 pub(super) fn startup_shell_frame(
     shell: &ShellView,
@@ -14,6 +14,7 @@ pub(super) fn startup_shell_frame(
     scrollbar_opacity: f32,
     on_scrollbar_mouse_move: impl Fn(&gpui::MouseMoveEvent, &mut Window, &mut App) + 'static,
     on_scrollbar_scroll_wheel: impl Fn(&gpui::ScrollWheelEvent, &mut Window, &mut App) + 'static,
+    on_scrollbar_activity: ScrollbarActivityCallback,
     title: &'static str,
     subtitle: &'static str,
     body: impl IntoElement,
@@ -56,14 +57,22 @@ pub(super) fn startup_shell_frame(
                         .child(card(shell, body)),
                 ),
         );
-    if let Some(vertical_scrollbar) =
-        render_div_scrollbar(scroll_handle, ScrollbarAxis::Vertical, scrollbar_opacity)
-    {
+    if let Some(vertical_scrollbar) = render_div_scrollbar(
+        "beryl-shell-scrollbar-vertical",
+        scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_opacity,
+        Some(on_scrollbar_activity.clone()),
+    ) {
         scroll_region = scroll_region.child(vertical_scrollbar);
     }
-    if let Some(horizontal_scrollbar) =
-        render_div_scrollbar(scroll_handle, ScrollbarAxis::Horizontal, scrollbar_opacity)
-    {
+    if let Some(horizontal_scrollbar) = render_div_scrollbar(
+        "beryl-shell-scrollbar-horizontal",
+        scroll_handle,
+        ScrollbarAxis::Horizontal,
+        scrollbar_opacity,
+        Some(on_scrollbar_activity),
+    ) {
         scroll_region = scroll_region.child(horizontal_scrollbar);
     }
 

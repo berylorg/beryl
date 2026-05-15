@@ -525,6 +525,9 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - The shared scrollbar renders only a thumb; its full outline or track remains visually invisible.
 - That scrollbar thumb appears only after pointer movement or active scrolling within the owning scrollable area and only when the surface currently has overflow.
 - After pointer movement and scrolling both stop, the scrollbar thumb fades in and out around a short inactivity delay instead of appearing or disappearing abruptly, with render-frame-driven opacity interpolation while the transition is active.
+- A scrollbar thumb is draggable by pointer press-and-hold on every rendered scrollbar axis. Dragging preserves the pointer's grab offset within the thumb until pointer release or cancellation.
+- A vertical scrollbar owns an invisible interaction lane along the thumb's axis even though the track is not painted. Clicking that lane outside the current thumb performs one page scroll by the owning viewport height: clicks above the current thumb page upward, and clicks below the current thumb page downward.
+- Direct scrollbar interactions must route through the owning scroll surface's scroll state so surface-specific top, bottom, bottom-following, and virtual-tail edge behavior is preserved.
 - Streaming scroll surfaces may opt into a shared virtual trailing scroll allowance that increases scroll range without adding a fake content child.
 - A virtual trailing allowance is capped by the owning viewport and by the caller's visual anchor so the user may scroll into useful empty space only while at least one real content line remains visible for orientation.
 - Scrollbar geometry for a virtual trailing allowance reflects the effective scroll range, but content item counts, visible item ranges, and preserved content anchors remain based on real content only.

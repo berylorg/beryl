@@ -1,5 +1,7 @@
 mod scrollbar;
 
+use std::rc::Rc;
+
 use beryl_model::semantic_graph::ChecklistItemStatus;
 use gpui::{
     AnyElement, Context, DispatchPhase, Entity, KeyDownEvent, MouseButton, MouseDownEvent, Render,
@@ -16,7 +18,7 @@ use crate::shell::{
 use self::scrollbar::SidebarScrollbarActivity;
 use super::{
     common::{disabled_secondary_button, secondary_button},
-    scrollbars::{ScrollbarAxis, render_div_scrollbar},
+    scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar},
 };
 
 pub(crate) struct ChecklistSidebarPanel {
@@ -164,9 +166,21 @@ fn render_checklist_sidebar(
                 .pb_4()
                 .child(body),
         );
-    if let Some(scrollbar) =
-        render_div_scrollbar(&scroll_handle, ScrollbarAxis::Vertical, scrollbar_opacity)
-    {
+    let scrollbar_activity: ScrollbarActivityCallback = {
+        let entity = cx.entity();
+        Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
+            entity.update(cx, |view, cx| {
+                view.note_scrollbar_direct_interaction(cx);
+            });
+        })
+    };
+    if let Some(scrollbar) = render_div_scrollbar(
+        "checklist-sidebar-scrollbar",
+        &scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_opacity,
+        Some(scrollbar_activity),
+    ) {
         scroll_region = scroll_region.child(scrollbar);
     }
 

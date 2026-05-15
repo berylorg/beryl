@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use gpui::{
     AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas, div, img,
@@ -26,7 +28,7 @@ use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
 };
 use super::graph_overlay::{render_graph_overlay, render_graph_overlay_listeners};
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
 use super::status_operation::{render_status_operation_listeners, render_status_operation_popup};
 use super::thread_selector::{render_thread_selector_listeners, render_thread_selector_overlay};
 use super::transcript::TranscriptPanel;
@@ -1612,14 +1614,26 @@ fn render_tool_activity_panel(
         )
         .child(render_tool_activity_resize_handle(
             shell,
-            entity,
+            entity.clone(),
             panel_height,
             composer_height,
         ));
 
-    if let Some(scrollbar) =
-        render_div_scrollbar(&scroll_handle, ScrollbarAxis::Vertical, scrollbar_opacity)
-    {
+    let scrollbar_activity: ScrollbarActivityCallback = {
+        let entity = entity.clone();
+        Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
+            entity.update(cx, |view, cx| {
+                view.note_scrollbar_activity(crate::shell::ScrollbarRegion::ToolActivity, cx);
+            });
+        })
+    };
+    if let Some(scrollbar) = render_div_scrollbar(
+        "tool-activity-scrollbar",
+        &scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_opacity,
+        Some(scrollbar_activity),
+    ) {
         panel = panel.child(scrollbar);
     }
 

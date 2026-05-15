@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use gpui::{
     AnyElement, Context, DispatchPhase, ElementId, InteractiveElement, KeyDownEvent,
     MouseDownEvent, ScrollHandle, StatefulInteractiveElement, Window, anchored, canvas, div, point,
@@ -19,7 +21,7 @@ use crate::{
 
 use super::{
     column_selector::render_column_selector_trail,
-    scrollbars::{ScrollbarAxis, render_div_scrollbar},
+    scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar},
 };
 
 const THREAD_SELECTOR_COLUMN_WIDTH: f32 = 284.0;
@@ -379,9 +381,28 @@ fn render_column_rows(
                 .overflow_y_scroll()
                 .child(rows),
         );
-    if let Some(scrollbar) =
-        render_div_scrollbar(&scroll_handle, ScrollbarAxis::Vertical, scrollbar_opacity)
-    {
+    let scrollbar_activity: ScrollbarActivityCallback = {
+        let entity = cx.entity();
+        let column_key = column_key.clone();
+        Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
+            entity.update(cx, |view, cx| {
+                view.note_scrollbar_activity(
+                    ScrollbarRegion::ThreadSelectorColumn(column_key.clone()),
+                    cx,
+                );
+            });
+        })
+    };
+    if let Some(scrollbar) = render_div_scrollbar(
+        (
+            ElementId::from(("thread-selector-column-scrollbar", column_index)),
+            thread_selector_column_stable_key(&column_key),
+        ),
+        &scroll_handle,
+        ScrollbarAxis::Vertical,
+        scrollbar_opacity,
+        Some(scrollbar_activity),
+    ) {
         scroll_region = scroll_region.child(scrollbar);
     }
     scroll_region

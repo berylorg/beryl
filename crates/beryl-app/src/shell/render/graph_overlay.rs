@@ -1,4 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    rc::Rc,
+};
 
 use gpui::{
     AnyElement, AnyView, App, Context, CursorStyle, DispatchPhase, ElementId, InteractiveElement,
@@ -18,7 +21,7 @@ mod rows;
 
 use super::column_selector::render_column_selector_trail;
 use super::common::card;
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarActivityCallback, ScrollbarAxis, render_div_scrollbar};
 use rows::render_graph_node_tree;
 
 const GRAPH_OVERLAY_TOGGLE_KEYSTROKE: &str = "ctrl-shift-g";
@@ -497,10 +500,24 @@ fn render_graph_column(
                                 .overflow_y_scroll()
                                 .child(body),
                         );
+                    let scrollbar_activity: ScrollbarActivityCallback = {
+                        let entity = cx.entity();
+                        let column_key = column_key.clone();
+                        Rc::new(move |_: &mut Window, cx: &mut App| {
+                            entity.update(cx, |view, cx| {
+                                view.note_scrollbar_activity(
+                                    ScrollbarRegion::GraphColumn(column_key.clone()),
+                                    cx,
+                                );
+                            });
+                        })
+                    };
                     if let Some(scrollbar) = render_div_scrollbar(
+                        ("graph-column-scrollbar", column_index),
                         &scroll_handle,
                         ScrollbarAxis::Vertical,
                         scrollbar_opacity,
+                        Some(scrollbar_activity),
                     ) {
                         scroll_region = scroll_region.child(scrollbar);
                     }

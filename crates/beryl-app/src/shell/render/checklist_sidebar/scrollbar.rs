@@ -259,4 +259,8 @@ impl ChecklistSidebarPanel {
     ) {
         self.note_scrollbar_activity(cx);
     }
+
+    pub(super) fn note_scrollbar_direct_interaction(&mut self, cx: &mut Context<Self>) {
+        self.note_scrollbar_activity(cx);
+    }
 }
