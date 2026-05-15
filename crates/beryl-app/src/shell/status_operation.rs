@@ -30,7 +30,6 @@ use super::{
 };
 
 const CONTEXT_COMPACTION_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(10);
-const CONTEXT_COMPACTION_MIN_STREAM_TIMEOUT: Duration = Duration::from_secs(180);
 const STATUS_OPERATION_POLL_MAX_EVENTS_PER_FRAME: usize = 64;
 const STATUS_OPERATION_POLL_MAX_FRAME_TIME: Duration = Duration::from_millis(4);
 
@@ -68,10 +67,19 @@ pub(super) fn spawn_status_model_list_worker(
 pub(super) fn spawn_context_compaction_worker(
     connector: ManagedBackendClientConnector,
     thread_id: String,
-    timeout: Duration,
+    request_timeout: Duration,
+    stream_timeout: Duration,
 ) -> Receiver<StatusOperationUpdate> {
     let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || run_context_compaction_worker(connector, thread_id, timeout, sender));
+    thread::spawn(move || {
+        run_context_compaction_worker(
+            connector,
+            thread_id,
+            request_timeout,
+            stream_timeout,
+            sender,
+        )
+    });
     receiver
 }
 
@@ -115,6 +123,7 @@ fn run_context_compaction_worker(
     connector: ManagedBackendClientConnector,
     thread_id: String,
     request_timeout: Duration,
+    stream_timeout: Duration,
     sender: Sender<StatusOperationUpdate>,
 ) {
     let mut session = match connector.connect_client(request_timeout) {
@@ -152,7 +161,6 @@ fn run_context_compaction_worker(
         return;
     }
 
-    let stream_timeout = request_timeout.max(CONTEXT_COMPACTION_MIN_STREAM_TIMEOUT);
     let started_at = Instant::now();
     let mut stream_state = ContextCompactionStreamState::default();
     loop {
@@ -595,6 +603,7 @@ impl ShellView {
             connector,
             thread_id,
             self.bootstrap.probe_timeout(),
+            self.current_context_compaction_timeout(),
         ));
         self.schedule_poll_if_needed(window, cx);
         cx.notify();

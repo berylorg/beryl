@@ -240,20 +240,45 @@ pub(super) fn secondary_button(
     themed_button(theme, ChromeButtonVisualState::Normal, id, label, on_click)
 }
 
-pub(super) fn secondary_button_with_active_state(
+pub(super) fn secondary_labeled_cycle_button_with_active_state(
     shell: &ShellView,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
+    value_label: impl Into<SharedString>,
     active: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
+    let label = label.into();
+    let value_label = value_label.into();
     let theme = shell.secondary_button_theme();
     let visual_state = if active {
         ChromeButtonVisualState::Active
     } else {
         ChromeButtonVisualState::Normal
     };
-    themed_button(theme, visual_state, id, label, on_click)
+    let divider_color = shell.separator_color();
+    themed_button_container(theme, visual_state, id)
+        .overflow_hidden()
+        .child(
+            div()
+                .h_full()
+                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(label),
+        )
+        .child(div().h_full().w(px(1.0)).bg(divider_color))
+        .child(
+            div()
+                .h_full()
+                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(value_label),
+        )
+        .on_click(move |event, window, cx| on_click(event, window, cx))
 }
 
 pub(super) fn disabled_secondary_button(
@@ -304,13 +329,22 @@ fn themed_button_base(
     label: impl Into<SharedString>,
 ) -> gpui::Stateful<gpui::Div> {
     let label = label.into();
+    themed_button_container(theme, visual_state, id)
+        .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+        .py(px(layout::BUTTON_VERTICAL_PADDING))
+        .child(label)
+}
+
+fn themed_button_container(
+    theme: ChromeButtonTheme,
+    visual_state: ChromeButtonVisualState,
+    id: impl Into<ElementId>,
+) -> gpui::Stateful<gpui::Div> {
     let state = visual_state.theme_state(theme);
     debug_assert!(layout::button_required_outer_height() <= layout::BUTTON_OUTER_HEIGHT);
     div()
         .id(id)
         .h(px(layout::BUTTON_OUTER_HEIGHT))
-        .px(px(layout::BUTTON_HORIZONTAL_PADDING))
-        .py(px(layout::BUTTON_VERTICAL_PADDING))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
         .bg(state.background)
         .border_1()
@@ -322,7 +356,6 @@ fn themed_button_base(
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
         .text_color(state.foreground)
         .whitespace_nowrap()
-        .child(label)
         .when(visual_state.interactive(), move |button| {
             button
                 .hover(move |style| {

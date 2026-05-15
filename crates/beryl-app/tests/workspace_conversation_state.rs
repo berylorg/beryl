@@ -999,6 +999,9 @@ fn workspace_activity_panel_mode_cycles_in_toolbar_order() {
     assert_eq!(WorkspaceActivityPanelMode::Auto.label(), "Activity Auto");
     assert_eq!(WorkspaceActivityPanelMode::On.label(), "Activity On");
     assert_eq!(WorkspaceActivityPanelMode::Off.label(), "Activity Off");
+    assert_eq!(WorkspaceActivityPanelMode::Auto.value_label(), "Auto");
+    assert_eq!(WorkspaceActivityPanelMode::On.value_label(), "On");
+    assert_eq!(WorkspaceActivityPanelMode::Off.value_label(), "Off");
 }
 
 #[test]

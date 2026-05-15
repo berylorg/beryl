@@ -448,8 +448,9 @@ This document defines the user-visible product behavior for Beryl V1.
 - The settings window does not include the main workspace window's shared toolbar strip.
 - The settings window should be created ahead of first use and hidden when inactive so opening settings feels immediate.
 - The settings window uses vertically scrollable left-side navigation for settings sections and a right-side content area with settings key-value rows.
-- V1 settings include `Appearance`, `Notifications`, and `Agent` sections.
+- V1 settings include `Appearance`, `Operations`, `Notifications`, and `Agent` sections.
 - The `Appearance` section provides controls for the configurable appearance roles defined in this document.
+- The `Operations` section includes a context compaction timeout row. The value is a whole number of seconds that controls how long Beryl waits for backend-reported selected-thread context compaction completion after the backend accepts the compaction request.
 - The `Notifications` section includes an end-turn sound row that shows the currently selected full filesystem path, or an empty disabled state when no sound file is selected.
 - The end-turn sound row includes a choose action that opens the Windows file picker for selecting a WAV file.
 - The end-turn sound row includes a clear action that stages the setting back to the empty disabled state.
@@ -458,7 +459,7 @@ This document defines the user-visible product behavior for Beryl V1.
 - The settings window includes an Apply action that applies the current settings immediately without closing the window.
 - Color-valued settings use a dedicated color input field that shows the canonical `#rrggbb` value, shows a preview swatch for the current valid color, and can open an in-window color picker from the preview swatch or a field hotkey.
 - The settings window UI is provided through a reusable `gpui` settings-window crate so Beryl can share the same section navigation, settings rows, color input, and color picker behavior with other `gpui` applications.
-- Beryl owns settings schemas, validation, staged draft behavior, apply behavior, and persistence. Appearance settings persist to `theme.toml` under the configured Beryl home directory; notification preferences and global developer-instructions preferences persist as app-wide GUI preferences in `preferences.toml` under the configured Beryl home directory, outside backend-owned Codex configuration.
+- Beryl owns settings schemas, validation, staged draft behavior, apply behavior, and persistence. Appearance settings persist to `theme.toml` under the configured Beryl home directory; operation preferences, notification preferences, and global developer-instructions preferences persist as app-wide GUI preferences in `preferences.toml` under the configured Beryl home directory, outside backend-owned Codex configuration.
 - The settings window consumes the active Beryl appearance theme through app-neutral style options exposed by the reusable settings-window crate, so settings panels, rows, popups, inputs, and action buttons use the same configured theme roles as the main window where those roles overlap.
 - V1 settings do not provide theme import or theme export UI.
 - V1 settings do not expose backend-owned Codex configuration.

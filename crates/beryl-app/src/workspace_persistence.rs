@@ -275,6 +275,14 @@ impl WorkspaceActivityPanelMode {
         }
     }
 
+    pub fn value_label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::On => "On",
+            Self::Off => "Off",
+        }
+    }
+
     pub fn next(self) -> Self {
         match self {
             Self::Auto => Self::On,

@@ -21,6 +21,8 @@ mod appearance;
 mod developer_instructions;
 #[path = "settings/notifications.rs"]
 mod notifications;
+#[path = "settings/operations.rs"]
+mod operations;
 #[path = "settings/theme.rs"]
 mod theme;
 
@@ -32,6 +34,7 @@ use developer_instructions::{AgentSettingsDraft, developer_instructions_field_id
 use notifications::{
     NotificationSettingsDraft, NotificationSettingsRowAction, end_turn_sound_field_id,
 };
+use operations::OperationSettingsDraft;
 use theme::settings_window_theme;
 
 pub(super) type SharedAppearanceSettings = Arc<Mutex<AppearanceSettings>>;
@@ -64,6 +67,7 @@ pub(super) struct SettingsState {
     appearance_draft: AppearanceSettingsDraft,
     notification_draft: NotificationSettingsDraft,
     agent_draft: AgentSettingsDraft,
+    operation_draft: OperationSettingsDraft,
     selected_section_id: SettingsSectionId,
     errors: HashMap<SettingsFieldId, String>,
     save_receiver: Option<Receiver<Result<(), String>>>,
@@ -140,6 +144,7 @@ impl SettingsState {
                 &gui_preferences.notifications,
             ),
             agent_draft: AgentSettingsDraft::from_preferences(&gui_preferences.agent),
+            operation_draft: OperationSettingsDraft::from_preferences(&gui_preferences.operations),
             selected_section_id: default_section_id(),
             errors: HashMap::new(),
             save_receiver: None,
@@ -172,6 +177,8 @@ impl SettingsState {
             self.notification_draft =
                 NotificationSettingsDraft::from_preferences(&preferences.notifications);
             self.agent_draft = AgentSettingsDraft::from_preferences(&preferences.agent);
+            self.operation_draft =
+                OperationSettingsDraft::from_preferences(&preferences.operations);
         }
         self.errors.clear();
     }
@@ -180,6 +187,7 @@ impl SettingsState {
         if has_section_id(&section_id)
             || notifications::has_section_id(&section_id)
             || developer_instructions::has_section_id(&section_id)
+            || operations::has_section_id(&section_id)
         {
             self.selected_section_id = section_id;
         }
@@ -192,7 +200,8 @@ impl SettingsState {
             || self
                 .notification_draft
                 .set_field_value(field_id, value.clone())
-            || self.agent_draft.set_field_value(field_id, value)
+            || self.agent_draft.set_field_value(field_id, value.clone())
+            || self.operation_draft.set_field_value(field_id, value)
         {
             self.errors.remove(field_id);
         }
@@ -271,6 +280,10 @@ impl SettingsState {
 
     pub(super) fn model(&self) -> SettingsWindowModel {
         let mut sections = settings_sections(&self.appearance_draft, &self.errors);
+        sections.push(operations::settings_section(
+            &self.operation_draft,
+            &self.errors,
+        ));
         sections.push(notifications::settings_section(
             &self.notification_draft,
             &self.errors,
@@ -307,6 +320,13 @@ impl SettingsState {
                 None
             }
         };
+        let operation_preferences = match self.operation_draft.to_preferences() {
+            Ok(preferences) => Some(preferences),
+            Err(operation_errors) => {
+                errors.extend(operation_errors);
+                None
+            }
+        };
 
         if !errors.is_empty() {
             self.errors = errors;
@@ -319,15 +339,20 @@ impl SettingsState {
             .expect("notification preferences are present when validation passes");
         let agent_preferences =
             agent_preferences.expect("agent preferences are present when validation passes");
+        let operation_preferences = operation_preferences
+            .expect("operation preferences are present when validation passes");
         let gui_preferences = GuiPreferences {
             notifications: notification_preferences,
             agent: agent_preferences,
+            operations: operation_preferences,
         };
 
         self.appearance_draft = AppearanceSettingsDraft::from_settings(&appearance_settings);
         self.notification_draft =
             NotificationSettingsDraft::from_preferences(&gui_preferences.notifications);
         self.agent_draft = AgentSettingsDraft::from_preferences(&gui_preferences.agent);
+        self.operation_draft =
+            OperationSettingsDraft::from_preferences(&gui_preferences.operations);
         self.errors.clear();
 
         if let Ok(mut active) = self.active_appearance.lock() {

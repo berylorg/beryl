@@ -33,6 +33,32 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
 }
 
 #[test]
+fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let common_source = include_str!("../src/shell/render/common.rs");
+    let activity_mode_body = rust_function_body(render_source, "fn activity_mode_button");
+    let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
+    let labeled_cycle_button_body = rust_function_body(
+        common_source,
+        "pub(super) fn secondary_labeled_cycle_button_with_active_state",
+    );
+    let themed_button_base_body = rust_function_body(common_source, "fn themed_button_base");
+    let themed_button_container_body =
+        rust_function_body(common_source, "fn themed_button_container");
+
+    assert!(activity_mode_body.contains("secondary_labeled_cycle_button_with_active_state"));
+    assert!(activity_mode_body.contains("\"Activity\""));
+    assert!(toolbar_body.contains("surface.tool_activity_panel_mode().value_label()"));
+    assert!(labeled_cycle_button_body.contains("shell.secondary_button_theme()"));
+    assert!(labeled_cycle_button_body.contains("shell.separator_color()"));
+    assert!(labeled_cycle_button_body.contains(".on_click("));
+    assert!(labeled_cycle_button_body.contains(".w(px(1.0))"));
+    assert!(themed_button_base_body.contains("themed_button_container"));
+    assert!(themed_button_container_body.contains(".hover("));
+    assert!(themed_button_container_body.contains(".active("));
+}
+
+#[test]
 fn workspace_shell_rendering_omits_legacy_no_member_composer_affordances() {
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let idle_shell_body =
@@ -362,6 +388,33 @@ fn backend_unavailable_target_gates_are_target_scoped() {
     assert!(prepare_semantic_thread_start_body.contains("&unavailable.execution_target"));
     assert!(checklist_menu_body.contains("new_thread_controls_disabled_message()"));
     assert!(!checklist_menu_body.contains("backend_controls_disabled_message()"));
+}
+
+#[test]
+fn context_compaction_uses_configured_completion_timeout_only_for_stream_wait() {
+    let shell_source = include_str!("../src/shell.rs");
+    let status_operation_source = include_str!("../src/shell/status_operation.rs");
+
+    let manual_compaction_body = rust_function_body(
+        status_operation_source,
+        "pub(crate) fn compact_selected_thread_from_status_popup",
+    );
+    let lifecycle_continue_body =
+        rust_function_body(shell_source, "fn begin_lifecycle_phase_continue");
+    let worker_body =
+        rust_function_body(status_operation_source, "fn run_context_compaction_worker");
+
+    assert!(status_operation_source.contains("request_timeout: Duration"));
+    assert!(status_operation_source.contains("stream_timeout: Duration"));
+    assert!(manual_compaction_body.contains("self.bootstrap.probe_timeout()"));
+    assert!(manual_compaction_body.contains("self.current_context_compaction_timeout()"));
+    assert!(lifecycle_continue_body.contains("self.bootstrap.probe_timeout()"));
+    assert!(lifecycle_continue_body.contains("self.current_context_compaction_timeout()"));
+    assert!(worker_body.contains("connector.connect_client(request_timeout)"));
+    assert!(worker_body.contains("session.resume_thread_metadata(&thread_id, request_timeout)"));
+    assert!(worker_body.contains("session.compact_thread(&thread_id, request_timeout)"));
+    assert!(worker_body.contains("let event_timeout = remaining.min"));
+    assert!(!status_operation_source.contains("CONTEXT_COMPACTION_MIN_STREAM_TIMEOUT"));
 }
 
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {

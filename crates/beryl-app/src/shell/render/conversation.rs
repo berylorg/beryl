@@ -20,7 +20,7 @@ use super::checklist_sidebar::{
 };
 use super::common::{
     button, card, disabled_secondary_button, inline_notice, secondary_button,
-    secondary_button_with_active_state, section_label, toolbar_controls_strip,
+    secondary_labeled_cycle_button_with_active_state, section_label, toolbar_controls_strip,
 };
 use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
@@ -1026,14 +1026,15 @@ fn render_composer_image_preview(shell: &ShellView, label: &str) -> impl IntoEle
 
 fn activity_mode_button(
     shell: &ShellView,
-    label: &'static str,
+    value_label: &'static str,
     active: bool,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    secondary_button_with_active_state(
+    secondary_labeled_cycle_button_with_active_state(
         shell,
         "activity-mode",
-        label,
+        "Activity",
+        value_label,
         active,
         cx.listener(ShellView::cycle_tool_activity_panel_mode),
     )
@@ -1058,7 +1059,7 @@ fn render_toolbar(
             .child(render_workspace_picker_button(shell, loaded_workspace, cx))
             .child(activity_mode_button(
                 shell,
-                surface.tool_activity_panel_mode().label(),
+                surface.tool_activity_panel_mode().value_label(),
                 surface.tool_activity_panel_visible(),
                 cx,
             ))

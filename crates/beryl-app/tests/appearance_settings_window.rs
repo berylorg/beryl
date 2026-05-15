@@ -15,9 +15,10 @@ pub use beryl_app::{
     AgentPreferences, AppearanceButtonSettings, AppearanceButtonStateSettings,
     AppearanceForegroundSettings, AppearanceInputSettings, AppearanceRoleSettings,
     AppearanceSettings, AppearanceSettingsStore, AppearanceStatusLineSettings,
-    AppearanceSurfaceSettings, AppearanceTranscriptShellSettings, GuiPreferences,
-    GuiPreferencesStore, NotificationPreferences, NotificationSoundPathError,
-    normalize_developer_instructions_text, parse_notification_sound_path_text,
+    AppearanceSurfaceSettings, AppearanceTranscriptShellSettings, ContextCompactionTimeoutError,
+    GuiPreferences, GuiPreferencesStore, NotificationPreferences, NotificationSoundPathError,
+    OperationPreferences, normalize_developer_instructions_text,
+    parse_context_compaction_timeout_seconds_text, parse_notification_sound_path_text,
     validate_notification_sound_path,
 };
 use gpui_settings_window::{
@@ -33,7 +34,7 @@ fn settings_model_maps_appearance_roles_and_color_rows() {
     let state = settings_state(AppearanceSettings::default());
     let model = state.model();
 
-    assert_eq!(model.sections().len(), 17);
+    assert_eq!(model.sections().len(), 18);
     assert_eq!(model.selected_section_id().as_str(), "general_ui");
 
     let foreground = model
@@ -135,6 +136,33 @@ fn settings_model_includes_agent_developer_instructions_row() {
     );
     assert_eq!(row.kind(), SettingsFieldKind::MultilineText);
     assert_eq!(row.value(), "");
+    assert!(row.actions().is_empty());
+}
+
+#[test]
+fn settings_model_includes_operations_context_compaction_timeout_row() {
+    let state = settings_state(AppearanceSettings::default());
+    let model = state.model();
+    let section = model
+        .sections()
+        .iter()
+        .find(|section| section.section_id().as_str() == "operations")
+        .expect("operations section should exist");
+
+    assert_eq!(section.label(), "Operations");
+    assert_eq!(section.rows().len(), 1);
+
+    let field_id = context_compaction_timeout_field_id();
+    let row = model
+        .row(&field_id)
+        .expect("context compaction timeout row should exist");
+    assert_eq!(row.label(), "Context compaction timeout");
+    assert_eq!(
+        row.subtext(),
+        Some("Seconds Beryl waits for backend-reported compaction completion.")
+    );
+    assert_eq!(row.kind(), SettingsFieldKind::Text);
+    assert_eq!(row.value(), "180");
     assert!(row.actions().is_empty());
 }
 
@@ -246,6 +274,43 @@ fn settings_apply_persists_notification_preferences_separately_from_theme() {
     );
     assert!(AppearanceSettingsStore::new(&root).theme_path().exists());
     assert!(GuiPreferencesStore::new(&root).preferences_path().exists());
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_apply_persists_operation_preferences() {
+    let (mut state, _appearance, preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+
+    state.set_field_value(&context_compaction_timeout_field_id(), "240".to_string());
+    assert_eq!(
+        preferences
+            .lock()
+            .unwrap()
+            .operations
+            .context_compaction_timeout_seconds,
+        180,
+        "operation edits must not live-preview into active preferences"
+    );
+
+    assert!(state.apply());
+    assert_eq!(
+        preferences
+            .lock()
+            .unwrap()
+            .operations
+            .context_compaction_timeout_seconds,
+        240
+    );
+    wait_for_save(&mut state);
+
+    let loaded_preferences = GuiPreferencesStore::new(&root).load_or_default().unwrap();
+    assert_eq!(
+        loaded_preferences
+            .operations
+            .context_compaction_timeout_seconds,
+        240
+    );
     cleanup_temp_dir(root);
 }
 
@@ -396,6 +461,32 @@ fn settings_apply_rejects_invalid_notification_path_without_mutating_active_pref
 }
 
 #[test]
+fn settings_apply_rejects_invalid_operation_timeout_without_mutating_active_preferences() {
+    let (mut state, _appearance, preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let field_id = context_compaction_timeout_field_id();
+
+    state.set_field_value(&field_id, "0".to_string());
+
+    assert!(!state.apply());
+    assert_eq!(
+        preferences
+            .lock()
+            .unwrap()
+            .operations
+            .context_compaction_timeout_seconds,
+        180
+    );
+    assert!(
+        state
+            .field_error(&field_id)
+            .is_some_and(|error| error.contains("at least"))
+    );
+    assert!(!GuiPreferencesStore::new(&root).preferences_path().exists());
+    cleanup_temp_dir(root);
+}
+
+#[test]
 fn settings_apply_rejects_invalid_color_draft_without_mutating_active_settings() {
     let mut active = AppearanceSettings::default();
     active.emphasis.background = "#010203".to_string();
@@ -427,6 +518,8 @@ fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     state.set_field_value(&field_id, "JetBrains Mono".to_string());
     state.set_notification_end_turn_sound_path(root.join("done.wav").display().to_string());
     state.set_developer_instructions("Use a staged draft.".to_string());
+    let context_timeout_field_id = context_compaction_timeout_field_id();
+    state.set_field_value(&context_timeout_field_id, "240".to_string());
     state.reset_draft_from_active();
 
     let model = state.model();
@@ -434,6 +527,10 @@ fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     assert_eq!(model.row(&field_id).map(|row| row.value()), Some("Inter"));
     assert_eq!(state.notification_end_turn_sound_path_value(), "");
     assert_eq!(state.developer_instructions_value(), "");
+    assert_eq!(
+        model.row(&context_timeout_field_id).map(|row| row.value()),
+        Some("180")
+    );
     cleanup_temp_dir(root);
 }
 
@@ -480,6 +577,10 @@ fn unique_temp_dir() -> tempdir_support::TestTempDir {
 
 fn cleanup_temp_dir(root: tempdir_support::TestTempDir) {
     root.close().unwrap();
+}
+
+fn context_compaction_timeout_field_id() -> SettingsFieldId {
+    SettingsFieldId::from("operations.context_compaction_timeout_seconds")
 }
 
 fn with_environment_home<T>(home: &Path, action: impl FnOnce() -> T) -> T {

@@ -99,6 +99,11 @@ The settings window is a dedicated top-level OS window separate from the main wo
 - The color picker is layered inside the settings window and edits the staged settings value through the same field-change path as text input.
 - If a color text draft is temporarily invalid, the preview swatch and picker channel values continue to use the latest valid color for that setting until a new valid color is staged.
 
+### Settings Operations Section
+
+- The `Context compaction timeout` row is a compact key-value text row whose value is a whole number of seconds.
+- Invalid timeout drafts render field-local validation feedback and are not applied.
+
 ### Settings Agent Section
 
 - The `Developer Instructions` row shows smaller secondary subtext under the label: `Sent as developer instructions with every user message.`

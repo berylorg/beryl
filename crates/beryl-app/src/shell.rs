@@ -88,7 +88,10 @@ use crate::text_input::{
     TextInputOptions, TextInputRetainedCounts, TextInputRichPastePolicy, TextInputSelectionAtom,
     TextInputSelectionExport,
 };
-use crate::{AppBootstrap, WorkspaceActivityPanelMode, WorkspaceGraphRevision, WorkspaceUiState};
+use crate::{
+    AppBootstrap, GuiPreferences, WorkspaceActivityPanelMode, WorkspaceGraphRevision,
+    WorkspaceUiState,
+};
 
 use self::backend_availability::{BackendAvailabilityRecord, BackendUnavailable};
 
@@ -8678,6 +8681,19 @@ impl ShellView {
         }
     }
 
+    fn current_context_compaction_timeout(&self) -> Duration {
+        match self.gui_preferences.lock() {
+            Ok(preferences) => preferences.context_compaction_timeout(),
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    "failed to read operation preferences"
+                );
+                GuiPreferences::default().context_compaction_timeout()
+            }
+        }
+    }
+
     fn turn_options_with_current_developer_instructions(
         &self,
         selected_thread_id: Option<&str>,
@@ -11761,6 +11777,7 @@ impl ShellView {
             connector,
             thread_id,
             self.bootstrap.probe_timeout(),
+            self.current_context_compaction_timeout(),
         ));
         self.schedule_poll_if_needed(window, cx);
         cx.notify();

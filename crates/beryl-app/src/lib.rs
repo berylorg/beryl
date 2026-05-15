@@ -2,8 +2,9 @@
 //!
 //! ```no_run
 //! use beryl_app::{
-//!     AppBootstrap, NotificationPreferences, WorkspaceGraphSummaryRequest,
-//!     WorkspaceGraphToolService, WorkspaceUiState, beryl_user_thread_start_options, run_app,
+//!     AppBootstrap, NotificationPreferences, OperationPreferences,
+//!     WorkspaceGraphSummaryRequest, WorkspaceGraphToolService, WorkspaceUiState,
+//!     beryl_user_thread_start_options, run_app,
 //! };
 //! use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 //!
@@ -14,6 +15,7 @@
 //! let preferences_store = beryl_home_dir.gui_preferences_store();
 //! let _default_ui_state = WorkspaceUiState::default();
 //! let _notifications = NotificationPreferences::default();
+//! let _operations = OperationPreferences::default();
 //! let _thread_options = beryl_user_thread_start_options();
 //! let graph_tools = WorkspaceGraphToolService::new(workspace_store.clone());
 //! let _summary_request = WorkspaceGraphSummaryRequest {
@@ -227,9 +229,13 @@ pub use lifecycle_dynamic_tools::{
 };
 pub use persistence::{StartupMetadata, StartupPersistence, StartupPersistenceError};
 pub use preferences::{
-    AgentPreferences, GuiPreferences, GuiPreferencesError, GuiPreferencesStore,
-    NotificationPreferences, NotificationSoundPathError, normalize_developer_instructions_text,
-    parse_notification_sound_path_text, validate_notification_sound_path,
+    AgentPreferences, ContextCompactionTimeoutError, DEFAULT_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
+    GuiPreferences, GuiPreferencesError, GuiPreferencesStore,
+    MAX_CONTEXT_COMPACTION_TIMEOUT_SECONDS, MIN_CONTEXT_COMPACTION_TIMEOUT_SECONDS,
+    NotificationPreferences, NotificationSoundPathError, OperationPreferences,
+    normalize_developer_instructions_text, parse_context_compaction_timeout_seconds_text,
+    parse_notification_sound_path_text, validate_context_compaction_timeout_seconds,
+    validate_notification_sound_path,
 };
 pub use startup_state::{
     ResolvedStartupState, StartupStateError, WorkspaceDeletionResolution,
