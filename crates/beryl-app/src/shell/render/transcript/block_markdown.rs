@@ -1,13 +1,16 @@
-use gpui::{AnyElement, FontWeight, div, prelude::*, px, rgb};
+use gpui::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
 
 use crate::AppearanceSettings;
+use crate::shell::rgba_from_role_color;
 use crate::shell::transcript_markdown::{
     BlockRenderCode, BlockRenderList, BlockRenderListItem, BlockRenderNode, BlockRenderPlan,
     InlineRenderLine, InlineRenderRole, MarkdownSourceSpan, markdown_code_panel_block_path,
     markdown_code_panel_block_quote_path, markdown_code_panel_list_item_path,
 };
 
-use super::super::code_panel::CodePanelWrapMode;
+use super::super::code_panel::{
+    CodePanelDisplayProjectionInput, CodePanelSyntaxTheme, CodePanelWrapMode,
+};
 use super::TranscriptCodeLayout;
 use super::block_fallback::{
     empty_line, fallback_inline_lines, fallback_inline_lines_with_source_span,
@@ -31,6 +34,7 @@ pub(super) fn render_markdown_plan_with_style_and_selection(
     style: InlineMarkdownStyle,
     code_panel_controls: TranscriptCodePanelControls,
     selection_context: TranscriptInlineSelectionContext,
+    cx: &mut App,
 ) -> AnyElement {
     render_markdown_plan(
         plan,
@@ -40,6 +44,7 @@ pub(super) fn render_markdown_plan_with_style_and_selection(
         Some(code_panel_controls),
         Some(selection_context),
         &[],
+        cx,
     )
 }
 
@@ -52,6 +57,7 @@ pub(super) fn markdown_prose_block_with_selection(
     style: InlineMarkdownStyle,
     code_panel_controls: TranscriptCodePanelControls,
     selection_context: TranscriptInlineSelectionContext,
+    cx: &mut App,
 ) -> AnyElement {
     markdown_prose_block_inner(
         label,
@@ -63,6 +69,7 @@ pub(super) fn markdown_prose_block_with_selection(
         Some(code_panel_controls),
         Some(selection_context),
         &[],
+        cx,
     )
 }
 
@@ -76,6 +83,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
     code_panel_controls: TranscriptCodePanelControls,
     selection_context: TranscriptInlineSelectionContext,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     markdown_prose_block_inner(
         label,
@@ -87,6 +95,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
         Some(code_panel_controls),
         Some(selection_context),
         image_markers,
+        cx,
     )
 }
 
@@ -100,6 +109,7 @@ fn markdown_prose_block_inner(
     code_panel_controls: Option<TranscriptCodePanelControls>,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     let mut block = div()
         .rounded_md()
@@ -129,6 +139,7 @@ fn markdown_prose_block_inner(
             code_panel_controls,
             selection_context,
             image_markers,
+            cx,
         ))
         .into_any_element()
 }
@@ -141,6 +152,7 @@ fn render_markdown_plan(
     code_panel_controls: Option<TranscriptCodePanelControls>,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     render_block_sequence(
         plan.blocks.as_slice(),
@@ -152,6 +164,7 @@ fn render_markdown_plan(
         "",
         selection_context,
         image_markers,
+        cx,
     )
 }
 
@@ -180,6 +193,7 @@ fn render_block_sequence(
     structural_parent_path: &str,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     let mut container = div().w_full().min_w(px(0.0)).flex().flex_col();
     container = match spacing {
@@ -208,6 +222,7 @@ fn render_block_sequence(
                 structural_path,
                 selection_context.clone(),
                 image_markers,
+                cx,
             )
             .into_any_element()
         }))
@@ -223,6 +238,7 @@ fn render_block(
     structural_path: String,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     match block {
         BlockRenderNode::Paragraph { lines, .. } => {
@@ -245,6 +261,7 @@ fn render_block(
             structural_path,
             selection_context,
             image_markers,
+            cx,
         ),
         BlockRenderNode::BlockQuote { blocks, .. } => render_block_quote(
             blocks,
@@ -255,6 +272,7 @@ fn render_block(
             structural_path,
             selection_context,
             image_markers,
+            cx,
         ),
         BlockRenderNode::Code(code) => render_code_block(
             code,
@@ -264,6 +282,7 @@ fn render_block(
             structural_path.as_str(),
             selection_context,
             image_markers,
+            cx,
         ),
         BlockRenderNode::Math {
             fallback,
@@ -361,6 +380,7 @@ fn render_list(
     structural_path: String,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     let spacing = if list.tight {
         BlockSpacing::Tight
@@ -390,6 +410,7 @@ fn render_list(
                 markdown_code_panel_list_item_path(structural_path.as_str(), index),
                 selection_context.clone(),
                 image_markers,
+                cx,
             )
         }))
         .into_any_element()
@@ -405,6 +426,7 @@ fn render_list_item(
     structural_path: String,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     let item_selection_context = selection_context
         .as_ref()
@@ -435,6 +457,7 @@ fn render_list_item(
             structural_path.as_str(),
             item_selection_context,
             image_markers,
+            cx,
         )))
         .into_any_element()
 }
@@ -448,6 +471,7 @@ fn render_block_quote(
     structural_path: String,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     let selection_context = selection_context.map(|context| context.with_line_prefix("> "));
 
@@ -468,6 +492,7 @@ fn render_block_quote(
             markdown_code_panel_block_quote_path(structural_path.as_str()).as_str(),
             selection_context,
             image_markers,
+            cx,
         ))
         .into_any_element()
 }
@@ -480,6 +505,7 @@ fn render_code_block(
     structural_path: &str,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
 ) -> AnyElement {
     if code
         .content_source_span
@@ -494,6 +520,9 @@ fn render_code_block(
         );
     }
 
+    let code_foreground = code_panel_foreground(appearance);
+    let code_background = code_panel_background(appearance);
+    let syntax_theme = code_panel_syntax_theme(appearance);
     let selection =
         selection_context.map(|context| context.code_panel_selection(structural_path, code));
     let Some(code_panel_controls) = code_panel_controls else {
@@ -505,7 +534,11 @@ fn render_code_block(
             CodePanelWrapMode::Smart {
                 columns: code_layout.transcript_bordered_panel_columns,
             },
-            rgb(0x0b1220),
+            CodePanelDisplayProjectionInput::BuildInline,
+            code_background,
+            code_foreground,
+            syntax_theme,
+            None,
             None,
             None,
             None,
@@ -516,9 +549,21 @@ fn render_code_block(
 
     let panel_id = code_panel_controls.panel_id_for(structural_path);
     let wrap_mode = code_panel_controls.wrap_mode(panel_id.as_str(), code_layout);
-    let header = code_panel_controls.header(panel_id.as_str(), code.source.as_str());
+    let header = code_panel_controls.header(panel_id.as_str(), code.header_copy_source());
     let scroll_chrome = code_panel_controls.scroll_chrome(panel_id.as_str());
     let resize = code_panel_controls.resize(panel_id.as_str(), code_layout);
+    let syntax_highlight = code_panel_controls.syntax_highlight(
+        panel_id.as_str(),
+        code.source.as_str(),
+        code.language.as_deref(),
+        cx,
+    );
+    let display_projection = code_panel_controls.display_projection(
+        panel_id.as_str(),
+        code.source.as_str(),
+        wrap_mode,
+        cx,
+    );
 
     labeled_code_block(
         "",
@@ -526,13 +571,54 @@ fn render_code_block(
         code.language.as_deref(),
         code.source.as_str(),
         wrap_mode,
-        rgb(0x0b1220),
+        display_projection,
+        code_background,
+        code_foreground,
+        syntax_theme,
+        Some(syntax_highlight.as_ref()),
         Some(header),
         Some(scroll_chrome),
         Some(resize),
         selection,
     )
     .into_any_element()
+}
+
+fn code_panel_syntax_theme(appearance: &AppearanceSettings) -> CodePanelSyntaxTheme {
+    let code_foreground = code_panel_foreground(appearance);
+    let conversation_foreground = rgba_from_role_color(
+        appearance.conversation_text.parsed_foreground(),
+        rgb(0xe2e8f0),
+    );
+    let heading_foreground = rgba_from_role_color(
+        appearance.markdown_header.parsed_foreground(),
+        rgb(0x93c5fd),
+    );
+    let emphasis_foreground =
+        rgba_from_role_color(appearance.emphasis.parsed_foreground(), rgb(0xbfdbfe));
+    let strong_emphasis_foreground = rgba_from_role_color(
+        appearance.strong_emphasis.parsed_foreground(),
+        rgb(0xf8fafc),
+    );
+
+    CodePanelSyntaxTheme {
+        plain_foreground: code_foreground,
+        structural_foreground: conversation_foreground,
+        heading_foreground,
+        emphasis_foreground,
+        strong_emphasis_foreground,
+        code_foreground,
+        link_foreground: emphasis_foreground,
+        escape_foreground: emphasis_foreground,
+    }
+}
+
+fn code_panel_foreground(appearance: &AppearanceSettings) -> gpui::Rgba {
+    rgba_from_role_color(appearance.code.parsed_foreground(), rgb(0xe2e8f0))
+}
+
+fn code_panel_background(appearance: &AppearanceSettings) -> gpui::Rgba {
+    rgba_from_role_color(appearance.code.parsed_background(), rgb(0x0b1220))
 }
 
 fn render_code_block_with_image_markers(
@@ -561,7 +647,7 @@ fn render_code_block_with_image_markers(
         .rounded_md()
         .border_1()
         .border_color(rgb(0x1f2937))
-        .bg(rgb(0x0b1220))
+        .bg(code_panel_background(appearance))
         .p_3()
         .child(render_inline_lines_with_style_markers_and_selection(
             lines.as_slice(),

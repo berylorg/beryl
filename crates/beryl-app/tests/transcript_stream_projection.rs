@@ -112,6 +112,58 @@ fn stream_projection_commits_closed_fenced_code_blocks() {
 }
 
 #[test]
+fn stream_projection_keeps_incomplete_fence_hidden_until_bounded_release() {
+    let mut projection = projection();
+    let key = TranscriptStreamProjectionKey::new("turn:1:item:assistant");
+    let started_at = Instant::now();
+    let partial_fence = "```markdown\n# partial";
+
+    assert_eq!(
+        projection.visible_text(key.clone(), partial_fence, false, started_at),
+        ""
+    );
+    assert_eq!(
+        projection.visible_text(
+            key,
+            partial_fence,
+            false,
+            started_at + Duration::from_millis(81),
+        ),
+        partial_fence
+    );
+}
+
+#[test]
+fn stream_projection_drops_visible_text_when_partial_snapshot_rewrites_source() {
+    let mut projection = projection();
+    let key = TranscriptStreamProjectionKey::new("turn:1:item:assistant");
+    let started_at = Instant::now();
+
+    assert_eq!(
+        projection.visible_text(key.clone(), "complete paragraph", true, started_at),
+        "complete paragraph"
+    );
+    assert_eq!(
+        projection.visible_text(
+            key.clone(),
+            "replacement paragraph without a stable boundary",
+            false,
+            started_at + Duration::from_millis(10),
+        ),
+        ""
+    );
+    assert_eq!(
+        projection.visible_text(
+            key,
+            "replacement paragraph without a stable boundary",
+            false,
+            started_at + Duration::from_millis(91),
+        ),
+        "replacement paragraph without a stable boundary"
+    );
+}
+
+#[test]
 fn stream_projection_clear_drops_visible_prefixes() {
     let mut projection = projection();
     let key = TranscriptStreamProjectionKey::new("turn:1:item:assistant");

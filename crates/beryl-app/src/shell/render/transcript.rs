@@ -50,6 +50,7 @@ use crate::shell::{
     ScrollbarRegion, ShellView,
     execution_detail::{TranscriptRenderMetrics, TurnExecutionRecord},
     image_preview_popup,
+    syntax_highlighting::{SyntaxHighlightCache, SyntaxHighlightCacheStats},
     transcript_anchor::{self, TranscriptSubmitAnchorSnapshot},
     transcript_branch_menu_state::TranscriptImageMenuTarget,
     transcript_edit_mode_state::TranscriptEditModeSnapshot,
@@ -99,7 +100,11 @@ use self::{
 };
 use super::super::virtual_list::{ListOffset, ListState, list};
 use super::scrollbars::render_vertical_scrollbar;
-use super::{code_panel, common::panel_shell};
+use super::{
+    code_panel,
+    code_panel_projection_cache::{CodePanelProjectionCache, CodePanelProjectionCacheStats},
+    common::panel_shell,
+};
 use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
 use crate::shell::transcript_markdown::markdown_code_panel_id_belongs_to_row;
 
@@ -178,6 +183,8 @@ pub(crate) struct TranscriptPanel {
     soft_wrapped_panel_keys: HashSet<String>,
     resized_panel_heights: HashMap<String, Pixels>,
     markdown_cache: Rc<RefCell<TranscriptMarkdownCache>>,
+    syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
+    code_panel_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     media_cache: Rc<RefCell<TranscriptMediaCache>>,
     media_events: Rc<RefCell<MediaDiagnosticLog>>,
     visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
@@ -213,6 +220,8 @@ pub(crate) struct TranscriptPanel {
 
 pub(crate) struct TranscriptPanelDiagnosticSnapshot {
     markdown_stats: TranscriptMarkdownCacheStats,
+    syntax_highlight_stats: SyntaxHighlightCacheStats,
+    code_panel_projection_stats: CodePanelProjectionCacheStats,
     media_stats: TranscriptMediaCacheStats,
     stream_projection_counts: stream_projection::TranscriptStreamProjectionRetainedCounts,
     pub(crate) visible_media: VisibleMediaSnapshot,
@@ -236,6 +245,12 @@ impl TranscriptPanelDiagnosticSnapshot {
         retained_state.markdown_blocks = Some(self.markdown_stats.markdown_blocks);
         retained_state.markdown_inlines = Some(self.markdown_stats.markdown_inlines);
         retained_state.markdown_media_requests = Some(self.markdown_stats.markdown_media_requests);
+        retained_state.syntax_highlight_cache_entries = Some(self.syntax_highlight_stats.entries);
+        retained_state.syntax_highlight_represented_source_bytes =
+            Some(self.syntax_highlight_stats.represented_source_bytes);
+        retained_state.syntax_highlight_estimated_retained_bytes =
+            Some(self.syntax_highlight_stats.estimated_retained_bytes);
+        retained_state.syntax_highlight_tokens = Some(self.syntax_highlight_stats.tokens);
         retained_state.media_cache_entries = Some(self.media_stats.entries);
         retained_state.media_cache_pending_entries = Some(self.media_stats.pending_entries);
         retained_state.media_cache_loaded_entries = Some(self.media_stats.loaded_entries);
@@ -264,6 +279,8 @@ impl TranscriptPanelDiagnosticSnapshot {
         if let Some(total) = retained_state.retained_payload_bytes_lower_bound.as_mut() {
             *total = total
                 .saturating_add(self.markdown_stats.estimated_retained_bytes)
+                .saturating_add(self.syntax_highlight_stats.estimated_retained_bytes)
+                .saturating_add(self.code_panel_projection_stats.estimated_retained_bytes)
                 .saturating_add(self.media_stats.loaded_image_bytes)
                 .saturating_add(self.media_stats.decoded_image_bytes_estimate)
                 .saturating_add(self.stream_projection_counts.key_bytes)
@@ -604,6 +621,8 @@ impl TranscriptPanel {
             soft_wrapped_panel_keys: HashSet::new(),
             resized_panel_heights: HashMap::new(),
             markdown_cache: Rc::new(RefCell::new(TranscriptMarkdownCache::default())),
+            syntax_highlight_cache: Rc::new(RefCell::new(SyntaxHighlightCache::default())),
+            code_panel_projection_cache: Rc::new(RefCell::new(CodePanelProjectionCache::default())),
             media_cache: Rc::new(RefCell::new(TranscriptMediaCache::default())),
             media_events: Rc::new(RefCell::new(MediaDiagnosticLog::default())),
             visible_media: Rc::new(RefCell::new(VisibleMediaDiagnostics::default())),
@@ -643,6 +662,8 @@ impl TranscriptPanel {
         visible_media.preview.transcript_image_preview = self.transcript_preview_diagnostic();
         TranscriptPanelDiagnosticSnapshot {
             markdown_stats: self.markdown_cache.borrow().stats(),
+            syntax_highlight_stats: self.syntax_highlight_cache.borrow().stats(),
+            code_panel_projection_stats: self.code_panel_projection_cache.borrow().stats(),
             media_stats: self.media_cache.borrow().stats(),
             stream_projection_counts: self.stream_projection.borrow().retained_counts(),
             visible_media,
@@ -1551,6 +1572,18 @@ impl TranscriptPanel {
             .retain(|panel_id, _| visible_panel_ids.contains(panel_id));
     }
 
+    fn retain_visible_syntax_highlight_cache(&mut self, visible_panel_ids: &HashSet<String>) {
+        self.syntax_highlight_cache
+            .borrow_mut()
+            .retain_owners(visible_panel_ids);
+    }
+
+    fn retain_visible_code_panel_projection_cache(&mut self, visible_panel_ids: &HashSet<String>) {
+        self.code_panel_projection_cache
+            .borrow_mut()
+            .retain_owners(visible_panel_ids);
+    }
+
     fn clear_code_panel_interaction_state(&mut self) {
         self.soft_wrapped_panel_keys.clear();
         self.resized_panel_heights.clear();
@@ -1582,6 +1615,29 @@ impl TranscriptPanel {
         }
         previous_soft_wrap_count != self.soft_wrapped_panel_keys.len()
             || previous_height_count != self.resized_panel_heights.len()
+    }
+
+    fn clear_syntax_highlight_cache_for_released_rows(&mut self, row_identities: &HashSet<String>) {
+        self.syntax_highlight_cache
+            .borrow_mut()
+            .release_owners_matching(|panel_id| {
+                row_identities.iter().any(|row_identity| {
+                    markdown_code_panel_id_belongs_to_row(panel_id, row_identity)
+                })
+            });
+    }
+
+    fn clear_code_panel_projection_cache_for_released_rows(
+        &mut self,
+        row_identities: &HashSet<String>,
+    ) {
+        self.code_panel_projection_cache
+            .borrow_mut()
+            .release_owners_matching(|panel_id| {
+                row_identities.iter().any(|row_identity| {
+                    markdown_code_panel_id_belongs_to_row(panel_id, row_identity)
+                })
+            });
     }
 
     fn prune_code_panel_interaction_state(&mut self, protected_panel_ids: &HashSet<String>) {
@@ -1695,6 +1751,8 @@ impl TranscriptPanel {
         }
 
         self.markdown_cache.borrow_mut().clear();
+        self.syntax_highlight_cache.borrow_mut().clear();
+        self.code_panel_projection_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
@@ -1725,6 +1783,8 @@ impl TranscriptPanel {
         reset_event.detail = Some(generation.to_string());
         self.media_events.borrow_mut().record(reset_event);
         self.markdown_cache.borrow_mut().clear();
+        self.syntax_highlight_cache.borrow_mut().clear();
+        self.code_panel_projection_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
@@ -1766,6 +1826,8 @@ impl TranscriptPanel {
         self.visible_media.borrow_mut().clear();
         self.validated_image_menu_target = None;
         let row_identities = row_identities.iter().cloned().collect();
+        self.clear_syntax_highlight_cache_for_released_rows(&row_identities);
+        self.clear_code_panel_projection_cache_for_released_rows(&row_identities);
         let code_panel_changed =
             self.clear_code_panel_interaction_state_for_released_rows(&row_identities);
         let promoted_changed = self.clear_promoted_media_for_released_rows(&row_identities, cx);
@@ -2126,6 +2188,14 @@ impl Render for TranscriptPanel {
             retained_state.markdown_blocks = Some(markdown_stats.markdown_blocks);
             retained_state.markdown_inlines = Some(markdown_stats.markdown_inlines);
             retained_state.markdown_media_requests = Some(markdown_stats.markdown_media_requests);
+            let syntax_highlight_stats = self.syntax_highlight_cache.borrow().stats();
+            let code_panel_projection_stats = self.code_panel_projection_cache.borrow().stats();
+            retained_state.syntax_highlight_cache_entries = Some(syntax_highlight_stats.entries);
+            retained_state.syntax_highlight_represented_source_bytes =
+                Some(syntax_highlight_stats.represented_source_bytes);
+            retained_state.syntax_highlight_estimated_retained_bytes =
+                Some(syntax_highlight_stats.estimated_retained_bytes);
+            retained_state.syntax_highlight_tokens = Some(syntax_highlight_stats.tokens);
             retained_state.media_cache_entries = Some(media_stats.entries);
             retained_state.media_cache_pending_entries = Some(media_stats.pending_entries);
             retained_state.media_cache_loaded_entries = Some(media_stats.loaded_entries);
@@ -2149,6 +2219,8 @@ impl Render for TranscriptPanel {
             if let Some(total) = retained_state.retained_payload_bytes_lower_bound.as_mut() {
                 *total = total
                     .saturating_add(markdown_stats.estimated_retained_bytes)
+                    .saturating_add(syntax_highlight_stats.estimated_retained_bytes)
+                    .saturating_add(code_panel_projection_stats.estimated_retained_bytes)
                     .saturating_add(media_stats.loaded_image_bytes)
                     .saturating_add(media_stats.decoded_image_bytes_estimate)
                     .saturating_add(stream_projection_counts.key_bytes)
@@ -2203,6 +2275,8 @@ impl Render for TranscriptPanel {
             active_nested_code_panel_ids.iter().map(String::as_str),
         );
         self.retain_visible_code_panel_scroll_state(&active_nested_code_panel_ids);
+        self.retain_visible_syntax_highlight_cache(&active_nested_code_panel_ids);
+        self.retain_visible_code_panel_projection_cache(&active_nested_code_panel_ids);
         self.prune_code_panel_interaction_state(&active_nested_code_panel_ids);
         let selected_nested_code_panel_id = Arc::new(
             self.nested_scroll_ownership
@@ -2216,6 +2290,8 @@ impl Render for TranscriptPanel {
         let code_panel_scroll_handles = self.code_panel_scroll_handles.clone();
         let code_panel_scrollbar_opacities =
             Arc::new(self.scoped_code_panel_scrollbar_opacities(&active_nested_code_panel_ids));
+        let syntax_highlight_cache = self.syntax_highlight_cache.clone();
+        let code_panel_projection_cache = self.code_panel_projection_cache.clone();
         let transcript_panel_height = self
             .layout_bounds
             .map(|bounds| bounds.size.height)
@@ -2618,6 +2694,10 @@ impl Render for TranscriptPanel {
                                                 code_panel_scrollbar_opacities.clone();
                                             let selected_nested_code_panel_id =
                                                 row_selected_nested_code_panel_id.clone();
+                                            let syntax_highlight_cache =
+                                                syntax_highlight_cache.clone();
+                                            let code_panel_projection_cache =
+                                                code_panel_projection_cache.clone();
                                             let code_layout = code_layout;
                                             let media_layout = media_layout;
                                             let markdown_context = markdown_context.clone();
@@ -2672,6 +2752,8 @@ impl Render for TranscriptPanel {
                                                         code_panel_scroll_handles,
                                                         code_panel_scrollbar_opacities,
                                                         selected_nested_code_panel_id,
+                                                        syntax_highlight_cache,
+                                                        code_panel_projection_cache,
                                                         code_layout,
                                                         media_layout,
                                                         selection_order,
@@ -2769,6 +2851,8 @@ fn render_turn(
     code_panel_scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
     code_panel_scrollbar_opacities: Arc<HashMap<String, f32>>,
     selected_nested_code_panel_id: Arc<Option<String>>,
+    syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
+    code_panel_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     selection_order: Rc<Cell<usize>>,
@@ -2835,6 +2919,8 @@ fn render_turn(
             code_panel_scroll_handles,
             code_panel_scrollbar_opacities,
             selected_nested_code_panel_id,
+            syntax_highlight_cache,
+            code_panel_projection_cache,
         ),
         markdown_context,
         media_context,

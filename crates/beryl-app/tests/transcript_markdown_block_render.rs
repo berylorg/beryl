@@ -152,6 +152,20 @@ fn markdown_code_panel_ids_are_scoped_by_row_and_transcript_block() {
 }
 
 #[test]
+fn markdown_code_panel_ids_do_not_depend_on_fence_language_or_metadata() {
+    let markdown_document =
+        parse("```markdown linenos\n# Heading\n```").expect("markdown should parse");
+    let rust_document = parse("```rust\n# Heading\n```").expect("markdown should parse");
+    let markdown_plan = block_render_plan(&markdown_document);
+    let rust_plan = block_render_plan(&rust_document);
+
+    assert_eq!(
+        markdown_code_panel_ids("row-a", "item:answer", &markdown_plan),
+        markdown_code_panel_ids("row-a", "item:answer", &rust_plan)
+    );
+}
+
+#[test]
 fn markdown_code_panel_row_match_uses_encoded_row_identity_length() {
     let panel_id = markdown_code_panel_id("row", "item:answer", "b0");
 
@@ -286,6 +300,7 @@ fn code_block_copy_source_keeps_header_copy_bare_and_selection_copy_fenced() {
         panic!("expected code block");
     };
     assert_eq!(code.source, "print('x')");
+    assert_eq!(code.header_copy_source(), "print('x')");
     assert_eq!(code.copy_opening_fence, "~~~python linenos");
     assert_eq!(code.copy_closing_fence, "~~~");
 }

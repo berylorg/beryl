@@ -104,6 +104,13 @@ impl TranscriptInlineSelectionContext {
         self.next_break_before.set(break_before);
     }
 
+    fn reserve_line_indices(&self, line_count: usize) -> usize {
+        let line_base = self.next_line_index.get();
+        self.next_line_index
+            .set(line_base.saturating_add(line_count.max(1)));
+        line_base
+    }
+
     pub(super) fn code_panel_selection(
         &self,
         structural_path: &str,
@@ -112,11 +119,19 @@ impl TranscriptInlineSelectionContext {
         let context = self.clone();
         let copy_group =
             code_block_copy_group(format!("{}:code:{structural_path}", self.block_path), code);
+        let reserved_line_base = Rc::new(Cell::new(None::<usize>));
         CodePanelSelection {
             line_prepaint_action: Arc::new(move |line: CodePanelSelectableLine| {
+                let line_base = reserved_line_base.get().unwrap_or_else(|| {
+                    let line_base = context.reserve_line_indices(line.display_line_count);
+                    reserved_line_base.set(Some(line_base));
+                    line_base
+                });
+                let line_index = line_base.saturating_add(line.display_line_index);
                 let copy_text = TranscriptLineCopyText::plain(line.raw_text.clone())
                     .with_group(copy_group.clone());
-                let selectable_line = context.selectable_line_with_break_before(
+                let selectable_line = context.selectable_line_with_line_index_and_break_before(
+                    line_index,
                     line.raw_text,
                     line.display_text_len,
                     copy_text,
@@ -137,17 +152,19 @@ impl TranscriptInlineSelectionContext {
         display_text_len: usize,
         copy_text: TranscriptLineCopyText,
     ) -> TranscriptSelectableTextLine {
-        self.selectable_line_inner(display_text, display_text_len, copy_text, None)
+        self.selectable_line_inner(None, display_text, display_text_len, copy_text, None)
     }
 
-    fn selectable_line_with_break_before(
+    fn selectable_line_with_line_index_and_break_before(
         &self,
+        line_index: usize,
         display_text: String,
         display_text_len: usize,
         copy_text: TranscriptLineCopyText,
         break_before: usize,
     ) -> TranscriptSelectableTextLine {
         self.selectable_line_inner(
+            Some(line_index),
             display_text,
             display_text_len,
             copy_text,
@@ -157,13 +174,17 @@ impl TranscriptInlineSelectionContext {
 
     fn selectable_line_inner(
         &self,
+        explicit_line_index: Option<usize>,
         display_text: String,
         display_text_len: usize,
         copy_text: TranscriptLineCopyText,
         explicit_break_before: Option<usize>,
     ) -> TranscriptSelectableTextLine {
-        let line_index = self.next_line_index.get();
-        self.next_line_index.set(line_index.saturating_add(1));
+        let line_index = explicit_line_index.unwrap_or_else(|| {
+            let line_index = self.next_line_index.get();
+            self.next_line_index.set(line_index.saturating_add(1));
+            line_index
+        });
         let order = self.next_order.get();
         self.next_order.set(order.saturating_add(1));
         let start_prefix = self

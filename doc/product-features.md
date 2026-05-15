@@ -433,6 +433,8 @@ This document defines the user-visible product behavior for Beryl V1.
 - The transcript Markdown model represents image references and math spans or math blocks as distinct semantic structures. Dedicated raster image rendering is supported for local image file references that pass Beryl's path and format checks; math typesetting remains out of scope for V1.
 - Unsupported or non-Markdown inline conventions render literally as text unless they are valid Markdown constructs represented by the transcript Markdown model.
 - Raw HTML embedded in Markdown is not rendered as HTML; it must render as literal source text or an unsupported-source fallback, never as executable or styled markup.
+- Fenced code blocks render through the shared code panel widget, including Beryl-owned parser-backed syntax highlighting when their language label resolves to a registered parser.
+- The Markdown language is supported by the Beryl-owned syntax highlighter; code blocks with unsupported, unknown, empty, partial, or invalid language labels render as plain text without changing source or copy behavior.
 - Typography and colors used by the application UI and conversation transcript must be configurable by the user.
 - Configurable appearance roles include at least the general UI font, regular conversation text font, Markdown header font, code or monospace font, the foreground and background colors associated with those roles, commentary assistant-message foreground, and reasoning foreground.
 - Configurable UI chrome roles include toolbar and thread-strip backgrounds, primary and secondary button colors for normal, hover, active, and disabled states, user-input panel colors, transcript-region background and default foreground, status-line colors, structural separator color, and shared surface colors for settings panels, rows, and popups.
@@ -440,7 +442,6 @@ This document defines the user-visible product behavior for Beryl V1.
 - Markdown emphasis and strong emphasis must be rendered through configurable style roles rather than being hard-wired to literal italic or bold font treatment.
 - The styling system must allow emphasis and strong emphasis to vary by font family, weight, size, color, and related presentation attributes.
 - Transcript-internal block styling and dynamic turn-state status colors are not part of this UI chrome theming pass.
-- Syntax highlighting for code blocks is out of scope for V1.
 
 ## Settings Window
 

@@ -163,6 +163,38 @@ fn selected_text_adds_fences_for_partial_code_block_group_selection() {
 }
 
 #[test]
+fn selected_text_for_markdown_labeled_code_block_preserves_fenced_source() {
+    let first = key("row", "assistant", 0);
+    let second = key("row", "assistant", 1);
+    let code_group = TranscriptLineCopyGroup::new("row:code", "```markdown linenos", "```");
+    let frame = frame_with_copy_text([
+        (
+            first.clone(),
+            0,
+            "# Heading",
+            TranscriptLineCopyText::plain("# Heading".to_string()).with_group(code_group.clone()),
+            1,
+        ),
+        (
+            second.clone(),
+            1,
+            "**bold**",
+            TranscriptLineCopyText::plain("**bold**".to_string()).with_group(code_group),
+            1,
+        ),
+    ]);
+    let mut selection = TranscriptSelectionState::default();
+
+    selection.begin(point(first, 0), &frame);
+    selection.extend(point(second, "**bold**".len()), &frame);
+
+    assert_eq!(
+        selection.selected_text(),
+        Some("```markdown linenos\n# Heading\n**bold**\n```")
+    );
+}
+
+#[test]
 fn selected_text_keeps_soft_wrapped_code_segments_inside_one_fence() {
     let first = key("row", "assistant", 0);
     let second = key("row", "assistant", 1);

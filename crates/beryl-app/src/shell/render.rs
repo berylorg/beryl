@@ -1,5 +1,7 @@
 pub(super) mod checklist_sidebar;
 mod code_panel;
+mod code_panel_projection_cache;
+mod code_panel_syntax;
 mod column_selector;
 mod common;
 mod conversation;

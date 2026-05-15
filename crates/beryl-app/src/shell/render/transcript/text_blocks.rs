@@ -1,8 +1,10 @@
 use gpui::{div, prelude::*, rgb};
 
+use crate::shell::syntax_highlighting::SyntaxHighlight;
+
 use super::super::code_panel::{
-    self, CodePanelChrome, CodePanelHeader, CodePanelResize, CodePanelScrollChrome,
-    CodePanelSelection, CodePanelWrapMode,
+    self, CodePanelChrome, CodePanelDisplayProjectionInput, CodePanelHeader, CodePanelResize,
+    CodePanelScrollChrome, CodePanelSelection, CodePanelSyntaxTheme, CodePanelWrapMode,
 };
 
 pub(super) fn labeled_code_block(
@@ -11,7 +13,11 @@ pub(super) fn labeled_code_block(
     language: Option<&str>,
     text: &str,
     wrap_mode: CodePanelWrapMode,
+    display_projection: CodePanelDisplayProjectionInput,
     background: gpui::Rgba,
+    foreground: gpui::Rgba,
+    syntax_theme: CodePanelSyntaxTheme,
+    syntax_highlight: Option<&SyntaxHighlight>,
     header: Option<CodePanelHeader>,
     scroll_chrome: Option<CodePanelScrollChrome>,
     resize: Option<CodePanelResize>,
@@ -33,11 +39,14 @@ pub(super) fn labeled_code_block(
         text,
         language,
         wrap_mode,
+        display_projection,
         CodePanelChrome::Bordered {
             background,
             border: rgb(0x1f2937),
         },
-        rgb(0xe2e8f0),
+        foreground,
+        Some(syntax_theme),
+        syntax_highlight,
         header,
         scroll_chrome,
         resize,

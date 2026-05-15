@@ -253,6 +253,11 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 - Transcript presentation uses application appearance roles for conversation text, commentary foreground, reasoning foreground, Markdown headers, code, emphasis, and strong emphasis. Final-answer assistant messages use conversation text as their base foreground unless a more specific Markdown role overrides it.
 - Transcript presentation may use textual fallback elements for semantic structures that do not yet have dedicated UI renderers, including math spans or math blocks.
 - Transcript code blocks are rendered through the application code-panel presentation path.
+- This crate owns the Beryl syntax highlighter used by code panels. The highlighter is parser-backed, uses Beryl-owned language parsers, and does not delegate syntax classification to a third-party syntax-highlighting engine.
+- Syntax highlighter output is source-preserving: it assigns token roles to source ranges, while code-panel rendering maps those roles through application appearance settings.
+- Code-panel syntax lookup is a shared render-adjacent boundary over the bounded syntax-highlight cache. Pure code-panel rendering consumes precomputed highlight output and does not own asynchronous scheduling or parser execution.
+- Markdown is a registered syntax-highlighting language. Unsupported, unknown, empty, partial, or invalid language labels render as plain code text without changing copy, selection, wrapping, scrolling, or panel identity behavior.
+- Syntax highlighting work must not run expensive parsing on the `gpui` render path. Cached or asynchronous highlight results must be keyed so stale results cannot be applied to different source text, language labels, or appearance settings.
 - Backend-owned transcript text remains the authoritative content for conversation history, while this crate may maintain separate UI-visible Markdown snapshots for live streaming presentation.
 - Historical transcript presentation is backed by bounded backend turn pages; this crate renders the latest page first and requests older pages as transcript scrolling reaches unloaded earlier history.
 - Loaded transcript windows remain one chronological transcript surface even when only part of the backend history has been fetched.

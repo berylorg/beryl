@@ -257,8 +257,10 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 
 - All code-like presentation blocks, including transcript Markdown code blocks and diagnostic command, output, or patch panels, must be rendered through the shared code panel widget.
 - The shared code panel widget is a reusable Beryl-owned presentation component whose supported chrome, wrapping, scrolling, selection, header-action, and resize modes remain composable for all code-like callers.
-- The widget accepts plain text plus an optional language or syntax label.
-- The widget renders plain text, and syntax highlighting may build on the same widget contract without changing call sites.
+- The shared code-panel presentation boundary accepts plain text plus an optional language or syntax label.
+- Code-panel callers route supported labels through the shared Beryl-owned off-render syntax lookup before rendering, and the render component consumes precomputed highlight output.
+- Syntax highlighting is parser-backed and source-preserving: parser output assigns token roles to source ranges, and code-panel rendering maps those roles through application appearance settings.
+- Languages or labels without a registered parser render as plain text using the configured code appearance.
 - The widget supports an inline mode for unboxed transcript text fragments and a bordered mode for standalone panels.
 - The widget's own copy action copies bare plain text; transcript selection that spans a Markdown code block may copy fenced Markdown source through the transcript selection path.
 - The widget supports smart-wrap and no-wrap presentation modes.

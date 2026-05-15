@@ -346,6 +346,7 @@ fn render_item_markdown_source(
         style,
         code_panel_state.controls_for(row_identity.to_string(), block_path),
         selection_context,
+        cx,
     )
 }
 

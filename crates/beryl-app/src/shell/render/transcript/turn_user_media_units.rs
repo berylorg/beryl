@@ -163,6 +163,7 @@ fn render_user_prompt_markdown_source(
         InlineMarkdownStyle::default(),
         code_panel_state.controls_for(row_identity.to_string(), block_path),
         selection_context,
+        cx,
     )
 }
 
@@ -213,6 +214,7 @@ fn render_user_prompt(
             InlineMarkdownStyle::default(),
             code_panel_state.controls_for(row_identity.to_string(), block_path),
             selection_context,
+            cx,
         )
     } else {
         markdown_prose_block_with_image_markers_and_selection(
@@ -225,6 +227,7 @@ fn render_user_prompt(
             code_panel_state.controls_for(row_identity.to_string(), block_path),
             selection_context,
             image_markers.as_slice(),
+            cx,
         )
     };
     Some(block.into_any_element())

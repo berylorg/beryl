@@ -72,6 +72,12 @@ pub(crate) struct BlockRenderCode {
     pub(crate) copy_closing_fence: String,
 }
 
+impl BlockRenderCode {
+    pub(crate) fn header_copy_source(&self) -> &str {
+        self.source.as_str()
+    }
+}
+
 pub(crate) fn block_render_plan(document: &Document) -> BlockRenderPlan {
     block_render_plan_inner(document, None)
 }

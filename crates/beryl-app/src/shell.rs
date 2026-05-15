@@ -390,6 +390,8 @@ mod status_line;
 mod status_operation;
 mod status_operation_state;
 mod surface_notice;
+#[allow(dead_code)]
+mod syntax_highlighting;
 mod thread_activation;
 mod thread_history_worker;
 mod thread_selection;

@@ -5,13 +5,20 @@ use std::{
     sync::Arc,
 };
 
-use gpui::{App, ClipboardItem, Entity, Pixels, ScrollHandle, px};
+use gpui::{App, AsyncApp, ClipboardItem, Entity, Pixels, ScrollHandle, px};
 
-use crate::shell::transcript_markdown::markdown_code_panel_id;
+use crate::shell::{
+    syntax_highlighting::{SyntaxHighlight, SyntaxHighlightCache, SyntaxHighlightRequest},
+    transcript_markdown::markdown_code_panel_id,
+};
 
-use super::super::code_panel::{
-    CodePanelHeader, CodePanelHeaderAction, CodePanelResize, CodePanelScrollChrome,
-    CodePanelVerticalWheelOwnership, CodePanelWrapMode,
+use super::super::code_panel_syntax::resolve_code_panel_syntax_highlight;
+use super::super::{
+    code_panel::{
+        CodePanelDisplayProjectionInput, CodePanelHeader, CodePanelHeaderAction, CodePanelResize,
+        CodePanelScrollChrome, CodePanelVerticalWheelOwnership, CodePanelWrapMode,
+    },
+    code_panel_projection_cache::{CodePanelProjectionCache, CodePanelProjectionRequest},
 };
 use super::{TRANSCRIPT_CODE_PANEL_MIN_HEIGHT, TranscriptCodeLayout, TranscriptPanel};
 
@@ -23,6 +30,8 @@ pub(super) struct TranscriptCodePanelState {
     scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
     scrollbar_opacities: Arc<HashMap<String, f32>>,
     selected_nested_code_panel_id: Arc<Option<String>>,
+    syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
+    display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
 }
 
 #[derive(Clone)]
@@ -40,6 +49,8 @@ impl TranscriptCodePanelState {
         scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
         scrollbar_opacities: Arc<HashMap<String, f32>>,
         selected_nested_code_panel_id: Arc<Option<String>>,
+        syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
+        display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     ) -> Self {
         Self {
             entity,
@@ -48,6 +59,8 @@ impl TranscriptCodePanelState {
             scroll_handles,
             scrollbar_opacities,
             selected_nested_code_panel_id,
+            syntax_highlight_cache,
+            display_projection_cache,
         }
     }
 
@@ -100,6 +113,45 @@ impl TranscriptCodePanelControls {
                 self.copy_action(source.to_string()),
             ],
         }
+    }
+
+    pub(super) fn syntax_highlight(
+        &self,
+        panel_id: &str,
+        source: &str,
+        syntax_label: Option<&str>,
+        cx: &mut App,
+    ) -> Arc<SyntaxHighlight> {
+        let entity = self.state.entity.clone();
+        resolve_code_panel_syntax_highlight(
+            &self.state.syntax_highlight_cache,
+            panel_id,
+            source,
+            syntax_label,
+            |request| schedule_syntax_highlight(entity, request, cx),
+        )
+    }
+
+    pub(super) fn display_projection(
+        &self,
+        panel_id: &str,
+        source: &str,
+        wrap_mode: CodePanelWrapMode,
+        cx: &mut App,
+    ) -> CodePanelDisplayProjectionInput {
+        let lookup = self
+            .state
+            .display_projection_cache
+            .borrow_mut()
+            .lookup(panel_id, source, wrap_mode);
+        if let Some(request) = lookup.projection_request {
+            schedule_code_panel_projection(self.state.entity.clone(), request, cx);
+        }
+
+        lookup.projection.map_or(
+            CodePanelDisplayProjectionInput::Pending,
+            CodePanelDisplayProjectionInput::Ready,
+        )
     }
 
     pub(super) fn scroll_chrome(&self, panel_id: &str) -> CodePanelScrollChrome {
@@ -199,4 +251,62 @@ impl TranscriptCodePanelControls {
             CodePanelVerticalWheelOwnership::Parent
         }
     }
+}
+
+fn schedule_syntax_highlight(
+    panel: Entity<TranscriptPanel>,
+    request: SyntaxHighlightRequest,
+    cx: &mut App,
+) {
+    let highlight_task = cx
+        .background_executor()
+        .spawn(async move { request.highlight() });
+    cx.spawn(move |cx: &mut AsyncApp| {
+        let mut cx = cx.clone();
+        async move {
+            let completion = highlight_task.await;
+            let _ = panel.update(&mut cx, |view, cx| {
+                let result = view
+                    .syntax_highlight_cache
+                    .borrow_mut()
+                    .complete_highlight(completion);
+                if let Some(request) = result.follow_up_request {
+                    schedule_syntax_highlight(cx.entity(), request, cx);
+                }
+                if result.display_changed {
+                    cx.notify();
+                }
+            });
+        }
+    })
+    .detach();
+}
+
+fn schedule_code_panel_projection(
+    panel: Entity<TranscriptPanel>,
+    request: CodePanelProjectionRequest,
+    cx: &mut App,
+) {
+    let projection_task = cx
+        .background_executor()
+        .spawn(async move { request.project() });
+    cx.spawn(move |cx: &mut AsyncApp| {
+        let mut cx = cx.clone();
+        async move {
+            let completion = projection_task.await;
+            let _ = panel.update(&mut cx, |view, cx| {
+                let result = view
+                    .code_panel_projection_cache
+                    .borrow_mut()
+                    .complete_projection(completion);
+                if let Some(request) = result.follow_up_request {
+                    schedule_code_panel_projection(cx.entity(), request, cx);
+                }
+                if result.display_changed {
+                    cx.notify();
+                }
+            });
+        }
+    })
+    .detach();
 }

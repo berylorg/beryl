@@ -122,6 +122,7 @@ pub(super) fn render_agent_message(
             format!("item:{}:agent-message", item.id),
         ),
         selection_context,
+        cx,
     ))
 }
 
@@ -269,6 +270,7 @@ fn markdown_reasoning_blocks(
                 )),
                 code_panel_state.controls_for(row_identity.to_string(), block_path),
                 selection_context,
+                cx,
             ))
         })
         .collect()

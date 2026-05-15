@@ -74,6 +74,10 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) markdown_blocks: Option<usize>,
     pub(crate) markdown_inlines: Option<usize>,
     pub(crate) markdown_media_requests: Option<usize>,
+    pub(crate) syntax_highlight_cache_entries: Option<usize>,
+    pub(crate) syntax_highlight_represented_source_bytes: Option<usize>,
+    pub(crate) syntax_highlight_estimated_retained_bytes: Option<usize>,
+    pub(crate) syntax_highlight_tokens: Option<usize>,
     pub(crate) media_cache_entries: Option<usize>,
     pub(crate) media_cache_pending_entries: Option<usize>,
     pub(crate) media_cache_loaded_entries: Option<usize>,
@@ -298,6 +302,13 @@ impl MemoryMilestone {
         let markdown_blocks = optional_usize(retained_state.markdown_blocks);
         let markdown_inlines = optional_usize(retained_state.markdown_inlines);
         let markdown_media_requests = optional_usize(retained_state.markdown_media_requests);
+        let syntax_highlight_cache_entries =
+            optional_usize(retained_state.syntax_highlight_cache_entries);
+        let syntax_highlight_represented_source_bytes =
+            optional_usize(retained_state.syntax_highlight_represented_source_bytes);
+        let syntax_highlight_estimated_retained_bytes =
+            optional_usize(retained_state.syntax_highlight_estimated_retained_bytes);
+        let syntax_highlight_tokens = optional_usize(retained_state.syntax_highlight_tokens);
         let media_cache_entries = optional_usize(retained_state.media_cache_entries);
         let media_cache_pending_entries =
             optional_usize(retained_state.media_cache_pending_entries);
@@ -387,6 +398,10 @@ impl MemoryMilestone {
                     markdown_blocks = %markdown_blocks,
                     markdown_inlines = %markdown_inlines,
                     markdown_media_requests = %markdown_media_requests,
+                    syntax_highlight_cache_entries = %syntax_highlight_cache_entries,
+                    syntax_highlight_represented_source_bytes = %syntax_highlight_represented_source_bytes,
+                    syntax_highlight_estimated_retained_bytes = %syntax_highlight_estimated_retained_bytes,
+                    syntax_highlight_tokens = %syntax_highlight_tokens,
                     media_cache_entries = %media_cache_entries,
                     media_cache_pending_entries = %media_cache_pending_entries,
                     media_cache_loaded_entries = %media_cache_loaded_entries,
@@ -461,6 +476,10 @@ impl MemoryMilestone {
                     markdown_blocks = %markdown_blocks,
                     markdown_inlines = %markdown_inlines,
                     markdown_media_requests = %markdown_media_requests,
+                    syntax_highlight_cache_entries = %syntax_highlight_cache_entries,
+                    syntax_highlight_represented_source_bytes = %syntax_highlight_represented_source_bytes,
+                    syntax_highlight_estimated_retained_bytes = %syntax_highlight_estimated_retained_bytes,
+                    syntax_highlight_tokens = %syntax_highlight_tokens,
                     media_cache_entries = %media_cache_entries,
                     media_cache_pending_entries = %media_cache_pending_entries,
                     media_cache_loaded_entries = %media_cache_loaded_entries,
