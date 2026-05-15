@@ -8479,6 +8479,9 @@ impl ShellView {
 
     fn handle_conversation_input_event(&mut self, event: &TextInputEvent, cx: &mut Context<Self>) {
         match event {
+            TextInputEvent::Changed(_) => {
+                cx.notify();
+            }
             TextInputEvent::InlineAtomClicked { atom_id, position } => {
                 if let Some(label) = composer_image_label_from_atom_id(atom_id) {
                     self.open_composer_image_marker_menu(

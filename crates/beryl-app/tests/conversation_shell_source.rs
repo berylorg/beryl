@@ -59,6 +59,28 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
 }
 
 #[test]
+fn conversation_input_changes_notify_shell_for_composer_remeasurement() {
+    let shell_source = include_str!("../src/shell.rs");
+    let handler_body = rust_function_body(shell_source, "fn handle_conversation_input_event");
+
+    assert!(handler_body.contains("TextInputEvent::Changed(_)"));
+
+    let changed_arm_tail = handler_body
+        .split("TextInputEvent::Changed(_)")
+        .nth(1)
+        .expect("missing changed event arm");
+    let changed_arm_end = changed_arm_tail
+        .find("TextInputEvent::InlineAtomClicked")
+        .or_else(|| changed_arm_tail.find("_ =>"))
+        .unwrap_or(changed_arm_tail.len());
+    let changed_arm_body = &changed_arm_tail[..changed_arm_end];
+
+    assert!(changed_arm_body.contains("cx.notify()"));
+    assert!(handler_body.contains("TextInputEvent::InlineAtomClicked"));
+    assert!(handler_body.contains("open_composer_image_marker_menu"));
+}
+
+#[test]
 fn workspace_shell_rendering_omits_legacy_no_member_composer_affordances() {
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let idle_shell_body =
