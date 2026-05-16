@@ -42,15 +42,39 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
         common_source,
         "pub(super) fn secondary_labeled_cycle_button_with_active_state",
     );
+    let fixed_label_button_body =
+        rust_function_body(common_source, "pub(super) fn secondary_fixed_label_button");
+    let fixed_label_slot_body = rust_function_body(common_source, "fn fixed_label_slot");
     let themed_button_base_body = rust_function_body(common_source, "fn themed_button_base");
     let themed_button_container_body =
         rust_function_body(common_source, "fn themed_button_container");
 
     assert!(activity_mode_body.contains("secondary_labeled_cycle_button_with_active_state"));
     assert!(activity_mode_body.contains("\"Activity\""));
+    assert!(activity_mode_body.contains("WorkspaceActivityPanelMode::cycle_value_labels()"));
     assert!(toolbar_body.contains("surface.tool_activity_panel_mode().value_label()"));
+    assert!(toolbar_body.contains("secondary_fixed_label_button"));
+    assert!(toolbar_body.contains("GRAPH_TOGGLE_LABELS"));
+    assert!(toolbar_body.contains("CHECKLIST_TOGGLE_LABELS"));
+    assert!(
+        render_source
+            .contains("const GRAPH_TOGGLE_LABELS: [&str; 2] = [\"Graph\", \"Hide Graph\"];")
+    );
+    assert!(render_source.contains(
+        "const CHECKLIST_TOGGLE_LABELS: [&str; 2] = [\"Show Checklist\", \"Hide Checklist\"];"
+    ));
+    assert_eq!(toolbar_body.matches("toolbar_toggle_label").count(), 2);
+    assert!(!toolbar_body.contains("\"Graph\""));
+    assert!(!toolbar_body.contains("\"Hide Graph\""));
+    assert!(!toolbar_body.contains("\"Show Checklist\""));
+    assert!(!toolbar_body.contains("\"Hide Checklist\""));
     assert!(labeled_cycle_button_body.contains("shell.secondary_button_theme()"));
     assert!(labeled_cycle_button_body.contains("visual_state.theme_state(theme)"));
+    assert!(labeled_cycle_button_body.contains("possible_value_labels"));
+    assert!(
+        labeled_cycle_button_body.contains("fixed_label_slot(value_label, possible_value_labels)")
+    );
+    assert!(fixed_label_button_body.contains("themed_fixed_label_button"));
     assert!(labeled_cycle_button_body.contains(".bg(button_state.border)"));
     assert!(labeled_cycle_button_body.contains(".group_hover("));
     assert!(labeled_cycle_button_body.contains("theme.hover.border"));
@@ -59,9 +83,122 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
     assert!(!labeled_cycle_button_body.contains("shell.separator_color()"));
     assert!(labeled_cycle_button_body.contains(".on_click("));
     assert!(labeled_cycle_button_body.contains(".w(px(1.0))"));
+    assert!(fixed_label_slot_body.contains(".opacity(0.0)"));
+    assert!(fixed_label_slot_body.contains("for possible_label in possible_labels"));
+    assert!(fixed_label_slot_body.contains(".absolute()"));
+    assert!(fixed_label_slot_body.contains(".inset_0()"));
+    assert!(fixed_label_slot_body.contains("layout::BUTTON_HORIZONTAL_PADDING"));
     assert!(themed_button_base_body.contains("themed_button_container"));
+    assert!(themed_button_container_body.contains(".flex_none()"));
     assert!(themed_button_container_body.contains(".hover("));
     assert!(themed_button_container_body.contains(".active("));
+    assert!(!themed_button_container_body.contains("theme.hover.foreground"));
+    assert!(!themed_button_container_body.contains("theme.active.foreground"));
+    assert!(themed_button_container_body.contains(".font_weight(theme.font_weight)"));
+}
+
+#[test]
+fn startup_toolbar_leading_label_stays_single_line_in_shared_strip_height() {
+    let common_source = include_str!("../src/shell/render/common.rs");
+    let startup_frame_body = rust_function_body(common_source, "pub(super) fn startup_shell_frame");
+    let toolbar_tail = startup_frame_body
+        .split(".child(toolbar_strip(")
+        .nth(1)
+        .expect("startup frame should render the toolbar strip");
+    let toolbar_leading = &toolbar_tail[..toolbar_tail
+        .find("actions,")
+        .expect("startup toolbar should pass trailing actions")];
+
+    assert!(toolbar_leading.contains(".items_center()"));
+    assert!(toolbar_leading.contains(".min_w(px(0.0))"));
+    assert!(toolbar_leading.contains(".whitespace_nowrap()"));
+    assert!(toolbar_leading.contains(".truncate()"));
+    assert!(!toolbar_leading.contains(".flex_col()"));
+    assert!(!toolbar_leading.contains(".text_lg()"));
+}
+
+#[test]
+fn custom_button_renderers_use_themed_label_font_weight() {
+    let code_panel_source = include_str!("../src/shell/render/code_panel.rs");
+    let code_panel_controls_source =
+        include_str!("../src/shell/render/transcript/code_panel_controls.rs");
+    let startup_source = include_str!("../src/shell/render/startup.rs");
+    let graph_rows_source = include_str!("../src/shell/render/graph_overlay/rows.rs");
+    let code_panel_button_body =
+        rust_function_body(code_panel_source, "fn code_panel_header_button");
+    let code_panel_header_body =
+        rust_function_body(code_panel_controls_source, "pub(super) fn header");
+    let render_picker_body = rust_function_body(startup_source, "fn render_picker");
+    let distro_chip_body = rust_function_body(startup_source, "fn distro_chip");
+    let invalid_thread_ref_actions_body =
+        rust_function_body(graph_rows_source, "fn render_invalid_thread_ref_actions");
+    let rebind_button_tail = invalid_thread_ref_actions_body
+        .split("\"graph-thread-ref-rebind-row\"")
+        .nth(1)
+        .expect("missing graph thread-ref rebind button");
+    let rebind_button_body = &rebind_button_tail[..rebind_button_tail
+        .find(".on_mouse_down")
+        .expect("missing rebind action")];
+
+    assert!(code_panel_button_body.contains(".font_weight(button_font_weight)"));
+    assert!(!code_panel_button_body.contains("FontWeight(500.0)"));
+    assert!(code_panel_header_body.contains("button_font_weight: self.state.button_font_weight"));
+    assert!(render_picker_body.contains("shell.secondary_button_theme().font_weight"));
+    assert!(distro_chip_body.contains(".font_weight(font_weight)"));
+    assert!(distro_chip_body.contains(".flex_none()"));
+    assert!(!distro_chip_body.contains("FontWeight(500.0)"));
+    assert!(rebind_button_body.contains("layout::BUTTON_OUTER_HEIGHT"));
+    assert!(rebind_button_body.contains(".flex_none()"));
+    assert!(rebind_button_body.contains("layout::BUTTON_HORIZONTAL_PADDING"));
+    assert!(rebind_button_body.contains("layout::BUTTON_VERTICAL_PADDING"));
+    assert!(rebind_button_body.contains("layout::BUTTON_LABEL_FONT_SIZE"));
+    assert!(rebind_button_body.contains("layout::BUTTON_LABEL_LINE_HEIGHT"));
+    assert!(rebind_button_body.contains(".font_weight(button_theme.font_weight)"));
+    assert!(!rebind_button_body.contains(".h(px(24.0))"));
+    assert!(!rebind_button_body.contains(".px_2()"));
+    assert!(!rebind_button_body.contains(".text_xs()"));
+}
+
+#[test]
+fn transient_button_feedback_does_not_change_label_color_or_geometry() {
+    let common_source = include_str!("../src/shell/render/common.rs");
+    let workspace_picker_source = include_str!("../src/shell/render/workspace_picker.rs");
+    let workspace_row_menu_source =
+        include_str!("../src/shell/render/workspace_picker_row_menu.rs");
+    let graph_rows_source = include_str!("../src/shell/render/graph_overlay/rows.rs");
+    let themed_button_container_body =
+        rust_function_body(common_source, "fn themed_button_container");
+    let member_action_trigger_body = rust_function_body(
+        workspace_picker_source,
+        "fn render_member_row_action_trigger",
+    );
+    let attach_member_row_body =
+        rust_function_body(workspace_picker_source, "fn render_attach_member_row");
+    let create_workspace_row_body =
+        rust_function_body(workspace_picker_source, "fn render_create_workspace_row");
+    let workspace_row_action_trigger_body = rust_function_body(
+        workspace_row_menu_source,
+        "pub(super) fn render_workspace_row_action_trigger",
+    );
+    let invalid_thread_ref_actions_body =
+        rust_function_body(graph_rows_source, "fn render_invalid_thread_ref_actions");
+
+    for body in [
+        themed_button_container_body,
+        member_action_trigger_body,
+        attach_member_row_body,
+        create_workspace_row_body,
+        workspace_row_action_trigger_body,
+        invalid_thread_ref_actions_body,
+    ] {
+        assert!(!body.contains("hover.foreground"));
+        assert!(!body.contains("active.foreground"));
+        assert!(!body.contains("hover_foreground"));
+        assert!(!body.contains("active_foreground"));
+        assert!(!body.contains(".shadow_"));
+        assert!(!body.contains(".scale("));
+        assert!(!body.contains(".translate("));
+    }
 }
 
 #[test]

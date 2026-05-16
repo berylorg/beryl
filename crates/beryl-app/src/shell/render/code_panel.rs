@@ -79,11 +79,23 @@ pub(crate) struct CodePanelHeaderAction {
     pub on_click: CodePanelAction,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct CodePanelHeader {
     pub title: Option<String>,
     pub leading_actions: Vec<CodePanelHeaderAction>,
     pub trailing_actions: Vec<CodePanelHeaderAction>,
+    pub button_font_weight: FontWeight,
+}
+
+impl Default for CodePanelHeader {
+    fn default() -> Self {
+        Self {
+            title: None,
+            leading_actions: Vec::new(),
+            trailing_actions: Vec::new(),
+            button_font_weight: FontWeight::MEDIUM,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -294,6 +306,7 @@ fn render_code_panel_header(
     let CodePanelHeader {
         leading_actions,
         trailing_actions,
+        button_font_weight,
         ..
     } = header;
 
@@ -312,8 +325,14 @@ fn render_code_panel_header(
                 .gap_2()
                 .children(leading_actions.into_iter().map({
                     move |action| {
-                        code_panel_header_button(element_key, muted_background, border, action)
-                            .into_any_element()
+                        code_panel_header_button(
+                            element_key,
+                            muted_background,
+                            border,
+                            button_font_weight,
+                            action,
+                        )
+                        .into_any_element()
                     }
                 })),
         )
@@ -329,8 +348,14 @@ fn render_code_panel_header(
         .child(div().flex().items_center().justify_end().gap_2().children(
             trailing_actions.into_iter().map({
                 move |action| {
-                    code_panel_header_button(element_key, muted_background, border, action)
-                        .into_any_element()
+                    code_panel_header_button(
+                        element_key,
+                        muted_background,
+                        border,
+                        button_font_weight,
+                        action,
+                    )
+                    .into_any_element()
                 }
             }),
         ))
@@ -340,6 +365,7 @@ fn code_panel_header_button(
     element_key: u64,
     muted_background: Rgba,
     border: Rgba,
+    button_font_weight: FontWeight,
     action: CodePanelHeaderAction,
 ) -> impl IntoElement {
     let CodePanelHeaderAction {
@@ -372,6 +398,7 @@ fn code_panel_header_button(
         .hover(|style| style.bg(if active { rgb(0x1d4ed8) } else { rgb(0x0f172a) }))
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(button_font_weight)
         .text_color(if active { rgb(0xf8fafc) } else { rgb(0xcbd5e1) })
         .cursor_pointer()
         .child(label)

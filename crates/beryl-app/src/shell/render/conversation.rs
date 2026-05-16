@@ -4,6 +4,7 @@ use gpui::{
     prelude::*, px, relative, rgb, rgba,
 };
 
+use crate::WorkspaceActivityPanelMode;
 use crate::shell::{
     BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
     ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
@@ -20,7 +21,8 @@ use super::checklist_sidebar::{
 };
 use super::common::{
     button, card, disabled_secondary_button, inline_notice, secondary_button,
-    secondary_labeled_cycle_button_with_active_state, section_label, toolbar_controls_strip,
+    secondary_fixed_label_button, secondary_labeled_cycle_button_with_active_state, section_label,
+    toolbar_controls_strip,
 };
 use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
@@ -852,6 +854,7 @@ fn render_surface_notice(
             .child(
                 div()
                     .id("surface-notice-close")
+                    .flex_none()
                     .w(px(layout::BUTTON_OUTER_HEIGHT))
                     .h(px(layout::BUTTON_OUTER_HEIGHT))
                     .flex()
@@ -860,6 +863,7 @@ fn render_surface_notice(
                     .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
                     .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                     .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                    .font_weight(shell.secondary_button_theme().font_weight)
                     .text_color(shell.surface_muted_foreground())
                     .hover(|style| style.bg(rgba(0x33415599)))
                     .active(|style| style.bg(rgba(0x475569cc)))
@@ -1056,9 +1060,17 @@ fn activity_mode_button(
         "activity-mode",
         "Activity",
         value_label,
+        WorkspaceActivityPanelMode::cycle_value_labels(),
         active,
         cx.listener(ShellView::cycle_tool_activity_panel_mode),
     )
+}
+
+const GRAPH_TOGGLE_LABELS: [&str; 2] = ["Graph", "Hide Graph"];
+const CHECKLIST_TOGGLE_LABELS: [&str; 2] = ["Show Checklist", "Hide Checklist"];
+
+fn toolbar_toggle_label(labels: &'static [&'static str; 2], active: bool) -> &'static str {
+    labels[usize::from(active)]
 }
 
 fn render_toolbar(
@@ -1084,24 +1096,21 @@ fn render_toolbar(
                 surface.tool_activity_panel_visible(),
                 cx,
             ))
-            .child(secondary_button(
+            .child(secondary_fixed_label_button(
                 shell,
                 "toggle-graph-overlay",
-                if surface.graph_overlay().visible() {
-                    "Hide Graph"
-                } else {
-                    "Graph"
-                },
+                toolbar_toggle_label(&GRAPH_TOGGLE_LABELS, surface.graph_overlay().visible()),
+                &GRAPH_TOGGLE_LABELS,
                 cx.listener(ShellView::toggle_graph_overlay),
             ))
-            .child(secondary_button(
+            .child(secondary_fixed_label_button(
                 shell,
                 "toggle-checklist-sidebar",
-                if surface.checklist_sidebar_visible() {
-                    "Hide Checklist"
-                } else {
-                    "Show Checklist"
-                },
+                toolbar_toggle_label(
+                    &CHECKLIST_TOGGLE_LABELS,
+                    surface.checklist_sidebar_visible(),
+                ),
+                &CHECKLIST_TOGGLE_LABELS,
                 cx.listener(ShellView::toggle_checklist_sidebar),
             ))
             .child(secondary_button(
@@ -1224,6 +1233,7 @@ fn render_thread_strip(
                                         .min_w(px(0.0))
                                         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                                         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                                        .font_weight(shell.secondary_button_theme().font_weight)
                                         .text_color(if !thread_selector_enabled {
                                             shell.secondary_button_theme().disabled.foreground
                                         } else if surface.thread_selector().is_open() {

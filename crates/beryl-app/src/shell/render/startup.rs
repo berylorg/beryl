@@ -234,6 +234,7 @@ fn render_picker(
     body = body.child(section_label("Open New WSL Workspace"));
     if !picker.model.available_wsl_distros.is_empty() {
         let mut distro_row = div().flex().flex_wrap().gap_2();
+        let distro_button_font_weight = shell.secondary_button_theme().font_weight;
         for distro_name in &picker.model.available_wsl_distros {
             let selected =
                 picker.model.selected_wsl_distro.as_deref() == Some(distro_name.as_str());
@@ -241,6 +242,7 @@ fn render_picker(
             let chip = distro_chip(
                 SharedString::from(distro_name.clone()),
                 selected,
+                distro_button_font_weight,
                 cx.listener(move |view, event, window, cx| {
                     view.select_wsl_distro(&distro, event, window, cx);
                 }),
@@ -388,6 +390,7 @@ fn retry_label(target: &RetryTarget) -> &'static str {
 fn distro_chip(
     label: impl Into<SharedString>,
     selected: bool,
+    font_weight: gpui::FontWeight,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
     let label = label.into();
@@ -409,6 +412,7 @@ fn distro_chip(
 
     div()
         .id(label.clone())
+        .flex_none()
         .h(px(layout::BUTTON_OUTER_HEIGHT))
         .px(px(layout::BUTTON_HORIZONTAL_PADDING))
         .py(px(layout::BUTTON_VERTICAL_PADDING))
@@ -421,6 +425,7 @@ fn distro_chip(
         .active(move |style| style.bg(active))
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(font_weight)
         .text_color(rgb(0xf8fafc))
         .cursor_pointer()
         .child(label)

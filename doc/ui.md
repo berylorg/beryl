@@ -56,7 +56,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 ## Appearance Theme Roles
 
 - Toolbar strip and thread strip backgrounds are controlled by shared chrome-strip theme roles.
-- Primary and secondary buttons are distinct theme roles. Each button role defines normal, hover, active, and disabled states, and each state defines background, border, and foreground colors. Button text backgrounds are not separately themed; they match the button background.
+- Primary and secondary buttons are distinct theme roles. Each button role defines label font weight plus normal, hover, active, and disabled color states. Each color state defines background, border, and foreground colors. Button text backgrounds are not separately themed; they match the button background. Transient hover and press feedback must preserve button geometry and label typography; only the button background and/or border color may change while the pointer state changes.
 - User input panel theming covers the panel background, input-area background, input-area border, and input text foreground.
 - Transcript-region shell theming covers the region background and default text foreground. More specific transcript rendering roles may override the default foreground, and transcript-internal block styling is outside this contract.
 - Status line theming covers the strip background, label-title color, and default label-value color. Dynamic status values such as turn-state colors may override the default value color. Activity rows reuse the same label-title and label-value text treatment.
@@ -67,10 +67,12 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 ## Button Geometry
 
 - Beryl-owned buttons share one app-wide button geometry contract independent of primary or secondary color roles.
-- Button outer height is the standard UI text line height and must not exceed that line height.
-- Button labels use the standard UI font family, with a smaller button-label size when needed so the label, border, and internal padding fit inside the button outer height.
-- Internal padding between the button label and the visual border is one third of the button label `M` height, or the closest centralized cap-height-derived metric that Beryl can express in `gpui`.
+- Button outer height is one shared command-control height that may exceed the standard UI text line height when doing so improves button legibility and still fits inside fixed chrome strips.
+- Button labels use the standard UI font family, a shared button-label size, a shared button-label line height, and the active button role's font weight.
+- Internal padding between the button label and the visual border is centralized separately for vertical and horizontal axes so the label has enough visual space while the outer height remains fixed.
 - Button text labels may determine button width, but text buttons and icon-only buttons share the same outer height and corner shape.
+- Buttons whose visible text comes from a known finite cycling or toggle label set must reserve width for the longest known label in that set so state changes do not move neighboring controls.
+- Button geometry is invariant across normal, hover, pressed, active, and disabled visual states. Interaction states must not change width, height, padding, border width, font size, line height, font weight, transform, shadow, or flex sizing.
 - Action rows that directly execute a command are buttons for this contract even when they appear inside popups or lists.
 - Selector rows, data rows, status messages, and the active thread-title selector are controls rather than command buttons. They may use list or title visual treatment, but clickable title-style controls in fixed chrome must align to the shared button height, label typography, and corner shape where applicable.
 - Rounded corners for Beryl-owned buttons and other rounded Beryl-owned widgets come from one shared corner-shape value unless a specific widget contract explicitly requires square edges.
@@ -123,6 +125,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Automatic vertical behavior: fixed height.
 - Manual resize: none.
 - Overflow behavior: toolbar content must remain within the strip; controls may wrap, clamp, or collapse into simpler presentation, but the strip itself does not become a scrolling region.
+- The toolbar strip uses the same fixed height as the thread strip and centers shared-height buttons with the same tight vertical spare space used around the `New Thread` button.
 - The toolbar is a controls-only row and does not reserve a static leading text/content area.
 - The main workspace window toolbar includes a workspace-picker button that opens the merged workspace picker popup.
 - The toolbar includes an `Activity` mode control for the activity panel.
@@ -135,6 +138,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Automatic vertical behavior: fixed height.
 - Manual resize: none.
 - Overflow behavior: strip content must remain within the strip; long thread labels truncate rather than causing outer scrolling.
+- The thread strip uses the same fixed height as the toolbar strip and centers shared-height buttons with tight vertical spare space.
 - The strip includes a `New Thread` button before the active thread title. Activating it clears the active thread selection without creating a backend thread until the next submitted user input fragment.
 - The `New Thread` button is disabled when the current primary runtime target is backend-unavailable.
 - The strip does not show the default host-Windows runtime as a persistent label; non-host runtime context may be shown when needed for the current execution target.

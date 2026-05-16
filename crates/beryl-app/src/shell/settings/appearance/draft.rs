@@ -206,32 +206,36 @@ fn assign_field_value(
         return;
     }
 
-    let value = match value {
-        ValidatedFieldValue::Text(value) => value,
-        ValidatedFieldValue::FontSize(_) | ValidatedFieldValue::FontWeight(_) => return,
-    };
-
     match spec.section {
-        AppearanceSection::Chrome => assign_chrome_field(settings, spec.field, value),
         AppearanceSection::PrimaryButton => {
             assign_button_field(&mut settings.chrome.primary_button, spec.field, value)
         }
         AppearanceSection::SecondaryButton => {
             assign_button_field(&mut settings.chrome.secondary_button, spec.field, value)
         }
-        AppearanceSection::Input => {
-            assign_input_field(&mut settings.chrome.input, spec.field, value)
+        _ => {
+            let ValidatedFieldValue::Text(value) = value else {
+                return;
+            };
+            match spec.section {
+                AppearanceSection::Chrome => assign_chrome_field(settings, spec.field, value),
+                AppearanceSection::Input => {
+                    assign_input_field(&mut settings.chrome.input, spec.field, value)
+                }
+                AppearanceSection::TranscriptShell => assign_transcript_shell_field(
+                    &mut settings.chrome.transcript_shell,
+                    spec.field,
+                    value,
+                ),
+                AppearanceSection::StatusLine => {
+                    assign_status_line_field(&mut settings.chrome.status_line, spec.field, value)
+                }
+                AppearanceSection::Surfaces => {
+                    assign_surface_field(&mut settings.chrome.surfaces, spec.field, value)
+                }
+                _ => {}
+            }
         }
-        AppearanceSection::TranscriptShell => {
-            assign_transcript_shell_field(&mut settings.chrome.transcript_shell, spec.field, value)
-        }
-        AppearanceSection::StatusLine => {
-            assign_status_line_field(&mut settings.chrome.status_line, spec.field, value)
-        }
-        AppearanceSection::Surfaces => {
-            assign_surface_field(&mut settings.chrome.surfaces, spec.field, value)
-        }
-        _ => {}
     }
 }
 
@@ -284,22 +288,57 @@ fn assign_chrome_field(settings: &mut AppearanceSettings, field: AppearanceField
 fn assign_button_field(
     settings: &mut crate::AppearanceButtonSettings,
     field: AppearanceField,
-    value: String,
+    value: ValidatedFieldValue,
 ) {
     match field {
-        AppearanceField::NormalBackground => settings.normal.background = value,
-        AppearanceField::NormalBorder => settings.normal.border = value,
-        AppearanceField::NormalForeground => settings.normal.foreground = value,
-        AppearanceField::HoverBackground => settings.hover.background = value,
-        AppearanceField::HoverBorder => settings.hover.border = value,
-        AppearanceField::HoverForeground => settings.hover.foreground = value,
-        AppearanceField::ActiveBackground => settings.active.background = value,
-        AppearanceField::ActiveBorder => settings.active.border = value,
-        AppearanceField::ActiveForeground => settings.active.foreground = value,
-        AppearanceField::DisabledBackground => settings.disabled.background = value,
-        AppearanceField::DisabledBorder => settings.disabled.border = value,
-        AppearanceField::DisabledForeground => settings.disabled.foreground = value,
+        AppearanceField::FontWeight => {
+            if let ValidatedFieldValue::FontWeight(value) = value {
+                settings.font_weight = value;
+            }
+        }
+        AppearanceField::NormalBackground => assign_text(value, |value| {
+            settings.normal.background = value;
+        }),
+        AppearanceField::NormalBorder => assign_text(value, |value| {
+            settings.normal.border = value;
+        }),
+        AppearanceField::NormalForeground => assign_text(value, |value| {
+            settings.normal.foreground = value;
+        }),
+        AppearanceField::HoverBackground => assign_text(value, |value| {
+            settings.hover.background = value;
+        }),
+        AppearanceField::HoverBorder => assign_text(value, |value| {
+            settings.hover.border = value;
+        }),
+        AppearanceField::HoverForeground => assign_text(value, |value| {
+            settings.hover.foreground = value;
+        }),
+        AppearanceField::ActiveBackground => assign_text(value, |value| {
+            settings.active.background = value;
+        }),
+        AppearanceField::ActiveBorder => assign_text(value, |value| {
+            settings.active.border = value;
+        }),
+        AppearanceField::ActiveForeground => assign_text(value, |value| {
+            settings.active.foreground = value;
+        }),
+        AppearanceField::DisabledBackground => assign_text(value, |value| {
+            settings.disabled.background = value;
+        }),
+        AppearanceField::DisabledBorder => assign_text(value, |value| {
+            settings.disabled.border = value;
+        }),
+        AppearanceField::DisabledForeground => assign_text(value, |value| {
+            settings.disabled.foreground = value;
+        }),
         _ => {}
+    }
+}
+
+fn assign_text(value: ValidatedFieldValue, assign: impl FnOnce(String)) {
+    if let ValidatedFieldValue::Text(value) = value {
+        assign(value);
     }
 }
 

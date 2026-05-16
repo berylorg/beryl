@@ -1562,6 +1562,7 @@ fn chrome_color(value: &str, fallback: gpui::Rgba) -> gpui::Rgba {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct ChromeButtonTheme {
+    pub font_weight: gpui::FontWeight,
     pub normal: ChromeButtonStateTheme,
     pub hover: ChromeButtonStateTheme,
     pub active: ChromeButtonStateTheme,
@@ -1578,6 +1579,7 @@ pub(super) struct ChromeButtonStateTheme {
 impl ChromeButtonTheme {
     fn primary() -> Self {
         Self {
+            font_weight: gpui::FontWeight(500.0),
             normal: ChromeButtonStateTheme::new(rgb(0x1d4ed8), rgb(0x3b82f6), rgb(0xeff6ff)),
             hover: ChromeButtonStateTheme::new(rgb(0x2563eb), rgb(0x60a5fa), rgb(0xffffff)),
             active: ChromeButtonStateTheme::new(rgb(0x1e40af), rgb(0x3b82f6), rgb(0xffffff)),
@@ -1587,6 +1589,7 @@ impl ChromeButtonTheme {
 
     fn secondary() -> Self {
         Self {
+            font_weight: gpui::FontWeight(500.0),
             normal: ChromeButtonStateTheme::new(rgb(0x1e293b), rgb(0x475569), rgb(0xe2e8f0)),
             hover: ChromeButtonStateTheme::new(rgb(0x334155), rgb(0x64748b), rgb(0xf8fafc)),
             active: ChromeButtonStateTheme::new(rgb(0x0f172a), rgb(0x475569), rgb(0xf8fafc)),
@@ -1610,6 +1613,7 @@ fn chrome_button_theme(
     fallback: ChromeButtonTheme,
 ) -> ChromeButtonTheme {
     ChromeButtonTheme {
+        font_weight: chrome_font_weight(settings.font_weight, fallback.font_weight),
         normal: chrome_button_state_theme(&settings.normal, fallback.normal),
         hover: chrome_button_state_theme(&settings.hover, fallback.hover),
         active: chrome_button_state_theme(&settings.active, fallback.active),
@@ -1625,6 +1629,14 @@ fn chrome_button_state_theme(
         background: chrome_color(&settings.background, fallback.background),
         border: chrome_color(&settings.border, fallback.border),
         foreground: chrome_color(&settings.foreground, fallback.foreground),
+    }
+}
+
+fn chrome_font_weight(value: u16, fallback: gpui::FontWeight) -> gpui::FontWeight {
+    if (100..=900).contains(&value) {
+        gpui::FontWeight(value as f32)
+    } else {
+        fallback
     }
 }
 

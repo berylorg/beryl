@@ -72,6 +72,7 @@ fn button_theme(
     fallback: &SettingsButtonTheme,
 ) -> SettingsButtonTheme {
     SettingsButtonTheme {
+        font_weight: font_weight_or(settings.font_weight, fallback.font_weight),
         normal: button_state_theme(&settings.normal, &fallback.normal),
         hover: button_state_theme(&settings.hover, &fallback.hover),
         active: button_state_theme(&settings.active, &fallback.active),
@@ -92,4 +93,12 @@ fn button_state_theme(
 
 fn color_or(value: &str, fallback: RgbColor) -> RgbColor {
     RgbColor::parse(value).unwrap_or(fallback)
+}
+
+fn font_weight_or(value: u16, fallback: u16) -> u16 {
+    if (100..=900).contains(&value) {
+        value
+    } else {
+        fallback
+    }
 }

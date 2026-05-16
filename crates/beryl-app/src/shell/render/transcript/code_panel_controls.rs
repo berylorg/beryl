@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use gpui::{App, AsyncApp, ClipboardItem, Entity, Pixels, ScrollHandle, px};
+use gpui::{App, AsyncApp, ClipboardItem, Entity, FontWeight, Pixels, ScrollHandle, px};
 
 use crate::shell::{
     syntax_highlighting::{SyntaxHighlight, SyntaxHighlightCache, SyntaxHighlightRequest},
@@ -33,6 +33,7 @@ pub(super) struct TranscriptCodePanelState {
     selected_nested_code_panel_id: Arc<Option<String>>,
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
+    button_font_weight: FontWeight,
 }
 
 #[derive(Clone)]
@@ -52,6 +53,7 @@ impl TranscriptCodePanelState {
         selected_nested_code_panel_id: Arc<Option<String>>,
         syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
         display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
+        button_font_weight: FontWeight,
     ) -> Self {
         Self {
             entity,
@@ -62,6 +64,7 @@ impl TranscriptCodePanelState {
             selected_nested_code_panel_id,
             syntax_highlight_cache,
             display_projection_cache,
+            button_font_weight,
         }
     }
 
@@ -113,6 +116,7 @@ impl TranscriptCodePanelControls {
                 self.soft_wrap_action(panel_id),
                 self.copy_action(source.to_string()),
             ],
+            button_font_weight: self.state.button_font_weight,
         }
     }
 

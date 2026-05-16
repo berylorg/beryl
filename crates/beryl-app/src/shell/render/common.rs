@@ -86,18 +86,23 @@ pub(super) fn startup_shell_frame(
                     shell,
                     div()
                         .flex()
-                        .flex_col()
-                        .gap_1()
+                        .items_center()
+                        .gap_2()
+                        .min_w(px(0.0))
                         .child(
                             div()
-                                .text_lg()
+                                .flex_none()
+                                .text_sm()
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .child("Beryl"),
                         )
                         .child(
                             div()
+                                .min_w(px(0.0))
                                 .text_xs()
                                 .text_color(rgb(0x94a3b8))
+                                .whitespace_nowrap()
+                                .truncate()
                                 .child(title.to_string()),
                         ),
                     actions,
@@ -246,11 +251,30 @@ pub(super) fn secondary_button(
     themed_button(theme, ChromeButtonVisualState::Normal, id, label, on_click)
 }
 
+pub(super) fn secondary_fixed_label_button(
+    shell: &ShellView,
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    possible_labels: &'static [&'static str],
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = shell.secondary_button_theme();
+    themed_fixed_label_button(
+        theme,
+        ChromeButtonVisualState::Normal,
+        id,
+        label,
+        possible_labels,
+        on_click,
+    )
+}
+
 pub(super) fn secondary_labeled_cycle_button_with_active_state(
     shell: &ShellView,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     value_label: impl Into<SharedString>,
+    possible_value_labels: &'static [&'static str],
     active: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
@@ -292,11 +316,7 @@ pub(super) fn secondary_labeled_cycle_button_with_active_state(
         .child(
             div()
                 .h_full()
-                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(value_label),
+                .child(fixed_label_slot(value_label, possible_value_labels)),
         )
         .on_click(move |event, window, cx| on_click(event, window, cx))
 }
@@ -342,6 +362,18 @@ fn themed_button(
         .on_click(move |event, window, cx| on_click(event, window, cx))
 }
 
+fn themed_fixed_label_button(
+    theme: ChromeButtonTheme,
+    visual_state: ChromeButtonVisualState,
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    possible_labels: &'static [&'static str],
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    themed_fixed_label_button_base(theme, visual_state, id, label, possible_labels)
+        .on_click(move |event, window, cx| on_click(event, window, cx))
+}
+
 fn themed_button_base(
     theme: ChromeButtonTheme,
     visual_state: ChromeButtonVisualState,
@@ -355,6 +387,57 @@ fn themed_button_base(
         .child(label)
 }
 
+fn themed_fixed_label_button_base(
+    theme: ChromeButtonTheme,
+    visual_state: ChromeButtonVisualState,
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    possible_labels: &'static [&'static str],
+) -> gpui::Stateful<gpui::Div> {
+    let label = label.into();
+    themed_button_container(theme, visual_state, id).child(fixed_label_slot(label, possible_labels))
+}
+
+fn fixed_label_slot(
+    label: SharedString,
+    possible_labels: &'static [&'static str],
+) -> impl IntoElement {
+    debug_assert!(!possible_labels.is_empty());
+    let mut reserved_labels = div()
+        .h_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .overflow_hidden()
+        .opacity(0.0);
+    for possible_label in possible_labels {
+        reserved_labels = reserved_labels.child(
+            div()
+                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(*possible_label),
+        );
+    }
+
+    div()
+        .relative()
+        .h_full()
+        .overflow_hidden()
+        .child(reserved_labels)
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(label),
+        )
+}
+
 fn themed_button_container(
     theme: ChromeButtonTheme,
     visual_state: ChromeButtonVisualState,
@@ -364,6 +447,7 @@ fn themed_button_container(
     debug_assert!(layout::button_required_outer_height() <= layout::BUTTON_OUTER_HEIGHT);
     div()
         .id(id)
+        .flex_none()
         .h(px(layout::BUTTON_OUTER_HEIGHT))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
         .bg(state.background)
@@ -374,6 +458,7 @@ fn themed_button_container(
         .justify_center()
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(theme.font_weight)
         .text_color(state.foreground)
         .whitespace_nowrap()
         .when(visual_state.interactive(), move |button| {
@@ -382,13 +467,11 @@ fn themed_button_container(
                     style
                         .bg(theme.hover.background)
                         .border_color(theme.hover.border)
-                        .text_color(theme.hover.foreground)
                 })
                 .active(move |style| {
                     style
                         .bg(theme.active.background)
                         .border_color(theme.active.border)
-                        .text_color(theme.active.foreground)
                 })
                 .cursor_pointer()
         })

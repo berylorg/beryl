@@ -89,7 +89,8 @@ const TYPOGRAPHY_FIELDS: [AppearanceField; 5] = [
 
 const FOREGROUND_FIELDS: [AppearanceField; 1] = [AppearanceField::Foreground];
 
-const BUTTON_FIELDS: [AppearanceField; 12] = [
+const BUTTON_FIELDS: [AppearanceField; 13] = [
+    AppearanceField::FontWeight,
     AppearanceField::NormalBackground,
     AppearanceField::NormalBorder,
     AppearanceField::NormalForeground,
@@ -429,6 +430,7 @@ fn button_field_value(
     field: AppearanceField,
 ) -> String {
     match field {
+        AppearanceField::FontWeight => settings.font_weight.to_string(),
         AppearanceField::NormalBackground => settings.normal.background.clone(),
         AppearanceField::NormalBorder => settings.normal.border.clone(),
         AppearanceField::NormalForeground => settings.normal.foreground.clone(),

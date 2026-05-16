@@ -17,6 +17,8 @@ pub struct AppearanceChromeSettings {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceButtonSettings {
+    #[serde(default = "default_button_font_weight")]
+    pub font_weight: u16,
     pub normal: AppearanceButtonStateSettings,
     pub hover: AppearanceButtonStateSettings,
     pub active: AppearanceButtonStateSettings,
@@ -97,6 +99,7 @@ impl Default for AppearanceChromeSettings {
 impl AppearanceButtonSettings {
     fn primary() -> Self {
         Self {
+            font_weight: default_button_font_weight(),
             normal: AppearanceButtonStateSettings::new("#1d4ed8", "#3b82f6", "#eff6ff"),
             hover: AppearanceButtonStateSettings::new("#2563eb", "#60a5fa", "#ffffff"),
             active: AppearanceButtonStateSettings::new("#1e40af", "#3b82f6", "#ffffff"),
@@ -106,6 +109,7 @@ impl AppearanceButtonSettings {
 
     fn secondary() -> Self {
         Self {
+            font_weight: default_button_font_weight(),
             normal: AppearanceButtonStateSettings::new("#1e293b", "#475569", "#e2e8f0"),
             hover: AppearanceButtonStateSettings::new("#334155", "#64748b", "#f8fafc"),
             active: AppearanceButtonStateSettings::new("#0f172a", "#475569", "#f8fafc"),
@@ -232,13 +236,22 @@ impl AppearanceChromeSettings {
 
 impl AppearanceButtonSettings {
     fn validated(&self, role: &'static str) -> Result<Self, AppearanceSettingsError> {
+        if !(100..=900).contains(&self.font_weight) {
+            return Err(AppearanceSettingsError::InvalidFontWeight { role });
+        }
+
         Ok(Self {
+            font_weight: self.font_weight,
             normal: self.normal.validated(role, "normal")?,
             hover: self.hover.validated(role, "hover")?,
             active: self.active.validated(role, "active")?,
             disabled: self.disabled.validated(role, "disabled")?,
         })
     }
+}
+
+const fn default_button_font_weight() -> u16 {
+    500
 }
 
 impl AppearanceButtonStateSettings {

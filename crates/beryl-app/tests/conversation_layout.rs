@@ -251,35 +251,52 @@ fn status_line_height_is_fixed_chrome_below_composer() {
 }
 
 #[test]
-fn thread_strip_height_is_fixed_top_chrome() {
+fn top_chrome_strips_share_fixed_height() {
+    assert_eq!(layout::CHROME_STRIP_HEIGHT, 40.0);
+    assert_eq!(layout::TOOLBAR_STRIP_HEIGHT, layout::CHROME_STRIP_HEIGHT);
     assert_eq!(layout::THREAD_STRIP_HEIGHT, 40.0);
+    assert_eq!(layout::TOOLBAR_STRIP_HEIGHT, layout::THREAD_STRIP_HEIGHT);
     assert_eq!(
         layout::TOOLBAR_STRIP_HEIGHT + layout::THREAD_STRIP_HEIGHT,
-        92.0
+        80.0
     );
     assert!(layout::BUTTON_OUTER_HEIGHT <= layout::THREAD_STRIP_HEIGHT);
 }
 
 #[test]
-fn button_geometry_fits_inside_standard_ui_line_height() {
-    assert_eq!(
-        layout::BUTTON_OUTER_HEIGHT,
-        layout::STANDARD_UI_TEXT_LINE_HEIGHT
-    );
+fn button_geometry_fits_inside_fixed_chrome_strips() {
+    assert_eq!(layout::BUTTON_OUTER_HEIGHT, 32.0);
+    assert!(layout::BUTTON_OUTER_HEIGHT > layout::STANDARD_UI_TEXT_LINE_HEIGHT);
     assert_eq!(layout::BUTTON_ICON_OUTER_WIDTH, layout::BUTTON_OUTER_HEIGHT);
-    assert!(layout::BUTTON_OUTER_HEIGHT <= layout::STANDARD_UI_TEXT_LINE_HEIGHT);
+    assert!(layout::BUTTON_OUTER_HEIGHT <= layout::THREAD_STRIP_HEIGHT);
+    assert!(layout::BUTTON_OUTER_HEIGHT <= layout::TOOLBAR_STRIP_HEIGHT);
+    assert_eq!(
+        layout::THREAD_STRIP_HEIGHT - layout::BUTTON_OUTER_HEIGHT,
+        layout::TOOLBAR_STRIP_HEIGHT - layout::BUTTON_OUTER_HEIGHT
+    );
+    assert_eq!(
+        layout::THREAD_STRIP_HEIGHT - layout::BUTTON_OUTER_HEIGHT,
+        8.0
+    );
     assert!(layout::button_required_outer_height() <= layout::BUTTON_OUTER_HEIGHT);
 }
 
 #[test]
-fn button_padding_is_derived_from_label_cap_height_estimate() {
+fn button_padding_and_label_metrics_are_centralized() {
+    assert_eq!(layout::BUTTON_LABEL_FONT_SIZE, 14.0);
+    assert_eq!(layout::BUTTON_LABEL_LINE_HEIGHT, 18.0);
+    assert_eq!(layout::BUTTON_VERTICAL_PADDING, 6.0);
+    assert_eq!(layout::BUTTON_HORIZONTAL_PADDING, 10.0);
     assert_eq!(
-        layout::BUTTON_VERTICAL_PADDING,
-        layout::button_padding_from_label_cap_height(layout::BUTTON_LABEL_CAP_HEIGHT_ESTIMATE)
+        layout::button_required_outer_height(),
+        layout::BUTTON_BORDER_WIDTH * 2.0
+            + layout::BUTTON_VERTICAL_PADDING * 2.0
+            + layout::BUTTON_LABEL_LINE_HEIGHT
     );
+    assert_eq!(layout::button_required_outer_height(), 32.0);
     assert_eq!(
-        layout::BUTTON_HORIZONTAL_PADDING,
-        layout::BUTTON_VERTICAL_PADDING
+        layout::button_required_outer_height(),
+        layout::BUTTON_OUTER_HEIGHT
     );
 }
 

@@ -515,6 +515,7 @@ fn render_runtime_selector_trigger(
                     div()
                         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                        .font_weight(theme.font_weight)
                         .text_color(foreground)
                         .whitespace_nowrap()
                         .truncate()
@@ -893,11 +894,7 @@ fn render_attach_member_row(
         row = row
             .cursor_pointer()
             .hover(move |style| style.bg(hover_background))
-            .active(move |style| {
-                style
-                    .bg(secondary.active.background)
-                    .text_color(secondary.active.foreground)
-            })
+            .active(move |style| style.bg(secondary.active.background))
             .on_click(cx.listener(ShellView::prompt_attach_workspace_member));
     }
     row.into_any_element()
@@ -1017,6 +1014,7 @@ fn render_member_row_action_trigger(
 
     div()
         .id(("workspace-picker-member-action-menu-trigger", index))
+        .flex_none()
         .h(px(layout::BUTTON_OUTER_HEIGHT))
         .w(px(layout::BUTTON_OUTER_HEIGHT))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
@@ -1028,19 +1026,18 @@ fn render_member_row_action_trigger(
         .justify_center()
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(secondary.font_weight)
         .text_color(secondary.normal.foreground)
         .cursor_pointer()
         .hover(move |style| {
             style
                 .bg(secondary.hover.background)
                 .border_color(secondary.hover.border)
-                .text_color(secondary.hover.foreground)
         })
         .active(move |style| {
             style
                 .bg(secondary.active.background)
                 .border_color(secondary.active.border)
-                .text_color(secondary.active.foreground)
         })
         .on_mouse_down(
             MouseButton::Left,
@@ -1373,9 +1370,7 @@ fn render_create_workspace_row(shell: &ShellView, cx: &mut Context<ShellView>) -
     let foreground = shell.general_ui_foreground();
     let border = shell.separator_color();
     let hover_background = shell.row_surface_background();
-    let hover_foreground = shell.general_ui_foreground();
     let active_background = secondary.active.background;
-    let active_foreground = secondary.active.foreground;
 
     div()
         .id("workspace-picker-create-new")
@@ -1392,8 +1387,8 @@ fn render_create_workspace_row(shell: &ShellView, cx: &mut Context<ShellView>) -
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .text_color(foreground)
         .cursor_pointer()
-        .hover(move |style| style.bg(hover_background).text_color(hover_foreground))
-        .active(move |style| style.bg(active_background).text_color(active_foreground))
+        .hover(move |style| style.bg(hover_background))
+        .active(move |style| style.bg(active_background))
         .on_click(cx.listener(move |view, _, window, cx| {
             let _ = view.activate_workspace_picker_item(
                 workspace_picker::CREATE_NEW_ITEM_INDEX,

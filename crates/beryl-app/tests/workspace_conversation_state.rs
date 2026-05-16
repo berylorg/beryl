@@ -985,6 +985,14 @@ fn workspace_ui_state_mode_field_wins_over_legacy_boolean() {
 #[test]
 fn workspace_activity_panel_mode_cycles_in_toolbar_order() {
     assert_eq!(
+        WorkspaceActivityPanelMode::CYCLE_MODES,
+        [
+            WorkspaceActivityPanelMode::Auto,
+            WorkspaceActivityPanelMode::On,
+            WorkspaceActivityPanelMode::Off
+        ]
+    );
+    assert_eq!(
         WorkspaceActivityPanelMode::Auto.next(),
         WorkspaceActivityPanelMode::On
     );
@@ -1002,6 +1010,14 @@ fn workspace_activity_panel_mode_cycles_in_toolbar_order() {
     assert_eq!(WorkspaceActivityPanelMode::Auto.value_label(), "Auto");
     assert_eq!(WorkspaceActivityPanelMode::On.value_label(), "On");
     assert_eq!(WorkspaceActivityPanelMode::Off.value_label(), "Off");
+    assert_eq!(
+        WorkspaceActivityPanelMode::cycle_value_labels(),
+        &["Auto", "On", "Off"]
+    );
+    assert_eq!(
+        WorkspaceActivityPanelMode::CYCLE_MODES.map(WorkspaceActivityPanelMode::value_label),
+        WorkspaceActivityPanelMode::CYCLE_VALUE_LABELS
+    );
 }
 
 #[test]

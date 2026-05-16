@@ -78,6 +78,7 @@ pub(super) fn delete_recursive_hold_row(
                 .relative()
                 .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                 .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                .font_weight(secondary.font_weight)
                 .text_color(secondary.normal.foreground)
                 .child(label),
         )

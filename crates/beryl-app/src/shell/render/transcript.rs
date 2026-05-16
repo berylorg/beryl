@@ -2777,7 +2777,7 @@ fn render_turn(
     .child(render_turn_card(
         index,
         workspace,
-        appearance,
+        appearance.clone(),
         turn,
         TranscriptCodePanelState::new(
             entity,
@@ -2788,6 +2788,7 @@ fn render_turn(
             selected_nested_code_panel_id,
             syntax_highlight_cache,
             code_panel_projection_cache,
+            transcript_code_panel_button_font_weight(appearance.as_ref()),
         ),
         markdown_context,
         media_context,
@@ -2802,6 +2803,15 @@ fn render_turn(
         cx,
     ))
     .into_any_element()
+}
+
+fn transcript_code_panel_button_font_weight(appearance: &AppearanceSettings) -> FontWeight {
+    let weight = appearance.chrome.secondary_button.font_weight;
+    if (100..=900).contains(&weight) {
+        FontWeight(weight as f32)
+    } else {
+        FontWeight::MEDIUM
+    }
 }
 
 fn transcript_code_panel_max_height(transcript_height: Pixels) -> Pixels {

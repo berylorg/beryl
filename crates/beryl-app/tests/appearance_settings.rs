@@ -16,6 +16,7 @@ fn appearance_settings_roundtrip_through_theme_toml() {
     settings.transcript_reasoning.foreground = "#CBD5E1".to_string();
     settings.transcript_commentary.foreground = "#BAE6FD".to_string();
     settings.chrome.toolbar_background = "#111827".to_string();
+    settings.chrome.primary_button.font_weight = 650;
     settings.chrome.primary_button.normal.background = "#1D4ED8".to_string();
 
     store.save(&settings).unwrap();
@@ -28,6 +29,7 @@ fn appearance_settings_roundtrip_through_theme_toml() {
     assert_eq!(loaded.transcript_reasoning.foreground, "#cbd5e1");
     assert_eq!(loaded.transcript_commentary.foreground, "#bae6fd");
     assert_eq!(loaded.chrome.toolbar_background, "#111827");
+    assert_eq!(loaded.chrome.primary_button.font_weight, 650);
     assert_eq!(loaded.chrome.primary_button.normal.background, "#1d4ed8");
 
     root.close().unwrap();
@@ -80,6 +82,10 @@ fn appearance_settings_validate_configurable_role_fields() {
 
     let mut settings = AppearanceSettings::default();
     settings.chrome.primary_button.hover.border = "blue".to_string();
+    assert!(settings.validated().is_err());
+
+    let mut settings = AppearanceSettings::default();
+    settings.chrome.secondary_button.font_weight = 950;
     assert!(settings.validated().is_err());
 }
 

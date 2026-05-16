@@ -6,21 +6,22 @@ use gpui_text_input::{TextInputGeometry, TextInputScrollLimits, TextInputVertica
 pub(crate) const WINDOW_MIN_WIDTH: f32 = 420.0;
 pub(crate) const WINDOW_MIN_HEIGHT: f32 = 320.0;
 
-pub(crate) const TOOLBAR_STRIP_HEIGHT: f32 = 52.0;
-pub(crate) const THREAD_STRIP_HEIGHT: f32 = 40.0;
+pub(crate) const CHROME_STRIP_HEIGHT: f32 = 40.0;
+pub(crate) const TOOLBAR_STRIP_HEIGHT: f32 = CHROME_STRIP_HEIGHT;
+pub(crate) const THREAD_STRIP_HEIGHT: f32 = CHROME_STRIP_HEIGHT;
 pub(crate) const STATUS_LINE_HEIGHT: f32 = 28.0;
+#[cfg(test)]
 pub(crate) const STANDARD_UI_TEXT_FONT_SIZE: f32 = 16.0;
+#[cfg(test)]
 pub(crate) const STANDARD_UI_TEXT_LINE_HEIGHT: f32 = STANDARD_UI_TEXT_FONT_SIZE * 1.625;
 pub(crate) const ROUNDED_WIDGET_CORNER_RADIUS: f32 = 6.0;
-pub(crate) const BUTTON_OUTER_HEIGHT: f32 = STANDARD_UI_TEXT_LINE_HEIGHT;
+pub(crate) const BUTTON_OUTER_HEIGHT: f32 = 32.0;
 pub(crate) const BUTTON_ICON_OUTER_WIDTH: f32 = BUTTON_OUTER_HEIGHT;
-pub(crate) const BUTTON_LABEL_FONT_SIZE: f32 = 12.0;
-pub(crate) const BUTTON_LABEL_LINE_HEIGHT: f32 = BUTTON_LABEL_FONT_SIZE;
-pub(crate) const BUTTON_LABEL_CAP_HEIGHT_ESTIMATE: f32 = BUTTON_LABEL_FONT_SIZE;
+pub(crate) const BUTTON_LABEL_FONT_SIZE: f32 = 14.0;
+pub(crate) const BUTTON_LABEL_LINE_HEIGHT: f32 = 18.0;
 pub(crate) const BUTTON_BORDER_WIDTH: f32 = 1.0;
-pub(crate) const BUTTON_VERTICAL_PADDING: f32 =
-    button_padding_from_label_cap_height(BUTTON_LABEL_CAP_HEIGHT_ESTIMATE);
-pub(crate) const BUTTON_HORIZONTAL_PADDING: f32 = BUTTON_VERTICAL_PADDING;
+pub(crate) const BUTTON_VERTICAL_PADDING: f32 = 6.0;
+pub(crate) const BUTTON_HORIZONTAL_PADDING: f32 = 10.0;
 pub(crate) const TOOL_ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub(crate) const TOOL_ACTIVITY_OVERSCAN_ROWS: usize = 3;
 pub(crate) const TOOL_ACTIVITY_MIN_PANEL_HEIGHT: f32 = TOOL_ACTIVITY_ROW_HEIGHT;
@@ -79,10 +80,6 @@ pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_COLUMN_TOP: f32 =
 pub(crate) const WORKSPACE_PICKER_RUNTIME_DROPDOWN_ROW_HEIGHT: f32 = 44.0;
 pub(crate) const WORKSPACE_PICKER_RUNTIME_DROPDOWN_MAX_VISIBLE_ROWS: usize = 6;
 pub(crate) const WORKSPACE_PICKER_MAX_HEIGHT_RATIO: f32 = 0.72;
-
-pub(crate) const fn button_padding_from_label_cap_height(label_cap_height: f32) -> f32 {
-    label_cap_height / 3.0
-}
 
 pub(crate) const fn button_required_outer_height() -> f32 {
     BUTTON_BORDER_WIDTH * 2.0 + BUTTON_VERTICAL_PADDING * 2.0 + BUTTON_LABEL_LINE_HEIGHT

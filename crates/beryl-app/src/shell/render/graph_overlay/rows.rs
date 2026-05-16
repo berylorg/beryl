@@ -474,22 +474,26 @@ fn render_invalid_thread_ref_actions(
                     ElementId::from("graph-thread-ref-rebind-row"),
                     stable_id_key(thread_ref_id.as_str()),
                 ))
-                .h(px(24.0))
-                .px_2()
+                .flex_none()
+                .h(px(layout::BUTTON_OUTER_HEIGHT))
+                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+                .py(px(layout::BUTTON_VERTICAL_PADDING))
                 .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
                 .border_1()
                 .border_color(button_theme.normal.border)
                 .bg(button_theme.normal.background)
                 .flex()
                 .items_center()
-                .text_xs()
+                .justify_center()
+                .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
+                .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                .font_weight(button_theme.font_weight)
                 .text_color(button_theme.normal.foreground)
                 .cursor_pointer()
                 .hover(move |style| {
                     style
                         .bg(button_theme.hover.background)
                         .border_color(button_theme.hover.border)
-                        .text_color(button_theme.hover.foreground)
                 })
                 .on_mouse_down(
                     MouseButton::Left,
@@ -519,6 +523,7 @@ fn render_expander(
 ) -> impl IntoElement {
     if !has_children {
         return div()
+            .flex_none()
             .w(px(layout::BUTTON_ICON_OUTER_WIDTH))
             .into_any_element();
     }
@@ -529,6 +534,7 @@ fn render_expander(
             ElementId::from(("graph-expander", depth)),
             stable_id_key(node_id.as_str()),
         ))
+        .flex_none()
         .w(px(layout::BUTTON_ICON_OUTER_WIDTH))
         .h(px(layout::BUTTON_OUTER_HEIGHT))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
@@ -537,6 +543,7 @@ fn render_expander(
         .border_color(secondary.normal.border)
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(secondary.font_weight)
         .text_color(secondary.normal.foreground)
         .cursor_pointer()
         .flex()

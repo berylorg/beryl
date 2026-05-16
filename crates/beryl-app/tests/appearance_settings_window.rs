@@ -66,6 +66,12 @@ fn settings_model_maps_appearance_roles_and_color_rows() {
         .expect("primary button normal background row should exist");
     assert_eq!(primary_button_background.kind(), SettingsFieldKind::Color);
 
+    let primary_button_font_weight = model
+        .row(&SettingsFieldId::from("primary_button.font_weight"))
+        .expect("primary button font weight row should exist");
+    assert_eq!(primary_button_font_weight.kind(), SettingsFieldKind::Text);
+    assert_eq!(primary_button_font_weight.value(), "500");
+
     let thread_strip_background = model
         .row(&SettingsFieldId::from(
             "chrome.conversation_thread_strip_background",
@@ -173,7 +179,9 @@ fn settings_window_options_map_active_theme_to_visual_theme() {
     active.general_ui.foreground = "#edeff1".to_string();
     active.chrome.surfaces.panel_background = "#202122".to_string();
     active.chrome.surfaces.border = "#303132".to_string();
+    active.chrome.primary_button.font_weight = 650;
     active.chrome.primary_button.normal.background = "#404142".to_string();
+    active.chrome.secondary_button.font_weight = 550;
     let state = settings_state(active);
 
     let theme = state.window_options().visual_theme().clone();
@@ -181,7 +189,10 @@ fn settings_window_options_map_active_theme_to_visual_theme() {
     assert_eq!(theme.window_background.to_hex(), "#101112");
     assert_eq!(theme.panel.background.to_hex(), "#202122");
     assert_eq!(theme.panel.foreground.to_hex(), "#edeff1");
+    assert_eq!(theme.navigation_button.font_weight, 550);
+    assert_eq!(theme.primary_button.font_weight, 650);
     assert_eq!(theme.primary_button.normal.background.to_hex(), "#404142");
+    assert_eq!(theme.secondary_button.font_weight, 550);
 }
 
 #[test]
@@ -193,10 +204,12 @@ fn settings_apply_stages_color_changes_and_normalizes_on_apply() {
     let commentary_field_id = SettingsFieldId::from("transcript_commentary.foreground");
     let thread_strip_field_id =
         SettingsFieldId::from("chrome.conversation_thread_strip_background");
+    let primary_button_weight_field_id = SettingsFieldId::from("primary_button.font_weight");
 
     state.set_field_value(&field_id, "#AABBCC".to_string());
     state.set_field_value(&commentary_field_id, "#334455".to_string());
     state.set_field_value(&thread_strip_field_id, "#010203".to_string());
+    state.set_field_value(&primary_button_weight_field_id, "650".to_string());
     assert_eq!(
         shared.lock().unwrap().code.foreground,
         "#112233",
@@ -221,6 +234,10 @@ fn settings_apply_stages_color_changes_and_normalizes_on_apply() {
             .conversation_thread_strip_background,
         "#010203"
     );
+    assert_eq!(
+        shared.lock().unwrap().chrome.primary_button.font_weight,
+        650
+    );
     wait_for_save(&mut state);
 
     let loaded = AppearanceSettingsStore::new(&root)
@@ -232,6 +249,7 @@ fn settings_apply_stages_color_changes_and_normalizes_on_apply() {
         loaded.chrome.conversation_thread_strip_background,
         "#010203"
     );
+    assert_eq!(loaded.chrome.primary_button.font_weight, 650);
     cleanup_temp_dir(root);
 }
 

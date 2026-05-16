@@ -535,6 +535,7 @@ fn hard_stop_hold_row(
                 .relative()
                 .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                 .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                .font_weight(secondary.font_weight)
                 .text_color(secondary.normal.foreground)
                 .child("Hard stop"),
         )

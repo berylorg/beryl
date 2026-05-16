@@ -29,6 +29,7 @@ pub(super) fn render_workspace_row_action_trigger(
 
     div()
         .id(("workspace-picker-row-action-menu-trigger", workspace_index))
+        .flex_none()
         .h(px(layout::BUTTON_OUTER_HEIGHT))
         .w(px(layout::BUTTON_OUTER_HEIGHT))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
@@ -40,19 +41,18 @@ pub(super) fn render_workspace_row_action_trigger(
         .justify_center()
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(secondary.font_weight)
         .text_color(secondary.normal.foreground)
         .cursor_pointer()
         .hover(move |style| {
             style
                 .bg(secondary.hover.background)
                 .border_color(secondary.hover.border)
-                .text_color(secondary.hover.foreground)
         })
         .active(move |style| {
             style
                 .bg(secondary.active.background)
                 .border_color(secondary.active.border)
-                .text_color(secondary.active.foreground)
         })
         .on_mouse_down(
             MouseButton::Left,
@@ -193,6 +193,7 @@ fn workspace_delete_hold_row(
                 .relative()
                 .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                 .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                .font_weight(secondary.font_weight)
                 .text_color(secondary.normal.foreground)
                 .child("Delete"),
         )
