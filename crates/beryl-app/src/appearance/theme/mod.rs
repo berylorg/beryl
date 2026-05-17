@@ -8,7 +8,8 @@ mod resolver;
 pub use active::ActiveThemeProjection;
 pub use built_in::{
     BUILT_IN_THEME_ROLE_INVENTORY, BerylThemeProperty, BerylThemeRole, built_in_theme_definition,
-    built_in_theme_resolver, built_in_theme_schema,
+    built_in_theme_resolver, built_in_theme_schema, built_in_theme_supported_properties,
+    built_in_theme_supports_property,
 };
 pub use diagnostics::{
     MAX_THEME_DIAGNOSTIC_MESSAGE_BYTES, MAX_THEME_VALIDATION_DIAGNOSTICS, ThemeDiagnostic,

@@ -1,9 +1,9 @@
 use gpui_settings_window::{RgbColor, SettingsFieldKind, SettingsPageSplitItemPreviewStyle};
 
 use crate::{
-    ActiveThemeProjection, BerylThemeProperty, BerylThemeRole, StylePropertyId, StylePropertyKind,
-    StylePropertySource, StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeResolver,
-    ThemeRoleSchema, built_in_theme_schema,
+    ActiveThemeProjection, BerylThemeRole, StylePropertyId, StylePropertyKind, StylePropertySource,
+    StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeResolver, ThemeRoleSchema,
+    built_in_theme_schema,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,38 +157,40 @@ pub(super) fn preview_style(
     projection: &ActiveThemeProjection,
     role_id: &StyleRoleId,
 ) -> SettingsPageSplitItemPreviewStyle {
+    let Some(role_schema) = role_schema(role_id) else {
+        return SettingsPageSplitItemPreviewStyle::default();
+    };
     let Ok(style) = projection.default_style(role_id.clone()) else {
         return SettingsPageSplitItemPreviewStyle::default();
     };
     let mut preview = SettingsPageSplitItemPreviewStyle::default();
-    for property in BerylThemeProperty::ALL {
-        let property_id = StylePropertyId::from(property.id());
-        let Some(value) = style.property(&property_id) else {
+    for (property_id, _) in role_schema.properties() {
+        let Some(value) = style.property(property_id) else {
             continue;
         };
-        match (property, value) {
-            (BerylThemeProperty::Foreground, StylePropertyValue::Color(value)) => {
+        match (property_id.as_str(), value) {
+            ("foreground", StylePropertyValue::Color(value)) => {
                 if let Some(color) = RgbColor::parse(value) {
                     preview = preview.with_foreground(color);
                 }
             }
-            (BerylThemeProperty::Background, StylePropertyValue::Color(value)) => {
+            ("background", StylePropertyValue::Color(value)) => {
                 if let Some(color) = RgbColor::parse(value) {
                     preview = preview.with_background(color);
                 }
             }
-            (BerylThemeProperty::Border, StylePropertyValue::Color(value)) => {
+            ("border" | "color", StylePropertyValue::Color(value)) => {
                 if let Some(color) = RgbColor::parse(value) {
                     preview = preview.with_border(color);
                 }
             }
-            (BerylThemeProperty::FontFamily, StylePropertyValue::FontFamily(value)) => {
+            ("font_family", StylePropertyValue::FontFamily(value)) => {
                 preview = preview.with_font_family(value.clone());
             }
-            (BerylThemeProperty::FontSize, StylePropertyValue::LogicalPixels(value)) => {
+            ("font_size", StylePropertyValue::LogicalPixels(value)) => {
                 preview = preview.with_font_size((*value).round().clamp(1.0, 96.0) as u16);
             }
-            (BerylThemeProperty::FontWeight, StylePropertyValue::FontWeight(value)) => {
+            ("font_weight", StylePropertyValue::FontWeight(value)) => {
                 preview = preview.with_font_weight(*value);
             }
             _ => {}

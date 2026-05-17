@@ -4,7 +4,8 @@ mod tempdir_support;
 use beryl_app::{
     BerylThemeProperty, BerylThemeRole, MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES,
     MAX_THEME_FONT_FAMILY_BYTES, StylePropertySource, StylePropertyValue, ThemeDefinition,
-    ThemeRepositoryStore, ThemeRoleDefinition, theme_repository_value,
+    ThemeRepositoryStore, ThemeRoleDefinition, built_in_theme_supported_properties,
+    theme_repository_value,
 };
 
 #[test]
@@ -49,12 +50,17 @@ fn verbose_theme_definition() -> ThemeDefinition {
                 if let Some(parent) = role.static_parent() {
                     definition = definition.with_static_parent(parent.id());
                 }
-                definition.with_property(
-                    BerylThemeProperty::FontFamily.id(),
-                    StylePropertySource::Concrete(StylePropertyValue::font_family(
-                        font_family.clone(),
-                    )),
-                )
+                if built_in_theme_supported_properties(role)
+                    .contains(&BerylThemeProperty::FontFamily)
+                {
+                    definition = definition.with_property(
+                        BerylThemeProperty::FontFamily.id(),
+                        StylePropertySource::Concrete(StylePropertyValue::font_family(
+                            font_family.clone(),
+                        )),
+                    );
+                }
+                definition
             })
             .collect(),
     )

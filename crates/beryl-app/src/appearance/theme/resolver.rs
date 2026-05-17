@@ -127,7 +127,7 @@ impl ThemeResolver {
                 .ok_or_else(|| ThemeResolutionError::UnknownRole {
                     role_id: role_id.clone(),
                 })?;
-        if !schema_role.properties.contains_key(property_id) {
+        if !schema_role.supports_property(property_id) {
             return Err(ThemeResolutionError::UnknownProperty {
                 role_id: role_id.clone(),
                 property_id: property_id.clone(),
@@ -185,8 +185,7 @@ impl ThemeResolver {
         let kind = self
             .schema_roles
             .get(role_id)?
-            .properties
-            .get(property_id)?
+            .property_schema(property_id)?
             .kind;
         context
             .ambient_parent()
@@ -201,8 +200,7 @@ impl ThemeResolver {
     ) -> Option<StylePropertyValue> {
         self.schema_roles
             .get(role_id)?
-            .properties
-            .get(property_id)
+            .property_schema(property_id)
             .map(|property| property.fallback.clone())
     }
 
@@ -351,7 +349,7 @@ fn normalized_theme_roles(
 
         let mut properties = BTreeMap::new();
         for (property_id, source) in raw_properties {
-            let Some(property_schema) = schema_role.properties.get(&property_id) else {
+            let Some(property_schema) = schema_role.property_schema(&property_id) else {
                 diagnostics.push(ThemeDiagnostic::new(
                     ThemeDiagnosticKind::UnknownProperty,
                     Some(role_id.clone()),

@@ -85,14 +85,29 @@ pub(super) fn property_value_json(value: &StylePropertyValue) -> Value {
 }
 
 pub fn theme_document_summary_value(document: &ThemeDocument) -> Value {
+    let schema = built_in_theme_schema();
     json!({
         "embeddedId": document.id().map(|id| id.as_str()),
         "name": document.name(),
         "roleCount": document.definition().roles().len(),
         "roles": document.definition().roles().iter().take(MAX_THEME_SCHEMA_ROLE_LIMIT).map(|role| {
+            let supported_properties = schema
+                .roles()
+                .iter()
+                .find(|schema_role| schema_role.role_id() == role.role_id())
+                .map(|schema_role| {
+                    schema_role.properties().iter().map(|(property_id, property)| {
+                        json!({
+                            "id": property_id.as_str(),
+                            "kind": property_kind_label(property.kind()),
+                        })
+                    }).collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             json!({
                 "id": role.role_id().as_str(),
                 "staticParent": role.static_parent().map(|parent| parent.as_str()),
+                "supportedProperties": supported_properties,
                 "properties": role.properties().iter().map(|(property_id, source)| {
                     json!({
                         "id": property_id.as_str(),

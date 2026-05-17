@@ -1,4 +1,5 @@
 use super::{
+    capabilities::{built_in_theme_supported_properties, built_in_theme_supports_property},
     defaults::*,
     roles::{BerylThemeProperty, BerylThemeRole},
 };
@@ -38,7 +39,7 @@ fn schema_role(role: BerylThemeRole) -> ThemeRoleSchema {
         role_schema = role_schema.with_static_parent(parent.id());
     }
 
-    for property in BerylThemeProperty::ALL {
+    for property in built_in_theme_supported_properties(role) {
         role_schema = role_schema.with_property(
             property.id(),
             ThemePropertySchema::new(property_kind(*property), fallback_value(role, *property)),
@@ -51,7 +52,7 @@ fn schema_role(role: BerylThemeRole) -> ThemeRoleSchema {
 fn theme_role(role: BerylThemeRole) -> ThemeRoleDefinition {
     let mut role_definition = ThemeRoleDefinition::new(role.id());
 
-    for property in BerylThemeProperty::ALL {
+    for property in built_in_theme_supported_properties(role) {
         role_definition =
             role_definition.with_property(property.id(), property_source(role, *property));
     }
@@ -69,7 +70,9 @@ fn property_source(role: BerylThemeRole, property: BerylThemeProperty) -> StyleP
         return StylePropertySource::AmbientParent;
     }
 
-    if let Some(parent) = role.static_parent() {
+    if let Some(parent) = role.static_parent()
+        && built_in_theme_supports_property(parent, property)
+    {
         if fallback_value(role, property) == fallback_value(parent, property) {
             return StylePropertySource::StaticParent;
         }
@@ -82,6 +85,7 @@ fn property_kind(property: BerylThemeProperty) -> StylePropertyKind {
     match property {
         BerylThemeProperty::Background
         | BerylThemeProperty::Border
+        | BerylThemeProperty::Color
         | BerylThemeProperty::Foreground
         | BerylThemeProperty::TextBackground => StylePropertyKind::Color,
         BerylThemeProperty::FontFamily => StylePropertyKind::FontFamily,
@@ -95,6 +99,7 @@ fn fallback_value(role: BerylThemeRole, property: BerylThemeProperty) -> StylePr
     match property {
         BerylThemeProperty::Background => StylePropertyValue::color(defaults.background),
         BerylThemeProperty::Border => StylePropertyValue::color(defaults.border),
+        BerylThemeProperty::Color => StylePropertyValue::color(defaults.border),
         BerylThemeProperty::Foreground => StylePropertyValue::color(defaults.foreground),
         BerylThemeProperty::TextBackground => StylePropertyValue::color(defaults.text_background),
         BerylThemeProperty::FontFamily => StylePropertyValue::font_family(defaults.font_family),

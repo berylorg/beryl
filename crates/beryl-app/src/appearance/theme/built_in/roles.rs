@@ -2,6 +2,7 @@
 pub enum BerylThemeProperty {
     Background,
     Border,
+    Color,
     Foreground,
     TextBackground,
     FontFamily,
@@ -13,6 +14,7 @@ impl BerylThemeProperty {
     pub const ALL: &'static [Self] = &[
         Self::Background,
         Self::Border,
+        Self::Color,
         Self::Foreground,
         Self::TextBackground,
         Self::FontFamily,
@@ -24,6 +26,7 @@ impl BerylThemeProperty {
         match self {
             Self::Background => "background",
             Self::Border => "border",
+            Self::Color => "color",
             Self::Foreground => "foreground",
             Self::TextBackground => "text_background",
             Self::FontFamily => "font_family",

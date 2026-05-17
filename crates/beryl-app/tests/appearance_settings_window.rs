@@ -23,8 +23,9 @@ pub use beryl_app::{
     StylePropertySource, StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeDocument,
     ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext, ThemeResolver,
     ThemeRoleDefinition, ThemeRoleSchema, built_in_theme_schema,
-    normalize_developer_instructions_text, parse_context_compaction_timeout_seconds_text,
-    parse_notification_sound_path_text, validate_notification_sound_path,
+    built_in_theme_supported_properties, normalize_developer_instructions_text,
+    parse_context_compaction_timeout_seconds_text, parse_notification_sound_path_text,
+    validate_notification_sound_path,
 };
 use gpui_settings_window::{
     SettingsFieldId, SettingsFieldKind, SettingsPageActionId, SettingsPageId,
@@ -108,7 +109,7 @@ fn settings_model_maps_theme_editor_split_and_selected_role_rows() {
     );
     assert_eq!(
         model.selected_rows().len(),
-        1 + BerylThemeProperty::ALL.len(),
+        1 + built_in_theme_supported_properties(BerylThemeRole::AppWindow).len(),
         "Theme Editor detail rows should stay bounded to Save As plus selected-role properties"
     );
     assert!(
@@ -143,14 +144,14 @@ fn settings_model_maps_theme_editor_split_and_selected_role_rows() {
         "concrete value editor should be nested inside the source row"
     );
 
-    let general_font_size = theme_property_detail_field(
+    let general_font_weight = theme_property_detail_field(
         &model,
         BerylThemeRole::AppWindow,
-        BerylThemeProperty::FontSize,
+        BerylThemeProperty::FontWeight,
     )
-    .expect("selected role font size detail field should exist");
-    assert_eq!(general_font_size.kind(), SettingsFieldKind::Number);
-    assert_eq!(general_font_size.value(), "14.0");
+    .expect("selected role font weight detail field should exist");
+    assert_eq!(general_font_weight.kind(), SettingsFieldKind::Number);
+    assert_eq!(general_font_weight.value(), "400");
 
     let background = theme_property_detail_field(
         &model,
@@ -206,6 +207,89 @@ fn settings_theme_editor_role_selection_updates_property_rows_only() {
         ))
         .expect("selected code-panel role font source row should exist");
     assert_eq!(font_source.value(), "value");
+    assert_eq!(
+        model.selected_rows().len(),
+        1 + built_in_theme_supported_properties(BerylThemeRole::CodePanelBody).len()
+    );
+    assert!(
+        model
+            .row(&theme_property_source_field_id(
+                BerylThemeRole::CodePanelBody,
+                BerylThemeProperty::Border,
+            ))
+            .is_none(),
+        "theme editor must not expose unsupported code-panel body border"
+    );
+}
+
+#[test]
+fn settings_theme_editor_exposes_only_color_for_single_color_roles() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::MarkdownThematicBreak.id(),
+    ));
+
+    let model = state.model();
+    assert_eq!(
+        model.selected_rows().len(),
+        1 + built_in_theme_supported_properties(BerylThemeRole::MarkdownThematicBreak).len()
+    );
+    let color = theme_property_detail_field(
+        &model,
+        BerylThemeRole::MarkdownThematicBreak,
+        BerylThemeProperty::Color,
+    )
+    .expect("single-color role color detail field should exist");
+    assert_eq!(color.kind(), SettingsFieldKind::Color);
+    assert!(
+        model
+            .row(&theme_property_source_field_id(
+                BerylThemeRole::MarkdownThematicBreak,
+                BerylThemeProperty::Border,
+            ))
+            .is_none(),
+        "single-color role must not expose border"
+    );
+    assert!(
+        model
+            .row(&theme_property_source_field_id(
+                BerylThemeRole::MarkdownThematicBreak,
+                BerylThemeProperty::Foreground,
+            ))
+            .is_none(),
+        "single-color role must not expose foreground"
+    );
+}
+
+#[test]
+fn settings_theme_editor_no_property_roles_have_no_property_rows() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::PopupRowNormal.id(),
+    ));
+
+    let model = state.model();
+    assert_eq!(
+        built_in_theme_supported_properties(BerylThemeRole::PopupRowNormal),
+        &[]
+    );
+    assert_eq!(
+        model.selected_rows().len(),
+        1,
+        "no-property roles should expose only the Save As name row"
+    );
+    assert!(
+        model
+            .row(&theme_property_source_field_id(
+                BerylThemeRole::PopupRowNormal,
+                BerylThemeProperty::Background,
+            ))
+            .is_none()
+    );
 }
 
 #[test]
@@ -261,16 +345,55 @@ fn settings_theme_editor_role_previews_update_from_draft_values() {
 }
 
 #[test]
+fn settings_theme_editor_role_previews_show_single_color_roles() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let field_id = theme_property_field_id(
+        BerylThemeRole::MarkdownThematicBreak,
+        BerylThemeProperty::Color,
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::MarkdownThematicBreak.id(),
+    ));
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::MarkdownThematicBreak,
+            BerylThemeProperty::Color,
+        ),
+        "value".to_string(),
+    );
+    state.set_field_value(&field_id, "#abcdef".to_string());
+
+    let model = state.model();
+    let split = model
+        .selected_page()
+        .local_split()
+        .expect("theme editor should carry a role split");
+    let item = split
+        .items()
+        .iter()
+        .find(|item| item.item_id().as_str() == BerylThemeRole::MarkdownThematicBreak.id())
+        .expect("thematic-break role should be listed");
+    assert_eq!(
+        item.preview_style()
+            .and_then(|style| style.border())
+            .map(|color| color.to_hex()),
+        Some("#abcdef".to_string())
+    );
+}
+
+#[test]
 fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing() {
     let (mut state, _shared, _preferences, root) =
         settings_state_with_temp_store(AppearanceSettings::default());
     let source_field_id = theme_property_source_field_id(
         BerylThemeRole::MarkdownInlineCode,
-        BerylThemeProperty::Background,
+        BerylThemeProperty::TextBackground,
     );
     let value_field_id = theme_property_field_id(
         BerylThemeRole::MarkdownInlineCode,
-        BerylThemeProperty::Background,
+        BerylThemeProperty::TextBackground,
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
@@ -280,7 +403,7 @@ fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing(
     let model = state.model();
     let source = model
         .row(&source_field_id)
-        .expect("inline-code background source row should exist");
+        .expect("inline-code text-background source row should exist");
     assert_eq!(source.kind(), SettingsFieldKind::Choice);
     assert_eq!(source.value(), "ambient_parent");
     assert_eq!(source.subtext(), None);
@@ -308,6 +431,12 @@ fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing(
     assert_eq!(
         role.properties()
             .get(&StylePropertyId::from(BerylThemeProperty::Background.id())),
+        None
+    );
+    assert_eq!(
+        role.properties().get(&StylePropertyId::from(
+            BerylThemeProperty::TextBackground.id()
+        )),
         Some(&StylePropertySource::StaticParent)
     );
     cleanup_temp_dir(root);
@@ -381,6 +510,56 @@ fn settings_theme_editor_save_as_preserves_compact_document_omissions() {
 }
 
 #[test]
+fn settings_theme_editor_save_omits_stale_unsupported_loaded_properties() {
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_compact_theme_document(COMPACT_THEME_WITH_STALE_UNSUPPORTED_DOCUMENT);
+    let field_id = theme_property_field_id(
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::Foreground,
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
+    state.set_field_value(&field_id, "#778899".to_string());
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+
+    let store = ThemeRepositoryStore::new(&root);
+    let text =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("compact"))).unwrap();
+    let document = ThemeDocument::from_toml_str(&text).unwrap();
+
+    assert_eq!(
+        theme_source(
+            document.definition(),
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        ),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            "#778899"
+        )))
+    );
+    assert!(
+        !text.contains("border ="),
+        "editor save must not reserialize stale unsupported border properties ignored on load"
+    );
+    assert!(
+        !role_record_text(&text, BerylThemeRole::MarkdownInlineCode.id())
+            .contains("\nbackground ="),
+        "editor save must not reserialize stale unsupported inline-code background"
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
 fn settings_theme_editor_selected_fallback_on_omitted_property_becomes_explicit() {
     let (mut state, _shared, _preferences, root) =
         settings_state_with_compact_theme_document(COMPACT_THEME_DOCUMENT);
@@ -433,11 +612,11 @@ fn settings_theme_editor_concrete_source_uses_typed_value_editor() {
         settings_state_with_temp_store(AppearanceSettings::default());
     let source_field_id = theme_property_source_field_id(
         BerylThemeRole::MarkdownInlineCode,
-        BerylThemeProperty::Background,
+        BerylThemeProperty::TextBackground,
     );
     let value_field_id = theme_property_field_id(
         BerylThemeRole::MarkdownInlineCode,
-        BerylThemeProperty::Background,
+        BerylThemeProperty::TextBackground,
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
@@ -466,7 +645,7 @@ fn settings_theme_editor_concrete_source_uses_typed_value_editor() {
             .unwrap()
             .resolve_property(
                 BerylThemeRole::MarkdownInlineCode.id(),
-                BerylThemeProperty::Background.id(),
+                BerylThemeProperty::TextBackground.id(),
                 &ThemeResolutionContext::new()
             )
             .unwrap(),
@@ -481,8 +660,9 @@ fn settings_theme_editor_concrete_source_uses_typed_value_editor() {
         .find(|role| role.role_id().as_str() == BerylThemeRole::MarkdownInlineCode.id())
         .expect("inline-code role should persist");
     assert_eq!(
-        role.properties()
-            .get(&StylePropertyId::from(BerylThemeProperty::Background.id())),
+        role.properties().get(&StylePropertyId::from(
+            BerylThemeProperty::TextBackground.id()
+        )),
         Some(&StylePropertySource::Concrete(StylePropertyValue::color(
             "#445566"
         )))
@@ -1183,7 +1363,7 @@ fn settings_theme_save_rejects_invalid_color_draft_without_mutating_active_setti
     let (mut state, shared, _notifications, root) = settings_state_with_temp_store(active);
     let field_id = theme_property_field_id(
         BerylThemeRole::MarkdownEmphasis,
-        BerylThemeProperty::Background,
+        BerylThemeProperty::TextBackground,
     );
 
     state.select_theme_editor_role(SettingsPageSplitItemId::from(
@@ -1192,7 +1372,7 @@ fn settings_theme_save_rejects_invalid_color_draft_without_mutating_active_setti
     state.set_field_value(
         &theme_property_source_field_id(
             BerylThemeRole::MarkdownEmphasis,
-            BerylThemeProperty::Background,
+            BerylThemeProperty::TextBackground,
         ),
         "value".to_string(),
     );
@@ -1210,7 +1390,7 @@ fn settings_theme_save_rejects_invalid_color_draft_without_mutating_active_setti
         theme_property_detail_field(
             &state.model(),
             BerylThemeRole::MarkdownEmphasis,
-            BerylThemeProperty::Background,
+            BerylThemeProperty::TextBackground,
         )
         .and_then(|field| field.error())
         .is_some_and(|error| error.contains("#rrggbb"))
@@ -1374,10 +1554,15 @@ fn settings_theme_save_as_and_activate_switch_installed_themes() {
 fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     let (mut state, _shared, _notifications, root) =
         settings_state_with_temp_store(AppearanceSettings::default());
-    let field_id =
-        theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::FontFamily);
+    let field_id = theme_property_field_id(
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::FontFamily,
+    );
 
     state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
     state.set_field_value(&field_id, "JetBrains Mono".to_string());
     state.set_notification_end_turn_sound_path(root.join("done.wav").display().to_string());
     state.set_developer_instructions("Use a staged draft.".to_string());
@@ -1391,11 +1576,11 @@ fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     assert_eq!(
         theme_property_detail_field(
             &model,
-            BerylThemeRole::AppWindow,
+            BerylThemeRole::CodePanelBody,
             BerylThemeProperty::FontFamily,
         )
         .map(|field| field.value()),
-        Some("Inter")
+        Some("Consolas")
     );
     assert_eq!(state.notification_end_turn_sound_path_value(), "");
     assert_eq!(state.developer_instructions_value(), "");
@@ -1418,12 +1603,38 @@ name = "Compact Theme"
 [[role]]
 id = "app.window"
 foreground = { value = "#112233" }
+
+[[role]]
+id = "code_panel.body"
 font_family = "fallback"
 
 [[role]]
 id = "markdown.inline_code"
 foreground = "static_parent"
+text_background = "ambient_parent"
+"##;
+
+const COMPACT_THEME_WITH_STALE_UNSUPPORTED_DOCUMENT: &str = r##"
+schema = 1
+id = "compact"
+name = "Compact Theme"
+
+[[role]]
+id = "app.window"
+foreground = { value = "#112233" }
+
+[[role]]
+id = "code_panel.body"
+border = { value = "#334455" }
+
+[[role]]
+id = "markdown.inline_code"
 background = "ambient_parent"
+text_background = "ambient_parent"
+
+[[role]]
+id = "markdown.thematic_break"
+border = { value = "#556677" }
 "##;
 
 fn settings_state_with_temp_store(
@@ -1515,7 +1726,7 @@ fn assert_compact_theme_sources(definition: &ThemeDefinition, foreground: &str) 
     assert_eq!(
         theme_source(
             definition,
-            BerylThemeRole::AppWindow,
+            BerylThemeRole::CodePanelBody,
             BerylThemeProperty::FontFamily,
         ),
         Some(&StylePropertySource::Fallback)
@@ -1532,16 +1743,17 @@ fn assert_compact_theme_sources(definition: &ThemeDefinition, foreground: &str) 
         theme_source(
             definition,
             BerylThemeRole::MarkdownInlineCode,
-            BerylThemeProperty::Background,
+            BerylThemeProperty::TextBackground,
         ),
         Some(&StylePropertySource::AmbientParent)
     );
-    assert!(
-        definition
-            .roles()
-            .iter()
-            .all(|role| role.role_id().as_str() != BerylThemeRole::CodePanelBody.id()),
-        "unchanged omitted roles must not be materialized by the Theme Editor"
+    assert_eq!(
+        theme_source(
+            definition,
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Background,
+        ),
+        None,
     );
 }
 

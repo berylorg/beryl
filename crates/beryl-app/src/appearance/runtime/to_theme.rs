@@ -120,7 +120,7 @@ fn appearance_theme_overrides(
     insert_color(
         &mut overrides,
         BerylThemeRole::MainSeparator,
-        BerylThemeProperty::Border,
+        BerylThemeProperty::Color,
         &settings.chrome.separator,
     );
     insert_button_settings(
@@ -181,7 +181,11 @@ fn appearance_theme_overrides(
         BerylThemeProperty::Foreground,
         &settings.chrome.status_line.value_foreground,
     );
-    insert_surface_settings(&mut overrides, &settings.chrome.surfaces);
+    insert_surface_settings(
+        &mut overrides,
+        &settings.chrome.surfaces,
+        &settings.general_ui.foreground,
+    );
 
     overrides
 }
@@ -314,6 +318,7 @@ fn insert_input_settings(
 fn insert_surface_settings(
     overrides: &mut BTreeMap<(String, String), StylePropertySource>,
     settings: &AppearanceSurfaceSettings,
+    foreground: &str,
 ) {
     for role in [BerylThemeRole::Panel, BerylThemeRole::SettingsGroup] {
         insert_color(
@@ -328,6 +333,7 @@ fn insert_surface_settings(
             BerylThemeProperty::Border,
             &settings.border,
         );
+        insert_color(overrides, role, BerylThemeProperty::Foreground, foreground);
     }
     for role in [
         BerylThemeRole::SurfaceRow,
@@ -351,6 +357,7 @@ fn insert_surface_settings(
             BerylThemeProperty::Border,
             &settings.border,
         );
+        insert_color(overrides, role, BerylThemeProperty::Foreground, foreground);
     }
     for role in [BerylThemeRole::PopupSurface, BerylThemeRole::SettingsPopup] {
         insert_color(
@@ -371,6 +378,7 @@ fn insert_surface_settings(
             BerylThemeProperty::Border,
             &settings.border,
         );
+        insert_color(overrides, role, BerylThemeProperty::Foreground, foreground);
     }
     for role in [
         BerylThemeRole::SurfaceRowDisabled,

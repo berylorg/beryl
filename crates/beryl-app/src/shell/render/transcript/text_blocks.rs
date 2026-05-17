@@ -28,7 +28,7 @@ pub(super) fn labeled_code_block(
         block = block.child(
             div()
                 .text_xs()
-                .text_color(theme.code_panel_header.foreground)
+                .text_color(theme.code_panel_header.foreground())
                 .child(label.to_string()),
         );
     }
@@ -40,14 +40,14 @@ pub(super) fn labeled_code_block(
         wrap_mode,
         display_projection,
         CodePanelChrome::Bordered {
-            background: theme.code_panel_container.background,
-            border: theme.code_panel_border.border,
-            content_background: theme.code_panel_body.background,
-            header_foreground: theme.code_panel_header.foreground,
+            background: theme.code_panel_container.background(),
+            border: theme.code_panel_border.border(),
+            content_background: theme.code_panel_body.background(),
+            header_foreground: theme.code_panel_header.foreground(),
             button: theme.code_panel_button,
-            resize_handle: theme.code_panel_resize_handle.background,
+            resize_handle: theme.code_panel_resize_handle.color(),
         },
-        theme.code_panel_body.foreground,
+        theme.code_panel_body.foreground(),
         Some(theme.syntax.clone()),
         syntax_highlight,
         header,
@@ -69,12 +69,12 @@ pub(super) fn empty_state(
 
     div()
         .rounded_md()
-        .bg(theme.unavailable.background)
+        .bg(theme.unavailable.background())
         .border_1()
-        .border_color(theme.unavailable.border)
+        .border_color(theme.unavailable.border())
         .p_3()
         .text_sm()
-        .text_color(theme.unavailable.foreground)
+        .text_color(theme.unavailable.foreground())
         .child(message)
 }
 
@@ -84,19 +84,19 @@ pub(super) fn pending_thread_activation_state(
 ) -> impl IntoElement {
     div()
         .rounded_md()
-        .bg(theme.pending.background)
+        .bg(theme.pending.background())
         .border_1()
-        .border_color(theme.pending.border)
+        .border_color(theme.pending.border())
         .p_3()
         .flex()
         .items_center()
         .gap_2()
-        .child(div().w_2().h_2().rounded_full().bg(theme.pending.border))
+        .child(div().w_2().h_2().rounded_full().bg(theme.pending.border()))
         .child(
             div()
                 .min_w(gpui::px(0.0))
                 .text_sm()
-                .text_color(theme.pending.foreground)
+                .text_color(theme.pending.foreground())
                 .whitespace_nowrap()
                 .truncate()
                 .child(format!("Opening {label}")),
@@ -106,19 +106,19 @@ pub(super) fn pending_thread_activation_state(
 pub(super) fn older_history_loading_state(theme: &TranscriptTheme) -> impl IntoElement {
     div()
         .rounded_md()
-        .bg(theme.pending.background)
+        .bg(theme.pending.background())
         .border_1()
-        .border_color(theme.pending.border)
+        .border_color(theme.pending.border())
         .px_3()
         .py_2()
         .flex()
         .items_center()
         .gap_2()
-        .child(div().w_2().h_2().rounded_full().bg(theme.pending.border))
+        .child(div().w_2().h_2().rounded_full().bg(theme.pending.border()))
         .child(
             div()
                 .text_xs()
-                .text_color(theme.pending.foreground)
+                .text_color(theme.pending.foreground())
                 .child("Loading older history"),
         )
 }
@@ -126,9 +126,9 @@ pub(super) fn older_history_loading_state(theme: &TranscriptTheme) -> impl IntoE
 pub(super) fn released_history_placeholder_state(theme: &TranscriptTheme) -> impl IntoElement {
     div()
         .rounded_md()
-        .bg(theme.unavailable.background)
+        .bg(theme.unavailable.background())
         .border_1()
-        .border_color(theme.unavailable.border)
+        .border_color(theme.unavailable.border())
         .px_3()
         .py_2()
         .flex()
@@ -139,12 +139,12 @@ pub(super) fn released_history_placeholder_state(theme: &TranscriptTheme) -> imp
                 .w_2()
                 .h_2()
                 .rounded_full()
-                .bg(theme.unavailable.border),
+                .bg(theme.unavailable.border()),
         )
         .child(
             div()
                 .text_xs()
-                .text_color(theme.unavailable.foreground)
+                .text_color(theme.unavailable.foreground())
                 .child("Loading transcript history"),
         )
 }

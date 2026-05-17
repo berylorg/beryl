@@ -159,7 +159,7 @@ fn render_user_prompt_markdown_source(
     markdown_prose_block_with_selection(
         "",
         markdown.render_plan(),
-        theme.user_input.background,
+        theme.user_input.background(),
         theme,
         code_layout,
         conversation_m_advance,
@@ -212,7 +212,7 @@ fn render_user_prompt(
         markdown_prose_block_with_selection(
             "",
             markdown.render_plan(),
-            theme.user_input.background,
+            theme.user_input.background(),
             theme,
             code_layout,
             conversation_m_advance,
@@ -225,7 +225,7 @@ fn render_user_prompt(
         markdown_prose_block_with_image_markers_and_selection(
             "",
             markdown.render_plan(),
-            theme.user_input.background,
+            theme.user_input.background(),
             theme,
             code_layout,
             conversation_m_advance,

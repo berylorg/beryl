@@ -238,6 +238,58 @@ fn resolver_rejects_unknown_roles_and_properties() {
 }
 
 #[test]
+fn resolver_rejects_properties_outside_role_capabilities() {
+    let schema = ThemeSchema::new(vec![ThemeRoleSchema::new("text").with_property(
+        "foreground",
+        ThemePropertySchema::new(
+            StylePropertyKind::Color,
+            StylePropertyValue::color("#111111"),
+        ),
+    )]);
+
+    let diagnostics = ThemeResolver::new(
+        schema.clone(),
+        ThemeDefinition::new(vec![ThemeRoleDefinition::new("text").with_property(
+            "background",
+            StylePropertySource::Concrete(StylePropertyValue::color("#222222")),
+        )]),
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        diagnostics.diagnostics()[0].kind(),
+        ThemeDiagnosticKind::UnknownProperty
+    );
+    assert_eq!(
+        diagnostics.diagnostics()[0]
+            .property_id()
+            .map(|property| property.as_str()),
+        Some("background")
+    );
+
+    let resolver = ThemeResolver::new(schema, ThemeDefinition::empty()).unwrap();
+    let style = resolver
+        .resolve_style("text", &ThemeResolutionContext::new())
+        .unwrap();
+
+    assert_eq!(style.properties().len(), 1);
+    assert_eq!(
+        style.property(&"foreground".into()),
+        Some(&StylePropertyValue::color("#111111"))
+    );
+    assert!(style.property(&"background".into()).is_none());
+    assert_eq!(
+        resolver
+            .resolve_property("text", "background", &ThemeResolutionContext::new())
+            .unwrap_err(),
+        ThemeResolutionError::UnknownProperty {
+            role_id: "text".into(),
+            property_id: "background".into(),
+        }
+    );
+}
+
+#[test]
 fn resolver_rejects_invalid_property_types_and_values() {
     let diagnostics = ThemeResolver::new(
         basic_schema(),

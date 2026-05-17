@@ -231,6 +231,14 @@ impl ThemeRoleSchema {
     pub fn properties(&self) -> &BTreeMap<StylePropertyId, ThemePropertySchema> {
         &self.properties
     }
+
+    pub fn property_schema(&self, property_id: &StylePropertyId) -> Option<&ThemePropertySchema> {
+        self.properties.get(property_id)
+    }
+
+    pub fn supports_property(&self, property_id: &StylePropertyId) -> bool {
+        self.property_schema(property_id).is_some()
+    }
 }
 
 impl ThemeSchema {

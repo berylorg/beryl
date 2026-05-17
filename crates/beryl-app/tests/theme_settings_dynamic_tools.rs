@@ -4,12 +4,14 @@
 mod tempdir_support;
 
 use beryl_app::{
-    AgentPreferences, AppearanceSettings, GuiPreferences, INSTALL_THEME_TOOL,
-    MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES, MAX_THEME_TOOL_NAME_BYTES, NotificationPreferences,
-    OperationPreferences, PREVIEW_THEME_TOOL, READ_THEME_AUTHORING_GUIDE_TOOL, SAVE_THEME_AS_TOOL,
-    SettingsDynamicToolRequest, ThemeAuthoringGuideSection, ThemeDocument, ThemeDynamicToolRequest,
-    ThemeRepositoryStore, ThemeSaveAsSource, UPDATE_GUI_SETTINGS_TOOL,
-    VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL, gui_settings_snapshot_value,
+    AgentPreferences, AppearanceSettings, BerylThemeProperty, BerylThemeRole, GuiPreferences,
+    INSTALL_THEME_TOOL, MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES, MAX_THEME_TOOL_NAME_BYTES,
+    NotificationPreferences, OperationPreferences, PREVIEW_THEME_TOOL,
+    READ_THEME_AUTHORING_GUIDE_TOOL, SAVE_THEME_AS_TOOL, SettingsDynamicToolRequest,
+    ThemeAuthoringGuideSection, ThemeDocument, ThemeDynamicToolRequest, ThemeRepositoryStore,
+    ThemeSaveAsSource, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL,
+    VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
+    built_in_theme_supported_properties, gui_settings_snapshot_value,
     parse_beryl_settings_dynamic_tool_request, parse_beryl_theme_dynamic_tool_request,
     settings_validation_value, theme_authoring_guide_value, theme_repository_value,
     theme_schema_value, validate_theme_document_value,
@@ -99,6 +101,73 @@ foreground = { value = "#112233" }
 }
 
 #[test]
+fn theme_tool_parser_rejects_unsupported_properties_for_document_mutations() {
+    let unsupported_property_documents = [
+        r##"
+schema = 1
+name = "Unsupported Property"
+
+[[role]]
+id = "app.window"
+not_a_property = { value = "#112233" }
+"##,
+        r##"
+schema = 1
+name = "Old Separator Border"
+
+[[role]]
+id = "main.separator"
+border = { value = "#112233" }
+"##,
+        r##"
+schema = 1
+name = "Non Separator Color"
+
+[[role]]
+id = "app.window"
+color = { value = "#112233" }
+"##,
+    ];
+
+    for document in unsupported_property_documents {
+        let cases = [
+            dynamic_tool_request(
+                PREVIEW_THEME_TOOL,
+                json!({
+                    "document": document,
+                }),
+            ),
+            dynamic_tool_request(
+                INSTALL_THEME_TOOL,
+                json!({
+                    "name": "Unsupported Property",
+                    "document": document,
+                }),
+            ),
+            dynamic_tool_request(
+                UPDATE_THEME_TOOL,
+                json!({
+                    "themeId": "some-theme",
+                    "document": document,
+                }),
+            ),
+            dynamic_tool_request(
+                SAVE_THEME_AS_TOOL,
+                json!({
+                    "name": "Unsupported Property Copy",
+                    "document": document,
+                }),
+            ),
+        ];
+
+        for request in cases {
+            let error = parse_beryl_theme_dynamic_tool_request(&request).unwrap_err();
+            assert_eq!(error.kind(), "invalid_theme_document");
+        }
+    }
+}
+
+#[test]
 fn theme_repository_read_value_bounds_metadata_and_active_document() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
@@ -152,6 +221,34 @@ fn theme_schema_read_value_supports_bounded_discovery() {
             "concrete_value"
         ])
     );
+}
+
+#[test]
+fn theme_schema_read_value_reports_role_specific_supported_properties() {
+    let thematic_break = theme_schema_value(Some(BerylThemeRole::MarkdownThematicBreak.id()), 8)
+        .expect("schema read should succeed");
+    let thematic_role = first_role(&thematic_break);
+    let thematic_properties = property_ids(&thematic_role["properties"]);
+
+    assert_eq!(
+        thematic_properties,
+        vec![BerylThemeProperty::Color.id().to_string()]
+    );
+    assert_eq!(thematic_role["properties"][0]["kind"], "color");
+    assert!(!thematic_properties.contains(&BerylThemeProperty::Border.id().to_string()));
+    assert!(!thematic_properties.contains(&BerylThemeProperty::Foreground.id().to_string()));
+
+    let code_panel_body = theme_schema_value(Some(BerylThemeRole::CodePanelBody.id()), 8).unwrap();
+    let code_panel_properties = property_ids(&first_role(&code_panel_body)["properties"]);
+    let mut expected = built_in_theme_supported_properties(BerylThemeRole::CodePanelBody)
+        .iter()
+        .map(|property| property.id().to_string())
+        .collect::<Vec<_>>();
+    expected.sort();
+
+    assert_eq!(code_panel_properties, expected);
+    assert!(!code_panel_properties.contains(&BerylThemeProperty::Border.id().to_string()));
+    assert!(!code_panel_properties.contains(&BerylThemeProperty::TextBackground.id().to_string()));
 }
 
 #[test]
@@ -299,6 +396,30 @@ fn theme_authoring_guide_contains_required_guidance_without_private_settings() {
 }
 
 #[test]
+fn theme_authoring_guide_role_hints_include_supported_properties() {
+    let value = theme_authoring_guide_value(
+        ThemeAuthoringGuideSection::Overview,
+        Some(BerylThemeRole::CodePanelBody.id()),
+        4,
+    );
+    let role = first_role(&value["roleHints"]);
+    let properties = property_ids(&role["supportedProperties"]);
+
+    assert_eq!(role["id"], BerylThemeRole::CodePanelBody.id());
+    let mut expected = built_in_theme_supported_properties(BerylThemeRole::CodePanelBody)
+        .iter()
+        .map(|property| property.id().to_string())
+        .collect::<Vec<_>>();
+    expected.sort();
+    assert_eq!(properties, expected);
+    assert_eq!(
+        role["supportedPropertyCount"],
+        built_in_theme_supported_properties(BerylThemeRole::CodePanelBody).len()
+    );
+    assert!(!properties.contains(&BerylThemeProperty::Border.id().to_string()));
+}
+
+#[test]
 fn theme_validation_accepts_valid_documents_and_explains_sources() {
     let root = unique_temp_dir();
     let snapshot = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
@@ -311,16 +432,20 @@ id = "app.window"
 foreground = { value = "#112233" }
 
 [[role]]
-id = "main.toolbar"
+id = "panel"
 foreground = "static_parent"
 
 [[role]]
 id = "markdown.inline_code"
-background = "ambient_parent"
+text_background = "ambient_parent"
 
 [[role]]
 id = "settings.row.normal"
 foreground = "fallback"
+
+[[role]]
+id = "markdown.thematic_break"
+color = { value = "#445566" }
 "##;
 
     let value = validate_theme_document_value(
@@ -328,11 +453,12 @@ foreground = "fallback"
         true,
         &[
             "app.window".to_string(),
-            "main.toolbar".to_string(),
+            "panel".to_string(),
             "markdown.inline_code".to_string(),
             "settings.row.normal".to_string(),
+            "markdown.thematic_break".to_string(),
         ],
-        4,
+        5,
         &snapshot,
     );
     let encoded = serde_json::to_string(&value).unwrap();
@@ -345,6 +471,26 @@ foreground = "fallback"
     assert!(encoded.contains("fallback"));
     assert!(encoded.contains("resolvedWithoutAmbient"));
     assert_eq!(value["roleExplanationsTruncated"], false);
+    let thematic_explanation = role_by_id(
+        &value["roleExplanations"],
+        BerylThemeRole::MarkdownThematicBreak.id(),
+    );
+    assert_eq!(
+        property_ids(&thematic_explanation["properties"]),
+        vec![BerylThemeProperty::Color.id().to_string()]
+    );
+    let thematic_summary = role_by_id(
+        &value["summary"]["roles"],
+        BerylThemeRole::MarkdownThematicBreak.id(),
+    );
+    assert_eq!(
+        property_ids(&thematic_summary["supportedProperties"]),
+        vec![BerylThemeProperty::Color.id().to_string()]
+    );
+    assert_eq!(
+        property_ids(&thematic_summary["properties"]),
+        vec![BerylThemeProperty::Color.id().to_string()]
+    );
 
     root.close().unwrap();
 }
@@ -624,6 +770,35 @@ fn settings_update_parser_rejects_unknown_keys_and_invalid_values() {
     let invalid_sound_path_error =
         parse_beryl_settings_dynamic_tool_request(&invalid_sound_path_request).unwrap_err();
     assert_eq!(invalid_sound_path_error.kind(), "invalid_field");
+}
+
+fn first_role(value: &Value) -> &Value {
+    value["roles"]
+        .as_array()
+        .and_then(|roles| roles.first())
+        .expect("value should contain a first role")
+}
+
+fn role_by_id<'a>(roles: &'a Value, role_id: &str) -> &'a Value {
+    roles
+        .as_array()
+        .and_then(|roles| {
+            roles
+                .iter()
+                .find(|role| role["id"] == role_id || role["roleId"] == role_id)
+        })
+        .unwrap_or_else(|| panic!("missing role {role_id}"))
+}
+
+fn property_ids(properties: &Value) -> Vec<String> {
+    let mut property_ids = properties
+        .as_array()
+        .expect("properties should be an array")
+        .iter()
+        .map(|property| property["id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    property_ids.sort();
+    property_ids
 }
 
 fn dynamic_tool_request(tool: &str, arguments: Value) -> DynamicToolCallRequest {

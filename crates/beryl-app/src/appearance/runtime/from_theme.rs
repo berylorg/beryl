@@ -3,7 +3,7 @@ use super::super::{
     AppearanceChromeSettings, AppearanceForegroundSettings, AppearanceInputSettings,
     AppearanceRoleSettings, AppearanceSettings, AppearanceStatusLineSettings,
     AppearanceSurfaceSettings, AppearanceTranscriptShellSettings, BerylThemeProperty,
-    BerylThemeRole, StylePropertyValue, ThemeResolutionContext,
+    BerylThemeRole, StylePropertyValue, ThemeResolutionContext, built_in_theme_supports_property,
 };
 
 impl AppearanceSettings {
@@ -39,7 +39,7 @@ impl AppearanceSettings {
                 separator: color(
                     theme,
                     BerylThemeRole::MainSeparator,
-                    BerylThemeProperty::Border,
+                    BerylThemeProperty::Color,
                     "#1e293b",
                 ),
                 primary_button: button_settings(
@@ -154,12 +154,19 @@ impl AppearanceSettings {
 }
 
 fn role_settings(theme: &ActiveThemeProjection, role: BerylThemeRole) -> AppearanceRoleSettings {
+    let background_property =
+        if built_in_theme_supports_property(role, BerylThemeProperty::TextBackground) {
+            BerylThemeProperty::TextBackground
+        } else {
+            BerylThemeProperty::Background
+        };
+
     AppearanceRoleSettings::new(
         font_family(theme, role, "Inter"),
         font_size(theme, role, 14.0),
         font_weight(theme, role, 400),
         color(theme, role, BerylThemeProperty::Foreground, "#e2e8f0"),
-        color(theme, role, BerylThemeProperty::Background, "#020617"),
+        color(theme, role, background_property, "#020617"),
     )
 }
 

@@ -68,6 +68,19 @@ impl ThemeDocument {
     }
 
     pub fn from_toml_str(text: &str) -> Result<Self, ThemeDocumentError> {
+        Self::from_toml_str_with_policy(text, UnsupportedPropertyPolicy::Strict)
+    }
+
+    pub(crate) fn from_toml_str_ignoring_unsupported_properties(
+        text: &str,
+    ) -> Result<Self, ThemeDocumentError> {
+        Self::from_toml_str_with_policy(text, UnsupportedPropertyPolicy::Ignore)
+    }
+
+    fn from_toml_str_with_policy(
+        text: &str,
+        unsupported_property_policy: UnsupportedPropertyPolicy,
+    ) -> Result<Self, ThemeDocumentError> {
         let value = toml::from_str::<Value>(text)
             .map_err(|source| ThemeDocumentError::ParseToml { source })?;
         let table = value
@@ -90,7 +103,7 @@ impl ThemeDocument {
             Some(value) => Some(validate_theme_name(value).ok_or(ThemeDocumentError::InvalidName)?),
             None => None,
         };
-        let definition = definition_from_toml_table(table)?;
+        let definition = definition_from_toml_table(table, unsupported_property_policy)?;
         validate_definition(&definition)?;
 
         Ok(Self {
@@ -154,7 +167,16 @@ impl ThemeDocument {
     }
 }
 
-fn definition_from_toml_table(table: &toml::Table) -> Result<ThemeDefinition, ThemeDocumentError> {
+#[derive(Clone, Copy)]
+enum UnsupportedPropertyPolicy {
+    Strict,
+    Ignore,
+}
+
+fn definition_from_toml_table(
+    table: &toml::Table,
+    unsupported_property_policy: UnsupportedPropertyPolicy,
+) -> Result<ThemeDefinition, ThemeDocumentError> {
     let schema = built_in_theme_schema();
     let roles = table
         .get("role")
@@ -183,6 +205,13 @@ fn definition_from_toml_table(table: &toml::Table) -> Result<ThemeDefinition, Th
             .collect::<BTreeMap<_, _>>();
         for (property_id, value) in properties {
             let kind = schema_property_kind(&schema, &role_id, property_id);
+            if matches!(
+                unsupported_property_policy,
+                UnsupportedPropertyPolicy::Ignore
+            ) && kind.is_none()
+            {
+                continue;
+            }
             let source = property_source_from_toml_value(&role_id, property_id, value, kind)?;
             role = role.with_property(property_id.clone(), source);
         }

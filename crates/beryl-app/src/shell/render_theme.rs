@@ -11,8 +11,8 @@ use button::button_theme_from_styles;
 pub(super) use button::{ChromeButtonStateTheme, ChromeButtonTheme};
 pub(super) use frame::ShellRenderFrame;
 use role_style::{
-    ShellRoleStyle, shell_role_styles, style_background, style_background_packed_rgb, style_border,
-    style_foreground,
+    ShellRoleStyle, shell_role_styles, style_background, style_border, style_foreground,
+    style_single_color, style_single_color_packed_rgb,
 };
 
 pub(super) struct ShellRenderThemeCache {
@@ -112,7 +112,7 @@ impl ShellRenderStyleSnapshot {
                 crate::BerylThemeRole::MainThreadStrip,
                 rgb(0x091220),
             ),
-            separator_color: style_border(
+            separator_color: style_single_color(
                 &role_styles,
                 crate::BerylThemeRole::MainSeparator,
                 rgb(0x1e293b),
@@ -190,7 +190,7 @@ impl ShellRenderStyleSnapshot {
                 crate::BerylThemeRole::Panel,
                 rgb(0xe2e8f0),
             ),
-            scrollbar_thumb_color: style_background_packed_rgb(
+            scrollbar_thumb_color: style_single_color_packed_rgb(
                 &role_styles,
                 crate::BerylThemeRole::ScrollbarThumbNormal,
                 0x94a3b8,
@@ -215,7 +215,7 @@ impl ShellRenderStyleSnapshot {
     ) -> gpui::Rgba {
         self.role_styles
             .get(&role)
-            .map(|style| style.background)
+            .and_then(|style| style.background)
             .unwrap_or(fallback)
     }
 
@@ -226,7 +226,7 @@ impl ShellRenderStyleSnapshot {
     ) -> gpui::Rgba {
         self.role_styles
             .get(&role)
-            .map(|style| style.border)
+            .and_then(|style| style.border)
             .unwrap_or(fallback)
     }
 
@@ -237,7 +237,7 @@ impl ShellRenderStyleSnapshot {
     ) -> gpui::Rgba {
         self.role_styles
             .get(&role)
-            .map(|style| style.foreground)
+            .and_then(|style| style.foreground)
             .unwrap_or(fallback)
     }
 
@@ -248,7 +248,7 @@ impl ShellRenderStyleSnapshot {
     ) -> String {
         self.role_styles
             .get(&role)
-            .map(|style| style.font_family.clone())
+            .and_then(|style| style.font_family.clone())
             .unwrap_or_else(|| fallback.to_string())
     }
 
@@ -259,7 +259,7 @@ impl ShellRenderStyleSnapshot {
     ) -> gpui::FontWeight {
         self.role_styles
             .get(&role)
-            .map(|style| style.font_weight)
+            .and_then(|style| style.font_weight)
             .unwrap_or(fallback)
     }
 

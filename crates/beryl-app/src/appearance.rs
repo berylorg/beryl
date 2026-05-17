@@ -22,7 +22,7 @@ pub use theme::{
     ThemeRepositoryError, ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext,
     ThemeResolutionError, ThemeResolver, ThemeRoleDefinition, ThemeRoleSchema, ThemeSchema,
     ThemeValidationDiagnostics, built_in_theme_definition, built_in_theme_resolver,
-    built_in_theme_schema,
+    built_in_theme_schema, built_in_theme_supported_properties, built_in_theme_supports_property,
 };
 
 const APP_ROOT_DIR_NAME: &str = ".beryl";

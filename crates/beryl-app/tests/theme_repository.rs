@@ -5,8 +5,9 @@ use std::fs;
 
 use beryl_app::{
     AppearanceSettings, AppearanceSettingsStore, BerylThemeProperty, BerylThemeRole,
-    InstalledThemeId, MAX_THEME_FONT_FAMILY_BYTES, StylePropertyValue, ThemeDocument,
-    ThemeRepositoryStore, ThemeResolutionContext,
+    InstalledThemeId, MAX_THEME_FONT_FAMILY_BYTES, StylePropertyId, StylePropertySource,
+    StylePropertyValue, ThemeDefinition, ThemeDiagnosticKind, ThemeDocument, ThemeRepositoryError,
+    ThemeRepositoryStore, ThemeResolutionContext, ThemeRoleDefinition,
 };
 
 #[test]
@@ -197,7 +198,7 @@ id = "oversized"
 name = "Oversized"
 
 [[role]]
-id = "app.window"
+id = "code_panel.body"
 font_family = {{ value = "{}" }}
 "##,
             "F".repeat(MAX_THEME_FONT_FAMILY_BYTES + 1)
@@ -213,6 +214,202 @@ font_family = {{ value = "{}" }}
             .iter()
             .any(|theme| theme.id().as_str() == "oversized")
     );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn unsupported_persisted_properties_are_ignored_and_not_reserialized() {
+    let root = unique_temp_dir();
+    let store = ThemeRepositoryStore::new(&root);
+    fs::create_dir_all(store.theme_documents_dir()).unwrap();
+    fs::write(
+        store.manifest_path(),
+        r#"schema = 1
+active_theme_id = "legacy"
+
+[[theme]]
+id = "legacy"
+name = "Legacy"
+file = "legacy.toml"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        store.theme_document_path(&InstalledThemeId::from("legacy")),
+        r##"
+schema = 1
+id = "legacy"
+name = "Legacy"
+
+[[role]]
+id = "app.window"
+foreground = { value = "#112233" }
+not_a_property = { value = "#445566" }
+"##,
+    )
+    .unwrap();
+
+    let snapshot = store.load_or_default().unwrap();
+
+    assert_eq!(snapshot.active_theme_id().as_str(), "legacy");
+    assert_eq!(
+        active_foreground(&snapshot),
+        StylePropertyValue::color("#112233")
+    );
+    let definition = store
+        .load_theme_definition(&InstalledThemeId::from("legacy"))
+        .unwrap();
+    let app = definition
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::AppWindow.id())
+        .unwrap();
+    assert!(
+        !app.properties()
+            .contains_key(&StylePropertyId::from("not_a_property"))
+    );
+
+    store
+        .rename_theme(&InstalledThemeId::from("legacy"), "Renamed")
+        .unwrap();
+    let persisted =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("legacy"))).unwrap();
+
+    assert!(ThemeDocument::from_toml_str(&persisted).is_ok());
+    assert!(persisted.contains("foreground = { value = \"#112233\" }"));
+    assert!(!persisted.contains("not_a_property"));
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn old_persisted_separator_border_is_ignored_and_falls_back_to_color() {
+    let root = unique_temp_dir();
+    let store = ThemeRepositoryStore::new(&root);
+    write_single_theme_repository(
+        &store,
+        "legacy-separator",
+        r##"
+schema = 1
+id = "legacy-separator"
+name = "Legacy Separator"
+
+[[role]]
+id = "main.separator"
+border = { value = "#ff0000" }
+"##,
+    );
+
+    let snapshot = store.load_or_default().unwrap();
+
+    assert_eq!(snapshot.active_theme_id().as_str(), "legacy-separator");
+    assert_eq!(
+        active_separator_color(&snapshot),
+        StylePropertyValue::color("#334155")
+    );
+    let definition = store
+        .load_theme_definition(&InstalledThemeId::from("legacy-separator"))
+        .unwrap();
+    let separator = theme_role(&definition, BerylThemeRole::MainSeparator);
+    assert!(
+        !separator
+            .properties()
+            .contains_key(&StylePropertyId::from(BerylThemeProperty::Border.id()))
+    );
+
+    store
+        .rename_theme(&InstalledThemeId::from("legacy-separator"), "Renamed")
+        .unwrap();
+    let persisted =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("legacy-separator")))
+            .unwrap();
+
+    assert!(ThemeDocument::from_toml_str(&persisted).is_ok());
+    assert!(!role_record_text(&persisted, BerylThemeRole::MainSeparator.id()).contains("border ="));
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn persisted_separator_color_wins_over_old_border_on_load() {
+    let root = unique_temp_dir();
+    let store = ThemeRepositoryStore::new(&root);
+    write_single_theme_repository(
+        &store,
+        "mixed-separator",
+        r##"
+schema = 1
+id = "mixed-separator"
+name = "Mixed Separator"
+
+[[role]]
+id = "main.separator"
+border = { value = "#ff0000" }
+color = { value = "#010203" }
+"##,
+    );
+
+    let snapshot = store.load_or_default().unwrap();
+
+    assert_eq!(snapshot.active_theme_id().as_str(), "mixed-separator");
+    assert_eq!(
+        active_separator_color(&snapshot),
+        StylePropertyValue::color("#010203")
+    );
+
+    store
+        .rename_theme(&InstalledThemeId::from("mixed-separator"), "Renamed")
+        .unwrap();
+    let persisted =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("mixed-separator")))
+            .unwrap();
+    let separator_record = role_record_text(&persisted, BerylThemeRole::MainSeparator.id());
+
+    assert!(ThemeDocument::from_toml_str(&persisted).is_ok());
+    assert!(separator_record.contains("color = { value = \"#010203\" }"));
+    assert!(!separator_record.contains("border ="));
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn repository_write_paths_reject_unsupported_properties_without_mutating() {
+    let root = unique_temp_dir();
+    let store = ThemeRepositoryStore::new(&root);
+    store
+        .save_as_theme("Ocean", theme_definition("#102030"))
+        .unwrap();
+    let invalid = unsupported_property_definition();
+
+    let install_error = store
+        .install_theme("Unsupported Install", invalid.clone())
+        .unwrap_err();
+    assert_unknown_property_error(install_error);
+    let save_as_error = store
+        .save_as_theme("Unsupported Copy", invalid.clone())
+        .unwrap_err();
+    assert_unknown_property_error(save_as_error);
+    let update_error = store
+        .update_theme(&InstalledThemeId::from("ocean"), invalid)
+        .unwrap_err();
+    assert_unknown_property_error(update_error);
+
+    let reloaded = store.load_or_default().unwrap();
+    assert_eq!(reloaded.active_theme_id().as_str(), "ocean");
+    assert_eq!(
+        active_foreground(&reloaded),
+        StylePropertyValue::color("#102030")
+    );
+    assert!(
+        !store
+            .theme_document_path(&InstalledThemeId::from("unsupported-install"))
+            .exists()
+    );
+    assert!(
+        !store
+            .theme_document_path(&InstalledThemeId::from("unsupported-copy"))
+            .exists()
+    );
+    let ocean_text =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("ocean"))).unwrap();
+    assert!(!ocean_text.contains("not_a_property"));
     cleanup_temp_dir(root);
 }
 
@@ -289,6 +486,76 @@ fn active_foreground(snapshot: &beryl_app::ThemeRepositorySnapshot) -> StyleProp
             &ThemeResolutionContext::new(),
         )
         .unwrap()
+}
+
+fn active_separator_color(snapshot: &beryl_app::ThemeRepositorySnapshot) -> StylePropertyValue {
+    snapshot
+        .active_projection()
+        .resolve_property(
+            BerylThemeRole::MainSeparator.id(),
+            BerylThemeProperty::Color.id(),
+            &ThemeResolutionContext::new(),
+        )
+        .unwrap()
+}
+
+fn unsupported_property_definition() -> beryl_app::ThemeDefinition {
+    beryl_app::ThemeDefinition::new(vec![
+        ThemeRoleDefinition::new(BerylThemeRole::AppWindow.id())
+            .with_property("not_a_property", StylePropertySource::Fallback),
+    ])
+}
+
+fn write_single_theme_repository(store: &ThemeRepositoryStore, id: &str, document: &str) {
+    fs::create_dir_all(store.theme_documents_dir()).unwrap();
+    fs::write(
+        store.manifest_path(),
+        format!(
+            r#"schema = 1
+active_theme_id = "{id}"
+
+[[theme]]
+id = "{id}"
+name = "Loaded"
+file = "{id}.toml"
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        store.theme_document_path(&InstalledThemeId::from(id)),
+        document,
+    )
+    .unwrap();
+}
+
+fn theme_role(definition: &ThemeDefinition, role: BerylThemeRole) -> &ThemeRoleDefinition {
+    definition
+        .roles()
+        .iter()
+        .find(|definition_role| definition_role.role_id().as_str() == role.id())
+        .expect("theme role should exist")
+}
+
+fn role_record_text<'a>(document: &'a str, role_id: &str) -> &'a str {
+    let role_id_line = format!("id = \"{role_id}\"");
+    document
+        .split("[[role]]")
+        .skip(1)
+        .find(|section| section.contains(&role_id_line))
+        .expect("theme document role should be present")
+}
+
+fn assert_unknown_property_error(error: ThemeRepositoryError) {
+    let ThemeRepositoryError::InvalidThemeDefinition { source } = error else {
+        panic!("expected invalid theme definition error");
+    };
+    assert!(
+        source
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.kind() == ThemeDiagnosticKind::UnknownProperty)
+    );
 }
 
 fn unique_temp_dir() -> tempdir_support::TestTempDir {

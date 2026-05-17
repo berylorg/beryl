@@ -171,8 +171,8 @@ impl TranscriptCodeLayout {
         Self {
             transcript_bordered_panel_columns: code_panel::smart_wrap_columns_for_style(
                 transcript_bordered_panel_width,
-                theme.code_panel_body.font_family.as_str(),
-                px(theme.code_panel_body.font_size),
+                theme.code_panel_body.font_family(),
+                px(theme.code_panel_body.font_size()),
                 theme.code_panel_body.font_weight(),
                 window,
             ),
@@ -1360,8 +1360,8 @@ impl TranscriptPanel {
                 .occlude()
                 .rounded_md()
                 .border_1()
-                .border_color(theme.quote_popup.border)
-                .bg(theme.quote_popup.background)
+                .border_color(theme.quote_popup.border())
+                .bg(theme.quote_popup.background())
                 .shadow_lg()
                 .on_children_prepainted({
                     let entity = entity.clone();
@@ -1392,7 +1392,7 @@ impl TranscriptPanel {
                         .items_center()
                         .justify_center()
                         .text_sm()
-                        .text_color(theme.quote_popup.foreground)
+                        .text_color(theme.quote_popup.foreground())
                         .child("Quote"),
                 )
                 .into_any_element(),
@@ -1436,8 +1436,8 @@ impl TranscriptPanel {
                                 .occlude()
                                 .rounded_md()
                                 .border_1()
-                                .border_color(theme.media_border.border)
-                                .bg(theme.media_placeholder.background)
+                                .border_color(theme.media_border.border())
+                                .bg(theme.media_placeholder.background())
                                 .shadow_lg()
                                 .p_3()
                                 .flex()
@@ -1446,7 +1446,7 @@ impl TranscriptPanel {
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(theme.media_caption.foreground)
+                                        .text_color(theme.media_caption.foreground())
                                         .child(format!("Image {}", popup.label)),
                                 )
                                 .child(
@@ -1455,8 +1455,8 @@ impl TranscriptPanel {
                                         .min_h(px(0.0))
                                         .rounded_sm()
                                         .border_1()
-                                        .border_color(theme.media_border.border)
-                                        .bg(theme.media_placeholder.background)
+                                        .border_color(theme.media_border.border())
+                                        .bg(theme.media_placeholder.background())
                                         .relative()
                                         .overflow_hidden()
                                         .child(match image {
@@ -1473,7 +1473,7 @@ impl TranscriptPanel {
                                                 .items_center()
                                                 .justify_center()
                                                 .text_sm()
-                                                .text_color(theme.media_placeholder.foreground)
+                                                .text_color(theme.media_placeholder.foreground())
                                                 .child(status_text)
                                                 .into_any_element(),
                                         }),
@@ -2712,7 +2712,7 @@ impl Render for TranscriptPanel {
                                 scroll_region = scroll_region.child(
                                     self.render_selected_text_highlights(
                                         entity.clone(),
-                                        theme.selection.background,
+                                        theme.selection.background(),
                                     ),
                                 );
                                 if let Some(quote_popup) =
@@ -2974,14 +2974,14 @@ fn transcript_media_layout(
         conversation_m_advance: metrics.conversation_m_advance,
         window_scale: metrics.window_scale,
         theme: TranscriptMediaTheme {
-            placeholder_background: theme.media_placeholder.background,
-            placeholder_foreground: theme.media_placeholder.foreground,
-            loading_background: theme.media_loading.background,
-            loading_foreground: theme.media_loading.foreground,
-            unavailable_background: theme.media_unavailable.background,
-            unavailable_foreground: theme.media_unavailable.foreground,
-            border: theme.media_border.border,
-            caption_foreground: theme.media_caption.foreground,
+            placeholder_background: theme.media_placeholder.background(),
+            placeholder_foreground: theme.media_placeholder.foreground(),
+            loading_background: theme.media_loading.background(),
+            loading_foreground: theme.media_loading.foreground(),
+            unavailable_background: theme.media_unavailable.background(),
+            unavailable_foreground: theme.media_unavailable.foreground(),
+            border: theme.media_border.border(),
+            caption_foreground: theme.media_caption.foreground(),
         },
     }
 }
@@ -2989,7 +2989,7 @@ fn transcript_media_layout(
 fn conversation_m_advance(theme: &TranscriptTheme, window: &Window) -> Pixels {
     let role = &theme.assistant_final;
     let font = Font {
-        family: SharedString::from(role.font_family.clone()),
+        family: SharedString::from(role.font_family().to_string()),
         features: Default::default(),
         fallbacks: None,
         weight: role.font_weight(),
@@ -3005,7 +3005,7 @@ fn conversation_m_advance(theme: &TranscriptTheme, window: &Window) -> Pixels {
     };
     window
         .text_system()
-        .shape_line("M".into(), px(role.font_size), &[run], None)
+        .shape_line("M".into(), px(role.font_size()), &[run], None)
         .width
         .max(px(1.0))
 }

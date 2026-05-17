@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::{ThemeSchema, built_in_theme_schema};
+use crate::{StylePropertyKind, ThemeSchema, built_in_theme_schema};
 
 use super::MAX_THEME_AUTHORING_GUIDE_ROLE_LIMIT;
 
@@ -112,6 +112,7 @@ fn overview_section() -> Value {
         "points": [
             "Author one compact TOML document in a fenced code block with language beryl-theme when proposing a theme to the operator.",
             "Use read_theme_schema for the exact role and property inventory; this guide explains how to use that schema.",
+            "Each role accepts only the properties listed for that role. Roles with an empty property list are not theme-editable until a render site consumes one of their properties.",
             "A theme document can include only roles and properties that it changes. Omitted properties resolve from built-in fallback values unless the document requests another source.",
             "Use validate_theme_document before previewing or installing a candidate so parser and resolver diagnostics can be fixed without mutating GUI state."
         ],
@@ -125,7 +126,7 @@ fn syntax_section() -> Value {
         "points": [
             "The top level requires schema = 1 and may include name = \"Theme Name\".",
             "Each role is a [[role]] record with id = \"role.id\" and optional static_parent = \"other.role\".",
-            "Concrete values use inline tables such as foreground = { value = \"#aabbcc\" }, font_family = { value = \"Inter\" }, font_size = { value = 14.0 }, and font_weight = { value = 500 }.",
+            "Only use properties that read_theme_schema lists for that role. Concrete values use inline tables such as foreground = { value = \"#aabbcc\" }, color = { value = \"#aabbcc\" }, font_family = { value = \"Inter\" }, font_size = { value = 14.0 }, and font_weight = { value = 500 }.",
             "Source keywords are string values: static_parent, ambient_parent, and fallback.",
             "Color values must be six-digit hex colors in #rrggbb form after normalization."
         ],
@@ -139,7 +140,7 @@ fn inheritance_section() -> Value {
         "points": [
             "Static inheritance is a theme-document relationship between roles. A property set to static_parent resolves from the same property on the role's effective static parent chain.",
             "Runtime ambient inheritance is render-site context. A property set to ambient_parent resolves from the surrounding style at the place where the role is embedded.",
-            "Inline code usually keeps concrete foreground and typography while its background or text_background uses ambient_parent so it fits final answers, user input, settings rows, and popups.",
+            "Inline code usually keeps concrete foreground and typography while text_background uses ambient_parent so it fits final answers, user input, settings rows, and popups.",
             "fallback means use the built-in value for that role and property. Omitting a property also resolves as fallback.",
             "Missing static parents and static-parent cycles are invalid theme documents."
         ],
@@ -191,7 +192,7 @@ fn code_roles_section() -> Value {
             "Use markdown.inline_code for inline code embedded in narrative text.",
             "Use code_panel.container, code_panel.header, and code_panel.body for fenced code blocks.",
             "Use code_panel.button.* for Preview, Install Theme, Copy, and Soft Wrap button states inside code panels.",
-            "Use syntax.* roles for parser token colors inside code panels. Syntax roles should usually keep backgrounds inherited or quiet."
+            "Use syntax.* roles for parser token colors inside code panels. Syntax roles expose foreground only."
         ],
     })
 }
@@ -214,7 +215,7 @@ fn examples_section() -> Value {
         "id": "examples",
         "title": "Authoring examples",
         "examples": [
-            "schema = 1\nname = \"Example\"\n\n[[role]]\nid = \"app.window\"\nbackground = { value = \"#000000\" }\nforeground = { value = \"#aaaaaa\" }\n\n[[role]]\nid = \"markdown.inline_code\"\nbackground = \"ambient_parent\"\nforeground = { value = \"#ffd766\" }",
+            "schema = 1\nname = \"Example\"\n\n[[role]]\nid = \"app.window\"\nbackground = { value = \"#000000\" }\nforeground = { value = \"#aaaaaa\" }\n\n[[role]]\nid = \"markdown.inline_code\"\ntext_background = \"ambient_parent\"\nforeground = { value = \"#ffd766\" }",
             "schema = 1\nname = \"Transcript Commentary\"\n\n[[role]]\nid = \"transcript.turn.assistant.commentary\"\nforeground = { value = \"#66cc88\" }"
         ],
     })
@@ -226,7 +227,7 @@ fn troubleshooting_section() -> Value {
         "title": "Troubleshooting",
         "points": [
             "If a color does not change, validate the document and inspect whether the property was omitted, set to fallback, or set on a different role than the visible surface uses.",
-            "If inline code backgrounds look wrong, check whether markdown.inline_code background and text_background use ambient_parent or an intentional concrete color.",
+            "If inline code backgrounds look wrong, check whether markdown.inline_code text_background uses ambient_parent or an intentional concrete color.",
             "If a role fails validation, read_theme_schema with a rolePrefix near that role to confirm the exact role id and property ids.",
             "If a static_parent value fails, confirm the parent role exists and the role graph has no cycle.",
             "If a preview works but the operator wants a durable record, emit a beryl-theme code block or call an explicit install operation."
@@ -250,6 +251,13 @@ fn role_hints(schema: &ThemeSchema, role_prefix: Option<&str>, limit: usize) -> 
             "id": role.role_id().as_str(),
             "staticParent": role.static_parent().map(|parent| parent.as_str()),
             "group": role_group(role.role_id().as_str()),
+            "supportedProperties": role.properties().iter().map(|(property_id, property)| {
+                json!({
+                    "id": property_id.as_str(),
+                    "kind": property_kind_label(property.kind()),
+                })
+            }).collect::<Vec<_>>(),
+            "supportedPropertyCount": role.properties().len(),
         }));
     }
 
@@ -265,4 +273,13 @@ fn role_group(role_id: &str) -> &str {
         .split_once('.')
         .map(|(prefix, _)| prefix)
         .unwrap_or(role_id)
+}
+
+fn property_kind_label(kind: StylePropertyKind) -> &'static str {
+    match kind {
+        StylePropertyKind::Color => "color",
+        StylePropertyKind::FontFamily => "font_family",
+        StylePropertyKind::LogicalPixels => "logical_pixels",
+        StylePropertyKind::FontWeight => "font_weight",
+    }
 }

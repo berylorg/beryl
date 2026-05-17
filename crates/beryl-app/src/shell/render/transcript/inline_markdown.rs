@@ -246,8 +246,8 @@ fn render_inline_line(
         .w_full()
         .min_w(px(0.0))
         .whitespace_normal()
-        .text_size(px(block_font_size(base_role.font_size, block_role)))
-        .font_family(base_role.font_family.clone())
+        .text_size(px(block_font_size(base_role.font_size(), block_role)))
+        .font_family(base_role.font_family().to_string())
         .font_weight(base_role.font_weight())
         .text_color(
             role_style(
@@ -257,7 +257,7 @@ fn render_inline_line(
                 style,
                 InlineRenderStyle::default(),
             )
-            .foreground,
+            .foreground(),
         )
         .child(styled_text);
 
@@ -549,21 +549,21 @@ fn text_run(
     TextRun {
         len,
         font: Font {
-            family: SharedString::from(settings.font_family.clone()),
+            family: SharedString::from(settings.font_family().to_string()),
             features: Default::default(),
             fallbacks: None,
             weight: settings.font_weight(),
             style: FontStyle::Normal,
         },
         color: if atom {
-            theme.image_marker.foreground.into()
+            theme.image_marker.foreground().into()
         } else {
-            settings.foreground.into()
+            settings.foreground().into()
         },
         background_color: if atom {
-            Some(theme.image_marker.text_background.into())
+            Some(theme.image_marker.text_background().into())
         } else {
-            (role == InlinePresentationRole::Code).then(|| settings.text_background.into())
+            (role == InlinePresentationRole::Code).then(|| settings.text_background().into())
         },
         underline: link.then_some(UnderlineStyle {
             thickness: px(1.0),

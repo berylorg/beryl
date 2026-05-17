@@ -104,6 +104,9 @@ fn invalid_theme_candidates_fail_with_validation_errors_without_state_mutation()
         "schema = 2\n",
         "schema = 1\n[[role]]\nid = \"app.window\"\nforeground = { value = 12 }\n",
         "schema = 1\n[[role]]\nid = \"not.a.role\"\nforeground = { value = \"#112233\" }\n",
+        "schema = 1\n[[role]]\nid = \"app.window\"\nnot_a_property = { value = \"#112233\" }\n",
+        "schema = 1\n[[role]]\nid = \"main.separator\"\nborder = { value = \"#112233\" }\n",
+        "schema = 1\n[[role]]\nid = \"app.window\"\ncolor = { value = \"#112233\" }\n",
     ] {
         let error = theme_candidates::validate_theme_candidate(
             source,

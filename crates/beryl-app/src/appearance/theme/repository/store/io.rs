@@ -143,7 +143,8 @@ impl ThemeRepositoryStore {
             path: path.display().to_string(),
             source,
         })?;
-        let Ok(document) = ThemeDocument::from_toml_str(&text) else {
+        let Ok(document) = ThemeDocument::from_toml_str_ignoring_unsupported_properties(&text)
+        else {
             return Ok(None);
         };
         let id = match document.id().cloned().or_else(|| id_from_file_stem(path)) {

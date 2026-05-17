@@ -124,5 +124,5 @@ fn render_activity_caret(opacity: f32, theme: &TranscriptTheme) -> impl IntoElem
         .h(px(18.0))
         .flex_none()
         .opacity(opacity.clamp(0.0, 1.0))
-        .bg(theme.activity_caret.background)
+        .bg(theme.activity_caret.color())
 }

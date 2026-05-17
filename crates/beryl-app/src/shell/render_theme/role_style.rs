@@ -4,11 +4,12 @@ use gpui::{Rgba, rgb};
 
 #[derive(Clone, Debug)]
 pub(super) struct ShellRoleStyle {
-    pub(super) background: Rgba,
-    pub(super) border: Rgba,
-    pub(super) foreground: Rgba,
-    pub(super) font_family: String,
-    pub(super) font_weight: gpui::FontWeight,
+    pub(super) background: Option<Rgba>,
+    pub(super) border: Option<Rgba>,
+    pub(super) color: Option<Rgba>,
+    pub(super) foreground: Option<Rgba>,
+    pub(super) font_family: Option<String>,
+    pub(super) font_weight: Option<gpui::FontWeight>,
 }
 
 pub(super) fn shell_role_styles(
@@ -30,24 +31,10 @@ fn shell_role_style(
         .or_else(|_| projection.default_style(role.id()).cloned())
         .unwrap_or_else(|_| panic!("Beryl theme role {} must resolve", role.id()));
     ShellRoleStyle {
-        background: shell_style_color(
-            &resolved,
-            role,
-            crate::BerylThemeProperty::Background,
-            rgb(0x000000),
-        ),
-        border: shell_style_color(
-            &resolved,
-            role,
-            crate::BerylThemeProperty::Border,
-            rgb(0x000000),
-        ),
-        foreground: shell_style_color(
-            &resolved,
-            role,
-            crate::BerylThemeProperty::Foreground,
-            rgb(0xffffff),
-        ),
+        background: shell_style_color(&resolved, role, crate::BerylThemeProperty::Background),
+        border: shell_style_color(&resolved, role, crate::BerylThemeProperty::Border),
+        color: shell_style_color(&resolved, role, crate::BerylThemeProperty::Color),
+        foreground: shell_style_color(&resolved, role, crate::BerylThemeProperty::Foreground),
         font_family: shell_style_font_family(&resolved, role),
         font_weight: shell_style_font_weight(&resolved, role),
     }
@@ -57,45 +44,54 @@ fn shell_style_color(
     style: &crate::ResolvedStyle,
     role: crate::BerylThemeRole,
     property: crate::BerylThemeProperty,
-    fallback: Rgba,
-) -> Rgba {
+) -> Option<Rgba> {
     match shell_resolved_property(style, role, property) {
-        crate::StylePropertyValue::Color(value) => chrome_color(value, fallback),
-        _ => fallback,
+        Some(crate::StylePropertyValue::Color(value)) => chrome_color(value),
+        Some(_) => panic!(
+            "Beryl theme role {} property {} must resolve as a color",
+            role.id(),
+            property.id()
+        ),
+        None => None,
     }
 }
 
-fn shell_style_font_family(style: &crate::ResolvedStyle, role: crate::BerylThemeRole) -> String {
+fn shell_style_font_family(
+    style: &crate::ResolvedStyle,
+    role: crate::BerylThemeRole,
+) -> Option<String> {
     match shell_resolved_property(style, role, crate::BerylThemeProperty::FontFamily) {
-        crate::StylePropertyValue::FontFamily(value) => value.clone(),
-        _ => "Inter".to_string(),
+        Some(crate::StylePropertyValue::FontFamily(value)) => Some(value.clone()),
+        Some(_) => panic!(
+            "Beryl theme role {} property {} must resolve as a font family",
+            role.id(),
+            crate::BerylThemeProperty::FontFamily.id()
+        ),
+        None => None,
     }
 }
 
 fn shell_style_font_weight(
     style: &crate::ResolvedStyle,
     role: crate::BerylThemeRole,
-) -> gpui::FontWeight {
+) -> Option<gpui::FontWeight> {
     match shell_resolved_property(style, role, crate::BerylThemeProperty::FontWeight) {
-        crate::StylePropertyValue::FontWeight(value) => gpui::FontWeight(*value as f32),
-        _ => gpui::FontWeight::NORMAL,
+        Some(crate::StylePropertyValue::FontWeight(value)) => Some(gpui::FontWeight(*value as f32)),
+        Some(_) => panic!(
+            "Beryl theme role {} property {} must resolve as a font weight",
+            role.id(),
+            crate::BerylThemeProperty::FontWeight.id()
+        ),
+        None => None,
     }
 }
 
 fn shell_resolved_property(
     style: &crate::ResolvedStyle,
-    role: crate::BerylThemeRole,
+    _role: crate::BerylThemeRole,
     property: crate::BerylThemeProperty,
-) -> &crate::StylePropertyValue {
-    style
-        .property(&crate::StylePropertyId::from(property.id()))
-        .unwrap_or_else(|| {
-            panic!(
-                "Beryl theme role {} missing resolved property {}",
-                role.id(),
-                property.id()
-            )
-        })
+) -> Option<&crate::StylePropertyValue> {
+    style.property(&crate::StylePropertyId::from(property.id()))
 }
 
 pub(super) fn style_background(
@@ -105,7 +101,7 @@ pub(super) fn style_background(
 ) -> Rgba {
     styles
         .get(&role)
-        .map(|style| style.background)
+        .and_then(|style| style.background)
         .unwrap_or(fallback)
 }
 
@@ -116,7 +112,18 @@ pub(super) fn style_border(
 ) -> Rgba {
     styles
         .get(&role)
-        .map(|style| style.border)
+        .and_then(|style| style.border)
+        .unwrap_or(fallback)
+}
+
+pub(super) fn style_single_color(
+    styles: &HashMap<crate::BerylThemeRole, ShellRoleStyle>,
+    role: crate::BerylThemeRole,
+    fallback: Rgba,
+) -> Rgba {
+    styles
+        .get(&role)
+        .and_then(|style| style.color)
         .unwrap_or(fallback)
 }
 
@@ -127,26 +134,24 @@ pub(super) fn style_foreground(
 ) -> Rgba {
     styles
         .get(&role)
-        .map(|style| style.foreground)
+        .and_then(|style| style.foreground)
         .unwrap_or(fallback)
 }
 
-pub(super) fn style_background_packed_rgb(
+pub(super) fn style_single_color_packed_rgb(
     styles: &HashMap<crate::BerylThemeRole, ShellRoleStyle>,
     role: crate::BerylThemeRole,
     fallback: u32,
 ) -> u32 {
     styles.get(&role).map_or(fallback, |style| {
-        rgba_to_packed_rgb(style.background).unwrap_or(fallback)
+        style.color.and_then(rgba_to_packed_rgb).unwrap_or(fallback)
     })
 }
 
-fn rgba_from_role_color(color: Option<crate::ParsedHexColor>, fallback: Rgba) -> Rgba {
-    color
-        .map(|color| {
-            rgb(((color.red() as u32) << 16) | ((color.green() as u32) << 8) | color.blue() as u32)
-        })
-        .unwrap_or(fallback)
+fn rgba_from_role_color(color: Option<crate::ParsedHexColor>) -> Option<Rgba> {
+    color.map(|color| {
+        rgb(((color.red() as u32) << 16) | ((color.green() as u32) << 8) | color.blue() as u32)
+    })
 }
 
 fn rgba_to_packed_rgb(value: Rgba) -> Option<u32> {
@@ -158,6 +163,6 @@ fn rgba_to_packed_rgb(value: Rgba) -> Option<u32> {
     })
 }
 
-fn chrome_color(value: &str, fallback: Rgba) -> Rgba {
-    rgba_from_role_color(crate::ParsedHexColor::parse(value), fallback)
+fn chrome_color(value: &str) -> Option<Rgba> {
+    rgba_from_role_color(crate::ParsedHexColor::parse(value))
 }

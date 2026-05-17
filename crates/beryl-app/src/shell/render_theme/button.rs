@@ -63,7 +63,7 @@ pub(super) fn button_theme_from_styles(
     ChromeButtonTheme {
         font_weight: styles
             .get(&normal)
-            .map(|style| style.font_weight)
+            .and_then(|style| style.font_weight)
             .unwrap_or(fallback.font_weight),
         normal: button_state_from_styles(styles, normal, fallback.normal),
         hover: button_state_from_styles(styles, hover, fallback.hover),
@@ -80,8 +80,8 @@ fn button_state_from_styles(
     styles
         .get(&role)
         .map_or(fallback, |style| ChromeButtonStateTheme {
-            background: style.background,
-            border: style.border,
-            foreground: style.foreground,
+            background: style.background.unwrap_or(fallback.background),
+            border: style.border.unwrap_or(fallback.border),
+            foreground: style.foreground.unwrap_or(fallback.foreground),
         })
 }

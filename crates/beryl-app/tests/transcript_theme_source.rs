@@ -1,6 +1,8 @@
 const SHELL_SOURCE: &str = include_str!("../src/shell.rs");
 const SHELL_RENDER_THEME_SOURCE: &str = include_str!("../src/shell/render_theme.rs");
 const SHELL_RENDER_THEME_FRAME_SOURCE: &str = include_str!("../src/shell/render_theme/frame.rs");
+const SHELL_RENDER_THEME_ROLE_STYLE_SOURCE: &str =
+    include_str!("../src/shell/render_theme/role_style.rs");
 const SHELL_RENDER_SOURCE: &str = include_str!("../src/shell/render.rs");
 const SHELL_RENDER_COMMON_SOURCE: &str = include_str!("../src/shell/render/common.rs");
 const SHELL_RENDER_SCROLLBARS_SOURCE: &str = include_str!("../src/shell/render/scrollbars.rs");
@@ -111,6 +113,20 @@ fn phase12_render_theme_cache_owns_hot_theme_resolution() {
     assert!(!transcript_panel_snapshot_body.contains("from_active_theme"));
     assert!(TRANSCRIPT_SOURCE.contains("let theme = snapshot.theme.clone();"));
     assert!(!TRANSCRIPT_SOURCE.contains("Arc::new(snapshot.theme.clone())"));
+}
+
+#[test]
+fn separator_render_snapshot_uses_single_color_property() {
+    assert!(SHELL_RENDER_THEME_SOURCE.contains("separator_color: style_single_color("));
+    assert!(!SHELL_RENDER_THEME_SOURCE.contains("separator_color: style_border("));
+    assert!(
+        SHELL_RENDER_THEME_SOURCE.contains("scrollbar_thumb_color: style_single_color_packed_rgb(")
+    );
+    assert!(SHELL_RENDER_THEME_ROLE_STYLE_SOURCE.contains("BerylThemeProperty::Color"));
+    assert!(SHELL_RENDER_THEME_ROLE_STYLE_SOURCE.contains("pub(super) fn style_single_color"));
+    assert!(TRANSCRIPT_BLOCK_MARKDOWN_SOURCE.contains(".bg(theme.thematic_break.color())"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.selection.background()"));
+    assert!(TRANSCRIPT_THEME_SOURCE.contains("pub(crate) fn color(&self) -> Rgba"));
 }
 
 #[test]
@@ -303,7 +319,7 @@ fn phase6_code_panel_uses_themed_syntax_roles_and_typography() {
         CODE_PANEL_BODY_SOURCE.contains(".font_family(syntax_theme.font_family().to_string())")
     );
     assert!(CODE_PANEL_SOURCE.contains("smart_wrap_columns_for_style"));
-    assert!(TRANSCRIPT_SOURCE.contains("theme.code_panel_body.font_family.as_str()"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.code_panel_body.font_family()"));
 
     for mapping in SYNTAX_ROLE_MAPPINGS {
         assert!(

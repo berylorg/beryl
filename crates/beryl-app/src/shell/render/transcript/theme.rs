@@ -50,13 +50,15 @@ pub(crate) struct TranscriptTheme {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TranscriptRoleStyle {
-    pub(crate) background: Rgba,
-    pub(crate) border: Rgba,
-    pub(crate) foreground: Rgba,
-    pub(crate) text_background: Rgba,
-    pub(crate) font_family: String,
-    pub(crate) font_size: f32,
-    pub(crate) font_weight: u16,
+    role: BerylThemeRole,
+    background: Option<Rgba>,
+    border: Option<Rgba>,
+    color: Option<Rgba>,
+    foreground: Option<Rgba>,
+    text_background: Option<Rgba>,
+    font_family: Option<String>,
+    font_size: Option<f32>,
+    font_weight: Option<u16>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,16 +203,68 @@ impl TranscriptTheme {
 }
 
 impl TranscriptRoleStyle {
+    pub(crate) fn background(&self) -> Rgba {
+        self.required_color(BerylThemeProperty::Background, self.background)
+    }
+
+    pub(crate) fn border(&self) -> Rgba {
+        self.required_color(BerylThemeProperty::Border, self.border)
+    }
+
+    pub(crate) fn color(&self) -> Rgba {
+        self.required_color(BerylThemeProperty::Color, self.color)
+    }
+
+    pub(crate) fn foreground(&self) -> Rgba {
+        self.required_color(BerylThemeProperty::Foreground, self.foreground)
+    }
+
+    pub(crate) fn text_background(&self) -> Rgba {
+        self.required_color(BerylThemeProperty::TextBackground, self.text_background)
+    }
+
+    pub(crate) fn font_family(&self) -> &str {
+        self.font_family.as_deref().unwrap_or_else(|| {
+            self.missing_property(BerylThemeProperty::FontFamily);
+        })
+    }
+
+    pub(crate) fn font_size(&self) -> f32 {
+        self.font_size.unwrap_or_else(|| {
+            self.missing_property(BerylThemeProperty::FontSize);
+        })
+    }
+
     pub(crate) fn font_weight(&self) -> FontWeight {
-        FontWeight(self.font_weight as f32)
+        FontWeight(self.font_weight_value() as f32)
     }
 
     fn anchor_role(&self) -> TranscriptAnchorRole {
         TranscriptAnchorRole {
-            font_family: self.font_family.clone(),
-            font_size: self.font_size,
-            font_weight: self.font_weight,
+            font_family: self.font_family().to_string(),
+            font_size: self.font_size(),
+            font_weight: self.font_weight_value(),
         }
+    }
+
+    fn font_weight_value(&self) -> u16 {
+        self.font_weight.unwrap_or_else(|| {
+            self.missing_property(BerylThemeProperty::FontWeight);
+        })
+    }
+
+    fn required_color(&self, property: BerylThemeProperty, value: Option<Rgba>) -> Rgba {
+        value.unwrap_or_else(|| {
+            self.missing_property(property);
+        })
+    }
+
+    fn missing_property(&self, property: BerylThemeProperty) -> ! {
+        panic!(
+            "Beryl theme role {} missing resolved property {}",
+            self.role.id(),
+            property.id()
+        )
     }
 }
 
@@ -250,8 +304,10 @@ fn inline_code_style(
 
 fn role_style_from_resolved(role: BerylThemeRole, resolved: &ResolvedStyle) -> TranscriptRoleStyle {
     TranscriptRoleStyle {
+        role,
         background: style_color(resolved, role, BerylThemeProperty::Background),
         border: style_color(resolved, role, BerylThemeProperty::Border),
+        color: style_color(resolved, role, BerylThemeProperty::Color),
         foreground: style_color(resolved, role, BerylThemeProperty::Foreground),
         text_background: style_color(resolved, role, BerylThemeProperty::TextBackground),
         font_family: style_font_family(resolved, role),
@@ -260,76 +316,78 @@ fn role_style_from_resolved(role: BerylThemeRole, resolved: &ResolvedStyle) -> T
     }
 }
 
-fn style_color(style: &ResolvedStyle, role: BerylThemeRole, property: BerylThemeProperty) -> Rgba {
+fn style_color(
+    style: &ResolvedStyle,
+    role: BerylThemeRole,
+    property: BerylThemeProperty,
+) -> Option<Rgba> {
     match resolved_property(style, role, property) {
-        StylePropertyValue::Color(value) => crate::ParsedHexColor::parse(value)
-            .map(|color| {
-                rgb(((color.red() as u32) << 16)
-                    | ((color.green() as u32) << 8)
-                    | color.blue() as u32)
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "Beryl theme role {} property {} must be a valid #RRGGBB color",
-                    role.id(),
-                    property.id()
-                )
-            }),
-        _ => panic!(
+        Some(StylePropertyValue::Color(value)) => Some(
+            crate::ParsedHexColor::parse(value)
+                .map(|color| {
+                    rgb(((color.red() as u32) << 16)
+                        | ((color.green() as u32) << 8)
+                        | color.blue() as u32)
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Beryl theme role {} property {} must be a valid #RRGGBB color",
+                        role.id(),
+                        property.id()
+                    )
+                }),
+        ),
+        Some(_) => panic!(
             "Beryl theme role {} property {} must resolve as a color",
             role.id(),
             property.id()
         ),
+        None => None,
     }
 }
 
-fn style_font_family(style: &ResolvedStyle, role: BerylThemeRole) -> String {
+fn style_font_family(style: &ResolvedStyle, role: BerylThemeRole) -> Option<String> {
     match resolved_property(style, role, BerylThemeProperty::FontFamily) {
-        StylePropertyValue::FontFamily(value) => value.clone(),
-        _ => panic!(
+        Some(StylePropertyValue::FontFamily(value)) => Some(value.clone()),
+        Some(_) => panic!(
             "Beryl theme role {} property {} must resolve as a font family",
             role.id(),
             BerylThemeProperty::FontFamily.id()
         ),
+        None => None,
     }
 }
 
-fn style_font_size(style: &ResolvedStyle, role: BerylThemeRole) -> f32 {
+fn style_font_size(style: &ResolvedStyle, role: BerylThemeRole) -> Option<f32> {
     match resolved_property(style, role, BerylThemeProperty::FontSize) {
-        StylePropertyValue::LogicalPixels(value) => *value,
-        _ => panic!(
+        Some(StylePropertyValue::LogicalPixels(value)) => Some(*value),
+        Some(_) => panic!(
             "Beryl theme role {} property {} must resolve as logical pixels",
             role.id(),
             BerylThemeProperty::FontSize.id()
         ),
+        None => None,
     }
 }
 
-fn style_font_weight(style: &ResolvedStyle, role: BerylThemeRole) -> u16 {
+fn style_font_weight(style: &ResolvedStyle, role: BerylThemeRole) -> Option<u16> {
     match resolved_property(style, role, BerylThemeProperty::FontWeight) {
-        StylePropertyValue::FontWeight(value) => *value,
-        _ => panic!(
+        Some(StylePropertyValue::FontWeight(value)) => Some(*value),
+        Some(_) => panic!(
             "Beryl theme role {} property {} must resolve as a font weight",
             role.id(),
             BerylThemeProperty::FontWeight.id()
         ),
+        None => None,
     }
 }
 
 fn resolved_property(
     style: &ResolvedStyle,
-    role: BerylThemeRole,
+    _role: BerylThemeRole,
     property: BerylThemeProperty,
-) -> &StylePropertyValue {
-    style
-        .property(&StylePropertyId::from(property.id()))
-        .unwrap_or_else(|| {
-            panic!(
-                "Beryl theme role {} missing resolved property {}",
-                role.id(),
-                property.id()
-            )
-        })
+) -> Option<&StylePropertyValue> {
+    style.property(&StylePropertyId::from(property.id()))
 }
 
 fn code_panel_button_theme(theme: &ActiveThemeProjection) -> CodePanelHeaderButtonTheme {
@@ -343,19 +401,19 @@ fn code_panel_button_theme(theme: &ActiveThemeProjection) -> CodePanelHeaderButt
 fn button_state(theme: &ActiveThemeProjection, role: BerylThemeRole) -> CodePanelHeaderButtonState {
     let style = role_style(theme, role);
     CodePanelHeaderButtonState {
-        background: style.background,
-        border: style.border,
-        foreground: style.foreground,
+        background: style.background(),
+        border: style.border(),
+        foreground: style.foreground(),
     }
 }
 
 fn syntax_theme(theme: &ActiveThemeProjection, body: &TranscriptRoleStyle) -> CodePanelSyntaxTheme {
     CodePanelSyntaxTheme::from_role_foregrounds(
-        body.foreground,
-        body.font_family.clone(),
-        body.font_size,
+        body.foreground(),
+        body.font_family().to_string(),
+        body.font_size(),
         body.font_weight(),
-        |role| role_style(theme, syntax_role(role)).foreground,
+        |role| role_style(theme, syntax_role(role)).foreground(),
     )
 }
 

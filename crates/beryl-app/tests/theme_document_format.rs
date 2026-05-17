@@ -7,8 +7,8 @@ use beryl_app::{
 #[test]
 fn compact_theme_document_roundtrips_role_records_and_sources() {
     let mut settings = AppearanceSettings::default();
-    settings.general_ui.foreground = "#010203".to_string();
-    settings.general_ui.font_family = "Cascadia Code".to_string();
+    settings.code.foreground = "#010203".to_string();
+    settings.code.font_family = "Cascadia Code".to_string();
     let document = ThemeDocument::new(
         None,
         Some("Compact Theme".to_string()),
@@ -25,14 +25,14 @@ fn compact_theme_document_roundtrips_role_records_and_sources() {
 
     let parsed = ThemeDocument::from_toml_str(&text).unwrap();
     assert_eq!(parsed.name(), Some("Compact Theme"));
-    let app = parsed
+    let code = parsed
         .definition()
         .roles()
         .iter()
-        .find(|role| role.role_id().as_str() == BerylThemeRole::AppWindow.id())
+        .find(|role| role.role_id().as_str() == BerylThemeRole::CodePanelBody.id())
         .unwrap();
     assert_eq!(
-        app.properties()
+        code.properties()
             .get(&BerylThemeProperty::Foreground.id().into()),
         Some(&StylePropertySource::Concrete(StylePropertyValue::color(
             "#010203"
@@ -50,13 +50,19 @@ name = "Keyword Theme"
 id = "app.window"
 foreground = { value = "#112233" }
 background = "fallback"
-font_family = { value = "Inter" }
-font_size = { value = 15.0 }
 font_weight = { value = 500 }
 
 [[role]]
+id = "code_panel.body"
+foreground = { value = "#ddeeff" }
+background = "fallback"
+font_family = { value = "Inter" }
+font_size = { value = 15.0 }
+font_weight = { value = 400 }
+
+[[role]]
 id = "markdown.inline_code"
-background = "ambient_parent"
+text_background = "ambient_parent"
 foreground = "static_parent"
 "##;
 
@@ -71,7 +77,7 @@ foreground = "static_parent"
     assert_eq!(
         inline
             .properties()
-            .get(&BerylThemeProperty::Background.id().into()),
+            .get(&BerylThemeProperty::TextBackground.id().into()),
         Some(&StylePropertySource::AmbientParent)
     );
     assert_eq!(
@@ -91,6 +97,9 @@ name = "Sparse Theme"
 [[role]]
 id = "app.window"
 foreground = { value = "#112233" }
+
+[[role]]
+id = "code_panel.body"
 font_family = "fallback"
 "##;
 
@@ -111,14 +120,20 @@ font_family = "fallback"
             "#112233"
         )))
     );
-    assert_eq!(
-        app.properties()
-            .get(&BerylThemeProperty::FontFamily.id().into()),
-        Some(&StylePropertySource::Fallback)
-    );
     assert!(
         !app.properties()
             .contains_key(&BerylThemeProperty::Background.id().into())
+    );
+    let code = parsed
+        .definition()
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::CodePanelBody.id())
+        .unwrap();
+    assert_eq!(
+        code.properties()
+            .get(&BerylThemeProperty::FontFamily.id().into()),
+        Some(&StylePropertySource::Fallback)
     );
     assert!(
         !role_record_text(&serialized, BerylThemeRole::AppWindow.id()).contains("background =")
@@ -160,6 +175,101 @@ not_a_property = { value = "#112233" }
 }
 
 #[test]
+fn compact_theme_document_accepts_separator_color() {
+    let text = r##"
+schema = 1
+
+[[role]]
+id = "main.separator"
+color = { value = "#112233" }
+"##;
+
+    let document = ThemeDocument::from_toml_str(text).unwrap();
+    let separator = document
+        .definition()
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::MainSeparator.id())
+        .unwrap();
+
+    assert_eq!(
+        separator
+            .properties()
+            .get(&BerylThemeProperty::Color.id().into()),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            "#112233"
+        )))
+    );
+}
+
+#[test]
+fn compact_theme_document_rejects_unsupported_separator_properties() {
+    for property in [
+        "border",
+        "foreground",
+        "text_background",
+        "font_family",
+        "font_size",
+        "font_weight",
+    ] {
+        let text = format!(
+            r##"
+schema = 1
+
+[[role]]
+id = "main.separator"
+{property} = "fallback"
+"##
+        );
+
+        let error = ThemeDocument::from_toml_str(&text).unwrap_err();
+
+        assert_validation_kind(error, ThemeDiagnosticKind::UnknownProperty);
+    }
+}
+
+#[test]
+fn compact_theme_document_rejects_non_single_primitive_color_property() {
+    let text = r##"
+schema = 1
+
+[[role]]
+id = "app.window"
+color = { value = "#112233" }
+"##;
+
+    let error = ThemeDocument::from_toml_str(text).unwrap_err();
+
+    assert_validation_kind(error, ThemeDiagnosticKind::UnknownProperty);
+}
+
+#[test]
+fn compact_theme_document_rejects_properties_outside_role_capabilities() {
+    for (role_id, property) in [
+        ("syntax.string", "background"),
+        ("code_panel.body", "border"),
+        ("markdown.thematic_break", "border"),
+        ("scrollbar.thumb.normal", "background"),
+        ("popup.row.normal", "foreground"),
+        ("settings.input.focused", "background"),
+    ] {
+        let text = format!(
+            r##"
+schema = 1
+
+[[role]]
+id = "{role_id}"
+{property} = "fallback"
+"##
+        );
+
+        let error = ThemeDocument::from_toml_str(&text).unwrap_err();
+
+        assert_validation_kind(error, ThemeDiagnosticKind::UnknownProperty);
+    }
+}
+
+#[test]
 fn compact_theme_document_rejects_invalid_value_types() {
     let text = r##"
 schema = 1
@@ -186,6 +296,10 @@ schema = 1
 
 [[role]]
 id = "app.window"
+font_weight = {{ value = 400 }}
+
+[[role]]
+id = "code_panel.body"
 font_family = {{ value = "{font_family}" }}
 "##
     );

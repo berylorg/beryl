@@ -122,7 +122,7 @@ fn markdown_prose_block_inner(
         .rounded_md()
         .bg(background)
         .border_1()
-        .border_color(theme.user_input.border)
+        .border_color(theme.user_input.border())
         .p_3()
         .flex()
         .flex_col()
@@ -132,7 +132,7 @@ fn markdown_prose_block_inner(
         block = block.child(
             div()
                 .text_xs()
-                .text_color(theme.user_input.foreground)
+                .text_color(theme.user_input.foreground())
                 .child(label.to_string()),
         );
     }
@@ -486,10 +486,10 @@ fn render_list_item(
         .flex_none()
         .w(marker_width)
         .flex()
-        .text_size(px(theme.list_marker.font_size))
-        .font_family(theme.list_marker.font_family.clone())
+        .text_size(px(theme.list_marker.font_size()))
+        .font_family(theme.list_marker.font_family().to_string())
         .font_weight(theme.list_marker.font_weight())
-        .text_color(theme.list_marker.foreground);
+        .text_color(theme.list_marker.foreground());
     if marker_align_end {
         marker = marker.justify_end();
     }
@@ -555,7 +555,7 @@ fn render_block_quote(
         .w_full()
         .min_w(px(0.0))
         .border_l_2()
-        .border_color(theme.block_quote.border)
+        .border_color(theme.block_quote.border())
         .pl_3()
         .py_1()
         .child(render_block_sequence(
@@ -728,8 +728,8 @@ fn render_code_block_with_image_markers(
         .min_w(px(0.0))
         .rounded_md()
         .border_1()
-        .border_color(theme.code_panel_border.border)
-        .bg(theme.code_panel_body.background)
+        .border_color(theme.code_panel_border.border())
+        .bg(theme.code_panel_body.background())
         .p_3()
         .child(render_inline_lines_with_style_markers_and_selection(
             lines.as_slice(),
@@ -749,7 +749,7 @@ fn render_thematic_break(theme: &TranscriptTheme) -> AnyElement {
     div()
         .w_full()
         .h(px(1.0))
-        .bg(theme.thematic_break.border)
+        .bg(theme.thematic_break.color())
         .my_1()
         .into_any_element()
 }
