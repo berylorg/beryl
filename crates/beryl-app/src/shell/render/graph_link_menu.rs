@@ -12,7 +12,8 @@ use crate::{
         MemberThreadInventoryGroup, MemberThreadInventorySnapshot, MemberThreadInventoryThread,
     },
     shell::{
-        ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellView,
+        ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellRenderFrame,
+        ShellView,
         graph_link_menu::GraphThreadLinkMenuView,
         graph_node_action_policy::{
             GRAPH_NODE_ACTION_BUSY_REASON, GRAPH_NODE_ACTION_STALE_REASON,
@@ -27,7 +28,7 @@ use super::graph_link_menu_rows::{
     action_row, actions_back_row, back_row, delete_leaf_row, delete_recursive_hold_row,
     disabled_action_row, disabled_menu_row, menu_header, status_row,
 };
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, render_themed_div_scrollbar};
 
 #[derive(Clone)]
 enum ThreadLinkMenuMode {
@@ -57,7 +58,7 @@ struct LinkMenuTooltipTheme {
 }
 
 impl LinkMenuTooltipTheme {
-    fn from_shell(shell: &ShellView) -> Self {
+    fn from_shell(shell: &ShellRenderFrame<'_>) -> Self {
         Self {
             background: shell.popup_surface_background(),
             border: shell.surface_border(),
@@ -125,7 +126,7 @@ pub(super) fn render_graph_thread_link_menu_listeners(
 }
 
 pub(super) fn render_graph_thread_link_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
@@ -161,7 +162,8 @@ pub(super) fn render_graph_thread_link_menu(
                 .p_2()
                 .child(content),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "graph-thread-link-menu-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
@@ -189,7 +191,7 @@ pub(super) fn render_graph_thread_link_menu(
 }
 
 fn render_menu_content(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     view: &GraphThreadLinkMenuView,
@@ -268,7 +270,7 @@ fn render_menu_content(
 }
 
 fn render_node_action_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
@@ -383,7 +385,7 @@ fn render_node_action_menu(
 }
 
 fn render_link_thread_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
@@ -406,7 +408,7 @@ fn render_link_thread_menu(
 }
 
 fn render_missing_runtime_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -424,7 +426,7 @@ fn render_missing_runtime_menu(
         ))
 }
 
-fn disabled_link_thread_row(shell: &ShellView) -> impl IntoElement {
+fn disabled_link_thread_row(shell: &ShellRenderFrame<'_>) -> impl IntoElement {
     let reason = "Select a workspace runtime environment before linking threads.".to_string();
     let tooltip_theme = LinkMenuTooltipTheme::from_shell(shell);
     disabled_secondary_button(
@@ -435,13 +437,16 @@ fn disabled_link_thread_row(shell: &ShellView) -> impl IntoElement {
     .tooltip(move |_, cx| build_link_menu_tooltip(reason.clone(), tooltip_theme, cx))
 }
 
-fn disabled_delete_leaf_row(shell: &ShellView, reason: &'static str) -> impl IntoElement {
+fn disabled_delete_leaf_row(
+    shell: &ShellRenderFrame<'_>,
+    reason: &'static str,
+) -> impl IntoElement {
     let tooltip_theme = LinkMenuTooltipTheme::from_shell(shell);
     disabled_secondary_button(shell, "graph-node-delete-row", "Delete")
         .tooltip(move |_, cx| build_link_menu_tooltip(reason.to_string(), tooltip_theme, cx))
 }
 
-fn disabled_graph_work_row(shell: &ShellView, label: &'static str) -> impl IntoElement {
+fn disabled_graph_work_row(shell: &ShellRenderFrame<'_>, label: &'static str) -> impl IntoElement {
     disabled_graph_action_row(
         shell,
         "graph-node-action-disabled-graph-work-row",
@@ -451,7 +456,7 @@ fn disabled_graph_work_row(shell: &ShellView, label: &'static str) -> impl IntoE
 }
 
 fn disabled_graph_action_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
     reason: &'static str,
@@ -462,7 +467,7 @@ fn disabled_graph_action_row(
 }
 
 fn render_member_list(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     snapshot: &MemberThreadInventorySnapshot,
     surface: &ConversationSurfaceState,
     mode: ThreadLinkMenuMode,
@@ -487,7 +492,7 @@ fn render_member_list(
 }
 
 fn render_thread_list(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     group: &MemberThreadInventoryGroup,
     surface: &ConversationSurfaceState,
     mode: ThreadLinkMenuMode,
@@ -534,7 +539,7 @@ fn render_thread_list(
 }
 
 fn render_stale_member_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -548,7 +553,7 @@ fn render_stale_member_menu(
 }
 
 fn render_member_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     group: &MemberThreadInventoryGroup,
     mode: ThreadLinkMenuMode,
@@ -603,7 +608,7 @@ fn render_member_row(
 }
 
 fn render_thread_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     thread: &MemberThreadInventoryThread,
     mode: ThreadLinkMenuMode,
@@ -636,7 +641,7 @@ fn render_thread_row(
 }
 
 fn render_member_back_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     mode: ThreadLinkMenuMode,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {

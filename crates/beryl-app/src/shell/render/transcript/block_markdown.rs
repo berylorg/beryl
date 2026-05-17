@@ -1,7 +1,7 @@
-use gpui::{AnyElement, App, FontWeight, Pixels, div, prelude::*, px, rgb};
+use gpui::{AnyElement, App, Pixels, div, prelude::*, px};
 
-use crate::AppearanceSettings;
-use crate::shell::rgba_from_role_color;
+use std::time::Instant;
+
 use crate::shell::transcript_markdown::{
     BlockRenderCode, BlockRenderList, BlockRenderListItem, BlockRenderListKind, BlockRenderNode,
     BlockRenderPlan, InlineRenderLine, InlineRenderRole, MARKDOWN_LIST_LEADING_MARGIN_M,
@@ -10,10 +10,10 @@ use crate::shell::transcript_markdown::{
     markdown_list_marker_width_m,
 };
 
-use super::super::code_panel::{
-    CodePanelDisplayProjectionInput, CodePanelSyntaxTheme, CodePanelWrapMode,
-};
+use super::super::code_panel::{CodePanelDisplayProjectionInput, CodePanelWrapMode};
+use super::super::code_panel_projection_cache::CodePanelSourceRevision;
 use super::TranscriptCodeLayout;
+use super::TranscriptTheme;
 use super::block_fallback::{
     empty_line, fallback_inline_lines, fallback_inline_lines_with_source_span,
 };
@@ -29,7 +29,7 @@ use super::text_blocks::labeled_code_block;
 
 pub(super) fn render_markdown_plan_with_style_and_selection(
     plan: &BlockRenderPlan,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -39,7 +39,7 @@ pub(super) fn render_markdown_plan_with_style_and_selection(
 ) -> AnyElement {
     render_markdown_plan(
         plan,
-        appearance,
+        theme,
         code_layout,
         conversation_m_advance,
         style,
@@ -54,7 +54,7 @@ pub(super) fn markdown_prose_block_with_selection(
     label: &str,
     plan: &BlockRenderPlan,
     background: gpui::Rgba,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -66,7 +66,7 @@ pub(super) fn markdown_prose_block_with_selection(
         label,
         plan,
         background,
-        appearance,
+        theme,
         code_layout,
         conversation_m_advance,
         style,
@@ -81,7 +81,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
     label: &str,
     plan: &BlockRenderPlan,
     background: gpui::Rgba,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -94,7 +94,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
         label,
         plan,
         background,
-        appearance,
+        theme,
         code_layout,
         conversation_m_advance,
         style,
@@ -109,7 +109,7 @@ fn markdown_prose_block_inner(
     label: &str,
     plan: &BlockRenderPlan,
     background: gpui::Rgba,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -122,7 +122,7 @@ fn markdown_prose_block_inner(
         .rounded_md()
         .bg(background)
         .border_1()
-        .border_color(rgb(0x1f2937))
+        .border_color(theme.user_input.border)
         .p_3()
         .flex()
         .flex_col()
@@ -132,7 +132,7 @@ fn markdown_prose_block_inner(
         block = block.child(
             div()
                 .text_xs()
-                .text_color(rgb(0x94a3b8))
+                .text_color(theme.user_input.foreground)
                 .child(label.to_string()),
         );
     }
@@ -140,7 +140,7 @@ fn markdown_prose_block_inner(
     block
         .child(render_markdown_plan(
             plan,
-            appearance,
+            theme,
             code_layout,
             conversation_m_advance,
             style,
@@ -154,7 +154,7 @@ fn markdown_prose_block_inner(
 
 fn render_markdown_plan(
     plan: &BlockRenderPlan,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -165,7 +165,7 @@ fn render_markdown_plan(
 ) -> AnyElement {
     render_block_sequence(
         plan.blocks.as_slice(),
-        appearance,
+        theme,
         code_layout,
         conversation_m_advance,
         BlockSpacing::Normal,
@@ -195,7 +195,7 @@ impl BlockSpacing {
 
 fn render_block_sequence(
     blocks: &[BlockRenderNode],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     spacing: BlockSpacing,
@@ -226,7 +226,7 @@ fn render_block_sequence(
             }
             render_block(
                 block,
-                appearance,
+                theme,
                 code_layout,
                 conversation_m_advance,
                 style,
@@ -243,7 +243,7 @@ fn render_block_sequence(
 
 fn render_block(
     block: &BlockRenderNode,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -254,20 +254,26 @@ fn render_block(
     cx: &mut App,
 ) -> AnyElement {
     match block {
-        BlockRenderNode::Paragraph { lines, .. } => {
-            render_paragraph(lines, appearance, style, selection_context, image_markers)
-        }
-        BlockRenderNode::Heading { level, lines, .. } => render_heading(
-            *level,
+        BlockRenderNode::Paragraph { lines, .. } => render_paragraph(
             lines,
-            appearance,
+            theme,
             style,
             selection_context,
             image_markers,
+            code_panel_controls.as_ref(),
+        ),
+        BlockRenderNode::Heading { level, lines, .. } => render_heading(
+            *level,
+            lines,
+            theme,
+            style,
+            selection_context,
+            image_markers,
+            code_panel_controls.as_ref(),
         ),
         BlockRenderNode::List(list) => render_list(
             list,
-            appearance,
+            theme,
             code_layout,
             conversation_m_advance,
             style,
@@ -279,7 +285,7 @@ fn render_block(
         ),
         BlockRenderNode::BlockQuote { blocks, .. } => render_block_quote(
             blocks,
-            appearance,
+            theme,
             code_layout,
             conversation_m_advance,
             style,
@@ -291,8 +297,9 @@ fn render_block(
         ),
         BlockRenderNode::Code(code) => render_code_block(
             code,
-            appearance,
+            theme,
             code_layout,
+            style,
             code_panel_controls,
             structural_path.as_str(),
             selection_context,
@@ -306,11 +313,12 @@ fn render_block(
         } => render_code_fallback_text(
             fallback,
             *source_span,
-            appearance,
+            theme,
             selection_context,
             image_markers,
+            code_panel_controls.as_ref(),
         ),
-        BlockRenderNode::ThematicBreak => render_thematic_break(),
+        BlockRenderNode::ThematicBreak => render_thematic_break(theme),
         BlockRenderNode::Unsupported {
             source,
             source_span,
@@ -318,48 +326,57 @@ fn render_block(
         } => render_code_fallback_text(
             source,
             *source_span,
-            appearance,
+            theme,
             selection_context,
             image_markers,
+            code_panel_controls.as_ref(),
         ),
     }
 }
 
 fn render_paragraph(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    instrumentation: Option<&TranscriptCodePanelControls>,
 ) -> AnyElement {
-    div()
+    let started = Instant::now();
+    let element = div()
         .w_full()
         .min_w(px(0.0))
         .child(match selection_context {
             Some(selection_context) => render_inline_lines_with_style_markers_and_selection(
                 lines,
-                appearance,
+                theme,
                 style,
                 Some(selection_context),
                 image_markers,
             ),
-            None => render_inline_lines_with_style(lines, appearance, style),
+            None => render_inline_lines_with_style(lines, theme, style),
         })
-        .into_any_element()
+        .into_any_element();
+    if let Some(instrumentation) = instrumentation {
+        instrumentation.observe_inline_text_construction(started.elapsed());
+    }
+    element
 }
 
 fn render_heading(
     level: u8,
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    instrumentation: Option<&TranscriptCodePanelControls>,
 ) -> AnyElement {
+    let started = Instant::now();
     let selection_context = selection_context
         .map(|context| context.with_pending_prefix(format!("{} ", "#".repeat(level as usize))));
 
-    div()
+    let element = div()
         .w_full()
         .min_w(px(0.0))
         .pb_1()
@@ -367,7 +384,7 @@ fn render_heading(
             Some(selection_context) if image_markers.is_empty() => {
                 render_heading_lines_with_style_and_selection(
                     lines,
-                    appearance,
+                    theme,
                     level,
                     style,
                     Some(selection_context),
@@ -375,20 +392,24 @@ fn render_heading(
             }
             Some(selection_context) => render_heading_lines_with_style_markers_and_selection(
                 lines,
-                appearance,
+                theme,
                 level,
                 style,
                 Some(selection_context),
                 image_markers,
             ),
-            None => render_heading_lines_with_style(lines, appearance, level, style),
+            None => render_heading_lines_with_style(lines, theme, level, style),
         })
-        .into_any_element()
+        .into_any_element();
+    if let Some(instrumentation) = instrumentation {
+        instrumentation.observe_inline_text_construction(started.elapsed());
+    }
+    element
 }
 
 fn render_list(
     list: &BlockRenderList,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -426,7 +447,7 @@ fn render_list(
             }
             render_list_item(
                 item,
-                appearance,
+                theme,
                 code_layout,
                 spacing,
                 marker_width,
@@ -445,7 +466,7 @@ fn render_list(
 
 fn render_list_item(
     item: &BlockRenderListItem,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     spacing: BlockSpacing,
     marker_width: Pixels,
@@ -465,10 +486,10 @@ fn render_list_item(
         .flex_none()
         .w(marker_width)
         .flex()
-        .text_size(px(appearance.conversation_text.font_size))
-        .font_family(appearance.conversation_text.font_family.clone())
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(0x94a3b8));
+        .text_size(px(theme.list_marker.font_size))
+        .font_family(theme.list_marker.font_family.clone())
+        .font_weight(theme.list_marker.font_weight())
+        .text_color(theme.list_marker.foreground);
     if marker_align_end {
         marker = marker.justify_end();
     }
@@ -486,7 +507,7 @@ fn render_list_item(
         )
         .child(div().flex_1().min_w(px(0.0)).child(render_block_sequence(
             item.blocks.as_slice(),
-            appearance,
+            theme,
             code_layout,
             conversation_m_advance,
             spacing,
@@ -518,7 +539,7 @@ fn list_marker_char_counts_vary(list: &BlockRenderList) -> bool {
 
 fn render_block_quote(
     blocks: &[BlockRenderNode],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
     style: InlineMarkdownStyle,
@@ -534,12 +555,12 @@ fn render_block_quote(
         .w_full()
         .min_w(px(0.0))
         .border_l_2()
-        .border_color(rgb(0x334155))
+        .border_color(theme.block_quote.border)
         .pl_3()
         .py_1()
         .child(render_block_sequence(
             blocks,
-            appearance,
+            theme,
             code_layout,
             conversation_m_advance,
             BlockSpacing::Normal,
@@ -555,8 +576,9 @@ fn render_block_quote(
 
 fn render_code_block(
     code: &BlockRenderCode,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
+    style: InlineMarkdownStyle,
     code_panel_controls: Option<TranscriptCodePanelControls>,
     structural_path: &str,
     selection_context: Option<TranscriptInlineSelectionContext>,
@@ -569,19 +591,18 @@ fn render_code_block(
     {
         return render_code_block_with_image_markers(
             code,
-            appearance,
+            theme,
             structural_path,
+            style,
             selection_context,
             image_markers,
+            code_panel_controls.as_ref(),
         );
     }
 
-    let code_foreground = code_panel_foreground(appearance);
-    let code_background = code_panel_background(appearance);
-    let syntax_theme = code_panel_syntax_theme(appearance);
-    let selection =
-        selection_context.map(|context| context.code_panel_selection(structural_path, code));
     let Some(code_panel_controls) = code_panel_controls else {
+        let selection =
+            selection_context.map(|context| context.code_panel_selection(structural_path, code));
         return labeled_code_block(
             "",
             None,
@@ -591,9 +612,7 @@ fn render_code_block(
                 columns: code_layout.transcript_bordered_panel_columns,
             },
             CodePanelDisplayProjectionInput::BuildInline,
-            code_background,
-            code_foreground,
-            syntax_theme,
+            theme,
             None,
             None,
             None,
@@ -604,86 +623,93 @@ fn render_code_block(
     };
 
     let panel_id = code_panel_controls.panel_id_for(structural_path);
+    let code_panel_started = Instant::now();
     let wrap_mode = code_panel_controls.wrap_mode(panel_id.as_str(), code_layout);
-    let header = code_panel_controls.header(panel_id.as_str(), code.header_copy_source());
+    let source_revision = code_panel_source_revision(code);
+    let display_projection =
+        code_panel_controls.display_projection(panel_id.as_str(), source_revision, wrap_mode, cx);
+    let display_projection_input = display_projection.input;
+    let display_source_revision = display_projection.source_revision;
+    let display_revision = display_source_revision.as_ref();
+    let header = code_panel_controls.header(panel_id.as_str(), display_revision);
     let scroll_chrome = code_panel_controls.scroll_chrome(panel_id.as_str());
     let resize = code_panel_controls.resize(panel_id.as_str(), code_layout);
-    let syntax_highlight = code_panel_controls.syntax_highlight(
-        panel_id.as_str(),
-        code.source.as_str(),
-        code.language.as_deref(),
-        cx,
-    );
-    let display_projection = code_panel_controls.display_projection(
-        panel_id.as_str(),
-        code.source.as_str(),
-        wrap_mode,
-        cx,
-    );
+    let syntax_highlight = display_revision.map(|revision| {
+        code_panel_controls.syntax_highlight(
+            panel_id.as_str(),
+            revision.display_source(),
+            revision.syntax_label(),
+            cx,
+        )
+    });
+    let display_language = display_revision
+        .and_then(CodePanelSourceRevision::syntax_label)
+        .or(code.language.as_deref());
+    let display_source = display_revision
+        .map(CodePanelSourceRevision::display_source)
+        .unwrap_or_default();
+    let selection = match (selection_context, display_revision) {
+        (Some(context), Some(revision)) => {
+            let display_code = code_for_source_revision(code, revision);
+            Some(context.code_panel_selection(structural_path, &display_code))
+        }
+        _ => None,
+    };
 
-    labeled_code_block(
+    let element = labeled_code_block(
         "",
         Some(panel_id),
-        code.language.as_deref(),
-        code.source.as_str(),
+        display_language,
+        display_source,
         wrap_mode,
-        display_projection,
-        code_background,
-        code_foreground,
-        syntax_theme,
-        Some(syntax_highlight.as_ref()),
+        display_projection_input,
+        theme,
+        syntax_highlight.as_deref(),
         Some(header),
         Some(scroll_chrome),
         Some(resize),
         selection,
     )
-    .into_any_element()
+    .into_any_element();
+    code_panel_controls.observe_code_panel_render(code_panel_started.elapsed());
+    element
 }
 
-fn code_panel_syntax_theme(appearance: &AppearanceSettings) -> CodePanelSyntaxTheme {
-    let code_foreground = code_panel_foreground(appearance);
-    let conversation_foreground = rgba_from_role_color(
-        appearance.conversation_text.parsed_foreground(),
-        rgb(0xe2e8f0),
-    );
-    let heading_foreground = rgba_from_role_color(
-        appearance.markdown_header.parsed_foreground(),
-        rgb(0x93c5fd),
-    );
-    let emphasis_foreground =
-        rgba_from_role_color(appearance.emphasis.parsed_foreground(), rgb(0xbfdbfe));
-    let strong_emphasis_foreground = rgba_from_role_color(
-        appearance.strong_emphasis.parsed_foreground(),
-        rgb(0xf8fafc),
-    );
-
-    CodePanelSyntaxTheme {
-        plain_foreground: code_foreground,
-        structural_foreground: conversation_foreground,
-        heading_foreground,
-        emphasis_foreground,
-        strong_emphasis_foreground,
-        code_foreground,
-        link_foreground: emphasis_foreground,
-        escape_foreground: emphasis_foreground,
-    }
+fn code_panel_source_revision(code: &BlockRenderCode) -> CodePanelSourceRevision {
+    CodePanelSourceRevision::new(
+        code.source.as_str(),
+        code.header_copy_source(),
+        code.language.as_deref(),
+        code.copy_opening_fence.as_str(),
+        code.copy_closing_fence.as_str(),
+    )
 }
 
-fn code_panel_foreground(appearance: &AppearanceSettings) -> gpui::Rgba {
-    rgba_from_role_color(appearance.code.parsed_foreground(), rgb(0xe2e8f0))
-}
-
-fn code_panel_background(appearance: &AppearanceSettings) -> gpui::Rgba {
-    rgba_from_role_color(appearance.code.parsed_background(), rgb(0x0b1220))
+fn code_for_source_revision(
+    code: &BlockRenderCode,
+    revision: &CodePanelSourceRevision,
+) -> BlockRenderCode {
+    let mut display_code = code.clone();
+    display_code.language = revision.syntax_label().map(str::to_string);
+    display_code.meta = None;
+    display_code.source = revision.display_source().to_string();
+    display_code.source_span = None;
+    display_code.content_source_span = None;
+    display_code.copy_opening_fence = revision.copy_opening_fence().to_string();
+    display_code.copy_closing_fence = revision.copy_closing_fence().to_string();
+    display_code
 }
 
 fn render_code_block_with_image_markers(
     code: &BlockRenderCode,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     structural_path: &str,
+    style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    instrumentation: Option<&TranscriptCodePanelControls>,
 ) -> AnyElement {
+    let started = Instant::now();
     let lines = code
         .content_source_span
         .map(|source_span| {
@@ -697,29 +723,33 @@ fn render_code_block_with_image_markers(
     let selection_context =
         selection_context.map(|context| context.with_code_copy_group(structural_path, code));
 
-    div()
+    let element = div()
         .w_full()
         .min_w(px(0.0))
         .rounded_md()
         .border_1()
-        .border_color(rgb(0x1f2937))
-        .bg(code_panel_background(appearance))
+        .border_color(theme.code_panel_border.border)
+        .bg(theme.code_panel_body.background)
         .p_3()
         .child(render_inline_lines_with_style_markers_and_selection(
             lines.as_slice(),
-            appearance,
-            InlineMarkdownStyle::default(),
+            theme,
+            style,
             selection_context,
             image_markers,
         ))
-        .into_any_element()
+        .into_any_element();
+    if let Some(instrumentation) = instrumentation {
+        instrumentation.observe_inline_text_construction(started.elapsed());
+    }
+    element
 }
 
-fn render_thematic_break() -> AnyElement {
+fn render_thematic_break(theme: &TranscriptTheme) -> AnyElement {
     div()
         .w_full()
         .h(px(1.0))
-        .bg(rgb(0x334155))
+        .bg(theme.thematic_break.border)
         .my_1()
         .into_any_element()
 }
@@ -727,10 +757,12 @@ fn render_thematic_break() -> AnyElement {
 fn render_code_fallback_text(
     source: &str,
     source_span: Option<MarkdownSourceSpan>,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     selection_context: Option<TranscriptInlineSelectionContext>,
     image_markers: &[TranscriptInlineImageMarker],
+    instrumentation: Option<&TranscriptCodePanelControls>,
 ) -> AnyElement {
+    let started = Instant::now();
     let lines = source_span
         .map(|source_span| {
             fallback_inline_lines_with_source_span(
@@ -740,7 +772,7 @@ fn render_code_fallback_text(
             )
         })
         .unwrap_or_else(|| fallback_inline_lines(source, InlineRenderRole::Code));
-    div()
+    let element = div()
         .w_full()
         .min_w(px(0.0))
         .child(match selection_context {
@@ -751,25 +783,29 @@ fn render_code_fallback_text(
             {
                 render_inline_lines_with_style_markers_and_selection(
                     lines.as_slice(),
-                    appearance,
-                    InlineMarkdownStyle::default(),
+                    theme,
+                    InlineMarkdownStyle::unsupported_fallback(),
                     Some(selection_context),
                     image_markers,
                 )
             }
             Some(selection_context) => render_inline_lines_with_style_and_selection(
                 lines.as_slice(),
-                appearance,
-                InlineMarkdownStyle::default(),
+                theme,
+                InlineMarkdownStyle::unsupported_fallback(),
                 Some(selection_context),
             ),
             None => render_inline_lines_with_style(
                 lines.as_slice(),
-                appearance,
-                InlineMarkdownStyle::default(),
+                theme,
+                InlineMarkdownStyle::unsupported_fallback(),
             ),
         })
-        .into_any_element()
+        .into_any_element();
+    if let Some(instrumentation) = instrumentation {
+        instrumentation.observe_inline_text_construction(started.elapsed());
+    }
+    element
 }
 
 fn markers_intersect_source_span(

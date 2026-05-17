@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use beryl_model::workspace::WorkspaceId;
 use gpui::{
-    AnyElement, App, ImageRenderSource, MouseButton, ObjectFit, Pixels, Window, div, img,
-    prelude::*, px, relative, rgb,
+    AnyElement, App, ImageRenderSource, MouseButton, ObjectFit, Pixels, Rgba, Window, div, img,
+    prelude::*, px, relative,
 };
+use std::time::Instant;
 
 use crate::diagnostic_dynamic_tools::VisibleMediaItemDiagnostic;
 use crate::shell::transcript_branch_menu_state::TranscriptImageMenuTarget;
@@ -33,6 +34,19 @@ pub(super) struct TranscriptMediaRenderLayout {
     pub(super) padded_content_width: Pixels,
     pub(super) conversation_m_advance: Pixels,
     pub(super) window_scale: f32,
+    pub(super) theme: TranscriptMediaTheme,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct TranscriptMediaTheme {
+    pub(super) placeholder_background: Rgba,
+    pub(super) placeholder_foreground: Rgba,
+    pub(super) loading_background: Rgba,
+    pub(super) loading_foreground: Rgba,
+    pub(super) unavailable_background: Rgba,
+    pub(super) unavailable_foreground: Rgba,
+    pub(super) border: Rgba,
+    pub(super) caption_foreground: Rgba,
 }
 
 pub(super) fn render_media_run(
@@ -43,6 +57,7 @@ pub(super) fn render_media_run(
     selection_context: Option<TranscriptInlineSelectionContext>,
     cx: &mut App,
 ) -> AnyElement {
+    let render_started = Instant::now();
     let resolved_items = items
         .iter()
         .map(|item| ResolvedTranscriptMediaRenderItem {
@@ -70,30 +85,30 @@ pub(super) fn render_media_run(
 
     let promoted_index = promoted_media_index(&resolved_items, context.promotion().promoted());
 
-    if let Some(promoted_index) = promoted_index {
-        return render_promoted_media_run(&resolved_items, layout, promoted_index, context)
+    let element = if let Some(promoted_index) = promoted_index {
+        render_promoted_media_run(&resolved_items, layout, promoted_index, context.clone())
             .when_some(selectable_line, register_media_selection)
-            .into_any_element();
-    }
-
-    if resolved_items
+            .into_any_element()
+    } else if resolved_items
         .iter()
         .any(|item| item.outcome.fallback_text().is_some())
     {
-        return render_mixed_media_run(&resolved_items, layout, context)
+        render_mixed_media_run(&resolved_items, layout, context.clone())
             .when_some(selectable_line, register_media_selection)
-            .into_any_element();
-    }
-
-    render_media_tile_group(
-        &resolved_items,
-        layout,
-        resolved_items.len(),
-        resolved_items.len() > 1,
-        context,
-    )
-    .when_some(selectable_line, register_media_selection)
-    .into_any_element()
+            .into_any_element()
+    } else {
+        render_media_tile_group(
+            &resolved_items,
+            layout,
+            resolved_items.len(),
+            resolved_items.len() > 1,
+            context.clone(),
+        )
+        .when_some(selectable_line, register_media_selection)
+        .into_any_element()
+    };
+    context.observe_media_run_render(render_started.elapsed());
+    element
 }
 
 pub(super) fn preload_media_run(
@@ -202,6 +217,7 @@ fn preload_media_item(
 fn render_media_item(
     item: Option<&ResolvedTranscriptMediaRenderItem>,
     sizing: TranscriptMediaSizingInput,
+    theme: TranscriptMediaTheme,
     context: TranscriptMediaRenderContext,
     promotable: bool,
 ) -> AnyElement {
@@ -212,7 +228,7 @@ fn render_media_item(
         let fallback = outcome
             .and_then(TranscriptMediaLoadOutcome::fallback_text)
             .unwrap_or_else(|| "image (file unavailable)".to_string());
-        return render_media_fallback_row(fallback);
+        return render_media_fallback_row(fallback, theme);
     };
 
     if let Some(item) = item {
@@ -228,8 +244,8 @@ fn render_media_item(
         .max_w(relative(1.0))
         .rounded_sm()
         .border_1()
-        .border_color(rgb(0x334155))
-        .bg(rgb(0x020617))
+        .border_color(theme.border)
+        .bg(theme.placeholder_background)
         .relative()
         .overflow_hidden()
         .flex_none();
@@ -259,7 +275,7 @@ fn render_media_item(
             if image.source_backed_file_path().is_some() {
                 let fallback = status_text(image.alt(), "file unavailable");
                 image_element
-                    .with_fallback(move || render_media_status(fallback.clone()))
+                    .with_fallback(move || render_media_status(fallback.clone(), theme))
                     .into_any_element()
             } else {
                 image_element.into_any_element()
@@ -269,8 +285,9 @@ fn render_media_item(
             outcome
                 .fallback_text()
                 .unwrap_or_else(|| pending_media_text(outcome)),
+            media_status_theme(outcome, theme),
         ),
-        None => render_media_status("image (file unavailable)".to_string()),
+        None => render_media_status("image (file unavailable)".to_string(), theme),
     });
 
     if let Some((identity, image_target)) = loaded_target.clone() {
@@ -329,7 +346,7 @@ fn render_mixed_media_run(
                     context.clone(),
                 ));
             }
-            row = row.child(render_media_fallback_row(fallback));
+            row = row.child(render_media_fallback_row(fallback, layout.theme));
         } else if media_start.is_none() {
             media_start = Some(index);
         }
@@ -439,7 +456,7 @@ fn render_promoted_media_run(
                     context.clone(),
                 ));
             }
-            row = row.child(render_media_fallback_row(fallback));
+            row = row.child(render_media_fallback_row(fallback, layout.theme));
         } else if compact_start.is_none() {
             compact_start = Some(index);
         }
@@ -529,6 +546,7 @@ fn render_media_tile_group(
                     .map(|image| image.natural_dimensions()),
                 window_scale: layout.window_scale,
             },
+            layout.theme,
             context.clone(),
             promotable,
         ));
@@ -544,6 +562,7 @@ fn render_media_tile_group(
                 natural_dimensions: None,
                 window_scale: layout.window_scale,
             },
+            layout.theme,
             context,
             false,
         ));
@@ -610,7 +629,7 @@ fn register_selectable_media_line(selectable_line: TranscriptSelectableTextLine,
     });
 }
 
-fn render_media_status(text: String) -> AnyElement {
+fn render_media_status(text: String, theme: TranscriptMediaTheme) -> AnyElement {
     div()
         .size_full()
         .flex()
@@ -618,20 +637,39 @@ fn render_media_status(text: String) -> AnyElement {
         .justify_center()
         .px_3()
         .text_sm()
-        .text_color(rgb(0x94a3b8))
+        .text_color(theme.placeholder_foreground)
         .child(text)
         .into_any_element()
 }
 
-fn render_media_fallback_row(text: String) -> AnyElement {
+fn render_media_fallback_row(text: String, theme: TranscriptMediaTheme) -> AnyElement {
     div()
         .w_full()
         .min_w(px(0.0))
         .py_1()
         .text_sm()
-        .text_color(rgb(0x94a3b8))
+        .text_color(theme.caption_foreground)
         .child(text)
         .into_any_element()
+}
+
+fn media_status_theme(
+    outcome: &TranscriptMediaLoadOutcome,
+    theme: TranscriptMediaTheme,
+) -> TranscriptMediaTheme {
+    if outcome.fallback_text().is_some() {
+        TranscriptMediaTheme {
+            placeholder_background: theme.unavailable_background,
+            placeholder_foreground: theme.unavailable_foreground,
+            ..theme
+        }
+    } else {
+        TranscriptMediaTheme {
+            placeholder_background: theme.loading_background,
+            placeholder_foreground: theme.loading_foreground,
+            ..theme
+        }
+    }
 }
 
 fn pending_media_text(outcome: &TranscriptMediaLoadOutcome) -> String {

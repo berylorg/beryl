@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
@@ -64,13 +65,13 @@ impl TranscriptStreamProjectionContext {
         Self { projection }
     }
 
-    pub(super) fn visible_text(
+    pub(super) fn visible_text<'a>(
         &self,
         key: TranscriptStreamProjectionKey,
-        authoritative_text: &str,
+        authoritative_text: &'a str,
         complete: bool,
         now: Instant,
-    ) -> String {
+    ) -> Cow<'a, str> {
         self.projection
             .borrow_mut()
             .visible_text(key, authoritative_text, complete, now)
@@ -86,52 +87,52 @@ impl TranscriptStreamProjection {
         }
     }
 
-    pub(crate) fn visible_text(
+    pub(crate) fn visible_text<'a>(
         &mut self,
         key: TranscriptStreamProjectionKey,
-        authoritative_text: &str,
+        authoritative_text: &'a str,
         complete: bool,
         now: Instant,
-    ) -> String {
+    ) -> Cow<'a, str> {
         self.access_tick = self.access_tick.saturating_add(1);
         let access_tick = self.access_tick;
+        if complete {
+            self.entries.remove(&key);
+            self.prune_completed_entries();
+            return Cow::Borrowed(authoritative_text);
+        }
+
         let key_for_return = key.clone();
         {
             let entry = self.entries.entry(key).or_default();
             entry.last_used = access_tick;
-            if complete {
+            if !authoritative_text.starts_with(entry.visible_text.as_str()) {
                 entry.visible_text.clear();
-                entry.visible_text.push_str(authoritative_text);
+                entry.first_uncommitted_at = None;
+            }
+
+            if authoritative_text.len() == entry.visible_text.len() {
                 entry.first_uncommitted_at = None;
             } else {
-                if !authoritative_text.starts_with(entry.visible_text.as_str()) {
+                let visible_len = entry.visible_text.len();
+                let stable_prefix_len = stable_prefix_len(authoritative_text).max(visible_len);
+                if stable_prefix_len > visible_len {
                     entry.visible_text.clear();
-                    entry.first_uncommitted_at = None;
-                }
-
-                if authoritative_text.len() == entry.visible_text.len() {
-                    entry.first_uncommitted_at = None;
+                    entry
+                        .visible_text
+                        .push_str(&authoritative_text[..stable_prefix_len]);
+                    entry.first_uncommitted_at =
+                        (stable_prefix_len < authoritative_text.len()).then_some(now);
                 } else {
-                    let visible_len = entry.visible_text.len();
-                    let stable_prefix_len = stable_prefix_len(authoritative_text).max(visible_len);
-                    if stable_prefix_len > visible_len {
+                    let first_uncommitted_at = *entry.first_uncommitted_at.get_or_insert(now);
+                    let uncommitted_chars = authoritative_text[visible_len..].chars().count();
+                    if now.saturating_duration_since(first_uncommitted_at)
+                        >= self.config.coalesce_interval
+                        || uncommitted_chars >= self.config.max_uncommitted_chars
+                    {
                         entry.visible_text.clear();
-                        entry
-                            .visible_text
-                            .push_str(&authoritative_text[..stable_prefix_len]);
-                        entry.first_uncommitted_at =
-                            (stable_prefix_len < authoritative_text.len()).then_some(now);
-                    } else {
-                        let first_uncommitted_at = *entry.first_uncommitted_at.get_or_insert(now);
-                        let uncommitted_chars = authoritative_text[visible_len..].chars().count();
-                        if now.saturating_duration_since(first_uncommitted_at)
-                            >= self.config.coalesce_interval
-                            || uncommitted_chars >= self.config.max_uncommitted_chars
-                        {
-                            entry.visible_text.clear();
-                            entry.visible_text.push_str(authoritative_text);
-                            entry.first_uncommitted_at = None;
-                        }
+                        entry.visible_text.push_str(authoritative_text);
+                        entry.first_uncommitted_at = None;
                     }
                 }
             }
@@ -141,7 +142,8 @@ impl TranscriptStreamProjection {
         self.entries
             .get(&key_for_return)
             .map(|entry| entry.visible_text.clone())
-            .unwrap_or_default()
+            .map(Cow::Owned)
+            .unwrap_or_else(|| Cow::Owned(String::new()))
     }
 
     #[allow(dead_code)]

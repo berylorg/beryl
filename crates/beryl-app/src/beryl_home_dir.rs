@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::{
     AppearanceSettingsStore, BerylWorkspacePersistence, GuiPreferencesStore, StartupPersistence,
+    ThemeRepositoryStore,
 };
 
 const DEFAULT_BERYL_HOME_DIR_NAME: &str = ".beryl";
@@ -64,6 +65,10 @@ impl BerylHomeDir {
 
     pub fn appearance_settings_store(&self) -> AppearanceSettingsStore {
         AppearanceSettingsStore::new(self.root_dir.clone())
+    }
+
+    pub fn theme_repository_store(&self) -> ThemeRepositoryStore {
+        ThemeRepositoryStore::new(self.root_dir.clone())
     }
 }
 

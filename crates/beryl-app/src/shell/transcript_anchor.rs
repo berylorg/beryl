@@ -5,8 +5,6 @@ mod window_measure;
 
 use gpui::{Pixels, Window, px};
 
-use crate::AppearanceSettings;
-
 use self::markdown_layout::prompt_markdown_layout_from_plan;
 use self::window_measure::WindowPromptMeasurer;
 use super::transcript_markdown::BlockRenderPlan;
@@ -30,9 +28,6 @@ const MARKDOWN_QUOTE_PADDING_LEFT: f32 = 12.0;
 const MARKDOWN_QUOTE_PADDING_VERTICAL: f32 = 4.0;
 const MARKDOWN_THEMATIC_BREAK_HEIGHT: f32 = 1.0;
 const MARKDOWN_THEMATIC_BREAK_MARGIN_VERTICAL: f32 = 4.0;
-const CODE_FONT_FAMILY: &str = "Consolas";
-const CODE_FONT_SIZE_REM: f32 = 0.875;
-const CODE_HEADER_FONT_SIZE_REM: f32 = 0.75;
 const CODE_PANEL_BORDER: f32 = 1.0;
 const CODE_PANEL_CONTENT_PADDING: f32 = 12.0;
 const CODE_PANEL_HEADER_VERTICAL_PADDING: f32 = 8.0;
@@ -52,6 +47,24 @@ pub(crate) struct TranscriptSubmitAnchorSnapshot {
     pub(crate) fragment_index: usize,
     pub(crate) user_input: String,
     pub(crate) force_viewport: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptAnchorTheme {
+    pub(crate) conversation: TranscriptAnchorRole,
+    pub(crate) heading: TranscriptAnchorRole,
+    pub(crate) emphasis: TranscriptAnchorRole,
+    pub(crate) strong_emphasis: TranscriptAnchorRole,
+    pub(crate) code: TranscriptAnchorRole,
+    pub(crate) code_panel: TranscriptAnchorRole,
+    pub(crate) code_panel_header: TranscriptAnchorRole,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptAnchorRole {
+    pub(crate) font_family: String,
+    pub(crate) font_size: f32,
+    pub(crate) font_weight: u16,
 }
 
 impl TranscriptSubmitAnchor {
@@ -98,12 +111,12 @@ pub(crate) fn prompt_last_line_top_offset(
     preceding_prompt_plans: &[&BlockRenderPlan],
     prompt_plan: &BlockRenderPlan,
     transcript_width: Pixels,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptAnchorTheme,
     transcript_code_columns: usize,
     window: &mut Window,
 ) -> Pixels {
     let prompt_width = prompt_text_width(transcript_width);
-    let mut measurer = WindowPromptMeasurer::new(appearance, window);
+    let mut measurer = WindowPromptMeasurer::new(theme, window);
     let layout = prompt_markdown_layout_from_plan(
         prompt_plan,
         prompt_width,

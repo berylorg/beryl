@@ -3,54 +3,51 @@
 use std::ops::Range;
 
 use gpui::{
-    AnyElement, CursorStyle, Font, FontStyle, FontWeight, SharedString, StyledText, TextRun,
-    UnderlineStyle, div, hsla, prelude::*, px, rgb,
+    AnyElement, CursorStyle, Font, FontStyle, SharedString, StyledText, TextRun, UnderlineStyle,
+    div, prelude::*, px,
 };
 
 use crate::shell::execution_detail::{TranscriptImageMarker, TranscriptImagePreviewState};
-use crate::shell::rgba_from_role_color;
 use crate::shell::transcript_markdown::{
-    Inline, InlineRenderFragment, InlineRenderLine, InlineRenderRole, inline_render_lines,
+    Inline, InlineRenderFragment, InlineRenderLine, InlineRenderRole, InlineRenderStyle,
+    inline_render_lines,
 };
 use crate::shell::transcript_selection::TranscriptLineCopyText;
-use crate::{AppearanceRoleSettings, AppearanceSettings};
 
 use super::markdown_copy::inline_line_copy_text;
 pub(super) use super::selection_context::{
     TranscriptInlineSelectionContext, TranscriptSelectableImageMarker, TranscriptSelectableTextLine,
 };
+use super::{TranscriptInlineCodeHost, TranscriptRoleStyle, TranscriptTextRole, TranscriptTheme};
 
-pub(super) fn render_inline_markdown(
-    inlines: &[Inline],
-    appearance: &AppearanceSettings,
-) -> AnyElement {
-    render_inline_lines(&inline_render_lines(inlines), appearance)
+pub(super) fn render_inline_markdown(inlines: &[Inline], theme: &TranscriptTheme) -> AnyElement {
+    render_inline_lines(&inline_render_lines(inlines), theme)
 }
 
 pub(super) fn render_inline_lines(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
 ) -> AnyElement {
-    render_inline_lines_with_style(lines, appearance, InlineMarkdownStyle::default())
+    render_inline_lines_with_style(lines, theme, InlineMarkdownStyle::default())
 }
 
 pub(super) fn render_inline_lines_with_style(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     style: InlineMarkdownStyle,
 ) -> AnyElement {
-    render_inline_lines_with_style_and_selection(lines, appearance, style, None)
+    render_inline_lines_with_style_and_selection(lines, theme, style, None)
 }
 
 pub(super) fn render_inline_lines_with_style_and_selection(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
 ) -> AnyElement {
     render_inline_lines_with_base(
         lines,
-        appearance,
+        theme,
         InlineBlockRole::Conversation,
         style,
         selection_context,
@@ -60,14 +57,14 @@ pub(super) fn render_inline_lines_with_style_and_selection(
 
 pub(super) fn render_inline_lines_with_style_markers_and_selection(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
     markers: &[TranscriptInlineImageMarker],
 ) -> AnyElement {
     render_inline_lines_with_base(
         lines,
-        appearance,
+        theme,
         InlineBlockRole::Conversation,
         style,
         selection_context,
@@ -77,31 +74,31 @@ pub(super) fn render_inline_lines_with_style_markers_and_selection(
 
 pub(super) fn render_heading_lines(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     level: u8,
 ) -> AnyElement {
-    render_heading_lines_with_style(lines, appearance, level, InlineMarkdownStyle::default())
+    render_heading_lines_with_style(lines, theme, level, InlineMarkdownStyle::default())
 }
 
 pub(super) fn render_heading_lines_with_style(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     level: u8,
     style: InlineMarkdownStyle,
 ) -> AnyElement {
-    render_heading_lines_with_style_and_selection(lines, appearance, level, style, None)
+    render_heading_lines_with_style_and_selection(lines, theme, level, style, None)
 }
 
 pub(super) fn render_heading_lines_with_style_and_selection(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     level: u8,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
 ) -> AnyElement {
     render_inline_lines_with_base(
         lines,
-        appearance,
+        theme,
         InlineBlockRole::Heading { level },
         style,
         selection_context,
@@ -111,7 +108,7 @@ pub(super) fn render_heading_lines_with_style_and_selection(
 
 pub(super) fn render_heading_lines_with_style_markers_and_selection(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     level: u8,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
@@ -119,7 +116,7 @@ pub(super) fn render_heading_lines_with_style_markers_and_selection(
 ) -> AnyElement {
     render_inline_lines_with_base(
         lines,
-        appearance,
+        theme,
         InlineBlockRole::Heading { level },
         style,
         selection_context,
@@ -127,12 +124,15 @@ pub(super) fn render_heading_lines_with_style_markers_and_selection(
     )
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct InlineMarkdownStyle {
-    conversation_foreground: Option<gpui::Rgba>,
-    heading_foreground: Option<gpui::Rgba>,
-    emphasis_foreground: Option<gpui::Rgba>,
-    strong_emphasis_foreground: Option<gpui::Rgba>,
+    base_role: InlineMarkdownBaseRole,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum InlineMarkdownBaseRole {
+    Text(TranscriptTextRole),
+    UnsupportedFallback,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,27 +165,28 @@ impl TranscriptInlineImageMarker {
 }
 
 impl InlineMarkdownStyle {
-    pub(super) fn conversation_foreground(foreground: gpui::Rgba) -> Self {
+    pub(super) fn base(base_role: TranscriptTextRole) -> Self {
         Self {
-            conversation_foreground: Some(foreground),
-            ..Self::default()
+            base_role: InlineMarkdownBaseRole::Text(base_role),
         }
     }
 
-    fn foreground_for_role(self, role: InlinePresentationRole) -> Option<gpui::Rgba> {
-        match role {
-            InlinePresentationRole::Conversation => self.conversation_foreground,
-            InlinePresentationRole::Heading => self.heading_foreground,
-            InlinePresentationRole::Emphasis => self.emphasis_foreground,
-            InlinePresentationRole::StrongEmphasis => self.strong_emphasis_foreground,
-            InlinePresentationRole::Code => None,
+    pub(super) fn unsupported_fallback() -> Self {
+        Self {
+            base_role: InlineMarkdownBaseRole::UnsupportedFallback,
         }
+    }
+}
+
+impl Default for InlineMarkdownStyle {
+    fn default() -> Self {
+        Self::base(TranscriptTextRole::AssistantFinal)
     }
 }
 
 fn render_inline_lines_with_base(
     lines: &[InlineRenderLine],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
@@ -198,7 +199,7 @@ fn render_inline_lines_with_base(
         .children(lines.iter().map(|line| {
             render_inline_line(
                 line,
-                appearance,
+                theme,
                 block_role,
                 style,
                 selection_context.clone(),
@@ -216,19 +217,19 @@ enum InlineBlockRole {
 
 fn render_inline_line(
     line: &InlineRenderLine,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
     selection_context: Option<TranscriptInlineSelectionContext>,
     markers: &[TranscriptInlineImageMarker],
 ) -> AnyElement {
-    let base_role = block_role_settings(appearance, block_role);
+    let base_role = block_role_settings(theme, block_role, style);
     let base_presentation_role = block_presentation_role(block_role);
     let line_markers = line_image_markers(line, markers);
     let display_text = inline_line_display_text(line, line_markers.as_slice());
     let display_text_len = display_text.len();
     let (layout_text, runs) =
-        styled_text_parts(line, line_markers.as_slice(), appearance, block_role, style);
+        styled_text_parts(line, line_markers.as_slice(), theme, block_role, style);
     let styled_text = StyledText::new(layout_text).with_runs(runs);
     let text_layout = styled_text.layout().clone();
     let selectable_line = selection_context.as_ref().map(|context| {
@@ -247,8 +248,17 @@ fn render_inline_line(
         .whitespace_normal()
         .text_size(px(block_font_size(base_role.font_size, block_role)))
         .font_family(base_role.font_family.clone())
-        .font_weight(FontWeight(base_role.font_weight as f32))
-        .text_color(role_foreground(base_presentation_role, base_role, style))
+        .font_weight(base_role.font_weight())
+        .text_color(
+            role_style(
+                theme,
+                base_presentation_role,
+                block_role,
+                style,
+                InlineRenderStyle::default(),
+            )
+            .foreground,
+        )
         .child(styled_text);
 
     line.when_some(selectable_line, |line, selectable_line| {
@@ -286,7 +296,7 @@ fn inline_line_display_text(
 fn styled_text_parts(
     line: &InlineRenderLine,
     image_markers: &[TranscriptSelectableImageMarker],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
 ) -> (String, Vec<TextRun>) {
@@ -296,10 +306,10 @@ fn styled_text_parts(
             vec![text_run(
                 " ".len(),
                 block_presentation_role(block_role),
-                block_role_settings(appearance, block_role),
+                block_role_settings(theme, block_role, style),
+                theme,
                 false,
                 false,
-                style,
             )],
         );
     }
@@ -315,7 +325,7 @@ fn styled_text_parts(
             fragment,
             display_cursor,
             image_markers,
-            appearance,
+            theme,
             block_role,
             style,
         ));
@@ -329,7 +339,7 @@ fn fragment_text_runs(
     fragment: &InlineRenderFragment,
     display_start: usize,
     image_markers: &[TranscriptSelectableImageMarker],
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
 ) -> Vec<TextRun> {
@@ -358,7 +368,7 @@ fn fragment_text_runs(
                     .map(|marker| marker.display_text.clone())
                     .unwrap_or_else(|| fragment.text[start..end].to_string());
                 fragment.style.atom = atom;
-                fragment_text_run(&fragment, appearance, block_role, style)
+                fragment_text_run(&fragment, theme, block_role, style)
             })
         })
         .collect()
@@ -366,19 +376,25 @@ fn fragment_text_runs(
 
 fn fragment_text_run(
     fragment: &InlineRenderFragment,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
 ) -> TextRun {
-    let role = fragment_presentation_role(fragment.style.role, block_role);
-    let settings = role_settings(appearance, role);
+    let role = if fragment.style.role == InlineRenderRole::Code {
+        InlinePresentationRole::Code
+    } else if fragment.style.link {
+        InlinePresentationRole::Link
+    } else {
+        fragment_presentation_role(fragment.style.role, block_role)
+    };
+    let settings = role_style(theme, role, block_role, style, fragment.style);
     text_run(
         fragment.text.len(),
         role,
         settings,
+        theme,
         fragment.style.link,
         fragment.style.atom,
-        style,
     )
 }
 
@@ -525,10 +541,10 @@ fn ranges_intersect(left: &Range<usize>, right: &Range<usize>) -> bool {
 fn text_run(
     len: usize,
     role: InlinePresentationRole,
-    settings: &AppearanceRoleSettings,
+    settings: &TranscriptRoleStyle,
+    theme: &TranscriptTheme,
     link: bool,
     atom: bool,
-    style: InlineMarkdownStyle,
 ) -> TextRun {
     TextRun {
         len,
@@ -536,18 +552,18 @@ fn text_run(
             family: SharedString::from(settings.font_family.clone()),
             features: Default::default(),
             fallbacks: None,
-            weight: FontWeight(settings.font_weight as f32),
+            weight: settings.font_weight(),
             style: FontStyle::Normal,
         },
         color: if atom {
-            hsla(0.58, 0.78, 0.72, 1.0)
+            theme.image_marker.foreground.into()
         } else {
-            role_foreground(role, settings, style).into()
+            settings.foreground.into()
         },
         background_color: if atom {
-            Some(hsla(0.58, 0.55, 0.28, 0.85))
+            Some(theme.image_marker.text_background.into())
         } else {
-            (role == InlinePresentationRole::Code).then(|| role_background(role, settings).into())
+            (role == InlinePresentationRole::Code).then(|| settings.text_background.into())
         },
         underline: link.then_some(UnderlineStyle {
             thickness: px(1.0),
@@ -563,6 +579,7 @@ enum InlinePresentationRole {
     Heading,
     Emphasis,
     StrongEmphasis,
+    Link,
     Code,
 }
 
@@ -586,12 +603,13 @@ fn fragment_presentation_role(
 }
 
 fn block_role_settings(
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     block_role: InlineBlockRole,
-) -> &AppearanceRoleSettings {
+    style: InlineMarkdownStyle,
+) -> &TranscriptRoleStyle {
     match block_role {
-        InlineBlockRole::Conversation => &appearance.conversation_text,
-        InlineBlockRole::Heading { .. } => &appearance.markdown_header,
+        InlineBlockRole::Conversation => conversation_role_style(theme, style),
+        InlineBlockRole::Heading { .. } => &theme.heading,
     }
 }
 
@@ -607,51 +625,69 @@ fn block_font_size(base_size: f32, block_role: InlineBlockRole) -> f32 {
     }
 }
 
-fn role_settings<'a>(
-    appearance: &'a AppearanceSettings,
+fn role_style(
+    theme: &TranscriptTheme,
     role: InlinePresentationRole,
-) -> &'a AppearanceRoleSettings {
-    match role {
-        InlinePresentationRole::Conversation => &appearance.conversation_text,
-        InlinePresentationRole::Heading => &appearance.markdown_header,
-        InlinePresentationRole::Emphasis => &appearance.emphasis,
-        InlinePresentationRole::StrongEmphasis => &appearance.strong_emphasis,
-        InlinePresentationRole::Code => &appearance.code,
-    }
-}
-
-fn role_foreground(
-    role: InlinePresentationRole,
-    settings: &AppearanceRoleSettings,
+    block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
-) -> gpui::Rgba {
-    if let Some(foreground) = style.foreground_for_role(role) {
-        return foreground;
-    }
-
-    rgba_from_role_color(settings.parsed_foreground(), default_role_foreground(role))
-}
-
-fn role_background(role: InlinePresentationRole, settings: &AppearanceRoleSettings) -> gpui::Rgba {
-    rgba_from_role_color(settings.parsed_background(), default_role_background(role))
-}
-
-fn default_role_foreground(role: InlinePresentationRole) -> gpui::Rgba {
+    fragment_style: InlineRenderStyle,
+) -> &TranscriptRoleStyle {
     match role {
-        InlinePresentationRole::Conversation => rgb(0xe2e8f0),
-        InlinePresentationRole::Heading => rgb(0x93c5fd),
-        InlinePresentationRole::Emphasis => rgb(0xbfdbfe),
-        InlinePresentationRole::StrongEmphasis => rgb(0xf8fafc),
-        InlinePresentationRole::Code => rgb(0xe2e8f0),
+        InlinePresentationRole::Conversation => conversation_role_style(theme, style),
+        InlinePresentationRole::Heading => &theme.heading,
+        InlinePresentationRole::Emphasis => &theme.emphasis,
+        InlinePresentationRole::StrongEmphasis => &theme.strong_emphasis,
+        InlinePresentationRole::Link => &theme.link,
+        InlinePresentationRole::Code => {
+            theme.inline_code_style(inline_code_host(block_role, style, fragment_style))
+        }
     }
 }
 
-fn default_role_background(role: InlinePresentationRole) -> gpui::Rgba {
-    match role {
-        InlinePresentationRole::Conversation
-        | InlinePresentationRole::Heading
-        | InlinePresentationRole::Emphasis
-        | InlinePresentationRole::StrongEmphasis => rgb(0x091220),
-        InlinePresentationRole::Code => rgb(0x0f172a),
+fn conversation_role_style(
+    theme: &TranscriptTheme,
+    style: InlineMarkdownStyle,
+) -> &TranscriptRoleStyle {
+    match style.base_role {
+        InlineMarkdownBaseRole::Text(TranscriptTextRole::AssistantFinal) => &theme.paragraph,
+        InlineMarkdownBaseRole::Text(role) => theme.text_role(role),
+        InlineMarkdownBaseRole::UnsupportedFallback => &theme.unsupported_fallback,
+    }
+}
+
+fn inline_code_host(
+    block_role: InlineBlockRole,
+    style: InlineMarkdownStyle,
+    fragment_style: InlineRenderStyle,
+) -> TranscriptInlineCodeHost {
+    if fragment_style.link {
+        return TranscriptInlineCodeHost::Link;
+    }
+    if fragment_style.strong {
+        return TranscriptInlineCodeHost::StrongEmphasis;
+    }
+    if fragment_style.emphasis {
+        return TranscriptInlineCodeHost::Emphasis;
+    }
+
+    match block_role {
+        InlineBlockRole::Heading { .. } => TranscriptInlineCodeHost::Heading,
+        InlineBlockRole::Conversation => match style.base_role {
+            InlineMarkdownBaseRole::Text(TranscriptTextRole::AssistantFinal) => {
+                TranscriptInlineCodeHost::AssistantFinal
+            }
+            InlineMarkdownBaseRole::Text(TranscriptTextRole::AssistantCommentary) => {
+                TranscriptInlineCodeHost::AssistantCommentary
+            }
+            InlineMarkdownBaseRole::Text(TranscriptTextRole::AssistantReasoning) => {
+                TranscriptInlineCodeHost::AssistantReasoning
+            }
+            InlineMarkdownBaseRole::Text(TranscriptTextRole::UserInput) => {
+                TranscriptInlineCodeHost::UserInput
+            }
+            InlineMarkdownBaseRole::UnsupportedFallback => {
+                TranscriptInlineCodeHost::UnsupportedFallback
+            }
+        },
     }
 }

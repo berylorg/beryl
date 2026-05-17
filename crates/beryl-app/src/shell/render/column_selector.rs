@@ -3,9 +3,9 @@ use gpui::{
     prelude::*, px,
 };
 
-use crate::shell::{ShellView, column_selector::ColumnSelectorSurface};
+use crate::shell::{ShellRenderFrame, ShellView, column_selector::ColumnSelectorSurface};
 
-use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_themed_div_scrollbar};
 
 pub(super) fn column_selector_trail_width(
     column_count: usize,
@@ -21,6 +21,7 @@ pub(super) fn column_selector_trail_width(
 }
 
 pub(super) fn render_column_selector_trail(
+    shell: &ShellRenderFrame<'_>,
     surface: ColumnSelectorSurface,
     id: &'static str,
     column_width: f32,
@@ -67,7 +68,8 @@ pub(super) fn render_column_selector_trail(
                     .child(column_row),
             ),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         (gpui::ElementId::from(id), "horizontal-scrollbar"),
         &scroll_handle,
         ScrollbarAxis::Horizontal,

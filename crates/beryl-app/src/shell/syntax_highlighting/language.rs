@@ -19,7 +19,7 @@ pub(crate) fn normalize_syntax_language(syntax_label: Option<&str>) -> Option<Sy
         "markdown" | "md" | "mdown" | "mkd" | "mkdn" | "gfm" => Some(SyntaxLanguage::Markdown),
         "json" => Some(SyntaxLanguage::Json),
         "jsonl" | "ndjson" => Some(SyntaxLanguage::Jsonl),
-        "toml" => Some(SyntaxLanguage::Toml),
+        "toml" | "beryl-theme" => Some(SyntaxLanguage::Toml),
         "ini" => Some(SyntaxLanguage::WindowsIni),
         _ => None,
     }

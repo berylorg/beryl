@@ -6,7 +6,10 @@ use gpui::{
     relative,
 };
 
-use crate::shell::{LoadedWorkspaceState, ShellView, layout};
+use crate::{
+    BerylThemeRole,
+    shell::{LoadedWorkspaceState, ShellRenderFrame, ShellView, layout},
+};
 
 use super::common::{disabled_secondary_button, secondary_button};
 
@@ -19,7 +22,7 @@ struct WorkspaceRenameDisabledTooltip {
 }
 
 pub(super) fn render_workspace_row_action_trigger(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace_index: usize,
     workspace_id: beryl_model::workspace::BerylWorkspaceId,
     cx: &mut Context<ShellView>,
@@ -65,7 +68,7 @@ pub(super) fn render_workspace_row_action_trigger(
 }
 
 pub(super) fn render_workspace_row_action_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
@@ -151,7 +154,7 @@ pub(super) fn render_workspace_row_action_menu(
 }
 
 fn workspace_delete_hold_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     progress: Option<f32>,
     on_mouse_down: impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static,
     on_mouse_up: impl Fn(&MouseUpEvent, &mut Window, &mut gpui::App) + 'static,
@@ -206,7 +209,7 @@ fn workspace_delete_hold_row(
 }
 
 fn render_disabled_workspace_rename_action(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<gpui::ElementId>,
     reason: &'static str,
 ) -> impl IntoElement {
@@ -229,12 +232,14 @@ fn build_workspace_rename_disabled_tooltip(
     cx.new(|_| tooltip).into()
 }
 
-fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {
+fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(
+            shell.role_font_weight(BerylThemeRole::PopupSurface, gpui::FontWeight::SEMIBOLD),
+        )
         .text_color(shell.general_ui_foreground())
         .child(label.to_string())
 }

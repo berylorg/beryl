@@ -1,32 +1,24 @@
-use std::{cell::Cell, collections::HashSet, rc::Rc, sync::Arc};
+use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use beryl_model::workspace::WorkspaceId;
-use gpui::{App, div, prelude::*, px, rgb};
-
-use crate::AppearanceSettings;
-use crate::shell::execution_detail::{TurnExecutionRecord, TurnNarrativeEntry};
-use crate::shell::transcript_markdown::markdown_code_panel_ids;
+use gpui::{App, div, prelude::*, px};
 
 use super::{
-    TranscriptCodeLayout, markdown_cache::TranscriptMarkdownRenderContext,
+    TranscriptCodeLayout, TranscriptTheme, markdown_cache::TranscriptMarkdownRenderContext,
     media_cache::TranscriptMediaRenderContext,
-    stream_projection::TranscriptStreamProjectionContext, turn_markdown_key,
+    stream_projection::TranscriptStreamProjectionContext,
 };
 use super::{
-    code_panel_controls::TranscriptCodePanelState,
-    image_markdown::markdown_source_with_image_marker_placeholders,
-    item_blocks::collect_item_markdown_code_panel_ids,
-    media_blocks::TranscriptMediaRenderLayout,
-    turn_item_media_units::render_item_units,
-    turn_media_units::flush_media_run,
-    turn_media_units::{collect_markdown_render_unit_code_panel_ids, markdown_render_units},
+    code_panel_controls::TranscriptCodePanelState, media_blocks::TranscriptMediaRenderLayout,
+    turn_item_media_units::render_item_units, turn_media_units::flush_media_run,
     turn_user_media_units::render_user_prompt_units,
 };
+use crate::shell::execution_detail::{TurnExecutionRecord, TurnNarrativeEntry};
 
 pub(super) fn render_turn_card(
     turn_index: usize,
     workspace: &WorkspaceId,
-    appearance: Arc<AppearanceSettings>,
+    theme: Arc<TranscriptTheme>,
     turn: Arc<TurnExecutionRecord>,
     code_panel_state: TranscriptCodePanelState,
     markdown_context: TranscriptMarkdownRenderContext,
@@ -56,7 +48,7 @@ pub(super) fn render_turn_card(
                     turn.as_ref(),
                     fragment_index,
                     fragment,
-                    appearance.as_ref(),
+                    theme.as_ref(),
                     code_panel_state.clone(),
                     markdown_context.clone(),
                     media_context.clone(),
@@ -77,7 +69,7 @@ pub(super) fn render_turn_card(
                 render_item_units(
                     turn_index,
                     workspace,
-                    appearance.clone(),
+                    theme.clone(),
                     turn.clone(),
                     item,
                     code_panel_state.clone(),
@@ -114,96 +106,23 @@ pub(super) fn render_turn_card(
         .gap_3()
         .children(narrative_blocks)
         .when(show_activity_caret, |this| {
-            this.child(render_activity_caret(activity_caret_opacity))
+            this.child(render_activity_caret(
+                activity_caret_opacity,
+                theme.as_ref(),
+            ))
         })
         .into_any_element()
-}
-
-pub(super) fn collect_turn_card_markdown_code_panel_ids(
-    turn_index: usize,
-    turn: &TurnExecutionRecord,
-    row_identity: &str,
-    markdown_context: TranscriptMarkdownRenderContext,
-    stream_projection_context: TranscriptStreamProjectionContext,
-    cx: &mut App,
-) -> HashSet<String> {
-    let mut ids = HashSet::new();
-
-    for entry in turn.narrative_entries() {
-        match entry {
-            TurnNarrativeEntry::UserInput { fragment_id } => {
-                let Some((fragment_index, fragment)) = turn.user_input_fragment_by_id(*fragment_id)
-                else {
-                    continue;
-                };
-                if fragment.text.is_empty() {
-                    continue;
-                }
-
-                let block_path = user_prompt_block_path(fragment_index);
-                let markdown_key = turn_markdown_key(turn_index, turn, &block_path);
-                if fragment.image_markers().is_empty() {
-                    let markdown = markdown_context.markdown_for(
-                        markdown_key.clone(),
-                        fragment.text.as_str(),
-                        cx,
-                    );
-                    let units = markdown_render_units(
-                        &markdown_key,
-                        block_path.as_str(),
-                        markdown.as_ref(),
-                    );
-                    collect_markdown_render_unit_code_panel_ids(
-                        row_identity,
-                        units,
-                        markdown_context.clone(),
-                        &mut ids,
-                        cx,
-                    );
-                } else {
-                    let markdown_source = markdown_source_with_image_marker_placeholders(
-                        fragment.text.as_str(),
-                        fragment.image_markers(),
-                    );
-                    let markdown =
-                        markdown_context.markdown_for(markdown_key, &markdown_source, cx);
-                    ids.extend(markdown_code_panel_ids(
-                        row_identity,
-                        block_path.as_str(),
-                        markdown.render_plan(),
-                    ));
-                }
-            }
-            TurnNarrativeEntry::Item { item_id } => {
-                let Some(item) = turn.item_by_id(item_id) else {
-                    continue;
-                };
-                collect_item_markdown_code_panel_ids(
-                    turn_index,
-                    turn,
-                    item,
-                    markdown_context.clone(),
-                    stream_projection_context.clone(),
-                    row_identity,
-                    &mut ids,
-                    cx,
-                );
-            }
-        }
-    }
-
-    ids
 }
 
 pub(super) fn user_prompt_block_path(fragment_index: usize) -> String {
     format!("user-prompt:{fragment_index}")
 }
 
-fn render_activity_caret(opacity: f32) -> impl IntoElement {
+fn render_activity_caret(opacity: f32, theme: &TranscriptTheme) -> impl IntoElement {
     div()
         .w(px(9.0))
         .h(px(18.0))
         .flex_none()
         .opacity(opacity.clamp(0.0, 1.0))
-        .bg(rgb(0x2563eb))
+        .bg(theme.activity_caret.background)
 }

@@ -6,7 +6,7 @@ use std::{
 
 use gpui::{
     AnyElement, App, Bounds, CursorStyle, FontWeight, MouseDownEvent, Overflow, Pixels, Rgba,
-    ScrollHandle, TextLayout, TextRun, Window, canvas, div, prelude::*, px, rems, rgb,
+    ScrollHandle, TextLayout, TextRun, Window, canvas, div, prelude::*, px, rems,
 };
 
 #[path = "code_panel/body.rs"]
@@ -41,10 +41,11 @@ pub(crate) use syntax_projection::{
     code_panel_display_line_syntax_spans_for_window,
 };
 
-pub(crate) const CODE_FONT_FAMILY: &str = "Consolas";
-const CODE_FONT_SIZE_REM: f32 = 0.875;
+pub(crate) const DEFAULT_CODE_FONT_FAMILY: &str = "Consolas";
+pub(crate) const DEFAULT_CODE_FONT_SIZE: f32 = 13.0;
+const DEFAULT_CODE_FONT_SIZE_REM: f32 = 0.875;
 const CODE_PANEL_RESIZE_HANDLE_HEIGHT: f32 = 10.0;
-const CODE_PANEL_ESTIMATED_LINE_HEIGHT: f32 = 20.0;
+const DEFAULT_CODE_PANEL_LINE_HEIGHT: f32 = 20.0;
 const CODE_PANEL_VISIBLE_LINE_CAP: usize = 12;
 const CODE_PANEL_CONTENT_VERTICAL_PADDING: f32 = 24.0;
 const CODE_PANEL_OVERSCAN_LINES: usize = 3;
@@ -64,10 +65,32 @@ pub(crate) enum CodePanelDisplayProjectionInput {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CodePanelChrome {
-    Bordered { background: Rgba, border: Rgba },
+    Bordered {
+        background: Rgba,
+        border: Rgba,
+        content_background: Rgba,
+        header_foreground: Rgba,
+        button: CodePanelHeaderButtonTheme,
+        resize_handle: Rgba,
+    },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CodePanelHeaderButtonTheme {
+    pub normal: CodePanelHeaderButtonState,
+    pub hover: CodePanelHeaderButtonState,
+    pub active: CodePanelHeaderButtonState,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CodePanelHeaderButtonState {
+    pub background: Rgba,
+    pub border: Rgba,
+    pub foreground: Rgba,
 }
 
 pub(crate) type CodePanelAction = Arc<dyn Fn(&mut App)>;
+pub(crate) type CodePanelHeaderActionCallback = Arc<dyn Fn(&mut Window, &mut App)>;
 pub(crate) type CodePanelResizeStartAction = Arc<dyn Fn(Pixels, Pixels, &MouseDownEvent, &mut App)>;
 pub(crate) type CodePanelLinePrepaintAction = Arc<dyn Fn(Bounds<Pixels>, TextLayout, &mut App)>;
 
@@ -76,7 +99,7 @@ pub(crate) struct CodePanelHeaderAction {
     pub key: String,
     pub label: String,
     pub active: bool,
-    pub on_click: CodePanelAction,
+    pub on_click: CodePanelHeaderActionCallback,
 }
 
 #[derive(Clone)]
@@ -175,13 +198,15 @@ pub(crate) fn render_code_panel(
             &plain_syntax_highlight
         }
     };
+    let line_height = px(syntax_theme.line_height());
     let content_height = resize.as_ref().map(|resize| {
         display_projection.map_or_else(
-            || resolved_pending_code_panel_height(resize),
+            || resolved_pending_code_panel_height(resize, line_height),
             |projection| {
                 resolved_resizable_code_panel_height_for_line_count(
                     projection.display_line_count(),
                     resize,
+                    line_height,
                 )
             },
         )
@@ -193,6 +218,7 @@ pub(crate) fn render_code_panel(
                 content_height,
                 scroll_chrome.as_ref(),
                 CODE_PANEL_OVERSCAN_LINES,
+                line_height,
             )
         },
     );
@@ -225,7 +251,14 @@ pub(crate) fn render_code_panel(
         selection,
     );
 
-    let CodePanelChrome::Bordered { background, border } = chrome;
+    let CodePanelChrome::Bordered {
+        background,
+        border,
+        content_background,
+        header_foreground,
+        button,
+        resize_handle,
+    } = chrome;
     let header_title = header
         .as_ref()
         .and_then(|header| header.title.clone())
@@ -249,8 +282,8 @@ pub(crate) fn render_code_panel(
         panel = panel.child(render_code_panel_header(
             element_key,
             header_title.as_deref(),
-            background,
-            border,
+            header_foreground,
+            button,
             header,
         ));
     }
@@ -261,6 +294,7 @@ pub(crate) fn render_code_panel(
                 .w_full()
                 .min_w(px(0.0))
                 .p_3()
+                .bg(content_background)
                 .when(has_header, |this| this.border_t_1().border_color(border))
                 .child(content),
         )
@@ -270,6 +304,7 @@ pub(crate) fn render_code_panel(
                 panel.child(render_code_panel_resize_handle(
                     background,
                     border,
+                    resize_handle,
                     content_height,
                     resize.on_resize_start,
                 ))
@@ -299,8 +334,8 @@ fn code_panel_has_header(header: &CodePanelHeader, header_title: Option<&str>) -
 fn render_code_panel_header(
     element_key: u64,
     title: Option<&str>,
-    muted_background: Rgba,
-    border: Rgba,
+    foreground: Rgba,
+    button_theme: CodePanelHeaderButtonTheme,
     header: CodePanelHeader,
 ) -> impl IntoElement {
     let CodePanelHeader {
@@ -327,8 +362,7 @@ fn render_code_panel_header(
                     move |action| {
                         code_panel_header_button(
                             element_key,
-                            muted_background,
-                            border,
+                            button_theme,
                             button_font_weight,
                             action,
                         )
@@ -342,20 +376,15 @@ fn render_code_panel_header(
                 .min_w(px(0.0))
                 .text_xs()
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(0x94a3b8))
+                .text_color(foreground)
+                .truncate()
                 .child(title.unwrap_or_default().to_string()),
         )
         .child(div().flex().items_center().justify_end().gap_2().children(
             trailing_actions.into_iter().map({
                 move |action| {
-                    code_panel_header_button(
-                        element_key,
-                        muted_background,
-                        border,
-                        button_font_weight,
-                        action,
-                    )
-                    .into_any_element()
+                    code_panel_header_button(element_key, button_theme, button_font_weight, action)
+                        .into_any_element()
                 }
             }),
         ))
@@ -363,8 +392,7 @@ fn render_code_panel_header(
 
 fn code_panel_header_button(
     element_key: u64,
-    muted_background: Rgba,
-    border: Rgba,
+    theme: CodePanelHeaderButtonTheme,
     button_font_weight: FontWeight,
     action: CodePanelHeaderAction,
 ) -> impl IntoElement {
@@ -374,6 +402,8 @@ fn code_panel_header_button(
         active,
         on_click,
     } = action;
+    let state = if active { theme.active } else { theme.normal };
+    let hover_state = theme.hover;
 
     div()
         .id((
@@ -388,21 +418,22 @@ fn code_panel_header_button(
         .flex()
         .items_center()
         .justify_center()
-        .bg(if active {
-            rgb(0x1e3a8a)
-        } else {
-            muted_background
-        })
+        .bg(state.background)
         .border_1()
-        .border_color(if active { rgb(0x60a5fa) } else { border })
-        .hover(|style| style.bg(if active { rgb(0x1d4ed8) } else { rgb(0x0f172a) }))
+        .border_color(state.border)
+        .hover(move |style| {
+            style
+                .bg(hover_state.background)
+                .border_color(hover_state.border)
+                .text_color(hover_state.foreground)
+        })
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
         .font_weight(button_font_weight)
-        .text_color(if active { rgb(0xf8fafc) } else { rgb(0xcbd5e1) })
+        .text_color(state.foreground)
         .cursor_pointer()
         .child(label)
-        .on_click(move |_, _, cx| on_click(cx))
+        .on_click(move |_, window, cx| on_click(window, cx))
 }
 
 fn code_panel_header_action_key(element_key: u64, action_name: &str) -> u64 {
@@ -415,6 +446,7 @@ fn code_panel_header_action_key(element_key: u64, action_name: &str) -> u64 {
 fn render_code_panel_resize_handle(
     background: Rgba,
     border: Rgba,
+    handle: Rgba,
     content_height: Pixels,
     on_resize_start: CodePanelResizeStartAction,
 ) -> impl IntoElement {
@@ -451,13 +483,7 @@ fn render_code_panel_resize_handle(
             .top_0()
             .left_0(),
         )
-        .child(
-            div()
-                .w(px(56.0))
-                .h(px(4.0))
-                .rounded_full()
-                .bg(rgb(0x334155)),
-        )
+        .child(div().w(px(56.0)).h(px(4.0)).rounded_full().bg(handle))
 }
 
 #[allow(dead_code)]
@@ -467,30 +493,38 @@ pub(crate) fn estimated_resizable_code_panel_height(
     max_height: Option<Pixels>,
 ) -> Pixels {
     let visible_line_count = display_text.replace("\r\n", "\n").lines().count().max(1);
-    estimated_resizable_code_panel_height_for_line_count(visible_line_count, min_height, max_height)
+    estimated_resizable_code_panel_height_for_line_count(
+        visible_line_count,
+        min_height,
+        max_height,
+        px(DEFAULT_CODE_PANEL_LINE_HEIGHT),
+    )
 }
 
 fn resolved_resizable_code_panel_height_for_line_count(
     display_line_count: usize,
     resize: &CodePanelResize,
+    line_height: Pixels,
 ) -> Pixels {
     let desired_height = resize.current_height.unwrap_or_else(|| {
         estimated_resizable_code_panel_height_for_line_count(
             display_line_count,
             resize.min_height,
             resize.max_height,
+            line_height,
         )
     });
 
     clamp_resizable_code_panel_height(desired_height, resize.min_height, resize.max_height)
 }
 
-fn resolved_pending_code_panel_height(resize: &CodePanelResize) -> Pixels {
+fn resolved_pending_code_panel_height(resize: &CodePanelResize, line_height: Pixels) -> Pixels {
     let desired_height = resize.current_height.unwrap_or_else(|| {
         estimated_resizable_code_panel_height_for_line_count(
             CODE_PANEL_VISIBLE_LINE_CAP,
             resize.min_height,
             resize.max_height,
+            line_height,
         )
     });
 
@@ -501,10 +535,11 @@ fn estimated_resizable_code_panel_height_for_line_count(
     display_line_count: usize,
     min_height: Pixels,
     max_height: Option<Pixels>,
+    line_height: Pixels,
 ) -> Pixels {
     let visible_line_count = display_line_count.max(1).min(CODE_PANEL_VISIBLE_LINE_CAP);
-    let estimated_height = px(CODE_PANEL_CONTENT_VERTICAL_PADDING)
-        + (px(CODE_PANEL_ESTIMATED_LINE_HEIGHT) * visible_line_count as f32);
+    let estimated_height =
+        px(CODE_PANEL_CONTENT_VERTICAL_PADDING) + (line_height * visible_line_count as f32);
     clamp_resizable_code_panel_height(estimated_height, min_height, max_height)
 }
 
@@ -520,18 +555,41 @@ pub(crate) fn clamp_resizable_code_panel_height(
     clamped
 }
 
+#[allow(dead_code)]
 pub(crate) fn smart_wrap_columns_for_width(available_width: Pixels, window: &Window) -> usize {
+    smart_wrap_columns_for_style(
+        available_width,
+        DEFAULT_CODE_FONT_FAMILY,
+        px(DEFAULT_CODE_FONT_SIZE),
+        FontWeight(400.0),
+        window,
+    )
+}
+
+pub(crate) fn smart_wrap_columns_for_style(
+    available_width: Pixels,
+    font_family: &str,
+    font_size: Pixels,
+    font_weight: FontWeight,
+    window: &Window,
+) -> usize {
     if available_width <= px(0.0) {
         return 1;
     }
 
-    let char_width = code_char_width(window).max(px(1.0));
+    let char_width = code_char_width(font_family, font_size, font_weight, window).max(px(1.0));
     ((available_width / char_width).floor() as usize).max(1)
 }
 
-fn code_char_width(window: &Window) -> Pixels {
+fn code_char_width(
+    font_family: &str,
+    font_size: Pixels,
+    font_weight: FontWeight,
+    window: &Window,
+) -> Pixels {
     let mut font = window.text_style().font();
-    font.family = CODE_FONT_FAMILY.into();
+    font.family = font_family.to_string().into();
+    font.weight = font_weight;
     let run = TextRun {
         len: 1,
         font,
@@ -544,7 +602,7 @@ fn code_char_width(window: &Window) -> Pixels {
         .text_system()
         .shape_line(
             "0".into(),
-            rems(CODE_FONT_SIZE_REM).to_pixels(window.rem_size()),
+            font_size.max(rems(DEFAULT_CODE_FONT_SIZE_REM).to_pixels(window.rem_size())),
             &[run],
             None,
         )

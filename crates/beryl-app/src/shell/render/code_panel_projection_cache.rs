@@ -7,6 +7,8 @@ use std::{
 mod accounting;
 #[path = "code_panel_projection_cache/request.rs"]
 mod request;
+#[path = "code_panel_projection_cache/state.rs"]
+mod state;
 
 use super::code_panel::{CodePanelDisplayProjection, CodePanelWrapMode};
 use accounting::{
@@ -15,45 +17,19 @@ use accounting::{
     code_panel_projection_entry_estimate, duration_micros,
 };
 use request::ProjectionFingerprint;
-pub(crate) use request::{CodePanelProjectionCompletion, CodePanelProjectionRequest};
+pub(crate) use request::{
+    CodePanelProjectionCompletion, CodePanelProjectionRequest, CodePanelSourceRevision,
+};
+use state::{CodePanelProjectionCacheEntry, CodePanelProjectionInFlight, projection_display_for};
+pub(crate) use state::{
+    CodePanelProjectionCacheStats, CodePanelProjectionCompletionResult, CodePanelProjectionLookup,
+    CodePanelProjectionReady,
+};
 
 const DEFAULT_MAX_ENTRIES: usize = 256;
 const DEFAULT_MAX_SOURCE_BYTES: usize = 2_000_000;
 const DEFAULT_MAX_ESTIMATED_RETAINED_BYTES: usize = 32_000_000;
 const INLINE_PROJECTION_SOURCE_BYTES: usize = 16_384;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CodePanelProjectionCacheStats {
-    pub(crate) lookups: u64,
-    pub(crate) hits: u64,
-    pub(crate) pending_hits: u64,
-    pub(crate) misses: u64,
-    pub(crate) invalidations: u64,
-    pub(crate) scheduled_projections: u64,
-    pub(crate) completed_projections: u64,
-    pub(crate) stale_completions: u64,
-    pub(crate) uncached_oversize_lookups: u64,
-    pub(crate) evictions: u64,
-    pub(crate) projection_micros: u64,
-    pub(crate) entries: usize,
-    pub(crate) pending_entries: usize,
-    pub(crate) represented_source_bytes: usize,
-    pub(crate) estimated_retained_bytes: usize,
-    pub(crate) display_lines: usize,
-}
-
-#[derive(Debug)]
-pub(crate) struct CodePanelProjectionLookup {
-    pub(crate) projection: Option<Arc<CodePanelDisplayProjection>>,
-    pub(crate) projection_request: Option<CodePanelProjectionRequest>,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct CodePanelProjectionCompletionResult {
-    pub(crate) display_changed: bool,
-    pub(crate) follow_up_request: Option<CodePanelProjectionRequest>,
-    pub(crate) stale: bool,
-}
 
 #[derive(Debug)]
 pub(crate) struct CodePanelProjectionCache {
@@ -65,24 +41,6 @@ pub(crate) struct CodePanelProjectionCache {
     access_tick: u64,
     scope_generation: u64,
     stats: CodePanelProjectionCacheStats,
-}
-
-#[derive(Debug)]
-struct CodePanelProjectionCacheEntry {
-    latest_fingerprint: ProjectionFingerprint,
-    latest_source: String,
-    latest_wrap_mode: CodePanelWrapMode,
-    represented_source_len: usize,
-    last_used: u64,
-    displayed: Option<Arc<CodePanelDisplayProjection>>,
-    displayed_fingerprint: Option<ProjectionFingerprint>,
-    in_flight: Option<CodePanelProjectionInFlight>,
-}
-
-#[derive(Debug)]
-struct CodePanelProjectionInFlight {
-    fingerprint: ProjectionFingerprint,
-    source: String,
 }
 
 impl Default for CodePanelProjectionCache {
@@ -133,27 +91,28 @@ impl CodePanelProjectionCache {
     pub(crate) fn lookup(
         &mut self,
         owner_id: &str,
-        source: &str,
+        source_revision: CodePanelSourceRevision,
         wrap_mode: CodePanelWrapMode,
     ) -> CodePanelProjectionLookup {
         self.access_tick = self.access_tick.saturating_add(1);
         self.stats.lookups = self.stats.lookups.saturating_add(1);
 
+        let source = source_revision.display_source();
         if source.len() > self.max_source_bytes {
             self.release_owner(owner_id);
             self.stats.uncached_oversize_lookups =
                 self.stats.uncached_oversize_lookups.saturating_add(1);
             return CodePanelProjectionLookup {
-                projection: None,
+                ready: None,
                 projection_request: None,
             };
         }
 
         let fingerprint = ProjectionFingerprint::new(source, wrap_mode);
         let mut lookup = if self.entries.contains_key(owner_id) {
-            self.lookup_existing(owner_id, fingerprint, source, wrap_mode)
+            self.lookup_existing(owner_id, fingerprint, source_revision, wrap_mode)
         } else {
-            self.lookup_missing(owner_id, fingerprint, source, wrap_mode)
+            self.lookup_missing(owner_id, fingerprint, source_revision, wrap_mode)
         };
         self.prune_if_needed();
         if lookup.projection_request.is_some() && !self.entries.contains_key(owner_id) {
@@ -213,6 +172,7 @@ impl CodePanelProjectionCache {
                 } else {
                     entry.displayed = Some(projection);
                     entry.displayed_fingerprint = Some(completion.fingerprint);
+                    entry.displayed_revision = Some(completion.source_revision);
                     entry.last_used = self.access_tick;
                     self.stats.completed_projections =
                         self.stats.completed_projections.saturating_add(1);
@@ -230,12 +190,12 @@ impl CodePanelProjectionCache {
             if !completion_is_latest
                 && entry.displayed_fingerprint != Some(entry.latest_fingerprint)
             {
-                let source = entry.latest_source.clone();
                 let fingerprint = entry.latest_fingerprint;
                 let wrap_mode = entry.latest_wrap_mode;
+                let source_revision = entry.latest_revision.clone();
                 entry.in_flight = Some(CodePanelProjectionInFlight {
                     fingerprint,
-                    source: source.clone(),
+                    source_revision: source_revision.clone(),
                 });
                 self.stats.scheduled_projections =
                     self.stats.scheduled_projections.saturating_add(1);
@@ -243,7 +203,7 @@ impl CodePanelProjectionCache {
                     owner_id.clone(),
                     fingerprint,
                     self.scope_generation,
-                    source,
+                    source_revision,
                     wrap_mode,
                 ));
             }
@@ -299,22 +259,23 @@ impl CodePanelProjectionCache {
         &mut self,
         owner_id: &str,
         fingerprint: ProjectionFingerprint,
-        source: &str,
+        source_revision: CodePanelSourceRevision,
         wrap_mode: CodePanelWrapMode,
     ) -> CodePanelProjectionLookup {
         self.stats.misses = self.stats.misses.saturating_add(1);
+        let source = source_revision.display_source();
         if source.len() <= INLINE_PROJECTION_SOURCE_BYTES {
             let projection = Arc::new(CodePanelDisplayProjection::new(source, wrap_mode));
             if code_panel_projection_completed_entry_estimate_for_projection(
                 owner_id,
-                source,
+                &source_revision,
                 &projection,
             ) > self.max_estimated_retained_bytes
             {
                 self.stats.uncached_oversize_lookups =
                     self.stats.uncached_oversize_lookups.saturating_add(1);
                 return CodePanelProjectionLookup {
-                    projection: None,
+                    ready: None,
                     projection_request: None,
                 };
             }
@@ -322,12 +283,13 @@ impl CodePanelProjectionCache {
                 owner_id.to_string(),
                 CodePanelProjectionCacheEntry {
                     latest_fingerprint: fingerprint,
-                    latest_source: source.to_string(),
+                    latest_revision: source_revision.clone(),
                     latest_wrap_mode: wrap_mode,
                     represented_source_len: fingerprint.len,
                     last_used: self.access_tick,
                     displayed: Some(projection.clone()),
                     displayed_fingerprint: Some(fingerprint),
+                    displayed_revision: Some(source_revision.clone()),
                     in_flight: None,
                 },
             );
@@ -336,32 +298,35 @@ impl CodePanelProjectionCache {
                 .saturating_add(fingerprint.len);
             self.stats.completed_projections = self.stats.completed_projections.saturating_add(1);
             return CodePanelProjectionLookup {
-                projection: Some(projection),
+                ready: Some(CodePanelProjectionReady {
+                    projection,
+                    source_revision,
+                }),
                 projection_request: None,
             };
         }
 
-        let source = source.to_string();
         let request = projection_request_for(
             owner_id.to_string(),
             fingerprint,
             self.scope_generation,
-            source.clone(),
+            source_revision.clone(),
             wrap_mode,
         );
         self.entries.insert(
             owner_id.to_string(),
             CodePanelProjectionCacheEntry {
                 latest_fingerprint: fingerprint,
-                latest_source: source.clone(),
+                latest_revision: source_revision.clone(),
                 latest_wrap_mode: wrap_mode,
                 represented_source_len: fingerprint.len,
                 last_used: self.access_tick,
                 displayed: None,
                 displayed_fingerprint: None,
+                displayed_revision: None,
                 in_flight: Some(CodePanelProjectionInFlight {
                     fingerprint,
-                    source,
+                    source_revision,
                 }),
             },
         );
@@ -371,7 +336,7 @@ impl CodePanelProjectionCache {
         self.stats.scheduled_projections = self.stats.scheduled_projections.saturating_add(1);
 
         CodePanelProjectionLookup {
-            projection: None,
+            ready: None,
             projection_request: Some(request),
         }
     }
@@ -380,7 +345,7 @@ impl CodePanelProjectionCache {
         &mut self,
         owner_id: &str,
         fingerprint: ProjectionFingerprint,
-        source: &str,
+        source_revision: CodePanelSourceRevision,
         wrap_mode: CodePanelWrapMode,
     ) -> CodePanelProjectionLookup {
         let entry = self
@@ -396,7 +361,7 @@ impl CodePanelProjectionCache {
                 self.stats.pending_hits = self.stats.pending_hits.saturating_add(1);
             }
             return CodePanelProjectionLookup {
-                projection: projection_display_for(entry, fingerprint),
+                ready: projection_display_for(entry, fingerprint),
                 projection_request: None,
             };
         }
@@ -407,45 +372,50 @@ impl CodePanelProjectionCache {
             .saturating_sub(entry.represented_source_len)
             .saturating_add(fingerprint.len);
         entry.latest_fingerprint = fingerprint;
-        entry.latest_source = source.to_string();
+        entry.latest_revision = source_revision.clone();
         entry.latest_wrap_mode = wrap_mode;
         entry.represented_source_len = fingerprint.len;
 
         let mut projection_request = None;
         if entry.displayed_fingerprint != Some(fingerprint) {
+            let source = source_revision.display_source();
             if source.len() <= INLINE_PROJECTION_SOURCE_BYTES {
                 let projection = Arc::new(CodePanelDisplayProjection::new(source, wrap_mode));
                 if code_panel_projection_completed_entry_estimate_for_projection(
                     owner_id,
-                    source,
+                    &source_revision,
                     &projection,
                 ) > self.max_estimated_retained_bytes
                 {
                     entry.displayed = None;
                     entry.displayed_fingerprint = None;
+                    entry.displayed_revision = None;
                     entry.in_flight = None;
                     self.stats.uncached_oversize_lookups =
                         self.stats.uncached_oversize_lookups.saturating_add(1);
                     return CodePanelProjectionLookup {
-                        projection: None,
+                        ready: None,
                         projection_request: None,
                     };
                 }
                 entry.displayed = Some(projection.clone());
                 entry.displayed_fingerprint = Some(fingerprint);
+                entry.displayed_revision = Some(source_revision.clone());
                 entry.in_flight = None;
                 self.stats.completed_projections =
                     self.stats.completed_projections.saturating_add(1);
                 return CodePanelProjectionLookup {
-                    projection: Some(projection),
+                    ready: Some(CodePanelProjectionReady {
+                        projection,
+                        source_revision,
+                    }),
                     projection_request: None,
                 };
             }
             if entry.in_flight.is_none() {
-                let source = source.to_string();
                 entry.in_flight = Some(CodePanelProjectionInFlight {
                     fingerprint,
-                    source: source.clone(),
+                    source_revision: source_revision.clone(),
                 });
                 self.stats.scheduled_projections =
                     self.stats.scheduled_projections.saturating_add(1);
@@ -453,7 +423,7 @@ impl CodePanelProjectionCache {
                     owner_id.to_string(),
                     fingerprint,
                     self.scope_generation,
-                    source,
+                    source_revision,
                     wrap_mode,
                 ));
             } else {
@@ -462,7 +432,7 @@ impl CodePanelProjectionCache {
         }
 
         CodePanelProjectionLookup {
-            projection: projection_display_for(entry, fingerprint),
+            ready: projection_display_for(entry, fingerprint),
             projection_request,
         }
     }
@@ -515,25 +485,14 @@ fn projection_request_for(
     owner_id: String,
     fingerprint: ProjectionFingerprint,
     scope_generation: u64,
-    source: String,
+    source_revision: CodePanelSourceRevision,
     wrap_mode: CodePanelWrapMode,
 ) -> CodePanelProjectionRequest {
     CodePanelProjectionRequest {
         owner_id,
         fingerprint,
         scope_generation,
-        source,
+        source_revision,
         wrap_mode,
-    }
-}
-
-fn projection_display_for(
-    entry: &CodePanelProjectionCacheEntry,
-    fingerprint: ProjectionFingerprint,
-) -> Option<Arc<CodePanelDisplayProjection>> {
-    if entry.displayed_fingerprint == Some(fingerprint) {
-        entry.displayed.clone()
-    } else {
-        None
     }
 }

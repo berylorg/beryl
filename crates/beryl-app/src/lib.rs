@@ -2,7 +2,9 @@
 //!
 //! ```no_run
 //! use beryl_app::{
-//!     AppBootstrap, NotificationPreferences, OperationPreferences,
+//!     ActiveThemeProjection, AppBootstrap, BerylThemeRole, NotificationPreferences, OperationPreferences,
+//!     StylePropertyKind, StylePropertyValue, ThemeDefinition, ThemePropertySchema,
+//!     ThemeResolutionContext, ThemeResolver, ThemeRoleSchema, ThemeSchema,
 //!     WorkspaceGraphSummaryRequest, WorkspaceGraphToolService, WorkspaceUiState,
 //!     beryl_user_thread_start_options, run_app,
 //! };
@@ -18,6 +20,21 @@
 //! let _operations = OperationPreferences::default();
 //! let _thread_options = beryl_user_thread_start_options();
 //! let graph_tools = WorkspaceGraphToolService::new(workspace_store.clone());
+//! let theme_schema = ThemeSchema::new(vec![ThemeRoleSchema::new("text").with_property(
+//!     "foreground",
+//!     ThemePropertySchema::new(
+//!         StylePropertyKind::Color,
+//!         StylePropertyValue::color("#ffffff"),
+//!     ),
+//! )]);
+//! let theme = ThemeResolver::new(theme_schema, ThemeDefinition::empty()).unwrap();
+//! let _text_foreground = theme
+//!     .resolve_property("text", "foreground", &ThemeResolutionContext::new())
+//!     .unwrap();
+//! let built_in_theme = ActiveThemeProjection::built_in();
+//! let _window_style = built_in_theme
+//!     .default_style(BerylThemeRole::AppWindow.id())
+//!     .unwrap();
 //! let _summary_request = WorkspaceGraphSummaryRequest {
 //!     workspace_id: BerylWorkspaceId::untitled(1),
 //! };
@@ -43,9 +60,11 @@ mod member_thread_inventory;
 mod memory_diagnostics;
 mod persistence;
 mod preferences;
+mod settings_dynamic_tools;
 mod shell;
 mod startup_state;
 mod text_input;
+mod theme_dynamic_tools;
 mod thread_start_options;
 mod title_generation;
 mod workspace_graph_commit;
@@ -167,11 +186,19 @@ pub fn run_diagnostic_target_stdio(bootstrap: AppBootstrap) {
 }
 
 pub use appearance::{
-    AppearanceButtonSettings, AppearanceButtonStateSettings, AppearanceChromeSettings,
-    AppearanceForegroundSettings, AppearanceInputSettings, AppearanceRoleSettings,
-    AppearanceSettings, AppearanceSettingsError, AppearanceSettingsStore,
+    ActiveThemeProjection, AppearanceButtonSettings, AppearanceButtonStateSettings,
+    AppearanceChromeSettings, AppearanceForegroundSettings, AppearanceInputSettings,
+    AppearanceRoleSettings, AppearanceSettings, AppearanceSettingsError, AppearanceSettingsStore,
     AppearanceStatusLineSettings, AppearanceSurfaceSettings, AppearanceTranscriptShellSettings,
-    ParsedHexColor,
+    BUILT_IN_INSTALLED_THEME_ID, BUILT_IN_THEME_ROLE_INVENTORY, BerylThemeProperty, BerylThemeRole,
+    InstalledThemeId, InstalledThemeMetadata, MAX_THEME_DIAGNOSTIC_MESSAGE_BYTES,
+    MAX_THEME_FONT_FAMILY_BYTES, MAX_THEME_VALIDATION_DIAGNOSTICS, ParsedHexColor, ResolvedStyle,
+    StylePropertyId, StylePropertyKind, StylePropertySource, StylePropertyValue, StyleRoleId,
+    ThemeDefinition, ThemeDiagnostic, ThemeDiagnosticKind, ThemeDocument, ThemeDocumentError,
+    ThemePropertySchema, ThemeRepositoryError, ThemeRepositorySnapshot, ThemeRepositoryStore,
+    ThemeResolutionContext, ThemeResolutionError, ThemeResolver, ThemeRoleDefinition,
+    ThemeRoleSchema, ThemeSchema, ThemeValidationDiagnostics, built_in_theme_definition,
+    built_in_theme_resolver, built_in_theme_schema,
 };
 pub use beryl_home_dir::{BerylHomeDir, BerylHomeDirError};
 pub use diagnostic_child_dynamic_tools::{
@@ -180,18 +207,19 @@ pub use diagnostic_child_dynamic_tools::{
     DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL, DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL,
     DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL, DIAGNOSTIC_CHILD_READ_MEMORY_TOOL,
     DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
-    DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL, DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL,
-    DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
-    DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
-    DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL, DIAGNOSTIC_CHILD_STOP_TOOL,
-    DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL, DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
-    DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
+    DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL, DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+    DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL, DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL,
+    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
+    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
+    DIAGNOSTIC_CHILD_STOP_TOOL, DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL,
+    DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL, DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
     beryl_diagnostic_child_dynamic_tool_shell_response_timeout,
     beryl_diagnostic_child_dynamic_tool_specs, is_beryl_diagnostic_child_dynamic_tool,
 };
 pub use diagnostic_dynamic_tools::{
     READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
-    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL,
+    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
+    READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL,
     beryl_diagnostic_dynamic_tool_specs, diagnostic_bridge_unavailable_response,
     is_beryl_diagnostic_dynamic_tool,
 };
@@ -237,10 +265,26 @@ pub use preferences::{
     parse_notification_sound_path_text, validate_context_compaction_timeout_seconds,
     validate_notification_sound_path,
 };
+pub use settings_dynamic_tools::{
+    GuiSettingsUpdate, READ_GUI_SETTINGS_TOOL, SettingsDynamicToolError,
+    SettingsDynamicToolRequest, UPDATE_GUI_SETTINGS_TOOL, VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
+    beryl_settings_dynamic_tool_specs, gui_settings_snapshot_value, is_beryl_settings_dynamic_tool,
+    parse_beryl_settings_dynamic_tool_request, settings_validation_value,
+};
 pub use startup_state::{
     ResolvedStartupState, StartupStateError, WorkspaceDeletionResolution,
     create_fresh_untitled_workspace, delete_workspace_and_resolve_active_replacement,
     resolve_startup_state,
+};
+pub use theme_dynamic_tools::{
+    ACTIVATE_THEME_TOOL, INSTALL_THEME_TOOL, MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES,
+    MAX_THEME_TOOL_NAME_BYTES, PREVIEW_THEME_TOOL, READ_THEME_AUTHORING_GUIDE_TOOL,
+    READ_THEME_REPOSITORY_TOOL, READ_THEME_SCHEMA_TOOL, SAVE_THEME_AS_TOOL,
+    STOP_THEME_PREVIEW_TOOL, ThemeAuthoringGuideSection, ThemeDynamicToolError,
+    ThemeDynamicToolRequest, ThemeSaveAsSource, UPDATE_THEME_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
+    beryl_theme_dynamic_tool_specs, is_beryl_theme_dynamic_tool,
+    parse_beryl_theme_dynamic_tool_request, theme_authoring_guide_value, theme_repository_value,
+    theme_schema_value, validate_theme_document_value,
 };
 pub use thread_start_options::{beryl_thread_start_options, beryl_user_thread_start_options};
 pub use workspace_graph_commit::{

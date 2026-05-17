@@ -4,6 +4,7 @@ mod tempdir_support;
 use std::{
     env,
     ffi::OsString,
+    fs,
     panic::{self, AssertUnwindSafe},
     path::Path,
     sync::{Arc, Mutex},
@@ -12,17 +13,22 @@ use std::{
 };
 
 pub use beryl_app::{
-    AgentPreferences, AppearanceButtonSettings, AppearanceButtonStateSettings,
-    AppearanceForegroundSettings, AppearanceInputSettings, AppearanceRoleSettings,
-    AppearanceSettings, AppearanceSettingsStore, AppearanceStatusLineSettings,
-    AppearanceSurfaceSettings, AppearanceTranscriptShellSettings, ContextCompactionTimeoutError,
-    GuiPreferences, GuiPreferencesStore, NotificationPreferences, NotificationSoundPathError,
-    OperationPreferences, normalize_developer_instructions_text,
-    parse_context_compaction_timeout_seconds_text, parse_notification_sound_path_text,
-    validate_notification_sound_path,
+    ActiveThemeProjection, AgentPreferences, AppearanceButtonSettings,
+    AppearanceButtonStateSettings, AppearanceForegroundSettings, AppearanceInputSettings,
+    AppearanceRoleSettings, AppearanceSettings, AppearanceSettingsStore,
+    AppearanceStatusLineSettings, AppearanceSurfaceSettings, AppearanceTranscriptShellSettings,
+    BUILT_IN_INSTALLED_THEME_ID, BerylThemeProperty, BerylThemeRole, ContextCompactionTimeoutError,
+    GuiPreferences, GuiPreferencesStore, InstalledThemeId, NotificationPreferences,
+    NotificationSoundPathError, OperationPreferences, StylePropertyId, StylePropertyKind,
+    StylePropertySource, StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeDocument,
+    ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext, ThemeResolver,
+    ThemeRoleDefinition, ThemeRoleSchema, built_in_theme_schema,
+    normalize_developer_instructions_text, parse_context_compaction_timeout_seconds_text,
+    parse_notification_sound_path_text, validate_notification_sound_path,
 };
 use gpui_settings_window::{
-    SettingsFieldId, SettingsFieldKind, SettingsRowActionId, SettingsSectionId,
+    SettingsFieldId, SettingsFieldKind, SettingsPageActionId, SettingsPageId,
+    SettingsPageSplitItemId, SettingsRowActionId, SettingsRowDetailField, SettingsWindowModel,
 };
 
 #[allow(dead_code)]
@@ -30,59 +36,487 @@ use gpui_settings_window::{
 mod settings;
 
 #[test]
-fn settings_model_maps_appearance_roles_and_color_rows() {
-    let state = settings_state(AppearanceSettings::default());
+fn settings_model_maps_theme_editor_split_and_selected_role_rows() {
+    let mut state = settings_state(AppearanceSettings::default());
     let model = state.model();
 
-    assert_eq!(model.sections().len(), 18);
-    assert_eq!(model.selected_section_id().as_str(), "general_ui");
+    assert_eq!(model.sections().len(), 4);
+    assert_eq!(model.selected_section_id().as_str(), "themes");
+    assert_eq!(model.selected_page_id().as_str(), "themes");
 
-    let foreground = model
-        .row(&SettingsFieldId::from("general_ui.foreground"))
-        .expect("general UI foreground row should exist");
+    let active_theme = model
+        .row(&SettingsFieldId::from("themes.active"))
+        .expect("active theme row should exist");
+    assert_eq!(
+        active_theme.navigation_target_page_id(),
+        Some(&SettingsPageId::from("themes.editor"))
+    );
+    assert_eq!(active_theme.actions().len(), 2);
+    assert_eq!(
+        active_theme.actions()[0].action_id(),
+        &SettingsRowActionId::from("save")
+    );
+    assert!(!active_theme.actions()[0].is_enabled());
+    assert_eq!(
+        active_theme.actions()[1].action_id(),
+        &SettingsRowActionId::from("save_as")
+    );
+    assert!(!active_theme.actions()[1].is_enabled());
+
+    let themes = model
+        .sections()
+        .iter()
+        .find(|section| section.section_id().as_str() == "themes")
+        .expect("themes section should exist");
+    assert_eq!(themes.root_page().title(), "Themes");
+    assert!(
+        themes
+            .subpages()
+            .iter()
+            .any(|page| page.page_id().as_str() == "themes.editor")
+    );
+
+    let editor = model
+        .page(&SettingsPageId::from("themes.editor"))
+        .expect("theme editor page should exist");
+    assert!(
+        editor.local_split().is_none(),
+        "theme editor split should be built only while the editor page is selected"
+    );
+    assert!(
+        model
+            .row(&theme_property_field_id(
+                BerylThemeRole::AppWindow,
+                BerylThemeProperty::Foreground,
+            ))
+            .is_none(),
+        "unselected theme editor rows should not participate in ordinary page sync"
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    let model = state.model();
+    let editor = model
+        .page(&SettingsPageId::from("themes.editor"))
+        .expect("theme editor page should exist");
+    let split = editor
+        .local_split()
+        .expect("theme editor should carry a role split");
+    assert_eq!(split.items().len(), BerylThemeRole::ALL.len());
+    assert_eq!(
+        split.selected_item().map(|item| item.item_id().as_str()),
+        Some(BerylThemeRole::AppWindow.id())
+    );
+    assert_eq!(
+        model.selected_rows().len(),
+        1 + BerylThemeProperty::ALL.len(),
+        "Theme Editor detail rows should stay bounded to Save As plus selected-role properties"
+    );
+    assert!(
+        model
+            .row(&SettingsFieldId::from("general_ui.foreground"))
+            .is_none(),
+        "theme editor must not expose obsolete flat appearance rows"
+    );
+
+    let foreground_source = model
+        .row(&theme_property_source_field_id(
+            BerylThemeRole::AppWindow,
+            BerylThemeProperty::Foreground,
+        ))
+        .expect("selected role foreground source row should exist");
+    assert_eq!(foreground_source.kind(), SettingsFieldKind::Choice);
+    assert_eq!(foreground_source.value(), "value");
+    assert_eq!(foreground_source.choices().len(), 4);
+    assert_eq!(foreground_source.subtext(), None);
+    let foreground = foreground_source
+        .detail_field()
+        .expect("concrete foreground detail field should exist");
     assert_eq!(foreground.kind(), SettingsFieldKind::Color);
     assert_eq!(foreground.value(), "#e2e8f0");
-
-    let code_font = model
-        .row(&SettingsFieldId::from("code.font_family"))
-        .expect("code font row should exist");
-    assert_eq!(code_font.kind(), SettingsFieldKind::Text);
-    assert_eq!(code_font.value(), "Consolas");
-
-    let reasoning_foreground = model
-        .row(&SettingsFieldId::from("transcript_reasoning.foreground"))
-        .expect("transcript reasoning foreground row should exist");
-    assert_eq!(reasoning_foreground.kind(), SettingsFieldKind::Color);
-    assert_eq!(reasoning_foreground.value(), "#e2e8f0");
-
-    let commentary_foreground = model
-        .row(&SettingsFieldId::from("transcript_commentary.foreground"))
-        .expect("transcript commentary foreground row should exist");
-    assert_eq!(commentary_foreground.kind(), SettingsFieldKind::Color);
-    assert_eq!(commentary_foreground.value(), "#cbd5e1");
-
-    let primary_button_background = model
-        .row(&SettingsFieldId::from("primary_button.normal_background"))
-        .expect("primary button normal background row should exist");
-    assert_eq!(primary_button_background.kind(), SettingsFieldKind::Color);
-
-    let primary_button_font_weight = model
-        .row(&SettingsFieldId::from("primary_button.font_weight"))
-        .expect("primary button font weight row should exist");
-    assert_eq!(primary_button_font_weight.kind(), SettingsFieldKind::Text);
-    assert_eq!(primary_button_font_weight.value(), "500");
-
-    let thread_strip_background = model
-        .row(&SettingsFieldId::from(
-            "chrome.conversation_thread_strip_background",
-        ))
-        .expect("conversation thread strip background row should exist");
-    assert_eq!(
-        thread_strip_background.label(),
-        "Conversation thread strip background"
+    assert!(
+        model
+            .row(&theme_property_field_id(
+                BerylThemeRole::AppWindow,
+                BerylThemeProperty::Foreground,
+            ))
+            .is_none(),
+        "concrete value editor should be nested inside the source row"
     );
-    assert_eq!(thread_strip_background.kind(), SettingsFieldKind::Color);
-    assert_eq!(thread_strip_background.value(), "#091220");
+
+    let general_font_size = theme_property_detail_field(
+        &model,
+        BerylThemeRole::AppWindow,
+        BerylThemeProperty::FontSize,
+    )
+    .expect("selected role font size detail field should exist");
+    assert_eq!(general_font_size.kind(), SettingsFieldKind::Number);
+    assert_eq!(general_font_size.value(), "14.0");
+
+    let background = theme_property_detail_field(
+        &model,
+        BerylThemeRole::AppWindow,
+        BerylThemeProperty::Background,
+    )
+    .expect("selected role background detail field should exist");
+    assert_eq!(background.kind(), SettingsFieldKind::Color);
+    assert_eq!(background.value(), "#020617");
+}
+
+#[test]
+fn settings_theme_editor_role_selection_updates_property_rows_only() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
+
+    let model = state.model();
+    assert_eq!(model.selected_section_id().as_str(), "themes");
+    assert_eq!(model.selected_page_id().as_str(), "themes.editor");
+    let editor = model.selected_page();
+    let split = editor
+        .local_split()
+        .expect("theme editor should carry a role split");
+    assert_eq!(
+        split.selected_item().map(|item| item.item_id().as_str()),
+        Some(BerylThemeRole::CodePanelBody.id())
+    );
+    assert!(
+        model
+            .row(&theme_property_field_id(
+                BerylThemeRole::AppWindow,
+                BerylThemeProperty::Foreground,
+            ))
+            .is_none(),
+        "unselected role rows should not remain in the detail pane"
+    );
+    let background = theme_property_detail_field(
+        &model,
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::Background,
+    )
+    .expect("selected code-panel role background detail field should exist");
+    assert_eq!(background.kind(), SettingsFieldKind::Color);
+    assert_eq!(background.value(), "#0f172a");
+    let font_source = model
+        .row(&theme_property_source_field_id(
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::FontFamily,
+        ))
+        .expect("selected code-panel role font source row should exist");
+    assert_eq!(font_source.value(), "value");
+}
+
+#[test]
+fn settings_theme_editor_role_previews_update_from_draft_values() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let field_id = theme_property_field_id(
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::Foreground,
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        ),
+        "value".to_string(),
+    );
+    state.set_field_value(&field_id, "#123456".to_string());
+
+    let model = state.model();
+    let split = model
+        .selected_page()
+        .local_split()
+        .expect("theme editor should carry a role split");
+    let code_item = split
+        .items()
+        .iter()
+        .find(|item| item.item_id().as_str() == BerylThemeRole::CodePanelBody.id())
+        .expect("code-panel body role should be listed");
+    assert_eq!(
+        code_item
+            .preview_style()
+            .and_then(|style| style.foreground())
+            .map(|color| color.to_hex()),
+        Some("#123456".to_string())
+    );
+    let source_row = model
+        .row(&theme_property_source_field_id(
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        ))
+        .expect("foreground property row should exist");
+    assert!(source_row.is_modified());
+    assert!(
+        source_row
+            .detail_field()
+            .is_some_and(SettingsRowDetailField::is_modified)
+    );
+}
+
+#[test]
+fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing() {
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let source_field_id = theme_property_source_field_id(
+        BerylThemeRole::MarkdownInlineCode,
+        BerylThemeProperty::Background,
+    );
+    let value_field_id = theme_property_field_id(
+        BerylThemeRole::MarkdownInlineCode,
+        BerylThemeProperty::Background,
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::MarkdownInlineCode.id(),
+    ));
+    let model = state.model();
+    let source = model
+        .row(&source_field_id)
+        .expect("inline-code background source row should exist");
+    assert_eq!(source.kind(), SettingsFieldKind::Choice);
+    assert_eq!(source.value(), "ambient_parent");
+    assert_eq!(source.subtext(), None);
+    assert!(
+        model.row(&value_field_id).is_none(),
+        "ambient source should not expose a concrete value editor"
+    );
+
+    state.set_field_value(&source_field_id, "static_parent".to_string());
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+
+    let snapshot = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
+    let role = snapshot
+        .active_definition()
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::MarkdownInlineCode.id())
+        .expect("inline-code role should persist");
+    assert_eq!(
+        role.properties()
+            .get(&StylePropertyId::from(BerylThemeProperty::Background.id())),
+        Some(&StylePropertySource::StaticParent)
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_save_preserves_compact_document_omissions() {
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_compact_theme_document(COMPACT_THEME_DOCUMENT);
+    let field_id =
+        theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Foreground);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.set_field_value(&field_id, "#445566".to_string());
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+
+    let store = ThemeRepositoryStore::new(&root);
+    let text =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("compact"))).unwrap();
+    let document = ThemeDocument::from_toml_str(&text).unwrap();
+
+    assert_compact_theme_sources(document.definition(), "#445566");
+    assert!(
+        !role_record_text(&text, BerylThemeRole::AppWindow.id()).contains("background ="),
+        "saving an unrelated property must not serialize omitted app-window background"
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_save_as_preserves_compact_document_omissions() {
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_compact_theme_document(COMPACT_THEME_DOCUMENT);
+    let field_id =
+        theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Foreground);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.set_field_value(&field_id, "#556677".to_string());
+    state.set_field_value(
+        &SettingsFieldId::from("themes.save_as_name"),
+        "Compact Copy".to_string(),
+    );
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save_as"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+
+    let store = ThemeRepositoryStore::new(&root);
+    let snapshot = store.load_or_default().unwrap();
+    let text = fs::read_to_string(store.theme_document_path(snapshot.active_theme_id())).unwrap();
+    let document = ThemeDocument::from_toml_str(&text).unwrap();
+
+    assert_eq!(snapshot.active_theme_id().as_str(), "compact-copy");
+    assert_compact_theme_sources(document.definition(), "#556677");
+    assert!(
+        !role_record_text(&text, BerylThemeRole::AppWindow.id()).contains("background ="),
+        "Save As must not expand omitted properties into explicit fallback sources"
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_selected_fallback_on_omitted_property_becomes_explicit() {
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_compact_theme_document(COMPACT_THEME_DOCUMENT);
+    let source_field_id =
+        theme_property_source_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    let model = state.model();
+    assert_eq!(
+        model
+            .row(&source_field_id)
+            .expect("background source row should exist")
+            .value(),
+        "fallback",
+        "omitted properties still display the fallback source choice"
+    );
+
+    state.set_field_value(&source_field_id, "fallback".to_string());
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+
+    let store = ThemeRepositoryStore::new(&root);
+    let text =
+        fs::read_to_string(store.theme_document_path(&InstalledThemeId::from("compact"))).unwrap();
+    let document = ThemeDocument::from_toml_str(&text).unwrap();
+
+    assert_eq!(
+        theme_source(
+            document.definition(),
+            BerylThemeRole::AppWindow,
+            BerylThemeProperty::Background,
+        ),
+        Some(&StylePropertySource::Fallback)
+    );
+    assert!(
+        role_record_text(&text, BerylThemeRole::AppWindow.id())
+            .contains("background = \"fallback\"")
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_concrete_source_uses_typed_value_editor() {
+    let (mut state, shared, _preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let source_field_id = theme_property_source_field_id(
+        BerylThemeRole::MarkdownInlineCode,
+        BerylThemeProperty::Background,
+    );
+    let value_field_id = theme_property_field_id(
+        BerylThemeRole::MarkdownInlineCode,
+        BerylThemeProperty::Background,
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::MarkdownInlineCode.id(),
+    ));
+    state.set_field_value(&source_field_id, "value".to_string());
+    let model = state.model();
+    let value = model
+        .row(&source_field_id)
+        .and_then(|row| row.detail_field())
+        .expect("concrete source should expose a nested concrete value editor");
+    assert_eq!(value.kind(), SettingsFieldKind::Color);
+    state.set_field_value(&value_field_id, "#445566".to_string());
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    assert_eq!(
+        shared
+            .lock()
+            .unwrap()
+            .resolve_property(
+                BerylThemeRole::MarkdownInlineCode.id(),
+                BerylThemeProperty::Background.id(),
+                &ThemeResolutionContext::new()
+            )
+            .unwrap(),
+        StylePropertyValue::color("#445566")
+    );
+
+    let snapshot = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
+    let role = snapshot
+        .active_definition()
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == BerylThemeRole::MarkdownInlineCode.id())
+        .expect("inline-code role should persist");
+    assert_eq!(
+        role.properties()
+            .get(&StylePropertyId::from(BerylThemeProperty::Background.id())),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            "#445566"
+        )))
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_static_parent_is_schema_metadata_not_text_field() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
+    let model = state.model();
+    let editor = model.selected_page();
+    let split = editor
+        .local_split()
+        .expect("theme editor should carry a role split");
+    let item = split
+        .items()
+        .iter()
+        .find(|item| item.item_id().as_str() == BerylThemeRole::CodePanelBody.id())
+        .expect("code panel body role should exist");
+
+    assert_eq!(item.subtext(), Some("static parent: code_panel.container"));
+    assert!(
+        model
+            .selected_rows()
+            .iter()
+            .all(|row| row.label() != "Static parent"),
+        "Theme Editor must not expose free-form static-parent editing"
+    );
 }
 
 #[test]
@@ -167,7 +601,7 @@ fn settings_model_includes_operations_context_compaction_timeout_row() {
         row.subtext(),
         Some("Seconds Beryl waits for backend-reported compaction completion.")
     );
-    assert_eq!(row.kind(), SettingsFieldKind::Text);
+    assert_eq!(row.kind(), SettingsFieldKind::Number);
     assert_eq!(row.value(), "180");
     assert!(row.actions().is_empty());
 }
@@ -178,17 +612,29 @@ fn settings_window_options_map_active_theme_to_visual_theme() {
     active.general_ui.background = "#101112".to_string();
     active.general_ui.foreground = "#edeff1".to_string();
     active.chrome.surfaces.panel_background = "#202122".to_string();
+    active.chrome.surfaces.row_background = "#505152".to_string();
+    active.chrome.surfaces.popup_background = "#606162".to_string();
     active.chrome.surfaces.border = "#303132".to_string();
+    active.chrome.surfaces.muted_foreground = "#707172".to_string();
+    active.chrome.input.input_background = "#808182".to_string();
+    active.chrome.input.input_border = "#909192".to_string();
+    active.chrome.input.input_foreground = "#a0a1a2".to_string();
     active.chrome.primary_button.font_weight = 650;
     active.chrome.primary_button.normal.background = "#404142".to_string();
     active.chrome.secondary_button.font_weight = 550;
-    let state = settings_state(active);
+    let mut state = settings_state(active);
 
     let theme = state.window_options().visual_theme().clone();
 
     assert_eq!(theme.window_background.to_hex(), "#101112");
     assert_eq!(theme.panel.background.to_hex(), "#202122");
     assert_eq!(theme.panel.foreground.to_hex(), "#edeff1");
+    assert_eq!(theme.panel.muted_foreground.to_hex(), "#707172");
+    assert_eq!(theme.row.background.to_hex(), "#505152");
+    assert_eq!(theme.popup.background.to_hex(), "#606162");
+    assert_eq!(theme.input.background.to_hex(), "#808182");
+    assert_eq!(theme.input.border.to_hex(), "#909192");
+    assert_eq!(theme.input.foreground.to_hex(), "#a0a1a2");
     assert_eq!(theme.navigation_button.font_weight, 550);
     assert_eq!(theme.primary_button.font_weight, 650);
     assert_eq!(theme.primary_button.normal.background.to_hex(), "#404142");
@@ -196,60 +642,283 @@ fn settings_window_options_map_active_theme_to_visual_theme() {
 }
 
 #[test]
-fn settings_apply_stages_color_changes_and_normalizes_on_apply() {
+fn settings_window_options_use_minimal_reusable_crate_layout_size() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let options = state.window_options();
+    let (width, height) = options.window_size();
+    let (min_width, min_height) = options.min_window_size();
+
+    assert_eq!((width, height), (800.0, 520.0));
+    assert_eq!((min_width, min_height), (800.0, 520.0));
+}
+
+#[test]
+fn settings_window_options_sync_skips_ordinary_theme_editor_field_edits() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let initial = state
+        .window_options_for_sync()
+        .expect("first options sync should publish options");
+    state.record_window_options_synced(initial);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::AppWindow.id(),
+    ));
+    state.set_field_value(
+        &theme_property_source_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background),
+        "value".to_string(),
+    );
+    state.set_field_value(
+        &theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background),
+        "#101112".to_string(),
+    );
+
+    let model = state.model();
+    let active_row = model
+        .row(&SettingsFieldId::from("themes.active"))
+        .expect("active theme row should exist");
+    assert!(active_row.is_modified());
+    assert!(
+        state.window_options_for_sync().is_none(),
+        "staged field edits must sync the model without resyncing unchanged window options"
+    );
+}
+
+#[test]
+fn settings_window_options_sync_invalidates_once_for_active_theme_preview_and_save() {
+    let (mut state, shared, _preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let initial = state
+        .window_options_for_sync()
+        .expect("first options sync should publish options");
+    state.record_window_options_synced(initial.clone());
+
+    let mut preview = AppearanceSettings::default();
+    preview.general_ui.background = "#101112".to_string();
+    *shared.lock().unwrap() = preview.to_active_theme_projection().unwrap();
+
+    let preview_options = state
+        .window_options_for_sync()
+        .expect("theme preview should publish changed visual options");
+    assert_ne!(preview_options, initial);
+    state.record_window_options_synced(preview_options.clone());
+    assert!(
+        state.window_options_for_sync().is_none(),
+        "unchanged preview options should not publish twice"
+    );
+
+    *shared.lock().unwrap() = state
+        .theme_repository_snapshot()
+        .active_projection()
+        .clone();
+    let restored_options = state
+        .window_options_for_sync()
+        .expect("stopping preview should restore visual options once");
+    assert_eq!(restored_options, initial);
+    state.record_window_options_synced(restored_options);
+    assert!(
+        state.window_options_for_sync().is_none(),
+        "restored options should not publish twice"
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.set_field_value(
+        &theme_property_source_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background),
+        "value".to_string(),
+    );
+    state.set_field_value(
+        &theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background),
+        "#202122".to_string(),
+    );
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    let saved_options = state
+        .window_options_for_sync()
+        .expect("saving active theme changes should publish options once");
+    assert_ne!(saved_options, initial);
+    state.record_window_options_synced(saved_options);
+    assert!(
+        state.window_options_for_sync().is_none(),
+        "saved options should not publish twice"
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_model_exposes_clipping_sensitive_controls() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    let model = state.model();
+    let page = model.selected_page();
+    assert_eq!(page.page_id().as_str(), "themes.editor");
+    assert_eq!(page.actions().len(), 2);
+    assert_eq!(
+        page.actions()[1].action_id(),
+        &SettingsPageActionId::from("save_as")
+    );
+    assert_eq!(page.actions()[1].label(), "Save As");
+    assert!(
+        model
+            .row(&SettingsFieldId::from("themes.save_as_name"))
+            .is_some(),
+        "Theme Editor should expose the Save As name row"
+    );
+
+    let notification_row = model
+        .row(&state.notification_end_turn_sound_field_id())
+        .expect("notification sound row should exist");
+    assert_eq!(notification_row.actions()[1].label(), "Clear");
+
+    let developer_row = model
+        .row(&state.developer_instructions_field_id())
+        .expect("developer instructions row should exist");
+    assert_eq!(developer_row.kind(), SettingsFieldKind::MultilineText);
+}
+
+#[test]
+fn initial_active_theme_uses_built_in_theme_and_ignores_legacy_theme_toml() {
+    let root = unique_temp_dir();
+    let legacy_store = AppearanceSettingsStore::new(&root);
+    fs::write(legacy_store.theme_path(), b"legacy theme should remain").unwrap();
+
+    let active = settings::load_initial_theme_repository_snapshot(None)
+        .active_projection()
+        .clone();
+    let expected = ActiveThemeProjection::built_in();
+
+    assert_eq!(
+        active
+            .default_style(beryl_app::BerylThemeRole::AppWindow.id())
+            .unwrap(),
+        expected
+            .default_style(beryl_app::BerylThemeRole::AppWindow.id())
+            .unwrap()
+    );
+    assert_eq!(
+        fs::read(legacy_store.theme_path()).unwrap(),
+        b"legacy theme should remain"
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_save_stages_color_changes_and_normalizes_on_save() {
     let mut active = AppearanceSettings::default();
     active.code.foreground = "#112233".to_string();
     let (mut state, shared, _notifications, root) = settings_state_with_temp_store(active);
-    let field_id = SettingsFieldId::from("code.foreground");
-    let commentary_field_id = SettingsFieldId::from("transcript_commentary.foreground");
-    let thread_strip_field_id =
-        SettingsFieldId::from("chrome.conversation_thread_strip_background");
-    let primary_button_weight_field_id = SettingsFieldId::from("primary_button.font_weight");
+    let field_id = theme_property_field_id(
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::Foreground,
+    );
+    let commentary_field_id = theme_property_field_id(
+        BerylThemeRole::TranscriptAssistantCommentary,
+        BerylThemeProperty::Foreground,
+    );
+    let thread_strip_field_id = theme_property_field_id(
+        BerylThemeRole::MainThreadStrip,
+        BerylThemeProperty::Background,
+    );
+    let primary_button_weight_field_id = theme_property_field_id(
+        BerylThemeRole::ButtonPrimaryNormal,
+        BerylThemeProperty::FontWeight,
+    );
 
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        ),
+        "value".to_string(),
+    );
     state.set_field_value(&field_id, "#AABBCC".to_string());
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::TranscriptAssistantCommentary,
+            BerylThemeProperty::Foreground,
+        ),
+        "value".to_string(),
+    );
     state.set_field_value(&commentary_field_id, "#334455".to_string());
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::MainThreadStrip,
+            BerylThemeProperty::Background,
+        ),
+        "value".to_string(),
+    );
     state.set_field_value(&thread_strip_field_id, "#010203".to_string());
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::ButtonPrimaryNormal,
+            BerylThemeProperty::FontWeight,
+        ),
+        "value".to_string(),
+    );
     state.set_field_value(&primary_button_weight_field_id, "650".to_string());
     assert_eq!(
-        shared.lock().unwrap().code.foreground,
+        active_settings(&shared).code.foreground,
         "#112233",
         "field edits must not live-preview into active settings"
     );
     assert_eq!(
-        state.model().row(&field_id).map(|row| row.value()),
+        theme_property_detail_field(
+            &state.model(),
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        )
+        .map(|field| field.value()),
         Some("#AABBCC")
     );
-
-    assert!(state.apply());
-    assert_eq!(shared.lock().unwrap().code.foreground, "#aabbcc");
+    let model = state.model();
+    let active_row = model
+        .row(&SettingsFieldId::from("themes.active"))
+        .expect("active theme row should exist");
+    assert!(active_row.is_modified());
     assert_eq!(
-        shared.lock().unwrap().transcript_commentary.foreground,
+        active_row.actions()[0].action_id(),
+        &SettingsRowActionId::from("save")
+    );
+    assert!(active_row.actions()[0].is_enabled());
+    assert_eq!(
+        active_row.actions()[1].action_id(),
+        &SettingsRowActionId::from("save_as")
+    );
+    assert!(active_row.actions()[1].is_enabled());
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    assert_eq!(active_settings(&shared).code.foreground, "#aabbcc");
+    assert_eq!(
+        active_settings(&shared).transcript_commentary.foreground,
         "#334455"
     );
     assert_eq!(
-        shared
-            .lock()
-            .unwrap()
+        active_settings(&shared)
             .chrome
             .conversation_thread_strip_background,
         "#010203"
     );
     assert_eq!(
-        shared.lock().unwrap().chrome.primary_button.font_weight,
+        active_settings(&shared).chrome.primary_button.font_weight,
         650
     );
-    wait_for_save(&mut state);
 
-    let loaded = AppearanceSettingsStore::new(&root)
-        .load_or_default()
-        .unwrap();
-    assert_eq!(loaded.code.foreground, "#aabbcc");
-    assert_eq!(loaded.transcript_commentary.foreground, "#334455");
-    assert_eq!(
-        loaded.chrome.conversation_thread_strip_background,
-        "#010203"
-    );
-    assert_eq!(loaded.chrome.primary_button.font_weight, 650);
+    assert!(!AppearanceSettingsStore::new(&root).theme_path().exists());
+    assert!(ThemeRepositoryStore::new(&root).manifest_path().exists());
     cleanup_temp_dir(root);
 }
 
@@ -290,7 +959,7 @@ fn settings_apply_persists_notification_preferences_separately_from_theme() {
             .as_deref(),
         Some(sound_path.as_path())
     );
-    assert!(AppearanceSettingsStore::new(&root).theme_path().exists());
+    assert!(!AppearanceSettingsStore::new(&root).theme_path().exists());
     assert!(GuiPreferencesStore::new(&root).preferences_path().exists());
     cleanup_temp_dir(root);
 }
@@ -430,14 +1099,17 @@ fn settings_save_uses_injected_root_when_environment_home_differs() {
         });
 
     state.set_field_value(
-        &SettingsFieldId::from("code.foreground"),
+        &theme_property_field_id(
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        ),
         "#010203".to_string(),
     );
     assert!(state.apply());
     wait_for_save(&mut state);
 
     assert!(
-        AppearanceSettingsStore::new(&injected_root)
+        !AppearanceSettingsStore::new(&injected_root)
             .theme_path()
             .exists()
     );
@@ -505,24 +1177,196 @@ fn settings_apply_rejects_invalid_operation_timeout_without_mutating_active_pref
 }
 
 #[test]
-fn settings_apply_rejects_invalid_color_draft_without_mutating_active_settings() {
+fn settings_theme_save_rejects_invalid_color_draft_without_mutating_active_settings() {
     let mut active = AppearanceSettings::default();
     active.emphasis.background = "#010203".to_string();
     let (mut state, shared, _notifications, root) = settings_state_with_temp_store(active);
-    let field_id = SettingsFieldId::from("emphasis.background");
+    let field_id = theme_property_field_id(
+        BerylThemeRole::MarkdownEmphasis,
+        BerylThemeProperty::Background,
+    );
 
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::MarkdownEmphasis.id(),
+    ));
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::MarkdownEmphasis,
+            BerylThemeProperty::Background,
+        ),
+        "value".to_string(),
+    );
     state.set_field_value(&field_id, "slate".to_string());
 
-    assert!(!state.apply());
-    assert_eq!(shared.lock().unwrap().emphasis.background, "#010203");
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::Updated)
+    );
+    assert_eq!(active_settings(&shared).emphasis.background, "#010203");
+    assert!(
+        theme_property_detail_field(
+            &state.model(),
+            BerylThemeRole::MarkdownEmphasis,
+            BerylThemeProperty::Background,
+        )
+        .and_then(|field| field.error())
+        .is_some_and(|error| error.contains("#rrggbb"))
+    );
+    assert!(!AppearanceSettingsStore::new(&root).theme_path().exists());
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_modified_state_tracks_edits_apply_cancel_save_and_failed_validation() {
+    let (mut state, shared, _preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let active_row_id = SettingsFieldId::from("themes.active");
+    let source_field_id =
+        theme_property_source_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background);
+    let value_field_id =
+        theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background);
+
+    let model = state.model();
+    let active_row = model
+        .row(&active_row_id)
+        .expect("active theme row should exist");
+    assert!(!active_row.is_modified());
+    assert!(!active_row.actions()[0].is_enabled());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.set_field_value(&source_field_id, "value".to_string());
+    state.set_field_value(&value_field_id, "slate".to_string());
+    let model = state.model();
+    assert!(
+        model
+            .row(&active_row_id)
+            .expect("active theme row should exist")
+            .is_modified(),
+        "field edits, including invalid concrete values, should mark the theme draft modified"
+    );
+
+    assert!(
+        state.apply(),
+        "preference apply should not validate theme edits"
+    );
+    wait_for_save(&mut state);
     assert!(
         state
             .model()
-            .row(&field_id)
-            .and_then(|row| row.error())
-            .is_some_and(|error| error.contains("#rrggbb"))
+            .row(&active_row_id)
+            .expect("active theme row should exist")
+            .is_modified(),
+        "preference apply must not clear staged theme edits"
     );
-    assert!(!AppearanceSettingsStore::new(&root).theme_path().exists());
+
+    assert_eq!(
+        state.handle_row_action(&active_row_id, &SettingsRowActionId::from("save")),
+        Some(settings::SettingsRowActionOutcome::Updated)
+    );
+    assert!(
+        state
+            .model()
+            .row(&active_row_id)
+            .expect("active theme row should exist")
+            .is_modified(),
+        "failed theme validation must keep the draft modified"
+    );
+
+    state.reset_draft_from_active();
+    assert!(
+        !state
+            .model()
+            .row(&active_row_id)
+            .expect("active theme row should exist")
+            .is_modified(),
+        "cancel/reset should clear staged theme edits"
+    );
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.set_field_value(&source_field_id, "value".to_string());
+    state.set_field_value(&value_field_id, "#202122".to_string());
+    assert_eq!(
+        state.handle_row_action(&active_row_id, &SettingsRowActionId::from("save")),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    assert_eq!(active_settings(&shared).general_ui.background, "#202122");
+    assert!(
+        !state
+            .model()
+            .row(&active_row_id)
+            .expect("active theme row should exist")
+            .is_modified(),
+        "successful save should rebaseline the theme draft"
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_save_as_and_activate_switch_installed_themes() {
+    let (mut state, shared, _notifications, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let field_id = theme_property_field_id(
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::Foreground,
+    );
+    let save_as_name = SettingsFieldId::from("themes.save_as_name");
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role(SettingsPageSplitItemId::from(
+        BerylThemeRole::CodePanelBody.id(),
+    ));
+    state.set_field_value(
+        &theme_property_source_field_id(
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Foreground,
+        ),
+        "value".to_string(),
+    );
+    state.set_field_value(&field_id, "#223344".to_string());
+    state.set_field_value(&save_as_name, "Alternate Theme".to_string());
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save_as"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    assert_eq!(active_settings(&shared).code.foreground, "#223344");
+
+    let model = state.model();
+    let original = model
+        .row(&SettingsFieldId::from("themes.installed.test-theme"))
+        .expect("original installed theme row should exist");
+    assert_eq!(original.label(), "Test Theme");
+    assert_eq!(original.actions()[0].label(), "Activate");
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.installed.test-theme"),
+            &SettingsRowActionId::from("activate"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    assert_eq!(active_settings(&shared).code.foreground, "#e2e8f0");
+    assert!(
+        !state
+            .model()
+            .row(&SettingsFieldId::from("themes.active"))
+            .expect("active theme row should exist")
+            .is_modified(),
+        "activating another theme should leave no staged theme edits"
+    );
+    assert_eq!(
+        ThemeRepositoryStore::new(&root)
+            .load_or_default()
+            .unwrap()
+            .active_theme_id()
+            .as_str(),
+        "test-theme"
+    );
     cleanup_temp_dir(root);
 }
 
@@ -530,9 +1374,10 @@ fn settings_apply_rejects_invalid_color_draft_without_mutating_active_settings()
 fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     let (mut state, _shared, _notifications, root) =
         settings_state_with_temp_store(AppearanceSettings::default());
-    let field_id = SettingsFieldId::from("general_ui.font_family");
+    let field_id =
+        theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::FontFamily);
 
-    state.select_section(SettingsSectionId::from("code"));
+    state.select_page(SettingsPageId::from("themes.editor"));
     state.set_field_value(&field_id, "JetBrains Mono".to_string());
     state.set_notification_end_turn_sound_path(root.join("done.wav").display().to_string());
     state.set_developer_instructions("Use a staged draft.".to_string());
@@ -541,8 +1386,17 @@ fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     state.reset_draft_from_active();
 
     let model = state.model();
-    assert_eq!(model.selected_section_id().as_str(), "code");
-    assert_eq!(model.row(&field_id).map(|row| row.value()), Some("Inter"));
+    assert_eq!(model.selected_section_id().as_str(), "themes");
+    assert_eq!(model.selected_page_id().as_str(), "themes.editor");
+    assert_eq!(
+        theme_property_detail_field(
+            &model,
+            BerylThemeRole::AppWindow,
+            BerylThemeProperty::FontFamily,
+        )
+        .map(|field| field.value()),
+        Some("Inter")
+    );
     assert_eq!(state.notification_end_turn_sound_path_value(), "");
     assert_eq!(state.developer_instructions_value(), "");
     assert_eq!(
@@ -556,24 +1410,165 @@ fn settings_state(settings_value: AppearanceSettings) -> settings::SettingsState
     settings_state_with_temp_store(settings_value).0
 }
 
+const COMPACT_THEME_DOCUMENT: &str = r##"
+schema = 1
+id = "compact"
+name = "Compact Theme"
+
+[[role]]
+id = "app.window"
+foreground = { value = "#112233" }
+font_family = "fallback"
+
+[[role]]
+id = "markdown.inline_code"
+foreground = "static_parent"
+background = "ambient_parent"
+"##;
+
 fn settings_state_with_temp_store(
     settings_value: AppearanceSettings,
 ) -> (
     settings::SettingsState,
-    Arc<Mutex<AppearanceSettings>>,
+    Arc<Mutex<ActiveThemeProjection>>,
     Arc<Mutex<GuiPreferences>>,
     tempdir_support::TestTempDir,
 ) {
     let root = unique_temp_dir();
-    let shared_appearance = Arc::new(Mutex::new(settings_value));
+    let theme_store = ThemeRepositoryStore::new(&root);
+    let theme_snapshot = theme_store
+        .save_as_theme("Test Theme", settings_value.to_theme_definition().unwrap())
+        .unwrap();
+    let shared_theme = Arc::new(Mutex::new(theme_snapshot.active_projection().clone()));
     let shared_preferences = Arc::new(Mutex::new(GuiPreferences::default()));
-    let state = settings::SettingsState::new_with_stores(
-        shared_appearance.clone(),
-        AppearanceSettingsStore::new(&root),
+    let state = settings::SettingsState::new_with_theme_repository(
+        shared_theme.clone(),
         shared_preferences.clone(),
         GuiPreferencesStore::new(&root),
+        theme_store,
+        theme_snapshot,
     );
-    (state, shared_appearance, shared_preferences, root)
+    (state, shared_theme, shared_preferences, root)
+}
+
+fn settings_state_with_compact_theme_document(
+    document: &str,
+) -> (
+    settings::SettingsState,
+    Arc<Mutex<ActiveThemeProjection>>,
+    Arc<Mutex<GuiPreferences>>,
+    tempdir_support::TestTempDir,
+) {
+    let root = unique_temp_dir();
+    let theme_store = ThemeRepositoryStore::new(&root);
+    fs::create_dir_all(theme_store.theme_documents_dir()).unwrap();
+    fs::write(
+        theme_store.manifest_path(),
+        r#"schema = 1
+active_theme_id = "compact"
+
+[[theme]]
+id = "compact"
+name = "Compact Theme"
+file = "compact.toml"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        theme_store.theme_document_path(&InstalledThemeId::from("compact")),
+        document,
+    )
+    .unwrap();
+
+    let theme_snapshot = theme_store.load_or_default().unwrap();
+    let shared_theme = Arc::new(Mutex::new(theme_snapshot.active_projection().clone()));
+    let shared_preferences = Arc::new(Mutex::new(GuiPreferences::default()));
+    let state = settings::SettingsState::new_with_theme_repository(
+        shared_theme.clone(),
+        shared_preferences.clone(),
+        GuiPreferencesStore::new(&root),
+        theme_store,
+        theme_snapshot,
+    );
+    (state, shared_theme, shared_preferences, root)
+}
+
+fn assert_compact_theme_sources(definition: &ThemeDefinition, foreground: &str) {
+    assert_eq!(
+        theme_source(
+            definition,
+            BerylThemeRole::AppWindow,
+            BerylThemeProperty::Foreground,
+        ),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            foreground
+        )))
+    );
+    assert_eq!(
+        theme_source(
+            definition,
+            BerylThemeRole::AppWindow,
+            BerylThemeProperty::Background,
+        ),
+        None
+    );
+    assert_eq!(
+        theme_source(
+            definition,
+            BerylThemeRole::AppWindow,
+            BerylThemeProperty::FontFamily,
+        ),
+        Some(&StylePropertySource::Fallback)
+    );
+    assert_eq!(
+        theme_source(
+            definition,
+            BerylThemeRole::MarkdownInlineCode,
+            BerylThemeProperty::Foreground,
+        ),
+        Some(&StylePropertySource::StaticParent)
+    );
+    assert_eq!(
+        theme_source(
+            definition,
+            BerylThemeRole::MarkdownInlineCode,
+            BerylThemeProperty::Background,
+        ),
+        Some(&StylePropertySource::AmbientParent)
+    );
+    assert!(
+        definition
+            .roles()
+            .iter()
+            .all(|role| role.role_id().as_str() != BerylThemeRole::CodePanelBody.id()),
+        "unchanged omitted roles must not be materialized by the Theme Editor"
+    );
+}
+
+fn theme_source(
+    definition: &ThemeDefinition,
+    role: BerylThemeRole,
+    property: BerylThemeProperty,
+) -> Option<&StylePropertySource> {
+    let property_id = StylePropertyId::from(property.id());
+    theme_role(definition, role).properties().get(&property_id)
+}
+
+fn theme_role(definition: &ThemeDefinition, role: BerylThemeRole) -> &ThemeRoleDefinition {
+    definition
+        .roles()
+        .iter()
+        .find(|definition| definition.role_id().as_str() == role.id())
+        .expect("theme role should exist")
+}
+
+fn role_record_text<'a>(document: &'a str, role_id: &str) -> &'a str {
+    let role_id_line = format!("id = \"{role_id}\"");
+    document
+        .split("[[role]]")
+        .skip(1)
+        .find(|section| section.contains(&role_id_line))
+        .expect("theme document role should be present")
 }
 
 fn wait_for_save(state: &mut settings::SettingsState) {
@@ -589,6 +1584,10 @@ fn wait_for_save(state: &mut settings::SettingsState) {
     panic!("timed out waiting for settings save");
 }
 
+fn active_settings(shared: &Arc<Mutex<ActiveThemeProjection>>) -> AppearanceSettings {
+    AppearanceSettings::from_active_theme(&shared.lock().unwrap())
+}
+
 fn unique_temp_dir() -> tempdir_support::TestTempDir {
     tempdir_support::temp_dir("beryl-settings-window-test-")
 }
@@ -599,6 +1598,35 @@ fn cleanup_temp_dir(root: tempdir_support::TestTempDir) {
 
 fn context_compaction_timeout_field_id() -> SettingsFieldId {
     SettingsFieldId::from("operations.context_compaction_timeout_seconds")
+}
+
+fn theme_property_field_id(role: BerylThemeRole, property: BerylThemeProperty) -> SettingsFieldId {
+    SettingsFieldId::from(format!(
+        "themes.editor.role.{}.{}",
+        role.id(),
+        property.id()
+    ))
+}
+
+fn theme_property_source_field_id(
+    role: BerylThemeRole,
+    property: BerylThemeProperty,
+) -> SettingsFieldId {
+    SettingsFieldId::from(format!(
+        "themes.editor.role.{}.{}.source",
+        role.id(),
+        property.id()
+    ))
+}
+
+fn theme_property_detail_field<'a>(
+    model: &'a SettingsWindowModel,
+    role: BerylThemeRole,
+    property: BerylThemeProperty,
+) -> Option<&'a SettingsRowDetailField> {
+    model
+        .row(&theme_property_source_field_id(role, property))
+        .and_then(|row| row.detail_field())
 }
 
 fn with_environment_home<T>(home: &Path, action: impl FnOnce() -> T) -> T {

@@ -471,6 +471,61 @@ fn transcript_presentation_retained_counts_match_projected_rows() {
 }
 
 #[test]
+fn transcript_render_metrics_remain_correct_after_cached_mutations() {
+    let mut harness = PresentationHarness::new();
+    let mixed_text = "Explain the workspace".len()
+        + "I will inspect the package layout.".len()
+        + "I inspected the package layout.".len()
+        + "The workspace has a root Cargo package.".len();
+    harness.replace_history("thread_a", vec![mixed_operational_turn("turn_2")]);
+    assert_eq!(harness.render_metrics(), (1, 3, mixed_text));
+
+    let earlier_prompt = "Earlier prompt";
+    assert_eq!(
+        harness.prepend_history("thread_a", vec![prompt_turn("turn_1", earlier_prompt)]),
+        1
+    );
+    let mut expected_text = mixed_text + earlier_prompt.len();
+    assert_eq!(harness.render_metrics(), (2, 3, expected_text));
+
+    let live_prompt = "Live prompt";
+    let live_index = harness.begin_live_turn(live_prompt);
+    expected_text += live_prompt.len();
+    assert_eq!(harness.render_metrics(), (3, 3, expected_text));
+
+    let steering_prompt = "Steered follow-up";
+    harness.append_live_user_fragment(live_index, steering_prompt);
+    expected_text += steering_prompt.len();
+    assert_eq!(harness.render_metrics(), (3, 3, expected_text));
+
+    harness
+        .apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_a".to_string(),
+            turn: empty_turn("turn_live", TurnStatus::InProgress),
+        })
+        .unwrap();
+    let assistant_text = "Assistant after steering.";
+    harness
+        .apply_stream_event(TurnStreamEvent::ItemCompleted {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_live".to_string(),
+            item: ThreadItem::AgentMessage(AgentMessageItem {
+                id: "assistant_after".to_string(),
+                phase: Some(ProtocolPhase::FinalAnswer),
+                text: assistant_text.to_string(),
+            }),
+        })
+        .unwrap();
+    expected_text += assistant_text.len();
+    assert_eq!(harness.render_metrics(), (3, 4, expected_text));
+
+    assert_eq!(harness.release_range_with_heights(0..1, &[px(40.0)]), 1);
+    expected_text -= earlier_prompt.len();
+    assert_eq!(harness.render_metrics(), (3, 4, expected_text));
+    assert_eq!(harness.retained_counts(), (3, 4, expected_text));
+}
+
+#[test]
 fn live_parent_narrative_projection_updates_without_operational_rows() {
     let mut harness = PresentationHarness::new();
     let live_index = harness.begin_live_turn("Inspect the workspace");

@@ -10,6 +10,8 @@ fn style(role: InlineRenderRole) -> InlineRenderStyle {
     InlineRenderStyle {
         role,
         link: false,
+        emphasis: role == InlineRenderRole::Emphasis,
+        strong: role == InlineRenderRole::StrongEmphasis,
         fallback: false,
         atom: false,
     }
@@ -66,6 +68,8 @@ fn inline_render_plan_assigns_roles_and_keeps_link_decoration_separate() {
         InlineRenderStyle {
             role: InlineRenderRole::Conversation,
             link: true,
+            emphasis: false,
+            strong: false,
             fallback: false,
             atom: false,
         }
@@ -76,6 +80,59 @@ fn inline_render_plan_assigns_roles_and_keeps_link_decoration_separate() {
         InlineRenderStyle {
             role: InlineRenderRole::Code,
             link: true,
+            emphasis: false,
+            strong: false,
+            fallback: false,
+            atom: false,
+        }
+    );
+}
+
+#[test]
+fn inline_render_plan_preserves_code_ambient_context() {
+    let lines = inline_render_lines(&[
+        Inline::emphasis(vec![Inline::code("em code")]),
+        Inline::text(" "),
+        Inline::strong(vec![Inline::code("strong code")]),
+        Inline::text(" "),
+        Inline::link(
+            "https://example.invalid",
+            None,
+            vec![Inline::code("link code")],
+        ),
+    ]);
+
+    let fragments = &lines[0].fragments;
+    assert_eq!(fragments.len(), 5);
+    assert_eq!(
+        fragments[0].style,
+        InlineRenderStyle {
+            role: InlineRenderRole::Code,
+            link: false,
+            emphasis: true,
+            strong: false,
+            fallback: false,
+            atom: false,
+        }
+    );
+    assert_eq!(
+        fragments[2].style,
+        InlineRenderStyle {
+            role: InlineRenderRole::Code,
+            link: false,
+            emphasis: false,
+            strong: true,
+            fallback: false,
+            atom: false,
+        }
+    );
+    assert_eq!(
+        fragments[4].style,
+        InlineRenderStyle {
+            role: InlineRenderRole::Code,
+            link: true,
+            emphasis: false,
+            strong: false,
             fallback: false,
             atom: false,
         }
@@ -100,6 +157,8 @@ fn inline_render_plan_uses_literal_fallbacks_for_non_textual_inline_nodes() {
     let fallback_style = InlineRenderStyle {
         role: InlineRenderRole::Code,
         link: false,
+        emphasis: false,
+        strong: false,
         fallback: true,
         atom: false,
     };

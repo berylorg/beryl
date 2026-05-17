@@ -1,21 +1,19 @@
-use gpui::{Font, FontStyle, FontWeight, Pixels, SharedString, TextRun, Window, px, rems};
-
-use crate::{AppearanceRoleSettings, AppearanceSettings};
+use gpui::{Font, FontStyle, FontWeight, Pixels, SharedString, TextRun, Window, px};
 
 use super::super::transcript_markdown::{InlineRenderLine, InlineRenderRole};
 use super::markdown_layout::{AnchorBlockRole, PromptTextMeasurer};
-use super::{CODE_FONT_FAMILY, CODE_FONT_SIZE_REM, CODE_HEADER_FONT_SIZE_REM};
+use super::{TranscriptAnchorRole, TranscriptAnchorTheme};
 
 pub(super) struct WindowPromptMeasurer<'a, 'w> {
-    appearance: &'a AppearanceSettings,
+    theme: &'a TranscriptAnchorTheme,
     window: &'w mut Window,
     conversation_m_advance: Option<Pixels>,
 }
 
 impl<'a, 'w> WindowPromptMeasurer<'a, 'w> {
-    pub(super) fn new(appearance: &'a AppearanceSettings, window: &'w mut Window) -> Self {
+    pub(super) fn new(theme: &'a TranscriptAnchorTheme, window: &'w mut Window) -> Self {
         Self {
-            appearance,
+            theme,
             window,
             conversation_m_advance: None,
         }
@@ -25,19 +23,19 @@ impl<'a, 'w> WindowPromptMeasurer<'a, 'w> {
         &self,
         role: InlineRenderRole,
         block_role: AnchorBlockRole,
-    ) -> &AppearanceRoleSettings {
+    ) -> &TranscriptAnchorRole {
         match role {
             InlineRenderRole::Conversation => self.block_role_settings(block_role),
-            InlineRenderRole::Emphasis => &self.appearance.emphasis,
-            InlineRenderRole::StrongEmphasis => &self.appearance.strong_emphasis,
-            InlineRenderRole::Code => &self.appearance.code,
+            InlineRenderRole::Emphasis => &self.theme.emphasis,
+            InlineRenderRole::StrongEmphasis => &self.theme.strong_emphasis,
+            InlineRenderRole::Code => &self.theme.code,
         }
     }
 
-    fn block_role_settings(&self, block_role: AnchorBlockRole) -> &AppearanceRoleSettings {
+    fn block_role_settings(&self, block_role: AnchorBlockRole) -> &TranscriptAnchorRole {
         match block_role {
-            AnchorBlockRole::Conversation => &self.appearance.conversation_text,
-            AnchorBlockRole::Heading { .. } => &self.appearance.markdown_header,
+            AnchorBlockRole::Conversation => &self.theme.conversation,
+            AnchorBlockRole::Heading { .. } => &self.theme.heading,
         }
     }
 
@@ -61,9 +59,11 @@ impl<'a, 'w> WindowPromptMeasurer<'a, 'w> {
         style
     }
 
-    fn text_style_for_rem_font_size(&self, rem_size: f32) -> gpui::TextStyle {
+    fn text_style_for_code_panel_role(&self, role: &TranscriptAnchorRole) -> gpui::TextStyle {
         let mut style = self.window.text_style();
-        style.font_size = rems(rem_size).into();
+        style.font_family = SharedString::from(role.font_family.clone());
+        style.font_weight = FontWeight(role.font_weight as f32);
+        style.font_size = px(role.font_size).into();
         style
     }
 }
@@ -152,18 +152,19 @@ impl PromptTextMeasurer for WindowPromptMeasurer<'_, '_> {
     }
 
     fn code_line_height(&self) -> Pixels {
-        self.text_style_for_rem_font_size(CODE_FONT_SIZE_REM)
+        self.text_style_for_code_panel_role(&self.theme.code_panel)
             .line_height_in_pixels(self.window.rem_size())
     }
 
     fn code_header_line_height(&self) -> Pixels {
-        self.text_style_for_rem_font_size(CODE_HEADER_FONT_SIZE_REM)
+        self.text_style_for_code_panel_role(&self.theme.code_panel_header)
             .line_height_in_pixels(self.window.rem_size())
     }
 
     fn code_columns_for_width(&mut self, wrap_width: Pixels) -> usize {
         let mut font = self.window.text_style().font();
-        font.family = CODE_FONT_FAMILY.into();
+        font.family = self.theme.code_panel.font_family.clone().into();
+        font.weight = FontWeight(self.theme.code_panel.font_weight as f32);
         let run = TextRun {
             len: 1,
             font,
@@ -177,7 +178,7 @@ impl PromptTextMeasurer for WindowPromptMeasurer<'_, '_> {
             .text_system()
             .shape_line(
                 "0".into(),
-                rems(CODE_FONT_SIZE_REM).to_pixels(self.window.rem_size()),
+                px(self.theme.code_panel.font_size),
                 &[run],
                 None,
             )

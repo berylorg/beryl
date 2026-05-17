@@ -6,7 +6,6 @@ mod transcript_markdown;
 #[path = "../src/shell/transcript_anchor.rs"]
 mod transcript_anchor;
 
-use beryl_app::{AppearanceRoleSettings, AppearanceSettings};
 use gpui::px;
 
 #[test]

@@ -21,13 +21,8 @@ fn transcript_markdown_lists_use_leading_margin_and_tight_marker_layout() {
     assert!(BLOCK_MARKDOWN_SOURCE.contains("marker = marker.justify_end()"));
     assert!(BLOCK_MARKDOWN_SOURCE.contains("markdown_list_marker_width_m"));
     assert!(BLOCK_MARKDOWN_SOURCE.contains("list_marker_char_counts_vary"));
-    assert!(
-        BLOCK_MARKDOWN_SOURCE.contains(".text_size(px(appearance.conversation_text.font_size))")
-    );
-    assert!(
-        BLOCK_MARKDOWN_SOURCE
-            .contains(".font_family(appearance.conversation_text.font_family.clone())")
-    );
+    assert!(BLOCK_MARKDOWN_SOURCE.contains(".text_size(px(theme.list_marker.font_size))"));
+    assert!(BLOCK_MARKDOWN_SOURCE.contains(".font_family(theme.list_marker.font_family.clone())"));
     assert!(!BLOCK_MARKDOWN_SOURCE.contains("list_depth"));
     assert!(!BLOCK_MARKDOWN_SOURCE.contains("const LIST_MARKER_WIDTH: f32 = 32.0;"));
     assert!(!BLOCK_MARKDOWN_SOURCE.contains("LIST_LEADING_MARGIN: f32 = 16.0"));

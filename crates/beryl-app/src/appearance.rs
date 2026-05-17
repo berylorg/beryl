@@ -1,18 +1,28 @@
-use std::{
-    env, fs,
-    io::{self, Write},
-    path::{Path, PathBuf},
-};
+use std::{env, io, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod chrome;
+mod runtime;
+mod theme;
 
 pub use chrome::{
     AppearanceButtonSettings, AppearanceButtonStateSettings, AppearanceChromeSettings,
     AppearanceInputSettings, AppearanceStatusLineSettings, AppearanceSurfaceSettings,
     AppearanceTranscriptShellSettings,
+};
+pub use theme::{
+    ActiveThemeProjection, BUILT_IN_INSTALLED_THEME_ID, BUILT_IN_THEME_ROLE_INVENTORY,
+    BerylThemeProperty, BerylThemeRole, InstalledThemeId, InstalledThemeMetadata,
+    MAX_THEME_DIAGNOSTIC_MESSAGE_BYTES, MAX_THEME_FONT_FAMILY_BYTES,
+    MAX_THEME_VALIDATION_DIAGNOSTICS, ResolvedStyle, StylePropertyId, StylePropertyKind,
+    StylePropertySource, StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeDiagnostic,
+    ThemeDiagnosticKind, ThemeDocument, ThemeDocumentError, ThemePropertySchema,
+    ThemeRepositoryError, ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext,
+    ThemeResolutionError, ThemeResolver, ThemeRoleDefinition, ThemeRoleSchema, ThemeSchema,
+    ThemeValidationDiagnostics, built_in_theme_definition, built_in_theme_resolver,
+    built_in_theme_schema,
 };
 
 const APP_ROOT_DIR_NAME: &str = ".beryl";
@@ -92,6 +102,11 @@ pub enum AppearanceSettingsError {
     },
     #[error("{role} font family must not be empty")]
     EmptyFontFamily { role: &'static str },
+    #[error("{role} font family must be at most {max_bytes} bytes")]
+    FontFamilyTooLong {
+        role: &'static str,
+        max_bytes: usize,
+    },
     #[error("{role} font size must be between 8 and 48 points")]
     InvalidFontSize { role: &'static str },
     #[error("{role} font weight must be between 100 and 900")]
@@ -167,6 +182,12 @@ impl AppearanceRoleSettings {
         let font_family = self.font_family.trim().to_string();
         if font_family.is_empty() {
             return Err(AppearanceSettingsError::EmptyFontFamily { role });
+        }
+        if font_family.len() > MAX_THEME_FONT_FAMILY_BYTES {
+            return Err(AppearanceSettingsError::FontFamilyTooLong {
+                role,
+                max_bytes: MAX_THEME_FONT_FAMILY_BYTES,
+            });
         }
         if !(8.0..=48.0).contains(&self.font_size) {
             return Err(AppearanceSettingsError::InvalidFontSize { role });
@@ -255,58 +276,13 @@ impl AppearanceSettingsStore {
     }
 
     pub fn load_or_default(&self) -> Result<AppearanceSettings, AppearanceSettingsError> {
-        let path = self.theme_path();
-        if !path.exists() {
-            return Ok(AppearanceSettings::default());
-        }
-
-        let text =
-            fs::read_to_string(&path).map_err(|source| AppearanceSettingsError::ReadSettings {
-                path: path.display().to_string(),
-                source,
-            })?;
-        let settings: AppearanceSettings =
-            toml::from_str(&text).map_err(|source| AppearanceSettingsError::ParseSettings {
-                path: path.display().to_string(),
-                source,
-            })?;
-        settings.validated()
+        Ok(AppearanceSettings::default())
     }
 
     pub fn save(&self, settings: &AppearanceSettings) -> Result<(), AppearanceSettingsError> {
-        let settings = settings.validated()?;
-        ensure_directory(&self.root_dir)?;
-        let path = self.theme_path();
-        let text = toml::to_string_pretty(&settings)
-            .map_err(|source| AppearanceSettingsError::SerializeSettings { source })?;
-        let mut temp_file = tempfile::NamedTempFile::new_in(&self.root_dir).map_err(|source| {
-            AppearanceSettingsError::WriteSettings {
-                path: path.display().to_string(),
-                source,
-            }
-        })?;
-        temp_file.write_all(text.as_bytes()).map_err(|source| {
-            AppearanceSettingsError::WriteSettings {
-                path: temp_file.path().display().to_string(),
-                source,
-            }
-        })?;
-        temp_file.persist(&path).map_err(|error| {
-            let tempfile::PersistError { error: source, .. } = error;
-            AppearanceSettingsError::WriteSettings {
-                path: path.display().to_string(),
-                source,
-            }
-        })?;
+        settings.validated()?;
         Ok(())
     }
-}
-
-fn ensure_directory(path: &Path) -> Result<(), AppearanceSettingsError> {
-    fs::create_dir_all(path).map_err(|source| AppearanceSettingsError::CreateDirectory {
-        path: path.display().to_string(),
-        source,
-    })
 }
 
 fn validate_hex_color(

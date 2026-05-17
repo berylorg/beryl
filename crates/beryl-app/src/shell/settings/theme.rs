@@ -3,102 +3,196 @@ use gpui_settings_window::{
     SettingsSurfaceTheme, SettingsWindowTheme,
 };
 
-use crate::AppearanceSettings;
+use crate::{
+    ActiveThemeProjection, BerylThemeProperty, BerylThemeRole, StylePropertyValue,
+    ThemeResolutionContext,
+};
 
-pub(super) fn settings_window_theme(settings: &AppearanceSettings) -> SettingsWindowTheme {
+pub(super) fn settings_window_theme(theme: &ActiveThemeProjection) -> SettingsWindowTheme {
     let defaults = SettingsWindowTheme::default();
-    let chrome = &settings.chrome;
     SettingsWindowTheme {
-        window_background: color_or(&settings.general_ui.background, defaults.window_background),
+        window_background: color_or(
+            theme,
+            BerylThemeRole::SettingsWindow,
+            BerylThemeProperty::Background,
+            defaults.window_background,
+        ),
         panel: surface_theme(
-            &chrome.surfaces.panel_background,
-            &chrome.surfaces.border,
-            &settings.general_ui.foreground,
-            &chrome.surfaces.muted_foreground,
+            theme,
+            BerylThemeRole::SettingsGroup,
+            BerylThemeRole::SettingsRowDisabled,
             &defaults.panel,
         ),
         row: surface_theme(
-            &chrome.surfaces.row_background,
-            &chrome.surfaces.border,
-            &settings.general_ui.foreground,
-            &chrome.surfaces.muted_foreground,
+            theme,
+            BerylThemeRole::SettingsRowNormal,
+            BerylThemeRole::SettingsRowDisabled,
             &defaults.row,
         ),
         popup: surface_theme(
-            &chrome.surfaces.popup_background,
-            &chrome.surfaces.border,
-            &settings.general_ui.foreground,
-            &chrome.surfaces.muted_foreground,
+            theme,
+            BerylThemeRole::SettingsPopup,
+            BerylThemeRole::SettingsRowDisabled,
             &defaults.popup,
         ),
         input: SettingsInputTheme {
-            background: color_or(&chrome.input.input_background, defaults.input.background),
-            border: color_or(&chrome.input.input_border, defaults.input.border),
+            background: color_or(
+                theme,
+                BerylThemeRole::SettingsInputNormal,
+                BerylThemeProperty::Background,
+                defaults.input.background,
+            ),
+            border: color_or(
+                theme,
+                BerylThemeRole::SettingsInputNormal,
+                BerylThemeProperty::Border,
+                defaults.input.border,
+            ),
             active_border: color_or(
-                &chrome.primary_button.normal.border,
+                theme,
+                BerylThemeRole::SettingsInputFocused,
+                BerylThemeProperty::Border,
                 defaults.input.active_border,
             ),
-            error_border: defaults.input.error_border,
-            foreground: color_or(&chrome.input.input_foreground, defaults.input.foreground),
-            caret: color_or(&chrome.input.input_foreground, defaults.input.caret),
+            error_border: color_or(
+                theme,
+                BerylThemeRole::SettingsInputError,
+                BerylThemeProperty::Border,
+                defaults.input.error_border,
+            ),
+            foreground: color_or(
+                theme,
+                BerylThemeRole::SettingsInputNormal,
+                BerylThemeProperty::Foreground,
+                defaults.input.foreground,
+            ),
+            caret: color_or(
+                theme,
+                BerylThemeRole::SettingsInputFocused,
+                BerylThemeProperty::Foreground,
+                defaults.input.caret,
+            ),
             selection_background: color_or(
-                &chrome.primary_button.normal.border,
+                theme,
+                BerylThemeRole::SettingsInputSelection,
+                BerylThemeProperty::Background,
                 defaults.input.selection_background,
             ),
         },
-        navigation_button: button_theme(&chrome.secondary_button, &defaults.navigation_button),
-        primary_button: button_theme(&chrome.primary_button, &defaults.primary_button),
-        secondary_button: button_theme(&chrome.secondary_button, &defaults.secondary_button),
+        navigation_button: button_theme(
+            theme,
+            BerylThemeRole::SettingsButtonSecondary,
+            BerylThemeRole::ButtonSecondaryHover,
+            BerylThemeRole::ButtonSecondaryActive,
+            BerylThemeRole::ButtonSecondaryDisabled,
+            &defaults.navigation_button,
+        ),
+        primary_button: button_theme(
+            theme,
+            BerylThemeRole::SettingsButtonPrimary,
+            BerylThemeRole::ButtonPrimaryHover,
+            BerylThemeRole::ButtonPrimaryActive,
+            BerylThemeRole::ButtonPrimaryDisabled,
+            &defaults.primary_button,
+        ),
+        secondary_button: button_theme(
+            theme,
+            BerylThemeRole::SettingsButtonSecondary,
+            BerylThemeRole::ButtonSecondaryHover,
+            BerylThemeRole::ButtonSecondaryActive,
+            BerylThemeRole::ButtonSecondaryDisabled,
+            &defaults.secondary_button,
+        ),
     }
 }
 
 fn surface_theme(
-    background: &str,
-    border: &str,
-    foreground: &str,
-    muted_foreground: &str,
+    theme: &ActiveThemeProjection,
+    role: BerylThemeRole,
+    muted_role: BerylThemeRole,
     fallback: &SettingsSurfaceTheme,
 ) -> SettingsSurfaceTheme {
     SettingsSurfaceTheme {
-        background: color_or(background, fallback.background),
-        border: color_or(border, fallback.border),
-        foreground: color_or(foreground, fallback.foreground),
-        muted_foreground: color_or(muted_foreground, fallback.muted_foreground),
+        background: color_or(
+            theme,
+            role,
+            BerylThemeProperty::Background,
+            fallback.background,
+        ),
+        border: color_or(theme, role, BerylThemeProperty::Border, fallback.border),
+        foreground: color_or(
+            theme,
+            role,
+            BerylThemeProperty::Foreground,
+            fallback.foreground,
+        ),
+        muted_foreground: color_or(
+            theme,
+            muted_role,
+            BerylThemeProperty::Foreground,
+            fallback.muted_foreground,
+        ),
     }
 }
 
 fn button_theme(
-    settings: &crate::AppearanceButtonSettings,
+    theme: &ActiveThemeProjection,
+    normal: BerylThemeRole,
+    hover: BerylThemeRole,
+    active: BerylThemeRole,
+    disabled: BerylThemeRole,
     fallback: &SettingsButtonTheme,
 ) -> SettingsButtonTheme {
     SettingsButtonTheme {
-        font_weight: font_weight_or(settings.font_weight, fallback.font_weight),
-        normal: button_state_theme(&settings.normal, &fallback.normal),
-        hover: button_state_theme(&settings.hover, &fallback.hover),
-        active: button_state_theme(&settings.active, &fallback.active),
-        disabled: button_state_theme(&settings.disabled, &fallback.disabled),
+        font_weight: font_weight_or(theme, normal, fallback.font_weight),
+        normal: button_state_theme(theme, normal, &fallback.normal),
+        hover: button_state_theme(theme, hover, &fallback.hover),
+        active: button_state_theme(theme, active, &fallback.active),
+        disabled: button_state_theme(theme, disabled, &fallback.disabled),
     }
 }
 
 fn button_state_theme(
-    settings: &crate::AppearanceButtonStateSettings,
+    theme: &ActiveThemeProjection,
+    role: BerylThemeRole,
     fallback: &SettingsButtonStateTheme,
 ) -> SettingsButtonStateTheme {
     SettingsButtonStateTheme {
-        background: color_or(&settings.background, fallback.background),
-        border: color_or(&settings.border, fallback.border),
-        foreground: color_or(&settings.foreground, fallback.foreground),
+        background: color_or(
+            theme,
+            role,
+            BerylThemeProperty::Background,
+            fallback.background,
+        ),
+        border: color_or(theme, role, BerylThemeProperty::Border, fallback.border),
+        foreground: color_or(
+            theme,
+            role,
+            BerylThemeProperty::Foreground,
+            fallback.foreground,
+        ),
     }
 }
 
-fn color_or(value: &str, fallback: RgbColor) -> RgbColor {
-    RgbColor::parse(value).unwrap_or(fallback)
+fn color_or(
+    theme: &ActiveThemeProjection,
+    role: BerylThemeRole,
+    property: BerylThemeProperty,
+    fallback: RgbColor,
+) -> RgbColor {
+    match theme.resolve_property(role.id(), property.id(), &ThemeResolutionContext::new()) {
+        Ok(StylePropertyValue::Color(value)) => RgbColor::parse(&value).unwrap_or(fallback),
+        _ => fallback,
+    }
 }
 
-fn font_weight_or(value: u16, fallback: u16) -> u16 {
-    if (100..=900).contains(&value) {
-        value
-    } else {
-        fallback
+fn font_weight_or(theme: &ActiveThemeProjection, role: BerylThemeRole, fallback: u16) -> u16 {
+    match theme.resolve_property(
+        role.id(),
+        BerylThemeProperty::FontWeight.id(),
+        &ThemeResolutionContext::new(),
+    ) {
+        Ok(StylePropertyValue::FontWeight(value)) => value,
+        _ => fallback,
     }
 }

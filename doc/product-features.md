@@ -266,7 +266,7 @@ This document defines the user-visible product behavior for Beryl V1.
 - Subagent activity rows use the backend-provided subagent nickname for `<agent label>` when it has been resolved. While the nickname is unresolved, the label value is empty; backend thread ids are not shown as fallback agent labels.
 - Running rows stay in the panel while the backend item is active, and finished rows remain in the in-memory activity history after completion.
 - Rows sort with running activity first, finished activity second, and newly started rows before older rows within those groups.
-- Running rows show a green disc, finished-ok rows show a grey disc, and finished-error rows show a red disc before the row text.
+- Running, finished-ok, and finished-error rows show themed status marker discs before the row text.
 - In activity rows, `Agent` and `Activity` use muted status-label styling while the values use status-value styling.
 - V1 activity rows show protocol-derived activity display values without broad human-friendly mappings. `commandExecution` rows show the first non-empty line of the spawned command, falling back to `commandExecution` when the command is unavailable. Before display, if the first quoted or unquoted command token case-insensitively matches a drive-rooted Windows PowerShell launcher path shaped as `[drive]:\Windows(\.old)?\System32\WindowsPowerShell\v1.0\powershell.exe`, including the activity-log form with doubled backslashes such as `"D:\\Windows.old\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"`, that token is replaced with `powershell.exe` while preserving the rest of the command line. Reasoning rows show `reasoning` and, when backend summary text is exposed, a bounded single-line `reasoning: <summary>` value. `fileChange` rows show `Patching <relative/path>, +A -D` only when explicit backend file-change records identify exactly one unique path and that path is relative or can be proven to be under the selected conversation execution target root; otherwise they show `Patching N file(s), +A -D`. Other activity rows show raw protocol-derived tool names or resource identifiers. Rows do not show output, progress messages, resource contents, file paths other than that single relative `fileChange` path, patch diffs, raw reasoning content, or expanded operational detail.
 - The activity panel owns vertical scrolling when rows exceed the current panel height, and its default viewport position is the top of the sorted row list.
@@ -438,36 +438,50 @@ This document defines the user-visible product behavior for Beryl V1.
 - Unsupported or non-Markdown inline conventions render literally as text unless they are valid Markdown constructs represented by the transcript Markdown model.
 - Raw HTML embedded in Markdown is not rendered as HTML; it must render as literal source text or an unsupported-source fallback, never as executable or styled markup.
 - Fenced code blocks render through the shared code panel widget, including Beryl-owned parser-backed syntax highlighting when their language label resolves to a registered parser.
+- Fenced code blocks whose language label is `beryl-theme` are ordinary transcript content that can expose Beryl-owned `Preview` and `Install Theme` actions after validation. Installing asks the user to confirm the durable theme name before the theme is saved into Beryl.
 - The Markdown language is supported by the Beryl-owned syntax highlighter; code blocks with unsupported, unknown, empty, partial, or invalid language labels render as plain text without changing source or copy behavior.
 - Typography and colors used by the application UI and conversation transcript must be configurable by the user.
-- Configurable appearance roles include at least the general UI font, regular conversation text font, Markdown header font, code or monospace font, the foreground and background colors associated with those roles, commentary assistant-message foreground, and reasoning foreground.
-- Configurable UI chrome roles include toolbar and thread-strip backgrounds, primary and secondary button colors for normal, hover, active, and disabled states, user-input panel colors, transcript-region background and default foreground, status-line colors, structural separator color, and shared surface colors for settings panels, rows, and popups.
+- Configurable appearance roles cover every Beryl-owned visible background, border, text foreground, text background, font family, font size, and font weight, including transcript content, Markdown blocks, code panels, UI chrome, graph/checklist surfaces, status values, warnings/errors/info, selections, focus states, disabled states, settings surfaces, popups, overlays, and media placeholders.
 - Beryl-owned buttons use shared visual geometry: one outer-height rule, button-label typography sized to fit that height, padding derived from the label height, and one shared rounded-corner shape.
 - Markdown emphasis and strong emphasis must be rendered through configurable style roles rather than being hard-wired to literal italic or bold font treatment.
 - The styling system must allow emphasis and strong emphasis to vary by font family, weight, size, color, and related presentation attributes.
-- Transcript-internal block styling and dynamic turn-state status colors are not part of this UI chrome theming pass.
+- Theme role properties can resolve from concrete values, static parent roles, runtime ambient parent styles, or built-in fallback values. Runtime ambient inheritance lets embedded styles such as inline code follow the background of final-answer text, user-input text, settings rows, or popups while retaining their own foreground or typography.
+- Beryl may expose CAS theme tools that help the model author themes by reading bounded guidance about compact TOML syntax, role groups, static inheritance, ambient inheritance, transcript/code/settings styling, and troubleshooting. This guidance supplements the structural schema tool rather than replacing it.
+- Beryl may expose a non-mutating CAS theme validation tool that checks a candidate compact TOML theme document through the same parser and resolver used by Preview, Install Theme, Update, and Save As paths. Validation can return bounded diagnostics, document summaries, and requested role-source explanations, but it does not preview, install, update, or persist a theme.
 
 ## Settings Window
 
 - Application settings live in a dedicated top-level settings window rather than an in-place modal or panel.
 - The settings window does not include the main workspace window's shared toolbar strip.
 - The settings window should be created ahead of first use and hidden when inactive so opening settings feels immediate.
-- The settings window uses vertically scrollable left-side navigation for settings sections and a right-side content area with settings key-value rows.
-- V1 settings include `Appearance`, `Operations`, `Notifications`, and `Agent` sections.
-- The `Appearance` section provides controls for the configurable appearance roles defined in this document.
-- The `Operations` section includes a context compaction timeout row. The value is a whole number of seconds that controls how long Beryl waits for backend-reported selected-thread context compaction completion after the backend accepts the compaction request.
+- The settings window uses broad left-side section navigation and one right-pane settings page at a time.
+- Settings subpages open in the right pane with back and breadcrumb navigation. The left sidebar does not contain nested rows or a tree.
+- V1 settings sections are `General`, `Appearance`, `Themes`, `Agent`, `Notifications`, and `Advanced`.
+- Settings rows are schema-backed key/value rows with stable setting ids, modified indicators, reset actions, and context actions such as copying the setting id.
+- The `General` section includes workflow preferences such as the context compaction timeout row. The timeout value is a whole number of seconds that controls how long Beryl waits for backend-reported selected-thread context compaction completion after the backend accepts the compaction request.
+- The `Themes` section lists only durable installed themes. It does not list unsaved AI-generated theme candidates from Codex threads and does not provide Preview for installed themes.
+- The `Themes` section supports installed-theme operations such as activate, rename, delete, and edit when those operations are valid. Switching between installed themes is direct activation.
+- The active theme row exposes Save and Save As only when the active theme has staged changes. Save persists those changes to the active installed theme. Save As asks for a new durable theme name and saves the staged active-theme definition as a new installed theme.
+- The active theme row's Edit action opens the right-pane theme editor subpage and uses the same right-facing chevron affordance as other step-in settings rows.
+- AI-generated unsaved theme candidates stay in the originating Codex thread as `beryl-theme` code panels. The bridge from the thread to durable Beryl settings is the code panel's `Install Theme` action or a Beryl theme dynamic tool operation that explicitly installs a durable theme.
 - The `Notifications` section includes an end-turn sound row that shows the currently selected full filesystem path, or an empty disabled state when no sound file is selected.
 - The end-turn sound row includes a choose action that opens the Windows file picker for selecting a WAV file.
 - The end-turn sound row includes a clear action that stages the setting back to the empty disabled state.
 - The `Agent` section includes a multiline developer-instructions setting. Its row shows the subtext `Sent as developer instructions with every user message.` Blank or whitespace-only content is treated as disabled.
-- V1 settings do not live-preview unapplied changes.
+- Ordinary settings drafts do not live-preview unapplied changes. User-visible theme Preview controls are limited to unsaved `beryl-theme` transcript candidates and are controlled from the originating code panel. CAS theme preview tool calls may also create transient runtime previews, but they do not create settings-window candidates, transcript offers, installed themes, or durable settings.
 - The settings window includes an Apply action that applies the current settings immediately without closing the window.
 - Color-valued settings use a dedicated color input field that shows the canonical `#rrggbb` value, shows a preview swatch for the current valid color, and can open an in-window color picker from the preview swatch or a field hotkey.
-- The settings window UI is provided through a reusable `gpui` settings-window crate so Beryl can share the same section navigation, settings rows, color input, and color picker behavior with other `gpui` applications.
-- Beryl owns settings schemas, validation, staged draft behavior, apply behavior, and persistence. Appearance settings persist to `theme.toml` under the configured Beryl home directory; operation preferences, notification preferences, and global developer-instructions preferences persist as app-wide GUI preferences in `preferences.toml` under the configured Beryl home directory, outside backend-owned Codex configuration.
+- The settings window UI is provided through reusable `gpui` settings-window mechanics where practical, but Beryl owns the Beryl-specific section model, settings catalog, stable setting ids, staged draft behavior, and persistence.
+- Beryl owns settings schemas, validation, staged draft behavior, apply behavior, and persistence. Installed themes persist as compact TOML theme documents in Beryl's theme repository under the configured Beryl home directory; operation preferences, notification preferences, and global developer-instructions preferences persist as app-wide GUI preferences in `preferences.toml` under the configured Beryl home directory, outside backend-owned Codex configuration.
+- A legacy flat `theme.toml` file at the Beryl home root is ignored by the installed theme repository and is left untouched.
 - The settings window consumes the active Beryl appearance theme through app-neutral style options exposed by the reusable settings-window crate, so settings panels, rows, popups, inputs, and action buttons use the same configured theme roles as the main window where those roles overlap.
-- V1 settings do not provide theme import or theme export UI.
+- V1 settings do not provide a separate AI theme-candidate inbox.
 - V1 settings do not expose backend-owned Codex configuration.
+- Beryl may expose bounded CAS dynamic tools for reading and modifying Beryl-owned GUI settings. Readable settings are limited to Beryl-owned app-wide operation preferences, notification preferences, developer-instructions preference metadata, AI-control preference metadata, active theme identity, installed theme metadata, and theme schema or theme document data exposed through theme tools.
+- CAS settings tools may update operation preferences, clear or explicitly replace notification settings, and replace or clear developer-instructions text. AI-control preferences that govern model authority are readable but not model-writable unless a later operator-confirmed operation is designed.
+- CAS settings validation is non-mutating. Accepted settings update operations commit immediately through the same validation, active-update, persistence, and recovery paths as settings-window Apply; they do not create unapplied settings-window drafts.
+- CAS settings read tools return literal values only for non-sensitive scalar settings. Notification sound reads show configured/disabled state and non-identifying file metadata, not the full local path. Developer-instructions reads show enabled state, character count, line count, and a stable content fingerprint, not literal instruction text.
+- These tools do not expose or mutate backend-owned Codex configuration, authentication, skills, MCP state, session storage, or transcript history.
 
 ## Change Inspection
 

@@ -7,9 +7,10 @@ use diagnostic_child_protocol::{
     BoundedLineRead, CLOSE_POPUPS_COMMAND, CREATE_NEW_THREAD_COMMAND, DiagnosticChildCommand,
     DiagnosticProtocolResponse, HANDSHAKE_COMMAND, HARD_STOP_TURN_COMMAND,
     LIST_WORKSPACE_THREADS_COMMAND, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES,
-    PREPARE_RENDERER_WINDOW_COMMAND, READ_RENDERER_COMMAND, READ_UI_STATE_COMMAND,
-    SOFT_STOP_TURN_COMMAND, START_TURN_COMMAND, SWITCH_WORKSPACE_COMMAND, parse_request_frame,
-    parse_response_frame, read_bounded_line_bytes, request_frame, response_frame,
+    PREPARE_RENDERER_WINDOW_COMMAND, READ_RENDERER_COMMAND, READ_TRANSCRIPT_FRAME_METRICS_COMMAND,
+    READ_UI_STATE_COMMAND, SOFT_STOP_TURN_COMMAND, START_TURN_COMMAND, SWITCH_WORKSPACE_COMMAND,
+    parse_request_frame, parse_response_frame, read_bounded_line_bytes, request_frame,
+    response_frame,
 };
 use serde_json::json;
 
@@ -122,6 +123,10 @@ fn command_constants_match_protocol_command_names() {
     assert_eq!(
         DiagnosticChildCommand::ReadRenderer.as_str(),
         READ_RENDERER_COMMAND
+    );
+    assert_eq!(
+        DiagnosticChildCommand::ReadTranscriptFrameMetrics.as_str(),
+        READ_TRANSCRIPT_FRAME_METRICS_COMMAND
     );
     assert_eq!(
         DiagnosticChildCommand::PrepareRendererWindow.as_str(),

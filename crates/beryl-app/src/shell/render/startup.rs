@@ -1,10 +1,11 @@
-use gpui::{Context, Entity, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{Context, Entity, SharedString, Window, div, prelude::*, px};
 
 use gpui::ScrollHandle;
 
+use crate::BerylThemeRole;
 use crate::shell::{
     BlockedState, DiscoveringState, OpeningState, PickerState, RetryTarget, ScrollbarRegion,
-    ShellState, ShellView, WorkspaceChoice, layout,
+    ShellRenderFrame, ShellState, ShellView, WorkspaceChoice, layout,
 };
 use crate::text_input::SingleLineInput;
 
@@ -14,7 +15,7 @@ use super::common::{
 };
 
 pub(super) fn render_startup_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     state: &ShellState,
     scroll_handle: &ScrollHandle,
     host_path_input: &Entity<SingleLineInput>,
@@ -32,7 +33,7 @@ pub(super) fn render_startup_shell(
             cx.listener(ShellView::note_startup_scrollbar_scroll),
             "Beryl",
             "Beryl is loading semantic workspace startup state before the main workspace shell appears.",
-            render_discovering(discovering),
+            render_discovering(shell, discovering),
             primary_actions(shell, cx),
         )
         .into_any_element(),
@@ -61,7 +62,7 @@ pub(super) fn render_startup_shell(
             cx.listener(ShellView::note_startup_scrollbar_scroll),
             "Beryl",
             "Beryl is opening the selected workspace and preparing the managed backend before the conversation surface can appear.",
-            render_opening(opening),
+            render_opening(shell, opening),
             primary_actions(shell, cx),
         )
         .into_any_element(),
@@ -73,7 +74,7 @@ pub(super) fn render_startup_shell(
             cx.listener(ShellView::note_startup_scrollbar_scroll),
             "Beryl",
             "Startup and recovery failures still block workspace activation until the managed backend can be used safely.",
-            render_blocked(blocked),
+            render_blocked(shell, blocked),
             div()
                 .flex()
                 .gap_3()
@@ -121,30 +122,39 @@ pub(super) fn workspace_choice_origin(choice: &WorkspaceChoice) -> String {
     }
 }
 
-fn render_discovering(discovering: &DiscoveringState) -> impl IntoElement {
+fn render_discovering(
+    shell: &ShellRenderFrame<'_>,
+    discovering: &DiscoveringState,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_3()
-        .child(section_label("Startup Discovery"))
+        .child(section_label(shell, "Startup Discovery"))
         .child(
             div()
                 .text_lg()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(rgb(0x7dd3fc))
+                .font_weight(shell.role_font_weight(
+                    BerylThemeRole::NoticeInfo,
+                    gpui::FontWeight::SEMIBOLD,
+                ))
+                .text_color(shell.role_foreground(
+                    BerylThemeRole::NoticeInfo,
+                    shell.surface_foreground(),
+                ))
                 .child("Resolving the startup workspace"),
         )
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(0xf8fafc))
+                .text_color(shell.surface_foreground())
                 .child("Beryl is loading shared startup state from the configured Beryl home directory and selecting or creating the semantic workspace that should open in this window."),
         )
-        .child(info_line("Current step", &discovering.detail))
+        .child(info_line(shell, "Current step", &discovering.detail))
 }
 
 fn render_picker(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     picker: &PickerState,
     host_path_input: &Entity<SingleLineInput>,
     wsl_path_input: &Entity<SingleLineInput>,
@@ -154,39 +164,48 @@ fn render_picker(
         .flex()
         .flex_col()
         .gap_4()
-        .child(section_label("Workspace Picker"))
+        .child(section_label(shell, "Workspace Picker"))
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(0xf8fafc))
+                .text_color(shell.surface_foreground())
                 .child("Select one discovered workspace or open a new workspace explicitly. Once you open one, this Beryl window stays bound to that workspace until you close it."),
         );
 
     if let Some(notice) = &picker.notice {
-        body = body.child(inline_notice(notice, rgb(0x7f1d1d), rgb(0xfecaca)));
+        body = body.child(inline_notice(shell, notice, BerylThemeRole::NoticeError));
     }
     if let Some(warning) = &picker.model.metadata_warning {
-        body = body.child(inline_notice(warning, rgb(0x172554), rgb(0xbfdbfe)));
+        body = body.child(inline_notice(shell, warning, BerylThemeRole::NoticeInfo));
     }
 
     if !picker.model.choices.is_empty() {
-        body = body.child(section_label("Known Workspaces"));
+        body = body.child(section_label(shell, "Known Workspaces"));
         for (index, choice) in picker.model.choices.iter().enumerate() {
             let mut card_body = div()
                 .flex()
                 .flex_col()
                 .gap_2()
-                .child(info_line("Workspace", &choice.workspace.display_label()))
-                .child(info_line("Known by", &workspace_choice_origin(choice)));
+                .child(info_line(
+                    shell,
+                    "Workspace",
+                    &choice.workspace.display_label(),
+                ))
+                .child(info_line(
+                    shell,
+                    "Known by",
+                    &workspace_choice_origin(choice),
+                ));
 
             if choice.thread_count > 0 {
                 card_body = card_body.child(info_line(
+                    shell,
                     "Discovered threads",
                     &choice.thread_count.to_string(),
                 ));
             }
             if let Some(preview) = &choice.latest_preview {
-                card_body = card_body.child(info_line("Latest preview", preview));
+                card_body = card_body.child(info_line(shell, "Latest preview", preview));
             }
 
             let workspace = choice.workspace.clone();
@@ -210,7 +229,7 @@ fn render_picker(
         }
     }
 
-    body = body.child(section_label("Open New Host Workspace"));
+    body = body.child(section_label(shell, "Open New Host Workspace"));
     if picker.model.host_available {
         body = body.child(card(
             shell,
@@ -218,7 +237,7 @@ fn render_picker(
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(info_line("Runtime mode", "host-windows"))
+                .child(info_line(shell, "Runtime mode", "host-windows"))
                 .child(framed_text_input(shell, host_path_input))
                 .child(button(
                     shell,
@@ -228,21 +247,20 @@ fn render_picker(
                 )),
         ));
     } else if let Some(issue) = &picker.model.host_issue {
-        body = body.child(inline_notice(issue, rgb(0x3f1d1d), rgb(0xfca5a5)));
+        body = body.child(inline_notice(shell, issue, BerylThemeRole::NoticeError));
     }
 
-    body = body.child(section_label("Open New WSL Workspace"));
+    body = body.child(section_label(shell, "Open New WSL Workspace"));
     if !picker.model.available_wsl_distros.is_empty() {
         let mut distro_row = div().flex().flex_wrap().gap_2();
-        let distro_button_font_weight = shell.secondary_button_theme().font_weight;
         for distro_name in &picker.model.available_wsl_distros {
             let selected =
                 picker.model.selected_wsl_distro.as_deref() == Some(distro_name.as_str());
             let distro = distro_name.clone();
             let chip = distro_chip(
+                shell,
                 SharedString::from(distro_name.clone()),
                 selected,
-                distro_button_font_weight,
                 cx.listener(move |view, event, window, cx| {
                     view.select_wsl_distro(&distro, event, window, cx);
                 }),
@@ -256,7 +274,7 @@ fn render_picker(
                 .flex()
                 .flex_col()
                 .gap_3()
-                .child(info_line("Runtime mode", "wsl-linux"))
+                .child(info_line(shell, "Runtime mode", "wsl-linux"))
                 .child(distro_row)
                 .child(framed_text_input(shell, wsl_path_input))
                 .child(button(
@@ -270,16 +288,17 @@ fn render_picker(
         body = body.child(
             div()
                 .text_sm()
-                .text_color(rgb(0xcbd5e1))
+                .text_color(shell.surface_muted_foreground())
                 .child("No WSL distro is currently available for managed backend launch."),
         );
     }
 
     if let Some(error) = &picker.model.wsl_listing_error {
-        body = body.child(inline_notice(error, rgb(0x3f1d1d), rgb(0xfca5a5)));
+        body = body.child(inline_notice(shell, error, BerylThemeRole::NoticeError));
     }
     for (distro_name, reason) in &picker.model.unavailable_wsl {
         body = body.child(info_line(
+            shell,
             &format!("WSL distro unavailable: {distro_name}"),
             reason,
         ));
@@ -288,27 +307,31 @@ fn render_picker(
     body
 }
 
-fn render_opening(opening: &OpeningState) -> impl IntoElement {
+fn render_opening(shell: &ShellRenderFrame<'_>, opening: &OpeningState) -> impl IntoElement {
     let mut body = div()
         .flex()
         .flex_col()
         .gap_3()
-        .child(section_label("Workspace Startup"))
+        .child(section_label(shell, "Workspace Startup"))
         .child(
             div()
                 .text_lg()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(rgb(0x7dd3fc))
+                .font_weight(
+                    shell.role_font_weight(BerylThemeRole::NoticeInfo, gpui::FontWeight::SEMIBOLD),
+                )
+                .text_color(
+                    shell.role_foreground(BerylThemeRole::NoticeInfo, shell.surface_foreground()),
+                )
                 .child("Opening the selected workspace"),
         )
-        .child(info_line("Attempt", &opening.attempt.to_string()))
-        .child(info_line("Target", &opening.workspace_label))
-        .child(info_line("Current step", &opening.detail));
+        .child(info_line(shell, "Attempt", &opening.attempt.to_string()))
+        .child(info_line(shell, "Target", &opening.workspace_label))
+        .child(info_line(shell, "Current step", &opening.detail));
 
     if let Some(progress) = &opening.progress
         && let Some(detail) = progress.detail()
     {
-        body = body.child(info_line("Backend probe detail", detail));
+        body = body.child(info_line(shell, "Backend probe detail", detail));
     }
 
     if let Some(previous_failure) = &opening.previous_failure {
@@ -324,52 +347,66 @@ fn render_opening(opening: &OpeningState) -> impl IntoElement {
                 previous_failure.title, previous_failure.summary
             ),
         };
-        body = body.child(inline_notice(&retry_message, rgb(0x172554), rgb(0xbfdbfe)));
+        body = body.child(inline_notice(
+            shell,
+            &retry_message,
+            BerylThemeRole::NoticeInfo,
+        ));
     }
 
     body
 }
 
-fn render_blocked(blocked: &BlockedState) -> impl IntoElement {
+fn render_blocked(shell: &ShellRenderFrame<'_>, blocked: &BlockedState) -> impl IntoElement {
     let mut body = div()
         .flex()
         .flex_col()
         .gap_3()
-        .child(section_label(if blocked.disconnect {
-            "Disconnect Recovery"
-        } else {
-            "Blocking Error"
-        }))
+        .child(section_label(
+            shell,
+            if blocked.disconnect {
+                "Disconnect Recovery"
+            } else {
+                "Blocking Error"
+            },
+        ))
         .child(
             div()
                 .text_lg()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(rgb(0xfda4af))
+                .font_weight(
+                    shell.role_font_weight(BerylThemeRole::NoticeError, gpui::FontWeight::SEMIBOLD),
+                )
+                .text_color(
+                    shell.role_foreground(BerylThemeRole::NoticeError, shell.surface_foreground()),
+                )
                 .child(blocked.title),
         )
-        .child(info_line("Workspace", &blocked.workspace_label))
-        .child(info_line("Attempt", &blocked.attempt.to_string()))
+        .child(info_line(shell, "Workspace", &blocked.workspace_label))
+        .child(info_line(shell, "Attempt", &blocked.attempt.to_string()))
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(0xf8fafc))
+                .text_color(shell.surface_foreground())
                 .child(blocked.summary.clone()),
         )
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(0xfde68a))
+                .text_color(
+                    shell
+                        .role_foreground(BerylThemeRole::NoticeWarning, shell.surface_foreground()),
+                )
                 .child(blocked.detail.clone()),
         );
 
     if let Some(stage) = blocked.stage {
-        body = body.child(info_line("Failed step", stage.display_label()));
+        body = body.child(info_line(shell, "Failed step", stage.display_label()));
     }
     for next_step in &blocked.next_steps {
         body = body.child(
             div()
                 .text_sm()
-                .text_color(rgb(0xcbd5e1))
+                .text_color(shell.surface_muted_foreground())
                 .child(format!("Next: {next_step}")),
         );
     }
@@ -388,26 +425,33 @@ fn retry_label(target: &RetryTarget) -> &'static str {
 }
 
 fn distro_chip(
+    shell: &ShellRenderFrame<'_>,
     label: impl Into<SharedString>,
     selected: bool,
-    font_weight: gpui::FontWeight,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
     let label = label.into();
+    let primary = shell.primary_button_theme();
+    let secondary = shell.secondary_button_theme();
     let background = if selected {
-        rgb(0x0369a1)
+        primary.active.background
     } else {
-        rgb(0x1e293b)
+        secondary.normal.background
     };
     let hover = if selected {
-        rgb(0x075985)
+        primary.hover.background
     } else {
-        rgb(0x334155)
+        secondary.hover.background
     };
     let active = if selected {
-        rgb(0x0c4a6e)
+        primary.active.background
     } else {
-        rgb(0x475569)
+        secondary.active.background
+    };
+    let foreground = if selected {
+        primary.active.foreground
+    } else {
+        secondary.normal.foreground
     };
 
     div()
@@ -425,8 +469,8 @@ fn distro_chip(
         .active(move |style| style.bg(active))
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
-        .font_weight(font_weight)
-        .text_color(rgb(0xf8fafc))
+        .font_weight(secondary.font_weight)
+        .text_color(foreground)
         .cursor_pointer()
         .child(label)
         .on_click(move |event, window, cx| on_click(event, window, cx))

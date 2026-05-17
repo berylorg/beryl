@@ -7,31 +7,54 @@ use beryl_model::{
 };
 use gpui::{
     AnyElement, Context, ElementId, InteractiveElement, MouseButton, StatefulInteractiveElement,
-    div, prelude::*, px, rgb,
+    div, prelude::*, px,
 };
 
-use crate::shell::{
-    ConversationSurfaceState, ShellView,
-    graph::{DEFAULT_GRAPH_COLUMN_EXPANDED_DEPTH, GraphColumnSelection, GraphColumnState},
-    layout,
-    thread_selection::graph_thread_ref_availability,
+use crate::{
+    BerylThemeRole,
+    shell::{
+        ConversationSurfaceState, ShellRenderFrame, ShellView,
+        graph::{DEFAULT_GRAPH_COLUMN_EXPANDED_DEPTH, GraphColumnSelection, GraphColumnState},
+        layout,
+        thread_selection::graph_thread_ref_availability,
+    },
 };
 
 use super::{
     CHECKLIST_ITEM_STATUS_DONE, CHECKLIST_ITEM_STATUS_IN_PROGRESS, CHECKLIST_ITEM_STATUS_TODO,
-    GRAPH_OVERLAY_ROW_INDENT, GraphSummaryTooltipTheme, SOFT_LINK_ROW_MARKER,
-    build_graph_summary_tooltip, stable_id_key,
+    GRAPH_OVERLAY_ROW_INDENT, GraphRoleStyle, GraphSummaryTooltipTheme, SOFT_LINK_ROW_MARKER,
+    build_graph_summary_tooltip, graph_role_style, stable_id_key,
 };
 
 struct GraphNodePalette {
-    background: gpui::Rgba,
-    selected_background: gpui::Rgba,
-    border: gpui::Rgba,
-    selected_border: gpui::Rgba,
+    normal: GraphRoleStyle,
+    selected: GraphRoleStyle,
+}
+
+impl GraphNodePalette {
+    fn background(&self, selected: bool) -> gpui::Rgba {
+        self.style(selected).background
+    }
+
+    fn border(&self, selected: bool) -> gpui::Rgba {
+        self.style(selected).border
+    }
+
+    fn foreground(&self, selected: bool) -> gpui::Rgba {
+        self.style(selected).foreground
+    }
+
+    fn font_weight(&self, selected: bool) -> gpui::FontWeight {
+        self.style(selected).font_weight
+    }
+
+    fn style(&self, selected: bool) -> GraphRoleStyle {
+        if selected { self.selected } else { self.normal }
+    }
 }
 
 pub(super) fn render_graph_node_tree(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace_state: &WorkspaceConversationState,
     implicit_home_execution_target: Option<&WorkspaceId>,
     column_index: usize,
@@ -124,7 +147,7 @@ pub(super) fn render_graph_node_tree(
 }
 
 fn render_graph_node_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     node: &SemanticNode,
     depth: usize,
@@ -138,7 +161,7 @@ fn render_graph_node_row(
     let node_id = node.id().clone();
     let node_id_for_context_menu = node.id().clone();
     let summary = node.summary().trim().to_string();
-    let palette = graph_node_palette(node);
+    let palette = graph_node_palette(shell, node);
     let status = node.checklist_item_status();
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
     let mut title_hitbox = div()
@@ -164,8 +187,8 @@ fn render_graph_node_row(
                         .min_w(px(0.0))
                         .flex_1()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(shell.general_ui_foreground())
+                        .font_weight(palette.font_weight(selected))
+                        .text_color(palette.foreground(selected))
                         .whitespace_nowrap()
                         .truncate()
                         .child(node.title().to_string()),
@@ -185,17 +208,9 @@ fn render_graph_node_row(
             div()
                 .w_full()
                 .rounded_md()
-                .bg(if selected {
-                    palette.selected_background
-                } else {
-                    palette.background
-                })
+                .bg(palette.background(selected))
                 .border_1()
-                .border_color(if selected {
-                    palette.selected_border
-                } else {
-                    palette.border
-                })
+                .border_color(palette.border(selected))
                 .opacity(if pending { 0.72 } else { 1.0 })
                 .on_mouse_down(
                     MouseButton::Right,
@@ -234,7 +249,7 @@ fn render_graph_node_row(
 }
 
 fn render_graph_soft_link_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     graph: &SemanticGraph,
     soft_link: &SoftLink,
@@ -248,27 +263,18 @@ fn render_graph_soft_link_row(
         .node(soft_link.target_id())
         .expect("graph overlay renders only valid soft-link targets");
     let target_summary = target.summary().trim().to_string();
-    let primary = shell.primary_button_theme();
-    let secondary = shell.secondary_button_theme();
-    let background = if selected {
-        primary.normal.background
+    let normal_style = graph_role_style(shell, BerylThemeRole::GraphRowSoftLink);
+    let selected_style = graph_role_style(shell, BerylThemeRole::GraphRowSelected);
+    let hover_style = graph_role_style(shell, BerylThemeRole::GraphRowHover);
+    let style = if selected {
+        selected_style
     } else {
-        shell.row_surface_background()
-    };
-    let border = if selected {
-        primary.normal.border
-    } else {
-        shell.surface_border()
-    };
-    let foreground = if selected {
-        primary.normal.foreground
-    } else {
-        rgb(0xbfdbfe)
+        normal_style
     };
     let hover_background = if selected {
-        primary.hover.background
+        selected_style.background
     } else {
-        secondary.hover.background
+        hover_style.background
     };
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
     let mut row = div()
@@ -278,9 +284,9 @@ fn render_graph_soft_link_row(
         ))
         .w_full()
         .rounded_md()
-        .bg(background)
+        .bg(style.background)
         .border_1()
-        .border_color(border)
+        .border_color(style.border)
         .px_3()
         .py_2()
         .cursor_pointer()
@@ -296,7 +302,7 @@ fn render_graph_soft_link_row(
                     div()
                         .flex_none()
                         .text_sm()
-                        .text_color(foreground)
+                        .text_color(style.foreground)
                         .child(format!("{SOFT_LINK_ROW_MARKER} ")),
                 )
                 .child(
@@ -304,8 +310,8 @@ fn render_graph_soft_link_row(
                         .min_w(px(0.0))
                         .flex_1()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(foreground)
+                        .font_weight(style.font_weight)
+                        .text_color(style.foreground)
                         .whitespace_nowrap()
                         .truncate()
                         .child(target.title().to_string()),
@@ -334,7 +340,7 @@ fn render_graph_soft_link_row(
 }
 
 fn render_graph_thread_ref_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace_state: &WorkspaceConversationState,
     implicit_home_execution_target: Option<&WorkspaceId>,
     column_index: usize,
@@ -349,11 +355,14 @@ fn render_graph_thread_ref_row(
     let availability =
         graph_thread_ref_availability(workspace_state, thread_ref, implicit_home_execution_target);
     let invalid_reason = availability.reason().map(str::to_string);
-    let secondary = shell.secondary_button_theme();
-    let border_color = if availability.is_openable() {
-        shell.surface_border()
+    let normal_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRef);
+    let invalid_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalid);
+    let hover_style = graph_role_style(shell, BerylThemeRole::GraphRowHover);
+    let disabled_style = graph_role_style(shell, BerylThemeRole::GraphRowDisabled);
+    let row_style = if availability.is_openable() {
+        normal_style
     } else {
-        rgb(0xf87171)
+        invalid_style
     };
 
     div()
@@ -367,11 +376,11 @@ fn render_graph_thread_ref_row(
                 ))
                 .w_full()
                 .rounded_md()
-                .bg(shell.row_surface_background())
+                .bg(row_style.background)
                 .border_1()
-                .border_color(border_color)
+                .border_color(row_style.border)
                 .cursor_pointer()
-                .hover(move |style| style.bg(secondary.hover.background))
+                .hover(move |style| style.bg(hover_style.background))
                 .p_3()
                 .on_click(cx.listener(move |view, event, window, cx| {
                     view.select_graph_thread_ref(
@@ -399,22 +408,21 @@ fn render_graph_thread_ref_row(
                                 .child(
                                     div()
                                         .text_xs()
-                                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_color(rgb(0xfde68a))
+                                        .font_weight(row_style.font_weight)
+                                        .text_color(row_style.foreground)
                                         .child(format!("thread {}", thread_ref.label())),
                                 )
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(shell.surface_muted_foreground())
-                                        .child(format!(
+                                    div().text_xs().text_color(disabled_style.foreground).child(
+                                        format!(
                                             "{}  {}",
                                             thread_ref
                                                 .execution_target()
                                                 .runtime_mode()
                                                 .display_name(),
                                             thread_ref.thread_id().as_str()
-                                        )),
+                                        ),
+                                    ),
                                 ),
                         )
                         .when_some(invalid_reason, |this, reason| {
@@ -431,7 +439,7 @@ fn render_graph_thread_ref_row(
 }
 
 fn render_invalid_thread_ref_actions(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     thread_ref_id: beryl_model::semantic_graph::ThreadRefId,
     reason: String,
@@ -440,6 +448,7 @@ fn render_invalid_thread_ref_actions(
     let indicator_reason = reason.clone();
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
     let button_theme = shell.secondary_button_theme();
+    let invalid_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalid);
 
     div()
         .flex_none()
@@ -456,13 +465,13 @@ fn render_invalid_thread_ref_actions(
                 .w(px(20.0))
                 .rounded_full()
                 .border_1()
-                .border_color(rgb(0xf87171))
+                .border_color(invalid_style.border)
                 .flex()
                 .items_center()
                 .justify_center()
                 .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(rgb(0xfca5a5))
+                .font_weight(invalid_style.font_weight)
+                .text_color(invalid_style.foreground)
                 .child("!")
                 .tooltip(move |_, cx| {
                     build_graph_summary_tooltip(indicator_reason.clone(), tooltip_theme, cx)
@@ -513,7 +522,7 @@ fn render_invalid_thread_ref_actions(
 }
 
 fn render_expander(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     node_id: SemanticNodeId,
     depth: usize,
@@ -565,38 +574,36 @@ fn render_expander(
 }
 
 fn render_checklist_item_status_marker(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     status: ChecklistItemStatus,
 ) -> impl IntoElement {
+    let status_style = graph_role_style(shell, checklist_status_role(status));
     div()
         .flex_none()
         .text_sm()
-        .text_color(shell.general_ui_foreground())
+        .text_color(status_style.foreground)
         .child(format!("{} ", checklist_item_status_glyph(status)))
 }
 
-fn graph_node_palette(node: &SemanticNode) -> GraphNodePalette {
-    if node.facets().has_checklist() {
-        GraphNodePalette {
-            background: rgb(0x134e4a),
-            selected_background: rgb(0x0f766e),
-            border: rgb(0x0f766e),
-            selected_border: rgb(0x99f6e4),
-        }
+fn graph_node_palette(shell: &ShellRenderFrame<'_>, node: &SemanticNode) -> GraphNodePalette {
+    let role = if node.facets().has_checklist() {
+        BerylThemeRole::GraphRowChecklist
     } else if node.facets().has_checklist_item() {
-        GraphNodePalette {
-            background: rgb(0x1f2937),
-            selected_background: rgb(0x374151),
-            border: rgb(0x334155),
-            selected_border: rgb(0xf8fafc),
-        }
+        BerylThemeRole::GraphRowChecklistItem
     } else {
-        GraphNodePalette {
-            background: rgb(0x172554),
-            selected_background: rgb(0x1d4ed8),
-            border: rgb(0x1d4ed8),
-            selected_border: rgb(0xbfdbfe),
-        }
+        BerylThemeRole::GraphRowTopic
+    };
+    GraphNodePalette {
+        normal: graph_role_style(shell, role),
+        selected: graph_role_style(shell, BerylThemeRole::GraphRowSelected),
+    }
+}
+
+fn checklist_status_role(status: ChecklistItemStatus) -> BerylThemeRole {
+    match status {
+        ChecklistItemStatus::Todo => BerylThemeRole::ChecklistStatusTodo,
+        ChecklistItemStatus::InProgress => BerylThemeRole::ChecklistStatusInProgress,
+        ChecklistItemStatus::Done => BerylThemeRole::ChecklistStatusDone,
     }
 }
 

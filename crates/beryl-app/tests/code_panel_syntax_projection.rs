@@ -7,6 +7,22 @@ pub(crate) mod syntax_highlighting;
 mod shell {
     pub(crate) use crate::layout;
     pub(crate) use crate::syntax_highlighting;
+
+    pub(crate) struct ShellRenderStyleSnapshot;
+
+    impl ShellRenderStyleSnapshot {
+        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
+            0x000000
+        }
+    }
+
+    pub(crate) struct ShellView;
+
+    impl ShellView {
+        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
+            0x000000
+        }
+    }
 }
 
 #[path = "../src/shell/render/code_panel.rs"]

@@ -1,6 +1,7 @@
 use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
     ops::Range,
     path::PathBuf,
     rc::Rc,
@@ -30,7 +31,7 @@ use gpui::{
     App, Application, AsyncApp, Bounds, ClipboardItem, Context, Entity, Image, KeyBinding,
     KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions,
     Pixels, Point, PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent, WeakEntity, Window,
-    WindowBounds, WindowOptions, prelude::*, px, rgb, size,
+    WindowBounds, WindowOptions, prelude::*, px, size,
 };
 use gpui_scrollbar::{
     ScrollbarVisibilityPolicy, ScrollbarVisibilityState, ScrollbarVisibilityUpdateCallback,
@@ -63,12 +64,11 @@ use crate::diagnostic_child_target::{
     DiagnosticTargetShellRequest, spawn_diagnostic_target_stdio_server,
 };
 use crate::diagnostic_dynamic_tools::{
-    DEFAULT_MEDIA_EVENT_LIMIT, DEFAULT_VISIBLE_MEDIA_LIMIT, DiagnosticToolSnapshot,
-    MAX_MEDIA_EVENT_LIMIT, MAX_VISIBLE_MEDIA_LIMIT, ManagedBackendProcessDiagnostic,
-    MemoryDiagnosticSnapshot, MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic,
-    ProcessDiagnosticSnapshot, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
-    bounded_diagnostic_string, dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result,
-    renderer_snapshot_with_shell_window, visible_media_result,
+    DEFAULT_MEDIA_EVENT_LIMIT, DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT, DEFAULT_VISIBLE_MEDIA_LIMIT,
+    MAX_MEDIA_EVENT_LIMIT, MAX_TRANSCRIPT_FRAME_METRIC_LIMIT, MAX_VISIBLE_MEDIA_LIMIT,
+    RuntimeTargetDiagnostic, bounded_diagnostic_string, diagnostic_duration_micros,
+    dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result,
+    transcript_frame_metrics_result, visible_media_result,
 };
 use crate::gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CancellableTurnUiState,
@@ -86,18 +86,30 @@ use crate::member_thread_inventory::{
     MemberThreadInventoryState, resolved_thread_title,
 };
 use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
+use crate::settings_dynamic_tools::is_beryl_settings_dynamic_tool;
 use crate::text_input::{
     SharedTextInputCopy, SharedTextInputCut, SharedTextInputEnter, SharedTextInputPaste,
     SingleLineInput, TextInputAtomClipboardPolicy, TextInputEnterKey, TextInputEvent,
     TextInputOptions, TextInputRetainedCounts, TextInputRichPastePolicy, TextInputSelectionAtom,
     TextInputSelectionExport,
 };
+use crate::theme_dynamic_tools::is_beryl_theme_dynamic_tool;
 use crate::{
     AppBootstrap, GuiPreferences, WorkspaceActivityPanelMode, WorkspaceGraphRevision,
     WorkspaceUiState,
 };
 
 use self::backend_availability::{BackendAvailabilityRecord, BackendUnavailable};
+use self::dynamic_theme::DynamicThemePreviewState;
+use self::dynamic_theme_worker::DynamicThemeDurableTask;
+use self::render_theme::{
+    ChromeButtonStateTheme, ChromeButtonTheme, ShellRenderFrame, ShellRenderStyleSnapshot,
+    ShellRenderThemeCache,
+};
+use self::theme_candidates::{
+    ThemeCandidateInstallUpdate, ThemeCandidatePanelFeedback, ThemeCandidateState,
+    ThemeCandidateValidationError,
+};
 const COMPOSER_KEY_CONTEXT: &str = "ConversationComposer";
 const APP_SHUTDOWN_OPEN_WORKER_GRACE_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -361,10 +373,15 @@ mod composer_image_assets;
 mod composer_image_delivery;
 mod composer_image_label_scan;
 mod composer_image_labels;
+mod composer_measurement;
 mod composer_submission;
 mod composer_submit;
 mod context_compaction;
+mod diagnostics;
 mod discovery;
+mod dynamic_settings;
+mod dynamic_theme;
+mod dynamic_theme_worker;
 mod execution_detail;
 mod graph;
 mod graph_link_menu;
@@ -387,6 +404,7 @@ mod notifications;
 mod pending_turn_input;
 mod platform_attention;
 mod render;
+mod render_theme;
 mod semantic_thread_start;
 mod settings;
 mod status_line;
@@ -395,6 +413,7 @@ mod status_operation_state;
 mod surface_notice;
 #[allow(dead_code)]
 mod syntax_highlighting;
+mod theme_candidates;
 mod thread_activation;
 mod thread_history_worker;
 mod thread_selection;
@@ -474,6 +493,7 @@ use composer_image_label_scan::{
     spawn_composer_image_label_scan_worker,
 };
 use composer_image_labels::{ComposerImageLabelState, ComposerImagePasteReadiness};
+use composer_measurement::{ComposerInputMeasurementCache, ComposerInputMeasurementKey};
 use composer_submission::prepared_composer_draft_fragment;
 use composer_submit::accepted_composer_draft;
 use discovery::WorkspaceOpenCancellation;
@@ -511,7 +531,7 @@ use pending_turn_input::{
     PendingTurnInputSubmissionPlan,
 };
 use platform_attention::PlatformAttentionMonitor;
-use settings::{SharedAppearanceSettings, SharedGuiPreferences};
+use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, ThreadTurnDefaults,
 };
@@ -655,19 +675,18 @@ fn run_app_with_diagnostic_target(
             ),
         ]);
         let bounds = Bounds::centered(None, size(px(1040.0), px(760.0)), cx);
-        let appearance_store = app_state
-            .as_ref()
-            .ok()
-            .map(|state| state.home_dir.appearance_settings_store());
         let preferences_store = app_state
             .as_ref()
             .ok()
             .map(|state| state.home_dir.gui_preferences_store());
-        let appearance_settings = std::sync::Arc::new(std::sync::Mutex::new(
-            appearance_store
-                .as_ref()
-                .map(settings::load_initial_appearance_settings)
-                .unwrap_or_default(),
+        let theme_repository_store = app_state
+            .as_ref()
+            .ok()
+            .map(|state| state.home_dir.theme_repository_store());
+        let theme_repository_snapshot =
+            settings::load_initial_theme_repository_snapshot(theme_repository_store.as_ref());
+        let active_theme = std::sync::Arc::new(std::sync::Mutex::new(
+            theme_repository_snapshot.active_projection().clone(),
         ));
         let gui_preferences = std::sync::Arc::new(std::sync::Mutex::new(
             preferences_store
@@ -675,17 +694,18 @@ fn run_app_with_diagnostic_target(
                 .map(settings::load_initial_gui_preferences)
                 .unwrap_or_default(),
         ));
-        let settings_state = match (appearance_store, preferences_store) {
-            (Some(appearance_store), Some(preferences_store)) => {
-                settings::SettingsState::new_with_stores(
-                    appearance_settings.clone(),
-                    appearance_store,
+        let mut settings_state = match (preferences_store, theme_repository_store) {
+            (Some(preferences_store), Some(theme_repository_store)) => {
+                settings::SettingsState::new_with_theme_repository(
+                    active_theme.clone(),
                     gui_preferences.clone(),
                     preferences_store,
+                    theme_repository_store,
+                    theme_repository_snapshot,
                 )
             }
             _ => settings::SettingsState::new_without_stores(
-                appearance_settings.clone(),
+                active_theme.clone(),
                 gui_preferences.clone(),
                 app_state
                     .as_ref()
@@ -697,13 +717,15 @@ fn run_app_with_diagnostic_target(
                     }),
             ),
         };
+        let settings_window_options = settings_state.window_options();
         let settings_window = open_settings_window(
             cx,
             settings_state.model(),
-            settings_state.window_options(),
+            settings_window_options.clone(),
             SettingsWindowOpenDisposition::Hidden,
         )
         .expect("beryl settings window should open");
+        settings_state.record_window_options_synced(settings_window_options);
         MemoryMilestone::new("settings_window_created").log();
 
         MemoryMilestone::new("main_window_open_start").log();
@@ -729,7 +751,7 @@ fn run_app_with_diagnostic_target(
                         app_state.clone(),
                         settings_window,
                         settings_state,
-                        appearance_settings.clone(),
+                        active_theme.clone(),
                         gui_preferences.clone(),
                         diagnostic_target_receiver,
                         cx,
@@ -752,7 +774,7 @@ fn run_app_with_diagnostic_target(
     });
 }
 
-struct ShellView {
+pub(super) struct ShellView {
     bootstrap: AppBootstrap,
     app_state: Result<ConfiguredAppState, String>,
     settings_window: SettingsWindowHandle,
@@ -760,7 +782,16 @@ struct ShellView {
     notification_sound_path_prompt: NotificationSoundPathPromptState,
     notification_sound_player: NotificationSoundPlayer,
     platform_attention_monitor: PlatformAttentionMonitor,
-    appearance_settings: SharedAppearanceSettings,
+    active_theme: SharedActiveThemeProjection,
+    render_theme_cache: RefCell<ShellRenderThemeCache>,
+    composer_measurement_cache: RefCell<ComposerInputMeasurementCache>,
+    last_composer_measurement_micros: Cell<u64>,
+    composer_input_revision: u64,
+    composer_image_atom_revision: u64,
+    composer_image_atom_signature: ComposerImageAtomSignature,
+    dynamic_theme_preview: Option<DynamicThemePreviewState>,
+    theme_candidate_state: ThemeCandidateState,
+    dynamic_theme_durable_receiver: Option<DynamicThemeDurableTask>,
     #[allow(dead_code)]
     gui_preferences: SharedGuiPreferences,
     state: ShellState,
@@ -790,6 +821,7 @@ struct ShellView {
     account_rate_limits_receiver: Option<Receiver<AccountRateLimitsUpdate>>,
     turn_stop_receiver: Option<Receiver<TurnStopUpdate>>,
     hard_stop_receiver: Option<Receiver<HardStopUpdate>>,
+    theme_candidate_install_receiver: Option<ThemeCandidateInstallTask>,
     tool_activity_nickname_resolver: ToolActivityNicknameResolver,
     workspace_picker_action_receiver: Option<Receiver<WorkspacePickerActionUpdate>>,
     workspace_runtime_selector_distro_receiver:
@@ -823,6 +855,12 @@ struct ShellView {
     next_attempt: u32,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ComposerImageAtomSignature {
+    count: usize,
+    hash: u64,
+}
+
 #[derive(Clone)]
 struct ComposerImagePopupState {
     atom_id: String,
@@ -832,6 +870,11 @@ struct ComposerImagePopupState {
     mode: ComposerImagePopupMode,
     preview_image: Option<Arc<Image>>,
     preview_image_bytes: usize,
+}
+
+struct ThemeCandidateInstallTask {
+    panel_id: String,
+    receiver: Receiver<ThemeCandidateInstallUpdate>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1548,95 +1591,12 @@ fn composer_history_text_input_atom(atom: &ComposerDraftImageAtom) -> TextInputS
     )
 }
 
-fn rgba_from_role_color(color: Option<crate::ParsedHexColor>, fallback: gpui::Rgba) -> gpui::Rgba {
-    color
-        .map(|color| {
-            rgb(((color.red() as u32) << 16) | ((color.green() as u32) << 8) | color.blue() as u32)
-        })
-        .unwrap_or(fallback)
-}
-
-fn chrome_color(value: &str, fallback: gpui::Rgba) -> gpui::Rgba {
-    rgba_from_role_color(crate::ParsedHexColor::parse(value), fallback)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ChromeButtonTheme {
-    pub font_weight: gpui::FontWeight,
-    pub normal: ChromeButtonStateTheme,
-    pub hover: ChromeButtonStateTheme,
-    pub active: ChromeButtonStateTheme,
-    pub disabled: ChromeButtonStateTheme,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ChromeButtonStateTheme {
-    pub background: gpui::Rgba,
-    pub border: gpui::Rgba,
-    pub foreground: gpui::Rgba,
-}
-
-impl ChromeButtonTheme {
-    fn primary() -> Self {
-        Self {
-            font_weight: gpui::FontWeight(500.0),
-            normal: ChromeButtonStateTheme::new(rgb(0x1d4ed8), rgb(0x3b82f6), rgb(0xeff6ff)),
-            hover: ChromeButtonStateTheme::new(rgb(0x2563eb), rgb(0x60a5fa), rgb(0xffffff)),
-            active: ChromeButtonStateTheme::new(rgb(0x1e40af), rgb(0x3b82f6), rgb(0xffffff)),
-            disabled: ChromeButtonStateTheme::new(rgb(0x334155), rgb(0x475569), rgb(0x94a3b8)),
+fn candidate_validation_message(error: &ThemeCandidateValidationError) -> String {
+    match error {
+        ThemeCandidateValidationError::MissingInstallName => {
+            "Add a top-level name before installing this theme candidate.".to_string()
         }
-    }
-
-    fn secondary() -> Self {
-        Self {
-            font_weight: gpui::FontWeight(500.0),
-            normal: ChromeButtonStateTheme::new(rgb(0x1e293b), rgb(0x475569), rgb(0xe2e8f0)),
-            hover: ChromeButtonStateTheme::new(rgb(0x334155), rgb(0x64748b), rgb(0xf8fafc)),
-            active: ChromeButtonStateTheme::new(rgb(0x0f172a), rgb(0x475569), rgb(0xf8fafc)),
-            disabled: ChromeButtonStateTheme::new(rgb(0x111827), rgb(0x334155), rgb(0x64748b)),
-        }
-    }
-}
-
-impl ChromeButtonStateTheme {
-    fn new(background: gpui::Rgba, border: gpui::Rgba, foreground: gpui::Rgba) -> Self {
-        Self {
-            background,
-            border,
-            foreground,
-        }
-    }
-}
-
-fn chrome_button_theme(
-    settings: &crate::AppearanceButtonSettings,
-    fallback: ChromeButtonTheme,
-) -> ChromeButtonTheme {
-    ChromeButtonTheme {
-        font_weight: chrome_font_weight(settings.font_weight, fallback.font_weight),
-        normal: chrome_button_state_theme(&settings.normal, fallback.normal),
-        hover: chrome_button_state_theme(&settings.hover, fallback.hover),
-        active: chrome_button_state_theme(&settings.active, fallback.active),
-        disabled: chrome_button_state_theme(&settings.disabled, fallback.disabled),
-    }
-}
-
-fn chrome_button_state_theme(
-    settings: &crate::AppearanceButtonStateSettings,
-    fallback: ChromeButtonStateTheme,
-) -> ChromeButtonStateTheme {
-    ChromeButtonStateTheme {
-        background: chrome_color(&settings.background, fallback.background),
-        border: chrome_color(&settings.border, fallback.border),
-        foreground: chrome_color(&settings.foreground, fallback.foreground),
-    }
-}
-
-fn chrome_font_weight(value: u16, fallback: gpui::FontWeight) -> gpui::FontWeight {
-    if (100..=900).contains(&value) {
-        gpui::FontWeight(value as f32)
-    } else {
-        fallback
+        _ => error.to_string(),
     }
 }
 
@@ -4476,7 +4436,7 @@ impl ShellView {
         app_state: Result<ConfiguredAppState, String>,
         settings_window: SettingsWindowHandle,
         settings_state: settings::SettingsState,
-        appearance_settings: SharedAppearanceSettings,
+        active_theme: SharedActiveThemeProjection,
         gui_preferences: SharedGuiPreferences,
         diagnostic_target_receiver: Option<Receiver<DiagnosticTargetShellRequest>>,
         cx: &mut Context<Self>,
@@ -4487,6 +4447,10 @@ impl ShellView {
             milestone = milestone.runtime(workspace.runtime_mode().display_name());
         }
         milestone.log();
+        let initial_render_theme_projection = active_theme
+            .lock()
+            .map(|active| active.clone())
+            .unwrap_or_else(|_| crate::ActiveThemeProjection::built_in());
 
         let host_default = std::env::current_dir()
             .map(|path| path.display().to_string())
@@ -4579,7 +4543,18 @@ impl ShellView {
             notification_sound_path_prompt: NotificationSoundPathPromptState::default(),
             notification_sound_player: NotificationSoundPlayer::spawn(),
             platform_attention_monitor: PlatformAttentionMonitor::spawn(),
-            appearance_settings,
+            active_theme,
+            render_theme_cache: RefCell::new(ShellRenderThemeCache::new(
+                initial_render_theme_projection,
+            )),
+            composer_measurement_cache: RefCell::new(ComposerInputMeasurementCache::default()),
+            last_composer_measurement_micros: Cell::new(0),
+            composer_input_revision: 0,
+            composer_image_atom_revision: 0,
+            composer_image_atom_signature: ComposerImageAtomSignature::default(),
+            dynamic_theme_preview: None,
+            theme_candidate_state: ThemeCandidateState::default(),
+            dynamic_theme_durable_receiver: None,
             gui_preferences,
             state: ShellState::Discovering(DiscoveringState {
                 detail: "Preparing startup discovery".to_string(),
@@ -4610,6 +4585,7 @@ impl ShellView {
             account_rate_limits_receiver: None,
             turn_stop_receiver: None,
             hard_stop_receiver: None,
+            theme_candidate_install_receiver: None,
             tool_activity_nickname_resolver: ToolActivityNicknameResolver::default(),
             workspace_picker_action_receiver: None,
             workspace_runtime_selector_distro_receiver: None,
@@ -4730,11 +4706,60 @@ impl ShellView {
             .unwrap_or_else(|_| "the configured Beryl home directory".to_string())
     }
 
-    fn appearance_settings(&self) -> crate::AppearanceSettings {
-        self.appearance_settings
-            .lock()
-            .map(|settings| settings.clone())
-            .unwrap_or_default()
+    fn publish_active_theme_projection(&self, projection: crate::ActiveThemeProjection) {
+        if let Ok(mut active_theme) = self.active_theme.lock() {
+            *active_theme = projection.clone();
+        }
+        self.render_theme_cache
+            .replace(ShellRenderThemeCache::new(projection));
+    }
+
+    fn publish_settings_active_theme_projection(&self) {
+        self.publish_active_theme_projection(
+            self.settings_state
+                .theme_repository_snapshot()
+                .active_projection()
+                .clone(),
+        );
+    }
+
+    fn active_theme_projection(&self) -> crate::ActiveThemeProjection {
+        self.render_theme_cache.borrow().projection.clone()
+    }
+
+    fn render_style_snapshot(&self) -> ShellRenderStyleSnapshot {
+        self.render_theme_cache.borrow().style_snapshot()
+    }
+
+    fn render_frame(&self) -> ShellRenderFrame<'_> {
+        ShellRenderFrame::new(self, self.render_style_snapshot())
+    }
+
+    pub(super) fn composer_input_revision(&self) -> u64 {
+        self.composer_input_revision
+    }
+
+    pub(super) fn composer_image_atom_revision(&self) -> u64 {
+        self.composer_image_atom_revision
+    }
+
+    pub(super) fn cached_composer_input_measurement(
+        &self,
+        key: ComposerInputMeasurementKey,
+        measure: impl FnOnce() -> layout::ComposerInputMeasurement,
+    ) -> layout::ComposerInputMeasurement {
+        self.composer_measurement_cache
+            .borrow_mut()
+            .measure_or_insert_with(key, measure)
+    }
+
+    pub(super) fn record_composer_measurement_cost(&self, duration: Duration) {
+        self.last_composer_measurement_micros
+            .set(diagnostic_duration_micros(duration));
+    }
+
+    fn last_composer_measurement_micros(&self) -> u64 {
+        self.last_composer_measurement_micros.get()
     }
 
     fn sync_surface_notice_text_input(&self, notice_id: u64, text: &str, cx: &mut Context<Self>) {
@@ -4752,85 +4777,6 @@ impl ShellView {
             .set(Some(notice_id));
     }
 
-    fn general_ui_background(&self) -> gpui::Rgba {
-        rgba_from_role_color(
-            self.appearance_settings().general_ui.parsed_background(),
-            rgb(0x020617),
-        )
-    }
-
-    fn general_ui_foreground(&self) -> gpui::Rgba {
-        rgba_from_role_color(
-            self.appearance_settings().general_ui.parsed_foreground(),
-            rgb(0xe2e8f0),
-        )
-    }
-
-    fn toolbar_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.toolbar_background,
-            rgb(0x020617),
-        )
-    }
-
-    fn conversation_thread_strip_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self
-                .appearance_settings()
-                .chrome
-                .conversation_thread_strip_background,
-            rgb(0x091220),
-        )
-    }
-
-    fn separator_color(&self) -> gpui::Rgba {
-        chrome_color(&self.appearance_settings().chrome.separator, rgb(0x1e293b))
-    }
-
-    fn primary_button_theme(&self) -> ChromeButtonTheme {
-        let settings = self.appearance_settings();
-        chrome_button_theme(
-            &settings.chrome.primary_button,
-            ChromeButtonTheme::primary(),
-        )
-    }
-
-    fn secondary_button_theme(&self) -> ChromeButtonTheme {
-        let settings = self.appearance_settings();
-        chrome_button_theme(
-            &settings.chrome.secondary_button,
-            ChromeButtonTheme::secondary(),
-        )
-    }
-
-    fn input_panel_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.input.panel_background,
-            rgb(0x020617),
-        )
-    }
-
-    fn input_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.input.input_background,
-            rgb(0x0f172a),
-        )
-    }
-
-    fn input_border(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.input.input_border,
-            rgb(0x334155),
-        )
-    }
-
-    fn input_foreground(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.input.input_foreground,
-            rgb(0xe2e8f0),
-        )
-    }
-
     fn composer_image_popup(&self) -> Option<&ComposerImagePopupState> {
         self.composer_image_popup.as_ref()
     }
@@ -4841,96 +4787,6 @@ impl ShellView {
             .preview_image
             .as_ref()
             .cloned()
-    }
-
-    fn transcript_shell_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self
-                .appearance_settings()
-                .chrome
-                .transcript_shell
-                .background,
-            rgb(0x091220),
-        )
-    }
-
-    fn transcript_shell_foreground(&self) -> gpui::Rgba {
-        chrome_color(
-            &self
-                .appearance_settings()
-                .chrome
-                .transcript_shell
-                .foreground,
-            rgb(0xe2e8f0),
-        )
-    }
-
-    fn status_line_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.status_line.background,
-            rgb(0x020617),
-        )
-    }
-
-    fn status_line_title_foreground(&self) -> gpui::Rgba {
-        chrome_color(
-            &self
-                .appearance_settings()
-                .chrome
-                .status_line
-                .title_foreground,
-            rgb(0x94a3b8),
-        )
-    }
-
-    fn status_line_value_foreground(&self) -> gpui::Rgba {
-        chrome_color(
-            &self
-                .appearance_settings()
-                .chrome
-                .status_line
-                .value_foreground,
-            rgb(0xe2e8f0),
-        )
-    }
-
-    fn panel_surface_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.surfaces.panel_background,
-            rgb(0x111827),
-        )
-    }
-
-    fn row_surface_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.surfaces.row_background,
-            rgb(0x1f2937),
-        )
-    }
-
-    fn popup_surface_background(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.surfaces.popup_background,
-            rgb(0x111827),
-        )
-    }
-
-    fn surface_border(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.surfaces.border,
-            rgb(0x374151),
-        )
-    }
-
-    fn surface_muted_foreground(&self) -> gpui::Rgba {
-        chrome_color(
-            &self.appearance_settings().chrome.surfaces.muted_foreground,
-            rgb(0x94a3b8),
-        )
-    }
-
-    fn surface_foreground(&self) -> gpui::Rgba {
-        rgb(0xe2e8f0)
     }
 
     fn cancel_thread_title_workers(&mut self) -> bool {
@@ -5386,6 +5242,8 @@ impl ShellView {
             || self.account_rate_limits_receiver.is_some()
             || self.turn_stop_receiver.is_some()
             || self.hard_stop_receiver.is_some()
+            || self.theme_candidate_install_receiver.is_some()
+            || self.dynamic_theme_durable_receiver.is_some()
             || self.workspace_picker_action_receiver.is_some()
             || self.workspace_runtime_selector_distro_receiver.is_some()
             || self.workspace_title_receiver.is_some()
@@ -5493,6 +5351,8 @@ impl ShellView {
         updated |= self.poll_account_rate_limits_updates();
         updated |= self.poll_turn_stop_updates();
         updated |= self.poll_hard_stop_updates();
+        updated |= self.poll_theme_candidate_install_updates(cx);
+        updated |= self.poll_dynamic_theme_durable_updates(cx);
         updated |= self.poll_status_operation_hold(window, cx);
         updated |= self.poll_graph_node_action_menu_hold(window, cx);
         updated |= self.poll_workspace_picker_delete_hold(window, cx);
@@ -6185,7 +6045,13 @@ impl ShellView {
                         self.spawn_diagnostic_child_dynamic_tool_worker(request);
                         continue;
                     }
-                    let response = if is_beryl_gui_control_dynamic_tool(request.request()) {
+                    if is_beryl_theme_dynamic_tool(request.request()) {
+                        self.handle_beryl_theme_dynamic_tool_shell_request(request, window, cx);
+                        continue;
+                    }
+                    let response = if is_beryl_settings_dynamic_tool(request.request()) {
+                        self.handle_beryl_settings_dynamic_tool_request(request.request(), cx)
+                    } else if is_beryl_gui_control_dynamic_tool(request.request()) {
                         self.handle_beryl_gui_control_dynamic_tool_request(
                             request.request(),
                             window,
@@ -8489,10 +8355,41 @@ impl ShellView {
         cx.notify();
     }
 
+    fn note_composer_input_measurement_changed(&mut self, cx: &mut Context<Self>) {
+        self.composer_input_revision = self.composer_input_revision.wrapping_add(1);
+
+        let signature = self.current_composer_image_atom_signature(cx);
+        if self.composer_image_atom_signature != signature {
+            self.composer_image_atom_signature = signature;
+            self.composer_image_atom_revision = self.composer_image_atom_revision.wrapping_add(1);
+        }
+    }
+
+    fn current_composer_image_atom_signature(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> ComposerImageAtomSignature {
+        let input = self.conversation_input.read(cx);
+        let mut hasher = DefaultHasher::new();
+        for atom in input.atoms() {
+            atom.id().hash(&mut hasher);
+            atom.range().hash(&mut hasher);
+            atom.copy_text().hash(&mut hasher);
+        }
+        ComposerImageAtomSignature {
+            count: input.atoms().len(),
+            hash: hasher.finish(),
+        }
+    }
+
     fn handle_conversation_input_event(&mut self, event: &TextInputEvent, cx: &mut Context<Self>) {
         match event {
             TextInputEvent::Changed(_) => {
+                self.note_composer_input_measurement_changed(cx);
                 cx.notify();
+            }
+            TextInputEvent::SelectionChanged(_) => {
+                self.note_composer_input_measurement_changed(cx);
             }
             TextInputEvent::InlineAtomClicked { atom_id, position } => {
                 if let Some(label) = composer_image_label_from_atom_id(atom_id) {
@@ -8518,6 +8415,15 @@ impl ShellView {
                 self.settings_state.select_section(section_id.clone());
                 self.sync_settings_window_model(cx);
             }
+            SettingsWindowEvent::PageNavigationRequested { page_id } => {
+                self.settings_state.select_page(page_id.clone());
+                self.sync_settings_window_model(cx);
+            }
+            SettingsWindowEvent::PageSplitItemSelected { item_id, .. } => {
+                self.settings_state
+                    .select_theme_editor_role(item_id.clone());
+                self.sync_settings_window_model(cx);
+            }
             SettingsWindowEvent::FieldChanged { field_id, value } => {
                 self.settings_state.set_field_value(field_id, value.clone());
                 self.sync_settings_window_model(cx);
@@ -8533,8 +8439,32 @@ impl ShellView {
                 Some(settings::SettingsRowActionOutcome::Updated) => {
                     self.sync_settings_window_model(cx);
                 }
+                Some(settings::SettingsRowActionOutcome::ActiveThemeChanged) => {
+                    self.theme_candidate_state
+                        .clear_after_durable_theme_change();
+                    self.publish_settings_active_theme_projection();
+                    self.refresh_active_theme_surfaces(cx);
+                    self.sync_settings_window_options(cx);
+                    self.sync_settings_window_model(cx);
+                }
                 None => {}
             },
+            SettingsWindowEvent::PageActionRequested { action_id, .. } => {
+                match self.settings_state.handle_page_action(action_id) {
+                    Some(settings::SettingsPageActionOutcome::ActiveThemeChanged) => {
+                        self.theme_candidate_state
+                            .clear_after_durable_theme_change();
+                        self.publish_settings_active_theme_projection();
+                        self.refresh_active_theme_surfaces(cx);
+                        self.sync_settings_window_options(cx);
+                        self.sync_settings_window_model(cx);
+                    }
+                    Some(settings::SettingsPageActionOutcome::Updated) => {
+                        self.sync_settings_window_model(cx);
+                    }
+                    None => {}
+                }
+            }
             SettingsWindowEvent::ApplyRequested => {
                 self.apply_settings_window_changes(false, cx);
             }
@@ -8571,7 +8501,7 @@ impl ShellView {
             return;
         }
 
-        cx.refresh_windows();
+        self.refresh_active_theme_surfaces(cx);
         self.sync_settings_window_model(cx);
         self.schedule_settings_save_poll(cx);
 
@@ -8588,6 +8518,298 @@ impl ShellView {
         self.hide_settings_window(cx);
     }
 
+    fn refresh_active_theme_surfaces(&self, cx: &mut Context<Self>) {
+        self.notify_transcript_panel(cx);
+        self.notify_checklist_sidebar_panel(cx);
+        cx.refresh_windows();
+        cx.notify();
+    }
+
+    fn refresh_theme_candidate_surfaces(&mut self, cx: &mut Context<Self>) {
+        self.refresh_active_theme_surfaces(cx);
+        self.sync_settings_window_options(cx);
+    }
+
+    pub(super) fn preview_transcript_theme_candidate(
+        &mut self,
+        panel_id: String,
+        source: String,
+        cx: &mut Context<Self>,
+    ) {
+        let repository = self.settings_state.theme_repository_snapshot().clone();
+        match theme_candidates::validate_theme_candidate(source.as_str(), &repository) {
+            Ok(candidate) => {
+                let restore_projection = self
+                    .theme_candidate_state
+                    .restore_projection_for_new_preview(self.active_theme_projection());
+                self.publish_active_theme_projection(candidate.preview_projection().clone());
+                let selected_thread_id = self
+                    .conversation_surface()
+                    .and_then(|surface| surface.selected_thread_id().map(str::to_string));
+                self.theme_candidate_state.start_preview(
+                    panel_id,
+                    selected_thread_id,
+                    restore_projection,
+                );
+                self.refresh_theme_candidate_surfaces(cx);
+            }
+            Err(error) => {
+                self.restore_active_theme_candidate_preview_if_needed(cx);
+                self.theme_candidate_state.set_feedback(
+                    panel_id,
+                    ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
+                );
+                self.notify_transcript_panel(cx);
+                cx.notify();
+            }
+        }
+    }
+
+    pub(super) fn stop_transcript_theme_candidate_preview(
+        &mut self,
+        panel_id: String,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(restore_projection) = self
+            .theme_candidate_state
+            .stop_preview_for_panel(panel_id.as_str())
+        {
+            self.publish_active_theme_projection(restore_projection);
+            self.theme_candidate_state.set_feedback(
+                panel_id,
+                ThemeCandidatePanelFeedback::info("Preview stopped"),
+            );
+            self.refresh_theme_candidate_surfaces(cx);
+        }
+    }
+
+    pub(super) fn prompt_install_transcript_theme_candidate(
+        &mut self,
+        panel_id: String,
+        source: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.theme_candidate_install_receiver.is_some() {
+            self.theme_candidate_state.set_feedback(
+                panel_id,
+                ThemeCandidatePanelFeedback::info("Another theme install is already running"),
+            );
+            self.notify_transcript_panel(cx);
+            cx.notify();
+            return;
+        }
+
+        let repository = self.settings_state.theme_repository_snapshot().clone();
+        let candidate =
+            match theme_candidates::validate_theme_candidate(source.as_str(), &repository) {
+                Ok(candidate) => candidate,
+                Err(error) => {
+                    self.restore_active_theme_candidate_preview_if_needed(cx);
+                    self.theme_candidate_state.set_feedback(
+                        panel_id,
+                        ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
+                    );
+                    self.notify_transcript_panel(cx);
+                    cx.notify();
+                    return;
+                }
+            };
+        let name = match candidate.install_name() {
+            Ok(name) => name.to_string(),
+            Err(error) => {
+                self.restore_active_theme_candidate_preview_if_needed(cx);
+                self.theme_candidate_state.set_feedback(
+                    panel_id,
+                    ThemeCandidatePanelFeedback::error(candidate_validation_message(&error)),
+                );
+                self.notify_transcript_panel(cx);
+                cx.notify();
+                return;
+            }
+        };
+        let Some(store) = self
+            .app_state
+            .as_ref()
+            .ok()
+            .map(|state| state.home_dir.theme_repository_store())
+        else {
+            self.theme_candidate_state.set_feedback(
+                panel_id,
+                ThemeCandidatePanelFeedback::error(
+                    "Beryl theme storage is unavailable for the configured home directory",
+                ),
+            );
+            self.notify_transcript_panel(cx);
+            cx.notify();
+            return;
+        };
+
+        self.theme_candidate_state.set_feedback(
+            panel_id.clone(),
+            ThemeCandidatePanelFeedback::info(format!("Confirm install name `{name}`")),
+        );
+        self.notify_transcript_panel(cx);
+        cx.notify();
+
+        let definition = candidate.definition().clone();
+        let window_handle = window.window_handle();
+        let answer = window.prompt(
+            PromptLevel::Info,
+            "Install theme?",
+            Some(&format!(
+                "Install `{name}` as a durable Beryl theme? Activation remains a separate Themes settings action."
+            )),
+            &[
+                PromptButton::cancel("Cancel"),
+                PromptButton::ok("Install Theme"),
+            ],
+            cx,
+        );
+        cx.spawn(move |view: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let accepted = answer.await.unwrap_or(0) == 1;
+                let _ = cx.update_window(window_handle, |_, window, cx| {
+                    let _ = view.update(cx, |view, cx| {
+                        if accepted {
+                            view.begin_theme_candidate_install(
+                                panel_id, name, definition, store, window, cx,
+                            );
+                        } else {
+                            view.theme_candidate_state.set_feedback(
+                                panel_id,
+                                ThemeCandidatePanelFeedback::info("Install cancelled"),
+                            );
+                            view.notify_transcript_panel(cx);
+                            cx.notify();
+                        }
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn begin_theme_candidate_install(
+        &mut self,
+        panel_id: String,
+        name: String,
+        definition: crate::ThemeDefinition,
+        store: crate::ThemeRepositoryStore,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.theme_candidate_install_receiver.is_some() {
+            self.theme_candidate_state.set_feedback(
+                panel_id,
+                ThemeCandidatePanelFeedback::info("Another theme install is already running"),
+            );
+            self.notify_transcript_panel(cx);
+            cx.notify();
+            return;
+        }
+
+        self.theme_candidate_state.set_feedback(
+            panel_id.clone(),
+            ThemeCandidatePanelFeedback::info(format!("Installing `{name}`")),
+        );
+        self.theme_candidate_install_receiver = Some(ThemeCandidateInstallTask {
+            panel_id: panel_id.clone(),
+            receiver: theme_candidates::spawn_theme_candidate_install_worker(
+                panel_id, name, definition, store,
+            ),
+        });
+        self.schedule_poll_if_needed(window, cx);
+        self.notify_transcript_panel(cx);
+        cx.notify();
+    }
+
+    fn poll_theme_candidate_install_updates(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(task) = self.theme_candidate_install_receiver.as_ref() else {
+            return false;
+        };
+
+        match task.receiver.try_recv() {
+            Ok(update) => {
+                self.theme_candidate_install_receiver = None;
+                self.finish_theme_candidate_install_update(update, cx);
+                true
+            }
+            Err(TryRecvError::Empty) => false,
+            Err(TryRecvError::Disconnected) => {
+                let panel_id = self
+                    .theme_candidate_install_receiver
+                    .as_ref()
+                    .map(|task| task.panel_id.clone())
+                    .unwrap_or_else(|| "theme-install".to_string());
+                self.theme_candidate_install_receiver = None;
+                self.restore_active_theme_candidate_preview_if_needed(cx);
+                self.theme_candidate_state.set_feedback(
+                    panel_id,
+                    ThemeCandidatePanelFeedback::error(
+                        "Theme install stopped before returning a result",
+                    ),
+                );
+                true
+            }
+        }
+    }
+
+    fn finish_theme_candidate_install_update(
+        &mut self,
+        update: ThemeCandidateInstallUpdate,
+        cx: &mut Context<Self>,
+    ) {
+        match update.result {
+            Ok(snapshot) => {
+                self.publish_active_theme_projection(snapshot.active_projection().clone());
+                self.theme_candidate_state
+                    .clear_after_durable_theme_change();
+                self.settings_state
+                    .record_theme_repository_snapshot(snapshot);
+                self.theme_candidate_state.set_feedback(
+                    update.panel_id,
+                    ThemeCandidatePanelFeedback::success(format!(
+                        "Installed `{}`. Activate it from Settings > Themes",
+                        update.name
+                    )),
+                );
+                self.sync_settings_window_model(cx);
+                self.refresh_theme_candidate_surfaces(cx);
+            }
+            Err(error) => {
+                self.restore_active_theme_candidate_preview_if_needed(cx);
+                self.theme_candidate_state.set_feedback(
+                    update.panel_id,
+                    ThemeCandidatePanelFeedback::error(format!("Install failed: {error}")),
+                );
+                self.notify_transcript_panel(cx);
+                cx.notify();
+            }
+        }
+    }
+
+    fn restore_active_theme_candidate_preview_if_needed(&mut self, cx: &mut Context<Self>) {
+        if let Some(restore_projection) = self.theme_candidate_state.stop_active_preview() {
+            self.publish_active_theme_projection(restore_projection);
+            self.refresh_theme_candidate_surfaces(cx);
+        }
+    }
+
+    fn reconcile_theme_candidate_preview_scope(&mut self, cx: &mut Context<Self>) {
+        let selected_thread_id = self
+            .conversation_surface()
+            .and_then(|surface| surface.selected_thread_id().map(str::to_string));
+        if let Some(restore_projection) = self
+            .theme_candidate_state
+            .restore_if_thread_changed(selected_thread_id.as_deref())
+        {
+            self.publish_active_theme_projection(restore_projection);
+            self.refresh_theme_candidate_surfaces(cx);
+        }
+    }
+
     fn sync_settings_window_model(&self, cx: &mut Context<Self>) {
         if let Err(error) = self
             .settings_window
@@ -8595,16 +8817,17 @@ impl ShellView {
         {
             warn!(error = %error, "failed to synchronize Beryl settings window");
         }
-        self.sync_settings_window_options(cx);
     }
 
-    fn sync_settings_window_options(&self, cx: &mut Context<Self>) {
-        if let Err(error) = self
-            .settings_window
-            .update_options(cx, self.settings_state.window_options())
-        {
+    fn sync_settings_window_options(&mut self, cx: &mut Context<Self>) {
+        let Some(options) = self.settings_state.window_options_for_sync() else {
+            return;
+        };
+        if let Err(error) = self.settings_window.update_options(cx, options.clone()) {
             warn!(error = %error, "failed to synchronize Beryl settings window options");
+            return;
         }
+        self.settings_state.record_window_options_synced(options);
     }
 
     fn hide_settings_window(&self, cx: &mut Context<Self>) {
@@ -12771,77 +12994,6 @@ impl ShellView {
             .collect()
     }
 
-    fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
-        let mut snapshot = self
-            .conversation_surface()
-            .map(ConversationSurfaceState::retained_state_snapshot)
-            .unwrap_or_default();
-        let backend_work_receivers = self.backend_work_receiver_count();
-        let backend_client_connection_estimate = self.backend_client_connection_estimate();
-        let composer_draft = self.composer_draft.retained_counts();
-        let composer_clipboard = self.composer_clipboard.retained_counts();
-        snapshot.backend_work_receivers = Some(backend_work_receivers);
-        snapshot.backend_event_queue_estimate = Some(backend_client_connection_estimate);
-        snapshot.backend_client_connection_estimate = Some(backend_client_connection_estimate);
-        snapshot.turn_steering_receivers = Some(self.turn_steering_receivers.len());
-        snapshot.composer_draft_text_bytes = Some(composer_draft.display_text_bytes);
-        snapshot.composer_draft_images = Some(composer_draft.image_count);
-        snapshot.composer_draft_image_bytes = Some(composer_draft.image_bytes);
-        snapshot.composer_draft_atoms = Some(composer_draft.atom_count);
-        snapshot.composer_draft_atom_bytes = Some(composer_draft.atom_bytes);
-        snapshot.composer_clipboard_payloads = Some(composer_clipboard.payloads);
-        snapshot.composer_clipboard_text_bytes = Some(
-            composer_clipboard
-                .selected_text_bytes
-                .saturating_add(composer_clipboard.fallback_text_bytes),
-        );
-        snapshot.composer_clipboard_images = Some(composer_clipboard.image_count);
-        snapshot.composer_clipboard_image_bytes = Some(composer_clipboard.image_bytes);
-        snapshot.composer_clipboard_atoms = Some(composer_clipboard.atom_count);
-        snapshot.composer_clipboard_atom_bytes = Some(composer_clipboard.atom_bytes);
-        snapshot.pending_composer_image_asset_paste_bytes = Some(
-            self.pending_composer_image_asset_paste
-                .as_ref()
-                .map_or(0, |pending| {
-                    pending
-                        .workspace_id
-                        .as_str()
-                        .len()
-                        .saturating_add(pending.display_text_snapshot.len())
-                }),
-        );
-        snapshot.composer_image_popup_bytes =
-            Some(self.composer_image_popup.as_ref().map_or(0, |popup| {
-                popup
-                    .atom_id
-                    .len()
-                    .saturating_add(popup.label.len())
-                    .saturating_add(popup.preview_image_bytes)
-            }));
-        snapshot.workspace_persistence_pending_work =
-            Some(self.workspace_persistence_queue.pending_work_count());
-        snapshot.thread_title_workers = Some(self.thread_title_receivers.len());
-        snapshot.inventory_worker_active =
-            Some(usize::from(self.member_thread_inventory_receiver.is_some()));
-        if let Some(total) = snapshot.retained_payload_bytes_lower_bound.as_mut() {
-            *total = total
-                .saturating_add(composer_draft.display_text_bytes)
-                .saturating_add(composer_draft.image_bytes)
-                .saturating_add(composer_draft.atom_bytes)
-                .saturating_add(composer_clipboard.selected_text_bytes)
-                .saturating_add(composer_clipboard.fallback_text_bytes)
-                .saturating_add(composer_clipboard.image_bytes)
-                .saturating_add(composer_clipboard.atom_bytes)
-                .saturating_add(
-                    snapshot
-                        .pending_composer_image_asset_paste_bytes
-                        .unwrap_or_default(),
-                )
-                .saturating_add(snapshot.composer_image_popup_bytes.unwrap_or_default());
-        }
-        snapshot
-    }
-
     fn handle_diagnostic_target_protocol_request(
         &mut self,
         request: &DiagnosticProtocolRequest,
@@ -12923,6 +13075,27 @@ impl ShellView {
                     arguments.after_sequence,
                     arguments.limit_or_default(DEFAULT_MEDIA_EVENT_LIMIT, MAX_MEDIA_EVENT_LIMIT),
                 )))
+            }
+            DiagnosticChildCommand::ReadTranscriptFrameMetrics => {
+                let arguments = parse_diagnostic_target_arguments::<
+                    DiagnosticTargetMediaEventsArguments,
+                >(request.params())?;
+                let snapshot = self.diagnostic_tool_snapshot(window, cx);
+                Ok(json!(transcript_frame_metrics_result(
+                    snapshot.transcript_frame_metrics,
+                    arguments.after_sequence,
+                    arguments.limit_or_default(
+                        DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                        MAX_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                    ),
+                )))
+            }
+            DiagnosticChildCommand::ReadSettingsWindow => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                let snapshot = self.diagnostic_tool_snapshot(window, cx);
+                Ok(json!(snapshot.settings_window))
             }
             DiagnosticChildCommand::ReadUiState => {
                 let parsed =
@@ -14018,159 +14191,6 @@ impl ShellView {
         }
     }
 
-    fn handle_prepare_renderer_window_tool_result(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> RendererDiagnosticSnapshot {
-        cx.activate(true);
-        window.resize(size(px(1040.0), px(760.0)));
-        window.activate_window();
-        window.refresh();
-        self.diagnostic_tool_snapshot(window, cx).renderer
-    }
-
-    fn diagnostic_tool_snapshot(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> DiagnosticToolSnapshot {
-        let panel_snapshot = self.transcript_panel.read(cx).diagnostic_snapshot();
-        let mut retained_state = self.retained_state_snapshot();
-        self.add_text_input_retained_counts(&mut retained_state, cx);
-        panel_snapshot.add_retained_counts(&mut retained_state);
-        let mut visible_media = panel_snapshot.visible_media;
-        visible_media.preview.composer_image_preview = self.composer_image_preview_diagnostic();
-        let process = self.process_diagnostic_snapshot();
-        let memory = self.memory_diagnostic_snapshot(&process);
-        let renderer = renderer_snapshot_with_shell_window(
-            process.clone(),
-            cx.renderer_diagnostic_snapshot(),
-            window.renderer_diagnostic_snapshot(),
-        );
-        DiagnosticToolSnapshot {
-            process,
-            memory,
-            renderer,
-            retained_state,
-            visible_media,
-            media_events: panel_snapshot.media_events,
-        }
-    }
-
-    fn process_diagnostic_snapshot(&self) -> ProcessDiagnosticSnapshot {
-        let selected_target = match &self.state {
-            ShellState::Ready(ready) => Some(&ready.execution_target),
-            ShellState::BackendUnavailable(unavailable) => Some(&unavailable.execution_target),
-            _ => None,
-        };
-        let selected_workspace_id = self
-            .loaded_workspace()
-            .map(|loaded| loaded.workspace.id().as_str().to_string());
-        let selected_thread_id = self
-            .conversation_surface()
-            .and_then(ConversationSurfaceState::selected_thread_id)
-            .map(str::to_string);
-        let managed_backend_child_pids = self
-            .backend_servers
-            .iter()
-            .filter_map(|(target, server)| {
-                server
-                    .process_id()
-                    .map(|pid| ManagedBackendProcessDiagnostic {
-                        pid,
-                        runtime_target: runtime_target_diagnostic(target),
-                        selected: selected_target.is_some_and(|selected| selected == target),
-                    })
-            })
-            .take(32)
-            .collect();
-
-        ProcessDiagnosticSnapshot {
-            pid: std::process::id(),
-            executable_path: std::env::current_exe()
-                .ok()
-                .map(|path| bounded_diagnostic_string(path.display().to_string())),
-            beryl_home: self
-                .app_state
-                .as_ref()
-                .ok()
-                .map(ConfiguredAppState::home_display)
-                .map(bounded_diagnostic_string),
-            selected_workspace_id: selected_workspace_id.map(bounded_diagnostic_string),
-            selected_thread_id: selected_thread_id.map(bounded_diagnostic_string),
-            selected_runtime_target: selected_target.map(runtime_target_diagnostic),
-            managed_backend_child_pids,
-        }
-    }
-
-    fn memory_diagnostic_snapshot(
-        &self,
-        process: &ProcessDiagnosticSnapshot,
-    ) -> MemoryDiagnosticSnapshot {
-        let ui = MemoryDiagnosticUiCorrelation::from_process(process);
-        match memory_diagnostics::current_process_memory_snapshot() {
-            Ok(counters) => MemoryDiagnosticSnapshot {
-                counters: Some(counters),
-                unavailable_reason: None,
-                ui,
-            },
-            Err(error) => MemoryDiagnosticSnapshot {
-                counters: None,
-                unavailable_reason: Some(error.to_string()),
-                ui,
-            },
-        }
-    }
-
-    fn composer_image_preview_diagnostic(&self) -> Option<PreviewStateDiagnostic> {
-        let popup = self.composer_image_popup.as_ref()?;
-        let state = match &popup.mode {
-            ComposerImagePopupMode::Menu => "menu",
-            ComposerImagePopupMode::Preview => {
-                if popup.preview_image.is_some() {
-                    "loaded"
-                } else {
-                    "pending"
-                }
-            }
-        };
-        Some(PreviewStateDiagnostic {
-            state: state.to_string(),
-            compressed_bytes: (popup.preview_image_bytes > 0).then_some(popup.preview_image_bytes),
-        })
-    }
-
-    fn add_text_input_retained_counts(&self, snapshot: &mut RetainedStateSnapshot, cx: &App) {
-        let mut counts = TextInputRetainedAggregate::default();
-        for input in [
-            &self.host_path_input,
-            &self.wsl_distro_input,
-            &self.wsl_path_input,
-            &self.workspace_picker_filter_input,
-            &self.workspace_rename_input,
-            &self.conversation_input,
-            &self.surface_notice_text_input,
-        ] {
-            counts.add(input.read(cx).retained_counts());
-        }
-
-        snapshot.text_input_count = Some(counts.count);
-        snapshot.text_input_current_text_bytes = Some(counts.current_text_bytes);
-        snapshot.text_input_current_atoms = Some(counts.current_atom_count);
-        snapshot.text_input_current_atom_bytes = Some(counts.current_atom_bytes);
-        snapshot.text_input_undo_snapshots = Some(counts.undo_snapshot_count);
-        snapshot.text_input_redo_snapshots = Some(counts.redo_snapshot_count);
-        snapshot.text_input_undo_bytes = Some(counts.undo_bytes);
-        snapshot.text_input_redo_bytes = Some(counts.redo_bytes);
-        snapshot.text_input_widget_layout_lines = Some(counts.widget_layout_lines);
-        snapshot.text_input_widget_visual_lines = Some(counts.widget_visual_lines);
-        snapshot.text_input_widget_visible_text_bytes = Some(counts.widget_visible_text_bytes);
-        if let Some(total) = snapshot.retained_payload_bytes_lower_bound.as_mut() {
-            *total = total.saturating_add(counts.payload_bytes_lower_bound());
-        }
-    }
-
     fn backend_work_receiver_count(&self) -> usize {
         [
             self.discovery_receiver.is_some(),
@@ -14335,13 +14355,19 @@ impl ShellView {
     }
 
     fn transcript_panel_snapshot(&self) -> Option<render::transcript::TranscriptPanelSnapshot> {
+        let style_snapshot_started = Instant::now();
+        let style_snapshot = self.render_style_snapshot();
+        let style_snapshot_micros = diagnostic_duration_micros(style_snapshot_started.elapsed());
+        let transcript_theme = style_snapshot.transcript_theme();
+        let composer_measurement_micros = self.last_composer_measurement_micros();
         match &self.state {
             ShellState::Ready(ready) => Some(render::transcript::TranscriptPanelSnapshot {
                 workspace_id: Some(ready.loaded_workspace.workspace.id().clone()),
                 workspace: ready.execution_target.clone(),
-                appearance: self.appearance_settings(),
+                theme: transcript_theme.clone(),
                 selected_thread_present: ready.surface.selected_thread().is_some(),
                 selected_thread_id: ready.surface.selected_thread_id().map(str::to_string),
+                theme_candidates: self.theme_candidate_state.snapshot(),
                 pending_thread_activation_label: ready
                     .surface
                     .pending_thread_activation_label()
@@ -14361,17 +14387,20 @@ impl ShellView {
                     .surface
                     .transcript_content_release_row_identities()
                     .to_vec(),
+                style_snapshot_micros,
+                composer_measurement_micros,
             }),
             ShellState::BackendUnavailable(unavailable) => {
                 Some(render::transcript::TranscriptPanelSnapshot {
                     workspace_id: Some(unavailable.loaded_workspace.workspace.id().clone()),
                     workspace: unavailable.execution_target.clone(),
-                    appearance: self.appearance_settings(),
+                    theme: transcript_theme.clone(),
                     selected_thread_present: unavailable.surface.selected_thread().is_some(),
                     selected_thread_id: unavailable
                         .surface
                         .selected_thread_id()
                         .map(str::to_string),
+                    theme_candidates: self.theme_candidate_state.snapshot(),
                     pending_thread_activation_label: unavailable
                         .surface
                         .pending_thread_activation_label()
@@ -14399,6 +14428,8 @@ impl ShellView {
                         .surface
                         .transcript_content_release_row_identities()
                         .to_vec(),
+                    style_snapshot_micros,
+                    composer_measurement_micros,
                 })
             }
             ShellState::Blocked(blocked) => blocked.surface.as_ref().map(|surface| {
@@ -14408,9 +14439,10 @@ impl ShellView {
                         .as_ref()
                         .map(|loaded| loaded.workspace.id().clone()),
                     workspace: blocked.target.workspace(),
-                    appearance: self.appearance_settings(),
+                    theme: transcript_theme.clone(),
                     selected_thread_present: surface.selected_thread().is_some(),
                     selected_thread_id: surface.selected_thread_id().map(str::to_string),
+                    theme_candidates: self.theme_candidate_state.snapshot(),
                     pending_thread_activation_label: surface
                         .pending_thread_activation_label()
                         .map(str::to_string),
@@ -14428,6 +14460,8 @@ impl ShellView {
                     content_release_row_identities: surface
                         .transcript_content_release_row_identities()
                         .to_vec(),
+                    style_snapshot_micros,
+                    composer_measurement_micros,
                 }
             }),
             ShellState::Discovering(_)

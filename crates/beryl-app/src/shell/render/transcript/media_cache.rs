@@ -18,7 +18,10 @@ use crate::shell::transcript_media::{
     TranscriptMediaLoadOutcome, TranscriptMediaLoadRequest, TranscriptMediaSource,
 };
 
-use super::{TranscriptImageMenuRenderState, TranscriptMediaPromotionState, TranscriptPanel};
+use super::{
+    TranscriptFrameProfile, TranscriptImageMenuRenderState, TranscriptMediaPromotionState,
+    TranscriptPanel,
+};
 
 #[derive(Clone)]
 pub(super) struct TranscriptMediaRenderContext {
@@ -31,6 +34,7 @@ pub(super) struct TranscriptMediaRenderContext {
     row_identity: Option<String>,
     promotion: TranscriptMediaPromotionState,
     image_menu: TranscriptImageMenuRenderState,
+    profiler: Option<Rc<TranscriptFrameProfile>>,
 }
 
 impl TranscriptMediaRenderContext {
@@ -54,7 +58,13 @@ impl TranscriptMediaRenderContext {
             row_identity: None,
             promotion,
             image_menu,
+            profiler: None,
         }
+    }
+
+    pub(super) fn with_profiler(mut self, profiler: Option<Rc<TranscriptFrameProfile>>) -> Self {
+        self.profiler = profiler;
+        self
     }
 
     pub(super) fn for_row(mut self, row_identity: String) -> Self {
@@ -130,6 +140,12 @@ impl TranscriptMediaRenderContext {
 
     pub(super) fn visible_media(&self) -> Rc<RefCell<VisibleMediaDiagnostics>> {
         self.visible_media.clone()
+    }
+
+    pub(super) fn observe_media_run_render(&self, elapsed: Duration) {
+        if let Some(profiler) = self.profiler.as_ref() {
+            profiler.observe_media_run_render(elapsed);
+        }
     }
 }
 

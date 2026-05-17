@@ -5,7 +5,7 @@ use gpui::{
 };
 
 use crate::shell::{
-    ConversationSurfaceState, ShellView,
+    ConversationSurfaceState, ShellRenderFrame, ShellView,
     transcript_branch_menu_state::TranscriptBranchAction,
     transcript_edit_menu_state::{TranscriptEditDisabledReason, TranscriptEditMenuEntry},
 };
@@ -64,7 +64,7 @@ pub(super) fn render_transcript_branch_menu_listeners(
 }
 
 pub(super) fn render_transcript_branch_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
@@ -130,7 +130,7 @@ pub(super) fn render_transcript_branch_menu(
     )
 }
 
-fn copy_image_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+fn copy_image_row(shell: &ShellRenderFrame<'_>, cx: &mut Context<ShellView>) -> impl IntoElement {
     secondary_button(
         shell,
         "transcript-copy-image-row",
@@ -139,7 +139,10 @@ fn copy_image_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoEl
     )
 }
 
-fn save_image_as_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+fn save_image_as_row(
+    shell: &ShellRenderFrame<'_>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     secondary_button(
         shell,
         "transcript-save-image-as-row",
@@ -149,7 +152,7 @@ fn save_image_as_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl Int
 }
 
 fn edit_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     entry: TranscriptEditMenuEntry,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
@@ -166,7 +169,10 @@ fn edit_row(
     .into_any_element()
 }
 
-fn disabled_edit_row(shell: &ShellView, reason: TranscriptEditDisabledReason) -> impl IntoElement {
+fn disabled_edit_row(
+    shell: &ShellRenderFrame<'_>,
+    reason: TranscriptEditDisabledReason,
+) -> impl IntoElement {
     let tooltip = TranscriptTurnMenuTooltip {
         message: reason.tooltip(),
         background: shell.popup_surface_background(),
@@ -178,7 +184,7 @@ fn disabled_edit_row(shell: &ShellView, reason: TranscriptEditDisabledReason) ->
 }
 
 fn branch_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
     action: TranscriptBranchAction,
@@ -199,7 +205,7 @@ fn branch_row(
     )
 }
 
-fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {
+fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .py_1()

@@ -52,17 +52,21 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - `Surface notice` is a bounded top-right transient message surface for localized errors and recovery information that should not replace the active workspace view.
 - `Context menu widget` is a bounded transient command surface opened from a specific row or control, with optional submenus layered above the main workspace window.
 - `Settings window` is the dedicated preheated top-level OS window for application settings. It is shown and hidden rather than rebuilt for each open request.
+- `Settings section` is one broad, stable top-level category shown in the settings window sidebar.
+- `Settings page` is the right-pane content surface for one settings section or subpage.
+- `Settings subpage` is a nested right-pane settings page reached from a step-in row, breadcrumb link, or back action; it is not represented as a nested sidebar row.
+- `Settings row` is one schema-backed settings item or action row with a stable setting id or stable action id, label, optional description, value/control area, modified state, and row context actions.
+- `Theme candidate code panel` is a transcript code panel produced from a fenced code block whose language label is `beryl-theme`; it presents ordinary transcript code plus Beryl-owned theme actions.
 
 ## Appearance Theme Roles
 
-- Toolbar strip and thread strip backgrounds are controlled by shared chrome-strip theme roles.
-- Primary and secondary buttons are distinct theme roles. Each button role defines label font weight plus normal, hover, active, and disabled color states. Each color state defines background, border, and foreground colors. Button text backgrounds are not separately themed; they match the button background. Transient hover and press feedback must preserve button geometry and label typography; only the button background and/or border color may change while the pointer state changes.
-- User input panel theming covers the panel background, input-area background, input-area border, and input text foreground.
-- Transcript-region shell theming covers the region background and default text foreground. More specific transcript rendering roles may override the default foreground, and transcript-internal block styling is outside this contract.
-- Status line theming covers the strip background, label-title color, and default label-value color. Dynamic status values such as turn-state colors may override the default value color. Activity rows reuse the same label-title and label-value text treatment.
-- Structural separator theming covers dividers between major strips and status cells. Component-specific borders, including button borders and input borders, are separate theme roles.
-- Shared surface theming covers reusable panels, rows, and popups through surface background, surface border, and muted foreground roles.
-- The settings window maps its generic panels, rows, navigation, inputs, color-picker popup, and action buttons onto the same active application theme roles where those roles overlap with main-window controls.
+- Every Beryl-owned visual element resolves its background, border, text foreground, text background, font family, font size, and font weight from the active theme model or from a documented derivation of an active theme property.
+- Theme roles cover main-window chrome, toolbar and thread-strip surfaces, buttons and action rows, inputs, transcript shell and transcript content, Markdown inline and block structures, code panels, syntax-highlight token roles, user input fragments, activity rows, status line cells and dynamic status values, graph and checklist visuals, selector accents, scrollbars, structural separators, popups, overlays, notices, media placeholders, warning/error/info states, selection/focus states, disabled/unavailable states, and all settings-window surfaces.
+- Transient interaction states may change resolved color properties for hover, pressed, active, selected, focused, disabled, warning, error, info, pending, streaming, and unavailable states, but they must not change widget geometry unless a specific widget contract explicitly permits it.
+- A theme role may have a static role parent. Each style property independently resolves from a concrete value, the same property on the static parent chain, the same property from the runtime ambient parent, or a built-in fallback after validation.
+- Runtime ambient inheritance is used for embedded content whose surrounding visual context changes by render site. For example, an inline code role can define a concrete foreground while inheriting its background from the final-answer, user-input, settings-row, or popup context in which it is rendered.
+- The active settings window uses the same theme resolver as the main workspace window. It does not own a separate visual schema.
+- A visual constant may remain outside a named role only when it is not user-visible, is derived from a themed property, or is explicitly documented in this file as fixed geometry rather than appearance.
 
 ## Button Geometry
 
@@ -81,16 +85,60 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 
 The settings window is a dedicated top-level OS window separate from the main workspace window. It is created ahead of first use and hidden when inactive so opening settings does not pay first-use window construction cost on the click path. It does not include the main workspace toolbar strip.
 
+The English layout contract in this section is authoritative for implementation. Visual mockups are review companions only; behavior, resizing, hierarchy, and state rules are governed by this text.
+
 ### Settings Window Layout
 
 - Anchors: fills the settings OS window.
-- Automatic resize: stretches horizontally and vertically with the settings OS window.
-- Manual resize: the user may resize the OS window subject to the settings window minimum size.
-- Internal layout: a left navigation column lists settings sections and a right content region shows the selected section's key-value settings rows.
-- Navigation behavior: selecting a section changes the visible row set without mutating settings values.
-- Content behavior: settings rows are compact key-value controls. The label side identifies the setting and may include smaller secondary subtext for setting-specific consequences, while the value side owns the setting input.
-- Overflow behavior: the settings window itself is not an outer scrolling surface; the left navigation column owns vertical scrolling when the section list exceeds the available height, and the selected-section content region owns vertical scrolling when the row set exceeds the available height.
-- Action behavior: settings actions such as Apply are part of the settings window's own chrome rather than the main workspace toolbar.
+- Default size: the settings window opens at the minimal useful supported width and height that can show the sidebar, page title, and at least one settings group without clipping pinned controls. The default width should be close to the minimum supported width, not a roomy desktop-wide layout. The minimum size must preserve the sidebar, page title, current page content, and any active apply or modified-theme action area without clipping pinned controls.
+- Automatic resize: the root settings layout stretches horizontally and vertically with the OS window. The sidebar keeps a fixed logical width within its documented minimum and maximum; the main pane takes the remaining width.
+- Sidebar width: the sidebar targets 270 logical pixels, may shrink no smaller than 220 logical pixels, and may grow no wider than 320 logical pixels when text scale or localization requires it.
+- Main pane width: the main pane stretches to the remaining width. Settings row groups use a readable maximum content width while keeping page headers and page-level action areas aligned to the same content column.
+- Root layout: a left settings sidebar and a right settings page stack. The settings window has no nested left tree, no second persistent navigation column, and no main-workspace toolbar.
+- Sidebar layout: the sidebar contains the `Settings` title, a vertically scrollable broad-section list, and optional app/version footer metadata. Current broad sections are `Themes`, `Operations`, `Notifications`, and `Agent`. Sidebar rows may use real monochrome section icons when a Beryl-owned icon set is available; otherwise they are text-only. Generic discs, bullets, and status-dot placeholders must not precede every sidebar item.
+- Sidebar selection: selecting a settings section replaces the right-pane page without mutating settings values. Sidebar rows do not expand into child rows. The selected sidebar section is indicated by selected-row background treatment plus a left-edge accent marker, not by a generic leading disc.
+- Main pane layout: the main pane contains the current page header above a vertically scrollable page body.
+- Page header: a root settings page shows a single title. A subpage shows breadcrumb text shaped as the full path from the root using `>` separators, such as `Themes > Default Dark`. Breadcrumb text is orientation only unless a breadcrumb segment is explicitly clickable.
+- Page body: settings content is organized as section headings followed by grouped row lists. Group containers may visually frame a related row list, but settings pages must not nest cards inside cards.
+- Settings row layout: each row has a left label stack and a right value/control area separated by a visible horizontal gutter at the supported minimum width. The label stack contains the display label, optional description, and either an always-visible stable setting id in compact secondary text or a row context action that can copy the stable id. The right value/control area uses type-appropriate stable widths and hugs the row's right edge. Extra horizontal space from wider settings windows belongs to the label stack, not to text fields, multiline fields, color inputs, file-picker action clusters, or row actions. Labels and descriptions wrap by words or normal text lines before controls shrink below their useful widths; they must not be horizontally clipped or forced into one-character vertical columns behind controls.
+- Row value types: value areas may render switches, checkboxes, radio groups, segmented controls, dropdown selectors, steppers, sliders, text fields, multiline fields, color inputs, file path pickers, action buttons, or step-in navigation affordances. Numeric text fields use a compact fixed width sized for short numeric preferences, such as 6 to 7 digits, rather than the wider general text-field width. Rows that combine a single-line text field with row actions may stack the actions below the field inside one right-aligned control column so action labels do not take width away from the label stack at the supported minimum width.
+- Step-in rows: a row that opens a deeper editor shows a right-facing thick triangle glyph `▸` in the value area and navigates the right pane to a settings subpage. The triangle must visually match the down-facing triangle family used by dropdown selectors. The sidebar remains unchanged.
+- Modified state: rows whose staged or active value differs from the default render a stable modified indicator and expose reset through row context actions.
+- Row context actions: every setting row exposes actions to copy its stable setting id and reset the setting when reset is valid. Rows may expose additional schema-owned actions such as copy serialized value.
+- Apply behavior: settings actions such as Apply, Revert, Save, Save As, or Install Theme are part of the settings window's own chrome, page header, row value area, or a page-level action area rather than the main workspace toolbar.
+- Overflow behavior: the settings window itself is not an outer scrolling surface. The sidebar owns vertical scrolling for section rows, and the current page body owns vertical scrolling for content rows. The page header and active apply or modified-theme action areas remain visible while the page body scrolls.
+- Empty and failure states: unavailable settings sections, invalid staged values, failed saves, and failed theme operations render localized page or row feedback without replacing the settings window shell.
+
+### Settings Themes Page
+
+- The `Themes` page lists only durable installed themes. It does not list unsaved AI-generated theme candidates from Codex threads, and it does not expose Preview for installed themes.
+- Installed theme rows show the theme name, stable theme id or copy-id action, active/modified state when applicable, and theme actions such as Activate, Rename, Delete, or Edit when those actions are valid.
+- The active theme is visible at the top of the page body. The active theme row owns Save and Save As actions when the active theme has staged changes; those actions are absent or disabled when there are no staged changes. Save persists changes to the active installed theme. Save As asks for a new durable theme name and saves the staged active-theme definition as a new installed theme.
+- Installed non-active themes switch the app by direct Activate. Activation is the settings-page equivalent of trying another installed theme; no separate installed-theme Preview action exists.
+- Theme editing opens a settings subpage from the active theme row's Edit action rather than expanding nested controls in the sidebar. Edit uses the step-in triangle `▸`. The theme editor subpage may use its own internal role list and property editor inside the right pane.
+- AI-generated unsaved theme candidates enter durable Beryl settings only through the theme candidate code panel's Install Theme action or a theme dynamic tool operation that explicitly installs a durable theme.
+
+### Settings Theme Editor Subpage
+
+- The theme editor is a settings subpage reached from the active theme row. The left settings sidebar remains unchanged with `Themes` selected; the editor is not represented as a nested sidebar row.
+- The theme editor page header uses the standard subpage breadcrumb pattern with text shaped as `Themes > <theme name>`.
+- Save and Save As actions for modified active-theme drafts may appear in the theme editor page header as well as on the active theme row. They are absent or disabled when there are no staged changes. The default and minimum settings-window sizes must keep the page-header Save As action reachable without horizontal clipping.
+- The editor body may split into an internal role-list pane and property-editor pane. This split is local to the editor content area and must not become a second persistent settings navigation column.
+- The role-list pane lists and selects theme role ids. Selecting a role changes only the property editor for the current page.
+- The property-editor pane shows the selected role id and one row per editable style property. Role static parents are schema metadata displayed in the role list rather than free-form editor fields. Property rows expose both source selection, such as concrete value, static parent, ambient parent, or fallback, and the concrete value control when the selected source requires one. They do not add a per-row effective-value subtitle; resolved samples belong in separate presentation-only preview surfaces when useful.
+- Dropdown source selectors use a down-facing thick triangle glyph visually matched to the step-in triangle family. Step-in navigation continues to use the right-facing thick triangle `▸`.
+- The editor may show resolved samples for the selected role when useful, but samples are presentation-only and do not replace explicit property rows.
+
+### Theme Candidate Code Panels
+
+- A fenced transcript code block with language label `beryl-theme` is ordinary Codex thread content and renders through the shared code panel widget.
+- In addition to ordinary code-panel copy, soft-wrap, selection, and scrolling behavior, a valid `beryl-theme` panel exposes Beryl-owned actions for `Preview` and `Install Theme`.
+- `Preview` validates the candidate and applies it transiently without persisting it as an installed theme. A transient preview is controlled from the originating code panel, whose affordance can change to Stop Preview while that candidate is active. The Themes settings page must not list the unsaved candidate as a previewable theme.
+- `Install Theme` validates the candidate and asks for confirmation of the durable theme name before writing it into the Beryl theme repository. Installing from the code panel saves a durable installed theme; activation remains an installed-theme operation after the theme exists.
+- Malformed, unsupported, partial, or invalid `beryl-theme` code blocks render bounded panel-local validation feedback and must not mutate active theme state, settings drafts, or the theme repository.
+- Theme candidate code-panel actions do not create synthetic transcript rows. The durable proposal record is the original Codex transcript code block, and the durable installed record is the saved Beryl theme.
+- Beryl theme dynamic tools may provide model-facing authoring guidance and non-mutating document validation, but those tools do not add transcript content, do not create settings-window candidate rows, and do not replace the ordinary `beryl-theme` code panel as the operator-review surface.
+- Model-facing theme guidance describes existing theme syntax, source keywords, static and ambient inheritance, role groups, transcript/code/settings roles, candidate workflow, and common troubleshooting. Theme schema reads remain the structural source for exact role and property inventories.
 
 ### Settings Color Input
 
@@ -103,12 +151,17 @@ The settings window is a dedicated top-level OS window separate from the main wo
 
 ### Settings Operations Section
 
-- The `Context compaction timeout` row is a compact key-value text row whose value is a whole number of seconds.
+- The `Context compaction timeout` row is a compact key-value text row whose value is a whole number of seconds. Its value field uses the numeric compact width sized for short second counts, and the label/description side keeps a visible gutter from that field at the minimum settings-window width.
 - Invalid timeout drafts render field-local validation feedback and are not applied.
 
 ### Settings Agent Section
 
 - The `Developer Instructions` row shows smaller secondary subtext under the label: `Sent as developer instructions with every user message.`
+- The `Developer Instructions` multiline field keeps a useful fixed right-side width at the default settings-window size, takes width from the label side before shrinking below that width, and leaves the label/subtext area wide enough for normal word wrapping at the minimum settings-window width.
+
+### Settings Notifications Section
+
+- The `End-turn sound` row keeps both `Choose...` and `Clear` actions reachable at the default and minimum settings-window sizes without horizontal clipping. The row keeps its label readable at the minimum width even when the staged sound file name is long, using the shared text-plus-actions control column when needed.
 
 ## Main Workspace Window
 
@@ -158,7 +211,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Anchors: top-right inside the main workspace window, below the toolbar and thread strips.
 - Automatic resize: keeps a bounded width and constrains long notice text within the notice surface rather than pushing pinned workspace controls off-screen.
 - Queue behavior: notices are queued in arrival order in a bounded queue, but the workspace renders at most one active notice popup at a time.
-- Visual hierarchy: each notice renders a title line followed by optional detail text. The title uses a gold accent color, while detail text uses the normal shared-surface foreground treatment. These colors are fixed notice roles until explicit notification appearance settings are designed.
+- Visual hierarchy: each notice renders a title line followed by optional detail text. Notice title, detail text, background, border, and warning/error/info variants resolve from active theme notice roles.
 - Text interaction: notice text is selectable and standard copy commands copy the selected notice text to the system clipboard.
 - Closing behavior: the notice exposes a visible close affordance that dismisses only the current notice, advances to the next queued notice when one exists, and does not mutate transcript, workspace, backend, graph, or persistence state.
 
@@ -248,7 +301,7 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - Initial scroll behavior: the row viewport defaults to the top of the sorted row list, where running and newest activity appears.
 - Row layout: each row renders on one line as `Agent <agent label> Activity <activity display value>`.
 - Agent label behavior: parent-thread rows may show `Main` without model or reasoning metadata. Resolved subagent rows show backend-provided nicknames after resolution; if exact child-thread model metadata is known from the activity projection, they show `nickname (model)`, and if exact reasoning effort metadata is also known, they show `nickname (model/reasoning)`. Subagent rows stay nickname-only when exact model metadata is unavailable and keep the agent value empty while the nickname is unresolved. Known non-subagent thread display labels may be shown only when they are real user-facing labels rather than generated from backend ids, and they do not receive subagent model/reasoning suffixes. Backend thread ids are never rendered as agent labels, rows update when nickname or exact model/reasoning metadata arrives after the row was first observed, and missing model/reasoning metadata is not inferred from defaults, model-list metadata, thread ids, or nicknames.
-- Row status marker: each row starts with a disc that indicates state. Running rows use green, finished-ok rows use grey, and finished-error rows use red.
+- Row status marker: each row starts with a disc that indicates state. Running, finished-ok, and finished-error marker fill and border values resolve from active theme status marker roles.
 - Row typography: `Agent` and `Activity` use muted status-label text styling; the agent label and activity display value use status-value text styling.
 - Row wrapping: row text does not wrap; long agent labels and activity display values truncate within the available row width.
 - Row ordering: running rows sort before finished rows, and rows within each running or finished group sort by start time with the newest started row first.

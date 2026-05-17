@@ -2,21 +2,24 @@ use beryl_backend::{HardStopTarget, ModelInfo};
 use gpui::{
     AnyElement, Context, DispatchPhase, InteractiveElement, KeyDownEvent, KeyUpEvent, MouseButton,
     MouseDownEvent, MouseUpEvent, StatefulInteractiveElement, Window, anchored, canvas, div,
-    prelude::*, px, relative, rgb, rgba,
+    prelude::*, px, relative,
 };
 
 use std::time::Instant;
 
-use crate::shell::{
-    ConversationSurfaceState, ScrollbarRegion, ShellView, layout,
-    status_operation_state::{
-        HardStopRequestSummary, StatusLineOperationKind, StatusModelListCache,
-        reasoning_effort_for_model_selection,
+use crate::{
+    BerylThemeRole,
+    shell::{
+        ConversationSurfaceState, ScrollbarRegion, ShellRenderFrame, ShellView, layout,
+        status_operation_state::{
+            HardStopRequestSummary, StatusLineOperationKind, StatusModelListCache,
+            reasoning_effort_for_model_selection,
+        },
     },
 };
 
 use super::common::{disabled_secondary_button, secondary_button};
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, render_themed_div_scrollbar};
 
 pub(super) fn render_status_operation_listeners(cx: &mut Context<ShellView>) -> impl IntoElement {
     let entity = cx.entity();
@@ -75,7 +78,7 @@ pub(super) fn render_status_operation_listeners(cx: &mut Context<ShellView>) -> 
 }
 
 pub(super) fn render_status_operation_popup(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     model_cache: &StatusModelListCache,
     cx: &mut Context<ShellView>,
@@ -121,7 +124,8 @@ pub(super) fn render_status_operation_popup(
                 .p_2()
                 .child(content),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "status-operation-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
@@ -149,7 +153,7 @@ pub(super) fn render_status_operation_popup(
 }
 
 fn render_model_reasoning_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     model_cache: &StatusModelListCache,
     cx: &mut Context<ShellView>,
@@ -230,7 +234,7 @@ fn render_model_reasoning_menu(
 }
 
 fn render_context_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -260,7 +264,7 @@ fn render_context_menu(
 }
 
 fn render_turn_operations_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -366,7 +370,10 @@ fn render_turn_operations_menu(
     }
 }
 
-fn hard_stop_summary_row(shell: &ShellView, summary: &HardStopRequestSummary) -> impl IntoElement {
+fn hard_stop_summary_row(
+    shell: &ShellRenderFrame<'_>,
+    summary: &HardStopRequestSummary,
+) -> impl IntoElement {
     if let Some(error) = summary.request_error.as_ref() {
         return status_row(shell, format!("Hard stop failed: {error}"));
     }
@@ -395,7 +402,7 @@ fn hard_stop_target_label(target: &HardStopTarget) -> &'static str {
 }
 
 fn model_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     model: &ModelInfo,
     selected: bool,
@@ -442,7 +449,15 @@ fn model_row(
                         ),
                 )
                 .when(selected, |row| {
-                    row.child(div().text_xs().text_color(rgb(0x86efac)).child("Selected"))
+                    row.child(
+                        div()
+                            .text_xs()
+                            .text_color(shell.role_foreground(
+                                BerylThemeRole::StatusValueOk,
+                                shell.status_line_value_foreground(),
+                            ))
+                            .child("Selected"),
+                    )
                 }),
         )
         .on_click(cx.listener(move |view, event, window, cx| {
@@ -451,7 +466,7 @@ fn model_row(
 }
 
 fn reasoning_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     model: String,
     effort: String,
@@ -476,7 +491,15 @@ fn reasoning_row(
                 .justify_between()
                 .child(effort.clone())
                 .when(selected, |row| {
-                    row.child(div().text_xs().text_color(rgb(0x86efac)).child("Selected"))
+                    row.child(
+                        div()
+                            .text_xs()
+                            .text_color(shell.role_foreground(
+                                BerylThemeRole::StatusValueOk,
+                                shell.status_line_value_foreground(),
+                            ))
+                            .child("Selected"),
+                    )
                 }),
         )
         .on_click(cx.listener(move |view, event, window, cx| {
@@ -485,7 +508,7 @@ fn reasoning_row(
 }
 
 fn action_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
@@ -494,7 +517,7 @@ fn action_row(
 }
 
 fn hard_stop_hold_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     progress: Option<f32>,
     on_mouse_down: impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static,
     on_mouse_up: impl Fn(&MouseUpEvent, &mut Window, &mut gpui::App) + 'static,
@@ -528,7 +551,10 @@ fn hard_stop_hold_row(
                 .top_0()
                 .bottom_0()
                 .w(relative(progress))
-                .bg(rgba(0xdc26264d)),
+                .bg(shell.role_background(
+                    BerylThemeRole::StatusValueError,
+                    secondary.active.background,
+                )),
         )
         .child(
             div()
@@ -548,14 +574,14 @@ fn hard_stop_hold_row(
 }
 
 fn disabled_action_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
 ) -> impl IntoElement {
     disabled_secondary_button(shell, id, label)
 }
 
-fn disabled_row(shell: &ShellView, label: &str) -> impl IntoElement {
+fn disabled_row(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
         .px_2()
@@ -565,7 +591,7 @@ fn disabled_row(shell: &ShellView, label: &str) -> impl IntoElement {
         .child(label.to_string())
 }
 
-fn status_row(shell: &ShellView, message: String) -> impl IntoElement {
+fn status_row(shell: &ShellRenderFrame<'_>, message: String) -> impl IntoElement {
     div()
         .rounded_md()
         .px_2()
@@ -575,17 +601,19 @@ fn status_row(shell: &ShellView, message: String) -> impl IntoElement {
         .child(message)
 }
 
-fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {
+fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(
+            shell.role_font_weight(BerylThemeRole::PopupSurface, gpui::FontWeight::SEMIBOLD),
+        )
         .text_color(shell.general_ui_foreground())
         .child(label.to_string())
 }
 
-fn section_header(shell: &ShellView, label: &str) -> impl IntoElement {
+fn section_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .pt_2()

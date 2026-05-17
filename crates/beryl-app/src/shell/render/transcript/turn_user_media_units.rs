@@ -1,16 +1,15 @@
 use std::{cell::Cell, rc::Rc};
 
 use beryl_model::workspace::WorkspaceId;
-use gpui::{AnyElement, App, IntoElement, rgb};
+use gpui::{AnyElement, App, IntoElement};
 
-use crate::AppearanceSettings;
 use crate::shell::execution_detail::{TurnExecutionRecord, UserInputFragment};
 use crate::shell::transcript_selection::transcript_narrative_block_break_before;
 
 use super::{
-    TranscriptCodeLayout, markdown_cache::TranscriptMarkdownRenderContext,
-    media_cache::TranscriptMediaRenderContext, turn_blocks::user_prompt_block_path,
-    turn_markdown_key,
+    TranscriptCodeLayout, TranscriptTextRole, TranscriptTheme,
+    markdown_cache::TranscriptMarkdownRenderContext, media_cache::TranscriptMediaRenderContext,
+    turn_blocks::user_prompt_block_path, turn_markdown_key,
 };
 use super::{
     TranscriptMediaRenderIdentity,
@@ -32,7 +31,7 @@ pub(super) fn render_user_prompt_units(
     turn: &TurnExecutionRecord,
     fragment_index: usize,
     fragment: &UserInputFragment,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_panel_state: TranscriptCodePanelState,
     markdown_context: TranscriptMarkdownRenderContext,
     media_context: TranscriptMediaRenderContext,
@@ -57,7 +56,7 @@ pub(super) fn render_user_prompt_units(
             turn,
             fragment_index,
             fragment,
-            appearance,
+            theme,
             code_panel_state,
             markdown_context,
             code_layout,
@@ -96,10 +95,10 @@ pub(super) fn render_user_prompt_units(
                 let initial_break_before =
                     transcript_narrative_block_break_before(narrative_copy_block_count.get());
                 let rendered = render_user_prompt_markdown_source(
-                    source.as_str(),
+                    source.as_ref(),
                     key,
                     block_path,
-                    appearance,
+                    theme,
                     code_panel_state.clone(),
                     markdown_context.clone(),
                     code_layout,
@@ -139,7 +138,7 @@ fn render_user_prompt_markdown_source(
     source: &str,
     markdown_key: crate::shell::transcript_markdown::TranscriptMarkdownCacheKey,
     block_path: String,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_panel_state: TranscriptCodePanelState,
     markdown_context: TranscriptMarkdownRenderContext,
     code_layout: TranscriptCodeLayout,
@@ -160,11 +159,11 @@ fn render_user_prompt_markdown_source(
     markdown_prose_block_with_selection(
         "",
         markdown.render_plan(),
-        rgb(0x0f172a),
-        appearance,
+        theme.user_input.background,
+        theme,
         code_layout,
         conversation_m_advance,
-        InlineMarkdownStyle::default(),
+        InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
         code_panel_state.controls_for(row_identity.to_string(), block_path),
         selection_context,
         cx,
@@ -176,7 +175,7 @@ fn render_user_prompt(
     turn: &TurnExecutionRecord,
     fragment_index: usize,
     fragment: &UserInputFragment,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_panel_state: TranscriptCodePanelState,
     markdown_context: TranscriptMarkdownRenderContext,
     code_layout: TranscriptCodeLayout,
@@ -213,11 +212,11 @@ fn render_user_prompt(
         markdown_prose_block_with_selection(
             "",
             markdown.render_plan(),
-            rgb(0x0f172a),
-            appearance,
+            theme.user_input.background,
+            theme,
             code_layout,
             conversation_m_advance,
-            InlineMarkdownStyle::default(),
+            InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
             code_panel_state.controls_for(row_identity.to_string(), block_path),
             selection_context,
             cx,
@@ -226,11 +225,11 @@ fn render_user_prompt(
         markdown_prose_block_with_image_markers_and_selection(
             "",
             markdown.render_plan(),
-            rgb(0x0f172a),
-            appearance,
+            theme.user_input.background,
+            theme,
             code_layout,
             conversation_m_advance,
-            InlineMarkdownStyle::default(),
+            InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
             code_panel_state.controls_for(row_identity.to_string(), block_path),
             selection_context,
             image_markers.as_slice(),

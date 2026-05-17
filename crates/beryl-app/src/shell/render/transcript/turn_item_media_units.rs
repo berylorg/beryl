@@ -3,7 +3,6 @@ use std::{cell::Cell, rc::Rc, sync::Arc, time::Instant};
 use beryl_model::workspace::WorkspaceId;
 use gpui::{AnyElement, App};
 
-use crate::AppearanceSettings;
 use crate::shell::execution_detail::{
     AgentMessageDetail, ExecutionItem, GeneratedImageDetail, TurnExecutionRecord,
 };
@@ -12,7 +11,7 @@ use crate::shell::transcript_media::{TranscriptMediaCacheKey, TranscriptMediaSou
 use crate::shell::transcript_selection::transcript_narrative_block_break_before;
 
 use super::{
-    TranscriptCodeLayout, item_markdown_key,
+    TranscriptCodeLayout, TranscriptTheme, item_markdown_key,
     markdown_cache::TranscriptMarkdownRenderContext,
     media_cache::TranscriptMediaRenderContext,
     stream_projection::{TranscriptStreamProjectionContext, TranscriptStreamProjectionKey},
@@ -32,7 +31,7 @@ use super::{
 pub(super) fn render_item_units(
     turn_index: usize,
     workspace: &WorkspaceId,
-    appearance: Arc<AppearanceSettings>,
+    theme: Arc<TranscriptTheme>,
     turn: Arc<TurnExecutionRecord>,
     item: &ExecutionItem,
     code_panel_state: TranscriptCodePanelState,
@@ -52,7 +51,7 @@ pub(super) fn render_item_units(
         ExecutionItem::AgentMessage(message) => render_agent_message_units(
             turn_index,
             workspace,
-            appearance,
+            theme,
             turn,
             message,
             code_panel_state,
@@ -82,7 +81,7 @@ pub(super) fn render_item_units(
         | ExecutionItem::Generic(_) => render_plain_item(
             turn_index,
             workspace,
-            appearance,
+            theme,
             turn,
             item,
             code_panel_state,
@@ -104,7 +103,7 @@ pub(super) fn render_item_units(
 fn render_plain_item(
     turn_index: usize,
     workspace: &WorkspaceId,
-    appearance: Arc<AppearanceSettings>,
+    theme: Arc<TranscriptTheme>,
     turn: Arc<TurnExecutionRecord>,
     item: &ExecutionItem,
     code_panel_state: TranscriptCodePanelState,
@@ -125,7 +124,7 @@ fn render_plain_item(
     if let Some(rendered) = render_item(
         turn_index,
         workspace,
-        appearance,
+        theme,
         turn,
         item,
         code_panel_state,
@@ -156,7 +155,7 @@ fn render_plain_item(
 fn render_agent_message_units(
     turn_index: usize,
     workspace: &WorkspaceId,
-    appearance: Arc<AppearanceSettings>,
+    theme: Arc<TranscriptTheme>,
     turn: Arc<TurnExecutionRecord>,
     item: &AgentMessageDetail,
     code_panel_state: TranscriptCodePanelState,
@@ -188,8 +187,8 @@ fn render_agent_message_units(
         return;
     }
 
-    let markdown = markdown_context.markdown_for(markdown_key.clone(), source.as_str(), cx);
-    let style = agent_message_markdown_style(item, appearance.as_ref());
+    let markdown = markdown_context.markdown_for(markdown_key.clone(), source.as_ref(), cx);
+    let style = agent_message_markdown_style(item);
     let block_path = format!("item:{}:agent-message", item.id);
     let units = markdown_render_units(&markdown_key, block_path.as_str(), markdown.as_ref());
     if !units
@@ -199,7 +198,7 @@ fn render_agent_message_units(
         render_unsplit_agent_message(
             turn_index,
             workspace,
-            appearance,
+            theme,
             turn,
             item,
             code_panel_state,
@@ -228,10 +227,10 @@ fn render_agent_message_units(
                 let initial_break_before =
                     transcript_narrative_block_break_before(narrative_copy_block_count.get());
                 let rendered = render_item_markdown_source(
-                    source.as_str(),
+                    source.as_ref(),
                     key,
                     block_path,
-                    appearance.as_ref(),
+                    theme.as_ref(),
                     code_panel_state.clone(),
                     markdown_context.clone(),
                     code_layout,
@@ -271,7 +270,7 @@ fn render_agent_message_units(
 fn render_unsplit_agent_message(
     turn_index: usize,
     workspace: &WorkspaceId,
-    appearance: Arc<AppearanceSettings>,
+    theme: Arc<TranscriptTheme>,
     turn: Arc<TurnExecutionRecord>,
     item: &AgentMessageDetail,
     code_panel_state: TranscriptCodePanelState,
@@ -299,7 +298,7 @@ fn render_unsplit_agent_message(
         row_identity,
         initial_break_before,
         selection_order.clone(),
-        appearance.as_ref(),
+        theme.as_ref(),
         code_layout,
         media_layout.conversation_m_advance,
         cx,
@@ -323,7 +322,7 @@ fn render_item_markdown_source(
     source: &str,
     markdown_key: TranscriptMarkdownCacheKey,
     block_path: String,
-    appearance: &AppearanceSettings,
+    theme: &TranscriptTheme,
     code_panel_state: TranscriptCodePanelState,
     markdown_context: TranscriptMarkdownRenderContext,
     code_layout: TranscriptCodeLayout,
@@ -345,7 +344,7 @@ fn render_item_markdown_source(
 
     render_markdown_plan_with_style_and_selection(
         markdown.render_plan(),
-        appearance,
+        theme,
         code_layout,
         conversation_m_advance,
         style,

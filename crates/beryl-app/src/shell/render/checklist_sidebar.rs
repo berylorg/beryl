@@ -3,21 +3,27 @@ use std::rc::Rc;
 use beryl_model::semantic_graph::ChecklistItemStatus;
 use gpui::{
     AnyElement, App, Context, DispatchPhase, Entity, KeyDownEvent, MouseButton, MouseDownEvent,
-    Render, ScrollHandle, Window, anchored, canvas, div, point, prelude::*, px, rgb,
+    Render, ScrollHandle, Window, anchored, canvas, div, point, prelude::*, px,
 };
 
-use crate::shell::{
-    ConversationSurfaceState, LoadedWorkspaceState, ShellView,
-    checklist_sidebar_panel_state::{ChecklistSidebarPanelState, ChecklistSidebarProjectionSync},
-    checklist_sidebar_projection::{ChecklistSidebarProjection, ChecklistSidebarRow},
-    layout,
+use crate::{
+    BerylThemeRole,
+    shell::{
+        ConversationSurfaceState, LoadedWorkspaceState, ShellRenderFrame, ShellRenderStyleSnapshot,
+        ShellView,
+        checklist_sidebar_panel_state::{
+            ChecklistSidebarPanelState, ChecklistSidebarProjectionSync,
+        },
+        checklist_sidebar_projection::{ChecklistSidebarProjection, ChecklistSidebarRow},
+        layout,
+    },
 };
 
 use super::{
     common::{disabled_secondary_button, secondary_button},
     scrollbars::{
         ScrollbarAxis, ScrollbarVisibilityPolicy, ScrollbarVisibilityState,
-        ScrollbarVisibilityUpdateCallback, render_div_scrollbar,
+        ScrollbarVisibilityUpdateCallback, render_themed_div_scrollbar,
     },
 };
 
@@ -32,14 +38,68 @@ pub(crate) struct ChecklistSidebarPanel {
 struct ChecklistSidebarSnapshot {
     projection: Option<ChecklistSidebarProjection>,
     viewport_height_hint: gpui::Pixels,
-    chrome: ChecklistSidebarChrome,
+    style: ShellRenderStyleSnapshot,
+    theme: ChecklistSidebarTheme,
 }
 
 #[derive(Clone, Copy)]
-struct ChecklistSidebarChrome {
+struct ChecklistRoleStyle {
     background: gpui::Rgba,
     border: gpui::Rgba,
     foreground: gpui::Rgba,
+    font_weight: gpui::FontWeight,
+}
+
+#[derive(Clone, Copy)]
+struct ChecklistSidebarTheme {
+    sidebar: ChecklistRoleStyle,
+    header: ChecklistRoleStyle,
+    row: ChecklistRoleStyle,
+    row_hover: ChecklistRoleStyle,
+    row_disabled: ChecklistRoleStyle,
+    status_todo: ChecklistRoleStyle,
+    status_in_progress: ChecklistRoleStyle,
+    status_done: ChecklistRoleStyle,
+    popup: ChecklistRoleStyle,
+}
+
+impl ChecklistSidebarTheme {
+    fn from_style(style: &ShellRenderStyleSnapshot) -> Self {
+        Self {
+            sidebar: checklist_role_style(style, BerylThemeRole::ChecklistSidebar),
+            header: checklist_role_style(style, BerylThemeRole::ChecklistHeader),
+            row: checklist_role_style(style, BerylThemeRole::ChecklistRow),
+            row_hover: checklist_role_style(style, BerylThemeRole::SurfaceRowHover),
+            row_disabled: checklist_role_style(style, BerylThemeRole::SurfaceRowDisabled),
+            status_todo: checklist_role_style(style, BerylThemeRole::ChecklistStatusTodo),
+            status_in_progress: checklist_role_style(
+                style,
+                BerylThemeRole::ChecklistStatusInProgress,
+            ),
+            status_done: checklist_role_style(style, BerylThemeRole::ChecklistStatusDone),
+            popup: checklist_role_style(style, BerylThemeRole::PopupSurface),
+        }
+    }
+
+    fn status(&self, status: Option<ChecklistItemStatus>) -> ChecklistRoleStyle {
+        match status.unwrap_or(ChecklistItemStatus::Todo) {
+            ChecklistItemStatus::Todo => self.status_todo,
+            ChecklistItemStatus::InProgress => self.status_in_progress,
+            ChecklistItemStatus::Done => self.status_done,
+        }
+    }
+}
+
+fn checklist_role_style(
+    style: &ShellRenderStyleSnapshot,
+    role: BerylThemeRole,
+) -> ChecklistRoleStyle {
+    ChecklistRoleStyle {
+        background: style.role_background(role, style.panel_surface_background()),
+        border: style.role_border(role, style.surface_border()),
+        foreground: style.role_foreground(role, style.surface_foreground()),
+        font_weight: style.role_font_weight(role, gpui::FontWeight::SEMIBOLD),
+    }
 }
 
 impl ChecklistSidebarPanel {
@@ -95,16 +155,14 @@ impl ChecklistSidebarPanel {
             || px(layout::WINDOW_MIN_HEIGHT - 96.0),
             |surface| surface.checklist_sidebar_viewport_height_hint(),
         );
-        let chrome = ChecklistSidebarChrome {
-            background: shell.transcript_shell_background(),
-            border: shell.separator_color(),
-            foreground: shell.transcript_shell_foreground(),
-        };
+        let style = shell.render_style_snapshot();
+        let theme = ChecklistSidebarTheme::from_style(&style);
 
         ChecklistSidebarSnapshot {
             projection,
             viewport_height_hint,
-            chrome,
+            style,
+            theme,
         }
     }
 
@@ -156,29 +214,32 @@ fn render_checklist_sidebar(
     cx: &mut Context<ChecklistSidebarPanel>,
 ) -> impl IntoElement {
     let projection = snapshot.projection.as_ref();
+    let style = snapshot.style.clone();
+    let theme = snapshot.theme;
     let mut panel = div().size_full().min_h(px(0.0)).flex().flex_col().child(
         div()
             .w_full()
             .px_4()
             .pt_4()
             .pb_2()
-            .child(render_sidebar_title("Checklist")),
+            .child(render_sidebar_title(theme, "Checklist")),
     );
 
     if let Some(projection) = projection {
-        panel = panel.child(render_checklist_title(projection.title()));
+        panel = panel.child(render_checklist_title(theme, projection.title()));
     }
 
     let body = match projection {
         Some(projection) => render_checklist_items(
             projection,
-            shell_entity,
+            shell_entity.clone(),
             scroll_handle.clone(),
+            theme,
             snapshot.viewport_height_hint,
             cx,
         )
         .into_any_element(),
-        None => empty_state().into_any_element(),
+        None => empty_state(theme).into_any_element(),
     };
     let mut scroll_region = div()
         .relative()
@@ -197,7 +258,8 @@ fn render_checklist_sidebar(
                 .pb_4()
                 .child(body),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        &style,
         "checklist-sidebar-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
@@ -206,11 +268,11 @@ fn render_checklist_sidebar(
         scroll_region = scroll_region.child(scrollbar);
     }
 
-    checklist_panel_shell(snapshot.chrome, panel.child(scroll_region))
+    checklist_panel_shell(theme.sidebar, panel.child(scroll_region))
 }
 
 fn checklist_panel_shell(
-    chrome: ChecklistSidebarChrome,
+    chrome: ChecklistRoleStyle,
     content: impl IntoElement,
 ) -> impl IntoElement {
     div()
@@ -268,7 +330,7 @@ pub(super) fn render_checklist_thread_start_menu_listeners(
 }
 
 pub(super) fn render_checklist_thread_start_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     new_thread_controls_disabled: Option<&str>,
@@ -276,13 +338,15 @@ pub(super) fn render_checklist_thread_start_menu(
 ) -> Option<AnyElement> {
     let menu = surface.checklist_thread_start_menu().active()?;
     let entity = cx.entity();
+    let theme = ChecklistSidebarTheme::from_style(shell.style());
     let content = if let Some(message) = new_thread_controls_disabled {
-        disabled_menu_content(shell, message).into_any_element()
+        disabled_menu_content(shell, theme, message).into_any_element()
     } else if loaded.selected_runtime().is_some() {
-        render_start_thread_menu_content(shell, cx).into_any_element()
+        render_start_thread_menu_content(shell, theme, cx).into_any_element()
     } else {
         disabled_menu_content(
             shell,
+            theme,
             "Select a workspace runtime environment before starting a thread.",
         )
         .into_any_element()
@@ -307,8 +371,8 @@ pub(super) fn render_checklist_thread_start_menu(
                             .occlude()
                             .rounded_lg()
                             .border_1()
-                            .border_color(rgb(0x334155))
-                            .bg(rgb(0x07111f))
+                            .border_color(theme.popup.border)
+                            .bg(theme.popup.background)
                             .shadow_lg()
                             .p_2()
                             .child(content),
@@ -322,6 +386,7 @@ fn render_checklist_items(
     projection: &ChecklistSidebarProjection,
     shell: Entity<ShellView>,
     scroll_handle: ScrollHandle,
+    theme: ChecklistSidebarTheme,
     viewport_height_hint: gpui::Pixels,
     cx: &mut Context<ChecklistSidebarPanel>,
 ) -> impl IntoElement {
@@ -330,7 +395,7 @@ fn render_checklist_items(
         return div()
             .w_full()
             .min_w(px(0.0))
-            .child(empty_message("No checklist items."));
+            .child(empty_message(theme, "No checklist items."));
     }
 
     let viewport_height = scroll_handle.bounds().size.height;
@@ -372,7 +437,7 @@ fn render_checklist_items(
         .unwrap_or_default();
 
     for row in visible_rows {
-        list = list.child(render_checklist_item_row(row, shell.clone()));
+        list = list.child(render_checklist_item_row(row, shell.clone(), theme));
     }
 
     list.child(
@@ -386,8 +451,10 @@ fn render_checklist_items(
 fn render_checklist_item_row(
     row: ChecklistSidebarRow,
     entity: gpui::Entity<ShellView>,
+    theme: ChecklistSidebarTheme,
 ) -> impl IntoElement {
     let item_node_id = row.node_id.clone();
+    let status = theme.status(row.status);
     div()
         .id(gpui::ElementId::Name(row.element_key().into()))
         .h(px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT))
@@ -396,12 +463,12 @@ fn render_checklist_item_row(
         .min_w(px(0.0))
         .rounded_md()
         .border_1()
-        .border_color(rgb(0x1f2937))
-        .bg(rgb(0x111827))
+        .border_color(theme.row.border)
+        .bg(theme.row.background)
         .px_3()
         .py_2()
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(0x1e293b)))
+        .hover(move |style| style.bg(theme.row_hover.background))
         .on_mouse_down(MouseButton::Right, move |event, window, cx| {
             entity.update(cx, |view, cx| {
                 view.open_checklist_item_thread_start_menu(item_node_id.clone(), event, window, cx);
@@ -417,14 +484,15 @@ fn render_checklist_item_row(
                     div()
                         .flex_none()
                         .text_sm()
-                        .text_color(rgb(0x94a3b8))
+                        .text_color(theme.row_disabled.foreground)
                         .child(format!("{}.", row.number)),
                 )
                 .child(
                     div()
                         .flex_none()
                         .text_xs()
-                        .text_color(status_color(row.status))
+                        .font_weight(status.font_weight)
+                        .text_color(status.foreground)
                         .child(row.status_label),
                 )
                 .child(
@@ -434,21 +502,22 @@ fn render_checklist_item_row(
                         .text_sm()
                         .overflow_hidden()
                         .whitespace_normal()
-                        .text_color(rgb(0xe2e8f0))
+                        .text_color(theme.row.foreground)
                         .child(row.title),
                 ),
         )
 }
 
 fn render_start_thread_menu_content(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
+    theme: ChecklistSidebarTheme,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(menu_header("Checklist item"))
+        .child(menu_header(theme, "Checklist item"))
         .child(secondary_button(
             shell,
             "checklist-start-thread-row",
@@ -457,13 +526,17 @@ fn render_start_thread_menu_content(
         ))
 }
 
-fn disabled_menu_content(shell: &ShellView, message: impl Into<String>) -> impl IntoElement {
+fn disabled_menu_content(
+    shell: &ShellRenderFrame<'_>,
+    theme: ChecklistSidebarTheme,
+    message: impl Into<String>,
+) -> impl IntoElement {
     let message = message.into();
     div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(menu_header("Checklist item"))
+        .child(menu_header(theme, "Checklist item"))
         .child(disabled_secondary_button(
             shell,
             "checklist-start-thread-row-disabled",
@@ -474,49 +547,49 @@ fn disabled_menu_content(shell: &ShellView, message: impl Into<String>) -> impl 
                 .px_2()
                 .pb_1()
                 .text_xs()
-                .text_color(rgb(0x94a3b8))
+                .text_color(theme.row_disabled.foreground)
                 .child(message),
         )
 }
 
-fn render_sidebar_title(title: &str) -> impl IntoElement {
+fn render_sidebar_title(theme: ChecklistSidebarTheme, title: &str) -> impl IntoElement {
     div().flex().items_center().child(
         div()
             .text_sm()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(rgb(0x7dd3fc))
+            .font_weight(theme.header.font_weight)
+            .text_color(theme.header.foreground)
             .child(title.to_string()),
     )
 }
 
-fn render_checklist_title(title: &str) -> impl IntoElement {
+fn render_checklist_title(theme: ChecklistSidebarTheme, title: &str) -> impl IntoElement {
     div().w_full().px_4().pb_3().min_w(px(0.0)).child(
         div()
             .min_w(px(0.0))
             .text_sm()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .font_weight(theme.header.font_weight)
             .whitespace_normal()
-            .text_color(rgb(0xe2e8f0))
+            .text_color(theme.header.foreground)
             .child(title.to_string()),
     )
 }
 
-fn menu_header(label: &str) -> impl IntoElement {
+fn menu_header(theme: ChecklistSidebarTheme, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(rgb(0x7dd3fc))
+        .font_weight(theme.header.font_weight)
+        .text_color(theme.header.foreground)
         .child(label.to_string())
 }
 
-fn empty_state() -> impl IntoElement {
+fn empty_state(theme: ChecklistSidebarTheme) -> impl IntoElement {
     div()
         .rounded_md()
-        .bg(rgb(0x111827))
+        .bg(theme.row.background)
         .border_1()
-        .border_color(rgb(0x1f2937))
+        .border_color(theme.row.border)
         .p_3()
         .flex()
         .flex_col()
@@ -524,27 +597,19 @@ fn empty_state() -> impl IntoElement {
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(0xe2e8f0))
+                .text_color(theme.row.foreground)
                 .child("No checklist is selected."),
         )
 }
 
-fn empty_message(message: &'static str) -> impl IntoElement {
+fn empty_message(theme: ChecklistSidebarTheme, message: &'static str) -> impl IntoElement {
     div()
         .rounded_md()
         .border_1()
-        .border_color(rgb(0x1f2937))
-        .bg(rgb(0x0b1220))
+        .border_color(theme.row_disabled.border)
+        .bg(theme.row_disabled.background)
         .p_3()
         .text_sm()
-        .text_color(rgb(0x94a3b8))
+        .text_color(theme.row_disabled.foreground)
         .child(message)
-}
-
-fn status_color(status: Option<ChecklistItemStatus>) -> gpui::Rgba {
-    match status.unwrap_or(ChecklistItemStatus::Todo) {
-        ChecklistItemStatus::Todo => rgb(0x94a3b8),
-        ChecklistItemStatus::InProgress => rgb(0xfde68a),
-        ChecklistItemStatus::Done => rgb(0x86efac),
-    }
 }

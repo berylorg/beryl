@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops::Range};
+use std::{collections::VecDeque, ops::Range, time::Duration};
 
 use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolSpec};
 use gpui::{
@@ -19,13 +19,18 @@ pub const READ_RENDERER_DIAGNOSTICS_TOOL: &str = "read_renderer_diagnostics";
 pub const READ_RETAINED_STATE_SUMMARY_TOOL: &str = "read_retained_state_summary";
 pub const READ_VISIBLE_MEDIA_TOOL: &str = "read_visible_media";
 pub const READ_MEDIA_EVENTS_TOOL: &str = "read_media_events";
+pub const READ_TRANSCRIPT_FRAME_METRICS_TOOL: &str = "read_transcript_frame_metrics";
+pub const READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL: &str = "read_settings_window_diagnostics";
 
 pub(crate) const DEFAULT_VISIBLE_MEDIA_LIMIT: usize = 32;
 pub(crate) const MAX_VISIBLE_MEDIA_LIMIT: usize = 64;
 pub(crate) const DEFAULT_MEDIA_EVENT_LIMIT: usize = 64;
 pub(crate) const MAX_MEDIA_EVENT_LIMIT: usize = 128;
+pub(crate) const DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 32;
+pub(crate) const MAX_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
 const MAX_RENDERER_DIAGNOSTIC_WINDOWS: usize = 16;
 const MEDIA_EVENT_RING_CAPACITY: usize = 256;
+const TRANSCRIPT_FRAME_METRIC_RING_CAPACITY: usize = 128;
 const MAX_DIAGNOSTIC_STRING_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Serialize)]
@@ -37,6 +42,8 @@ pub(crate) struct DiagnosticToolSnapshot {
     pub retained_state: RetainedStateSnapshot,
     pub visible_media: VisibleMediaSnapshot,
     pub media_events: MediaEventSnapshot,
+    pub transcript_frame_metrics: TranscriptFrameMetricsSnapshot,
+    pub settings_window: SettingsWindowDiagnosticSnapshot,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -296,6 +303,99 @@ pub(crate) struct MediaDiagnosticEvent {
     pub detail: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptFrameMetricsSnapshot {
+    pub frames: Vec<TranscriptFrameMetric>,
+    pub frame_count: usize,
+    pub truncated: bool,
+    pub next_sequence: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SettingsWindowDiagnosticSnapshot {
+    pub available: bool,
+    pub unavailable_reason: Option<String>,
+    pub visible: bool,
+    pub selected_section_id: Option<String>,
+    pub selected_page_id: Option<String>,
+    pub detail_rows: Option<SettingsWindowRowSurfaceDiagnostic>,
+    pub split_list: Option<SettingsWindowRowSurfaceDiagnostic>,
+    pub performance: SettingsWindowPerformanceDiagnostic,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SettingsWindowRowSurfaceDiagnostic {
+    pub surface_id: String,
+    pub total_row_count: usize,
+    pub rendered_row_count: usize,
+    pub visible_range: Option<PresentationRangeDiagnostic>,
+    pub overscan_count: usize,
+    pub row_height_strategy: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SettingsWindowPerformanceDiagnostic {
+    pub render_count: u64,
+    pub last_render_tree_micros: u64,
+    pub model_sync_count: u64,
+    pub last_model_sync_micros: u64,
+    pub option_sync_count: u64,
+    pub last_option_sync_micros: u64,
+    pub input_sync_count: u64,
+    pub last_input_sync_entity_count: usize,
+    pub color_preview_lookup_count: u64,
+    pub last_render_color_preview_lookup_count: u64,
+    pub color_model_lookup_count: u64,
+    pub last_render_color_model_lookup_count: u64,
+    pub dominant_cost_category: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptFrameMetric {
+    pub sequence: u64,
+    pub selected_thread_id: Option<String>,
+    pub presentation_range: Option<PresentationRangeDiagnostic>,
+    pub visible_range: Option<PresentationRangeDiagnostic>,
+    pub total_loaded_turn_count: usize,
+    pub total_item_count: Option<usize>,
+    pub total_text_chars: Option<usize>,
+    pub presentation_range_len: usize,
+    pub visible_row_count: usize,
+    pub panel_state_inspected_row_count: usize,
+    pub frame_micros: u64,
+    pub style_snapshot_micros: u64,
+    pub composer_measurement_micros: u64,
+    pub row_build_total_micros: u64,
+    pub row_prepaint_total_micros: u64,
+    pub inline_text_construction_micros: u64,
+    pub code_panel_render_micros: u64,
+    pub media_run_render_micros: u64,
+    pub media_preload_micros: u64,
+    pub slowest_row_build_micros: u64,
+    pub slowest_row_build_index: Option<usize>,
+    pub slowest_row_build_identity: Option<String>,
+    pub slowest_row_prepaint_micros: u64,
+    pub slowest_row_prepaint_index: Option<usize>,
+    pub slowest_row_prepaint_identity: Option<String>,
+    pub largest_visible_row_text_chars: usize,
+    pub largest_visible_row_text_chars_index: Option<usize>,
+    pub largest_visible_row_item_count: usize,
+    pub largest_visible_row_item_count_index: Option<usize>,
+    pub dominant_cost_category: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TranscriptFrameMetricsLog {
+    next_sequence: u64,
+    frames: VecDeque<TranscriptFrameMetric>,
+    capacity: usize,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct VisibleMediaDiagnostics {
     frame_generation: u64,
@@ -402,6 +502,16 @@ impl Default for MediaDiagnosticLog {
     }
 }
 
+impl Default for TranscriptFrameMetricsLog {
+    fn default() -> Self {
+        Self {
+            next_sequence: 1,
+            frames: VecDeque::with_capacity(TRANSCRIPT_FRAME_METRIC_RING_CAPACITY),
+            capacity: TRANSCRIPT_FRAME_METRIC_RING_CAPACITY,
+        }
+    }
+}
+
 impl MediaDiagnosticLog {
     pub fn record(&mut self, mut event: MediaDiagnosticEvent) {
         event.sequence = self.next_sequence;
@@ -423,6 +533,27 @@ impl MediaDiagnosticLog {
     }
 }
 
+impl TranscriptFrameMetricsLog {
+    pub(crate) fn record(&mut self, mut frame: TranscriptFrameMetric) {
+        frame.sequence = self.next_sequence;
+        self.next_sequence = self.next_sequence.saturating_add(1);
+        frame.truncate_strings();
+        if self.frames.len() >= self.capacity {
+            self.frames.pop_front();
+        }
+        self.frames.push_back(frame);
+    }
+
+    pub(crate) fn snapshot(&self) -> TranscriptFrameMetricsSnapshot {
+        TranscriptFrameMetricsSnapshot {
+            frames: self.frames.iter().cloned().collect(),
+            frame_count: self.frames.len(),
+            truncated: false,
+            next_sequence: self.next_sequence,
+        }
+    }
+}
+
 impl VisibleMediaItemDiagnostic {
     fn truncated(mut self) -> Self {
         self.row_identity = self.row_identity.map(truncate_diagnostic_string);
@@ -432,6 +563,101 @@ impl VisibleMediaItemDiagnostic {
         self.outcome = truncate_diagnostic_string(self.outcome);
         self.format = self.format.map(truncate_diagnostic_string);
         self
+    }
+}
+
+impl TranscriptFrameMetric {
+    fn truncate_strings(&mut self) {
+        self.selected_thread_id = self
+            .selected_thread_id
+            .take()
+            .map(truncate_diagnostic_string);
+        self.slowest_row_build_identity = self
+            .slowest_row_build_identity
+            .take()
+            .map(truncate_diagnostic_string);
+        self.slowest_row_prepaint_identity = self
+            .slowest_row_prepaint_identity
+            .take()
+            .map(truncate_diagnostic_string);
+        self.dominant_cost_category =
+            truncate_diagnostic_string(std::mem::take(&mut self.dominant_cost_category));
+    }
+}
+
+impl SettingsWindowDiagnosticSnapshot {
+    pub(crate) fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            available: false,
+            unavailable_reason: Some(truncate_diagnostic_string(reason)),
+            visible: false,
+            selected_section_id: None,
+            selected_page_id: None,
+            detail_rows: None,
+            split_list: None,
+            performance: SettingsWindowPerformanceDiagnostic::default(),
+        }
+    }
+}
+
+impl From<gpui_settings_window::SettingsWindowDiagnostics> for SettingsWindowDiagnosticSnapshot {
+    fn from(snapshot: gpui_settings_window::SettingsWindowDiagnostics) -> Self {
+        Self {
+            available: true,
+            unavailable_reason: None,
+            visible: snapshot.visible,
+            selected_section_id: Some(truncate_diagnostic_string(snapshot.selected_section_id)),
+            selected_page_id: Some(truncate_diagnostic_string(snapshot.selected_page_id)),
+            detail_rows: Some(SettingsWindowRowSurfaceDiagnostic::from(
+                snapshot.detail_rows,
+            )),
+            split_list: snapshot
+                .split_list
+                .map(SettingsWindowRowSurfaceDiagnostic::from),
+            performance: SettingsWindowPerformanceDiagnostic::from(snapshot.performance),
+        }
+    }
+}
+
+impl From<gpui_settings_window::SettingsWindowRowSurfaceDiagnostics>
+    for SettingsWindowRowSurfaceDiagnostic
+{
+    fn from(snapshot: gpui_settings_window::SettingsWindowRowSurfaceDiagnostics) -> Self {
+        Self {
+            surface_id: truncate_diagnostic_string(snapshot.surface_id),
+            total_row_count: snapshot.total_row_count,
+            rendered_row_count: snapshot.rendered_row_count,
+            visible_range: snapshot
+                .visible_range
+                .map(|range| PresentationRangeDiagnostic {
+                    start: range.start,
+                    end: range.end,
+                }),
+            overscan_count: snapshot.overscan_count,
+            row_height_strategy: truncate_diagnostic_string(snapshot.row_height_strategy),
+        }
+    }
+}
+
+impl From<gpui_settings_window::SettingsWindowPerformanceDiagnostics>
+    for SettingsWindowPerformanceDiagnostic
+{
+    fn from(snapshot: gpui_settings_window::SettingsWindowPerformanceDiagnostics) -> Self {
+        Self {
+            render_count: snapshot.render_count,
+            last_render_tree_micros: snapshot.last_render_tree_micros,
+            model_sync_count: snapshot.model_sync_count,
+            last_model_sync_micros: snapshot.last_model_sync_micros,
+            option_sync_count: snapshot.option_sync_count,
+            last_option_sync_micros: snapshot.last_option_sync_micros,
+            input_sync_count: snapshot.input_sync_count,
+            last_input_sync_entity_count: snapshot.last_input_sync_entity_count,
+            color_preview_lookup_count: snapshot.color_preview_lookup_count,
+            last_render_color_preview_lookup_count: snapshot.last_render_color_preview_lookup_count,
+            color_model_lookup_count: snapshot.color_model_lookup_count,
+            last_render_color_model_lookup_count: snapshot.last_render_color_model_lookup_count,
+            dominant_cost_category: truncate_diagnostic_string(snapshot.dominant_cost_category),
+        }
     }
 }
 
@@ -501,6 +727,19 @@ pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             "Read a bounded metadata-only ring of recent transcript media lifecycle events.",
             media_events_schema(),
         ),
+        DynamicToolSpec::new(
+            READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+            "Read a bounded content-free ring of recent transcript render frame timing metrics.",
+            media_events_schema_with_limits(
+                MAX_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT,
+            ),
+        ),
+        DynamicToolSpec::new(
+            READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL,
+            "Read bounded content-free settings-window render and synchronization diagnostics.",
+            empty_object_schema(),
+        ),
     ]
     .into_iter()
     .map(|tool| {
@@ -522,6 +761,8 @@ pub fn is_beryl_diagnostic_dynamic_tool(request: &DynamicToolCallRequest) -> boo
                 | READ_RETAINED_STATE_SUMMARY_TOOL
                 | READ_VISIBLE_MEDIA_TOOL
                 | READ_MEDIA_EVENTS_TOOL
+                | READ_TRANSCRIPT_FRAME_METRICS_TOOL
+                | READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL
         )
 }
 
@@ -547,6 +788,10 @@ pub fn diagnostic_bridge_unavailable_response(
 
 pub(crate) fn bounded_diagnostic_string(value: impl Into<String>) -> String {
     truncate_diagnostic_string(value)
+}
+
+pub(crate) fn diagnostic_duration_micros(duration: Duration) -> u64 {
+    duration.as_micros().min(u128::from(u64::MAX)) as u64
 }
 
 fn diagnostic_tool_result(
@@ -585,6 +830,21 @@ fn diagnostic_tool_result(
                 arguments.after_sequence,
                 arguments.limit_or_default(DEFAULT_MEDIA_EVENT_LIMIT, MAX_MEDIA_EVENT_LIMIT),
             )))
+        }
+        READ_TRANSCRIPT_FRAME_METRICS_TOOL => {
+            let arguments = parse_arguments::<MediaEventsArguments>(request.arguments())?;
+            Ok(json!(transcript_frame_metrics_result(
+                snapshot.transcript_frame_metrics,
+                arguments.after_sequence,
+                arguments.limit_or_default(
+                    DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                    MAX_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                ),
+            )))
+        }
+        READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL => {
+            parse_arguments::<EmptyArguments>(request.arguments())?;
+            Ok(json!(snapshot.settings_window))
         }
         other => Err(DynamicDiagnosticToolError::UnsupportedTool {
             tool: other.to_string(),
@@ -656,6 +916,24 @@ pub(crate) fn media_events_result(
     snapshot
 }
 
+pub(crate) fn transcript_frame_metrics_result(
+    mut snapshot: TranscriptFrameMetricsSnapshot,
+    after_sequence: Option<u64>,
+    limit: usize,
+) -> TranscriptFrameMetricsSnapshot {
+    if let Some(after_sequence) = after_sequence {
+        snapshot
+            .frames
+            .retain(|frame| frame.sequence > after_sequence);
+    }
+    if snapshot.frames.len() > limit {
+        snapshot.frames.truncate(limit);
+        snapshot.truncated = true;
+    }
+    snapshot.frame_count = snapshot.frames.len();
+    snapshot
+}
+
 fn validate_namespace(request: &DynamicToolCallRequest) -> Result<(), DynamicDiagnosticToolError> {
     if let Some(namespace) = request.namespace()
         && namespace != BERYL_DYNAMIC_TOOL_NAMESPACE
@@ -702,14 +980,18 @@ fn limited_read_schema(max: usize, default: usize) -> Value {
 }
 
 fn media_events_schema() -> Value {
+    media_events_schema_with_limits(MAX_MEDIA_EVENT_LIMIT, DEFAULT_MEDIA_EVENT_LIMIT)
+}
+
+fn media_events_schema_with_limits(max: usize, default: usize) -> Value {
     json!({
         "type": "object",
         "properties": {
             "limit": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": MAX_MEDIA_EVENT_LIMIT,
-                "default": DEFAULT_MEDIA_EVENT_LIMIT
+                "maximum": max,
+                "default": default
             },
             "afterSequence": {
                 "type": "integer",

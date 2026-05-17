@@ -59,6 +59,17 @@ pub(super) fn preload_turn_media_runs(
                 let markdown_key = turn_markdown_key(turn_index, turn.as_ref(), &block_path);
                 let markdown =
                     markdown_context.markdown_for(markdown_key.clone(), fragment.text.as_str(), cx);
+                if markdown.media_requests().is_empty() {
+                    flush_preload_media_run(
+                        workspace,
+                        media_context.clone(),
+                        &mut pending_media,
+                        media_layout,
+                        window,
+                        cx,
+                    );
+                    continue;
+                }
                 for (segment_index, segment) in markdown_media_run_segments(markdown.as_ref())
                     .into_iter()
                     .enumerate()
@@ -122,9 +133,20 @@ pub(super) fn preload_turn_media_runs(
                         }
                         let markdown = markdown_context.markdown_for(
                             markdown_key.clone(),
-                            source.as_str(),
+                            source.as_ref(),
                             cx,
                         );
+                        if markdown.media_requests().is_empty() {
+                            flush_preload_media_run(
+                                workspace,
+                                media_context.clone(),
+                                &mut pending_media,
+                                media_layout,
+                                window,
+                                cx,
+                            );
+                            continue;
+                        }
                         let segments = markdown_media_run_segments(markdown.as_ref());
                         if !segments
                             .iter()

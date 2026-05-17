@@ -23,7 +23,9 @@ use super::ShellView;
 
 impl Render for ShellView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let shell = &*self;
+        self.reconcile_theme_candidate_preview_scope(cx);
+        let frame = self.render_frame();
+        let shell = &frame;
         match &self.state {
             super::ShellState::WorkspaceIdle(idle) => conversation::render_idle_workspace_shell(
                 shell,

@@ -295,7 +295,8 @@ fn picker_current_workspace_row_uses_active_marker_without_current_label() {
     assert!(!row_body.contains("primary_button_theme().normal.background"));
     assert!(!row_body.contains("primary_button_theme().normal.foreground"));
     assert!(!row_body.contains("primary_button_theme().hover.background"));
-    assert!(marker_body.contains("primary_button_theme().active.background"));
+    assert!(marker_body.contains("shell.role_border("));
+    assert!(marker_body.contains("BerylThemeRole::WorkspacePickerRowActive"));
     assert!(!marker_body.contains("highlighted"));
     assert!(!summary_body.contains("\"Current\""));
     assert!(!summary_body.contains("render_workspace_row_badge"));
@@ -320,7 +321,9 @@ fn picker_create_row_renders_as_divided_list_row_without_nested_button_chrome() 
     assert!(!attach_row_body.contains("member_row_shell"));
     assert!(!attach_row_body.contains("\"Add an explicit filesystem root.\""));
     assert!(!attach_row_body.contains("\"Select a runtime before attaching.\""));
-    assert!(plus_body.contains("rgb(0x72e4b8)"));
+    assert!(plus_body.contains("shell.role_foreground("));
+    assert!(plus_body.contains("BerylThemeRole::WorkspacePickerRowActive"));
+    assert!(!plus_body.contains("rgb("));
     assert!(plus_body.contains("\"+\""));
     assert!(plus_body.contains("WORKSPACE_PICKER_CREATE_ADD_PLUS_SLOT_WIDTH"));
     assert!(plus_body.contains("WORKSPACE_PICKER_CREATE_ADD_PLUS_GLYPH_Y_OFFSET"));

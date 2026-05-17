@@ -142,17 +142,18 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 
 - This crate owns Beryl's app-server dynamic tool boundary for supervisor shell diagnostics and diagnostic child control.
 - Supervisor diagnostics belong to the Beryl dynamic-tool namespace and are registered with Beryl-owned dynamic tools on new Beryl-created app-server threads.
-- V1 supervisor diagnostic tools are `read_process_diagnostics`, `read_memory_diagnostics`, `read_retained_state_summary`, `read_visible_media`, and `read_media_events`.
+- V1 supervisor diagnostic tools are `read_process_diagnostics`, `read_memory_diagnostics`, `read_renderer_diagnostics`, `read_retained_state_summary`, `read_visible_media`, `read_media_events`, `read_transcript_frame_metrics`, and `read_settings_window_diagnostics`.
 - Supervisor diagnostics are read-only with respect to backend conversation history, semantic graph state, workspace persistence, settings, transcript content, durable image assets, and visible GUI control state.
 - Diagnostic child-control tools belong to a separate API-valid dot-free dynamic-tool namespace, `beryl_diagnostic`, and are registered with Beryl-owned dynamic tools on new Beryl-created app-server threads.
 - V1 diagnostic child lifecycle tools are `start`, `stop`, and `status`.
-- V1 diagnostic child read tools are `read_process`, `read_memory`, `read_ui_state`, `read_retained_state`, `read_visible_media`, `read_media_events`, and `list_workspace_threads`.
+- V1 diagnostic child read tools are `read_process`, `read_memory`, `read_renderer`, `read_ui_state`, `read_retained_state`, `read_visible_media`, `read_media_events`, `read_transcript_frame_metrics`, `read_settings_window`, and `list_workspace_threads`.
 - V1 diagnostic child GUI-control tools are `switch_workspace`, `switch_thread`, `create_new_thread`, `start_turn`, `soft_stop_turn`, `hard_stop_turn`, `wait_for_state`, `scroll_transcript`, and `close_popups`.
 - This crate must not advertise diagnostic child GUI-control tools as local supervisor GUI-control tools in the ordinary Beryl dynamic-tool namespace.
 - This crate may reuse the same shell operations for diagnostic child GUI-control tools that direct child UI interaction uses, but only inside the diagnostic child process or through a target-isolated child-control bridge.
 - `read_process_diagnostics` accepts no required arguments and returns a bounded process snapshot containing the Beryl process id, executable path when available, build identity when available, process start time when available, configured Beryl home, selected workspace id, selected thread id when any, selected runtime target summary, and known managed backend child process ids.
 - `read_memory_diagnostics` accepts no required arguments and returns Beryl GUI process memory counters plus the same UI labels needed to correlate the sample with the selected workspace/thread. On Windows it should report Private Bytes, Working Set, commit-related counters when available, handle count, and thread count. Unsupported counters must be represented as unavailable values, not estimates.
 - `read_retained_state_summary` accepts no arguments and returns bounded retained-state summaries for activity projection, transcript windows and presentation rows, Markdown cache, media cache, composer state, graph/checklist projection state, worker queues, and other runtime caches that already expose bounded diagnostics.
+- `read_settings_window_diagnostics` accepts no arguments and returns bounded content-free settings-window profiling data from the reusable settings-window boundary, including selected page id, selected row counts, rendered row counts, visible row ranges when available, render timing, model-sync timing, option-sync timing, input-sync counts, color-preview lookup counts, and a dominant cost category. It must not return setting labels, setting values, file paths, developer-instructions text, validation text, or theme document contents.
 - `read_visible_media` accepts optional caller limits clamped to crate-owned maxima and returns only current viewport or currently retained presentation media summaries, including stable media keys, source kind, natural dimensions when known, displayed dimensions when known, compressed byte counts when known, conservative decoded-byte estimates, cache state, and preview-popup state. It must not fetch history, read files, decode images, or create GPUI image assets.
 - `read_media_events` accepts an optional `limit` and optional sequence cursor, both clamped to crate-owned maxima, and returns a metadata-only bounded ring of recent image/media lifecycle events such as decode start or completion, GPUI image creation, cache insertion, eviction, release, preview open or close, transcript reset, row release, and thread switch. Event records must not retain image bytes, decoded buffers, GPUI image handles, or unbounded error text.
 - Diagnostic child `read_ui_state` accepts no required arguments and returns a bounded child snapshot of selected workspace/thread identity, selected surface, transcript scroll state, visible row and media summaries, activity-panel state, and transient popup state.
@@ -197,29 +198,59 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 ## Settings Window
 
 - This crate owns Beryl's settings-window integration policy, including when settings should be shown or hidden and how Beryl settings are adapted into reusable settings-window presentation data.
-- This crate consumes `gpui-settings-window` for generic OS settings-window lifecycle mechanics, including preheated show/hide behavior, left navigation, key-value setting rows, color input fields, and the in-window color picker.
-- This crate owns Beryl's appearance-settings draft state, validation, apply behavior, active settings update, and persistence to the Beryl theme file.
+- This crate consumes `gpui-settings-window` for app-neutral OS settings-window lifecycle and control mechanics where practical, including preheated show/hide behavior, broad section navigation, right-pane settings pages, grouped key-value rows, typed controls, color input fields, and the in-window color picker.
+- This crate owns Beryl's settings catalog, stable setting ids, section/page projection, modified-state projection, context actions, staged draft state, validation, apply behavior, active settings update, and persistence.
+- This crate owns Beryl's appearance/theme draft state, validation, apply behavior, active settings update, and persistence to Beryl's installed theme repository.
 - This crate owns Beryl's operation-settings draft state, validation, apply behavior, active settings update, and persistence as app-wide GUI preferences in `preferences.toml`.
-- This crate owns Beryl's notification-settings draft state, validation, apply behavior, active settings update, and persistence as app-wide GUI preferences in `preferences.toml`, outside the Beryl theme file.
-- This crate owns Beryl's developer-instructions settings draft state, validation, apply behavior, active settings update, and persistence as an app-wide GUI preference in `preferences.toml`, outside the Beryl theme file and outside backend-owned Codex configuration.
-- The settings window exposes an `Operations` section with a context compaction timeout row. The row accepts whole seconds and rejects invalid staged values before they become active.
-- The settings window exposes a `Notifications` section with an end-turn sound row that shows the staged full filesystem path, or an empty disabled state when no sound is selected.
+- This crate owns Beryl's notification-settings draft state, validation, apply behavior, active settings update, and persistence as app-wide GUI preferences in `preferences.toml`, outside the Beryl theme repository.
+- This crate owns Beryl's developer-instructions settings draft state, validation, apply behavior, active settings update, and persistence as an app-wide GUI preference in `preferences.toml`, outside the Beryl theme repository and outside backend-owned Codex configuration.
+- The settings window layout follows the authoritative shared UI contract in `doc/ui.md`: broad left sidebar sections, one right-pane settings page at a time, grouped settings rows, stable setting ids, modified indicators, row context actions, right-pane subpages with back and breadcrumb navigation, and a minimal useful default width that still keeps Theme Editor page actions, Notifications row actions, and Agent multiline controls reachable without clipping.
+- The settings window exposes `Themes`, `Operations`, `Notifications`, and `Agent` as broad sections. It must not expose nested sidebar rows.
+- The `Operations` section includes a context compaction timeout row. The row accepts whole seconds, uses the compact numeric value-field presentation, and rejects invalid staged values before they become active.
+- The `Themes` section lists durable installed themes and the active theme. It does not list unsaved AI-generated theme candidates from Codex threads, and it does not expose Preview for installed themes.
+- Installed non-active themes switch the app through direct activation. The active theme row owns Save and Save As when the active theme has staged changes. Save persists changes to the active installed theme. Save As asks for a new durable theme name and saves the staged active-theme definition as a new installed theme.
+- The active theme row's Edit action drills into the right-pane theme editor subpage and renders the step-in thick triangle affordance defined by the shared settings-window contract.
+- The settings window exposes a `Notifications` section with an end-turn sound row that shows the staged full filesystem path, or an empty disabled state when no sound is selected. The row keeps its label readable while the path field and choose/clear actions remain reachable at the supported minimum width, using the shared text-plus-actions row shape rather than a Beryl-specific layout.
 - The end-turn sound row's choose action opens the Windows file picker for WAV file selection and stages the chosen host filesystem path without applying it until settings are applied.
 - The end-turn sound row's clear action stages an empty path so applying settings disables end-turn sound.
-- The settings window exposes an `Agent` section with a multiline developer-instructions field. The field row shows the secondary subtext `Sent as developer instructions with every user message.` Blank or whitespace-only staged content is treated as disabled when settings are applied.
+- The settings window exposes an `Agent` section with a multiline developer-instructions field. The field row shows the secondary subtext `Sent as developer instructions with every user message.`, keeps the field at a useful fixed width, and preserves normal word wrapping for the label side at the supported minimum width. Blank or whitespace-only staged content is treated as disabled when settings are applied.
 - This crate maps Beryl's active appearance theme into app-neutral settings-window style options so the settings window uses Beryl-owned theme roles without making `gpui-settings-window` depend on Beryl.
 - The settings window does not include the main workspace toolbar strip.
 - Applying settings validates staged values before they become active, updates the running UI, and persists the accepted settings without requiring the window to close.
-- Closing or hiding the settings window without applying discards unapplied staged edits and does not mutate active appearance or notification settings.
+- Closing or hiding the settings window without applying discards unapplied staged edits and does not mutate active theme, operation, notification, or developer-instructions settings.
 
 ## Appearance Theme
 
-- This crate owns Beryl's appearance theme data model for UI chrome, typography, and transcript presentation roles.
-- UI chrome theme roles cover toolbar and thread-strip backgrounds, primary and secondary button colors for normal, hover, active, and disabled states, user-input panel colors, transcript-region shell colors, status-line colors, structural separator color, and shared surface colors for panels, rows, and popups.
+- This crate owns Beryl's appearance theme data model, installed theme repository, active-theme identity, transient preview state, and render-time style resolver.
+- Theme roles cover every Beryl-owned visible background, border, text foreground, text background, font family, font size, and font weight for UI chrome, typography, transcript presentation, graph/checklist surfaces, selectors, warning/error/info states, settings-window surfaces, popups, overlays, status values, media placeholders, selection/focus states, disabled states, and unavailable states.
+- A style role may define a static parent role. Each style property independently resolves from a concrete value, the same property on the static parent chain, the runtime ambient parent style, or a built-in fallback after validation.
+- Runtime ambient inheritance lets embedded transcript and UI content resolve differently by render site without changing the configured role. For example, inline code may use a concrete foreground while inheriting background from final-answer text, user-input text, settings rows, or popups.
 - The active theme is read during rendering rather than cached in individual widgets, so applying settings can refresh all windows without reconstructing the application shell.
-- The theme file uses Beryl's current appearance schema, and this crate rewrites the local theme file in that schema when theme settings are applied.
-- Transcript commentary assistant-message foreground and reasoning foreground are explicit appearance roles. Transcript-internal block backgrounds, labels, and dynamic turn-status colors remain outside this crate's UI chrome theming boundary until a later design explicitly includes them.
-- Graph semantic category colors, graph link/accent colors, selector-specific active-thread accents, and warning/error/info colors remain outside this crate's UI chrome theming boundary until a later design explicitly includes semantic appearance roles.
+- Installed themes use Beryl's current theme schema. This crate validates theme records before they can become active or persisted.
+- Persisted theme records use compact TOML theme documents. The on-disk theme repository uses a TOML manifest for repository-level state and one TOML document per installed theme. `beryl-theme` transcript code blocks use the same theme-document syntax without repository manifest state.
+- A legacy flat `theme.toml` file at the Beryl home root is outside this crate's theme repository. This crate must leave it untouched and must not read, import, migrate, rewrite, or delete it.
+- A theme document uses top-level `schema`, optional candidate `name`, installed-theme `id` when already assigned, and one `[[role]]` table per configured style role.
+- Each `[[role]]` table contains `id`, optional `static_parent`, and zero or more property entries. A property entry is either a source keyword string or a concrete inline table. Source keyword strings are `static_parent`, `ambient_parent`, and `fallback`. Concrete inline tables use `{ value = ... }`, with the expected TOML literal type determined by the property schema.
+- Example theme role record:
+
+```toml
+[[role]]
+id = "transcript.markdown.inline_code"
+static_parent = "text.code"
+foreground = { value = "#00ffff" }
+background = "ambient_parent"
+font_family = "static_parent"
+font_size = "static_parent"
+font_weight = "static_parent"
+```
+
+- Colors use canonical hex strings. Font family values use strings. Font size and border width values use logical pixel numbers. Font weight values use numeric weights.
+- Missing role records or missing property entries do not create untyped dynamic defaults. They resolve through the built-in theme schema for that role and property. A theme document is valid only when the document plus built-in schema resolves to a complete typed theme.
+- Duplicate role records, unknown role ids, unknown property names, invalid source keywords, invalid value types, static-parent cycles, and unresolved required values fail validation before preview, activation, or persistence.
+- An installed theme file must have a stable installed theme id and display name. A `beryl-theme` transcript candidate may omit the installed id; Beryl assigns the stable id during Install Theme after the user confirms the durable theme name.
+- A transient theme preview is available for unsaved `beryl-theme` transcript candidates and dynamic-tool preview calls. It changes resolved appearance in open windows without making the preview an installed theme. Preview state must be reversible and must recover to a valid installed active theme after cancellation, thread switch, failed validation, failed persistence, or application restart.
+- Fenced transcript code blocks labeled `beryl-theme` are ordinary Codex thread content rendered through the shared code panel widget. Valid theme candidate panels expose Beryl-owned Preview and Install Theme actions while preserving ordinary code-panel copy, soft-wrap, selection, and scrolling behavior. While a candidate preview is active, the originating panel may expose Stop Preview in place of Preview.
+- Installing a `beryl-theme` candidate validates the definition and asks the user to confirm a durable theme name before writing to the installed theme repository. Cancelling the confirmation leaves active theme state, settings drafts, and persistence unchanged.
 
 ## Responsiveness
 
@@ -424,6 +455,24 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 - Graph-started thread creation must keep backend work and graph persistence off the `gpui` thread and must report the created-but-not-linked failure case explicitly if backend thread creation succeeds but graph ref persistence fails. The backend-created thread is not rolled back by a graph-ref persistence failure.
 - Immediate graph-node `Delete` actions are transient UI actions owned by this crate. `Delete` is visible for every graph node but is enabled only when the latest graph projection shows no hard children, and its repository-backed mutation must still fail if the target is not a hard-tree leaf when persisted state is mutated.
 - Held destructive graph-node actions are transient UI state owned by this crate. `Delete Recursively` uses a three-second held activation with left-to-right row fill, cancels on early release, pointer exit, menu close, focus loss, or stale graph-node target, and triggers at most one repository-backed graph mutation after completion.
+
+## Theme And Settings Tools
+
+- This crate owns the Beryl-specific app-server dynamic tool boundary for Beryl-owned GUI settings and installed themes.
+- Theme tools may expose bounded schema discovery, model-facing authoring guidance, side-effect-free theme-document validation, installed-theme reads, transient theme preview for candidates, durable theme installation, installed-theme update, Save As from an existing or candidate theme definition, and installed-theme activation.
+- Settings tools may expose bounded Beryl-owned settings reads, validation of proposed settings updates, and typed settings update operations. Readable settings are limited to Beryl-owned app-wide operation preferences, notification preferences, developer-instructions preference metadata, AI-control preference metadata, active theme identity, installed theme metadata, and theme schema or theme document data exposed through theme-specific reads.
+- Theme and settings tools are registered with Beryl-owned dynamic tools on new Beryl-created app-server threads. Threads that did not register these tools must not be treated as capable of invoking them.
+- Theme and settings tool requests must cross an explicit bounded request/response bridge into shell-owned settings and theme state. The turn worker must not access `ShellView`, settings-window internals, GPUI handles, or repository mutation handles directly.
+- Settings validation tool calls are non-mutating. Accepted settings update tool calls commit immediately through the same validation, active-update, persistence, and recovery paths used by direct settings-window Apply, and they do not create unapplied settings-window drafts.
+- Settings update tool calls may update operation preferences, clear or explicitly replace notification settings, and replace or clear developer-instructions text. AI-control preferences that govern model authority are read-only to the model unless a later operator-confirmed write operation is designed.
+- Theme authoring guidance tool calls are explanatory reads over the existing theme schema and document model. They may describe compact TOML syntax, source keywords, static inheritance, ambient inheritance, role groups, transcript/code/settings roles, recommended candidate workflow, and common troubleshooting, but they must not expose private settings values or define a second independent schema.
+- Theme validation tool calls parse and resolve the supplied compact TOML document through the same document validation path as preview, install, update, and Save As operations. They may return bounded diagnostics, a bounded document summary, and requested role-source explanations, but they must not mutate active preview state, installed themes, settings drafts, transcript content, GPUI widgets, or theme repository files.
+- Accepted theme tool writes flow through the same validation, active update, cache invalidation, and persistence paths used by settings-window theme operations.
+- Theme preview tool calls are transient. A successful preview response means the preview is active for the running Beryl instance, not that a theme was installed, transcript content was created, or a durable setting changed.
+- Theme install tool calls create durable installed themes in Beryl's theme repository, but they must not create synthetic transcript theme-offer rows or rewrite Codex transcript content.
+- Settings read tool output must be bounded. Literal values are returned only for non-sensitive scalar settings. Notification sound reads return configured/disabled state and non-identifying file metadata, never the full local path. Developer-instructions reads return enabled state, character count, line count, and a stable content fingerprint, never literal instruction text.
+- Tool writes that target unknown settings, unsupported theme roles, invalid values, unavailable sections, stale theme ids, or unsafe draft conflicts must reject with bounded structured errors and must not partially apply.
+- Theme and settings tools must not mutate backend-owned Codex configuration, authentication, skills, MCP state, session storage, transcript history, semantic graph state, workspace members, durable image assets, or unrelated local state.
 
 ## Graph Tools
 

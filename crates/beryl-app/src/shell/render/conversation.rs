@@ -1,19 +1,23 @@
+use std::time::Instant;
+
 use gpui::{
     AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas, div, img,
-    prelude::*, px, relative, rgb, rgba,
+    prelude::*, px, relative, rgba,
 };
 
-use crate::WorkspaceActivityPanelMode;
 use crate::shell::{
     BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
     ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
-    ScrollbarRegion, ShellView, SurfaceNotice, image_preview_popup, layout,
+    ScrollbarRegion, ShellRenderFrame, ShellView, SurfaceNotice,
+    composer_measurement::ComposerInputMeasurementKey,
+    image_preview_popup, layout,
     status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
     status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
     tool_activity::ToolActivityRowStatus,
 };
 use crate::text_input::SingleLineInput;
+use crate::{BerylThemeRole, WorkspaceActivityPanelMode};
 
 use super::checklist_sidebar::{
     ChecklistSidebarPanel, render_checklist_thread_start_menu,
@@ -28,7 +32,7 @@ use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
 };
 use super::graph_overlay::{render_graph_overlay, render_graph_overlay_listeners};
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, render_themed_div_scrollbar};
 use super::status_operation::{render_status_operation_listeners, render_status_operation_popup};
 use super::thread_selector::{render_thread_selector_listeners, render_thread_selector_overlay};
 use super::transcript::TranscriptPanel;
@@ -41,7 +45,7 @@ use super::workspace_picker::{
 };
 
 pub(super) fn render_ready_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     ready: &ReadyState,
     transcript_panel: &Entity<TranscriptPanel>,
     checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
@@ -74,7 +78,7 @@ pub(super) fn render_ready_shell(
 }
 
 pub(super) fn render_backend_unavailable_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     unavailable: &BackendUnavailableState,
     transcript_panel: &Entity<TranscriptPanel>,
     checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
@@ -103,11 +107,18 @@ pub(super) fn render_backend_unavailable_shell(
         .flex()
         .flex_col()
         .gap_3()
-        .child(inline_notice(summary, rgb(0x3f1d1d), rgb(0xfecaca)))
-        .child(div().text_sm().text_color(rgb(0xfecaca)).child(format!(
-            "Target: {}",
-            unavailable.execution_target.display_label()
-        )))
+        .child(inline_notice(shell, summary, BerylThemeRole::NoticeError))
+        .child(
+            div()
+                .text_sm()
+                .text_color(
+                    shell.role_foreground(BerylThemeRole::NoticeError, shell.surface_foreground()),
+                )
+                .child(format!(
+                    "Target: {}",
+                    unavailable.execution_target.display_label()
+                )),
+        )
         .child(button(
             shell,
             "retry-backend-unavailable-inline",
@@ -138,7 +149,7 @@ pub(super) fn render_backend_unavailable_shell(
 }
 
 pub(super) fn render_idle_workspace_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     idle: &IdleWorkspaceState,
     _wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
@@ -170,9 +181,9 @@ pub(super) fn render_idle_workspace_shell(
                         .flex()
                         .flex_col()
                         .gap_4()
-                        .child(section_label("Workspace Members"))
+                        .child(section_label(shell, "Workspace Members"))
                         .when_some(loaded.startup_warning.as_ref(), |this, warning| {
-                            this.child(inline_notice(warning, rgb(0x172554), rgb(0xbfdbfe)))
+                            this.child(inline_notice(shell, warning, BerylThemeRole::NoticeInfo))
                         })
                         .child(card(
                             shell,
@@ -183,13 +194,16 @@ pub(super) fn render_idle_workspace_shell(
                                 .child(
                                     div()
                                         .text_lg()
-                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .font_weight(shell.role_font_weight(
+                                            BerylThemeRole::SurfaceRowInfo,
+                                            gpui::FontWeight::SEMIBOLD,
+                                        ))
                                         .child("No runtime environment selected"),
                                 )
                                 .child(
                                     div()
                                         .text_sm()
-                                        .text_color(rgb(0xcbd5e1))
+                                        .text_color(shell.surface_foreground())
                                         .child(format!(
                                             "Beryl opened the legacy semantic workspace '{}', but it does not have a selected runtime environment.",
                                             loaded.workspace.title()
@@ -198,7 +212,7 @@ pub(super) fn render_idle_workspace_shell(
                                 .child(
                                     div()
                                         .text_sm()
-                                        .text_color(rgb(0x94a3b8))
+                                        .text_color(shell.surface_muted_foreground())
                                         .child(
                                             "Select a host-Windows or WSL-Linux runtime in Workspaces before starting a transcript in this workspace.",
                                         ),
@@ -217,7 +231,7 @@ pub(super) fn render_idle_workspace_shell(
                                 .child(
                                     div()
                                         .text_sm()
-                                        .text_color(rgb(0x94a3b8))
+                                        .text_color(shell.surface_muted_foreground())
                                         .child(
                                             "Workspace switching stays in the toolbar Workspaces popup rather than a dedicated full-screen picker.",
                                         ),
@@ -225,7 +239,8 @@ pub(super) fn render_idle_workspace_shell(
                         )),
                 ),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "idle-workspace-members-scrollbar",
         &workspace_members_scroll_handle,
         ScrollbarAxis::Vertical,
@@ -270,7 +285,7 @@ pub(super) fn render_idle_workspace_shell(
                         .min_w(px(0.0))
                         .px_4()
                         .text_sm()
-                        .text_color(rgb(0xcbd5e1))
+                        .text_color(shell.surface_muted_foreground())
                         .child("Runtime environment recovery required"),
                 ),
         )
@@ -311,7 +326,7 @@ pub(super) fn render_idle_workspace_shell(
 }
 
 pub(super) fn render_loaded_workspace_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     _host_path_input: &Entity<SingleLineInput>,
     _wsl_distro_input: &Entity<SingleLineInput>,
@@ -355,20 +370,23 @@ pub(super) fn render_loaded_workspace_shell(
                         .flex()
                         .flex_col()
                         .gap_3()
-                        .child(section_label("Workspace Surface"))
+                        .child(section_label(shell, "Workspace Surface"))
                         .when_some(loaded.startup_warning.as_ref(), |this, warning| {
-                            this.child(inline_notice(warning, rgb(0x172554), rgb(0xbfdbfe)))
+                            this.child(inline_notice(shell, warning, BerylThemeRole::NoticeInfo))
                         })
                         .child(
                             div()
                                 .text_lg()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .font_weight(shell.role_font_weight(
+                                    BerylThemeRole::SurfaceRowInfo,
+                                    gpui::FontWeight::SEMIBOLD,
+                                ))
                                 .child("Opening primary workspace member"),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .text_color(rgb(0xcbd5e1))
+                                .text_color(shell.surface_foreground())
                                 .child(format!(
                                     "Beryl loaded '{}'. Member management stays in the Workspaces popup while the workspace surface opens.",
                                     loaded.workspace.title()
@@ -401,7 +419,7 @@ pub(super) fn render_loaded_workspace_shell(
 }
 
 pub(super) fn render_blocked_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     blocked: &BlockedState,
     transcript_panel: &Entity<TranscriptPanel>,
     checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
@@ -424,9 +442,9 @@ pub(super) fn render_blocked_shell(
         .flex_col()
         .gap_3()
         .child(inline_notice(
+            shell,
             &blocked.summary,
-            rgb(0x3f1d1d),
-            rgb(0xfecaca),
+            BerylThemeRole::NoticeError,
         ))
         .child(
             div()
@@ -478,7 +496,7 @@ pub(super) fn render_blocked_shell(
 }
 
 fn render_workspace_surface(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded_workspace: &LoadedWorkspaceState,
     workspace_title: &str,
     execution_target: &beryl_model::workspace::WorkspaceId,
@@ -521,17 +539,25 @@ fn render_workspace_surface(
     .into_any_element();
     let entity = cx.entity();
     let conversation_width = surface.transcript_width();
-    let composer_height =
-        measure_composer_input(surface, conversation_input, conversation_width, window, cx)
-            .composer_height;
+    let composer_enabled = backend_controls_disabled.is_none();
+    let composer_measurement = measure_composer_input(
+        shell,
+        surface,
+        conversation_input,
+        conversation_width,
+        composer_enabled,
+        window,
+        cx,
+    );
+    let composer_height = composer_measurement.composer_height;
     let split = render_split_surface(
         shell,
         transcript_panel,
         surface,
         conversation_input,
         checklist_sidebar_panel,
+        &composer_measurement,
         backend_controls_disabled.as_deref(),
-        window,
         cx,
     )
     .into_any_element();
@@ -616,28 +642,32 @@ fn render_workspace_surface(
         .child(status_line);
 
     if let Some((title, detail, next_steps, banner)) = blocked {
-        let mut detail_block = div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(rgb(0xfde68a))
-                    .child(title.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(rgb(0xe2e8f0))
-                    .child(detail.to_string()),
-            )
-            .child(banner);
+        let mut detail_block =
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(shell.role_foreground(
+                            BerylThemeRole::NoticeWarning,
+                            shell.surface_foreground(),
+                        ))
+                        .child(title.to_string()),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(shell.surface_foreground())
+                        .child(detail.to_string()),
+                )
+                .child(banner);
         for next_step in next_steps {
             detail_block = detail_block.child(
                 div()
                     .text_sm()
-                    .text_color(rgb(0xcbd5e1))
+                    .text_color(shell.surface_muted_foreground())
                     .child(format!("Next: {next_step}")),
             );
         }
@@ -781,7 +811,7 @@ fn render_transcript_edit_mode_listeners(cx: &mut Context<ShellView>) -> impl In
 }
 
 fn render_surface_notice(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     notice: &SurfaceNotice,
     window: &mut Window,
     cx: &mut Context<ShellView>,
@@ -800,6 +830,7 @@ fn render_surface_notice(
     let input_height = window.line_height() * visual_line_count as f32;
     let focus_input = shell.surface_notice_text_input.clone();
     let has_detail = !notice.detail().is_empty();
+    let notice_role = surface_notice_role(notice);
 
     card(
         shell,
@@ -831,7 +862,12 @@ fn render_surface_notice(
                             .text_sm()
                             .child(
                                 div()
-                                    .text_color(rgb(0xfbbf24))
+                                    .text_color(
+                                        shell.role_foreground(
+                                            notice_role,
+                                            shell.surface_foreground(),
+                                        ),
+                                    )
                                     .child(notice.title().to_string()),
                             )
                             .when(has_detail, |this| {
@@ -854,6 +890,7 @@ fn render_surface_notice(
             .child(
                 div()
                     .id("surface-notice-close")
+                    .group("surface-notice-close")
                     .flex_none()
                     .w(px(layout::BUTTON_OUTER_HEIGHT))
                     .h(px(layout::BUTTON_OUTER_HEIGHT))
@@ -865,13 +902,38 @@ fn render_surface_notice(
                     .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
                     .font_weight(shell.secondary_button_theme().font_weight)
                     .text_color(shell.surface_muted_foreground())
-                    .hover(|style| style.bg(rgba(0x33415599)))
-                    .active(|style| style.bg(rgba(0x475569cc)))
+                    .hover({
+                        let hover_background = shell.role_background(
+                            BerylThemeRole::PopupRowHover,
+                            shell.row_surface_background(),
+                        );
+                        move |style| style.bg(hover_background)
+                    })
+                    .active({
+                        let active_background = shell.role_background(
+                            BerylThemeRole::PopupRowSelected,
+                            shell.row_surface_background(),
+                        );
+                        move |style| style.bg(active_background)
+                    })
                     .cursor(CursorStyle::PointingHand)
                     .child("X")
                     .on_click(cx.listener(ShellView::dismiss_surface_notice)),
             ),
     )
+}
+
+fn surface_notice_role(notice: &SurfaceNotice) -> BerylThemeRole {
+    let title = notice.title().to_ascii_lowercase();
+    if title.contains("error") || title.contains("failed") || title.contains("rejected") {
+        BerylThemeRole::NoticeError
+    } else if title.contains("warning") {
+        BerylThemeRole::NoticeWarning
+    } else if title.contains("success") {
+        BerylThemeRole::NoticeSuccess
+    } else {
+        BerylThemeRole::NoticeInfo
+    }
 }
 
 fn render_composer_image_popup_listeners(cx: &mut Context<ShellView>) -> impl IntoElement {
@@ -915,7 +977,7 @@ fn render_composer_image_popup_listeners(cx: &mut Context<ShellView>) -> impl In
 }
 
 fn render_composer_image_popup(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
     let popup = shell.composer_image_popup()?;
@@ -948,7 +1010,7 @@ fn render_composer_image_popup(
 }
 
 fn render_composer_image_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     label: &str,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -985,7 +1047,7 @@ fn render_composer_image_menu(
 }
 
 fn composer_image_menu_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     label: &'static str,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
@@ -995,7 +1057,7 @@ fn composer_image_menu_row(
         .justify_start()
 }
 
-fn render_composer_image_preview(shell: &ShellView, label: &str) -> impl IntoElement {
+fn render_composer_image_preview(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     let image = shell.composer_image_preview_image();
 
     div()
@@ -1024,8 +1086,13 @@ fn render_composer_image_preview(shell: &ShellView, label: &str) -> impl IntoEle
                 .min_h(px(0.0))
                 .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
                 .border_1()
-                .border_color(shell.surface_border())
-                .bg(rgb(0x020617))
+                .border_color(
+                    shell.role_border(BerylThemeRole::MediaBorder, shell.surface_border()),
+                )
+                .bg(shell.role_background(
+                    BerylThemeRole::MediaPlaceholder,
+                    shell.popup_surface_background(),
+                ))
                 .relative()
                 .overflow_hidden()
                 .child(match image {
@@ -1050,7 +1117,7 @@ fn render_composer_image_preview(shell: &ShellView, label: &str) -> impl IntoEle
 }
 
 fn activity_mode_button(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     value_label: &'static str,
     active: bool,
     cx: &mut Context<ShellView>,
@@ -1074,7 +1141,7 @@ fn toolbar_toggle_label(labels: &'static [&'static str; 2], active: bool) -> &'s
 }
 
 fn render_toolbar(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded_workspace: &LoadedWorkspaceState,
     _workspace_title: &str,
     _execution_target: &beryl_model::workspace::WorkspaceId,
@@ -1131,7 +1198,7 @@ fn render_toolbar(
 }
 
 fn render_thread_strip(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace: &beryl_model::workspace::WorkspaceId,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
     surface: &ConversationSurfaceState,
@@ -1188,7 +1255,10 @@ fn render_thread_strip(
                         this.child(
                             div()
                                 .text_xs()
-                                .text_color(rgb(0x7dd3fc))
+                                .text_color(shell.role_foreground(
+                                    BerylThemeRole::NoticeInfo,
+                                    shell.surface_foreground(),
+                                ))
                                 .child(workspace.runtime_mode().display_name()),
                         )
                     },
@@ -1237,9 +1307,12 @@ fn render_thread_strip(
                                         .text_color(if !thread_selector_enabled {
                                             shell.secondary_button_theme().disabled.foreground
                                         } else if surface.thread_selector().is_open() {
-                                            rgb(0x7dd3fc)
+                                            shell.role_foreground(
+                                                BerylThemeRole::ThreadSelectorRowSelected,
+                                                shell.secondary_button_theme().active.foreground,
+                                            )
                                         } else {
-                                            rgb(0xe2e8f0)
+                                            shell.general_ui_foreground()
                                         })
                                         .whitespace_nowrap()
                                         .truncate()
@@ -1254,7 +1327,7 @@ fn render_thread_strip(
 }
 
 fn render_status_line(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     status: StatusLineProjection,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -1283,7 +1356,9 @@ fn render_status_line(
     for spec in cells {
         let value_color = match spec.value_kind {
             StatusLineCellValueKind::Default => None,
-            StatusLineCellValueKind::TurnState => Some(last_turn_state_color(spec.value.as_str())),
+            StatusLineCellValueKind::TurnState => {
+                Some(last_turn_state_color(shell, spec.value.as_str()))
+            }
         };
         line = line.child(status_line_cell(
             shell,
@@ -1300,7 +1375,7 @@ fn render_status_line(
 }
 
 fn status_line_cell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     label: &'static str,
     value_segments: Vec<StatusLineCellValueSegment>,
     value_color: Option<gpui::Rgba>,
@@ -1365,7 +1440,7 @@ fn status_line_cell(
 }
 
 fn status_line_value(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     segments: Vec<StatusLineCellValueSegment>,
     value_color: gpui::Rgba,
 ) -> gpui::Div {
@@ -1407,17 +1482,42 @@ fn status_line_value(
     value
 }
 
-fn last_turn_state_color(state: &str) -> gpui::Rgba {
+fn last_turn_state_color(shell: &ShellRenderFrame<'_>, state: &str) -> gpui::Rgba {
     match state {
-        "working" | "compacting" => rgb(0x93c5fd),
-        "ok" => rgb(0x86efac),
-        "error" => rgb(0xfca5a5),
-        _ => rgb(0xe2e8f0),
+        "working" => shell.role_foreground(
+            BerylThemeRole::StatusValueWorking,
+            shell.status_line_value_foreground(),
+        ),
+        "compacting" => shell.role_foreground(
+            BerylThemeRole::StatusValueCompacting,
+            shell.status_line_value_foreground(),
+        ),
+        "ok" => shell.role_foreground(
+            BerylThemeRole::StatusValueOk,
+            shell.status_line_value_foreground(),
+        ),
+        "error" => shell.role_foreground(
+            BerylThemeRole::StatusValueError,
+            shell.status_line_value_foreground(),
+        ),
+        "pending" => shell.role_foreground(
+            BerylThemeRole::StatusValuePending,
+            shell.status_line_value_foreground(),
+        ),
+        "unavailable" => shell.role_foreground(
+            BerylThemeRole::StatusValueUnavailable,
+            shell.status_line_value_foreground(),
+        ),
+        "streaming" => shell.role_foreground(
+            BerylThemeRole::StatusValueStreaming,
+            shell.status_line_value_foreground(),
+        ),
+        _ => shell.status_line_value_foreground(),
     }
 }
 
 fn thread_strip_action(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
@@ -1426,13 +1526,13 @@ fn thread_strip_action(
 }
 
 fn render_split_surface(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     transcript_panel: &Entity<TranscriptPanel>,
     surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
     checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
+    composer_measurement: &layout::ComposerInputMeasurement,
     backend_controls_disabled: Option<&str>,
-    window: &mut Window,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let entity = cx.entity();
@@ -1457,20 +1557,13 @@ fn render_split_surface(
     } else {
         0.0
     };
-    let composer_measurement = measure_composer_input(
-        surface,
-        conversation_input,
-        split_layout.left_width,
-        window,
-        cx,
-    );
     let composer_height = composer_measurement.composer_height;
 
     let left_panel = render_left_panel(transcript_panel).into_any_element();
     let composer = render_composer(
         shell,
         conversation_input,
-        &composer_measurement,
+        composer_measurement,
         backend_controls_disabled,
         cx,
     )
@@ -1534,7 +1627,7 @@ fn render_split_surface(
 }
 
 fn render_checklist_sidebar_divider(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let entity = cx.entity();
@@ -1571,7 +1664,7 @@ fn render_left_panel(transcript_panel: &Entity<TranscriptPanel>) -> impl IntoEle
 }
 
 fn render_tool_activity_panel(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     composer_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
@@ -1649,7 +1742,8 @@ fn render_tool_activity_panel(
             composer_height,
         ));
 
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "tool-activity-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
@@ -1662,7 +1756,7 @@ fn render_tool_activity_panel(
 }
 
 fn render_tool_activity_resize_handle(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     entity: gpui::Entity<ShellView>,
     panel_height: gpui::Pixels,
     composer_height: gpui::Pixels,
@@ -1715,7 +1809,7 @@ fn render_tool_activity_resize_handle(
 }
 
 fn render_tool_activity_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     agent_label: String,
     tool_display_value: String,
@@ -1733,7 +1827,7 @@ fn render_tool_activity_row(
         .items_center()
         .gap_2()
         .overflow_hidden()
-        .child(tool_activity_status_disc(status))
+        .child(tool_activity_status_disc(shell, status))
         .child(tool_activity_label(shell, "Agent"))
         .child(
             div()
@@ -1758,7 +1852,7 @@ fn render_tool_activity_row(
         )
 }
 
-fn tool_activity_label(shell: &ShellView, label: &'static str) -> impl IntoElement {
+fn tool_activity_label(shell: &ShellRenderFrame<'_>, label: &'static str) -> impl IntoElement {
     div()
         .text_xs()
         .text_color(shell.status_line_title_foreground())
@@ -1766,11 +1860,23 @@ fn tool_activity_label(shell: &ShellView, label: &'static str) -> impl IntoEleme
         .child(label)
 }
 
-fn tool_activity_status_disc(status: ToolActivityRowStatus) -> impl IntoElement {
+fn tool_activity_status_disc(
+    shell: &ShellRenderFrame<'_>,
+    status: ToolActivityRowStatus,
+) -> impl IntoElement {
     let color = match status {
-        ToolActivityRowStatus::Running => rgb(0x22c55e),
-        ToolActivityRowStatus::FinishedOk => rgb(0x64748b),
-        ToolActivityRowStatus::FinishedError => rgb(0xef4444),
+        ToolActivityRowStatus::Running => shell.role_border(
+            BerylThemeRole::StatusValueWorking,
+            shell.status_line_value_foreground(),
+        ),
+        ToolActivityRowStatus::FinishedOk => shell.role_border(
+            BerylThemeRole::StatusValueOk,
+            shell.status_line_value_foreground(),
+        ),
+        ToolActivityRowStatus::FinishedError => shell.role_border(
+            BerylThemeRole::StatusValueError,
+            shell.status_line_value_foreground(),
+        ),
     };
 
     div()
@@ -1790,9 +1896,11 @@ fn render_checklist_sidebar_panel(
 }
 
 fn measure_composer_input(
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
     conversation_column_width: gpui::Pixels,
+    enabled: bool,
     window: &mut Window,
     cx: &mut Context<ShellView>,
 ) -> layout::ComposerInputMeasurement {
@@ -1800,29 +1908,62 @@ fn measure_composer_input(
         .layout_bounds
         .map(|bounds| bounds.size.height)
         .unwrap_or_else(|| px(layout::WINDOW_MIN_HEIGHT));
+    let viewport_height = window.viewport_size().height;
+    let key = ComposerInputMeasurementKey::new(
+        shell.composer_input_revision(),
+        shell.composer_image_atom_revision(),
+        conversation_column_width,
+        available_height,
+        viewport_height,
+        window.scale_factor(),
+        shell.style().revision(),
+        enabled,
+        surface.transcript_edit_mode().is_some(),
+    );
+
+    let measurement_started = Instant::now();
+    let measurement = shell.cached_composer_input_measurement(key, || {
+        measure_uncached_composer_input(
+            conversation_input,
+            conversation_column_width,
+            available_height,
+            viewport_height,
+            window,
+            cx,
+        )
+    });
+    shell.record_composer_measurement_cost(measurement_started.elapsed());
+    measurement
+}
+
+fn measure_uncached_composer_input(
+    conversation_input: &Entity<SingleLineInput>,
+    conversation_column_width: gpui::Pixels,
+    available_height: gpui::Pixels,
+    viewport_height: gpui::Pixels,
+    window: &mut Window,
+    cx: &mut Context<ShellView>,
+) -> layout::ComposerInputMeasurement {
     let initial_bounds =
         layout::composer_text_input_bounds(conversation_column_width, available_height);
     let initial_geometry = conversation_input
         .read(cx)
         .measure_geometry(initial_bounds, window);
-    let initial_measurement = layout::composer_input_measurement(
-        available_height,
-        window.viewport_size().height,
-        &initial_geometry,
-    );
+    let initial_measurement =
+        layout::composer_input_measurement(available_height, viewport_height, &initial_geometry);
+    if initial_measurement.input_render_height >= initial_measurement.text_content_height {
+        return initial_measurement;
+    }
+
     let final_geometry = conversation_input
         .read(cx)
         .measure_geometry(initial_measurement.input_bounds, window);
 
-    layout::composer_input_measurement(
-        available_height,
-        window.viewport_size().height,
-        &final_geometry,
-    )
+    layout::composer_input_measurement(available_height, viewport_height, &final_geometry)
 }
 
 fn render_composer(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     conversation_input: &Entity<SingleLineInput>,
     composer_measurement: &layout::ComposerInputMeasurement,
     backend_controls_disabled: Option<&str>,
@@ -1862,7 +2003,7 @@ fn render_composer(
 }
 
 fn render_composer_input_area(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     input_render_height: gpui::Pixels,
     text_top_padding: gpui::Pixels,
     conversation_input: &Entity<SingleLineInput>,
@@ -1889,7 +2030,7 @@ fn render_composer_input_area(
 }
 
 fn composer_input_scroll_region(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     input_render_height: gpui::Pixels,
     text_top_padding: gpui::Pixels,
     conversation_input: &Entity<SingleLineInput>,
@@ -1912,7 +2053,7 @@ fn composer_input_scroll_region(
         .bg(if enabled {
             shell.input_background()
         } else {
-            rgba(0x111827cc)
+            shell.secondary_button_theme().disabled.background
         })
         .border_1()
         .border_color(if enabled {
@@ -1965,13 +2106,16 @@ fn composer_input_scroll_region(
                     .top_0()
                     .left_0()
                     .size_full()
-                    .bg(rgba(0x02061766)),
+                    .bg(shell.role_background(
+                        BerylThemeRole::SurfaceRowDisabled,
+                        shell.secondary_button_theme().disabled.background,
+                    )),
             )
         })
 }
 
 fn render_loaded_workspace_composer(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     conversation_input: &Entity<SingleLineInput>,
     window: &mut Window,
     cx: &mut Context<ShellView>,

@@ -38,6 +38,7 @@ use crate::{
     beryl_diagnostic_child_dynamic_tool_shell_response_timeout,
     diagnostic_bridge_unavailable_response, dispatch_beryl_dynamic_tool_call_with_metadata,
     is_beryl_diagnostic_child_dynamic_tool, is_beryl_diagnostic_dynamic_tool,
+    is_beryl_settings_dynamic_tool, is_beryl_theme_dynamic_tool,
 };
 use approval::deny_backend_approval_request;
 use lifecycle_yield::ActiveTurnLifecycleYieldCapture;
@@ -53,6 +54,7 @@ const POST_COMPLETION_GRACE: Duration = Duration::from_millis(500);
 const TURN_WORKER_UPDATE_QUEUE_CAPACITY: usize = 1024;
 const DYNAMIC_TOOL_SHELL_REQUEST_QUEUE_CAPACITY: usize = 8;
 const DYNAMIC_TOOL_SHELL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
+const DYNAMIC_THEME_DURABLE_TOOL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 const SHELL_DYNAMIC_TOOL_REQUEST_PENDING: u8 = 0;
 const SHELL_DYNAMIC_TOOL_REQUEST_CANCELLED: u8 = 1;
 const SHELL_DYNAMIC_TOOL_REQUEST_CLAIMED: u8 = 2;
@@ -179,7 +181,11 @@ impl ShellDynamicToolRequestSender {
     }
 
     fn response_timeout_for_request(&self, request: &DynamicToolCallRequest) -> Duration {
-        beryl_diagnostic_child_dynamic_tool_shell_response_timeout(request, self.response_timeout)
+        let timeout = beryl_diagnostic_child_dynamic_tool_shell_response_timeout(
+            request,
+            self.response_timeout,
+        );
+        beryl_theme_dynamic_tool_shell_response_timeout(request, timeout)
     }
 
     #[cfg(test)]
@@ -188,6 +194,24 @@ impl ShellDynamicToolRequestSender {
         request: &DynamicToolCallRequest,
     ) -> Duration {
         self.response_timeout_for_request(request)
+    }
+}
+
+fn beryl_theme_dynamic_tool_shell_response_timeout(
+    request: &DynamicToolCallRequest,
+    default_timeout: Duration,
+) -> Duration {
+    if request
+        .namespace()
+        .is_none_or(|namespace| namespace == "beryl")
+        && matches!(
+            request.tool(),
+            "install_theme" | "update_theme" | "save_theme_as" | "activate_theme"
+        )
+    {
+        default_timeout.max(DYNAMIC_THEME_DURABLE_TOOL_RESPONSE_TIMEOUT)
+    } else {
+        default_timeout
     }
 }
 
@@ -582,7 +606,10 @@ pub(crate) fn handle_beryl_dynamic_tool_call_with_shell_tools(
     request: &DynamicToolCallRequest,
     publish_graph_mutation: impl FnMut(GraphMutationUpdate),
 ) -> HandledDynamicToolCall {
-    if is_beryl_diagnostic_dynamic_tool(request) || is_beryl_diagnostic_child_dynamic_tool(request)
+    if is_beryl_diagnostic_dynamic_tool(request)
+        || is_beryl_diagnostic_child_dynamic_tool(request)
+        || is_beryl_theme_dynamic_tool(request)
+        || is_beryl_settings_dynamic_tool(request)
     {
         let response = shell_tool_sender.map_or_else(
             || {

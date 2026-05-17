@@ -7,6 +7,22 @@ pub(crate) mod syntax_highlighting;
 mod shell {
     pub(crate) use crate::layout;
     pub(crate) use crate::syntax_highlighting;
+
+    pub(crate) struct ShellRenderStyleSnapshot;
+
+    impl ShellRenderStyleSnapshot {
+        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
+            0x000000
+        }
+    }
+
+    pub(crate) struct ShellView;
+
+    impl ShellView {
+        pub(crate) fn scrollbar_thumb_color(&self) -> u32 {
+            0x000000
+        }
+    }
 }
 
 #[path = "../src/shell/render/code_panel.rs"]
@@ -16,22 +32,59 @@ mod code_panel;
 mod scrollbars;
 
 use code_panel::{CodePanelSyntaxTheme, CodePanelWrapMode};
-use gpui::{Rgba, TextRun, px, rgb};
+use gpui::{FontWeight, Rgba, TextRun, px, rgb};
 use syntax_highlighting::{
     SyntaxHighlight, SyntaxHighlightCache, SyntaxLanguage, SyntaxToken, SyntaxTokenRole,
     highlight_syntax,
 };
 
 fn theme() -> CodePanelSyntaxTheme {
-    CodePanelSyntaxTheme {
-        plain_foreground: rgb(0x101010),
-        structural_foreground: rgb(0x202020),
-        heading_foreground: rgb(0x303030),
-        emphasis_foreground: rgb(0x404040),
-        strong_emphasis_foreground: rgb(0x505050),
-        code_foreground: rgb(0x606060),
-        link_foreground: rgb(0x707070),
-        escape_foreground: rgb(0x808080),
+    theme_with_plain_and_heading(rgb(0x101010), rgb(0x303030))
+}
+
+fn theme_with_plain_and_heading(
+    plain_foreground: Rgba,
+    heading_foreground: Rgba,
+) -> CodePanelSyntaxTheme {
+    CodePanelSyntaxTheme::from_role_foregrounds(
+        plain_foreground,
+        "Test Mono",
+        13.0,
+        FontWeight(400.0),
+        |role| role_color(role, heading_foreground),
+    )
+}
+
+fn role_color(role: SyntaxTokenRole, heading_foreground: Rgba) -> Rgba {
+    match role {
+        SyntaxTokenRole::MarkupHeadingMarker | SyntaxTokenRole::SyntaxSectionHeader => {
+            heading_foreground
+        }
+        SyntaxTokenRole::MarkupEmphasisDelimiter | SyntaxTokenRole::SyntaxString => rgb(0x404040),
+        SyntaxTokenRole::MarkupStrongDelimiter
+        | SyntaxTokenRole::SyntaxBoolean
+        | SyntaxTokenRole::SyntaxNull
+        | SyntaxTokenRole::SyntaxDateTime
+        | SyntaxTokenRole::SyntaxError => rgb(0x505050),
+        SyntaxTokenRole::MarkupCodeSpan
+        | SyntaxTokenRole::MarkupCodeBlock
+        | SyntaxTokenRole::SyntaxNumber => rgb(0x606060),
+        SyntaxTokenRole::MarkupLinkText
+        | SyntaxTokenRole::MarkupLinkDestination
+        | SyntaxTokenRole::SyntaxKey => rgb(0x707070),
+        SyntaxTokenRole::Escape | SyntaxTokenRole::SyntaxEscape => rgb(0x808080),
+        SyntaxTokenRole::MarkupQuoteMarker
+        | SyntaxTokenRole::MarkupListMarker
+        | SyntaxTokenRole::MarkupThematicBreak
+        | SyntaxTokenRole::MarkupFenceDelimiter
+        | SyntaxTokenRole::MarkupFenceInfo
+        | SyntaxTokenRole::MarkupCodeSpanDelimiter
+        | SyntaxTokenRole::MarkupImageMarker
+        | SyntaxTokenRole::MarkupPunctuation
+        | SyntaxTokenRole::MarkupHtml
+        | SyntaxTokenRole::SyntaxStructuralPunctuation
+        | SyntaxTokenRole::SyntaxComment
+        | SyntaxTokenRole::SyntaxAssignment => rgb(0x202020),
     }
 }
 
@@ -57,7 +110,7 @@ fn styled_line_parts_for_highlight(
     code_panel::code_panel_styled_text_parts(
         display_lines[0].display_text.as_str(),
         spans[0].as_slice(),
-        theme,
+        &theme,
     )
 }
 
@@ -105,9 +158,7 @@ fn unstyled_ranges_fall_back_to_plain_code_appearance() {
 #[test]
 fn theme_changes_affect_rendered_token_styles() {
     let first_theme = theme();
-    let mut second_theme = theme();
-    second_theme.heading_foreground = rgb(0xa0a0a0);
-    second_theme.plain_foreground = rgb(0xb0b0b0);
+    let second_theme = theme_with_plain_and_heading(rgb(0xb0b0b0), rgb(0xa0a0a0));
 
     let (_, first_runs) = styled_line_parts("# heading", Some("markdown"), first_theme);
     let (_, second_runs) = styled_line_parts("# heading", Some("markdown"), second_theme);
@@ -178,9 +229,7 @@ fn cached_highlight_token_roles_repaint_with_current_theme() {
     assert!(ready.highlight_request.is_none());
 
     let first_theme = theme();
-    let mut second_theme = theme();
-    second_theme.heading_foreground = rgb(0x111111);
-    second_theme.plain_foreground = rgb(0x222222);
+    let second_theme = theme_with_plain_and_heading(rgb(0x222222), rgb(0x111111));
 
     let (_, first_runs) =
         styled_line_parts_for_highlight("# heading", ready.highlight.as_ref(), first_theme);

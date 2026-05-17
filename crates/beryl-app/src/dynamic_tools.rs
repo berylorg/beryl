@@ -21,6 +21,8 @@ use crate::{
         beryl_lifecycle_dynamic_tool_specs,
         dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata,
     },
+    settings_dynamic_tools::beryl_settings_dynamic_tool_specs,
+    theme_dynamic_tools::beryl_theme_dynamic_tool_specs,
 };
 
 pub const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
@@ -43,6 +45,8 @@ pub fn beryl_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
     let mut tools = Vec::new();
     tools.extend(beryl_graph_dynamic_tool_specs());
     tools.extend(beryl_lifecycle_dynamic_tool_specs());
+    tools.extend(beryl_theme_dynamic_tool_specs());
+    tools.extend(beryl_settings_dynamic_tool_specs());
     tools.extend(beryl_diagnostic_dynamic_tool_specs());
     tools.extend(beryl_diagnostic_child_dynamic_tool_specs());
     assert_api_valid_dynamic_tool_namespaces(&tools);

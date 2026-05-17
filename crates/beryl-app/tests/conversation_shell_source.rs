@@ -7,6 +7,8 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
     let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
     let split_surface_body = rust_function_body(render_source, "fn render_split_surface");
     let measure_composer_body = rust_function_body(render_source, "fn measure_composer_input");
+    let uncached_measure_composer_body =
+        rust_function_body(render_source, "fn measure_uncached_composer_input");
     let composer_body = rust_function_body(render_source, "fn render_composer(");
     let composer_input_area_body =
         rust_function_body(render_source, "fn render_composer_input_area");
@@ -17,19 +19,53 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
     assert!(workspace_surface_body.contains("render_toolbar("));
     assert!(workspace_surface_body.contains("render_thread_strip("));
     assert!(workspace_surface_body.contains("render_split_surface("));
+    assert_eq!(
+        workspace_surface_body
+            .matches("measure_composer_input(")
+            .count(),
+        1
+    );
     assert!(toolbar_body.contains("activity_mode_button"));
     assert!(toolbar_body.contains("\"toggle-graph-overlay\""));
     assert!(toolbar_body.contains("\"toggle-checklist-sidebar\""));
     assert!(thread_strip_body.contains("\"thread-strip-new-thread\""));
     assert!(split_surface_body.contains("render_composer("));
-    assert!(measure_composer_body.contains("measure_geometry"));
-    assert!(measure_composer_body.contains("composer_input_measurement"));
+    assert!(!split_surface_body.contains("measure_composer_input("));
+    assert!(measure_composer_body.contains("ComposerInputMeasurementKey::new"));
+    assert!(measure_composer_body.contains("cached_composer_input_measurement"));
+    assert!(measure_composer_body.contains("let measurement_started = Instant::now();"));
+    assert!(measure_composer_body.contains("record_composer_measurement_cost"));
+    assert!(measure_composer_body.contains("composer_input_revision()"));
+    assert!(measure_composer_body.contains("composer_image_atom_revision()"));
+    assert!(measure_composer_body.contains("window.scale_factor()"));
+    assert!(measure_composer_body.contains("shell.style().revision()"));
+    assert!(measure_composer_body.contains("surface.transcript_edit_mode().is_some()"));
+    assert!(uncached_measure_composer_body.contains("measure_geometry"));
+    assert!(uncached_measure_composer_body.contains("composer_input_measurement"));
+    assert!(
+        uncached_measure_composer_body
+            .contains("input_render_height >= initial_measurement.text_content_height")
+    );
     assert!(composer_body.contains("render_composer_input_area"));
     assert!(!composer_body.contains("wrapped_visual_line_count_for_width"));
     assert!(!composer_body.contains("reveal_composer_cursor"));
     assert!(!composer_input_area_body.contains("overflow_y_scroll"));
     assert!(loaded_composer_body.contains("render_composer_input_area"));
     assert!(loaded_composer_body.contains("measure_geometry"));
+
+    for body in [
+        measure_composer_body,
+        uncached_measure_composer_body,
+        composer_body,
+        composer_input_area_body,
+        loaded_composer_body,
+    ] {
+        assert!(!body.contains("active_theme.lock"));
+        assert!(!body.contains("ThemeResolver"));
+        assert!(!body.contains("resolve_style("));
+        assert!(!body.contains("resolve_property("));
+        assert!(!body.contains("from_active_theme"));
+    }
 }
 
 #[test]
@@ -143,8 +179,9 @@ fn custom_button_renderers_use_themed_label_font_weight() {
     assert!(code_panel_button_body.contains(".font_weight(button_font_weight)"));
     assert!(!code_panel_button_body.contains("FontWeight(500.0)"));
     assert!(code_panel_header_body.contains("button_font_weight: self.state.button_font_weight"));
-    assert!(render_picker_body.contains("shell.secondary_button_theme().font_weight"));
-    assert!(distro_chip_body.contains(".font_weight(font_weight)"));
+    assert!(render_picker_body.contains("distro_chip("));
+    assert!(render_picker_body.contains("shell,"));
+    assert!(distro_chip_body.contains(".font_weight(secondary.font_weight)"));
     assert!(distro_chip_body.contains(".flex_none()"));
     assert!(!distro_chip_body.contains("FontWeight(500.0)"));
     assert!(rebind_button_body.contains("layout::BUTTON_OUTER_HEIGHT"));
@@ -205,6 +242,8 @@ fn transient_button_feedback_does_not_change_label_color_or_geometry() {
 fn conversation_input_changes_notify_shell_for_composer_remeasurement() {
     let shell_source = include_str!("../src/shell.rs");
     let handler_body = rust_function_body(shell_source, "fn handle_conversation_input_event");
+    let note_measurement_body =
+        rust_function_body(shell_source, "fn note_composer_input_measurement_changed");
 
     assert!(handler_body.contains("TextInputEvent::Changed(_)"));
 
@@ -219,6 +258,10 @@ fn conversation_input_changes_notify_shell_for_composer_remeasurement() {
     let changed_arm_body = &changed_arm_tail[..changed_arm_end];
 
     assert!(changed_arm_body.contains("cx.notify()"));
+    assert!(changed_arm_body.contains("note_composer_input_measurement_changed"));
+    assert!(handler_body.contains("TextInputEvent::SelectionChanged(_)"));
+    assert!(note_measurement_body.contains("composer_input_revision.wrapping_add(1)"));
+    assert!(note_measurement_body.contains("composer_image_atom_revision.wrapping_add(1)"));
     assert!(handler_body.contains("TextInputEvent::InlineAtomClicked"));
     assert!(handler_body.contains("open_composer_image_marker_menu"));
 }
@@ -580,6 +623,281 @@ fn context_compaction_uses_configured_completion_timeout_only_for_stream_wait() 
     assert!(worker_body.contains("session.compact_thread(&thread_id, request_timeout)"));
     assert!(worker_body.contains("let event_timeout = remaining.min"));
     assert!(!status_operation_source.contains("CONTEXT_COMPACTION_MIN_STREAM_TIMEOUT"));
+}
+
+#[test]
+fn active_theme_refresh_notifies_open_surfaces_without_reconstructing_workspace_state() {
+    let shell_source = include_str!("../src/shell.rs");
+    let dynamic_theme_source = include_str!("../src/shell/dynamic_theme.rs");
+    let apply_body = rust_function_body(shell_source, "fn apply_settings_window_changes");
+    let settings_event_body = rust_function_body(shell_source, "fn handle_settings_window_event");
+    let publish_body = rust_function_body(shell_source, "fn publish_active_theme_projection");
+    let refresh_body = rust_function_body(shell_source, "fn refresh_active_theme_surfaces");
+    let transcript_preview_body = rust_function_body(
+        shell_source,
+        "pub(super) fn preview_transcript_theme_candidate",
+    );
+    let transcript_stop_preview_body = rust_function_body(
+        shell_source,
+        "pub(super) fn stop_transcript_theme_candidate_preview",
+    );
+    let install_finish_body =
+        rust_function_body(shell_source, "fn finish_theme_candidate_install_update");
+    let restore_candidate_body = rust_function_body(
+        shell_source,
+        "fn restore_active_theme_candidate_preview_if_needed",
+    );
+    let reconcile_candidate_body =
+        rust_function_body(shell_source, "fn reconcile_theme_candidate_preview_scope");
+    let dynamic_preview_body =
+        rust_function_body(dynamic_theme_source, "fn handle_dynamic_theme_preview");
+    let dynamic_stop_preview_body =
+        rust_function_body(dynamic_theme_source, "fn stop_dynamic_theme_preview");
+    let dynamic_repository_snapshot_body = rust_function_body(
+        dynamic_theme_source,
+        "fn apply_dynamic_theme_repository_snapshot",
+    );
+
+    assert!(apply_body.contains("self.refresh_active_theme_surfaces(cx)"));
+    assert!(publish_body.contains("self.active_theme.lock()"));
+    assert!(publish_body.contains("ShellRenderThemeCache::new(projection)"));
+    assert!(!publish_body.contains("cx.notify"));
+    assert_eq!(
+        settings_event_body
+            .matches("self.publish_settings_active_theme_projection()")
+            .count(),
+        2
+    );
+    for body in [
+        transcript_preview_body,
+        transcript_stop_preview_body,
+        install_finish_body,
+        restore_candidate_body,
+        reconcile_candidate_body,
+        dynamic_preview_body,
+        dynamic_stop_preview_body,
+        dynamic_repository_snapshot_body,
+    ] {
+        assert!(body.contains("publish_active_theme_projection"));
+        assert!(!body.contains("active_theme.lock"));
+    }
+    assert!(dynamic_preview_body.contains("self.refresh_theme_candidate_surfaces(cx)"));
+    assert!(dynamic_stop_preview_body.contains("self.refresh_theme_candidate_surfaces(cx)"));
+    assert!(dynamic_repository_snapshot_body.contains("self.refresh_theme_candidate_surfaces(cx)"));
+    assert!(!dynamic_repository_snapshot_body.contains("cx.notify()"));
+    assert!(refresh_body.contains("self.notify_transcript_panel(cx)"));
+    assert!(refresh_body.contains("self.notify_checklist_sidebar_panel(cx)"));
+    assert!(refresh_body.contains("cx.refresh_windows()"));
+    assert!(refresh_body.contains("cx.notify()"));
+    assert!(!refresh_body.contains("LoadedWorkspaceState::new"));
+    assert!(!refresh_body.contains("ConversationSurfaceState::new"));
+    assert!(!refresh_body.contains("refresh_after_backend_reopen"));
+    assert!(!refresh_body.contains("SemanticGraph"));
+}
+
+#[test]
+fn settings_window_model_sync_does_not_force_option_sync() {
+    let shell_source = include_str!("../src/shell.rs");
+    let model_sync_body = rust_function_body(shell_source, "fn sync_settings_window_model");
+    let options_sync_body = rust_function_body(shell_source, "fn sync_settings_window_options");
+
+    assert!(model_sync_body.contains(".update_model("));
+    assert!(!model_sync_body.contains("sync_settings_window_options"));
+    assert!(!model_sync_body.contains(".update_options("));
+    assert!(options_sync_body.contains("window_options_for_sync"));
+    assert!(options_sync_body.contains(".update_options("));
+    assert!(options_sync_body.contains("record_window_options_synced"));
+}
+
+#[test]
+fn dynamic_theme_durable_tools_run_repository_io_on_worker() {
+    let shell_source = include_str!("../src/shell.rs");
+    let dynamic_theme_source = include_str!("../src/shell/dynamic_theme.rs");
+    let dynamic_theme_worker_source = include_str!("../src/shell/dynamic_theme_worker.rs");
+    let poll_body = rust_function_body(shell_source, "fn poll(");
+    let frame_work_body = rust_function_body(shell_source, "fn has_frame_poll_work");
+    let begin_body = rust_function_body(
+        dynamic_theme_source,
+        "fn begin_dynamic_theme_durable_tool_request",
+    );
+    let validate_body = rust_function_body(
+        dynamic_theme_source,
+        "fn validate_dynamic_theme_durable_operation",
+    );
+    let worker_body = rust_function_body(
+        dynamic_theme_worker_source,
+        "fn run_dynamic_theme_durable_operation",
+    );
+
+    assert!(poll_body.contains("self.poll_dynamic_theme_durable_updates(cx)"));
+    assert!(frame_work_body.contains("self.dynamic_theme_durable_receiver.is_some()"));
+    assert!(begin_body.contains("spawn_dynamic_theme_durable_worker(operation, store)"));
+    assert!(!begin_body.contains(".install_theme("));
+    assert!(!begin_body.contains(".update_theme("));
+    assert!(!begin_body.contains(".save_as_theme("));
+    assert!(!begin_body.contains(".activate_theme("));
+    assert!(!begin_body.contains(".load_theme_definition("));
+    assert!(!begin_body.contains(".load_or_default("));
+    assert!(validate_body.contains("BUILT_IN_INSTALLED_THEME_ID"));
+    assert!(worker_body.contains(".install_theme("));
+    assert!(worker_body.contains(".update_theme("));
+    assert!(worker_body.contains(".save_as_theme("));
+    assert!(worker_body.contains(".activate_theme("));
+    assert!(worker_body.contains(".load_theme_definition("));
+    assert!(worker_body.contains(".load_or_default("));
+    assert!(worker_body.contains("BUILT_IN_INSTALLED_THEME_ID"));
+}
+
+#[test]
+fn phase28_shell_splits_final_review_blocks_into_focused_modules() {
+    let shell_source = include_str!("../src/shell.rs");
+    let render_theme_source = include_str!("../src/shell/render_theme.rs");
+    let dynamic_theme_source = include_str!("../src/shell/dynamic_theme.rs");
+    let dynamic_settings_source = include_str!("../src/shell/dynamic_settings.rs");
+    let dynamic_theme_worker_source = include_str!("../src/shell/dynamic_theme_worker.rs");
+    let diagnostics_source = include_str!("../src/shell/diagnostics.rs");
+
+    assert!(shell_source.lines().count() < 15_000);
+    for module in [
+        "mod render_theme;",
+        "mod dynamic_theme;",
+        "mod dynamic_theme_worker;",
+        "mod dynamic_settings;",
+        "mod diagnostics;",
+    ] {
+        assert!(shell_source.contains(module), "missing {module}");
+    }
+
+    for removed in [
+        "struct ShellRenderThemeCache",
+        "enum DynamicThemeDurableOperation",
+        "fn handle_beryl_theme_immediate_tool_result",
+        "fn handle_beryl_settings_dynamic_tool_request",
+        "fn diagnostic_tool_snapshot",
+    ] {
+        assert!(
+            !shell_source.contains(removed),
+            "shell.rs still contains {removed}"
+        );
+    }
+
+    assert!(render_theme_source.contains("struct ShellRenderThemeCache"));
+    assert!(render_theme_source.contains("pub(super) struct ShellRenderStyleSnapshot"));
+    assert!(dynamic_theme_source.contains("fn handle_beryl_theme_immediate_tool_result"));
+    assert!(dynamic_theme_worker_source.contains("fn run_dynamic_theme_durable_operation"));
+    assert!(dynamic_settings_source.contains("fn handle_beryl_settings_dynamic_tool_request"));
+    assert!(diagnostics_source.contains("fn diagnostic_tool_snapshot"));
+}
+
+#[test]
+fn phase29_theme_settings_modules_are_split_into_focused_sources() {
+    let render_theme_source = include_str!("../src/shell/render_theme.rs");
+    let render_theme_button_source = include_str!("../src/shell/render_theme/button.rs");
+    let render_theme_frame_source = include_str!("../src/shell/render_theme/frame.rs");
+    let render_theme_role_style_source = include_str!("../src/shell/render_theme/role_style.rs");
+    let theme_editor_source = include_str!("../src/shell/settings/theme_editor.rs");
+    let theme_editor_draft_source = include_str!("../src/shell/settings/theme_editor/draft.rs");
+    let theme_editor_rows_source = include_str!("../src/shell/settings/theme_editor/rows.rs");
+    let theme_editor_helpers_source = include_str!("../src/shell/settings/theme_editor/helpers.rs");
+    let theme_dynamic_source = include_str!("../src/theme_dynamic_tools.rs");
+    let theme_dynamic_parser_source = include_str!("../src/theme_dynamic_tools/parser.rs");
+    let theme_dynamic_response_source = include_str!("../src/theme_dynamic_tools/response.rs");
+    let theme_dynamic_schema_output_source =
+        include_str!("../src/theme_dynamic_tools/schema_output.rs");
+    let settings_dynamic_source = include_str!("../src/settings_dynamic_tools.rs");
+    let settings_dynamic_parser_source = include_str!("../src/settings_dynamic_tools/parser.rs");
+    let settings_dynamic_response_source =
+        include_str!("../src/settings_dynamic_tools/response.rs");
+    let theme_store_source = include_str!("../src/appearance/theme/repository/store.rs");
+    let theme_store_io_source = include_str!("../src/appearance/theme/repository/store/io.rs");
+    let theme_store_snapshot_source =
+        include_str!("../src/appearance/theme/repository/store/snapshot.rs");
+
+    for (path, source) in [
+        ("shell/render_theme.rs", render_theme_source),
+        ("shell/render_theme/button.rs", render_theme_button_source),
+        ("shell/render_theme/frame.rs", render_theme_frame_source),
+        (
+            "shell/render_theme/role_style.rs",
+            render_theme_role_style_source,
+        ),
+        ("shell/settings/theme_editor.rs", theme_editor_source),
+        (
+            "shell/settings/theme_editor/draft.rs",
+            theme_editor_draft_source,
+        ),
+        (
+            "shell/settings/theme_editor/rows.rs",
+            theme_editor_rows_source,
+        ),
+        (
+            "shell/settings/theme_editor/helpers.rs",
+            theme_editor_helpers_source,
+        ),
+        ("theme_dynamic_tools.rs", theme_dynamic_source),
+        ("theme_dynamic_tools/parser.rs", theme_dynamic_parser_source),
+        (
+            "theme_dynamic_tools/response.rs",
+            theme_dynamic_response_source,
+        ),
+        (
+            "theme_dynamic_tools/schema_output.rs",
+            theme_dynamic_schema_output_source,
+        ),
+        ("settings_dynamic_tools.rs", settings_dynamic_source),
+        (
+            "settings_dynamic_tools/parser.rs",
+            settings_dynamic_parser_source,
+        ),
+        (
+            "settings_dynamic_tools/response.rs",
+            settings_dynamic_response_source,
+        ),
+        ("appearance/theme/repository/store.rs", theme_store_source),
+        (
+            "appearance/theme/repository/store/io.rs",
+            theme_store_io_source,
+        ),
+        (
+            "appearance/theme/repository/store/snapshot.rs",
+            theme_store_snapshot_source,
+        ),
+    ] {
+        assert!(
+            source.lines().count() < 500,
+            "{path} should stay below the rough split threshold"
+        );
+    }
+
+    assert!(!render_theme_source.contains("pub(super) struct ShellRenderFrame<'a>"));
+    assert!(!render_theme_source.contains("struct ShellRoleStyle"));
+    assert!(!render_theme_source.contains("struct ChromeButtonTheme"));
+    assert!(render_theme_frame_source.contains("pub(in crate::shell) struct ShellRenderFrame<'a>"));
+    assert!(render_theme_role_style_source.contains("struct ShellRoleStyle"));
+    assert!(render_theme_button_source.contains("struct ChromeButtonTheme"));
+
+    assert!(!theme_editor_source.contains("fn candidate_property_source"));
+    assert!(!theme_editor_source.contains("fn property_row("));
+    assert!(!theme_editor_source.contains("enum PropertySourceChoice"));
+    assert!(theme_editor_draft_source.contains("fn candidate_property_source"));
+    assert!(theme_editor_rows_source.contains("fn property_row("));
+    assert!(theme_editor_helpers_source.contains("enum PropertySourceChoice"));
+
+    assert!(!theme_dynamic_source.contains("struct SaveThemeAsArguments"));
+    assert!(!theme_dynamic_source.contains("fn theme_repository_value"));
+    assert!(theme_dynamic_parser_source.contains("struct SaveThemeAsArguments"));
+    assert!(theme_dynamic_response_source.contains("fn theme_repository_value"));
+    assert!(theme_dynamic_schema_output_source.contains("fn theme_schema_value"));
+
+    assert!(!settings_dynamic_source.contains("struct SettingsUpdateArguments"));
+    assert!(!settings_dynamic_source.contains("fn gui_settings_snapshot_value"));
+    assert!(settings_dynamic_parser_source.contains("struct SettingsUpdateArguments"));
+    assert!(settings_dynamic_response_source.contains("fn gui_settings_snapshot_value"));
+
+    assert!(!theme_store_source.contains("fn read_manifest"));
+    assert!(!theme_store_source.contains("fn snapshot_from_loaded"));
+    assert!(theme_store_io_source.contains("fn read_manifest"));
+    assert!(theme_store_snapshot_source.contains("fn snapshot_from_loaded"));
 }
 
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {

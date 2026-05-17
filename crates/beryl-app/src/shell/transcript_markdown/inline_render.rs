@@ -23,6 +23,8 @@ pub(crate) struct InlineRenderFragment {
 pub(crate) struct InlineRenderStyle {
     pub(crate) role: InlineRenderRole,
     pub(crate) link: bool,
+    pub(crate) emphasis: bool,
+    pub(crate) strong: bool,
     pub(crate) fallback: bool,
     pub(crate) atom: bool,
 }
@@ -40,6 +42,8 @@ impl Default for InlineRenderStyle {
         Self {
             role: InlineRenderRole::Conversation,
             link: false,
+            emphasis: false,
+            strong: false,
             fallback: false,
             atom: false,
         }
@@ -68,6 +72,8 @@ impl StyleState {
                 InlineRenderRole::Conversation
             },
             link: self.link,
+            emphasis: !self.fallback && self.emphasis && !self.strong,
+            strong: !self.fallback && self.strong,
             fallback: self.fallback,
             atom: false,
         }
@@ -262,6 +268,8 @@ fn push_inline(
             let style = InlineRenderStyle {
                 role: InlineRenderRole::Code,
                 link: state.link,
+                emphasis: state.emphasis && !state.strong,
+                strong: state.strong,
                 fallback: false,
                 atom: false,
             };

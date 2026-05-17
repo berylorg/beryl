@@ -1,9 +1,9 @@
 use gpui::{AnyElement, CursorStyle, Pixels, Rgba, StyledText, div, prelude::*, px};
 
 use super::{
-    CODE_FONT_FAMILY, CODE_PANEL_ESTIMATED_LINE_HEIGHT, CodePanelDisplayLine, CodePanelDisplaySpan,
-    CodePanelDisplaySyntaxSpans, CodePanelScrollChrome, CodePanelSelectableLine,
-    CodePanelSelection, CodePanelSyntaxTheme, CodePanelWrapMode, code_panel_styled_text_parts,
+    CodePanelDisplayLine, CodePanelDisplaySpan, CodePanelDisplaySyntaxSpans, CodePanelScrollChrome,
+    CodePanelSelectableLine, CodePanelSelection, CodePanelSyntaxTheme, CodePanelWrapMode,
+    code_panel_styled_text_parts,
     scrolling::{ScrollbarAxes, render_scrollable_code_panel},
 };
 
@@ -120,7 +120,10 @@ fn render_code_panel_text(
         .gap_0();
 
     if matches!(wrap_mode, CodePanelWrapMode::NoWrap) && !max_display_text.is_empty() {
-        text = text.child(render_code_panel_width_sentinel(max_display_text));
+        text = text.child(render_code_panel_width_sentinel(
+            max_display_text,
+            &syntax_theme,
+        ));
     }
     if display_window.top_spacer_height > Pixels::ZERO {
         text = text.child(
@@ -139,7 +142,7 @@ fn render_code_panel_text(
             syntax_spans.line_spans(offset),
             wrap_mode,
             foreground,
-            syntax_theme,
+            &syntax_theme,
             selection.clone(),
         )
     }));
@@ -162,7 +165,7 @@ fn render_code_panel_line(
     syntax_spans: Vec<CodePanelDisplaySpan>,
     wrap_mode: CodePanelWrapMode,
     foreground: Rgba,
-    syntax_theme: CodePanelSyntaxTheme,
+    syntax_theme: &CodePanelSyntaxTheme,
     selection: Option<CodePanelSelection>,
 ) -> AnyElement {
     let display_text_len = line.display_text.len();
@@ -186,9 +189,10 @@ fn render_code_panel_line(
     let line = div()
         .w_full()
         .min_w(px(0.0))
-        .text_sm()
-        .line_height(px(CODE_PANEL_ESTIMATED_LINE_HEIGHT))
-        .font_family(CODE_FONT_FAMILY)
+        .text_size(px(syntax_theme.font_size()))
+        .line_height(px(syntax_theme.line_height()))
+        .font_family(syntax_theme.font_family().to_string())
+        .font_weight(syntax_theme.font_weight())
         .text_color(foreground)
         .child(styled_text);
     let line = match wrap_mode {
@@ -208,14 +212,18 @@ fn render_code_panel_line(
     .into_any_element()
 }
 
-fn render_code_panel_width_sentinel(max_display_text: String) -> impl IntoElement {
+fn render_code_panel_width_sentinel(
+    max_display_text: String,
+    syntax_theme: &CodePanelSyntaxTheme,
+) -> impl IntoElement {
     div()
         .flex_none()
         .h(px(0.0))
         .overflow_hidden()
-        .text_sm()
-        .line_height(px(CODE_PANEL_ESTIMATED_LINE_HEIGHT))
-        .font_family(CODE_FONT_FAMILY)
+        .text_size(px(syntax_theme.font_size()))
+        .line_height(px(syntax_theme.line_height()))
+        .font_family(syntax_theme.font_family().to_string())
+        .font_weight(syntax_theme.font_weight())
         .whitespace_nowrap()
         .child(max_display_text)
 }

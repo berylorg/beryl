@@ -12,13 +12,16 @@ pub(super) fn code_panel_projection_entry_estimate(
 ) -> usize {
     owner_id
         .len()
-        .saturating_add(entry.latest_source.len())
+        .saturating_add(entry.latest_revision.estimated_retained_bytes())
         .saturating_add(
             entry
-                .in_flight
+                .displayed_revision
                 .as_ref()
-                .map_or(0, |in_flight| in_flight.source.len()),
+                .map_or(0, |revision| revision.estimated_retained_bytes()),
         )
+        .saturating_add(entry.in_flight.as_ref().map_or(0, |in_flight| {
+            in_flight.source_revision.estimated_retained_bytes()
+        }))
         .saturating_add(
             entry
                 .displayed
@@ -34,17 +37,17 @@ pub(super) fn code_panel_projection_completed_entry_estimate(
 ) -> usize {
     owner_id
         .len()
-        .saturating_add(entry.latest_source.len())
+        .saturating_add(entry.latest_revision.estimated_retained_bytes())
         .saturating_add(projection.estimated_retained_bytes())
 }
 
 pub(super) fn code_panel_projection_completed_entry_estimate_for_projection(
     owner_id: &str,
-    source: &str,
+    source_revision: &super::request::CodePanelSourceRevision,
     projection: &CodePanelDisplayProjection,
 ) -> usize {
     owner_id
         .len()
-        .saturating_add(source.len())
+        .saturating_add(source_revision.estimated_retained_bytes())
         .saturating_add(projection.estimated_retained_bytes())
 }

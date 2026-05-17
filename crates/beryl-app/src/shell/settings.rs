@@ -9,14 +9,16 @@ use std::{
 };
 
 use gpui_settings_window::{
-    RgbColor, SettingsFieldId, SettingsRowActionId, SettingsSectionId, SettingsWindowModel,
-    SettingsWindowOptions, SettingsWindowTheme,
+    RgbColor, SettingsFieldId, SettingsPageActionId, SettingsPageId, SettingsPageSplitItemId,
+    SettingsRowActionId, SettingsSectionId, SettingsWindowModel, SettingsWindowOptions,
 };
 
-use crate::{AppearanceSettings, AppearanceSettingsStore, GuiPreferences, GuiPreferencesStore};
+use crate::{
+    ActiveThemeProjection, AppearanceSettings, GuiPreferences, GuiPreferencesStore,
+    InstalledThemeId, StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeRepositorySnapshot,
+    ThemeRepositoryStore,
+};
 
-#[path = "settings/appearance.rs"]
-mod appearance;
 #[path = "settings/developer_instructions.rs"]
 mod developer_instructions;
 #[path = "settings/notifications.rs"]
@@ -25,11 +27,11 @@ mod notifications;
 mod operations;
 #[path = "settings/theme.rs"]
 mod theme;
+#[path = "settings/theme_editor.rs"]
+mod theme_editor;
+#[path = "settings/themes.rs"]
+mod themes;
 
-use appearance::{
-    AppearanceSettingsDraft, default_section_id, has_section_id, settings_color_values,
-    settings_sections,
-};
 use developer_instructions::{AgentSettingsDraft, developer_instructions_field_id};
 use notifications::{
     NotificationSettingsDraft, NotificationSettingsRowAction, end_turn_sound_field_id,
@@ -37,15 +39,17 @@ use notifications::{
 use operations::OperationSettingsDraft;
 use theme::settings_window_theme;
 
-pub(super) type SharedAppearanceSettings = Arc<Mutex<AppearanceSettings>>;
+pub(super) type SharedActiveThemeProjection = Arc<Mutex<ActiveThemeProjection>>;
 pub(super) type SharedGuiPreferences = Arc<Mutex<GuiPreferences>>;
 
 const SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT: usize = 1024 * 1024;
 
-pub(super) fn load_initial_appearance_settings(
-    store: &AppearanceSettingsStore,
-) -> AppearanceSettings {
-    store.load_or_default().unwrap_or_default()
+pub(super) fn load_initial_theme_repository_snapshot(
+    store: Option<&ThemeRepositoryStore>,
+) -> ThemeRepositorySnapshot {
+    store
+        .and_then(|store| store.load_or_default().ok())
+        .unwrap_or_else(ThemeRepositorySnapshot::built_in)
 }
 
 pub(super) fn load_initial_gui_preferences(store: &GuiPreferencesStore) -> GuiPreferences {
@@ -54,24 +58,36 @@ pub(super) fn load_initial_gui_preferences(store: &GuiPreferencesStore) -> GuiPr
 
 #[derive(Clone)]
 struct SettingsSaveSnapshot {
-    appearance: AppearanceSettings,
     preferences: GuiPreferences,
 }
 
+#[derive(Clone)]
+struct SettingsWindowOptionsCache {
+    active_style_revision: u64,
+    options: SettingsWindowOptions,
+}
+
 pub(super) struct SettingsState {
-    active_appearance: SharedAppearanceSettings,
-    appearance_store: Option<AppearanceSettingsStore>,
+    active_theme: SharedActiveThemeProjection,
     active_preferences: SharedGuiPreferences,
     preferences_store: Option<GuiPreferencesStore>,
+    theme_repository_store: Option<ThemeRepositoryStore>,
+    theme_repository_snapshot: ThemeRepositorySnapshot,
     store_unavailable_message: Option<String>,
-    appearance_draft: AppearanceSettingsDraft,
+    theme_editor_draft: theme_editor::ThemeEditorDraft,
+    theme_draft_modified: bool,
+    selected_theme_role_id: StyleRoleId,
+    theme_save_as_name: String,
     notification_draft: NotificationSettingsDraft,
     agent_draft: AgentSettingsDraft,
     operation_draft: OperationSettingsDraft,
     selected_section_id: SettingsSectionId,
+    selected_page_id: SettingsPageId,
     errors: HashMap<SettingsFieldId, String>,
     save_receiver: Option<Receiver<Result<(), String>>>,
     queued_save: Option<SettingsSaveSnapshot>,
+    window_options_cache: Option<SettingsWindowOptionsCache>,
+    last_synced_window_options: Option<SettingsWindowOptions>,
 }
 
 pub(super) enum SettingsSavePoll {
@@ -85,90 +101,149 @@ pub(super) enum SettingsSavePoll {
 pub(super) enum SettingsRowActionOutcome {
     PromptForEndTurnSoundPath,
     Updated,
+    ActiveThemeChanged,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SettingsPageActionOutcome {
+    Updated,
+    ActiveThemeChanged,
 }
 
 impl SettingsState {
+    #[allow(dead_code)]
     pub(super) fn new_with_stores(
-        active_appearance: SharedAppearanceSettings,
-        appearance_store: AppearanceSettingsStore,
+        active_theme: SharedActiveThemeProjection,
         active_preferences: SharedGuiPreferences,
         preferences_store: GuiPreferencesStore,
     ) -> Self {
         Self::new_with_optional_stores(
-            active_appearance,
-            Some(appearance_store),
+            active_theme,
             active_preferences,
             Some(preferences_store),
+            None,
+            ThemeRepositorySnapshot::built_in(),
+            None,
+        )
+    }
+
+    pub(super) fn new_with_theme_repository(
+        active_theme: SharedActiveThemeProjection,
+        active_preferences: SharedGuiPreferences,
+        preferences_store: GuiPreferencesStore,
+        theme_repository_store: ThemeRepositoryStore,
+        theme_repository_snapshot: ThemeRepositorySnapshot,
+    ) -> Self {
+        Self::new_with_optional_stores(
+            active_theme,
+            active_preferences,
+            Some(preferences_store),
+            Some(theme_repository_store),
+            theme_repository_snapshot,
             None,
         )
     }
 
     pub(super) fn new_without_stores(
-        active_appearance: SharedAppearanceSettings,
+        active_theme: SharedActiveThemeProjection,
         active_preferences: SharedGuiPreferences,
         store_unavailable_message: String,
     ) -> Self {
         Self::new_with_optional_stores(
-            active_appearance,
-            None,
+            active_theme,
             active_preferences,
             None,
+            None,
+            ThemeRepositorySnapshot::built_in(),
             Some(store_unavailable_message),
         )
     }
 
     fn new_with_optional_stores(
-        active_appearance: SharedAppearanceSettings,
-        appearance_store: Option<AppearanceSettingsStore>,
+        active_theme: SharedActiveThemeProjection,
         active_preferences: SharedGuiPreferences,
         preferences_store: Option<GuiPreferencesStore>,
+        theme_repository_store: Option<ThemeRepositoryStore>,
+        theme_repository_snapshot: ThemeRepositorySnapshot,
         store_unavailable_message: Option<String>,
     ) -> Self {
-        let appearance_settings = active_appearance
-            .lock()
-            .map(|settings| settings.clone())
-            .unwrap_or_default();
+        let appearance_settings =
+            AppearanceSettings::from_active_theme(theme_repository_snapshot.active_projection());
+        let theme_editor_draft = theme_editor::ThemeEditorDraft::from_definition(
+            theme_repository_snapshot.active_definition(),
+        );
         let gui_preferences = active_preferences
             .lock()
             .map(|preferences| preferences.clone())
             .unwrap_or_default();
 
         Self {
-            active_appearance,
-            appearance_store,
+            active_theme,
             active_preferences,
             preferences_store,
+            theme_repository_store,
+            theme_repository_snapshot,
             store_unavailable_message,
-            appearance_draft: AppearanceSettingsDraft::from_settings(&appearance_settings),
+            theme_editor_draft,
+            theme_draft_modified: false,
+            selected_theme_role_id: theme_editor::default_role_id(),
+            theme_save_as_name: default_save_as_name(&appearance_settings),
             notification_draft: NotificationSettingsDraft::from_preferences(
                 &gui_preferences.notifications,
             ),
             agent_draft: AgentSettingsDraft::from_preferences(&gui_preferences.agent),
             operation_draft: OperationSettingsDraft::from_preferences(&gui_preferences.operations),
-            selected_section_id: default_section_id(),
+            selected_section_id: themes::section_id(),
+            selected_page_id: themes::root_page_id(),
             errors: HashMap::new(),
             save_receiver: None,
             queued_save: None,
+            window_options_cache: None,
+            last_synced_window_options: None,
         }
     }
 
-    pub(super) fn window_options(&self) -> SettingsWindowOptions {
-        SettingsWindowOptions::new("Beryl Settings")
-            .with_window_size(720.0, 760.0)
-            .with_min_window_size(520.0, 420.0)
-            .with_saved_color_swatches(self.saved_color_swatches())
-            .with_text_input_undo_byte_limit(SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT)
-            .with_visual_theme(self.visual_theme())
+    pub(super) fn window_options(&mut self) -> SettingsWindowOptions {
+        let active = self.active_theme_snapshot();
+        let active_style_revision = active.style_revision();
+        if let Some(cache) = &self.window_options_cache
+            && cache.active_style_revision == active_style_revision
+        {
+            return cache.options.clone();
+        }
+
+        let options = Self::window_options_for_active_theme(&active);
+        self.window_options_cache = Some(SettingsWindowOptionsCache {
+            active_style_revision,
+            options: options.clone(),
+        });
+        options
+    }
+
+    pub(super) fn window_options_for_sync(&mut self) -> Option<SettingsWindowOptions> {
+        let options = self.window_options();
+        if self.last_synced_window_options.as_ref() == Some(&options) {
+            None
+        } else {
+            Some(options)
+        }
+    }
+
+    pub(super) fn record_window_options_synced(&mut self, options: SettingsWindowOptions) {
+        self.last_synced_window_options = Some(options);
     }
 
     pub(super) fn reset_draft_from_active(&mut self) {
-        if let Ok(settings) = self
-            .active_appearance
-            .lock()
-            .map(|settings| settings.clone())
-        {
-            self.appearance_draft = AppearanceSettingsDraft::from_settings(&settings);
-        }
+        self.theme_editor_draft = theme_editor::ThemeEditorDraft::from_definition(
+            self.theme_repository_snapshot.active_definition(),
+        );
+        self.theme_draft_modified = false;
+        self.selected_theme_role_id =
+            theme_editor::validated_role_id(self.selected_theme_role_id.clone());
+        let settings = AppearanceSettings::from_active_theme(
+            self.theme_repository_snapshot.active_projection(),
+        );
+        self.theme_save_as_name = default_save_as_name(&settings);
         if let Ok(preferences) = self
             .active_preferences
             .lock()
@@ -183,23 +258,75 @@ impl SettingsState {
         self.errors.clear();
     }
 
+    pub(super) fn active_preferences_snapshot(&self) -> GuiPreferences {
+        self.active_preferences
+            .lock()
+            .map(|preferences| preferences.clone())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn apply_preferences_from_external(
+        &mut self,
+        next: GuiPreferences,
+    ) -> Result<bool, String> {
+        if self.preference_draft_modified() {
+            return Err(
+                "The settings window has unapplied settings drafts. Apply, cancel, or reset them before CAS settings writes."
+                    .to_string(),
+            );
+        }
+        let current = self.active_preferences_snapshot();
+        let changed = next != current;
+        if !changed {
+            return Ok(false);
+        }
+        self.commit_gui_preferences(next.clone());
+        Ok(changed)
+    }
+
     pub(super) fn select_section(&mut self, section_id: SettingsSectionId) {
-        if has_section_id(&section_id)
+        if themes::has_section_id(&section_id)
             || notifications::has_section_id(&section_id)
             || developer_instructions::has_section_id(&section_id)
             || operations::has_section_id(&section_id)
         {
-            self.selected_section_id = section_id;
+            self.selected_section_id = section_id.clone();
+            self.selected_page_id = SettingsPageId::from(section_id.as_str().to_string());
+        }
+    }
+
+    pub(super) fn select_page(&mut self, page_id: SettingsPageId) {
+        if themes::has_page_id(&page_id) {
+            self.selected_section_id = themes::section_id();
+            self.selected_page_id = page_id;
+        }
+    }
+
+    pub(super) fn select_theme_editor_role(&mut self, item_id: SettingsPageSplitItemId) {
+        if let Some(role_id) = theme_editor::role_id_from_split_item(&item_id) {
+            self.selected_section_id = themes::section_id();
+            self.selected_page_id = themes::editor_page_id();
+            self.selected_theme_role_id = role_id;
         }
     }
 
     pub(super) fn set_field_value(&mut self, field_id: &SettingsFieldId, value: String) {
+        if *field_id == themes::save_as_name_field_id() {
+            self.theme_save_as_name = value;
+            self.errors.remove(field_id);
+            return;
+        }
         if self
-            .appearance_draft
+            .theme_editor_draft
             .set_field_value(field_id, value.clone())
-            || self
-                .notification_draft
-                .set_field_value(field_id, value.clone())
+        {
+            self.theme_draft_modified = self.compute_theme_draft_modified();
+            self.errors.remove(field_id);
+            return;
+        }
+        if self
+            .notification_draft
+            .set_field_value(field_id, value.clone())
             || self.agent_draft.set_field_value(field_id, value.clone())
             || self.operation_draft.set_field_value(field_id, value)
         {
@@ -249,6 +376,9 @@ impl SettingsState {
         field_id: &SettingsFieldId,
         action_id: &SettingsRowActionId,
     ) -> Option<SettingsRowActionOutcome> {
+        if let Some(action) = themes::row_action(field_id, action_id) {
+            return self.handle_theme_row_action(action);
+        }
         match notifications::row_action(field_id, action_id)? {
             NotificationSettingsRowAction::ChooseEndTurnSound => {
                 Some(SettingsRowActionOutcome::PromptForEndTurnSoundPath)
@@ -257,6 +387,16 @@ impl SettingsState {
                 self.clear_notification_end_turn_sound_path();
                 Some(SettingsRowActionOutcome::Updated)
             }
+        }
+    }
+
+    pub(super) fn handle_page_action(
+        &mut self,
+        action_id: &SettingsPageActionId,
+    ) -> Option<SettingsPageActionOutcome> {
+        match themes::page_action(action_id)? {
+            themes::ThemePageAction::Save => Some(self.save_active_theme()),
+            themes::ThemePageAction::SaveAs => Some(self.save_active_theme_as()),
         }
     }
 
@@ -279,7 +419,17 @@ impl SettingsState {
     }
 
     pub(super) fn model(&self) -> SettingsWindowModel {
-        let mut sections = settings_sections(&self.appearance_draft, &self.errors);
+        let theme_editor_model = (self.selected_page_id == themes::editor_page_id()).then(|| {
+            self.theme_editor_draft
+                .page_model(&self.selected_theme_role_id, &self.errors)
+        });
+        let mut sections = vec![themes::settings_section(
+            &self.theme_repository_snapshot,
+            theme_editor_model,
+            &self.errors,
+            self.theme_draft_modified(),
+            &self.theme_save_as_name,
+        )];
         sections.push(operations::settings_section(
             &self.operation_draft,
             &self.errors,
@@ -293,19 +443,16 @@ impl SettingsState {
             &self.errors,
         ));
 
-        SettingsWindowModel::with_selected_section(sections, self.selected_section_id.clone())
-            .expect("Beryl settings model uses static unique sections and fields")
+        SettingsWindowModel::with_selected_page(
+            sections,
+            self.selected_section_id.clone(),
+            self.selected_page_id.clone(),
+        )
+        .expect("Beryl settings model uses static unique sections and fields")
     }
 
     pub(super) fn apply(&mut self) -> bool {
         let mut errors = HashMap::new();
-        let appearance_settings = match self.appearance_draft.to_settings() {
-            Ok(settings) => Some(settings),
-            Err(appearance_errors) => {
-                errors.extend(appearance_errors);
-                None
-            }
-        };
         let notification_preferences = match self.notification_draft.to_preferences() {
             Ok(preferences) => Some(preferences),
             Err(notification_errors) => {
@@ -333,8 +480,6 @@ impl SettingsState {
             return false;
         }
 
-        let appearance_settings =
-            appearance_settings.expect("appearance settings are present when validation passes");
         let notification_preferences = notification_preferences
             .expect("notification preferences are present when validation passes");
         let agent_preferences =
@@ -347,7 +492,16 @@ impl SettingsState {
             operations: operation_preferences,
         };
 
-        self.appearance_draft = AppearanceSettingsDraft::from_settings(&appearance_settings);
+        self.commit_gui_preferences(gui_preferences);
+
+        true
+    }
+
+    pub(super) fn has_pending_save(&self) -> bool {
+        self.save_receiver.is_some() || self.queued_save.is_some()
+    }
+
+    fn commit_gui_preferences(&mut self, gui_preferences: GuiPreferences) {
         self.notification_draft =
             NotificationSettingsDraft::from_preferences(&gui_preferences.notifications);
         self.agent_draft = AgentSettingsDraft::from_preferences(&gui_preferences.agent);
@@ -355,23 +509,13 @@ impl SettingsState {
             OperationSettingsDraft::from_preferences(&gui_preferences.operations);
         self.errors.clear();
 
-        if let Ok(mut active) = self.active_appearance.lock() {
-            *active = appearance_settings.clone();
-        }
         if let Ok(mut active) = self.active_preferences.lock() {
             *active = gui_preferences.clone();
         }
 
         self.enqueue_save(SettingsSaveSnapshot {
-            appearance: appearance_settings,
             preferences: gui_preferences,
         });
-
-        true
-    }
-
-    pub(super) fn has_pending_save(&self) -> bool {
-        self.save_receiver.is_some() || self.queued_save.is_some()
     }
 
     fn enqueue_save(&mut self, snapshot: SettingsSaveSnapshot) {
@@ -385,10 +529,7 @@ impl SettingsState {
 
     fn spawn_save(&mut self, snapshot: SettingsSaveSnapshot) {
         let (sender, receiver) = mpsc::channel();
-        let (Some(appearance_store), Some(preferences_store)) = (
-            self.appearance_store.clone(),
-            self.preferences_store.clone(),
-        ) else {
+        let Some(preferences_store) = self.preferences_store.clone() else {
             let message = self.store_unavailable_message.clone().unwrap_or_else(|| {
                 "Beryl settings storage is unavailable for the configured home directory."
                     .to_string()
@@ -399,20 +540,9 @@ impl SettingsState {
         };
 
         thread::spawn(move || {
-            let appearance_result = appearance_store
-                .save(&snapshot.appearance)
-                .map_err(|error| error.to_string());
-            let preferences_result = preferences_store
+            let result = preferences_store
                 .save(&snapshot.preferences)
                 .map_err(|error| error.to_string());
-            let result = match (appearance_result, preferences_result) {
-                (Ok(()), Ok(())) => Ok(()),
-                (Err(appearance_error), Ok(())) => Err(appearance_error),
-                (Ok(()), Err(preferences_error)) => Err(preferences_error),
-                (Err(appearance_error), Err(preferences_error)) => {
-                    Err(format!("{appearance_error}; {preferences_error}"))
-                }
-            };
             let _ = sender.send(result);
         });
         self.save_receiver = Some(receiver);
@@ -451,31 +581,55 @@ impl SettingsState {
         }
     }
 
-    pub(super) fn visual_theme(&self) -> SettingsWindowTheme {
-        let active = self
-            .active_appearance
-            .lock()
-            .map(|settings| settings.clone())
-            .unwrap_or_default();
-        settings_window_theme(&active)
+    pub(super) fn theme_repository_snapshot(&self) -> &ThemeRepositorySnapshot {
+        &self.theme_repository_snapshot
     }
 
-    fn saved_color_swatches(&self) -> Vec<RgbColor> {
-        let active = self
-            .active_appearance
+    pub(super) fn record_theme_repository_snapshot(&mut self, snapshot: ThemeRepositorySnapshot) {
+        self.theme_repository_snapshot = snapshot;
+        self.theme_draft_modified = self.compute_theme_draft_modified();
+    }
+
+    pub(super) fn apply_theme_repository_snapshot_from_external(
+        &mut self,
+        snapshot: ThemeRepositorySnapshot,
+    ) {
+        self.apply_theme_repository_snapshot(snapshot);
+    }
+
+    pub(super) fn theme_draft_modified_for_external_change(&self) -> bool {
+        self.theme_draft_modified()
+    }
+
+    fn active_theme_snapshot(&self) -> ActiveThemeProjection {
+        self.active_theme
             .lock()
-            .map(|settings| settings.clone())
-            .unwrap_or_default();
-        let defaults = AppearanceSettings::default();
+            .map(|theme| theme.clone())
+            .unwrap_or_else(|_| self.theme_repository_snapshot.active_projection().clone())
+    }
+
+    fn window_options_for_active_theme(active: &ActiveThemeProjection) -> SettingsWindowOptions {
+        SettingsWindowOptions::new("Beryl Settings")
+            .with_saved_color_swatches(Self::saved_color_swatches_for_active_theme(active))
+            .with_text_input_undo_byte_limit(SETTINGS_TEXT_INPUT_UNDO_BYTE_LIMIT)
+            .with_visual_theme(settings_window_theme(active))
+    }
+
+    fn saved_color_swatches_for_active_theme(active: &ActiveThemeProjection) -> Vec<RgbColor> {
+        let built_in = ActiveThemeProjection::built_in();
         let mut seen = BTreeSet::new();
         let mut colors = Vec::new();
 
-        for settings in [&active, &defaults] {
-            for value in settings_color_values(settings) {
-                if let Some(color) = RgbColor::parse(&value) {
-                    let canonical = color.to_hex();
-                    if seen.insert(canonical) {
-                        colors.push(color);
+        for theme in [active, &built_in] {
+            for style in theme.default_styles().values() {
+                for value in style.properties().values() {
+                    if let StylePropertyValue::Color(value) = value
+                        && let Some(color) = RgbColor::parse(value)
+                    {
+                        let canonical = color.to_hex();
+                        if seen.insert(canonical) {
+                            colors.push(color);
+                        }
                     }
                 }
             }
@@ -490,5 +644,153 @@ impl SettingsState {
         self.notification_draft
             .set_end_turn_sound_path(String::new());
         self.errors.remove(&end_turn_sound_field_id());
+    }
+
+    fn handle_theme_row_action(
+        &mut self,
+        action: themes::ThemeRowAction,
+    ) -> Option<SettingsRowActionOutcome> {
+        match action {
+            themes::ThemeRowAction::Activate(id) => self
+                .activate_theme(&id)
+                .map(|()| SettingsRowActionOutcome::ActiveThemeChanged),
+            themes::ThemeRowAction::Save => {
+                Some(row_outcome_from_page_outcome(self.save_active_theme()))
+            }
+            themes::ThemeRowAction::SaveAs => {
+                Some(row_outcome_from_page_outcome(self.save_active_theme_as()))
+            }
+        }
+    }
+
+    fn activate_theme(&mut self, id: &InstalledThemeId) -> Option<()> {
+        if self.theme_draft_modified() {
+            self.errors.insert(
+                themes::save_as_name_field_id(),
+                "Save or discard staged theme changes before activating another theme.".to_string(),
+            );
+            return None;
+        }
+        let store = self.theme_repository_store.as_ref()?;
+        let snapshot = store.activate_theme(id).ok()?;
+        self.apply_theme_repository_snapshot(snapshot);
+        Some(())
+    }
+
+    fn save_active_theme(&mut self) -> SettingsPageActionOutcome {
+        let Some(store) = self.theme_repository_store.clone() else {
+            self.errors.insert(
+                themes::save_as_name_field_id(),
+                "Beryl theme storage is unavailable for the configured home directory.".to_string(),
+            );
+            return SettingsPageActionOutcome::Updated;
+        };
+        let active_id = self.theme_repository_snapshot.active_theme_id().clone();
+        let definition = match self.theme_editor_definition() {
+            Some(definition) => definition,
+            None => return SettingsPageActionOutcome::Updated,
+        };
+        match store.update_theme(&active_id, definition) {
+            Ok(snapshot) => {
+                self.apply_theme_repository_snapshot(snapshot);
+                SettingsPageActionOutcome::ActiveThemeChanged
+            }
+            Err(error) => {
+                self.errors
+                    .insert(themes::save_as_name_field_id(), error.to_string());
+                SettingsPageActionOutcome::Updated
+            }
+        }
+    }
+
+    fn save_active_theme_as(&mut self) -> SettingsPageActionOutcome {
+        let Some(store) = self.theme_repository_store.clone() else {
+            self.errors.insert(
+                themes::save_as_name_field_id(),
+                "Beryl theme storage is unavailable for the configured home directory.".to_string(),
+            );
+            return SettingsPageActionOutcome::Updated;
+        };
+        let definition = match self.theme_editor_definition() {
+            Some(definition) => definition,
+            None => return SettingsPageActionOutcome::Updated,
+        };
+        match store.save_as_theme(&self.theme_save_as_name, definition) {
+            Ok(snapshot) => {
+                self.apply_theme_repository_snapshot(snapshot);
+                SettingsPageActionOutcome::ActiveThemeChanged
+            }
+            Err(error) => {
+                self.errors
+                    .insert(themes::save_as_name_field_id(), error.to_string());
+                SettingsPageActionOutcome::Updated
+            }
+        }
+    }
+
+    fn theme_editor_definition(&mut self) -> Option<ThemeDefinition> {
+        match self.theme_editor_draft.to_definition() {
+            Ok(definition) => {
+                self.errors.retain(|field_id, _| {
+                    *field_id == themes::save_as_name_field_id()
+                        || !theme_editor::is_theme_editor_field_id(field_id)
+                });
+                Some(definition)
+            }
+            Err(errors) => {
+                self.errors.extend(errors);
+                None
+            }
+        }
+    }
+
+    fn apply_theme_repository_snapshot(&mut self, snapshot: ThemeRepositorySnapshot) {
+        if let Ok(mut active) = self.active_theme.lock() {
+            *active = snapshot.active_projection().clone();
+        }
+        let settings = AppearanceSettings::from_active_theme(snapshot.active_projection());
+        self.theme_editor_draft =
+            theme_editor::ThemeEditorDraft::from_definition(snapshot.active_definition());
+        self.theme_draft_modified = false;
+        self.selected_theme_role_id =
+            theme_editor::validated_role_id(self.selected_theme_role_id.clone());
+        self.theme_save_as_name = default_save_as_name(&settings);
+        self.theme_repository_snapshot = snapshot;
+        self.errors.clear();
+    }
+
+    fn theme_draft_modified(&self) -> bool {
+        self.theme_draft_modified
+    }
+
+    fn compute_theme_draft_modified(&self) -> bool {
+        self.theme_editor_draft
+            .is_modified_from(self.theme_repository_snapshot.active_definition())
+    }
+
+    fn preference_draft_modified(&self) -> bool {
+        let active = self.active_preferences_snapshot();
+        self.notification_draft
+            != NotificationSettingsDraft::from_preferences(&active.notifications)
+            || self.agent_draft != AgentSettingsDraft::from_preferences(&active.agent)
+            || self.operation_draft != OperationSettingsDraft::from_preferences(&active.operations)
+    }
+}
+
+fn default_save_as_name(settings: &AppearanceSettings) -> String {
+    let family = settings.general_ui.font_family.trim();
+    if family.is_empty() {
+        "Custom Theme".to_string()
+    } else {
+        format!("{family} Theme")
+    }
+}
+
+fn row_outcome_from_page_outcome(outcome: SettingsPageActionOutcome) -> SettingsRowActionOutcome {
+    match outcome {
+        SettingsPageActionOutcome::Updated => SettingsRowActionOutcome::Updated,
+        SettingsPageActionOutcome::ActiveThemeChanged => {
+            SettingsRowActionOutcome::ActiveThemeChanged
+        }
     }
 }

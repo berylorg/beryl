@@ -3,22 +3,26 @@ use std::hash::{Hash, Hasher};
 use gpui::{
     AnyElement, AnyView, App, Context, CursorStyle, DispatchPhase, ElementId, InteractiveElement,
     KeyDownEvent, MouseDownEvent, Render, StatefulInteractiveElement, Window, canvas, div,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 
-use crate::shell::{
-    ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellView,
-    column_selector::ColumnSelectorSurface,
-    graph::{GraphColumnKey, GraphColumnState},
-    graph_node_action_policy::semantic_node_summary_tooltip_allowed,
-    layout,
+use crate::{
+    BerylThemeRole,
+    shell::{
+        ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellRenderFrame,
+        ShellView,
+        column_selector::ColumnSelectorSurface,
+        graph::{GraphColumnKey, GraphColumnState},
+        graph_node_action_policy::semantic_node_summary_tooltip_allowed,
+        layout,
+    },
 };
 
 mod rows;
 
 use super::column_selector::render_column_selector_trail;
 use super::common::card;
-use super::scrollbars::{ScrollbarAxis, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, render_themed_div_scrollbar};
 use rows::render_graph_node_tree;
 
 const GRAPH_OVERLAY_TOGGLE_KEYSTROKE: &str = "ctrl-shift-g";
@@ -43,13 +47,34 @@ struct GraphSummaryTooltipTheme {
     foreground: gpui::Rgba,
 }
 
+#[derive(Clone, Copy)]
+struct GraphRoleStyle {
+    background: gpui::Rgba,
+    border: gpui::Rgba,
+    foreground: gpui::Rgba,
+    font_weight: gpui::FontWeight,
+}
+
 impl GraphSummaryTooltipTheme {
-    fn from_shell(shell: &ShellView) -> Self {
+    fn from_shell(shell: &ShellRenderFrame<'_>) -> Self {
         Self {
-            background: shell.popup_surface_background(),
-            border: shell.surface_border(),
-            foreground: shell.general_ui_foreground(),
+            background: shell.role_background(
+                BerylThemeRole::PopupSurface,
+                shell.popup_surface_background(),
+            ),
+            border: shell.role_border(BerylThemeRole::PopupSurface, shell.surface_border()),
+            foreground: shell
+                .role_foreground(BerylThemeRole::PopupSurface, shell.general_ui_foreground()),
         }
+    }
+}
+
+fn graph_role_style(shell: &ShellRenderFrame<'_>, role: BerylThemeRole) -> GraphRoleStyle {
+    GraphRoleStyle {
+        background: shell.role_background(role, shell.panel_surface_background()),
+        border: shell.role_border(role, shell.surface_border()),
+        foreground: shell.role_foreground(role, shell.surface_foreground()),
+        font_weight: shell.role_font_weight(role, gpui::FontWeight::SEMIBOLD),
     }
 }
 
@@ -83,7 +108,7 @@ pub(super) fn render_graph_overlay_listeners(cx: &mut Context<ShellView>) -> imp
 }
 
 pub(super) fn render_graph_overlay(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded_workspace: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     composer_height: gpui::Pixels,
@@ -151,6 +176,7 @@ pub(super) fn render_graph_overlay(
         );
     }
 
+    let overlay_style = graph_role_style(shell, BerylThemeRole::GraphOverlay);
     let panel = div()
         .id("graph-overlay-panel")
         .size_full()
@@ -166,10 +192,10 @@ pub(super) fn render_graph_overlay(
         .w(overlay_width)
         .h(overlay_height)
         .min_h(px(0.0))
-        .bg(shell.panel_surface_background())
+        .bg(overlay_style.background)
         .border_b_1()
         .border_r_1()
-        .border_color(shell.surface_border())
+        .border_color(overlay_style.border)
         .overflow_hidden()
         .occlude()
         .child(
@@ -186,9 +212,10 @@ pub(super) fn render_graph_overlay(
 }
 
 fn render_graph_overlay_resize_handle(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     entity: gpui::Entity<ShellView>,
 ) -> impl IntoElement {
+    let handle_color = shell.role_border(BerylThemeRole::GraphOverlay, shell.surface_border());
     div()
         .absolute()
         .left_0()
@@ -222,22 +249,18 @@ fn render_graph_overlay_resize_handle(
             .left_0()
             .size_full(),
         )
-        .child(
-            div()
-                .w(px(56.0))
-                .h(px(4.0))
-                .rounded_full()
-                .bg(shell.surface_border()),
-        )
+        .child(div().w(px(56.0)).h(px(4.0)).rounded_full().bg(handle_color))
 }
 
 fn render_overlay_header(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded_workspace: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
 ) -> impl IntoElement {
     let overlay = surface.graph_overlay();
     let graph = overlay.graph();
+    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
+    let pending_style = graph_role_style(shell, BerylThemeRole::GraphRowPending);
 
     div()
         .flex()
@@ -252,8 +275,8 @@ fn render_overlay_header(
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(shell.general_ui_foreground())
+                        .font_weight(header_style.font_weight)
+                        .text_color(header_style.foreground)
                         .child(format!(
                             "Semantic Graph: {}",
                             loaded_workspace.workspace.title()
@@ -270,16 +293,16 @@ fn render_overlay_header(
                 .child(
                     div()
                         .text_xs()
-                        .text_color(shell.surface_muted_foreground())
+                        .text_color(header_style.foreground)
                         .child(format!("Toggle {GRAPH_OVERLAY_TOGGLE_KEYSTROKE}")),
                 )
                 .child(
                     div()
                         .text_xs()
                         .text_color(if overlay.mutation_pending() {
-                            rgb(0xfde68a)
+                            pending_style.foreground
                         } else {
-                            shell.surface_muted_foreground()
+                            header_style.foreground
                         })
                         .child(format!(
                             "{} nodes  {} links  {} threads",
@@ -292,18 +315,21 @@ fn render_overlay_header(
 }
 
 fn render_overlay_header_status(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
 ) -> AnyElement {
     let overlay = surface.graph_overlay();
+    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
+    let error_style = graph_role_style(shell, BerylThemeRole::GraphRowError);
+    let pending_style = graph_role_style(shell, BerylThemeRole::GraphRowPending);
     let (message, color) = if let Some(error) = overlay.last_error() {
-        (format!("Graph issue: {error}"), rgb(0xfda4af))
+        (format!("Graph issue: {error}"), error_style.foreground)
     } else if let Some(status) = overlay.status_message() {
-        (status.to_string(), rgb(0xfde68a))
+        (status.to_string(), pending_style.foreground)
     } else {
         (
             "Explorer columns open from node and soft-link selections.".to_string(),
-            shell.surface_muted_foreground(),
+            header_style.foreground,
         )
     };
 
@@ -318,7 +344,7 @@ fn render_overlay_header_status(
 }
 
 fn render_graph_columns(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
     implicit_home_execution_target: Option<&beryl_model::workspace::WorkspaceId>,
     surface: &ConversationSurfaceState,
@@ -347,6 +373,7 @@ fn render_graph_columns(
         .collect();
 
     render_column_selector_trail(
+        shell,
         ColumnSelectorSurface::GraphOverlay,
         "graph-overlay-columns",
         GRAPH_OVERLAY_COLUMN_WIDTH,
@@ -359,7 +386,7 @@ fn render_graph_columns(
 }
 
 fn render_graph_column(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
     implicit_home_execution_target: Option<&beryl_model::workspace::WorkspaceId>,
     column_index: usize,
@@ -377,6 +404,7 @@ fn render_graph_column(
     let semantic_node_tooltips_allowed =
         semantic_node_summary_tooltip_allowed(surface.graph_thread_link_menu().is_open());
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
+    let column_style = graph_role_style(shell, BerylThemeRole::GraphColumn);
     debug_assert!(column.root_key().renders_fixed_header());
     let (header, body) = match column.root_key() {
         GraphColumnKey::RootLevel => {
@@ -451,9 +479,9 @@ fn render_graph_column(
         .h_full()
         .min_h(px(0.0))
         .flex_none()
-        .bg(shell.panel_surface_background())
+        .bg(column_style.background)
         .border_1()
-        .border_color(shell.surface_border())
+        .border_color(column_style.border)
         .overflow_hidden()
         .child(
             div()
@@ -498,7 +526,8 @@ fn render_graph_column(
                                 .overflow_y_scroll()
                                 .child(body),
                         );
-                    if let Some(scrollbar) = render_div_scrollbar(
+                    if let Some(scrollbar) = render_themed_div_scrollbar(
+                        shell.style(),
                         ("graph-column-scrollbar", column_index),
                         &scroll_handle,
                         ScrollbarAxis::Vertical,
@@ -512,7 +541,7 @@ fn render_graph_column(
 }
 
 fn render_graph_column_header(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     column_key: &GraphColumnKey,
     title: Option<String>,
@@ -524,6 +553,7 @@ fn render_graph_column_header(
         GraphColumnKey::RootLevel => "__root_level",
         GraphColumnKey::Node(node_id) => node_id.as_str(),
     };
+    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
     let mut header_title = div()
         .id((
             ElementId::from(("graph-column-header", column_index)),
@@ -532,8 +562,8 @@ fn render_graph_column_header(
         .min_w(px(0.0))
         .flex_1()
         .text_sm()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(shell.general_ui_foreground())
+        .font_weight(header_style.font_weight)
+        .text_color(header_style.foreground)
         .whitespace_nowrap()
         .truncate()
         .child(title.unwrap_or_else(|| " ".to_string()));
@@ -551,8 +581,8 @@ fn render_graph_column_header(
         .px_4()
         .py_2()
         .border_b_1()
-        .border_color(shell.surface_border())
-        .bg(shell.popup_surface_background())
+        .border_color(header_style.border)
+        .bg(header_style.background)
         .child(div().flex().gap_2().items_center().child(header_title))
         .into_any_element()
 }

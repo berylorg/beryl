@@ -46,6 +46,9 @@ pub const DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL: &str = "read_ui_state";
 pub const DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL: &str = "read_retained_state";
 pub const DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL: &str = "read_visible_media";
 pub const DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL: &str = "read_media_events";
+pub const DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL: &str =
+    "read_transcript_frame_metrics";
+pub const DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL: &str = "read_settings_window";
 pub const DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL: &str = "list_workspace_threads";
 pub const DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL: &str = "create_new_thread";
 pub const DIAGNOSTIC_CHILD_START_TURN_TOOL: &str = "start_turn";
@@ -63,6 +66,8 @@ const DEFAULT_CHILD_VISIBLE_MEDIA_LIMIT: usize = 32;
 const MAX_CHILD_VISIBLE_MEDIA_LIMIT: usize = 64;
 const DEFAULT_CHILD_MEDIA_EVENT_LIMIT: usize = 64;
 const MAX_CHILD_MEDIA_EVENT_LIMIT: usize = 128;
+const DEFAULT_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 32;
+const MAX_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
 
 pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
     vec![
@@ -123,6 +128,19 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL,
             "Read a bounded metadata-only ring of recent transcript media lifecycle events from the diagnostic child Beryl.",
             media_events_schema(),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+            "Read a bounded content-free ring of recent transcript render frame timing metrics from the diagnostic child Beryl.",
+            media_events_schema_with_limits(
+                MAX_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                DEFAULT_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT,
+            ),
+        ),
+        diagnostic_child_tool_spec(
+            DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL,
+            "Read bounded content-free settings-window render and synchronization diagnostics from the diagnostic child Beryl.",
+            empty_object_schema(),
         ),
         diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
@@ -192,6 +210,8 @@ pub fn is_beryl_diagnostic_child_dynamic_tool(request: &DynamicToolCallRequest) 
                 | DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
                 | DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
                 | DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+                | DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL
+                | DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL
                 | DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
                 | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
                 | DIAGNOSTIC_CHILD_START_TURN_TOOL
@@ -316,6 +336,8 @@ fn diagnostic_child_tool_result(
         | DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL
         | DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL
         | DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+        | DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL
+        | DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL
         | DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
         | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
         | DIAGNOSTIC_CHILD_START_TURN_TOOL
@@ -378,6 +400,14 @@ fn child_command_and_params(
             DiagnosticChildCommand::ReadMediaEvents,
             media_events_params(request.arguments())?,
         )),
+        DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL => Ok((
+            DiagnosticChildCommand::ReadTranscriptFrameMetrics,
+            transcript_frame_metrics_params(request.arguments())?,
+        )),
+        DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL => {
+            parse_arguments::<EmptyArguments>(request.arguments())?;
+            Ok((DiagnosticChildCommand::ReadSettingsWindow, json!({})))
+        }
         DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL => {
             let arguments = parse_arguments::<DiagnosticThreadListArguments>(request.arguments())?;
             Ok((
@@ -697,12 +727,34 @@ fn limited_read_params(
 }
 
 fn media_events_params(arguments: &Value) -> Result<Value, DiagnosticChildDynamicToolError> {
+    media_events_params_with_limits(
+        arguments,
+        DEFAULT_CHILD_MEDIA_EVENT_LIMIT,
+        MAX_CHILD_MEDIA_EVENT_LIMIT,
+    )
+}
+
+fn transcript_frame_metrics_params(
+    arguments: &Value,
+) -> Result<Value, DiagnosticChildDynamicToolError> {
+    media_events_params_with_limits(
+        arguments,
+        DEFAULT_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT,
+        MAX_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT,
+    )
+}
+
+fn media_events_params_with_limits(
+    arguments: &Value,
+    default: usize,
+    max: usize,
+) -> Result<Value, DiagnosticChildDynamicToolError> {
     let arguments = parse_arguments::<MediaEventsArguments>(arguments)?;
     let mut params = json!({
         "limit": arguments
             .limit
-            .unwrap_or(DEFAULT_CHILD_MEDIA_EVENT_LIMIT)
-            .min(MAX_CHILD_MEDIA_EVENT_LIMIT),
+            .unwrap_or(default)
+            .min(max),
     });
     if let Some(after_sequence) = arguments.after_sequence {
         params["afterSequence"] = json!(after_sequence);
@@ -912,14 +964,18 @@ fn limited_read_schema(max: usize, default: usize) -> Value {
 }
 
 fn media_events_schema() -> Value {
+    media_events_schema_with_limits(MAX_CHILD_MEDIA_EVENT_LIMIT, DEFAULT_CHILD_MEDIA_EVENT_LIMIT)
+}
+
+fn media_events_schema_with_limits(max: usize, default: usize) -> Value {
     json!({
         "type": "object",
         "properties": {
             "limit": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": MAX_CHILD_MEDIA_EVENT_LIMIT,
-                "default": DEFAULT_CHILD_MEDIA_EVENT_LIMIT
+                "maximum": max,
+                "default": default
             },
             "afterSequence": {
                 "type": "integer",

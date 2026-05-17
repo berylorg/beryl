@@ -110,6 +110,8 @@ fn plain_fallback_blocks(source: &str) -> Vec<BlockRenderNode> {
     let style = InlineRenderStyle {
         role: InlineRenderRole::Conversation,
         link: false,
+        emphasis: false,
+        strong: false,
         fallback: true,
         atom: false,
     };
@@ -361,6 +363,8 @@ fn fallback_lines(source: &str, role: InlineRenderRole) -> Vec<InlineRenderLine>
     let style = InlineRenderStyle {
         role,
         link: false,
+        emphasis: false,
+        strong: false,
         fallback: true,
         atom: false,
     };

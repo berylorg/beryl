@@ -2,15 +2,15 @@
 mod stream_projection;
 
 use std::{
+    borrow::Cow,
     cell::RefCell,
     rc::Rc,
     time::{Duration, Instant},
 };
 
 use stream_projection::{
-    TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES, TranscriptStreamProjection,
-    TranscriptStreamProjectionConfig, TranscriptStreamProjectionContext,
-    TranscriptStreamProjectionKey,
+    TranscriptStreamProjection, TranscriptStreamProjectionConfig,
+    TranscriptStreamProjectionContext, TranscriptStreamProjectionKey,
 };
 
 #[test]
@@ -202,30 +202,30 @@ fn stream_projection_retained_counts_include_keys_text_and_uncommitted_entries()
     );
 
     let counts = projection.retained_counts();
-    assert_eq!(counts.entries, 2);
-    assert!(counts.key_bytes >= "turn:1:item:assistant".len());
-    assert_eq!(counts.text_bytes, "first paragraph".len());
+    assert_eq!(counts.entries, 1);
+    assert!(counts.key_bytes >= "turn:1:item:reasoning".len());
+    assert_eq!(counts.text_bytes, 0);
     assert_eq!(counts.uncommitted_entries, 1);
 }
 
 #[test]
-fn stream_projection_context_returns_owned_visible_text() {
+fn stream_projection_context_borrows_completed_visible_text() {
     let projection = Rc::new(RefCell::new(projection()));
     let context = TranscriptStreamProjectionContext::new(projection);
     let key = TranscriptStreamProjectionKey::new("turn:1:item:assistant");
 
-    assert_eq!(
-        context.visible_text(key, "complete paragraph", true, Instant::now()),
-        "complete paragraph"
-    );
+    let visible = context.visible_text(key, "complete paragraph", true, Instant::now());
+
+    assert_eq!(visible, "complete paragraph");
+    assert!(matches!(visible, Cow::Borrowed("complete paragraph")));
 }
 
 #[test]
-fn stream_projection_prunes_old_completed_entries() {
+fn stream_projection_does_not_retain_completed_entries() {
     let mut projection = projection();
     let started_at = Instant::now();
 
-    for index in 0..=TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES {
+    for index in 0..=16 {
         projection.visible_text(
             TranscriptStreamProjectionKey::new(format!("turn:{index}:item:assistant")),
             "complete paragraph",
@@ -235,10 +235,8 @@ fn stream_projection_prunes_old_completed_entries() {
     }
 
     let counts = projection.retained_counts();
-    assert_eq!(
-        counts.entries,
-        TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES
-    );
+    assert_eq!(counts.entries, 0);
+    assert_eq!(counts.text_bytes, 0);
     assert_eq!(counts.uncommitted_entries, 0);
 }
 
@@ -253,7 +251,7 @@ fn stream_projection_keeps_uncommitted_entries_while_pruning_completed_entries()
         started_at,
     );
 
-    for index in 0..=TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES {
+    for index in 0..=16 {
         projection.visible_text(
             TranscriptStreamProjectionKey::new(format!("turn:{index}:item:assistant")),
             "complete paragraph",
@@ -263,10 +261,8 @@ fn stream_projection_keeps_uncommitted_entries_while_pruning_completed_entries()
     }
 
     let counts = projection.retained_counts();
-    assert_eq!(
-        counts.entries,
-        TRANSCRIPT_STREAM_PROJECTION_MAX_COMPLETED_ENTRIES + 1
-    );
+    assert_eq!(counts.entries, 1);
+    assert_eq!(counts.text_bytes, 0);
     assert_eq!(counts.uncommitted_entries, 1);
 }
 

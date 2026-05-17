@@ -1,15 +1,18 @@
 use gpui::{
     App, Context, CursorStyle, ElementId, Entity, MouseButton, ScrollHandle, SharedString, Window,
-    div, prelude::*, px, rgb,
+    div, prelude::*, px,
 };
 
-use crate::shell::{ChromeButtonTheme, ShellView, layout};
+use crate::BerylThemeRole;
+use crate::shell::{
+    ChromeButtonTheme, ShellRenderFrame, ShellRenderStyleSnapshot, ShellView, layout,
+};
 use crate::text_input::SingleLineInput;
 
-use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_themed_div_scrollbar};
 
 pub(super) fn startup_shell_frame(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     scroll_handle: &ScrollHandle,
     scrollbar_visibility: ScrollbarVisibilityPolicy,
     on_scrollbar_mouse_move: impl Fn(&gpui::MouseMoveEvent, &mut Window, &mut App) + 'static,
@@ -48,15 +51,24 @@ pub(super) fn startup_shell_frame(
                                 .child(
                                     div()
                                         .text_3xl()
-                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .font_weight(shell.role_font_weight(
+                                            BerylThemeRole::AppWindow,
+                                            gpui::FontWeight::BOLD,
+                                        ))
                                         .child(title),
                                 )
-                                .child(div().text_sm().text_color(rgb(0x94a3b8)).child(subtitle)),
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(shell.surface_muted_foreground())
+                                        .child(subtitle),
+                                ),
                         )
                         .child(card(shell, body)),
                 ),
         );
-    if let Some(vertical_scrollbar) = render_div_scrollbar(
+    if let Some(vertical_scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "beryl-shell-scrollbar-vertical",
         scroll_handle,
         ScrollbarAxis::Vertical,
@@ -64,7 +76,8 @@ pub(super) fn startup_shell_frame(
     ) {
         scroll_region = scroll_region.child(vertical_scrollbar);
     }
-    if let Some(horizontal_scrollbar) = render_div_scrollbar(
+    if let Some(horizontal_scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "beryl-shell-scrollbar-horizontal",
         scroll_handle,
         ScrollbarAxis::Horizontal,
@@ -93,14 +106,17 @@ pub(super) fn startup_shell_frame(
                             div()
                                 .flex_none()
                                 .text_sm()
-                                .font_weight(gpui::FontWeight::BOLD)
+                                .font_weight(shell.role_font_weight(
+                                    BerylThemeRole::MainToolbar,
+                                    gpui::FontWeight::BOLD,
+                                ))
                                 .child("Beryl"),
                         )
                         .child(
                             div()
                                 .min_w(px(0.0))
                                 .text_xs()
-                                .text_color(rgb(0x94a3b8))
+                                .text_color(shell.surface_muted_foreground())
                                 .whitespace_nowrap()
                                 .truncate()
                                 .child(title.to_string()),
@@ -112,7 +128,7 @@ pub(super) fn startup_shell_frame(
 }
 
 pub(super) fn toolbar_strip(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     leading: impl IntoElement,
     actions: impl IntoElement,
 ) -> impl IntoElement {
@@ -120,7 +136,7 @@ pub(super) fn toolbar_strip(
 }
 
 pub(super) fn toolbar_controls_strip(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     controls: impl IntoElement,
 ) -> impl IntoElement {
     div()
@@ -136,15 +152,24 @@ pub(super) fn toolbar_controls_strip(
         .child(controls)
 }
 
-pub(super) fn section_label(text: &'static str) -> impl IntoElement {
+pub(super) fn section_label(shell: &ShellRenderFrame<'_>, text: &'static str) -> impl IntoElement {
     div()
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(rgb(0x93c5fd))
+        .font_weight(
+            shell.role_font_weight(BerylThemeRole::SurfaceRowInfo, gpui::FontWeight::SEMIBOLD),
+        )
+        .text_color(shell.role_foreground(
+            BerylThemeRole::SurfaceRowInfo,
+            shell.status_line_value_foreground(),
+        ))
         .child(text)
 }
 
-pub(super) fn info_line(label: &str, value: &str) -> impl IntoElement {
+pub(super) fn info_line(
+    shell: &ShellRenderFrame<'_>,
+    label: &str,
+    value: &str,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -152,34 +177,38 @@ pub(super) fn info_line(label: &str, value: &str) -> impl IntoElement {
         .child(
             div()
                 .text_xs()
-                .text_color(rgb(0x94a3b8))
+                .text_color(shell.surface_muted_foreground())
                 .child(label.to_string()),
         )
         .child(
             div()
                 .text_sm()
-                .text_color(rgb(0xf8fafc))
+                .text_color(shell.surface_foreground())
                 .child(value.to_string()),
         )
 }
 
 pub(super) fn inline_notice(
+    shell: &ShellRenderFrame<'_>,
     message: &str,
-    background: gpui::Rgba,
-    foreground: gpui::Rgba,
+    role: BerylThemeRole,
 ) -> impl IntoElement {
+    let background = shell.role_background(role, shell.popup_surface_background());
+    let border = shell.role_border(role, shell.surface_border());
+    let foreground = shell.role_foreground(role, shell.surface_foreground());
+
     div()
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
         .bg(background)
         .border_1()
-        .border_color(foreground)
+        .border_color(border)
         .p_3()
         .text_sm()
         .text_color(foreground)
         .child(message.to_string())
 }
 
-pub(super) fn card(shell: &ShellView, content: impl IntoElement) -> impl IntoElement {
+pub(super) fn card(shell: &ShellRenderFrame<'_>, content: impl IntoElement) -> impl IntoElement {
     div()
         .w_full()
         .flex()
@@ -194,7 +223,7 @@ pub(super) fn card(shell: &ShellView, content: impl IntoElement) -> impl IntoEle
 }
 
 pub(super) fn framed_text_input(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     input: &Entity<SingleLineInput>,
 ) -> impl IntoElement {
     let focus_input = input.clone();
@@ -219,20 +248,23 @@ pub(super) fn framed_text_input(
         .child(input.clone())
 }
 
-pub(super) fn panel_shell(shell: &ShellView, content: impl IntoElement) -> impl IntoElement {
+pub(super) fn panel_shell_with_style(
+    style: &ShellRenderStyleSnapshot,
+    content: impl IntoElement,
+) -> impl IntoElement {
     div()
         .size_full()
         .min_h(px(0.0))
-        .bg(shell.transcript_shell_background())
+        .bg(style.transcript_shell_background())
         .border_1()
-        .border_color(shell.separator_color())
-        .text_color(shell.transcript_shell_foreground())
+        .border_color(style.separator_color())
+        .text_color(style.transcript_shell_foreground())
         .overflow_hidden()
         .child(content)
 }
 
 pub(super) fn button(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
@@ -242,7 +274,7 @@ pub(super) fn button(
 }
 
 pub(super) fn secondary_button(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
@@ -252,7 +284,7 @@ pub(super) fn secondary_button(
 }
 
 pub(super) fn secondary_fixed_label_button(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     possible_labels: &'static [&'static str],
@@ -270,7 +302,7 @@ pub(super) fn secondary_fixed_label_button(
 }
 
 pub(super) fn secondary_labeled_cycle_button_with_active_state(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     value_label: impl Into<SharedString>,
@@ -322,7 +354,7 @@ pub(super) fn secondary_labeled_cycle_button_with_active_state(
 }
 
 pub(super) fn disabled_secondary_button(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
 ) -> gpui::Stateful<gpui::Div> {
@@ -477,7 +509,10 @@ fn themed_button_container(
         })
 }
 
-pub(super) fn primary_actions(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+pub(super) fn primary_actions(
+    shell: &ShellRenderFrame<'_>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     div().flex().gap_3().child(button(
         shell,
         "close-beryl",
@@ -487,7 +522,7 @@ pub(super) fn primary_actions(shell: &ShellView, cx: &mut Context<ShellView>) ->
 }
 
 fn fixed_strip(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     height: gpui::Pixels,
     leading: impl IntoElement,
     actions: impl IntoElement,

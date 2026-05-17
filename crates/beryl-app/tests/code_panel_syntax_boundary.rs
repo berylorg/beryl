@@ -151,6 +151,16 @@ fn shared_code_panel_syntax_boundary_routes_registered_languages_for_all_panel_o
             ],
         ),
         (
+            "beryl-theme",
+            "schema = 1\nname = \"Candidate\"",
+            SyntaxLanguage::Toml,
+            &[
+                SyntaxTokenRole::SyntaxKey,
+                SyntaxTokenRole::SyntaxAssignment,
+                SyntaxTokenRole::SyntaxString,
+            ],
+        ),
+        (
             "ini",
             "[section]\nsame=true",
             SyntaxLanguage::WindowsIni,

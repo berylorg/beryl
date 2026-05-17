@@ -68,7 +68,7 @@ pub(crate) fn settings_section(
         field_id.clone(),
         "Context compaction timeout",
         draft.context_compaction_timeout_seconds_value(),
-        SettingsFieldKind::Text,
+        SettingsFieldKind::Number,
     )
     .with_subtext("Seconds Beryl waits for backend-reported compaction completion.");
 

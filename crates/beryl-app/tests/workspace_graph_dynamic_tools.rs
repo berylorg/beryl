@@ -4,25 +4,29 @@ mod tempdir_support;
 use std::fs;
 
 use beryl_app::{
-    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
+    ACTIVATE_THEME_TOOL, BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
     BERYL_GRAPH_DYNAMIC_TOOL_NAMESPACE, BerylWorkspacePersistence,
     DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL, DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL,
     DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
     DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL, DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL,
     DIAGNOSTIC_CHILD_READ_MEMORY_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
     DIAGNOSTIC_CHILD_READ_RENDERER_TOOL, DIAGNOSTIC_CHILD_READ_RETAINED_STATE_TOOL,
-    DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL, DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL,
-    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
-    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
-    DIAGNOSTIC_CHILD_STOP_TOOL, DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL,
-    DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL, DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
-    LifecycleYieldOutcome, READ_CHECKLIST_TOOL, READ_GRAPH_NEIGHBORHOOD_TOOL,
+    DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL, DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL,
+    DIAGNOSTIC_CHILD_READ_VISIBLE_MEDIA_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
+    DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
+    DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL, DIAGNOSTIC_CHILD_STOP_TOOL,
+    DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL, DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
+    DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, INSTALL_THEME_TOOL, LifecycleYieldOutcome,
+    PREVIEW_THEME_TOOL, READ_CHECKLIST_TOOL, READ_GRAPH_NEIGHBORHOOD_TOOL, READ_GUI_SETTINGS_TOOL,
     READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL, READ_PROCESS_DIAGNOSTICS_TOOL,
-    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL,
-    READ_WORKSPACE_GRAPH_SUMMARY_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL,
-    UPSERT_GRAPH_NODE_TOOL, UPSERT_GRAPH_SOFT_LINK_TOOL, WorkspaceGraphToolService, YIELD_TOOL,
-    beryl_diagnostic_child_dynamic_tool_specs, beryl_dynamic_tool_specs,
-    beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
+    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
+    READ_THEME_AUTHORING_GUIDE_TOOL, READ_THEME_REPOSITORY_TOOL, READ_THEME_SCHEMA_TOOL,
+    READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL, READ_WORKSPACE_GRAPH_SUMMARY_TOOL,
+    SAVE_THEME_AS_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL,
+    STOP_THEME_PREVIEW_TOOL, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL, UPSERT_GRAPH_NODE_TOOL,
+    UPSERT_GRAPH_SOFT_LINK_TOOL, VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
+    WorkspaceGraphToolService, YIELD_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
+    beryl_dynamic_tool_specs, beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
     beryl_user_thread_start_options, dispatch_beryl_dynamic_tool_call_with_metadata,
     dispatch_beryl_graph_dynamic_tool_call, dispatch_beryl_graph_dynamic_tool_call_with_metadata,
     dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata, validate_unique_dynamic_tool_names,
@@ -76,6 +80,31 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), YIELD_TOOL),
             (
                 Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_THEME_REPOSITORY_TOOL
+            ),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_THEME_SCHEMA_TOOL),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_THEME_AUTHORING_GUIDE_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                VALIDATE_THEME_DOCUMENT_TOOL
+            ),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), PREVIEW_THEME_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), STOP_THEME_PREVIEW_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), INSTALL_THEME_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), UPDATE_THEME_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), SAVE_THEME_AS_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), ACTIVATE_THEME_TOOL),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_GUI_SETTINGS_TOOL),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                VALIDATE_GUI_SETTINGS_UPDATE_TOOL
+            ),
+            (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), UPDATE_GUI_SETTINGS_TOOL),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
                 READ_PROCESS_DIAGNOSTICS_TOOL
             ),
             (
@@ -92,6 +121,10 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             ),
             (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_VISIBLE_MEDIA_TOOL),
             (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), READ_MEDIA_EVENTS_TOOL),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_TRANSCRIPT_FRAME_METRICS_TOOL
+            ),
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
                 DIAGNOSTIC_CHILD_START_TOOL
@@ -135,6 +168,10 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
                 DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL
             ),
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
@@ -263,6 +300,55 @@ fn lifecycle_yield_tool_spec_accepts_only_outcome() {
 }
 
 #[test]
+fn theme_authoring_and_validation_tool_specs_are_bounded() {
+    let tools = beryl_dynamic_tool_specs();
+    let guide_tool = tools
+        .iter()
+        .find(|tool| tool.name == READ_THEME_AUTHORING_GUIDE_TOOL)
+        .expect("theme authoring guide tool must be registered");
+    let validation_tool = tools
+        .iter()
+        .find(|tool| tool.name == VALIDATE_THEME_DOCUMENT_TOOL)
+        .expect("theme validation tool must be registered");
+
+    assert_eq!(
+        guide_tool.namespace.as_deref(),
+        Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+    );
+    assert_eq!(
+        validation_tool.namespace.as_deref(),
+        Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+    );
+    assert_eq!(guide_tool.defer_loading, Some(false));
+    assert_eq!(validation_tool.defer_loading, Some(false));
+    assert_eq!(guide_tool.input_schema["additionalProperties"], false);
+    assert_eq!(validation_tool.input_schema["additionalProperties"], false);
+    assert_eq!(
+        guide_tool.input_schema["properties"]["section"]["enum"],
+        json!([
+            "all",
+            "overview",
+            "syntax",
+            "inheritance",
+            "role_groups",
+            "transcript_roles",
+            "code_roles",
+            "settings_roles",
+            "examples",
+            "troubleshooting"
+        ])
+    );
+    assert_eq!(
+        validation_tool.input_schema["required"],
+        json!(["document"])
+    );
+    assert_eq!(
+        validation_tool.input_schema["properties"]["explainRoles"]["maxItems"],
+        32
+    );
+}
+
+#[test]
 fn diagnostic_tool_specs_are_bounded_and_read_only() {
     let tools = beryl_dynamic_tool_specs();
     let visible = tools
@@ -277,6 +363,10 @@ fn diagnostic_tool_specs_are_bounded_and_read_only() {
         .iter()
         .find(|tool| tool.name == READ_MEDIA_EVENTS_TOOL)
         .expect("media-events diagnostics tool must be registered");
+    let frame_metrics = tools
+        .iter()
+        .find(|tool| tool.name == READ_TRANSCRIPT_FRAME_METRICS_TOOL)
+        .expect("transcript-frame diagnostics tool must be registered");
 
     assert_eq!(
         visible.namespace.as_deref(),
@@ -290,6 +380,12 @@ fn diagnostic_tool_specs_are_bounded_and_read_only() {
     assert_eq!(events.input_schema["additionalProperties"], false);
     assert_eq!(events.input_schema["properties"]["limit"]["maximum"], 128);
     assert!(events.input_schema["properties"]["afterSequence"].is_object());
+    assert_eq!(frame_metrics.input_schema["additionalProperties"], false);
+    assert_eq!(
+        frame_metrics.input_schema["properties"]["limit"]["maximum"],
+        64
+    );
+    assert!(frame_metrics.input_schema["properties"]["afterSequence"].is_object());
 }
 
 #[test]
@@ -303,6 +399,10 @@ fn diagnostic_child_tool_specs_use_separate_namespace() {
         .iter()
         .find(|tool| tool.name == DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL)
         .expect("diagnostic child switch_workspace tool must be registered");
+    let frame_metrics = tools
+        .iter()
+        .find(|tool| tool.name == DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL)
+        .expect("diagnostic child frame-metrics tool must be registered");
 
     assert!(tools.iter().all(|tool| {
         tool.namespace.as_deref() == Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE)
@@ -313,6 +413,10 @@ fn diagnostic_child_tool_specs_use_separate_namespace() {
     assert_eq!(
         switch_workspace.input_schema["required"],
         json!(["workspaceId"])
+    );
+    assert_eq!(
+        frame_metrics.input_schema["properties"]["limit"]["maximum"],
+        64
     );
     validate_unique_dynamic_tool_names(&tools).unwrap();
 }

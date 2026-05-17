@@ -281,8 +281,10 @@ use diagnostic_child_dynamic_tools::{
     BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
     DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL, DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL,
     DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
-    DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL, DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL,
-    DIAGNOSTIC_CHILD_START_TOOL, DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
+    DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL,
+    DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
+    DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
+    DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
     DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
     dispatch_beryl_diagnostic_child_dynamic_tool_call,
 };
@@ -488,6 +490,12 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
     );
     let prepare_renderer_request =
         tool_request(DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL, json!({}));
+    let frame_metrics_request = tool_request(
+        DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+        json!({ "limit": 999, "afterSequence": 4 }),
+    );
+    let settings_window_request =
+        tool_request(DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL, json!({}));
 
     let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
         &mut supervisor,
@@ -519,15 +527,43 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
         &supervisor_home,
         &prepare_renderer_request,
     );
+    let frame_metrics_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &frame_metrics_request,
+    );
+    let settings_window_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &settings_window_request,
+    );
     let list_payload = response_json(&list_response);
     let turn_payload = response_json(&turn_response);
     let renderer_payload = response_json(&renderer_response);
     let renderer_prepare_alias_payload = response_json(&renderer_prepare_alias_response);
     let prepare_renderer_payload = response_json(&prepare_renderer_response);
+    let frame_metrics_payload = response_json(&frame_metrics_response);
+    let settings_window_payload = response_json(&settings_window_response);
 
     assert!(list_response.success);
     assert_eq!(list_payload["result"]["command"], "list_workspace_threads");
     assert_eq!(list_payload["result"]["params"]["limit"], 128);
+    assert!(frame_metrics_response.success);
+    assert_eq!(
+        frame_metrics_payload["result"]["command"],
+        "read_transcript_frame_metrics"
+    );
+    assert_eq!(frame_metrics_payload["result"]["params"]["limit"], 64);
+    assert_eq!(
+        frame_metrics_payload["result"]["params"]["afterSequence"],
+        4
+    );
+    assert!(settings_window_response.success);
+    assert_eq!(
+        settings_window_payload["result"]["command"],
+        "read_settings_window"
+    );
+    assert_eq!(settings_window_payload["result"]["params"], json!({}));
     assert!(turn_response.success);
     assert_eq!(turn_payload["result"]["command"], "start_turn");
     assert_eq!(turn_payload["result"]["params"]["text"], "diagnostic turn");
@@ -628,6 +664,14 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_RENDERER_TOOL)
         .unwrap();
+    let frame_metrics_schema = specs
+        .iter()
+        .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL)
+        .unwrap();
+    let settings_window_schema = specs
+        .iter()
+        .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL)
+        .unwrap();
     let wait_schema = specs
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL)
@@ -636,6 +680,18 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
     assert_eq!(
         renderer_schema.input_schema["properties"]["prepareWindow"]["type"],
         "boolean"
+    );
+    assert_eq!(
+        frame_metrics_schema.input_schema["properties"]["limit"]["maximum"],
+        64
+    );
+    assert_eq!(
+        frame_metrics_schema.input_schema["properties"]["afterSequence"]["minimum"],
+        0
+    );
+    assert_eq!(
+        settings_window_schema.input_schema["additionalProperties"],
+        false
     );
     assert_eq!(renderer_schema.input_schema["additionalProperties"], false);
     assert_eq!(

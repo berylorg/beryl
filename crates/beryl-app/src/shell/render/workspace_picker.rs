@@ -3,17 +3,19 @@ use beryl_model::workspace::{RuntimeMode, WorkspaceMember};
 use gpui::{
     AnyElement, Context, DispatchPhase, Entity, InteractiveElement, KeyDownEvent, KeyUpEvent,
     MouseButton, MouseDownEvent, StatefulInteractiveElement, Window, anchored, canvas, div, point,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 
-use crate::shell::{LoadedWorkspaceState, ScrollbarRegion, ShellView, layout, workspace_picker};
+use crate::BerylThemeRole;
+use crate::shell::{
+    LoadedWorkspaceState, ScrollbarRegion, ShellRenderFrame, ShellView, layout, workspace_picker,
+};
 use crate::text_input::SingleLineInput;
 
-use super::code_panel::CODE_FONT_FAMILY;
 use super::common::{
     button, disabled_secondary_button, framed_text_input, inline_notice, secondary_button,
 };
-use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar};
+use super::scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_themed_div_scrollbar};
 use super::workspace_picker_row_menu::{
     render_workspace_row_action_menu, render_workspace_row_action_trigger,
 };
@@ -21,7 +23,7 @@ use super::workspace_picker_row_menu::{
 const RUNTIME_SELECTOR_ARROW: &str = "\u{25be}";
 
 pub(super) fn render_workspace_picker_button(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -105,7 +107,7 @@ pub(super) fn render_workspace_picker_listeners(cx: &mut Context<ShellView>) -> 
 }
 
 pub(super) fn render_workspace_picker_overlay(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     workspace_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -255,7 +257,7 @@ pub(super) fn render_workspace_picker_overlay(
 }
 
 fn render_workspaces_column(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     workspace_filter_input: &Entity<SingleLineInput>,
     rows: gpui::Div,
@@ -283,7 +285,7 @@ fn render_workspaces_column(
                     .py_3()
                     .border_b_1()
                     .border_color(shell.separator_color())
-                    .child(inline_notice(notice, rgb(0x3f1d1d), rgb(0xfecaca))),
+                    .child(inline_notice(shell, notice, BerylThemeRole::NoticeError)),
             )
         })
         .child(
@@ -296,6 +298,7 @@ fn render_workspaces_column(
                 .child(framed_text_input(shell, workspace_filter_input)),
         )
         .child(render_scrollable_workspace_rows(
+            shell,
             rows,
             picker_scroll_handle,
             scrollbar_visibility,
@@ -306,7 +309,7 @@ fn render_workspaces_column(
 }
 
 fn render_members_column(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     members_scroll_handle: gpui::ScrollHandle,
     scrollbar_visibility: ScrollbarVisibilityPolicy,
@@ -335,7 +338,7 @@ fn render_members_column(
                     .py_3()
                     .border_b_1()
                     .border_color(shell.separator_color())
-                    .child(inline_notice(notice, rgb(0x3f1d1d), rgb(0xfecaca))),
+                    .child(inline_notice(shell, notice, BerylThemeRole::NoticeError)),
             )
         })
         .child(
@@ -367,7 +370,7 @@ fn render_members_column(
 }
 
 fn render_column_header(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     title: &'static str,
     subtitle: &'static str,
 ) -> impl IntoElement {
@@ -387,7 +390,10 @@ fn render_column_header(
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::WorkspacePickerSurface,
+                            gpui::FontWeight::SEMIBOLD,
+                        ))
                         .text_color(shell.general_ui_foreground())
                         .whitespace_normal()
                         .child(title),
@@ -403,6 +409,7 @@ fn render_column_header(
 }
 
 fn render_scrollable_workspace_rows(
+    shell: &ShellRenderFrame<'_>,
     rows: gpui::Div,
     picker_scroll_handle: gpui::ScrollHandle,
     scrollbar_visibility: ScrollbarVisibilityPolicy,
@@ -424,7 +431,8 @@ fn render_scrollable_workspace_rows(
                 .overflow_y_scroll()
                 .child(rows),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "workspace-picker-scrollbar",
         &picker_scroll_handle,
         ScrollbarAxis::Vertical,
@@ -436,7 +444,7 @@ fn render_scrollable_workspace_rows(
 }
 
 fn render_runtime_selector_control(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -470,7 +478,7 @@ fn render_runtime_selector_control(
 }
 
 fn render_runtime_selector_trigger(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     dropdown_open: bool,
 ) -> gpui::Stateful<gpui::Div> {
@@ -551,9 +559,12 @@ fn render_runtime_selector_trigger(
         )
 }
 
-fn render_create_add_plus_marker(shell: &ShellView, enabled: bool) -> impl IntoElement {
+fn render_create_add_plus_marker(shell: &ShellRenderFrame<'_>, enabled: bool) -> impl IntoElement {
     let color = if enabled {
-        rgb(0x72e4b8)
+        shell.role_foreground(
+            BerylThemeRole::WorkspacePickerRowActive,
+            shell.primary_button_theme().active.foreground,
+        )
     } else {
         shell.surface_muted_foreground()
     };
@@ -566,7 +577,10 @@ fn render_create_add_plus_marker(shell: &ShellView, enabled: bool) -> impl IntoE
         .justify_center()
         .text_size(px(layout::WORKSPACE_PICKER_CREATE_ADD_PLUS_FONT_SIZE))
         .line_height(px(layout::WORKSPACE_PICKER_CREATE_ADD_PLUS_FONT_SIZE))
-        .font_weight(gpui::FontWeight::BOLD)
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::WorkspacePickerRowActive,
+            gpui::FontWeight::BOLD,
+        ))
         .text_color(color)
         .child(
             div()
@@ -577,7 +591,7 @@ fn render_create_add_plus_marker(shell: &ShellView, enabled: bool) -> impl IntoE
 }
 
 fn render_runtime_selector_dropdown(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     dropdown_height: gpui::Pixels,
     cx: &mut Context<ShellView>,
@@ -628,7 +642,8 @@ fn render_runtime_selector_dropdown(
                     distro_list,
                 )),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "workspace-runtime-selector-scrollbar",
         &scroll_handle,
         ScrollbarAxis::Vertical,
@@ -654,7 +669,7 @@ fn render_runtime_selector_dropdown(
 }
 
 fn render_runtime_selector_wsl_rows(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     highlighted_index: usize,
     cx: &mut Context<ShellView>,
@@ -704,7 +719,10 @@ fn render_runtime_selector_wsl_rows(
     }
 }
 
-fn render_runtime_selector_status_row(shell: &ShellView, text: impl Into<String>) -> AnyElement {
+fn render_runtime_selector_status_row(
+    shell: &ShellRenderFrame<'_>,
+    text: impl Into<String>,
+) -> AnyElement {
     div()
         .h(px(layout::WORKSPACE_PICKER_RUNTIME_DROPDOWN_ROW_HEIGHT))
         .px_3()
@@ -720,7 +738,7 @@ fn render_runtime_selector_status_row(shell: &ShellView, text: impl Into<String>
 }
 
 fn render_runtime_selector_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     row: workspace_picker::RuntimeSelectorRow,
     item_index: usize,
@@ -791,7 +809,7 @@ fn runtime_selector_current_label(loaded: &LoadedWorkspaceState) -> String {
 }
 
 fn render_scrollable_member_rows(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     members_scroll_handle: gpui::ScrollHandle,
     scrollbar_visibility: ScrollbarVisibilityPolicy,
@@ -813,7 +831,8 @@ fn render_scrollable_member_rows(
                 .overflow_y_scroll()
                 .child(render_member_rows(shell, loaded, cx)),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         "workspace-members-scrollbar",
         &members_scroll_handle,
         ScrollbarAxis::Vertical,
@@ -825,7 +844,7 @@ fn render_scrollable_member_rows(
 }
 
 fn render_member_rows(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -850,7 +869,7 @@ fn render_member_rows(
 }
 
 fn render_attach_member_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
@@ -880,7 +899,10 @@ fn render_attach_member_row(
         .flex()
         .items_center()
         .text_sm()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::WorkspacePickerMemberRow,
+            gpui::FontWeight::SEMIBOLD,
+        ))
         .text_color(foreground)
         .child(render_create_add_plus_marker(shell, enabled))
         .child(
@@ -900,7 +922,10 @@ fn render_attach_member_row(
     row.into_any_element()
 }
 
-fn render_implicit_home_member_row(shell: &ShellView, loaded: &LoadedWorkspaceState) -> AnyElement {
+fn render_implicit_home_member_row(
+    shell: &ShellRenderFrame<'_>,
+    loaded: &LoadedWorkspaceState,
+) -> AnyElement {
     member_row_shell(
         shell,
         "workspace-picker-implicit-home-member",
@@ -916,7 +941,7 @@ fn render_implicit_home_member_row(shell: &ShellView, loaded: &LoadedWorkspaceSt
 }
 
 fn render_explicit_member_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     index: usize,
     member: &WorkspaceMember,
@@ -939,7 +964,7 @@ fn render_explicit_member_row(
 }
 
 fn member_row_shell(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: impl Into<gpui::ElementId>,
     primary: bool,
     interactive: bool,
@@ -951,51 +976,58 @@ fn member_row_shell(
 ) -> gpui::Stateful<gpui::Div> {
     let background = shell.popup_surface_background();
     let hover_background = shell.row_surface_background();
-    let mut row = div()
-        .id(id)
-        .relative()
-        .w_full()
-        .min_h(px(row_height))
-        .bg(background)
-        .border_b_1()
-        .border_color(shell.separator_color())
-        .px_4()
-        .py_3()
-        .flex()
-        .items_start()
-        .justify_between()
-        .gap_3()
-        .when(primary, |this| {
-            this.child(render_workspace_active_marker(shell))
-        })
-        .when_some(leading, |this, leading| this.child(leading))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .flex()
-                .flex_col()
-                .gap_1()
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(shell.general_ui_foreground())
-                        .whitespace_normal()
-                        .child(label),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .font_family(CODE_FONT_FAMILY)
-                        .text_color(shell.surface_muted_foreground())
-                        .whitespace_normal()
-                        .child(detail),
-                ),
-        )
-        .when_some(action, |this, action| {
-            this.child(div().flex_none().child(action))
-        });
+    let mut row =
+        div()
+            .id(id)
+            .relative()
+            .w_full()
+            .min_h(px(row_height))
+            .bg(background)
+            .border_b_1()
+            .border_color(shell.separator_color())
+            .px_4()
+            .py_3()
+            .flex()
+            .items_start()
+            .justify_between()
+            .gap_3()
+            .when(primary, |this| {
+                this.child(render_workspace_active_marker(shell))
+            })
+            .when_some(leading, |this, leading| this.child(leading))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(shell.role_font_weight(
+                                BerylThemeRole::WorkspacePickerMemberRow,
+                                gpui::FontWeight::SEMIBOLD,
+                            ))
+                            .text_color(shell.general_ui_foreground())
+                            .whitespace_normal()
+                            .child(label),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_family(shell.role_font_family(
+                                BerylThemeRole::WorkspacePickerMemberRow,
+                                "Consolas",
+                            ))
+                            .text_color(shell.surface_muted_foreground())
+                            .whitespace_normal()
+                            .child(detail),
+                    ),
+            )
+            .when_some(action, |this, action| {
+                this.child(div().flex_none().child(action))
+            });
     if interactive {
         row = row
             .cursor_pointer()
@@ -1005,7 +1037,7 @@ fn member_row_shell(
 }
 
 fn render_member_row_action_trigger(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     member_id: beryl_model::workspace::WorkspaceMemberId,
     cx: &mut Context<ShellView>,
@@ -1050,7 +1082,7 @@ fn render_member_row_action_trigger(
 }
 
 fn render_workspace_member_action_menu(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
@@ -1182,18 +1214,20 @@ fn explicit_member_display_label(member: &WorkspaceMember) -> String {
     }
 }
 
-fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {
+fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(
+            shell.role_font_weight(BerylThemeRole::PopupSurface, gpui::FontWeight::SEMIBOLD),
+        )
         .text_color(shell.general_ui_foreground())
         .child(label.to_string())
 }
 
 fn render_workspace_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     item_index: usize,
     workspace_index: usize,
     workspace: &beryl_model::workspace::BerylWorkspaceManifest,
@@ -1260,18 +1294,21 @@ fn render_workspace_row(
         .into_any_element()
 }
 
-fn render_workspace_active_marker(shell: &ShellView) -> impl IntoElement {
+fn render_workspace_active_marker(shell: &ShellRenderFrame<'_>) -> impl IntoElement {
     div()
         .absolute()
         .left_0()
         .top_0()
         .bottom_0()
         .w(px(3.0))
-        .bg(shell.primary_button_theme().active.background)
+        .bg(shell.role_border(
+            BerylThemeRole::WorkspacePickerRowActive,
+            shell.primary_button_theme().active.border,
+        ))
 }
 
 fn render_workspace_row_summary(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     index: usize,
     workspace: &beryl_model::workspace::BerylWorkspaceManifest,
     explicit_member_paths: &[String],
@@ -1295,13 +1332,17 @@ fn render_workspace_row_summary(
                     div()
                         .min_w(px(0.0))
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::WorkspacePickerWorkspaceRow,
+                            gpui::FontWeight::SEMIBOLD,
+                        ))
                         .text_color(title_color)
                         .whitespace_normal()
                         .child(workspace.title().to_string()),
                 )
                 .when(!explicit_member_paths.is_empty(), |this| {
                     this.child(render_workspace_member_paths(
+                        shell,
                         explicit_member_paths,
                         member_path_color,
                     ))
@@ -1316,6 +1357,7 @@ fn render_workspace_row_summary(
 }
 
 fn render_workspace_member_paths(
+    shell: &ShellRenderFrame<'_>,
     explicit_member_paths: &[String],
     text_color: gpui::Rgba,
 ) -> impl IntoElement {
@@ -1327,7 +1369,12 @@ fn render_workspace_member_paths(
                     .w_full()
                     .min_w(px(0.0))
                     .text_xs()
-                    .font_family(CODE_FONT_FAMILY)
+                    .font_family(
+                        shell.role_font_family(
+                            BerylThemeRole::WorkspacePickerWorkspaceRow,
+                            "Consolas",
+                        ),
+                    )
                     .text_color(text_color)
                     .whitespace_normal()
                     .child(path.clone()),
@@ -1336,7 +1383,7 @@ fn render_workspace_member_paths(
 }
 
 fn render_rename_editor(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     workspace_rename_input: &Entity<SingleLineInput>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -1364,7 +1411,10 @@ fn render_rename_editor(
         ))
 }
 
-fn render_create_workspace_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+fn render_create_workspace_row(
+    shell: &ShellRenderFrame<'_>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     let secondary = shell.secondary_button_theme();
     let background = shell.popup_surface_background();
     let foreground = shell.general_ui_foreground();
@@ -1384,7 +1434,10 @@ fn render_create_workspace_row(shell: &ShellView, cx: &mut Context<ShellView>) -
         .flex()
         .items_center()
         .text_sm()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::WorkspacePickerWorkspaceRow,
+            gpui::FontWeight::SEMIBOLD,
+        ))
         .text_color(foreground)
         .cursor_pointer()
         .hover(move |style| style.bg(hover_background))

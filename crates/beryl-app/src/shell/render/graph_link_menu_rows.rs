@@ -1,14 +1,15 @@
 use gpui::{
     Context, InteractiveElement, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent,
-    MouseUpEvent, StatefulInteractiveElement, Window, div, prelude::*, px, relative, rgba,
+    MouseUpEvent, StatefulInteractiveElement, Window, div, prelude::*, px, relative,
 };
 
-use crate::shell::{ShellView, layout};
+use crate::BerylThemeRole;
+use crate::shell::{ShellRenderFrame, ShellView, layout};
 
 use super::common::{disabled_secondary_button, secondary_button};
 
 pub(super) fn action_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
@@ -17,7 +18,7 @@ pub(super) fn action_row(
 }
 
 pub(super) fn delete_leaf_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
     on_key_down: impl Fn(&KeyDownEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
@@ -27,7 +28,7 @@ pub(super) fn delete_leaf_row(
 }
 
 pub(super) fn delete_recursive_hold_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     progress: Option<f32>,
     in_flight: bool,
     on_mouse_down: impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static,
@@ -48,6 +49,8 @@ pub(super) fn delete_recursive_hold_row(
     } else {
         "Delete Recursively"
     };
+    let progress_fill =
+        shell.role_background(BerylThemeRole::GraphRowError, secondary.active.background);
     div()
         .id("graph-node-delete-recursively-row")
         .relative()
@@ -71,7 +74,8 @@ pub(super) fn delete_recursive_hold_row(
                 .top_0()
                 .bottom_0()
                 .w(relative(progress))
-                .bg(rgba(0xdc26264d)),
+                .bg(progress_fill)
+                .opacity(0.45),
         )
         .child(
             div()
@@ -90,7 +94,10 @@ pub(super) fn delete_recursive_hold_row(
         .on_key_up(on_key_up)
 }
 
-pub(super) fn actions_back_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+pub(super) fn actions_back_row(
+    shell: &ShellRenderFrame<'_>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     action_row(
         shell,
         "graph-node-action-back-row",
@@ -99,7 +106,10 @@ pub(super) fn actions_back_row(shell: &ShellView, cx: &mut Context<ShellView>) -
     )
 }
 
-pub(super) fn back_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl IntoElement {
+pub(super) fn back_row(
+    shell: &ShellRenderFrame<'_>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     secondary_button(
         shell,
         "graph-thread-link-back-row",
@@ -108,7 +118,7 @@ pub(super) fn back_row(shell: &ShellView, cx: &mut Context<ShellView>) -> impl I
     )
 }
 
-pub(super) fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {
+pub(super) fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .px_2()
         .py_1()
@@ -118,7 +128,7 @@ pub(super) fn menu_header(shell: &ShellView, label: &str) -> impl IntoElement {
         .child(label.to_string())
 }
 
-pub(super) fn status_row(shell: &ShellView, message: &str) -> impl IntoElement {
+pub(super) fn status_row(shell: &ShellRenderFrame<'_>, message: &str) -> impl IntoElement {
     div()
         .rounded_md()
         .px_2()
@@ -128,7 +138,7 @@ pub(super) fn status_row(shell: &ShellView, message: &str) -> impl IntoElement {
         .child(message.to_string())
 }
 
-pub(super) fn disabled_menu_row(shell: &ShellView, label: &str) -> impl IntoElement {
+pub(super) fn disabled_menu_row(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
     div()
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
         .px_2()
@@ -139,7 +149,7 @@ pub(super) fn disabled_menu_row(shell: &ShellView, label: &str) -> impl IntoElem
 }
 
 pub(super) fn disabled_action_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     id: &'static str,
     label: &'static str,
 ) -> impl IntoElement {

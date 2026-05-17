@@ -24,6 +24,8 @@ fn fallback_inline_lines_inner(
     let style = InlineRenderStyle {
         role,
         link: false,
+        emphasis: false,
+        strong: false,
         fallback: true,
         atom: false,
     };

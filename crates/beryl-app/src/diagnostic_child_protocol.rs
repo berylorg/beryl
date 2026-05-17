@@ -14,6 +14,8 @@ pub(crate) const PREPARE_RENDERER_WINDOW_COMMAND: &str = "prepare_renderer_windo
 pub(crate) const READ_RETAINED_STATE_COMMAND: &str = "read_retained_state";
 pub(crate) const READ_VISIBLE_MEDIA_COMMAND: &str = "read_visible_media";
 pub(crate) const READ_MEDIA_EVENTS_COMMAND: &str = "read_media_events";
+pub(crate) const READ_TRANSCRIPT_FRAME_METRICS_COMMAND: &str = "read_transcript_frame_metrics";
+pub(crate) const READ_SETTINGS_WINDOW_COMMAND: &str = "read_settings_window";
 pub(crate) const READ_UI_STATE_COMMAND: &str = "read_ui_state";
 pub(crate) const LIST_WORKSPACE_THREADS_COMMAND: &str = "list_workspace_threads";
 pub(crate) const CREATE_NEW_THREAD_COMMAND: &str = "create_new_thread";
@@ -47,6 +49,8 @@ pub(crate) enum DiagnosticChildCommand {
     ReadRetainedState,
     ReadVisibleMedia,
     ReadMediaEvents,
+    ReadTranscriptFrameMetrics,
+    ReadSettingsWindow,
     ReadUiState,
     ListWorkspaceThreads,
     CreateNewThread,
@@ -133,6 +137,8 @@ impl DiagnosticChildCommand {
             Self::ReadRetainedState => READ_RETAINED_STATE_COMMAND,
             Self::ReadVisibleMedia => READ_VISIBLE_MEDIA_COMMAND,
             Self::ReadMediaEvents => READ_MEDIA_EVENTS_COMMAND,
+            Self::ReadTranscriptFrameMetrics => READ_TRANSCRIPT_FRAME_METRICS_COMMAND,
+            Self::ReadSettingsWindow => READ_SETTINGS_WINDOW_COMMAND,
             Self::ReadUiState => READ_UI_STATE_COMMAND,
             Self::ListWorkspaceThreads => LIST_WORKSPACE_THREADS_COMMAND,
             Self::CreateNewThread => CREATE_NEW_THREAD_COMMAND,
@@ -160,6 +166,8 @@ impl TryFrom<&str> for DiagnosticChildCommand {
             READ_RETAINED_STATE_COMMAND => Ok(Self::ReadRetainedState),
             READ_VISIBLE_MEDIA_COMMAND => Ok(Self::ReadVisibleMedia),
             READ_MEDIA_EVENTS_COMMAND => Ok(Self::ReadMediaEvents),
+            READ_TRANSCRIPT_FRAME_METRICS_COMMAND => Ok(Self::ReadTranscriptFrameMetrics),
+            READ_SETTINGS_WINDOW_COMMAND => Ok(Self::ReadSettingsWindow),
             READ_UI_STATE_COMMAND => Ok(Self::ReadUiState),
             LIST_WORKSPACE_THREADS_COMMAND => Ok(Self::ListWorkspaceThreads),
             CREATE_NEW_THREAD_COMMAND => Ok(Self::CreateNewThread),

@@ -9,16 +9,17 @@ use std::{
 };
 
 pub use beryl_app::{
-    BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
-    BerylWorkspacePersistence, LifecycleYieldOutcome, NodeLeafDeleteRequest,
-    NodeSubtreeDeleteRequest, ThreadRefUpsertRequest, UPSERT_GRAPH_NODE_TOOL,
+    ACTIVATE_THEME_TOOL, BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, BERYL_DYNAMIC_TOOL_NAMESPACE,
+    BerylWorkspacePersistence, INSTALL_THEME_TOOL, LifecycleYieldOutcome, NodeLeafDeleteRequest,
+    NodeSubtreeDeleteRequest, READ_GUI_SETTINGS_TOOL, READ_THEME_REPOSITORY_TOOL,
+    SAVE_THEME_AS_TOOL, ThreadRefUpsertRequest, UPDATE_THEME_TOOL, UPSERT_GRAPH_NODE_TOOL,
     WorkspaceGraphMutationCommit, WorkspaceGraphRevision, WorkspaceGraphToolService,
     WorkspaceImageAsset, WorkspaceImageAssetStatus, WorkspacePersistenceError, YIELD_TOOL,
     beryl_diagnostic_child_dynamic_tool_shell_response_timeout, beryl_thread_start_options,
     beryl_user_thread_start_options, diagnostic_bridge_unavailable_response,
     dispatch_beryl_dynamic_tool_call_with_metadata, dispatch_beryl_graph_dynamic_tool_call,
     dispatch_beryl_graph_dynamic_tool_call_with_metadata, is_beryl_diagnostic_child_dynamic_tool,
-    is_beryl_diagnostic_dynamic_tool,
+    is_beryl_diagnostic_dynamic_tool, is_beryl_settings_dynamic_tool, is_beryl_theme_dynamic_tool,
 };
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,
@@ -438,6 +439,76 @@ fn diagnostic_child_tool_call_is_forwarded_to_supervisor_shell_bridge() {
 }
 
 #[test]
+fn theme_tool_call_is_forwarded_to_supervisor_shell_bridge() {
+    let request = dynamic_tool_call_request(READ_THEME_REPOSITORY_TOOL, json!({}));
+    let (sender, receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("theme_tool_forwarded").unwrap();
+    let mut graph_updates = Vec::new();
+
+    let handled = handle_beryl_dynamic_tool_call_with_shell_tools(
+        &service,
+        &workspace_id,
+        Some(&sender),
+        &request,
+        |update| graph_updates.push(update),
+    );
+    let response = handled.into_response();
+    let payload = response_json(&response);
+    let queued_request = receiver
+        .try_recv()
+        .expect("theme tool request should be queued for shell handling");
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "shell_unavailable");
+    assert_eq!(queued_request.request().namespace(), Some("beryl"));
+    assert_eq!(queued_request.request().tool(), READ_THEME_REPOSITORY_TOOL);
+    assert!(graph_updates.is_empty());
+
+    root.close().unwrap();
+}
+
+#[test]
+fn settings_tool_call_is_forwarded_to_supervisor_shell_bridge() {
+    let request = dynamic_tool_call_request(READ_GUI_SETTINGS_TOOL, json!({}));
+    let (sender, receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("settings_tool_forwarded").unwrap();
+    let mut graph_updates = Vec::new();
+
+    let handled = handle_beryl_dynamic_tool_call_with_shell_tools(
+        &service,
+        &workspace_id,
+        Some(&sender),
+        &request,
+        |update| graph_updates.push(update),
+    );
+    let response = handled.into_response();
+    let payload = response_json(&response);
+    let queued_request = receiver
+        .try_recv()
+        .expect("settings tool request should be queued for shell handling");
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "shell_unavailable");
+    assert_eq!(queued_request.request().namespace(), Some("beryl"));
+    assert_eq!(queued_request.request().tool(), READ_GUI_SETTINGS_TOOL);
+    assert!(graph_updates.is_empty());
+
+    root.close().unwrap();
+}
+
+#[test]
 fn diagnostic_child_stop_uses_extended_shell_response_timeout() {
     let request = dynamic_tool_call_request_with_namespace(
         BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE,
@@ -448,6 +519,22 @@ fn diagnostic_child_stop_uses_extended_shell_response_timeout() {
     let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
 
     assert!(sender.response_timeout_for_request_for_test(&request) > Duration::from_secs(2));
+}
+
+#[test]
+fn durable_theme_tools_use_extended_shell_response_timeout() {
+    let durable_request = dynamic_tool_call_request(INSTALL_THEME_TOOL, json!({}));
+    let read_request = dynamic_tool_call_request(READ_THEME_REPOSITORY_TOOL, json!({}));
+    let (sender, _receiver) = shell_dynamic_tool_request_channel_with_capacity_for_test(1);
+    let sender = sender.with_response_timeout_for_test(Duration::from_millis(1));
+
+    assert!(
+        sender.response_timeout_for_request_for_test(&durable_request) > Duration::from_secs(2)
+    );
+    assert_eq!(
+        sender.response_timeout_for_request_for_test(&read_request),
+        Duration::from_millis(1)
+    );
 }
 
 #[test]

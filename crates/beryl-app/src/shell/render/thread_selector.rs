@@ -1,13 +1,15 @@
 use gpui::{
     AnyElement, Context, DispatchPhase, ElementId, InteractiveElement, KeyDownEvent,
     MouseDownEvent, ScrollHandle, StatefulInteractiveElement, Window, anchored, canvas, div, point,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 
 use crate::{
+    BerylThemeRole,
     member_thread_inventory::MemberThreadInventoryGroup,
     shell::{
-        ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellView,
+        ConversationSurfaceState, LoadedWorkspaceState, ScrollbarRegion, ShellRenderFrame,
+        ShellView,
         column_selector::ColumnSelectorSurface,
         layout,
         thread_selector::{
@@ -19,7 +21,7 @@ use crate::{
 
 use super::{
     column_selector::render_column_selector_trail,
-    scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_div_scrollbar},
+    scrollbars::{ScrollbarAxis, ScrollbarVisibilityPolicy, render_themed_div_scrollbar},
 };
 
 const THREAD_SELECTOR_COLUMN_WIDTH: f32 = 284.0;
@@ -75,7 +77,7 @@ pub(super) fn render_thread_selector_listeners(cx: &mut Context<ShellView>) -> i
 }
 
 pub(super) fn render_thread_selector_overlay(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     window: &mut Window,
@@ -141,7 +143,7 @@ fn thread_selector_popup_height(viewport_height: gpui::Pixels) -> gpui::Pixels {
 }
 
 fn render_header(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
 ) -> impl IntoElement {
@@ -176,7 +178,10 @@ fn render_header(
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::ThreadSelectorSurface,
+                            gpui::FontWeight::SEMIBOLD,
+                        ))
                         .text_color(shell.general_ui_foreground())
                         .child("Threads"),
                 )
@@ -209,7 +214,7 @@ fn render_header(
 }
 
 fn render_columns(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
@@ -229,6 +234,7 @@ fn render_columns(
         .min_h(px(0.0))
         .p_3()
         .child(render_column_selector_trail(
+            shell,
             ColumnSelectorSurface::ThreadSelector,
             "thread-selector-columns",
             THREAD_SELECTOR_COLUMN_WIDTH,
@@ -241,7 +247,7 @@ fn render_columns(
 }
 
 fn render_column(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     surface: &ConversationSurfaceState,
     column: &ThreadSelectorColumnState,
@@ -284,7 +290,10 @@ fn render_column(
                             div()
                                 .min_w(px(0.0))
                                 .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .font_weight(shell.role_font_weight(
+                                    BerylThemeRole::ThreadSelectorSurface,
+                                    gpui::FontWeight::SEMIBOLD,
+                                ))
                                 .text_color(shell.general_ui_foreground())
                                 .whitespace_nowrap()
                                 .truncate()
@@ -305,7 +314,7 @@ fn render_column(
 }
 
 fn render_column_rows(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     column_index: usize,
     column: &ThreadSelectorColumnState,
@@ -382,7 +391,8 @@ fn render_column_rows(
                 .overflow_y_scroll()
                 .child(rows),
         );
-    if let Some(scrollbar) = render_div_scrollbar(
+    if let Some(scrollbar) = render_themed_div_scrollbar(
+        shell.style(),
         (
             ElementId::from(("thread-selector-column-scrollbar", column_index)),
             thread_selector_column_stable_key(&column_key),
@@ -432,7 +442,7 @@ fn thread_selector_spacer(height: gpui::Pixels) -> gpui::Div {
 }
 
 fn render_member_rows(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     column: &ThreadSelectorColumnState,
     groups: &[MemberThreadInventoryGroup],
@@ -469,7 +479,7 @@ fn render_member_rows(
 }
 
 fn render_thread_group_rows(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     column_index: usize,
     column_key: &ThreadSelectorColumnKey,
@@ -536,7 +546,7 @@ fn render_thread_group_rows(
 }
 
 fn render_member_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     column_index: usize,
     row_index: usize,
     column: &ThreadSelectorColumnState,
@@ -619,7 +629,7 @@ fn render_member_row(
 }
 
 fn render_thread_row(
-    shell: &ShellView,
+    shell: &ShellRenderFrame<'_>,
     surface: &ConversationSurfaceState,
     column_index: usize,
     row_index: usize,
@@ -632,24 +642,38 @@ fn render_thread_row(
     let row_state = surface
         .thread_selector()
         .thread_row_state(column_index, &thread_id);
-    let primary = shell.primary_button_theme();
     let secondary = shell.secondary_button_theme();
     let background = if row_state.active {
-        rgb(0x164e2f)
+        shell.role_background(
+            BerylThemeRole::StatusValueOk,
+            shell.row_surface_background(),
+        )
     } else if row_state.selected {
-        primary.normal.background
+        shell.role_background(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().normal.background,
+        )
     } else {
         shell.row_surface_background()
     };
     let border = if row_state.active {
-        rgb(0x4ade80)
+        shell.role_border(
+            BerylThemeRole::StatusValueOk,
+            shell.primary_button_theme().active.border,
+        )
     } else if row_state.selected {
-        primary.normal.border
+        shell.role_border(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().normal.border,
+        )
     } else {
         shell.surface_border()
     };
     let foreground = if row_state.selected && !row_state.active {
-        primary.normal.foreground
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().normal.foreground,
+        )
     } else {
         shell.general_ui_foreground()
     };
@@ -659,16 +683,25 @@ fn render_thread_row(
         shell.surface_muted_foreground()
     };
     let separator = if row_state.active {
-        rgb(0x4ade80)
+        shell.role_border(
+            BerylThemeRole::StatusValueOk,
+            shell.primary_button_theme().active.border,
+        )
     } else if row_state.selected {
-        primary.normal.border
+        shell.role_border(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().normal.border,
+        )
     } else {
         shell.surface_border()
     };
     let hover_background = if row_state.active {
-        rgb(0x1e293b)
+        shell.role_background(BerylThemeRole::SurfaceRowHover, secondary.hover.background)
     } else if row_state.selected {
-        primary.hover.background
+        shell.role_background(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().hover.background,
+        )
     } else {
         secondary.hover.background
     };
@@ -753,15 +786,28 @@ fn column_header_label(
     }
 }
 
-fn disabled_row(shell: &ShellView, label: &str) -> gpui::Div {
+fn disabled_row(shell: &ShellRenderFrame<'_>, label: &str) -> gpui::Div {
+    let background = shell.role_background(
+        BerylThemeRole::ThreadSelectorRowUnavailable,
+        shell.row_surface_background(),
+    );
+    let border = shell.role_border(
+        BerylThemeRole::ThreadSelectorRowUnavailable,
+        shell.surface_border(),
+    );
+    let foreground = shell.role_foreground(
+        BerylThemeRole::ThreadSelectorRowUnavailable,
+        shell.surface_muted_foreground(),
+    );
     div()
         .rounded_md()
         .px_3()
         .py_2()
         .border_1()
-        .border_color(shell.surface_border())
+        .bg(background)
+        .border_color(border)
         .text_sm()
-        .text_color(shell.surface_muted_foreground())
+        .text_color(foreground)
         .child(label.to_string())
 }
 

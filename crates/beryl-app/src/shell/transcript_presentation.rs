@@ -5,15 +5,29 @@ use gpui::Pixels;
 use super::{
     execution_detail::{TranscriptRenderMetrics, TurnExecutionRecord},
     transcript_projection::project_parent_narrative_turn,
-    virtual_list::{ListScrollPosition, ListState},
 };
 
-pub(crate) const TRANSCRIPT_INITIAL_PRESENTATION_ROWS: usize = 96;
-pub(crate) const TRANSCRIPT_MAX_PRESENTATION_ROWS: usize = 256;
+#[path = "transcript_presentation/identity.rs"]
+mod identity;
+#[path = "transcript_presentation/metrics.rs"]
+mod metrics;
+#[allow(dead_code)]
+#[path = "transcript_presentation/range.rs"]
+mod range;
+
+use identity::{latest_user_prompt_anchor_in_rows, stable_row_identity, user_prompt_anchor_text};
+use metrics::TranscriptPresentationRowMetrics;
+
+#[allow(unused_imports)]
+pub(crate) use range::{
+    TRANSCRIPT_INITIAL_PRESENTATION_ROWS, TRANSCRIPT_MAX_PRESENTATION_ROWS,
+    transcript_frame_preload_range, transcript_frame_presentation_range,
+};
 
 #[derive(Clone, Default)]
 pub(crate) struct TranscriptPresentationState {
     rows: Vec<TranscriptPresentationRow>,
+    render_metrics: TranscriptRenderMetrics,
     latest_user_prompt_anchor: Option<(usize, usize, String)>,
     next_ephemeral_row_id: u64,
 }
@@ -24,6 +38,7 @@ struct TranscriptPresentationRow {
     source_turn_index: usize,
     turn: Arc<TurnExecutionRecord>,
     placeholder_height: Option<Pixels>,
+    metrics: TranscriptPresentationRowMetrics,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -82,6 +97,7 @@ pub(crate) struct TranscriptActivityCaret {
 impl TranscriptPresentationState {
     pub(crate) fn clear(&mut self) {
         self.rows.clear();
+        self.render_metrics = TranscriptRenderMetrics::default();
         self.latest_user_prompt_anchor = None;
         self.next_ephemeral_row_id = 0;
     }
@@ -94,6 +110,7 @@ impl TranscriptPresentationState {
             .enumerate()
             .filter_map(|(source_turn_index, turn)| self.row_for_turn(source_turn_index, turn))
             .collect::<Vec<_>>();
+        self.render_metrics = render_metrics_for_rows(&rows);
         self.rows = rows;
         self.rebuild_latest_user_prompt_anchor();
     }
@@ -114,6 +131,7 @@ impl TranscriptPresentationState {
             .filter_map(|(source_turn_index, turn)| self.row_for_turn(source_turn_index, turn))
             .collect::<Vec<_>>();
         let added = rows.len();
+        self.add_render_metrics(render_metrics_for_rows(&rows));
         rows.append(&mut self.rows);
         self.rows = rows;
         self.rebuild_latest_user_prompt_anchor();
@@ -127,6 +145,7 @@ impl TranscriptPresentationState {
     ) -> Option<usize> {
         let index = self.rows.len();
         let row = self.row_for_turn(source_turn_index, turn)?;
+        self.add_row_metrics(row.metrics);
         self.rows.push(row);
         self.update_latest_user_prompt_for_replaced_row(index);
         Some(index)
@@ -142,20 +161,27 @@ impl TranscriptPresentationState {
 
         match (row_index, projected) {
             (Some(index), Some(turn)) => {
+                let old_metrics = self.rows[index].metrics;
+                let new_metrics = TranscriptPresentationRowMetrics::from_turn(turn.as_ref());
+                self.subtract_row_metrics(old_metrics);
+                self.add_row_metrics(new_metrics);
                 let row = &mut self.rows[index];
                 row.turn = turn;
                 row.placeholder_height = None;
+                row.metrics = new_metrics;
                 self.update_latest_user_prompt_for_replaced_row(index);
                 Some(index)
             }
             (Some(index), None) => {
-                self.rows.remove(index);
+                let row = self.rows.remove(index);
+                self.subtract_row_metrics(row.metrics);
                 self.rebuild_latest_user_prompt_anchor();
                 None
             }
             (None, Some(turn)) => {
                 let index = self.insertion_index_for_source_turn(source_turn_index);
                 let row = self.presentation_row_for_projected_turn(source_turn_index, turn);
+                self.add_row_metrics(row.metrics);
                 self.rows.insert(index, row);
                 self.rebuild_latest_user_prompt_anchor();
                 Some(index)
@@ -172,14 +198,20 @@ impl TranscriptPresentationState {
     ) -> Option<usize> {
         let index = self.presentation_index_for_source_turn(source_turn_index)?;
         let Some(projected) = project_parent_narrative_turn(turn.as_ref()) else {
-            self.rows.remove(index);
+            let row = self.rows.remove(index);
+            self.subtract_row_metrics(row.metrics);
             self.rebuild_latest_user_prompt_anchor();
             return None;
         };
 
+        let old_metrics = self.rows[index].metrics;
+        let new_metrics = TranscriptPresentationRowMetrics::from_turn(&projected);
+        self.subtract_row_metrics(old_metrics);
+        self.add_row_metrics(new_metrics);
         let row = &mut self.rows[index];
         row.turn = Arc::new(projected);
         row.placeholder_height = placeholder_height;
+        row.metrics = new_metrics;
         self.update_latest_user_prompt_for_replaced_row(index);
         Some(index)
     }
@@ -201,9 +233,8 @@ impl TranscriptPresentationState {
                     ..TranscriptPresentationRetainedCounts::default()
                 },
                 |mut counts, row| {
-                    counts.items = counts.items.saturating_add(row.turn.item_count());
-                    counts.text_bytes =
-                        counts.text_bytes.saturating_add(row.turn.text_char_count());
+                    counts.items = counts.items.saturating_add(row.metrics.item_count);
+                    counts.text_bytes = counts.text_bytes.saturating_add(row.metrics.text_chars);
                     counts.identity_bytes = counts
                         .identity_bytes
                         .saturating_add(row.identity.as_str().len());
@@ -303,14 +334,8 @@ impl TranscriptPresentationState {
     }
 
     pub(crate) fn render_metrics(&self) -> TranscriptRenderMetrics {
-        let mut metrics = TranscriptRenderMetrics {
-            total_turns: self.rows.len(),
-            ..TranscriptRenderMetrics::default()
-        };
-        for row in &self.rows {
-            metrics.total_item_count += row.turn.item_count();
-            metrics.total_text_chars += row.turn.text_char_count();
-        }
+        let mut metrics = self.render_metrics;
+        metrics.total_turns = self.rows.len();
         metrics
     }
 
@@ -350,9 +375,43 @@ impl TranscriptPresentationState {
         TranscriptPresentationRow {
             identity,
             source_turn_index,
+            metrics: TranscriptPresentationRowMetrics::from_turn(turn.as_ref()),
             turn,
             placeholder_height: None,
         }
+    }
+
+    fn add_row_metrics(&mut self, metrics: TranscriptPresentationRowMetrics) {
+        self.render_metrics.total_item_count = self
+            .render_metrics
+            .total_item_count
+            .saturating_add(metrics.item_count);
+        self.render_metrics.total_text_chars = self
+            .render_metrics
+            .total_text_chars
+            .saturating_add(metrics.text_chars);
+    }
+
+    fn subtract_row_metrics(&mut self, metrics: TranscriptPresentationRowMetrics) {
+        self.render_metrics.total_item_count = self
+            .render_metrics
+            .total_item_count
+            .saturating_sub(metrics.item_count);
+        self.render_metrics.total_text_chars = self
+            .render_metrics
+            .total_text_chars
+            .saturating_sub(metrics.text_chars);
+    }
+
+    fn add_render_metrics(&mut self, metrics: TranscriptRenderMetrics) {
+        self.render_metrics.total_item_count = self
+            .render_metrics
+            .total_item_count
+            .saturating_add(metrics.total_item_count);
+        self.render_metrics.total_text_chars = self
+            .render_metrics
+            .total_text_chars
+            .saturating_add(metrics.total_text_chars);
     }
 
     fn identity_for_turn(&mut self, turn: &TurnExecutionRecord) -> TranscriptRowIdentity {
@@ -421,96 +480,20 @@ impl TranscriptPresentationRow {
     }
 }
 
-pub(crate) fn transcript_frame_presentation_range(
-    list_state: &ListState,
-    turn_count: usize,
-) -> Range<usize> {
-    let range = clamp_transcript_range(list_state.presentation_range(), turn_count);
-    if range.len() <= TRANSCRIPT_MAX_PRESENTATION_ROWS && (!range.is_empty() || turn_count == 0) {
-        return range;
-    }
-
-    fallback_transcript_presentation_range(list_state, turn_count)
-}
-
-pub(crate) fn transcript_frame_preload_range(
-    list_state: &ListState,
-    turn_count: usize,
-    vertical_margin: Pixels,
-) -> Range<usize> {
-    let range = clamp_transcript_range(
-        list_state.range_with_vertical_margin(vertical_margin),
-        turn_count,
-    );
-    if range.len() <= TRANSCRIPT_MAX_PRESENTATION_ROWS {
-        return range;
-    }
-
-    let visible = clamp_transcript_range(list_state.visible_range(), turn_count);
-    if visible.is_empty() {
-        let end = range
-            .start
-            .saturating_add(TRANSCRIPT_MAX_PRESENTATION_ROWS)
-            .min(range.end);
-        return range.start..end;
-    }
-
-    let extra = TRANSCRIPT_MAX_PRESENTATION_ROWS.saturating_sub(visible.len());
-    let before = extra / 2;
-    let mut start = visible.start.saturating_sub(before).max(range.start);
-    let mut end = start
-        .saturating_add(TRANSCRIPT_MAX_PRESENTATION_ROWS)
-        .min(range.end);
-    start = end
-        .saturating_sub(TRANSCRIPT_MAX_PRESENTATION_ROWS)
-        .max(range.start);
-    end = end.max(start);
-    start..end
-}
-
-fn fallback_transcript_presentation_range(
-    list_state: &ListState,
-    turn_count: usize,
-) -> Range<usize> {
-    match list_state.scroll_position() {
-        ListScrollPosition::Content(offset) => {
-            let start = offset.item_ix.min(turn_count);
-            let end = start
-                .saturating_add(TRANSCRIPT_INITIAL_PRESENTATION_ROWS)
-                .min(turn_count);
-            start..end
-        }
-        ListScrollPosition::Bottom | ListScrollPosition::VirtualTail { .. } => {
-            turn_count.saturating_sub(TRANSCRIPT_INITIAL_PRESENTATION_ROWS)..turn_count
-        }
-    }
-}
-
-fn clamp_transcript_range(range: Range<usize>, turn_count: usize) -> Range<usize> {
-    let start = range.start.min(turn_count);
-    let end = range.end.min(turn_count).max(start);
-    start..end
-}
-
-fn stable_row_identity(turn: &TurnExecutionRecord) -> Option<TranscriptRowIdentity> {
-    match (turn.thread_id.as_deref(), turn.turn_id.as_deref()) {
-        (Some(thread_id), Some(turn_id)) => Some(TranscriptRowIdentity(format!(
-            "thread:{thread_id}:turn:{turn_id}"
-        ))),
-        _ => None,
-    }
-}
-
-fn latest_user_prompt_anchor_in_rows(
-    rows: &[TranscriptPresentationRow],
-) -> Option<(usize, usize, String)> {
-    rows.iter().enumerate().rev().find_map(|(index, row)| {
-        user_prompt_anchor_text(row.turn.as_ref())
-            .map(|(fragment_index, prompt)| (index, fragment_index, prompt))
-    })
-}
-
-fn user_prompt_anchor_text(turn: &TurnExecutionRecord) -> Option<(usize, String)> {
-    turn.latest_user_input_fragment()
-        .map(|(index, fragment)| (index, fragment.text.clone()))
+fn render_metrics_for_rows(rows: &[TranscriptPresentationRow]) -> TranscriptRenderMetrics {
+    rows.iter().fold(
+        TranscriptRenderMetrics {
+            total_turns: rows.len(),
+            ..TranscriptRenderMetrics::default()
+        },
+        |mut metrics, row| {
+            metrics.total_item_count = metrics
+                .total_item_count
+                .saturating_add(row.metrics.item_count);
+            metrics.total_text_chars = metrics
+                .total_text_chars
+                .saturating_add(row.metrics.text_chars);
+            metrics
+        },
+    )
 }

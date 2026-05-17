@@ -1,27 +1,24 @@
-use std::{cell::Cell, collections::HashSet, rc::Rc};
+use std::{borrow::Cow, cell::Cell, rc::Rc};
 
 use beryl_model::workspace::WorkspaceId;
 use gpui::{AnyElement, App};
 
-use crate::shell::transcript_markdown::{
-    ParsedTranscriptMarkdown, TranscriptMarkdownCacheKey, markdown_code_panel_ids,
-};
+use crate::shell::transcript_markdown::{ParsedTranscriptMarkdown, TranscriptMarkdownCacheKey};
 use crate::shell::transcript_media::{TranscriptMediaCacheKey, TranscriptMediaSource};
 use crate::shell::transcript_media_runs::{TranscriptMediaRunSegment, markdown_media_run_segments};
 use crate::shell::transcript_selection::transcript_narrative_block_break_before;
 
 use super::{
-    markdown_cache::TranscriptMarkdownRenderContext,
     media_blocks::{TranscriptMediaRenderItem, TranscriptMediaRenderLayout, render_media_run},
     media_cache::TranscriptMediaRenderContext,
     selection_context::TranscriptInlineSelectionContext,
 };
 
-pub(super) enum TranscriptMarkdownRenderUnit {
+pub(super) enum TranscriptMarkdownRenderUnit<'a> {
     Markdown {
         key: TranscriptMarkdownCacheKey,
         block_path: String,
-        source: String,
+        source: Cow<'a, str>,
     },
     Media {
         key: TranscriptMediaCacheKey,
@@ -105,11 +102,22 @@ pub(super) fn segment_media_key(
     TranscriptMediaCacheKey::new(format!("{}:media:{segment_index}", key.as_str()))
 }
 
-pub(super) fn markdown_render_units(
+pub(super) fn markdown_render_units<'a>(
     key: &TranscriptMarkdownCacheKey,
     block_path: &str,
-    markdown: &ParsedTranscriptMarkdown,
-) -> Vec<TranscriptMarkdownRenderUnit> {
+    markdown: &'a ParsedTranscriptMarkdown,
+) -> Vec<TranscriptMarkdownRenderUnit<'a>> {
+    if markdown.media_requests().is_empty() {
+        return (!markdown.source().is_empty())
+            .then(|| TranscriptMarkdownRenderUnit::Markdown {
+                key: key.clone(),
+                block_path: block_path.to_string(),
+                source: Cow::Borrowed(markdown.source()),
+            })
+            .into_iter()
+            .collect();
+    }
+
     let segments = markdown_media_run_segments(markdown);
     if !segments
         .iter()
@@ -119,7 +127,7 @@ pub(super) fn markdown_render_units(
             .then(|| TranscriptMarkdownRenderUnit::Markdown {
                 key: key.clone(),
                 block_path: block_path.to_string(),
-                source: markdown.source().to_string(),
+                source: Cow::Borrowed(markdown.source()),
             })
             .into_iter()
             .collect();
@@ -132,7 +140,7 @@ pub(super) fn markdown_render_units(
             TranscriptMediaRunSegment::Markdown(source) => TranscriptMarkdownRenderUnit::Markdown {
                 key: segment_markdown_key(key, segment_index),
                 block_path: format!("{block_path}:segment:{segment_index}"),
-                source,
+                source: Cow::Owned(source),
             },
             TranscriptMediaRunSegment::Media(source) => TranscriptMarkdownRenderUnit::Media {
                 key: segment_media_key(key, segment_index),
@@ -140,29 +148,4 @@ pub(super) fn markdown_render_units(
             },
         })
         .collect()
-}
-
-pub(super) fn collect_markdown_render_unit_code_panel_ids(
-    row_identity: &str,
-    units: Vec<TranscriptMarkdownRenderUnit>,
-    markdown_context: TranscriptMarkdownRenderContext,
-    ids: &mut HashSet<String>,
-    cx: &mut App,
-) {
-    for unit in units {
-        let TranscriptMarkdownRenderUnit::Markdown {
-            key,
-            block_path,
-            source,
-        } = unit
-        else {
-            continue;
-        };
-        let markdown = markdown_context.markdown_for(key, source.as_str(), cx);
-        ids.extend(markdown_code_panel_ids(
-            row_identity,
-            block_path.as_str(),
-            markdown.render_plan(),
-        ));
-    }
 }

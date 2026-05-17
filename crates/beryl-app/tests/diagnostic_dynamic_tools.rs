@@ -16,10 +16,15 @@ use diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, MediaDiagnosticEvent, MediaDiagnosticLog, MediaEventSnapshot,
     MemoryDiagnosticSnapshot, MemoryDiagnosticUiCorrelation, PreviewDiagnostic,
     ProcessDiagnosticSnapshot, READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL,
-    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL, READ_VISIBLE_MEDIA_TOOL,
-    RendererDiagnosticSnapshot, RuntimeTargetDiagnostic, ShellWindowRendererDiagnostic,
-    VisibleMediaDiagnostics, VisibleMediaItemDiagnostic, VisibleMediaSnapshot,
-    dispatch_beryl_diagnostic_dynamic_tool_call, renderer_snapshot_with_shell_window,
+    READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
+    READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL, READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+    READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
+    SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
+    SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, TranscriptFrameMetric,
+    TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics,
+    VisibleMediaItemDiagnostic, VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
+    dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
+    renderer_snapshot_with_shell_window,
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
@@ -100,6 +105,90 @@ fn media_event_log_is_a_metadata_only_bounded_ring() {
             .events
             .iter()
             .all(|event| event.detail.as_ref().unwrap().len() <= 512)
+    );
+}
+
+#[test]
+fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
+    let mut log = TranscriptFrameMetricsLog::default();
+
+    for index in 0..140 {
+        log.record(TranscriptFrameMetric {
+            sequence: 0,
+            selected_thread_id: Some(format!("thread-{index}-{}", "x".repeat(700))),
+            presentation_range: None,
+            visible_range: None,
+            total_loaded_turn_count: 12,
+            total_item_count: Some(24),
+            total_text_chars: Some(480),
+            presentation_range_len: 4,
+            visible_row_count: 2,
+            panel_state_inspected_row_count: 4,
+            frame_micros: index,
+            style_snapshot_micros: 1,
+            composer_measurement_micros: 2,
+            row_build_total_micros: 3,
+            row_prepaint_total_micros: 4,
+            inline_text_construction_micros: 5,
+            code_panel_render_micros: 6,
+            media_run_render_micros: 7,
+            media_preload_micros: 8,
+            slowest_row_build_micros: 9,
+            slowest_row_build_index: Some(1),
+            slowest_row_build_identity: Some(format!("row-{index}-{}", "x".repeat(700))),
+            slowest_row_prepaint_micros: 10,
+            slowest_row_prepaint_index: Some(1),
+            slowest_row_prepaint_identity: Some(format!("row-{index}-{}", "y".repeat(700))),
+            largest_visible_row_text_chars: 300,
+            largest_visible_row_text_chars_index: Some(1),
+            largest_visible_row_item_count: 8,
+            largest_visible_row_item_count_index: Some(1),
+            dominant_cost_category: "inline_text_construction".repeat(40),
+        });
+    }
+
+    let snapshot = log.snapshot();
+    assert_eq!(snapshot.frames.len(), 128);
+    assert_eq!(snapshot.frame_count, 128);
+    assert_eq!(snapshot.frames.first().unwrap().sequence, 13);
+    assert_eq!(snapshot.next_sequence, 141);
+    assert!(
+        snapshot
+            .frames
+            .iter()
+            .all(|frame| frame.selected_thread_id.as_ref().unwrap().len() <= 512)
+    );
+    assert!(
+        snapshot.frames.iter().all(|frame| frame
+            .slowest_row_build_identity
+            .as_ref()
+            .unwrap()
+            .len()
+            <= 512)
+    );
+
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(
+            READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+            json!({ "afterSequence": 20, "limit": 2 }),
+        ),
+        DiagnosticToolSnapshot {
+            transcript_frame_metrics: snapshot,
+            ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
+        },
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["frames"].as_array().unwrap().len(), 2);
+    assert_eq!(payload["result"]["frames"][0]["sequence"], 21);
+    assert_eq!(payload["result"]["frameCount"], 2);
+    assert_eq!(payload["result"]["truncated"], true);
+    assert!(
+        payload["result"]
+            .to_string()
+            .find("assistant text")
+            .is_none()
     );
 }
 
@@ -185,6 +274,86 @@ fn diagnostic_dispatch_caps_visible_media_and_media_events() {
 }
 
 #[test]
+fn settings_window_diagnostics_are_content_free_and_dispatchable() {
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL, json!({})),
+        DiagnosticToolSnapshot {
+            settings_window: SettingsWindowDiagnosticSnapshot {
+                available: true,
+                unavailable_reason: None,
+                visible: true,
+                selected_section_id: Some("themes".to_string()),
+                selected_page_id: Some("theme_editor".to_string()),
+                detail_rows: Some(SettingsWindowRowSurfaceDiagnostic {
+                    surface_id: "selected_page_detail_rows".to_string(),
+                    total_row_count: 22,
+                    rendered_row_count: 22,
+                    visible_range: None,
+                    overscan_count: 0,
+                    row_height_strategy: "full_selected_page".to_string(),
+                }),
+                split_list: Some(SettingsWindowRowSurfaceDiagnostic {
+                    surface_id: "page_local_split_list".to_string(),
+                    total_row_count: 176,
+                    rendered_row_count: 10,
+                    visible_range: Some(diagnostic_dynamic_tools::PresentationRangeDiagnostic {
+                        start: 40,
+                        end: 50,
+                    }),
+                    overscan_count: 3,
+                    row_height_strategy: "fixed_height_windowed".to_string(),
+                }),
+                performance: SettingsWindowPerformanceDiagnostic {
+                    render_count: 7,
+                    last_render_tree_micros: 100,
+                    model_sync_count: 3,
+                    last_model_sync_micros: 40,
+                    option_sync_count: 2,
+                    last_option_sync_micros: 10,
+                    input_sync_count: 12,
+                    last_input_sync_entity_count: 4,
+                    color_preview_lookup_count: 8,
+                    last_render_color_preview_lookup_count: 2,
+                    color_model_lookup_count: 6,
+                    last_render_color_model_lookup_count: 1,
+                    dominant_cost_category: "render_tree".to_string(),
+                },
+            },
+            ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
+        },
+    );
+    let payload = response_json(&response);
+    let result_text = payload["result"].to_string();
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["selectedPageId"], "theme_editor");
+    assert_eq!(payload["result"]["detailRows"]["totalRowCount"], 22);
+    assert_eq!(payload["result"]["splitList"]["totalRowCount"], 176);
+    assert_eq!(payload["result"]["splitList"]["renderedRowCount"], 10);
+    assert_eq!(
+        payload["result"]["performance"]["dominantCostCategory"],
+        "render_tree"
+    );
+    assert!(!result_text.contains("End-turn sound"));
+    assert!(!result_text.contains("developer instructions"));
+    assert!(!result_text.contains("C:\\Users"));
+    assert!(!result_text.contains("schema = 1"));
+}
+
+#[test]
+fn settings_window_diagnostics_tool_is_registered() {
+    let specs = beryl_diagnostic_dynamic_tool_specs();
+    let spec = specs
+        .iter()
+        .find(|spec| spec.name == READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL)
+        .expect("settings-window diagnostic tool should be registered");
+    let request = diagnostic_tool_request(READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL, json!({}));
+
+    assert_eq!(spec.input_schema["additionalProperties"], false);
+    assert!(is_beryl_diagnostic_dynamic_tool(&request));
+}
+
+#[test]
 fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
     let runtime = RuntimeTargetDiagnostic {
         runtime: "host-windows".to_string(),
@@ -215,6 +384,8 @@ fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
             retained_state: RetainedStateSnapshot::default(),
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
+            transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+            settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
     let payload = response_json(&response);
@@ -277,6 +448,8 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
             retained_state: RetainedStateSnapshot::default(),
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
+            transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+            settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
     let payload = response_json(&response);
@@ -350,6 +523,8 @@ fn renderer_diagnostics_serialize_source_backed_image_sections() {
             retained_state: RetainedStateSnapshot::default(),
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
+            transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+            settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
     let payload = response_json(&response);
@@ -519,6 +694,8 @@ fn diagnostic_snapshot(
         retained_state: RetainedStateSnapshot::default(),
         visible_media,
         media_events,
+        transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+        settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
     }
 }
 
