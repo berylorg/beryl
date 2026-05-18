@@ -42,6 +42,9 @@ use beryl_model::{
 };
 use serde_json::{Value, json};
 
+const READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL_NAME: &str = "read_settings_window_diagnostics";
+const DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL_NAME: &str = "read_settings_window";
+
 #[test]
 fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
     let options = beryl_thread_start_options();
@@ -126,6 +129,10 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
                 READ_TRANSCRIPT_FRAME_METRICS_TOOL
             ),
             (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL_NAME
+            ),
+            (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
                 DIAGNOSTIC_CHILD_START_TOOL
             ),
@@ -172,6 +179,10 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
                 DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL
+            ),
+            (
+                Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),
+                DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL_NAME
             ),
             (
                 Some(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE),

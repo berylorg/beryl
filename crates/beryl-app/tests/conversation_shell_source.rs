@@ -700,13 +700,17 @@ fn settings_window_model_sync_does_not_force_option_sync() {
     let shell_source = include_str!("../src/shell.rs");
     let model_sync_body = rust_function_body(shell_source, "fn sync_settings_window_model");
     let options_sync_body = rust_function_body(shell_source, "fn sync_settings_window_options");
+    let options_sync_value_body =
+        rust_function_body(shell_source, "fn sync_settings_window_options_value");
 
     assert!(model_sync_body.contains(".update_model("));
     assert!(!model_sync_body.contains("sync_settings_window_options"));
     assert!(!model_sync_body.contains(".update_options("));
     assert!(options_sync_body.contains("window_options_for_sync"));
-    assert!(options_sync_body.contains(".update_options("));
-    assert!(options_sync_body.contains("record_window_options_synced"));
+    assert!(options_sync_body.contains("sync_settings_window_options_value"));
+    assert!(options_sync_value_body.contains(".update_options("));
+    assert!(options_sync_value_body.contains("options_with_renderer"));
+    assert!(options_sync_value_body.contains("record_window_options_synced"));
 }
 
 #[test]

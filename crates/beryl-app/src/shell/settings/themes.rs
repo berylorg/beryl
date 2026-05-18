@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use gpui_settings_window::{
     SettingsBreadcrumbSegment, SettingsFieldId, SettingsPage, SettingsPageAction,
-    SettingsPageActionId, SettingsPageActionPriority, SettingsPageId, SettingsRow,
-    SettingsRowAction, SettingsRowActionId, SettingsSection, SettingsSectionId,
+    SettingsPageActionId, SettingsPageActionPriority, SettingsPageCustomBody, SettingsPageId,
+    SettingsRow, SettingsRowAction, SettingsRowActionId, SettingsSection, SettingsSectionId,
 };
 
 use crate::{BUILT_IN_INSTALLED_THEME_ID, InstalledThemeId, ThemeRepositorySnapshot};
@@ -18,6 +18,8 @@ const SAVE_AS_ACTION_ID: &str = "save_as";
 const ACTIVE_ROW_FIELD_ID: &str = "themes.active";
 const SAVE_AS_NAME_FIELD_ID: &str = "themes.save_as_name";
 const INSTALLED_ROW_PREFIX: &str = "themes.installed.";
+const EDITOR_ROLE_NAVIGATOR_BODY_ID: &str = "themes.editor.role_navigator";
+const EDITOR_ROLE_NAVIGATOR_BODY_HEIGHT: u16 = 156;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ThemeRowAction {
@@ -174,10 +176,11 @@ fn editor_page(
         SettingsPageAction::new(SAVE_AS_ACTION_ID, "Save As")
             .disabled_with_reason("No staged theme changes.")
     };
+    let active_theme_name = active_theme_name(snapshot);
 
     let mut page = SettingsPage::new(editor_page_id(), "Theme Editor")
         .with_breadcrumb_segment(SettingsBreadcrumbSegment::linked("Themes", root_page_id()))
-        .with_breadcrumb_segment(SettingsBreadcrumbSegment::new("Theme Editor"))
+        .with_breadcrumb_segment(SettingsBreadcrumbSegment::new(active_theme_name))
         .with_back_target(root_page_id())
         .with_modified(staged_changes)
         .with_action(save_action)
@@ -185,7 +188,10 @@ fn editor_page(
 
     if let Some(editor_model) = editor_model {
         page = page
-            .with_local_split(editor_model.split)
+            .with_stacked_custom_body(SettingsPageCustomBody::new(
+                EDITOR_ROLE_NAVIGATOR_BODY_ID,
+                EDITOR_ROLE_NAVIGATOR_BODY_HEIGHT,
+            ))
             .with_row(save_as_name_row(save_as_name, errors));
 
         for row in editor_model.rows {
@@ -194,6 +200,15 @@ fn editor_page(
     }
 
     page
+}
+
+fn active_theme_name(snapshot: &ThemeRepositorySnapshot) -> &str {
+    snapshot
+        .themes()
+        .iter()
+        .find(|theme| theme.is_active())
+        .map(|theme| theme.name())
+        .unwrap_or("Theme Editor")
 }
 
 fn save_as_name_row(save_as_name: &str, errors: &HashMap<SettingsFieldId, String>) -> SettingsRow {

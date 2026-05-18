@@ -21,10 +21,11 @@ use diagnostic_dynamic_tools::{
     READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
     SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
-    TranscriptFrameMetric, TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot,
-    VisibleMediaDiagnostics, VisibleMediaItemDiagnostic, VisibleMediaSnapshot,
-    beryl_diagnostic_dynamic_tool_specs, dispatch_beryl_diagnostic_dynamic_tool_call,
-    is_beryl_diagnostic_dynamic_tool, renderer_snapshot_with_shell_window,
+    ThemeRoleNavigatorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
+    TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
+    VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
+    dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
+    renderer_snapshot_with_shell_window,
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
@@ -292,14 +293,24 @@ fn settings_window_diagnostics_are_content_free_and_dispatchable() {
                     overscan_count: 0,
                     row_height_strategy: "full_selected_page".to_string(),
                 }),
-                split_list: Some(SettingsWindowRowSurfaceDiagnostic {
-                    surface_id: "page_local_split_list".to_string(),
-                    total_row_count: 176,
-                    rendered_row_count: 10,
-                    visible_range: Some(diagnostic_dynamic_tools::PresentationRangeDiagnostic {
-                        start: 40,
-                        end: 50,
-                    }),
+                split_list: None,
+                theme_role_navigator: Some(ThemeRoleNavigatorDiagnostic {
+                    total_schema_role_count: 176,
+                    column_count: 4,
+                    visible_row_count: 9,
+                    rendered_row_count: 15,
+                    selected_role_id: Some("settings.editor.row".to_string()),
+                    selected_role_path: vec![
+                        "root".to_string(),
+                        "settings".to_string(),
+                        "settings.editor".to_string(),
+                        "settings.editor.row".to_string(),
+                    ],
+                    property_row_count: 6,
+                    horizontal_scroll_surface_count: 1,
+                    column_scroll_surface_count: 4,
+                    property_editor_scroll_surface_count: 1,
+                    total_scroll_surface_count: 6,
                     overscan_count: 3,
                     row_height_strategy: "fixed_height_windowed".to_string(),
                 }),
@@ -324,7 +335,9 @@ fn settings_window_diagnostics_are_content_free_and_dispatchable() {
                     preview_projection_build_count: 1,
                     last_preview_projection_build_micros: 34,
                     role_preview_style_build_count: 176,
-                    role_preview_row_count: 176,
+                    total_schema_role_count: 176,
+                    navigator_column_count: 4,
+                    selected_role_path_count: 4,
                     selected_property_detail_row_count: 6,
                     modified_state_recompute_count: 4,
                     last_modified_state_recompute_micros: 55,
@@ -339,14 +352,24 @@ fn settings_window_diagnostics_are_content_free_and_dispatchable() {
     assert!(response.success);
     assert_eq!(payload["result"]["selectedPageId"], "theme_editor");
     assert_eq!(payload["result"]["detailRows"]["totalRowCount"], 22);
-    assert_eq!(payload["result"]["splitList"]["totalRowCount"], 176);
-    assert_eq!(payload["result"]["splitList"]["renderedRowCount"], 10);
+    assert_eq!(
+        payload["result"]["themeRoleNavigator"]["totalSchemaRoleCount"],
+        176
+    );
+    assert_eq!(
+        payload["result"]["themeRoleNavigator"]["renderedRowCount"],
+        15
+    );
+    assert_eq!(
+        payload["result"]["themeRoleNavigator"]["totalScrollSurfaceCount"],
+        6
+    );
     assert_eq!(
         payload["result"]["performance"]["dominantCostCategory"],
         "render_tree"
     );
     assert_eq!(
-        payload["result"]["themeEditorModel"]["rolePreviewRowCount"],
+        payload["result"]["themeEditorModel"]["totalSchemaRoleCount"],
         176
     );
     assert_eq!(

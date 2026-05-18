@@ -6,13 +6,14 @@ mod draft;
 mod field_ids;
 #[path = "theme_editor/helpers.rs"]
 mod helpers;
+#[path = "theme_editor/navigator.rs"]
+mod navigator;
+#[path = "theme_editor/role_tree.rs"]
+mod role_tree;
 #[path = "theme_editor/rows.rs"]
 mod rows;
 
-use gpui_settings_window::{
-    SettingsFieldId, SettingsPageSplit, SettingsPageSplitItemId, SettingsPageSplitItemPreviewStyle,
-    SettingsRow,
-};
+use gpui_settings_window::{SettingsFieldId, SettingsPageSplitItemPreviewStyle, SettingsRow};
 
 use crate::{
     ActiveThemeProjection, StyleRoleId, ThemeDefinition, ThemeResolver, built_in_theme_schema,
@@ -21,7 +22,8 @@ use crate::{
 use field_ids::{property_source_field_id, role_field_id, theme_editor_field_target};
 
 pub(super) struct ThemeEditorPageModel {
-    pub(super) split: SettingsPageSplit,
+    #[allow(dead_code)]
+    pub(super) role_tree: ThemeRoleNavigatorProjection,
     pub(super) rows: Vec<SettingsRow>,
     pub(super) diagnostics: ThemeEditorPageModelDiagnostics,
 }
@@ -33,7 +35,9 @@ pub(super) struct ThemeEditorPageModelDiagnostics {
     pub(super) preview_projection_build_count: u64,
     pub(super) last_preview_projection_build_micros: u64,
     pub(super) role_preview_style_build_count: u64,
-    pub(super) role_preview_row_count: usize,
+    pub(super) total_schema_role_count: usize,
+    pub(super) navigator_column_count: usize,
+    pub(super) selected_role_path_count: usize,
     pub(super) selected_property_detail_row_count: usize,
 }
 
@@ -123,10 +127,16 @@ pub(super) fn validated_role_id(role_id: StyleRoleId) -> StyleRoleId {
     field_ids::validated_role_id(role_id)
 }
 
-pub(super) fn role_id_from_split_item(item_id: &SettingsPageSplitItemId) -> Option<StyleRoleId> {
-    field_ids::role_id_from_split_item(item_id)
-}
-
 pub(super) fn is_theme_editor_field_id(field_id: &SettingsFieldId) -> bool {
     field_ids::is_theme_editor_field_id(field_id)
 }
+
+pub(crate) use navigator::ThemeRoleNavigatorBodyRenderer;
+#[cfg(test)]
+pub(crate) use navigator::{
+    ThemeRoleNavigatorRenderStrategy, theme_role_navigator_render_strategy_for_test,
+    theme_role_navigator_row_window_for_test, theme_role_navigator_row_window_height_sum_for_test,
+};
+pub(crate) use role_tree::{
+    ThemeRoleNavigatorColumn, ThemeRoleNavigatorProjection, ThemeRoleNavigatorRow,
+};

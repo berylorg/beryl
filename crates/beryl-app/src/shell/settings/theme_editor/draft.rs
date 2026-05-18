@@ -74,6 +74,25 @@ impl ThemeEditorDraft {
             .or_else(|| role_schema(role_id).and_then(|schema| schema.static_parent().cloned()))
     }
 
+    pub(super) fn supported_static_parent(
+        &self,
+        role_id: &StyleRoleId,
+        property_id: &StylePropertyId,
+    ) -> Option<StyleRoleId> {
+        self.effective_static_parent(role_id).filter(|parent_id| {
+            role_schema(parent_id)
+                .is_some_and(|parent_schema| parent_schema.supports_property(property_id))
+        })
+    }
+
+    pub(super) fn static_parent_source_is_valid(
+        &self,
+        role_id: &StyleRoleId,
+        property_id: &StylePropertyId,
+    ) -> bool {
+        self.supported_static_parent(role_id, property_id).is_some()
+    }
+
     pub(super) fn candidate_definition(
         &self,
         ignore_invalid: bool,
@@ -141,7 +160,7 @@ impl ThemeEditorDraft {
     ) -> Option<StylePropertySource> {
         let source_field_id = property_source_field_id(role_id, property_id);
         let value_field_id = property_field_id(role_id, property_id);
-        let existing_source = self.definition_source(role_id, property_id);
+        let existing_source = self.valid_definition_source(role_id, property_id);
         let value_was_edited = self.values.contains_key(&value_field_id);
         let source_choice = match self.values.get(&source_field_id) {
             Some(value) => match PropertySourceChoice::parse(value.trim()) {
@@ -172,7 +191,22 @@ impl ThemeEditorDraft {
                     errors,
                 )
                 .map(StylePropertySource::Concrete),
-            PropertySourceChoice::StaticParent => Some(StylePropertySource::StaticParent),
+            PropertySourceChoice::StaticParent
+                if self.static_parent_source_is_valid(role_id, property_id) =>
+            {
+                Some(StylePropertySource::StaticParent)
+            }
+            PropertySourceChoice::StaticParent if ignore_invalid => existing_source,
+            PropertySourceChoice::StaticParent => {
+                errors.insert(
+                    source_field_id,
+                    format!(
+                        "{} cannot use static parent because the static parent does not support this property.",
+                        property_label(property_id)
+                    ),
+                );
+                existing_source
+            }
             PropertySourceChoice::AmbientParent => Some(StylePropertySource::AmbientParent),
             PropertySourceChoice::Fallback => Some(StylePropertySource::Fallback),
         }
@@ -234,6 +268,21 @@ impl ThemeEditorDraft {
             .find(|role| role.role_id() == role_id)
             .and_then(|role| role.properties().get(property_id))
             .cloned()
+    }
+
+    fn valid_definition_source(
+        &self,
+        role_id: &StyleRoleId,
+        property_id: &StylePropertyId,
+    ) -> Option<StylePropertySource> {
+        let source = self.definition_source(role_id, property_id)?;
+        if matches!(source, StylePropertySource::StaticParent)
+            && !self.static_parent_source_is_valid(role_id, property_id)
+        {
+            None
+        } else {
+            Some(source)
+        }
     }
 }
 

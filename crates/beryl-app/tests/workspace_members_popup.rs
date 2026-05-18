@@ -111,7 +111,9 @@ fn members_column_uses_picker_rows_and_no_old_popup_module() {
     assert!(member_rows_body.contains("has_available_explicit_members"));
     assert!(member_row_shell_body.contains(".border_b_1()"));
     assert!(member_row_shell_body.contains("render_workspace_active_marker"));
-    assert!(member_row_shell_body.contains("let background = shell.popup_surface_background();"));
+    assert!(member_row_shell_body.contains("let background = shell.role_background("));
+    assert!(member_row_shell_body.contains("BerylThemeRole::WorkspacePickerMemberRow"));
+    assert!(member_row_shell_body.contains("shell.popup_surface_background()"));
     assert!(!member_row_shell_body.contains("let background = if primary"));
     assert!(!member_row_shell_body.contains("disabled_secondary_button"));
     assert!(!render_mod_source.contains("mod workspace_members;"));

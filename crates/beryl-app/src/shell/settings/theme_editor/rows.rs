@@ -1,8 +1,7 @@
 use std::{collections::HashMap, time::Instant};
 
 use gpui_settings_window::{
-    SettingsChoiceOption, SettingsFieldId, SettingsFieldKind, SettingsPageSplit,
-    SettingsPageSplitItem, SettingsPageSplitItemPreviewStyle, SettingsRow, SettingsRowDetailField,
+    SettingsChoiceOption, SettingsFieldId, SettingsFieldKind, SettingsRow, SettingsRowDetailField,
 };
 
 use crate::{
@@ -13,10 +12,10 @@ use super::{
     ThemeEditorDraft, ThemeEditorPageModel, ThemeEditorPageModelDiagnostics,
     field_ids::{property_field_id, property_source_field_id, validated_role_id},
     helpers::{
-        PropertySourceChoice, editable_theme_roles, field_kind, preview_style,
-        projection_from_definition, property_label, property_value_text, role_schema,
-        source_choices, style_value_text,
+        PropertySourceChoice, field_kind, preview_style, projection_from_definition,
+        property_label, property_value_text, role_schema, source_choices, style_value_text,
     },
+    role_tree::ThemeRoleNavigatorProjection,
 };
 
 impl ThemeEditorDraft {
@@ -34,9 +33,11 @@ impl ThemeEditorDraft {
                 .unwrap_or_else(ActiveThemeProjection::built_in);
             let projection_micros = projection_started.elapsed().as_micros();
 
-            cache.preview_styles = editable_theme_roles()
+            cache.preview_styles = crate::built_in_theme_schema()
+                .roles()
+                .iter()
                 .map(|role| {
-                    let role_id = StyleRoleId::from(role.id());
+                    let role_id = role.role_id().clone();
                     let preview = preview_style(&preview_projection, &role_id);
                     (role_id, preview)
                 })
@@ -54,34 +55,21 @@ impl ThemeEditorDraft {
             .projection
             .as_ref()
             .expect("theme editor presentation cache is initialized before row projection");
-        let split = self.role_split(&selected_role_id, &cache.preview_styles);
+        let role_tree = ThemeRoleNavigatorProjection::from_built_in_schema(
+            &selected_role_id,
+            &cache.preview_styles,
+        );
         let rows = self.property_rows(&selected_role_id, preview_projection, errors);
-        diagnostics.role_preview_row_count = split.items().len();
+        diagnostics.total_schema_role_count = role_tree.rows().count();
+        diagnostics.navigator_column_count = role_tree.columns().len();
+        diagnostics.selected_role_path_count = role_tree.selected_path().len();
         diagnostics.selected_property_detail_row_count = rows.len();
 
         ThemeEditorPageModel {
             diagnostics,
-            split,
+            role_tree,
             rows,
         }
-    }
-
-    fn role_split(
-        &self,
-        selected_role_id: &StyleRoleId,
-        preview_styles: &HashMap<StyleRoleId, SettingsPageSplitItemPreviewStyle>,
-    ) -> SettingsPageSplit {
-        editable_theme_roles().fold(SettingsPageSplit::new(), |split, role| {
-            let role_id = StyleRoleId::from(role.id());
-            let item = SettingsPageSplitItem::new(role.id(), role.id())
-                .with_selected(&role_id == selected_role_id);
-            let item = if let Some(preview) = preview_styles.get(&role_id).cloned() {
-                item.with_preview_style(preview)
-            } else {
-                item
-            };
-            split.with_item(item)
-        })
     }
 
     fn property_rows(
@@ -117,7 +105,7 @@ impl ThemeEditorDraft {
     ) -> SettingsRow {
         let field_id = property_source_field_id(role_id, property_id);
         let source = self.property_source_choice(role_id, property_id);
-        let static_parent = self.effective_static_parent(role_id);
+        let static_parent = self.supported_static_parent(role_id, property_id);
         let row = source_choices(static_parent.as_ref()).into_iter().fold(
             SettingsRow::new(
                 field_id.clone(),
@@ -183,13 +171,21 @@ impl ThemeEditorDraft {
         property_id: &StylePropertyId,
     ) -> PropertySourceChoice {
         let field_id = property_source_field_id(role_id, property_id);
-        self.values
+        let choice = self
+            .values
             .get(&field_id)
             .and_then(|value| PropertySourceChoice::parse(value.trim()))
             .unwrap_or_else(|| {
                 PropertySourceChoice::from_source(
                     self.definition_source(role_id, property_id).as_ref(),
                 )
-            })
+            });
+        if choice == PropertySourceChoice::StaticParent
+            && !self.static_parent_source_is_valid(role_id, property_id)
+        {
+            PropertySourceChoice::Fallback
+        } else {
+            choice
+        }
     }
 }

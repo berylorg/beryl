@@ -779,6 +779,7 @@ pub(super) struct ShellView {
     app_state: Result<ConfiguredAppState, String>,
     settings_window: SettingsWindowHandle,
     settings_state: settings::SettingsState,
+    theme_role_navigator_body_renderer: settings::ThemeRoleNavigatorBodyRenderer,
     notification_sound_path_prompt: NotificationSoundPathPromptState,
     notification_sound_player: NotificationSoundPlayer,
     platform_attention_monitor: PlatformAttentionMonitor,
@@ -4442,6 +4443,20 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> Self {
         let shell_entity = cx.entity();
+        let weak_shell_for_theme_role_navigator = shell_entity.downgrade();
+        let theme_role_navigator_body_renderer =
+            settings::SettingsState::theme_editor_role_navigator_body_renderer(
+                move |role_id, cx| {
+                    let weak_shell_for_theme_role_navigator =
+                        weak_shell_for_theme_role_navigator.clone();
+                    cx.defer(move |cx| {
+                        let _ = weak_shell_for_theme_role_navigator.update(cx, |view, cx| {
+                            view.settings_state.select_theme_editor_role_id(role_id);
+                            view.sync_settings_window_model(cx);
+                        });
+                    });
+                },
+            );
         let mut milestone = MemoryMilestone::new("shell_view_new_start");
         if let Some(workspace) = bootstrap.initial_workspace() {
             milestone = milestone.runtime(workspace.runtime_mode().display_name());
@@ -4540,6 +4555,7 @@ impl ShellView {
             app_state,
             settings_window,
             settings_state,
+            theme_role_navigator_body_renderer,
             notification_sound_path_prompt: NotificationSoundPathPromptState::default(),
             notification_sound_player: NotificationSoundPlayer::spawn(),
             platform_attention_monitor: PlatformAttentionMonitor::spawn(),
@@ -4621,6 +4637,8 @@ impl ShellView {
         view.subscribe_settings_window(cx);
         view.subscribe_workspace_picker_filter_input(cx);
         view.subscribe_conversation_input(cx);
+        view.refresh_theme_role_navigator_renderer_state();
+        view.sync_settings_window_options_current(cx);
 
         if view.block_if_app_state_unavailable(window, cx) {
             view.schedule_poll_if_needed(window, cx);
@@ -8419,16 +8437,10 @@ impl ShellView {
                 self.settings_state.select_page(page_id.clone());
                 self.sync_settings_window_model(cx);
             }
-            SettingsWindowEvent::PageSplitItemSelected { item_id, .. } => {
-                self.settings_state
-                    .select_theme_editor_role(item_id.clone());
-                self.sync_settings_window_model(cx);
-            }
             SettingsWindowEvent::FieldChanged { field_id, value } => {
                 self.settings_state.set_field_value(field_id, value.clone());
                 self.sync_settings_window_model(cx);
             }
-            SettingsWindowEvent::ColorPickerRequested { .. } => {}
             SettingsWindowEvent::RowActionRequested {
                 field_id,
                 action_id,
@@ -8487,6 +8499,7 @@ impl ShellView {
         self.notification_sound_path_prompt.cancel_active();
         self.settings_state.reset_draft_from_active();
         self.sync_settings_window_options(cx);
+        self.refresh_theme_role_navigator_renderer_state();
         if let Err(error) = self
             .settings_window
             .show(cx, self.settings_state.model(), true)
@@ -8811,6 +8824,7 @@ impl ShellView {
     }
 
     fn sync_settings_window_model(&self, cx: &mut Context<Self>) {
+        self.refresh_theme_role_navigator_renderer_state();
         if let Err(error) = self
             .settings_window
             .update_model(cx, self.settings_state.model())
@@ -8823,11 +8837,34 @@ impl ShellView {
         let Some(options) = self.settings_state.window_options_for_sync() else {
             return;
         };
-        if let Err(error) = self.settings_window.update_options(cx, options.clone()) {
+        self.sync_settings_window_options_value(options, cx);
+    }
+
+    fn sync_settings_window_options_current(&mut self, cx: &mut Context<Self>) {
+        let options = self.settings_state.window_options();
+        self.sync_settings_window_options_value(options, cx);
+    }
+
+    fn sync_settings_window_options_value(
+        &mut self,
+        options: gpui_settings_window::SettingsWindowOptions,
+        cx: &mut Context<Self>,
+    ) {
+        let rendered_options = self
+            .theme_role_navigator_body_renderer
+            .options_with_renderer(options.clone());
+        if let Err(error) = self.settings_window.update_options(cx, rendered_options) {
             warn!(error = %error, "failed to synchronize Beryl settings window options");
             return;
         }
         self.settings_state.record_window_options_synced(options);
+    }
+
+    fn refresh_theme_role_navigator_renderer_state(&self) {
+        self.theme_role_navigator_body_renderer.update_projection(
+            self.settings_state
+                .selected_theme_editor_role_tree_projection(),
+        );
     }
 
     fn hide_settings_window(&self, cx: &mut Context<Self>) {

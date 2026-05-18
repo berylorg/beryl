@@ -56,6 +56,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - `Settings page` is the right-pane content surface for one settings section or subpage.
 - `Settings subpage` is a nested right-pane settings page reached from a step-in row, breadcrumb link, or back action; it is not represented as a nested sidebar row.
 - `Settings row` is one schema-backed settings item or action row with a stable setting id or stable action id, label, optional description, value/control area, modified state, and row context actions.
+- `Theme role navigator` is the theme editor's purpose-built column navigator over the actual UI role schema tree. Every navigator row is a real UI role id, and synthetic grouping labels or folder rows are invalid.
 - `Theme candidate code panel` is a transcript code panel produced from a fenced code block whose language label is `beryl-theme`; it presents ordinary transcript code plus Beryl-owned theme actions.
 
 ## Appearance Theme Roles
@@ -63,7 +64,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Every Beryl-owned visual element resolves its user-visible appearance values from the active theme model or from a documented derivation of an active theme property. A role exposes only the properties that the GUI surfaces using that role can consume, such as background, border, single-primitive color, text foreground, text background, font family, font size, and font weight.
 - Theme roles cover main-window chrome, toolbar and thread-strip surfaces, buttons and action rows, inputs, transcript shell and transcript content, Markdown inline and block structures, code panels, syntax-highlight token roles, user input fragments, activity rows, status line cells and dynamic status values, graph and checklist visuals, selector accents, scrollbars, structural separators, popups, overlays, notices, media placeholders, warning/error/info states, selection/focus states, disabled/unavailable states, and all settings-window surfaces.
 - Transient interaction states may change resolved color properties for hover, pressed, active, selected, focused, disabled, warning, error, info, pending, streaming, and unavailable states, but they must not change widget geometry unless a specific widget contract explicitly permits it.
-- A theme role may have a static role parent. Each supported style property independently resolves from a concrete value, the same property on the static parent chain, the same property from the runtime ambient parent, or a built-in fallback after validation. Roles that render single-color separators expose `color`, not text, font, or border properties.
+- A theme role may have a static role parent. Each role exposes a hardcoded supported style-property set from the UI role schema. A supported role-property pair's value source resolves to a concrete value from an inline concrete value, the same supported property on the static role-parent chain, the runtime ambient parent, or a built-in fallback after validation. Unsupported properties do not inherit into a role. Roles that render single-color separators expose `color`, not text, font, or border properties.
 - Runtime ambient inheritance is used for embedded content whose surrounding visual context changes by render site. For example, an inline code role can define a concrete foreground while inheriting its background from the final-answer, user-input, settings-row, or popup context in which it is rendered.
 - The active settings window uses the same theme resolver as the main workspace window. It does not own a separate visual schema.
 - A visual constant may remain outside a named role only when it is not user-visible, is derived from a themed property, or is explicitly documented in this file as fixed geometry rather than appearance.
@@ -115,7 +116,7 @@ The English layout contract in this section is authoritative for implementation.
 - Installed theme rows show the theme name, stable theme id or copy-id action, active/modified state when applicable, and theme actions such as Activate, Rename, Delete, or Edit when those actions are valid.
 - The active theme is visible at the top of the page body. The active theme row owns Save and Save As actions when the active theme has staged changes; those actions are absent or disabled when there are no staged changes. Save persists changes to the active installed theme. Save As asks for a new durable theme name and saves the staged active-theme definition as a new installed theme.
 - Installed non-active themes switch the app by direct Activate. Activation is the settings-page equivalent of trying another installed theme; no separate installed-theme Preview action exists.
-- Theme editing opens a settings subpage from the active theme row's Edit action rather than expanding nested controls in the sidebar. Edit uses the step-in triangle `▸`. The theme editor subpage may use its own internal role list and property editor inside the right pane.
+- Theme editing opens a settings subpage from the active theme row's Edit action rather than expanding nested controls in the sidebar. Edit uses the step-in triangle `▸`. The theme editor subpage uses an internal theme role navigator and property editor inside the right pane.
 - AI-generated unsaved theme candidates enter durable Beryl settings only through the theme candidate code panel's Install Theme action or a theme dynamic tool operation that explicitly installs a durable theme.
 
 ### Settings Theme Editor Subpage
@@ -123,9 +124,10 @@ The English layout contract in this section is authoritative for implementation.
 - The theme editor is a settings subpage reached from the active theme row. The left settings sidebar remains unchanged with `Themes` selected; the editor is not represented as a nested sidebar row.
 - The theme editor page header uses the standard subpage breadcrumb pattern with text shaped as `Themes > <theme name>`.
 - Save and Save As actions for modified active-theme drafts may appear in the theme editor page header as well as on the active theme row. They are absent or disabled when there are no staged changes. The default and minimum settings-window sizes must keep the page-header Save As action reachable without horizontal clipping.
-- The editor body may split into an internal role-list pane and property-editor pane. This split is local to the editor content area and must not become a second persistent settings navigation column.
-- The role-list pane lists and selects theme role ids. Selecting a role changes only the property editor for the current page.
-- The property-editor pane shows the selected role id and one row per editable style property supported by that role. Unsupported role-property combinations are absent from the editor. Role static parents are schema metadata displayed in the role list rather than free-form editor fields. Property rows expose both source selection, such as concrete value, static parent, ambient parent, or fallback, and the concrete value control when the selected source requires one. They do not add a per-row effective-value subtitle; resolved samples belong in separate presentation-only preview surfaces when useful.
+- The editor body has two vertical regions: a bounded top theme role navigator and a lower selected-role property editor. This layout is local to the editor content area and must not become a second persistent settings navigation column.
+- The theme role navigator presents the actual UI role schema tree as horizontally arranged columns. The first column contains the root role entry, and selecting a role opens the next column for that role's schema children. Every navigator row is a real UI role id from the schema tree; synthetic grouping labels, folder rows, or other non-role navigator items are invalid and must be treated as a design violation.
+- The theme role navigator selection is stored and reconciled by role id rather than row index. Selecting a role changes only the property editor for the current page.
+- The selected-role property editor shows the selected role id and one row per hardcoded style property supported by that role. Unsupported role-property combinations are absent from the editor and do not appear through inheritance. Role static parents are schema metadata displayed through the role navigator rather than free-form editor fields. Property rows expose both value-source selection, such as concrete value, static parent, ambient parent, or fallback, and the concrete value control when the selected source requires one. They do not add a per-row effective-value subtitle; resolved samples belong in separate presentation-only preview surfaces when useful.
 - Dropdown source selectors use a down-facing thick triangle glyph visually matched to the step-in triangle family. Step-in navigation continues to use the right-facing thick triangle `▸`.
 - The editor may show resolved samples for the selected role when useful, but samples are presentation-only and do not replace explicit property rows.
 
@@ -138,7 +140,7 @@ The English layout contract in this section is authoritative for implementation.
 - Malformed, unsupported, partial, or invalid `beryl-theme` code blocks render bounded panel-local validation feedback and must not mutate active theme state, settings drafts, or the theme repository.
 - Theme candidate code-panel actions do not create synthetic transcript rows. The durable proposal record is the original Codex transcript code block, and the durable installed record is the saved Beryl theme.
 - Beryl theme dynamic tools may provide model-facing authoring guidance and non-mutating document validation, but those tools do not add transcript content, do not create settings-window candidate rows, and do not replace the ordinary `beryl-theme` code panel as the operator-review surface.
-- Model-facing theme guidance describes existing theme syntax, source keywords, static and ambient inheritance, role groups, transcript/code/settings roles, candidate workflow, and common troubleshooting. Theme schema reads remain the structural source for exact role and property inventories.
+- Model-facing theme guidance describes existing theme syntax, source keywords, static role-tree organization, value-source resolution, transcript/code/settings roles, candidate workflow, and common troubleshooting. Theme schema reads remain the structural source for exact role and property inventories.
 
 ### Settings Color Input
 
@@ -605,6 +607,9 @@ The main workspace window is a pinned toolbar strip above a workspace body and a
 - The activity panel owns vertical scrolling only when the selected-thread activity row set exceeds its current height.
 - The user input field does not own horizontal scrolling; it owns vertical scrolling only when wrapped draft content exceeds the capped user input panel height.
 - The checklist sidebar owns normal vertical scrolling for its checklist rows and does not own horizontal scrolling.
+- The theme editor role navigator owns horizontal scrolling when its role-column trail exceeds the visible navigator width.
+- Each theme editor role navigator column owns normal vertical scrolling for role rows that exceed the visible column height.
+- The selected-role property editor owns normal vertical scrolling for property rows that exceed its visible height.
 - The graph columns container owns horizontal scrolling when explorer depth exceeds the available width.
 - Individual graph columns own normal vertical scrolling for graph rows that exceed the visible column height.
 - A column selector container owns horizontal scrolling when its column trail exceeds the visible selector width.

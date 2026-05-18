@@ -2,6 +2,7 @@
 mod tempdir_support;
 
 use std::{
+    collections::BTreeSet,
     env,
     ffi::OsString,
     fs,
@@ -28,8 +29,9 @@ pub use beryl_app::{
     validate_notification_sound_path,
 };
 use gpui_settings_window::{
-    SettingsFieldId, SettingsFieldKind, SettingsPageActionId, SettingsPageId,
-    SettingsPageSplitItemId, SettingsRowActionId, SettingsRowDetailField, SettingsWindowModel,
+    SettingsFieldId, SettingsFieldKind, SettingsPageActionId, SettingsPageBodyLayout,
+    SettingsPageId, SettingsPageSplitItemPreviewStyle, SettingsRowActionId, SettingsRowDetailField,
+    SettingsWindowModel, SettingsWindowOpenDisposition, open_settings_window,
 };
 
 #[allow(dead_code)]
@@ -37,7 +39,7 @@ use gpui_settings_window::{
 mod settings;
 
 #[test]
-fn settings_model_maps_theme_editor_split_and_selected_role_rows() {
+fn settings_model_maps_theme_editor_navigator_and_selected_role_rows() {
     let mut state = settings_state(AppearanceSettings::default());
     let model = state.model();
 
@@ -80,9 +82,21 @@ fn settings_model_maps_theme_editor_split_and_selected_role_rows() {
     let editor = model
         .page(&SettingsPageId::from("themes.editor"))
         .expect("theme editor page should exist");
+    assert_eq!(editor.title(), "Theme Editor");
+    let breadcrumb_labels: Vec<_> = editor
+        .breadcrumb_path()
+        .iter()
+        .map(|segment| segment.label())
+        .collect();
+    assert_eq!(breadcrumb_labels.as_slice(), ["Themes", "Test Theme"]);
+    assert_eq!(
+        editor.breadcrumb_path()[0].target_page_id(),
+        Some(&SettingsPageId::from("themes"))
+    );
+    assert_eq!(editor.breadcrumb_path()[1].target_page_id(), None);
     assert!(
         editor.local_split().is_none(),
-        "theme editor split should be built only while the editor page is selected"
+        "theme editor should not build legacy split rows while it is not selected"
     );
     assert!(
         model
@@ -99,28 +113,25 @@ fn settings_model_maps_theme_editor_split_and_selected_role_rows() {
     let editor = model
         .page(&SettingsPageId::from("themes.editor"))
         .expect("theme editor page should exist");
-    let split = editor
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let expected_role_ids = editable_theme_role_ids();
-    assert_eq!(split.items().len(), expected_role_ids.len());
-    let role_ids = split
-        .items()
-        .iter()
-        .map(|item| item.item_id().as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        role_ids, expected_role_ids,
-        "theme editor split rows must preserve stable editable role ids"
-    );
     assert!(
-        split.items().iter().all(|item| item.subtext().is_none()),
-        "role-list rows should not render static-parent subtitles"
+        editor.local_split().is_none(),
+        "theme editor should use the stacked body integration surface instead of the legacy split"
     );
+    assert_eq!(editor.body_layout(), SettingsPageBodyLayout::StackedCustom);
     assert_eq!(
-        split.selected_item().map(|item| item.item_id().as_str()),
-        Some(BerylThemeRole::AppWindow.id())
+        editor
+            .stacked_custom_body()
+            .expect("theme editor should declare a custom navigator body")
+            .body_id()
+            .as_str(),
+        "themes.editor.role_navigator"
     );
+    let role_tree = state.theme_editor_role_tree_projection();
+    assert_eq!(
+        role_tree.selected_role_id().as_str(),
+        BerylThemeRole::AppWindow.id()
+    );
+    assert_eq!(role_tree.rows().count(), schema_theme_role_ids().len());
     assert_eq!(
         model.selected_rows().len(),
         1 + built_in_theme_supported_properties(BerylThemeRole::AppWindow).len(),
@@ -190,20 +201,17 @@ fn settings_theme_editor_role_selection_updates_property_rows_only() {
     let mut state = settings_state(AppearanceSettings::default());
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    state.select_theme_editor_role_id(StyleRoleId::from(BerylThemeRole::CodePanelBodyText.id()));
 
     let model = state.model();
     assert_eq!(model.selected_section_id().as_str(), "themes");
     assert_eq!(model.selected_page_id().as_str(), "themes.editor");
     let editor = model.selected_page();
-    let split = editor
-        .local_split()
-        .expect("theme editor should carry a role split");
+    assert!(editor.local_split().is_none());
+    assert_eq!(editor.body_layout(), SettingsPageBodyLayout::StackedCustom);
     assert_eq!(
-        split.selected_item().map(|item| item.item_id().as_str()),
-        Some(BerylThemeRole::CodePanelBodyText.id())
+        state.selected_theme_role_id().as_str(),
+        BerylThemeRole::CodePanelBodyText.id()
     );
     assert!(
         model
@@ -245,13 +253,122 @@ fn settings_theme_editor_role_selection_updates_property_rows_only() {
 }
 
 #[test]
+fn settings_theme_editor_role_id_selection_reconciles_selected_path() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let selected_roles = [
+        BerylThemeRole::Root,
+        BerylThemeRole::CodePanelBodyText,
+        BerylThemeRole::SyntaxString,
+        BerylThemeRole::PopupRowNormal,
+    ];
+
+    for role in selected_roles {
+        let role_id = StyleRoleId::from(role.id());
+        state.select_theme_editor_role_id(role_id.clone());
+        let model = state.model();
+        let projection = state.theme_editor_role_tree_projection();
+        let property_count = role_property_count(role.id());
+
+        assert_eq!(state.selected_theme_role_id(), &role_id);
+        assert_eq!(projection.selected_role_id(), &role_id);
+        assert_eq!(
+            projection.selected_path().last(),
+            Some(&role_id),
+            "selected path should end at the selected role id"
+        );
+        assert!(
+            projection
+                .selected_path()
+                .iter()
+                .all(|path_role_id| projection.row(path_role_id).is_some()),
+            "selected path must contain only real schema role ids"
+        );
+        assert_eq!(
+            model.selected_rows().len(),
+            1 + property_count,
+            "detail rows should be limited to Save As plus the selected role properties"
+        );
+        assert!(
+            model
+                .row(&theme_property_source_field_id(
+                    BerylThemeRole::AppWindow,
+                    BerylThemeProperty::Foreground,
+                ))
+                .is_none()
+                || role == BerylThemeRole::AppWindow,
+            "unselected role property rows should not remain in the selected-role model"
+        );
+    }
+}
+
+#[test]
+fn settings_theme_editor_selected_role_survives_rebuilds_by_role_id() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let selected_role_id = StyleRoleId::from(BerylThemeRole::PopupRowNormal.id());
+
+    state.select_theme_editor_role_id(selected_role_id.clone());
+    let first = state.model();
+    let first_projection = state.theme_editor_role_tree_projection();
+
+    assert_eq!(state.selected_theme_role_id(), &selected_role_id);
+    assert_eq!(first_projection.selected_role_id(), &selected_role_id);
+    assert_eq!(first.selected_rows().len(), 1);
+
+    let rebuilt = state.model();
+    let rebuilt_projection = state.theme_editor_role_tree_projection();
+
+    assert_eq!(state.selected_theme_role_id(), &selected_role_id);
+    assert_eq!(rebuilt_projection.selected_role_id(), &selected_role_id);
+    assert_eq!(
+        rebuilt_projection.selected_path(),
+        first_projection.selected_path()
+    );
+    assert_eq!(
+        rebuilt.selected_rows().len(),
+        first.selected_rows().len(),
+        "model rebuilds should preserve no-property role selection by role id"
+    );
+}
+
+#[test]
+fn settings_theme_editor_stale_selected_role_recovers_to_schema_root() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.set_selected_theme_role_id_for_test(StyleRoleId::from("missing.schema.role"));
+    state.reset_draft_from_active();
+
+    let root_role_id = StyleRoleId::from(BerylThemeRole::Root.id());
+    let model = state.model();
+    let projection = state.theme_editor_role_tree_projection();
+
+    assert_eq!(state.selected_theme_role_id(), &root_role_id);
+    assert_eq!(projection.selected_role_id(), &root_role_id);
+    assert_eq!(projection.selected_path(), &[root_role_id.clone()]);
+    assert!(
+        projection
+            .row(&StyleRoleId::from("missing.schema.role"))
+            .is_none()
+    );
+    assert!(
+        model
+            .row(&SettingsFieldId::from(
+                "themes.editor.role.missing.schema.role.background.source"
+            ))
+            .is_none(),
+        "stale role recovery must not create synthetic fallback property rows"
+    );
+    assert!(
+        !model.selected_rows().is_empty(),
+        "stale role recovery should keep the selected-role model present"
+    );
+}
+
+#[test]
 fn settings_theme_editor_exposes_only_color_for_single_color_roles() {
     let mut state = settings_state(AppearanceSettings::default());
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::MarkdownThematicBreak.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::MarkdownThematicBreak);
 
     let model = state.model();
     assert_eq!(
@@ -286,27 +403,16 @@ fn settings_theme_editor_exposes_only_color_for_single_color_roles() {
 }
 
 #[test]
-fn settings_theme_editor_no_property_roles_are_not_advertised() {
+fn settings_theme_editor_no_property_schema_roles_select_with_empty_property_rows() {
     let mut state = settings_state(AppearanceSettings::default());
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::PopupRowNormal.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::PopupRowNormal);
 
     let model = state.model();
     assert_eq!(
         built_in_theme_supported_properties(BerylThemeRole::PopupRowNormal),
         &[]
-    );
-    assert_eq!(
-        model
-            .selected_page()
-            .local_split()
-            .and_then(|split| split.selected_item())
-            .map(|item| item.item_id().as_str()),
-        Some(BerylThemeRole::AppWindow.id()),
-        "selecting a non-editable role should preserve the default editable selection"
     );
     assert!(
         model
@@ -317,14 +423,501 @@ fn settings_theme_editor_no_property_roles_are_not_advertised() {
             .is_none()
     );
     assert!(
-        model
-            .selected_page()
-            .local_split()
-            .expect("theme editor should carry a role split")
-            .items()
+        model.selected_rows().len() == 1,
+        "no-property schema roles keep only the Save As row in the existing detail pane"
+    );
+}
+
+#[test]
+fn settings_theme_editor_property_rows_match_selected_role_supported_properties() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    for role in BerylThemeRole::ALL {
+        select_theme_role(&mut state, *role);
+        let model = state.model();
+        let supported = built_in_theme_supported_properties(*role);
+
+        assert_eq!(
+            model.selected_rows().len(),
+            1 + supported.len(),
+            "selected role {} should expose only Save As plus supported property rows",
+            role.id()
+        );
+
+        for property in BerylThemeProperty::ALL {
+            let source_row = model.row(&theme_property_source_field_id(*role, *property));
+            assert_eq!(
+                source_row.is_some(),
+                supported.contains(property),
+                "selected role {} property {} row presence should match schema support",
+                role.id(),
+                property.id()
+            );
+
+            if let Some(source_row) = source_row {
+                let offers_static_parent = source_row
+                    .choices()
+                    .iter()
+                    .any(|choice| choice.value() == "static_parent");
+                let static_parent_is_valid = role.static_parent().is_some_and(|parent| {
+                    built_in_theme_supported_properties(parent).contains(property)
+                });
+                assert_eq!(
+                    offers_static_parent,
+                    static_parent_is_valid,
+                    "selected role {} property {} should offer static-parent only when the static parent supports that property",
+                    role.id(),
+                    property.id()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn settings_theme_editor_rejects_hidden_invalid_static_parent_source() {
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_temp_store(AppearanceSettings::default());
+    let (role, property) = invalid_static_parent_pair_for_test();
+    let source_field_id = theme_property_source_field_id(role, property);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    select_theme_role(&mut state, role);
+    let model = state.model();
+    let source = model
+        .row(&source_field_id)
+        .expect("selected role property source row should exist");
+    assert!(
+        !source
+            .choices()
             .iter()
-            .all(|item| item.item_id().as_str() != BerylThemeRole::PopupRowNormal.id()),
-        "non-editable roles must not be advertised in the Theme Editor role list"
+            .any(|choice| choice.value() == "static_parent"),
+        "invalid static-parent source must not be a visible choice"
+    );
+
+    state.set_field_value(&source_field_id, "static_parent".to_string());
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::Updated)
+    );
+    assert!(
+        state
+            .field_error(&source_field_id)
+            .expect("invalid static-parent source should report a field error")
+            .contains("static parent")
+    );
+    let snapshot = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
+    assert_ne!(
+        theme_source(snapshot.active_definition(), role, property),
+        Some(&StylePropertySource::StaticParent)
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_save_normalizes_stale_invalid_static_parent_source() {
+    let (role, property) = invalid_static_parent_pair_for_test();
+    let document = format!(
+        r##"
+schema = 1
+id = "compact"
+name = "Compact Theme"
+
+[[role]]
+id = "{}"
+{} = "static_parent"
+"##,
+        role.id(),
+        property.id()
+    );
+    let (mut state, _shared, _preferences, root) =
+        settings_state_with_compact_theme_document(&document);
+    let source_field_id = theme_property_source_field_id(role, property);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    select_theme_role(&mut state, role);
+    let model = state.model();
+    let source = model
+        .row(&source_field_id)
+        .expect("selected role property source row should exist");
+    assert_ne!(
+        source.value(),
+        "static_parent",
+        "stale invalid static-parent sources should not remain selected"
+    );
+
+    assert_eq!(
+        state.handle_row_action(
+            &SettingsFieldId::from("themes.active"),
+            &SettingsRowActionId::from("save"),
+        ),
+        Some(settings::SettingsRowActionOutcome::ActiveThemeChanged)
+    );
+    let snapshot = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
+    assert_ne!(
+        theme_source(snapshot.active_definition(), role, property),
+        Some(&StylePropertySource::StaticParent)
+    );
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn settings_theme_editor_role_navigator_projection_uses_schema_tree() {
+    let state = settings_state(AppearanceSettings::default());
+    let projection = state.theme_editor_role_tree_projection();
+    let schema = built_in_theme_schema();
+    let schema_ids = schema_theme_role_ids().into_iter().collect::<BTreeSet<_>>();
+    let row_ids = projection
+        .rows()
+        .map(|row| row.role_id().as_str().to_string())
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        row_ids, schema_ids,
+        "navigator projection must contain exactly built-in schema role ids"
+    );
+    assert_eq!(
+        projection.root_role_id().as_str(),
+        BerylThemeRole::Root.id()
+    );
+    let root_column = projection
+        .columns()
+        .first()
+        .expect("navigator projection should expose a root column");
+    assert_eq!(root_column.parent_role_id(), None);
+    assert_eq!(root_column.rows().len(), 1);
+    assert_eq!(
+        root_column.rows()[0].role_id().as_str(),
+        BerylThemeRole::Root.id()
+    );
+
+    for schema_role in schema.roles() {
+        let row = projection
+            .row(schema_role.role_id())
+            .expect("schema role should have a navigator row");
+        assert_eq!(row.static_parent_id(), schema_role.static_parent());
+        assert_eq!(row.property_row_count(), schema_role.properties().len());
+        assert!(!row.label().is_empty());
+        let child_column = projection
+            .child_column(schema_role.role_id())
+            .expect("schema role should produce a child column projection");
+        assert_eq!(child_column.parent_role_id(), Some(schema_role.role_id()));
+        for child in child_column.rows() {
+            assert_eq!(
+                child.static_parent_id(),
+                Some(schema_role.role_id()),
+                "child columns must follow schema static-parent relationships"
+            );
+        }
+    }
+
+    let no_property_role = schema
+        .roles()
+        .iter()
+        .find(|role| role.properties().is_empty())
+        .expect("built-in schema should include a no-property role for this contract");
+    assert_eq!(
+        projection
+            .row(no_property_role.role_id())
+            .expect("no-property schema role should remain in navigator projection")
+            .property_row_count(),
+        0
+    );
+}
+
+#[test]
+fn settings_theme_editor_role_navigator_selecting_branch_opens_child_column() {
+    let mut state = settings_state(AppearanceSettings::default());
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    let projection = state.theme_editor_role_tree_projection();
+    let branch_role_id = projection
+        .rows()
+        .find(|row| {
+            row.role_id().as_str() != BerylThemeRole::Root.id() && !row.child_role_ids().is_empty()
+        })
+        .expect("schema should include a non-root branching role")
+        .role_id()
+        .clone();
+
+    state.select_theme_editor_role_id(branch_role_id.clone());
+    let projection = state.theme_editor_role_tree_projection();
+
+    assert_eq!(projection.selected_role_id(), &branch_role_id);
+    assert!(
+        projection
+            .columns()
+            .iter()
+            .any(|column| column.parent_role_id() == Some(&branch_role_id)),
+        "selecting a branching role must open its schema-child column"
+    );
+}
+
+#[test]
+fn settings_theme_editor_role_navigator_rendering_is_fixed_height_windowed() {
+    let strategy = settings::SettingsState::theme_role_navigator_render_strategy_for_test();
+
+    assert!(strategy.windowed);
+    assert_eq!(strategy.row_height_px, 32);
+    assert_eq!(strategy.overscan_rows, 3);
+    assert_eq!(
+        settings::SettingsState::theme_role_navigator_row_window_for_test(100, 0.0, 96.0),
+        0..7,
+        "the navigator renders only visible fixed-height rows plus overscan"
+    );
+    let scrolled =
+        settings::SettingsState::theme_role_navigator_row_window_for_test(100, 720.0, 96.0);
+    assert!(scrolled.start > 0);
+    assert!(scrolled.end < 100);
+
+    let (middle_range, total_height, summed_height) =
+        settings::SettingsState::theme_role_navigator_row_window_height_sum_for_test(
+            100, 720.0, 96.0,
+        );
+    assert!(middle_range.start > 0);
+    assert!(middle_range.end < 100);
+    assert_eq!(
+        summed_height, total_height,
+        "middle row windows should not add an extra trailing row gap beyond total scroll height"
+    );
+}
+
+#[test]
+fn settings_theme_editor_role_navigator_render_state_keeps_real_role_columns() {
+    let mut state = settings_state(AppearanceSettings::default());
+    let renderer = settings::SettingsState::theme_editor_role_navigator_body_renderer(|_, _| {});
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    state.select_theme_editor_role_id(StyleRoleId::from(BerylThemeRole::CodePanelBodyText.id()));
+    let projection = state.theme_editor_role_tree_projection();
+    renderer.update_projection(Some(projection.clone()));
+    let first = renderer.diagnostics();
+
+    assert_eq!(first.total_schema_role_count, schema_theme_role_ids().len());
+    assert!(first.strategy.windowed);
+    assert!(first.visible_row_count <= first.rendered_row_count);
+    assert!(first.rendered_row_count <= first.total_schema_role_count);
+    assert_eq!(first.column_count, projection.columns().len());
+    assert_eq!(first.horizontal_scroll_surface_count, 1);
+    assert_eq!(first.column_scroll_surface_count, first.column_count);
+    assert!(
+        first
+            .column_keys
+            .iter()
+            .flatten()
+            .all(|role_id| projection.row(role_id).is_some()),
+        "navigator column scroll keys must be real schema role ids"
+    );
+
+    let rebuilt = state.theme_editor_role_tree_projection();
+    renderer.update_projection(Some(rebuilt.clone()));
+    let second = renderer.diagnostics();
+
+    assert_eq!(
+        second.column_keys, first.column_keys,
+        "horizontal scroll and per-column vertical scroll ownership is reconciled by stable role ids across model refresh"
+    );
+    assert_eq!(second.column_count, rebuilt.columns().len());
+}
+
+#[test]
+fn settings_theme_editor_role_navigator_renders_shared_scrollbar_chrome() {
+    let navigator_source = include_str!("../src/shell/settings/theme_editor/navigator.rs");
+    let chrome_source = include_str!("../src/shell/settings/theme_editor/navigator/chrome.rs");
+    let scroll_state_source =
+        include_str!("../src/shell/settings/theme_editor/navigator/scroll_state.rs");
+    let source = format!("{navigator_source}\n{chrome_source}\n{scroll_state_source}");
+
+    assert!(
+        source.contains("render_scroll_handle_scrollbar("),
+        "navigator scrollbars should use the shared gpui-scrollbar affordance"
+    );
+    assert!(
+        source.contains("theme-role-navigator-horizontal-scrollbar"),
+        "top navigator horizontal scroll surface should render scrollbar chrome"
+    );
+    assert!(
+        source.contains("theme-role-navigator-column-scrollbar"),
+        "role column vertical scroll surfaces should render scrollbar chrome"
+    );
+    assert!(source.contains("ScrollbarAxis::Horizontal"));
+    assert!(source.contains("ScrollbarAxis::Vertical"));
+    assert!(
+        source.contains("ScrollHandle"),
+        "navigator scrollbars should stay wired to the owning scroll handles"
+    );
+    assert!(
+        source.contains("ScrollbarVisibilityState"),
+        "navigator scrollbars should use the shared managed visibility lifecycle"
+    );
+    assert!(
+        source.contains("record_viewport_activity"),
+        "navigator scroll surfaces should report viewport activity into the shared affordance"
+    );
+    assert!(
+        !source.contains("ScrollbarVisibilityPolicy::always_visible"),
+        "navigator scrollbars should not bypass the shared fade/activity policy"
+    );
+}
+
+#[gpui::test]
+fn settings_theme_editor_role_selection_preserves_lower_editor_focus_scroll_and_popups(
+    cx: &mut gpui::TestAppContext,
+) {
+    let mut state = settings_state(AppearanceSettings::default());
+    let renderer = settings::SettingsState::theme_editor_role_navigator_body_renderer(|_, _| {});
+    let save_as_field_id = SettingsFieldId::from("themes.save_as_name");
+    let color_field_id =
+        theme_property_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Foreground);
+
+    state.select_page(SettingsPageId::from("themes.editor"));
+    select_theme_role(&mut state, BerylThemeRole::AppWindow);
+    renderer.update_projection(state.selected_theme_editor_role_tree_projection());
+    let options = renderer.options_with_renderer(state.window_options());
+    let model = state.model();
+    let handle = cx.update(|cx| {
+        open_settings_window(
+            cx,
+            model,
+            options,
+            SettingsWindowOpenDisposition::Visible {
+                focus_requested: false,
+            },
+        )
+        .expect("settings window should open")
+    });
+
+    handle
+        .window_handle()
+        .update(cx, |view, window, cx| {
+            view.set_content_scroll_offset_for_test(80.0, cx);
+            assert!(view.focus_field(&save_as_field_id, window, cx));
+            view.open_color_picker_for_test(color_field_id.clone(), window, cx);
+            assert_eq!(
+                view.active_color_picker_field_for_test(cx),
+                Some(color_field_id.clone())
+            );
+
+            view.set_content_scroll_offset_for_test(120.0, cx);
+            assert_eq!(
+                view.active_color_picker_field_for_test(cx),
+                Some(color_field_id.clone()),
+                "property-editor scrolling should not close a color picker whose anchor row remains selected"
+            );
+        })
+        .expect("settings window should update");
+
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
+    renderer.update_projection(state.selected_theme_editor_role_tree_projection());
+    handle
+        .update_model(cx, state.model())
+        .expect("model update should succeed");
+
+    handle
+        .window_handle()
+        .update(cx, |view, window, cx| {
+            assert_eq!(view.model().selected_page_id().as_str(), "themes.editor");
+            assert_eq!(view.settings_scroll_metrics(cx).0, -120.0);
+            assert_eq!(
+                view.focused_field_for_test(window, cx),
+                Some(save_as_field_id.clone()),
+                "same-page navigator role selection should retain focus on stable lower-editor text inputs"
+            );
+            assert_eq!(
+                view.active_color_picker_field_for_test(cx),
+                None,
+                "role selection should close a color picker whose field row left the selected-role editor"
+            );
+            assert!(
+                !view.has_transient_popups(cx),
+                "role selection should not leave stale lower-editor popups anchored to removed rows"
+            );
+        })
+        .expect("settings window should update");
+}
+
+#[gpui::test]
+fn settings_theme_editor_same_window_role_selection_sync_is_deferred(
+    cx: &mut gpui::TestAppContext,
+) {
+    let mut state = settings_state(AppearanceSettings::default());
+    state.select_page(SettingsPageId::from("themes.editor"));
+    select_theme_role(&mut state, BerylThemeRole::AppWindow);
+    let handle = cx.update(|cx| {
+        open_settings_window(
+            cx,
+            state.model(),
+            state.window_options(),
+            SettingsWindowOpenDisposition::Visible {
+                focus_requested: false,
+            },
+        )
+        .expect("settings window should open")
+    });
+
+    select_theme_role(&mut state, BerylThemeRole::Root);
+    let root_model = state.model();
+    let root_source_field_id =
+        theme_property_source_field_id(BerylThemeRole::Root, BerylThemeProperty::Background);
+    let stale_source_field_id =
+        theme_property_source_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background);
+
+    handle
+        .window_handle()
+        .update(cx, |_view, _window, cx| {
+            assert!(
+                handle.update_model(cx, root_model.clone()).is_err(),
+                "a custom body click runs while the settings window is on GPUI's update stack"
+            );
+            cx.defer(move |cx| {
+                handle
+                    .update_model(cx, root_model)
+                    .expect("deferred same-window model sync should succeed");
+            });
+        })
+        .expect("settings window should update");
+    cx.run_until_parked();
+
+    handle
+        .window_handle()
+        .read_with(cx, |view, _| {
+            assert!(
+                view.model().row(&root_source_field_id).is_some(),
+                "deferred role selection sync should update the lower editor rows"
+            );
+            assert!(
+                view.model().row(&stale_source_field_id).is_none(),
+                "stale selected-role rows should leave the lower editor after deferred sync"
+            );
+        })
+        .expect("settings window should be readable");
+}
+
+#[test]
+fn settings_theme_editor_role_navigator_selection_defers_model_sync() {
+    let shell_source = include_str!("../src/shell.rs");
+    let callback_start = shell_source
+        .find("theme_editor_role_navigator_body_renderer(")
+        .expect("shell should install the theme role navigator callback");
+    let callback_source = &shell_source[callback_start..];
+    let callback_end = callback_source
+        .find("let mut milestone")
+        .expect("callback should be followed by shell initialization");
+    let callback_source = &callback_source[..callback_end];
+
+    let defer_index = callback_source
+        .find("cx.defer(move |cx|")
+        .expect("same-window navigator clicks must defer model sync");
+    let sync_index = callback_source
+        .find("view.sync_settings_window_model(cx);")
+        .expect("navigator selection should still synchronize the settings-window model");
+    assert!(
+        defer_index < sync_index,
+        "role navigator selection must not synchronously update the settings window while its custom body click is on the window stack"
     );
 }
 
@@ -337,19 +930,8 @@ fn settings_theme_editor_role_previews_ignore_draft_values_until_save() {
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
-    let model = state.model();
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let original_foreground = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::CodePanelBodyText.id())
-        .and_then(|item| item.preview_style())
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
+    let original_foreground = theme_role_preview_style(&state, BerylThemeRole::CodePanelBodyText)
         .and_then(|style| style.foreground())
         .map(|color| color.to_hex());
 
@@ -363,22 +945,12 @@ fn settings_theme_editor_role_previews_ignore_draft_values_until_save() {
     state.set_field_value(&field_id, "#123456".to_string());
 
     let model = state.model();
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let code_item = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::CodePanelBodyText.id())
-        .expect("code-panel body role should be listed");
     assert_eq!(
-        code_item
-            .preview_style()
+        theme_role_preview_style(&state, BerylThemeRole::CodePanelBodyText)
             .and_then(|style| style.foreground())
             .map(|color| color.to_hex()),
         original_foreground,
-        "draft color edits must not live-preview in the role list"
+        "draft color edits must not live-preview in the role navigator model"
     );
     let source_row = model
         .row(&theme_property_source_field_id(
@@ -407,19 +979,8 @@ fn settings_theme_editor_single_color_role_previews_ignore_draft_values_until_sa
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::MarkdownThematicBreak.id(),
-    ));
-    let model = state.model();
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let original_border = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::MarkdownThematicBreak.id())
-        .and_then(|item| item.preview_style())
+    select_theme_role(&mut state, BerylThemeRole::MarkdownThematicBreak);
+    let original_border = theme_role_preview_style(&state, BerylThemeRole::MarkdownThematicBreak)
         .and_then(|style| style.border())
         .map(|color| color.to_hex());
 
@@ -433,21 +994,12 @@ fn settings_theme_editor_single_color_role_previews_ignore_draft_values_until_sa
     state.set_field_value(&field_id, "#abcdef".to_string());
 
     let model = state.model();
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let item = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::MarkdownThematicBreak.id())
-        .expect("thematic-break role should be listed");
     assert_eq!(
-        item.preview_style()
+        theme_role_preview_style(&state, BerylThemeRole::MarkdownThematicBreak)
             .and_then(|style| style.border())
             .map(|color| color.to_hex()),
         original_border,
-        "draft single-color edits must not live-preview in the role list"
+        "draft single-color edits must not live-preview in the role navigator model"
     );
     assert_eq!(
         theme_property_detail_field(
@@ -474,9 +1026,7 @@ fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing(
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::MarkdownInlineCode.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::MarkdownInlineCode);
     let model = state.model();
     let source = model
         .row(&source_field_id)
@@ -489,7 +1039,7 @@ fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing(
         "ambient source should not expose a concrete value editor"
     );
 
-    state.set_field_value(&source_field_id, "static_parent".to_string());
+    state.set_field_value(&source_field_id, "fallback".to_string());
     assert_eq!(
         state.handle_row_action(
             &SettingsFieldId::from("themes.active"),
@@ -514,7 +1064,7 @@ fn settings_theme_editor_property_source_changes_roundtrip_without_concretizing(
         role.properties().get(&StylePropertyId::from(
             BerylThemeProperty::TextBackground.id()
         )),
-        Some(&StylePropertySource::StaticParent)
+        Some(&StylePropertySource::Fallback)
     );
     cleanup_temp_dir(root);
 }
@@ -529,9 +1079,7 @@ fn settings_theme_editor_static_parent_source_choice_uses_parent_role_label() {
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
     let model = state.model();
     let source = model
         .row(&source_field_id)
@@ -642,9 +1190,7 @@ fn settings_theme_editor_save_omits_stale_unsupported_loaded_properties() {
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
     state.set_field_value(&field_id, "#778899".to_string());
 
     assert_eq!(
@@ -743,9 +1289,7 @@ fn settings_theme_editor_concrete_source_uses_typed_value_editor() {
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::MarkdownInlineCode.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::MarkdownInlineCode);
     state.set_field_value(&source_field_id, "value".to_string());
     let model = state.model();
     let value = model
@@ -798,21 +1342,17 @@ fn settings_theme_editor_static_parent_is_not_role_list_subtext_or_text_field() 
     let mut state = settings_state(AppearanceSettings::default());
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
     let model = state.model();
-    let editor = model.selected_page();
-    let split = editor
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let item = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::CodePanelBody.id())
+    let role_tree = state.theme_editor_role_tree_projection();
+    let item = role_tree
+        .row(&StyleRoleId::from(BerylThemeRole::CodePanelBody.id()))
         .expect("code panel body role should exist");
 
-    assert_eq!(item.subtext(), None);
+    assert_eq!(
+        item.static_parent_id().map(StyleRoleId::as_str),
+        Some(BerylThemeRole::SurfaceInset.id())
+    );
     assert!(
         model
             .selected_rows()
@@ -964,9 +1504,7 @@ fn settings_window_options_sync_skips_ordinary_theme_editor_field_edits() {
     state.record_window_options_synced(initial);
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::AppWindow.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::AppWindow);
     state.set_field_value(
         &theme_property_source_field_id(BerylThemeRole::AppWindow, BerylThemeProperty::Background),
         "value".to_string(),
@@ -994,7 +1532,7 @@ fn settings_theme_editor_typing_is_draft_only_and_does_not_rebuild_previews() {
     assert!(state.theme_editor_diagnostics_snapshot().is_none());
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(BerylThemeRole::Root.id()));
+    select_theme_role(&mut state, BerylThemeRole::Root);
     let model = state.model();
     let diagnostics = state
         .theme_editor_diagnostics_snapshot()
@@ -1004,25 +1542,19 @@ fn settings_theme_editor_typing_is_draft_only_and_does_not_rebuild_previews() {
     assert_eq!(diagnostics.preview_projection_build_count, 1);
     assert_eq!(
         diagnostics.role_preview_style_build_count,
-        editable_theme_role_ids().len() as u64
+        schema_theme_role_ids().len() as u64
     );
     assert_eq!(
-        diagnostics.role_preview_row_count,
-        editable_theme_role_ids().len()
+        diagnostics.total_schema_role_count,
+        schema_theme_role_ids().len()
     );
+    assert!(diagnostics.navigator_column_count > 0);
+    assert!(diagnostics.selected_role_path_count > 0);
     assert!(diagnostics.selected_property_detail_row_count > 0);
     assert_eq!(diagnostics.modified_state_recompute_count, 0);
 
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let root_preview = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::Root.id())
-        .and_then(|item| item.preview_style())
-        .cloned()
+    assert!(model.selected_page().local_split().is_none());
+    let root_preview = theme_role_preview_style(&state, BerylThemeRole::Root)
         .expect("root role should have an active-definition preview style");
 
     state.set_field_value(
@@ -1056,7 +1588,7 @@ fn settings_theme_editor_typing_is_draft_only_and_does_not_rebuild_previews() {
     assert_eq!(diagnostics.preview_projection_build_count, 1);
     assert_eq!(
         diagnostics.role_preview_style_build_count,
-        editable_theme_role_ids().len() as u64
+        schema_theme_role_ids().len() as u64
     );
     assert_eq!(
         theme_property_detail_field(&model, BerylThemeRole::Root, BerylThemeProperty::FontFamily,)
@@ -1075,18 +1607,10 @@ fn settings_theme_editor_typing_is_draft_only_and_does_not_rebuild_previews() {
             .is_modified(),
         "ordinary text edits must mark the theme draft as staged"
     );
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let edited_root_preview = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::Root.id())
-        .and_then(|item| item.preview_style())
+    let edited_root_preview = theme_role_preview_style(&state, BerylThemeRole::Root)
         .expect("root role should still have a preview style");
     assert_eq!(
-        edited_root_preview, &root_preview,
+        edited_root_preview, root_preview,
         "typing must not live-preview draft font or color changes"
     );
 
@@ -1107,18 +1631,10 @@ fn settings_theme_editor_typing_is_draft_only_and_does_not_rebuild_previews() {
             .map(|field| field.value()),
         Some("#bbbbbb")
     );
-    let split = model
-        .selected_page()
-        .local_split()
-        .expect("theme editor should carry a role split");
-    let edited_root_preview = split
-        .items()
-        .iter()
-        .find(|item| item.item_id().as_str() == BerylThemeRole::Root.id())
-        .and_then(|item| item.preview_style())
+    let edited_root_preview = theme_role_preview_style(&state, BerylThemeRole::Root)
         .expect("root role should still have a preview style");
     assert_eq!(
-        edited_root_preview, &root_preview,
+        edited_root_preview, root_preview,
         "repeated typing must keep preview styles pinned to the active definition"
     );
 }
@@ -1268,9 +1784,7 @@ fn settings_theme_save_stages_color_changes_and_normalizes_on_save() {
         BerylThemeProperty::FontWeight,
     );
 
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
     state.set_field_value(
         &theme_property_source_field_id(
             BerylThemeRole::CodePanelBodyText,
@@ -1625,9 +2139,7 @@ fn settings_theme_save_rejects_invalid_color_draft_without_mutating_active_setti
         BerylThemeProperty::TextBackground,
     );
 
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::MarkdownEmphasis.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::MarkdownEmphasis);
     state.set_field_value(
         &theme_property_source_field_id(
             BerylThemeRole::MarkdownEmphasis,
@@ -1754,9 +2266,7 @@ fn settings_theme_save_as_and_activate_switch_installed_themes() {
     let save_as_name = SettingsFieldId::from("themes.save_as_name");
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
     state.set_field_value(
         &theme_property_source_field_id(
             BerylThemeRole::CodePanelBodyText,
@@ -1819,9 +2329,7 @@ fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
     );
 
     state.select_page(SettingsPageId::from("themes.editor"));
-    state.select_theme_editor_role(SettingsPageSplitItemId::from(
-        BerylThemeRole::CodePanelBodyText.id(),
-    ));
+    select_theme_role(&mut state, BerylThemeRole::CodePanelBodyText);
     state.set_field_value(&field_id, "JetBrains Mono".to_string());
     state.set_notification_end_turn_sound_path(root.join("done.wav").display().to_string());
     state.set_developer_instructions("Use a staged draft.".to_string());
@@ -1852,6 +2360,25 @@ fn settings_reset_discards_unapplied_draft_and_preserves_selected_section() {
 
 fn settings_state(settings_value: AppearanceSettings) -> settings::SettingsState {
     settings_state_with_temp_store(settings_value).0
+}
+
+fn select_theme_role(state: &mut settings::SettingsState, role: BerylThemeRole) {
+    state.select_theme_editor_role_id(StyleRoleId::from(role.id()));
+}
+
+fn invalid_static_parent_pair_for_test() -> (BerylThemeRole, BerylThemeProperty) {
+    for role in BerylThemeRole::ALL {
+        let Some(parent) = role.static_parent() else {
+            continue;
+        };
+        let parent_properties = built_in_theme_supported_properties(parent);
+        for property in built_in_theme_supported_properties(*role) {
+            if !parent_properties.contains(property) {
+                return (*role, *property);
+            }
+        }
+    }
+    panic!("built-in theme schema should include a static-parent-invalid property pair");
 }
 
 const COMPACT_THEME_DOCUMENT: &str = r##"
@@ -2102,13 +2629,33 @@ fn theme_property_detail_field<'a>(
         .and_then(|row| row.detail_field())
 }
 
-fn editable_theme_role_ids() -> Vec<&'static str> {
-    BerylThemeRole::ALL
+fn theme_role_preview_style(
+    state: &settings::SettingsState,
+    role: BerylThemeRole,
+) -> Option<SettingsPageSplitItemPreviewStyle> {
+    state
+        .theme_editor_role_tree_projection()
+        .row(&StyleRoleId::from(role.id()))
+        .and_then(|row| row.preview_style())
+        .cloned()
+}
+
+fn schema_theme_role_ids() -> Vec<String> {
+    built_in_theme_schema()
+        .roles()
         .iter()
-        .copied()
-        .filter(|role| !built_in_theme_supported_properties(*role).is_empty())
-        .map(BerylThemeRole::id)
+        .map(|role| role.role_id().as_str().to_string())
         .collect()
+}
+
+fn role_property_count(role_id: &str) -> usize {
+    built_in_theme_schema()
+        .roles()
+        .iter()
+        .find(|role| role.role_id().as_str() == role_id)
+        .expect("theme role schema should exist")
+        .properties()
+        .len()
 }
 
 fn with_environment_home<T>(home: &Path, action: impl FnOnce() -> T) -> T {

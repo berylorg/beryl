@@ -4,7 +4,7 @@ use crate::diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, ManagedBackendProcessDiagnostic, MemoryDiagnosticSnapshot,
     MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic, ProcessDiagnosticSnapshot,
     RendererDiagnosticSnapshot, SettingsWindowDiagnosticSnapshot, ThemeEditorModelDiagnostic,
-    bounded_diagnostic_string, renderer_snapshot_with_shell_window,
+    ThemeRoleNavigatorDiagnostic, bounded_diagnostic_string, renderer_snapshot_with_shell_window,
 };
 use crate::memory_diagnostics::{self, RetainedStateSnapshot};
 
@@ -135,11 +135,13 @@ impl ShellView {
             .diagnostics_snapshot(cx)
             .map(SettingsWindowDiagnosticSnapshot::from)
             .map(|snapshot| {
-                snapshot.with_theme_editor_model(
-                    self.settings_state
-                        .theme_editor_diagnostics_snapshot()
-                        .map(ThemeEditorModelDiagnostic::from),
-                )
+                snapshot
+                    .with_theme_editor_model(
+                        self.settings_state
+                            .theme_editor_diagnostics_snapshot()
+                            .map(ThemeEditorModelDiagnostic::from),
+                    )
+                    .with_theme_role_navigator(self.theme_role_navigator_diagnostic())
             })
             .unwrap_or_else(|error| {
                 SettingsWindowDiagnosticSnapshot::unavailable(error.to_string())
@@ -264,6 +266,43 @@ impl ShellView {
     }
 }
 
+impl ShellView {
+    fn theme_role_navigator_diagnostic(&self) -> Option<ThemeRoleNavigatorDiagnostic> {
+        let model = self.settings_state.theme_editor_diagnostics_snapshot()?;
+        let render = self.theme_role_navigator_body_renderer.diagnostics();
+        let property_editor_scroll_surface_count = 1;
+        Some(ThemeRoleNavigatorDiagnostic {
+            total_schema_role_count: render.total_schema_role_count,
+            column_count: render.column_count,
+            visible_row_count: render.visible_row_count,
+            rendered_row_count: render.rendered_row_count,
+            selected_role_id: render
+                .selected_role_id
+                .as_ref()
+                .map(|role_id| bounded_diagnostic_string(role_id.as_str())),
+            selected_role_path: render
+                .selected_role_path
+                .iter()
+                .map(|role_id| bounded_diagnostic_string(role_id.as_str()))
+                .collect(),
+            property_row_count: model.selected_property_detail_row_count,
+            horizontal_scroll_surface_count: render.horizontal_scroll_surface_count,
+            column_scroll_surface_count: render.column_scroll_surface_count,
+            property_editor_scroll_surface_count,
+            total_scroll_surface_count: render
+                .horizontal_scroll_surface_count
+                .saturating_add(render.column_scroll_surface_count)
+                .saturating_add(property_editor_scroll_surface_count),
+            overscan_count: render.strategy.overscan_rows,
+            row_height_strategy: if render.strategy.windowed {
+                "fixed_height_windowed".to_string()
+            } else {
+                "fixed_height_full".to_string()
+            },
+        })
+    }
+}
+
 impl From<super::settings::ThemeEditorDiagnosticsSnapshot> for ThemeEditorModelDiagnostic {
     fn from(snapshot: super::settings::ThemeEditorDiagnosticsSnapshot) -> Self {
         Self {
@@ -272,7 +311,9 @@ impl From<super::settings::ThemeEditorDiagnosticsSnapshot> for ThemeEditorModelD
             preview_projection_build_count: snapshot.preview_projection_build_count,
             last_preview_projection_build_micros: snapshot.last_preview_projection_build_micros,
             role_preview_style_build_count: snapshot.role_preview_style_build_count,
-            role_preview_row_count: snapshot.role_preview_row_count,
+            total_schema_role_count: snapshot.total_schema_role_count,
+            navigator_column_count: snapshot.navigator_column_count,
+            selected_role_path_count: snapshot.selected_role_path_count,
             selected_property_detail_row_count: snapshot.selected_property_detail_row_count,
             modified_state_recompute_count: snapshot.modified_state_recompute_count,
             last_modified_state_recompute_micros: snapshot.last_modified_state_recompute_micros,

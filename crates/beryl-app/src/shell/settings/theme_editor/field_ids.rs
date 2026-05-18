@@ -1,8 +1,8 @@
-use gpui_settings_window::{SettingsFieldId, SettingsPageSplitItemId};
+use gpui_settings_window::SettingsFieldId;
 
 use crate::{BerylThemeRole, StylePropertyId, StyleRoleId};
 
-use super::helpers::{property_kind, role_is_editable};
+use super::helpers::{property_kind, role_is_schema_role};
 
 const PROPERTY_FIELD_PREFIX: &str = "themes.editor.role.";
 const PROPERTY_SOURCE_FIELD_SUFFIX: &str = ".source";
@@ -23,17 +23,16 @@ pub(super) fn default_role_id() -> StyleRoleId {
     StyleRoleId::from(BerylThemeRole::AppWindow.id())
 }
 
-pub(super) fn validated_role_id(role_id: StyleRoleId) -> StyleRoleId {
-    if role_is_editable(&role_id) {
-        role_id
-    } else {
-        default_role_id()
-    }
+pub(super) fn root_role_id() -> StyleRoleId {
+    StyleRoleId::from(BerylThemeRole::Root.id())
 }
 
-pub(super) fn role_id_from_split_item(item_id: &SettingsPageSplitItemId) -> Option<StyleRoleId> {
-    let role_id = StyleRoleId::from(item_id.as_str().to_string());
-    role_is_editable(&role_id).then_some(role_id)
+pub(super) fn validated_role_id(role_id: StyleRoleId) -> StyleRoleId {
+    if role_is_schema_role(&role_id) {
+        role_id
+    } else {
+        root_role_id()
+    }
 }
 
 pub(super) fn is_theme_editor_field_id(field_id: &SettingsFieldId) -> bool {

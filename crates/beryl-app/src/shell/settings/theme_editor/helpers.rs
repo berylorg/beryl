@@ -1,7 +1,7 @@
 use gpui_settings_window::{RgbColor, SettingsFieldKind, SettingsPageSplitItemPreviewStyle};
 
 use crate::{
-    ActiveThemeProjection, BerylThemeRole, StylePropertyId, StylePropertyKind, StylePropertySource,
+    ActiveThemeProjection, StylePropertyId, StylePropertyKind, StylePropertySource,
     StylePropertyValue, StyleRoleId, ThemeDefinition, ThemeResolver, ThemeRoleSchema,
     built_in_theme_schema,
 };
@@ -146,15 +146,8 @@ pub(super) fn validate_property_value(
     }
 }
 
-pub(super) fn role_is_editable(role_id: &StyleRoleId) -> bool {
-    role_schema(role_id).is_some_and(|schema| !schema.properties().is_empty())
-}
-
-pub(super) fn editable_theme_roles() -> impl Iterator<Item = BerylThemeRole> {
-    BerylThemeRole::ALL.iter().copied().filter(|role| {
-        role_schema(&StyleRoleId::from(role.id()))
-            .is_some_and(|schema| !schema.properties().is_empty())
-    })
+pub(super) fn role_is_schema_role(role_id: &StyleRoleId) -> bool {
+    role_schema(role_id).is_some()
 }
 
 pub(super) fn role_schema(role_id: &StyleRoleId) -> Option<ThemeRoleSchema> {

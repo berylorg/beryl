@@ -322,6 +322,7 @@ pub(crate) struct SettingsWindowDiagnosticSnapshot {
     pub selected_page_id: Option<String>,
     pub detail_rows: Option<SettingsWindowRowSurfaceDiagnostic>,
     pub split_list: Option<SettingsWindowRowSurfaceDiagnostic>,
+    pub theme_role_navigator: Option<ThemeRoleNavigatorDiagnostic>,
     pub performance: SettingsWindowPerformanceDiagnostic,
     pub theme_editor_model: Option<ThemeEditorModelDiagnostic>,
 }
@@ -345,10 +346,30 @@ pub(crate) struct ThemeEditorModelDiagnostic {
     pub preview_projection_build_count: u64,
     pub last_preview_projection_build_micros: u64,
     pub role_preview_style_build_count: u64,
-    pub role_preview_row_count: usize,
+    pub total_schema_role_count: usize,
+    pub navigator_column_count: usize,
+    pub selected_role_path_count: usize,
     pub selected_property_detail_row_count: usize,
     pub modified_state_recompute_count: u64,
     pub last_modified_state_recompute_micros: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ThemeRoleNavigatorDiagnostic {
+    pub total_schema_role_count: usize,
+    pub column_count: usize,
+    pub visible_row_count: usize,
+    pub rendered_row_count: usize,
+    pub selected_role_id: Option<String>,
+    pub selected_role_path: Vec<String>,
+    pub property_row_count: usize,
+    pub horizontal_scroll_surface_count: usize,
+    pub column_scroll_surface_count: usize,
+    pub property_editor_scroll_surface_count: usize,
+    pub total_scroll_surface_count: usize,
+    pub overscan_count: usize,
+    pub row_height_strategy: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -610,6 +631,7 @@ impl SettingsWindowDiagnosticSnapshot {
             selected_page_id: None,
             detail_rows: None,
             split_list: None,
+            theme_role_navigator: None,
             performance: SettingsWindowPerformanceDiagnostic::default(),
             theme_editor_model: None,
         }
@@ -620,6 +642,14 @@ impl SettingsWindowDiagnosticSnapshot {
         diagnostics: Option<ThemeEditorModelDiagnostic>,
     ) -> Self {
         self.theme_editor_model = diagnostics;
+        self
+    }
+
+    pub(crate) fn with_theme_role_navigator(
+        mut self,
+        diagnostics: Option<ThemeRoleNavigatorDiagnostic>,
+    ) -> Self {
+        self.theme_role_navigator = diagnostics;
         self
     }
 }
@@ -638,6 +668,7 @@ impl From<gpui_settings_window::SettingsWindowDiagnostics> for SettingsWindowDia
             split_list: snapshot
                 .split_list
                 .map(SettingsWindowRowSurfaceDiagnostic::from),
+            theme_role_navigator: None,
             performance: SettingsWindowPerformanceDiagnostic::from(snapshot.performance),
             theme_editor_model: None,
         }

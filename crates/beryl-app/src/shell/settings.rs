@@ -11,8 +11,8 @@ use std::{
 };
 
 use gpui_settings_window::{
-    RgbColor, SettingsFieldId, SettingsPageActionId, SettingsPageId, SettingsPageSplitItemId,
-    SettingsRowActionId, SettingsSectionId, SettingsWindowModel, SettingsWindowOptions,
+    RgbColor, SettingsFieldId, SettingsPageActionId, SettingsPageId, SettingsRowActionId,
+    SettingsSectionId, SettingsWindowModel, SettingsWindowOptions,
 };
 
 use crate::{
@@ -40,6 +40,9 @@ use notifications::{
 };
 use operations::OperationSettingsDraft;
 use theme::settings_window_theme;
+
+#[cfg_attr(test, allow(unused_imports))]
+pub(super) use theme_editor::ThemeRoleNavigatorBodyRenderer;
 
 pub(super) type SharedActiveThemeProjection = Arc<Mutex<ActiveThemeProjection>>;
 pub(super) type SharedGuiPreferences = Arc<Mutex<GuiPreferences>>;
@@ -76,7 +79,9 @@ pub(super) struct ThemeEditorDiagnosticsSnapshot {
     pub(super) preview_projection_build_count: u64,
     pub(super) last_preview_projection_build_micros: u64,
     pub(super) role_preview_style_build_count: u64,
-    pub(super) role_preview_row_count: usize,
+    pub(super) total_schema_role_count: usize,
+    pub(super) navigator_column_count: usize,
+    pub(super) selected_role_path_count: usize,
     pub(super) selected_property_detail_row_count: usize,
     pub(super) modified_state_recompute_count: u64,
     pub(super) last_modified_state_recompute_micros: u64,
@@ -90,7 +95,9 @@ struct ThemeEditorDiagnostics {
     preview_projection_build_count: u64,
     last_preview_projection_build_micros: u64,
     role_preview_style_build_count: u64,
-    role_preview_row_count: usize,
+    total_schema_role_count: usize,
+    navigator_column_count: usize,
+    selected_role_path_count: usize,
     selected_property_detail_row_count: usize,
     modified_state_recompute_count: u64,
     last_modified_state_recompute_micros: u64,
@@ -269,8 +276,7 @@ impl SettingsState {
             self.theme_repository_snapshot.active_definition(),
         );
         self.theme_draft_modified = false;
-        self.selected_theme_role_id =
-            theme_editor::validated_role_id(self.selected_theme_role_id.clone());
+        self.reconcile_selected_theme_role_id();
         let settings = AppearanceSettings::from_active_theme(
             self.theme_repository_snapshot.active_projection(),
         );
@@ -333,12 +339,11 @@ impl SettingsState {
         }
     }
 
-    pub(super) fn select_theme_editor_role(&mut self, item_id: SettingsPageSplitItemId) {
-        if let Some(role_id) = theme_editor::role_id_from_split_item(&item_id) {
-            self.selected_section_id = themes::section_id();
-            self.selected_page_id = themes::editor_page_id();
-            self.selected_theme_role_id = role_id;
-        }
+    pub(super) fn select_theme_editor_role_id(&mut self, role_id: StyleRoleId) {
+        let role_id = theme_editor::validated_role_id(role_id);
+        self.selected_section_id = themes::section_id();
+        self.selected_page_id = themes::editor_page_id();
+        self.selected_theme_role_id = role_id;
     }
 
     pub(super) fn set_field_value(&mut self, field_id: &SettingsFieldId, value: String) {
@@ -494,6 +499,69 @@ impl SettingsState {
             return None;
         }
         self.theme_editor_diagnostics.borrow().snapshot()
+    }
+
+    pub(super) fn theme_editor_role_tree_projection(
+        &self,
+    ) -> theme_editor::ThemeRoleNavigatorProjection {
+        self.theme_editor_draft
+            .page_model(&self.selected_theme_role_id, &self.errors)
+            .role_tree
+    }
+
+    pub(super) fn selected_theme_editor_role_tree_projection(
+        &self,
+    ) -> Option<theme_editor::ThemeRoleNavigatorProjection> {
+        (self.selected_page_id == themes::editor_page_id())
+            .then(|| self.theme_editor_role_tree_projection())
+    }
+
+    pub(super) fn theme_editor_role_navigator_body_renderer(
+        on_select_role: impl Fn(StyleRoleId, &mut gpui::App) + 'static,
+    ) -> theme_editor::ThemeRoleNavigatorBodyRenderer {
+        theme_editor::ThemeRoleNavigatorBodyRenderer::new(on_select_role)
+    }
+
+    #[cfg(test)]
+    pub(super) fn theme_role_navigator_render_strategy_for_test()
+    -> theme_editor::ThemeRoleNavigatorRenderStrategy {
+        theme_editor::theme_role_navigator_render_strategy_for_test()
+    }
+
+    #[cfg(test)]
+    pub(super) fn theme_role_navigator_row_window_for_test(
+        row_count: usize,
+        scroll_offset: f32,
+        viewport_height: f32,
+    ) -> std::ops::Range<usize> {
+        theme_editor::theme_role_navigator_row_window_for_test(
+            row_count,
+            scroll_offset,
+            viewport_height,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn theme_role_navigator_row_window_height_sum_for_test(
+        row_count: usize,
+        scroll_offset: f32,
+        viewport_height: f32,
+    ) -> (std::ops::Range<usize>, f32, f32) {
+        theme_editor::theme_role_navigator_row_window_height_sum_for_test(
+            row_count,
+            scroll_offset,
+            viewport_height,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn selected_theme_role_id(&self) -> &StyleRoleId {
+        &self.selected_theme_role_id
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_selected_theme_role_id_for_test(&mut self, role_id: StyleRoleId) {
+        self.selected_theme_role_id = role_id;
     }
 
     pub(super) fn apply(&mut self) -> bool {
@@ -797,8 +865,7 @@ impl SettingsState {
         self.theme_editor_draft =
             theme_editor::ThemeEditorDraft::from_definition(snapshot.active_definition());
         self.theme_draft_modified = false;
-        self.selected_theme_role_id =
-            theme_editor::validated_role_id(self.selected_theme_role_id.clone());
+        self.reconcile_selected_theme_role_id();
         self.theme_save_as_name = default_save_as_name(&settings);
         self.theme_repository_snapshot = snapshot;
         self.errors.clear();
@@ -806,6 +873,11 @@ impl SettingsState {
 
     fn theme_draft_modified(&self) -> bool {
         self.theme_draft_modified
+    }
+
+    fn reconcile_selected_theme_role_id(&mut self) {
+        self.selected_theme_role_id =
+            theme_editor::validated_role_id(self.selected_theme_role_id.clone());
     }
 
     fn compute_theme_draft_modified(&self) -> bool {
@@ -844,7 +916,9 @@ impl ThemeEditorDiagnostics {
         self.role_preview_style_build_count = self
             .role_preview_style_build_count
             .saturating_add(diagnostics.role_preview_style_build_count);
-        self.role_preview_row_count = diagnostics.role_preview_row_count;
+        self.total_schema_role_count = diagnostics.total_schema_role_count;
+        self.navigator_column_count = diagnostics.navigator_column_count;
+        self.selected_role_path_count = diagnostics.selected_role_path_count;
         self.selected_property_detail_row_count = diagnostics.selected_property_detail_row_count;
     }
 
@@ -863,7 +937,9 @@ impl ThemeEditorDiagnostics {
             preview_projection_build_count: self.preview_projection_build_count,
             last_preview_projection_build_micros: self.last_preview_projection_build_micros,
             role_preview_style_build_count: self.role_preview_style_build_count,
-            role_preview_row_count: self.role_preview_row_count,
+            total_schema_role_count: self.total_schema_role_count,
+            navigator_column_count: self.navigator_column_count,
+            selected_role_path_count: self.selected_role_path_count,
             selected_property_detail_row_count: self.selected_property_detail_row_count,
             modified_state_recompute_count: self.modified_state_recompute_count,
             last_modified_state_recompute_micros: self.last_modified_state_recompute_micros,
