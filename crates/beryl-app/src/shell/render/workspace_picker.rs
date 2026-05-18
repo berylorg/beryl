@@ -218,9 +218,15 @@ pub(super) fn render_workspace_picker_overlay(
                         .flex()
                         .occlude()
                         .overflow_hidden()
-                        .bg(shell.popup_surface_background())
+                        .bg(shell.role_background(
+                            BerylThemeRole::WorkspacePickerSurface,
+                            shell.popup_surface_background(),
+                        ))
                         .border_1()
-                        .border_color(shell.surface_border())
+                        .border_color(shell.role_border(
+                            BerylThemeRole::WorkspacePickerSurface,
+                            shell.surface_border(),
+                        ))
                         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
                         .shadow_lg()
                         .child(
@@ -391,17 +397,27 @@ fn render_column_header(
                     div()
                         .text_sm()
                         .font_weight(shell.role_font_weight(
-                            BerylThemeRole::WorkspacePickerSurface,
+                            BerylThemeRole::WorkspacePickerHeaderText,
                             gpui::FontWeight::SEMIBOLD,
                         ))
-                        .text_color(shell.general_ui_foreground())
+                        .text_color(shell.role_foreground(
+                            BerylThemeRole::WorkspacePickerHeaderText,
+                            shell.general_ui_foreground(),
+                        ))
                         .whitespace_normal()
                         .child(title),
                 )
                 .child(
                     div()
                         .text_xs()
-                        .text_color(shell.surface_muted_foreground())
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::WorkspacePickerHeaderDetail,
+                            gpui::FontWeight::NORMAL,
+                        ))
+                        .text_color(shell.role_foreground(
+                            BerylThemeRole::WorkspacePickerHeaderDetail,
+                            shell.surface_muted_foreground(),
+                        ))
                         .whitespace_normal()
                         .child(subtitle),
                 ),
@@ -561,7 +577,7 @@ fn render_runtime_selector_trigger(
 
 fn render_create_add_plus_marker(shell: &ShellRenderFrame<'_>, enabled: bool) -> impl IntoElement {
     let color = if enabled {
-        shell.role_foreground(
+        shell.role_color(
             BerylThemeRole::WorkspacePickerRowActive,
             shell.primary_button_theme().active.foreground,
         )
@@ -577,10 +593,7 @@ fn render_create_add_plus_marker(shell: &ShellRenderFrame<'_>, enabled: bool) ->
         .justify_center()
         .text_size(px(layout::WORKSPACE_PICKER_CREATE_ADD_PLUS_FONT_SIZE))
         .line_height(px(layout::WORKSPACE_PICKER_CREATE_ADD_PLUS_FONT_SIZE))
-        .font_weight(shell.role_font_weight(
-            BerylThemeRole::WorkspacePickerRowActive,
-            gpui::FontWeight::BOLD,
-        ))
+        .font_weight(gpui::FontWeight::BOLD)
         .text_color(color)
         .child(
             div()
@@ -610,9 +623,15 @@ fn render_runtime_selector_dropdown(
         .min_h(px(0.0))
         .occlude()
         .overflow_hidden()
-        .bg(shell.popup_surface_background())
+        .bg(shell.role_background(
+            BerylThemeRole::WorkspacePickerSurface,
+            shell.popup_surface_background(),
+        ))
         .border_1()
-        .border_color(shell.secondary_button_theme().active.border)
+        .border_color(shell.role_border(
+            BerylThemeRole::WorkspacePickerSurface,
+            shell.secondary_button_theme().active.border,
+        ))
         .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
         .rounded_tl(px(0.0))
         .rounded_tr(px(0.0))
@@ -731,7 +750,14 @@ fn render_runtime_selector_status_row(
         .flex()
         .items_center()
         .text_xs()
-        .text_color(shell.surface_muted_foreground())
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::WorkspacePickerUnavailableText,
+            gpui::FontWeight::NORMAL,
+        ))
+        .text_color(shell.role_foreground(
+            BerylThemeRole::WorkspacePickerUnavailableText,
+            shell.surface_muted_foreground(),
+        ))
         .whitespace_normal()
         .child(text.into())
         .into_any_element()
@@ -751,14 +777,23 @@ fn render_runtime_selector_row(
         .is_some_and(|current| current == &runtime);
     let label = workspace_picker::runtime_selector_row_label(&row);
     let background = if highlighted || selected {
-        shell.row_surface_background()
+        shell.role_background(
+            BerylThemeRole::WorkspacePickerRuntimeRow,
+            shell.row_surface_background(),
+        )
     } else {
         shell.popup_surface_background()
     };
     let foreground = if highlighted {
-        shell.general_ui_foreground()
+        shell.role_foreground(
+            BerylThemeRole::WorkspacePickerRuntimeRowText,
+            shell.general_ui_foreground(),
+        )
     } else {
-        shell.surface_muted_foreground()
+        shell.role_foreground(
+            BerylThemeRole::WorkspacePickerUnavailableText,
+            shell.surface_muted_foreground(),
+        )
     };
 
     div()
@@ -768,14 +803,20 @@ fn render_runtime_selector_row(
         .w_full()
         .px_3()
         .border_b_1()
-        .border_color(shell.separator_color())
+        .border_color(shell.role_border(
+            BerylThemeRole::WorkspacePickerRuntimeRow,
+            shell.separator_color(),
+        ))
         .bg(background)
         .flex()
         .items_center()
         .gap_2()
         .cursor_pointer()
         .hover({
-            let hover_background = shell.row_surface_background();
+            let hover_background = shell.role_background(
+                BerylThemeRole::SurfaceRowHover,
+                shell.row_surface_background(),
+            );
             move |style| style.bg(hover_background)
         })
         .when(selected, |this| {
@@ -882,25 +923,40 @@ fn render_attach_member_row(
     };
     let secondary = shell.secondary_button_theme();
     let foreground = if enabled {
-        shell.general_ui_foreground()
+        shell.role_foreground(
+            BerylThemeRole::WorkspacePickerMemberRowTitle,
+            shell.general_ui_foreground(),
+        )
     } else {
-        shell.surface_muted_foreground()
+        shell.role_foreground(
+            BerylThemeRole::WorkspacePickerUnavailableText,
+            shell.surface_muted_foreground(),
+        )
     };
-    let hover_background = shell.row_surface_background();
+    let hover_background = shell.role_background(
+        BerylThemeRole::SurfaceRowHover,
+        shell.row_surface_background(),
+    );
     let mut row = div()
         .id("workspace-picker-attach-member")
         .w_full()
         .min_h(px(layout::WORKSPACE_PICKER_MEMBERS_ATTACH_ROW_HEIGHT))
         .px_4()
         .py_3()
-        .bg(shell.popup_surface_background())
+        .bg(shell.role_background(
+            BerylThemeRole::WorkspacePickerMemberRow,
+            shell.popup_surface_background(),
+        ))
         .border_b_1()
-        .border_color(shell.separator_color())
+        .border_color(shell.role_border(
+            BerylThemeRole::WorkspacePickerMemberRow,
+            shell.separator_color(),
+        ))
         .flex()
         .items_center()
         .text_sm()
         .font_weight(shell.role_font_weight(
-            BerylThemeRole::WorkspacePickerMemberRow,
+            BerylThemeRole::WorkspacePickerMemberRowTitle,
             gpui::FontWeight::SEMIBOLD,
         ))
         .text_color(foreground)
@@ -974,60 +1030,78 @@ fn member_row_shell(
     leading: Option<AnyElement>,
     action: Option<AnyElement>,
 ) -> gpui::Stateful<gpui::Div> {
-    let background = shell.popup_surface_background();
-    let hover_background = shell.row_surface_background();
-    let mut row =
-        div()
-            .id(id)
-            .relative()
-            .w_full()
-            .min_h(px(row_height))
-            .bg(background)
-            .border_b_1()
-            .border_color(shell.separator_color())
-            .px_4()
-            .py_3()
-            .flex()
-            .items_start()
-            .justify_between()
-            .gap_3()
-            .when(primary, |this| {
-                this.child(render_workspace_active_marker(shell))
-            })
-            .when_some(leading, |this, leading| this.child(leading))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(shell.role_font_weight(
-                                BerylThemeRole::WorkspacePickerMemberRow,
-                                gpui::FontWeight::SEMIBOLD,
-                            ))
-                            .text_color(shell.general_ui_foreground())
-                            .whitespace_normal()
-                            .child(label),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_family(shell.role_font_family(
-                                BerylThemeRole::WorkspacePickerMemberRow,
-                                "Consolas",
-                            ))
-                            .text_color(shell.surface_muted_foreground())
-                            .whitespace_normal()
-                            .child(detail),
-                    ),
-            )
-            .when_some(action, |this, action| {
-                this.child(div().flex_none().child(action))
-            });
+    let background = shell.role_background(
+        BerylThemeRole::WorkspacePickerMemberRow,
+        shell.popup_surface_background(),
+    );
+    let hover_background = shell.role_background(
+        BerylThemeRole::SurfaceRowHover,
+        shell.row_surface_background(),
+    );
+    let mut row = div()
+        .id(id)
+        .relative()
+        .w_full()
+        .min_h(px(row_height))
+        .bg(background)
+        .border_b_1()
+        .border_color(shell.role_border(
+            BerylThemeRole::WorkspacePickerMemberRow,
+            shell.separator_color(),
+        ))
+        .px_4()
+        .py_3()
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap_3()
+        .when(primary, |this| {
+            this.child(render_workspace_active_marker(shell))
+        })
+        .when_some(leading, |this, leading| this.child(leading))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::WorkspacePickerMemberRowTitle,
+                            gpui::FontWeight::SEMIBOLD,
+                        ))
+                        .text_color(shell.role_foreground(
+                            BerylThemeRole::WorkspacePickerMemberRowTitle,
+                            shell.general_ui_foreground(),
+                        ))
+                        .whitespace_normal()
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .font_family(shell.role_font_family(
+                            BerylThemeRole::WorkspacePickerMemberRowPath,
+                            "Consolas",
+                        ))
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::WorkspacePickerMemberRowPath,
+                            gpui::FontWeight::NORMAL,
+                        ))
+                        .text_color(shell.role_foreground(
+                            BerylThemeRole::WorkspacePickerMemberRowPath,
+                            shell.surface_muted_foreground(),
+                        ))
+                        .whitespace_normal()
+                        .child(detail),
+                ),
+        )
+        .when_some(action, |this, action| {
+            this.child(div().flex_none().child(action))
+        });
     if interactive {
         row = row
             .cursor_pointer()
@@ -1219,10 +1293,14 @@ fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(
-            shell.role_font_weight(BerylThemeRole::PopupSurface, gpui::FontWeight::SEMIBOLD),
-        )
-        .text_color(shell.general_ui_foreground())
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::ControlPopupHeader,
+            gpui::FontWeight::SEMIBOLD,
+        ))
+        .text_color(shell.role_foreground(
+            BerylThemeRole::ControlPopupHeader,
+            shell.general_ui_foreground(),
+        ))
         .child(label.to_string())
 }
 
@@ -1237,10 +1315,22 @@ fn render_workspace_row(
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
     let current = workspace.id() == loaded.workspace.id();
-    let background = shell.popup_surface_background();
-    let border = shell.separator_color();
-    let title_color = shell.general_ui_foreground();
-    let member_path_color = shell.surface_muted_foreground();
+    let background = shell.role_background(
+        BerylThemeRole::WorkspacePickerWorkspaceRow,
+        shell.popup_surface_background(),
+    );
+    let border = shell.role_border(
+        BerylThemeRole::WorkspacePickerWorkspaceRow,
+        shell.separator_color(),
+    );
+    let title_color = shell.role_foreground(
+        BerylThemeRole::WorkspacePickerWorkspaceRowTitle,
+        shell.general_ui_foreground(),
+    );
+    let member_path_color = shell.role_foreground(
+        BerylThemeRole::WorkspacePickerWorkspaceRowPath,
+        shell.surface_muted_foreground(),
+    );
     let rename_editor_open_for_row = loaded
         .workspace_picker
         .rename_editor_open_for(workspace.id());
@@ -1269,7 +1359,10 @@ fn render_workspace_row(
             .into_any_element();
     }
 
-    let hover_background = shell.row_surface_background();
+    let hover_background = shell.role_background(
+        BerylThemeRole::SurfaceRowHover,
+        shell.row_surface_background(),
+    );
 
     row.cursor_pointer()
         .hover(move |style| style.bg(hover_background))
@@ -1301,7 +1394,7 @@ fn render_workspace_active_marker(shell: &ShellRenderFrame<'_>) -> impl IntoElem
         .top_0()
         .bottom_0()
         .w(px(3.0))
-        .bg(shell.role_border(
+        .bg(shell.role_color(
             BerylThemeRole::WorkspacePickerRowActive,
             shell.primary_button_theme().active.border,
         ))
@@ -1333,7 +1426,7 @@ fn render_workspace_row_summary(
                         .min_w(px(0.0))
                         .text_sm()
                         .font_weight(shell.role_font_weight(
-                            BerylThemeRole::WorkspacePickerWorkspaceRow,
+                            BerylThemeRole::WorkspacePickerWorkspaceRowTitle,
                             gpui::FontWeight::SEMIBOLD,
                         ))
                         .text_color(title_color)
@@ -1369,12 +1462,14 @@ fn render_workspace_member_paths(
                     .w_full()
                     .min_w(px(0.0))
                     .text_xs()
-                    .font_family(
-                        shell.role_font_family(
-                            BerylThemeRole::WorkspacePickerWorkspaceRow,
-                            "Consolas",
-                        ),
-                    )
+                    .font_family(shell.role_font_family(
+                        BerylThemeRole::WorkspacePickerWorkspaceRowPath,
+                        "Consolas",
+                    ))
+                    .font_weight(shell.role_font_weight(
+                        BerylThemeRole::WorkspacePickerWorkspaceRowPath,
+                        gpui::FontWeight::NORMAL,
+                    ))
                     .text_color(text_color)
                     .whitespace_normal()
                     .child(path.clone()),
@@ -1416,10 +1511,22 @@ fn render_create_workspace_row(
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let secondary = shell.secondary_button_theme();
-    let background = shell.popup_surface_background();
-    let foreground = shell.general_ui_foreground();
-    let border = shell.separator_color();
-    let hover_background = shell.row_surface_background();
+    let background = shell.role_background(
+        BerylThemeRole::WorkspacePickerWorkspaceRow,
+        shell.popup_surface_background(),
+    );
+    let foreground = shell.role_foreground(
+        BerylThemeRole::WorkspacePickerWorkspaceRowTitle,
+        shell.general_ui_foreground(),
+    );
+    let border = shell.role_border(
+        BerylThemeRole::WorkspacePickerWorkspaceRow,
+        shell.separator_color(),
+    );
+    let hover_background = shell.role_background(
+        BerylThemeRole::SurfaceRowHover,
+        shell.row_surface_background(),
+    );
     let active_background = secondary.active.background;
 
     div()
@@ -1435,7 +1542,7 @@ fn render_create_workspace_row(
         .items_center()
         .text_sm()
         .font_weight(shell.role_font_weight(
-            BerylThemeRole::WorkspacePickerWorkspaceRow,
+            BerylThemeRole::WorkspacePickerWorkspaceRowTitle,
             gpui::FontWeight::SEMIBOLD,
         ))
         .text_color(foreground)

@@ -31,11 +31,27 @@ fn phase5_chrome_sources_use_role_helpers_for_stateful_surfaces() {
     assert!(conversation.contains("BerylThemeRole::StatusValueOk"));
     assert!(conversation.contains("BerylThemeRole::StatusValueError"));
     assert!(conversation.contains("tool_activity_status_disc(shell"));
+    assert!(conversation.contains("BerylThemeRole::StatusLineCell"));
+    assert!(conversation.contains("BerylThemeRole::StatusLineLabel"));
+    assert!(conversation.contains("BerylThemeRole::ActivityRow"));
+    assert!(conversation.contains("BerylThemeRole::ActivityIndicatorRunning"));
+    assert!(conversation.contains("BerylThemeRole::ActivityResizeHandle"));
     assert!(conversation.contains("BerylThemeRole::MediaPlaceholder"));
+    assert!(common.contains("BerylThemeRole::AppWindowTitle"));
+    assert!(common.contains("BerylThemeRole::MainToolbarTitle"));
     assert!(!workspace_picker.contains("CODE_FONT_FAMILY"));
     assert!(workspace_picker.contains("role_font_family("));
+    assert!(workspace_picker.contains("BerylThemeRole::WorkspacePickerWorkspaceRowTitle"));
+    assert!(workspace_picker.contains("BerylThemeRole::WorkspacePickerMemberRowPath"));
+    assert!(workspace_picker.contains("BerylThemeRole::WorkspacePickerRuntimeRowText"));
+    assert!(workspace_picker.contains("BerylThemeRole::WorkspacePickerUnavailableText"));
+    assert!(workspace_picker.contains("shell.role_color("));
     assert!(thread_selector.contains("BerylThemeRole::ThreadSelectorRowSelected"));
-    assert!(status_operation.contains("BerylThemeRole::StatusValueError"));
+    assert!(thread_selector.contains("BerylThemeRole::ThreadSelectorRowSelectedText"));
+    assert!(thread_selector.contains("BerylThemeRole::ThreadSelectorRowActive"));
+    assert!(thread_selector.contains("BerylThemeRole::ThreadSelectorRowActiveText"));
+    assert!(thread_selector.contains("BerylThemeRole::ThreadSelectorRowUnavailableText"));
+    assert!(status_operation.contains("BerylThemeRole::SemanticError"));
 }
 
 #[test]

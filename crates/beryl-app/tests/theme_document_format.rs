@@ -29,7 +29,7 @@ fn compact_theme_document_roundtrips_role_records_and_sources() {
         .definition()
         .roles()
         .iter()
-        .find(|role| role.role_id().as_str() == BerylThemeRole::CodePanelBody.id())
+        .find(|role| role.role_id().as_str() == BerylThemeRole::CodePanelBodyText.id())
         .unwrap();
     assert_eq!(
         code.properties()
@@ -50,12 +50,18 @@ name = "Keyword Theme"
 id = "app.window"
 foreground = { value = "#112233" }
 background = "fallback"
+
+[[role]]
+id = "app.window.title"
 font_weight = { value = 500 }
 
 [[role]]
 id = "code_panel.body"
-foreground = { value = "#ddeeff" }
 background = "fallback"
+
+[[role]]
+id = "code_panel.body.text"
+foreground = { value = "#ddeeff" }
 font_family = { value = "Inter" }
 font_size = { value = 15.0 }
 font_weight = { value = 400 }
@@ -99,7 +105,7 @@ id = "app.window"
 foreground = { value = "#112233" }
 
 [[role]]
-id = "code_panel.body"
+id = "code_panel.body.text"
 font_family = "fallback"
 "##;
 
@@ -128,7 +134,7 @@ font_family = "fallback"
         .definition()
         .roles()
         .iter()
-        .find(|role| role.role_id().as_str() == BerylThemeRole::CodePanelBody.id())
+        .find(|role| role.role_id().as_str() == BerylThemeRole::CodePanelBodyText.id())
         .unwrap();
     assert_eq!(
         code.properties()
@@ -248,10 +254,48 @@ fn compact_theme_document_rejects_properties_outside_role_capabilities() {
     for (role_id, property) in [
         ("syntax.string", "background"),
         ("code_panel.body", "border"),
+        ("code_panel.body", "foreground"),
+        ("code_panel.body", "font_family"),
+        ("code_panel.header", "foreground"),
+        ("code_panel.header", "font_weight"),
+        ("code_panel.border", "border"),
+        ("markdown.block_quote", "border"),
         ("markdown.thematic_break", "border"),
+        ("transcript.turn.user", "font_size"),
+        ("transcript.selection", "background"),
+        ("button", "font_weight"),
+        ("interaction.pressed", "font_weight"),
+        ("input.caret", "background"),
         ("scrollbar.thumb.normal", "background"),
+        ("scrollbar.thumb.hover", "background"),
+        ("popup.surface", "font_weight"),
+        ("notice.info", "font_weight"),
+        ("notice.error", "font_weight"),
         ("popup.row.normal", "foreground"),
+        ("row.info", "font_weight"),
+        ("button.primary.normal", "font_weight"),
+        ("button.secondary.normal", "font_weight"),
+        ("settings.button.primary", "font_weight"),
+        ("settings.button.secondary", "font_weight"),
         ("settings.input.focused", "background"),
+        ("settings.input.focused", "foreground"),
+        ("settings.input.selection", "background"),
+        ("settings.row.normal", "font_weight"),
+        ("settings.row.disabled", "foreground"),
+        ("settings.sidebar.row.text", "background"),
+        ("graph.row.topic", "font_weight"),
+        ("graph.row.topic.text", "background"),
+        ("graph.row.disabled.text", "foreground"),
+        ("checklist.status.todo", "foreground"),
+        ("checklist.status.todo.text", "color"),
+        ("app.window", "font_weight"),
+        ("main.toolbar", "font_weight"),
+        ("workspace_picker.row.active", "foreground"),
+        ("workspace_picker.row.active", "font_weight"),
+        ("media.placeholder", "foreground"),
+        ("status.value.ok", "background"),
+        ("status.value.working", "border"),
+        ("activity.indicator.running", "background"),
     ] {
         let text = format!(
             r##"
@@ -295,11 +339,11 @@ fn compact_theme_document_rejects_oversized_font_family_values() {
 schema = 1
 
 [[role]]
-id = "app.window"
+id = "app.window.title"
 font_weight = {{ value = 400 }}
 
 [[role]]
-id = "code_panel.body"
+id = "code_panel.body.text"
 font_family = {{ value = "{font_family}" }}
 "##
     );

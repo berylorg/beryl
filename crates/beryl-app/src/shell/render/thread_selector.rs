@@ -116,8 +116,14 @@ pub(super) fn render_thread_selector_overlay(
                             .occlude()
                             .overflow_hidden()
                             .border_1()
-                            .bg(shell.popup_surface_background())
-                            .border_color(shell.surface_border())
+                            .bg(shell.role_background(
+                                BerylThemeRole::ThreadSelectorSurface,
+                                shell.popup_surface_background(),
+                            ))
+                            .border_color(shell.role_border(
+                                BerylThemeRole::ThreadSelectorSurface,
+                                shell.surface_border(),
+                            ))
                             .rounded_lg()
                             .shadow_lg()
                             .child(render_header(shell, loaded, surface))
@@ -162,8 +168,14 @@ fn render_header(
         .px_4()
         .py_3()
         .border_b_1()
-        .border_color(shell.surface_border())
-        .bg(shell.panel_surface_background())
+        .border_color(shell.role_border(
+            BerylThemeRole::ThreadSelectorSurface,
+            shell.surface_border(),
+        ))
+        .bg(shell.role_background(
+            BerylThemeRole::ThreadSelectorSurface,
+            shell.panel_surface_background(),
+        ))
         .flex()
         .items_center()
         .justify_between()
@@ -179,10 +191,13 @@ fn render_header(
                     div()
                         .text_sm()
                         .font_weight(shell.role_font_weight(
-                            BerylThemeRole::ThreadSelectorSurface,
+                            BerylThemeRole::ThreadSelectorHeaderText,
                             gpui::FontWeight::SEMIBOLD,
                         ))
-                        .text_color(shell.general_ui_foreground())
+                        .text_color(shell.role_foreground(
+                            BerylThemeRole::ThreadSelectorHeaderText,
+                            shell.general_ui_foreground(),
+                        ))
                         .child("Threads"),
                 )
                 .child(
@@ -268,9 +283,14 @@ fn render_column(
         .h_full()
         .min_h(px(0.0))
         .flex_none()
-        .bg(shell.panel_surface_background())
+        .bg(shell.role_background(
+            BerylThemeRole::ThreadSelectorColumn,
+            shell.panel_surface_background(),
+        ))
         .border_1()
-        .border_color(shell.surface_border())
+        .border_color(
+            shell.role_border(BerylThemeRole::ThreadSelectorColumn, shell.surface_border()),
+        )
         .overflow_hidden()
         .child(
             div()
@@ -284,17 +304,26 @@ fn render_column(
                         .px_4()
                         .py_2()
                         .border_b_1()
-                        .border_color(shell.surface_border())
-                        .bg(shell.popup_surface_background())
+                        .border_color(shell.role_border(
+                            BerylThemeRole::ThreadSelectorColumnHeader,
+                            shell.surface_border(),
+                        ))
+                        .bg(shell.role_background(
+                            BerylThemeRole::ThreadSelectorColumnHeader,
+                            shell.popup_surface_background(),
+                        ))
                         .child(
                             div()
                                 .min_w(px(0.0))
                                 .text_sm()
                                 .font_weight(shell.role_font_weight(
-                                    BerylThemeRole::ThreadSelectorSurface,
+                                    BerylThemeRole::ThreadSelectorColumnHeaderText,
                                     gpui::FontWeight::SEMIBOLD,
                                 ))
-                                .text_color(shell.general_ui_foreground())
+                                .text_color(shell.role_foreground(
+                                    BerylThemeRole::ThreadSelectorColumnHeaderText,
+                                    shell.general_ui_foreground(),
+                                ))
                                 .whitespace_nowrap()
                                 .truncate()
                                 .child(header_label),
@@ -555,30 +584,53 @@ fn render_member_row(
 ) -> impl IntoElement {
     let member_key = group.key().clone();
     let selected = column.selection() == Some(&ThreadSelectorSelection::Member(member_key.clone()));
-    let primary = shell.primary_button_theme();
     let secondary = shell.secondary_button_theme();
     let background = if selected {
-        primary.normal.background
+        shell.role_background(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().normal.background,
+        )
     } else {
-        shell.row_surface_background()
+        shell.role_background(
+            BerylThemeRole::ThreadSelectorRow,
+            shell.row_surface_background(),
+        )
     };
     let border = if selected {
-        primary.normal.border
+        shell.role_border(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().normal.border,
+        )
     } else {
-        shell.surface_border()
+        shell.role_border(BerylThemeRole::ThreadSelectorRow, shell.surface_border())
     };
     let foreground = if selected {
-        primary.normal.foreground
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowSelectedText,
+            shell.primary_button_theme().normal.foreground,
+        )
     } else {
-        shell.general_ui_foreground()
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowLabel,
+            shell.general_ui_foreground(),
+        )
     };
     let count_foreground = if selected {
-        primary.normal.foreground
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowSelectedText,
+            shell.primary_button_theme().normal.foreground,
+        )
     } else {
-        shell.surface_muted_foreground()
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowMeta,
+            shell.surface_muted_foreground(),
+        )
     };
     let hover_background = if selected {
-        primary.hover.background
+        shell.role_background(
+            BerylThemeRole::ThreadSelectorRowSelected,
+            shell.primary_button_theme().hover.background,
+        )
     } else {
         secondary.hover.background
     };
@@ -611,6 +663,10 @@ fn render_member_row(
                         .min_w(px(0.0))
                         .flex_1()
                         .text_sm()
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::ThreadSelectorRowLabel,
+                            gpui::FontWeight::NORMAL,
+                        ))
                         .text_color(foreground)
                         .whitespace_nowrap()
                         .truncate()
@@ -619,6 +675,10 @@ fn render_member_row(
                 .child(
                     div()
                         .text_xs()
+                        .font_weight(shell.role_font_weight(
+                            BerylThemeRole::ThreadSelectorRowMeta,
+                            gpui::FontWeight::NORMAL,
+                        ))
                         .text_color(count_foreground)
                         .child(group.threads().len().to_string()),
                 ),
@@ -645,7 +705,7 @@ fn render_thread_row(
     let secondary = shell.secondary_button_theme();
     let background = if row_state.active {
         shell.role_background(
-            BerylThemeRole::StatusValueOk,
+            BerylThemeRole::ThreadSelectorRowActive,
             shell.row_surface_background(),
         )
     } else if row_state.selected {
@@ -654,11 +714,14 @@ fn render_thread_row(
             shell.primary_button_theme().normal.background,
         )
     } else {
-        shell.row_surface_background()
+        shell.role_background(
+            BerylThemeRole::ThreadSelectorRow,
+            shell.row_surface_background(),
+        )
     };
     let border = if row_state.active {
         shell.role_border(
-            BerylThemeRole::StatusValueOk,
+            BerylThemeRole::ThreadSelectorRowActive,
             shell.primary_button_theme().active.border,
         )
     } else if row_state.selected {
@@ -667,15 +730,23 @@ fn render_thread_row(
             shell.primary_button_theme().normal.border,
         )
     } else {
-        shell.surface_border()
+        shell.role_border(BerylThemeRole::ThreadSelectorRow, shell.surface_border())
     };
     let foreground = if row_state.selected && !row_state.active {
         shell.role_foreground(
-            BerylThemeRole::ThreadSelectorRowSelected,
+            BerylThemeRole::ThreadSelectorRowSelectedText,
             shell.primary_button_theme().normal.foreground,
         )
+    } else if row_state.active {
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowActiveText,
+            shell.general_ui_foreground(),
+        )
     } else {
-        shell.general_ui_foreground()
+        shell.role_foreground(
+            BerylThemeRole::ThreadSelectorRowLabel,
+            shell.general_ui_foreground(),
+        )
     };
     let count_foreground = if row_state.active || row_state.selected {
         foreground
@@ -684,7 +755,7 @@ fn render_thread_row(
     };
     let separator = if row_state.active {
         shell.role_border(
-            BerylThemeRole::StatusValueOk,
+            BerylThemeRole::ThreadSelectorRowActive,
             shell.primary_button_theme().active.border,
         )
     } else if row_state.selected {
@@ -693,7 +764,7 @@ fn render_thread_row(
             shell.primary_button_theme().normal.border,
         )
     } else {
-        shell.surface_border()
+        shell.role_border(BerylThemeRole::ThreadSelectorRow, shell.surface_border())
     };
     let hover_background = if row_state.active {
         shell.role_background(BerylThemeRole::SurfaceRowHover, secondary.hover.background)
@@ -713,6 +784,10 @@ fn render_thread_row(
             .px_3()
             .py_2()
             .text_sm()
+            .font_weight(shell.role_font_weight(
+                BerylThemeRole::ThreadSelectorRowLabel,
+                gpui::FontWeight::NORMAL,
+            ))
             .text_color(foreground)
             .whitespace_nowrap()
             .truncate()
@@ -730,6 +805,10 @@ fn render_thread_row(
                     .items_center()
                     .justify_center()
                     .text_xs()
+                    .font_weight(shell.role_font_weight(
+                        BerylThemeRole::ThreadSelectorRowMeta,
+                        gpui::FontWeight::NORMAL,
+                    ))
                     .text_color(count_foreground)
                     .child(child_count.to_string()),
             );
@@ -796,7 +875,7 @@ fn disabled_row(shell: &ShellRenderFrame<'_>, label: &str) -> gpui::Div {
         shell.surface_border(),
     );
     let foreground = shell.role_foreground(
-        BerylThemeRole::ThreadSelectorRowUnavailable,
+        BerylThemeRole::ThreadSelectorRowUnavailableText,
         shell.surface_muted_foreground(),
     );
     div()
@@ -807,6 +886,10 @@ fn disabled_row(shell: &ShellRenderFrame<'_>, label: &str) -> gpui::Div {
         .bg(background)
         .border_color(border)
         .text_sm()
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::ThreadSelectorRowUnavailableText,
+            gpui::FontWeight::NORMAL,
+        ))
         .text_color(foreground)
         .child(label.to_string())
 }

@@ -112,7 +112,7 @@ fn overview_section() -> Value {
         "points": [
             "Author one compact TOML document in a fenced code block with language beryl-theme when proposing a theme to the operator.",
             "Use read_theme_schema for the exact role and property inventory; this guide explains how to use that schema.",
-            "Each role accepts only the properties listed for that role. Roles with an empty property list are not theme-editable until a render site consumes one of their properties.",
+            "Each advertised role accepts only the properties listed for that role. Roles without editable properties are intentionally omitted from Theme Editor and schema discovery output.",
             "A theme document can include only roles and properties that it changes. Omitted properties resolve from built-in fallback values unless the document requests another source.",
             "Use validate_theme_document before previewing or installing a candidate so parser and resolver diagnostics can be fixed without mutating GUI state."
         ],
@@ -154,7 +154,7 @@ fn role_groups_section() -> Value {
         "groups": [
             { "prefix": "app.", "use": "overall window defaults and app-level foreground/background" },
             { "prefix": "main.", "use": "main toolbar, thread strip, and separators" },
-            { "prefix": "button.", "use": "shared primary and secondary button states" },
+            { "prefix": "button.", "use": "shared primary and secondary button surfaces plus label text" },
             { "prefix": "input.", "use": "composer and text input surfaces" },
             { "prefix": "settings.", "use": "settings window, sidebar, pages, rows, inputs, popups, and settings buttons" },
             { "prefix": "transcript.", "use": "conversation shell and assistant/user turn text" },
@@ -203,9 +203,9 @@ fn settings_roles_section() -> Value {
         "title": "Settings roles",
         "points": [
             "Use settings.window, settings.sidebar, settings.page, and settings.group for settings-window structure.",
-            "Use settings.row.* for setting rows and modified or disabled row states.",
-            "Use settings.input.* for text and color inputs inside settings.",
-            "Use settings.button.primary and settings.button.secondary for settings-window actions."
+            "Use settings.row.* for setting rows, modified row surfaces, and disabled row text.",
+            "Use settings.input.* for input surfaces, text, selection, focus borders, and carets inside settings.",
+            "Use settings.button.primary and settings.button.secondary for settings-window action surfaces; use their .label roles for label typography."
         ],
     })
 }
@@ -238,11 +238,10 @@ fn troubleshooting_section() -> Value {
 fn role_hints(schema: &ThemeSchema, role_prefix: Option<&str>, limit: usize) -> Value {
     let mut total_count = 0usize;
     let mut roles = Vec::new();
-    for role in schema
-        .roles()
-        .iter()
-        .filter(|role| role_prefix.is_none_or(|prefix| role.role_id().as_str().starts_with(prefix)))
-    {
+    for role in schema.roles().iter().filter(|role| {
+        !role.properties().is_empty()
+            && role_prefix.is_none_or(|prefix| role.role_id().as_str().starts_with(prefix))
+    }) {
         total_count = total_count.saturating_add(1);
         if roles.len() >= limit {
             continue;

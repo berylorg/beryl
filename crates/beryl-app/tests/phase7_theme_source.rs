@@ -34,8 +34,8 @@ fn phase7_graph_and_checklist_sources_name_surface_roles() {
         "BerylThemeRole::GraphOverlay",
         "BerylThemeRole::GraphColumn",
         "BerylThemeRole::GraphColumnHeader",
-        "BerylThemeRole::GraphRowPending",
-        "BerylThemeRole::GraphRowError",
+        "BerylThemeRole::GraphRowPendingText",
+        "BerylThemeRole::GraphRowErrorText",
     ] {
         assert!(
             graph_overlay.contains(role),
@@ -45,14 +45,21 @@ fn phase7_graph_and_checklist_sources_name_surface_roles() {
 
     for role in [
         "BerylThemeRole::GraphRowTopic",
+        "BerylThemeRole::GraphRowTopicText",
         "BerylThemeRole::GraphRowChecklist",
+        "BerylThemeRole::GraphRowChecklistText",
         "BerylThemeRole::GraphRowChecklistItem",
+        "BerylThemeRole::GraphRowChecklistItemText",
         "BerylThemeRole::GraphRowThreadRef",
+        "BerylThemeRole::GraphRowThreadRefText",
+        "BerylThemeRole::GraphRowThreadRefMeta",
         "BerylThemeRole::GraphRowSoftLink",
+        "BerylThemeRole::GraphRowSoftLinkText",
         "BerylThemeRole::GraphRowHover",
         "BerylThemeRole::GraphRowSelected",
-        "BerylThemeRole::GraphRowDisabled",
+        "BerylThemeRole::GraphRowSelectedText",
         "BerylThemeRole::GraphRowInvalid",
+        "BerylThemeRole::GraphRowInvalidText",
     ] {
         assert!(graph_rows.contains(role), "graph rows should use {role}");
     }

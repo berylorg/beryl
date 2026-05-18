@@ -551,10 +551,8 @@ fn hard_stop_hold_row(
                 .top_0()
                 .bottom_0()
                 .w(relative(progress))
-                .bg(shell.role_background(
-                    BerylThemeRole::StatusValueError,
-                    secondary.active.background,
-                )),
+                .bg(shell
+                    .role_background(BerylThemeRole::SemanticError, secondary.active.background)),
         )
         .child(
             div()
@@ -606,10 +604,14 @@ fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(
-            shell.role_font_weight(BerylThemeRole::PopupSurface, gpui::FontWeight::SEMIBOLD),
-        )
-        .text_color(shell.general_ui_foreground())
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::ControlPopupHeader,
+            gpui::FontWeight::SEMIBOLD,
+        ))
+        .text_color(shell.role_foreground(
+            BerylThemeRole::ControlPopupHeader,
+            shell.general_ui_foreground(),
+        ))
         .child(label.to_string())
 }
 

@@ -259,8 +259,8 @@ fn render_overlay_header(
 ) -> impl IntoElement {
     let overlay = surface.graph_overlay();
     let graph = overlay.graph();
-    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
-    let pending_style = graph_role_style(shell, BerylThemeRole::GraphRowPending);
+    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeaderText);
+    let pending_style = graph_role_style(shell, BerylThemeRole::GraphRowPendingText);
 
     div()
         .flex()
@@ -319,9 +319,9 @@ fn render_overlay_header_status(
     surface: &ConversationSurfaceState,
 ) -> AnyElement {
     let overlay = surface.graph_overlay();
-    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
-    let error_style = graph_role_style(shell, BerylThemeRole::GraphRowError);
-    let pending_style = graph_role_style(shell, BerylThemeRole::GraphRowPending);
+    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeaderText);
+    let error_style = graph_role_style(shell, BerylThemeRole::GraphRowErrorText);
+    let pending_style = graph_role_style(shell, BerylThemeRole::GraphRowPendingText);
     let (message, color) = if let Some(error) = overlay.last_error() {
         (format!("Graph issue: {error}"), error_style.foreground)
     } else if let Some(status) = overlay.status_message() {
@@ -553,7 +553,8 @@ fn render_graph_column_header(
         GraphColumnKey::RootLevel => "__root_level",
         GraphColumnKey::Node(node_id) => node_id.as_str(),
     };
-    let header_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
+    let header_surface_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeader);
+    let header_text_style = graph_role_style(shell, BerylThemeRole::GraphColumnHeaderText);
     let mut header_title = div()
         .id((
             ElementId::from(("graph-column-header", column_index)),
@@ -562,8 +563,8 @@ fn render_graph_column_header(
         .min_w(px(0.0))
         .flex_1()
         .text_sm()
-        .font_weight(header_style.font_weight)
-        .text_color(header_style.foreground)
+        .font_weight(header_text_style.font_weight)
+        .text_color(header_text_style.foreground)
         .whitespace_nowrap()
         .truncate()
         .child(title.unwrap_or_else(|| " ".to_string()));
@@ -581,8 +582,8 @@ fn render_graph_column_header(
         .px_4()
         .py_2()
         .border_b_1()
-        .border_color(header_style.border)
-        .bg(header_style.background)
+        .border_color(header_surface_style.border)
+        .bg(header_surface_style.background)
         .child(div().flex().gap_2().items_center().child(header_title))
         .into_any_element()
 }

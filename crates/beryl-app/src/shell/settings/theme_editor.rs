@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 #[path = "theme_editor/draft.rs"]
 mod draft;
@@ -10,22 +10,61 @@ mod helpers;
 mod rows;
 
 use gpui_settings_window::{
-    SettingsFieldId, SettingsPageSplit, SettingsPageSplitItemId, SettingsRow,
+    SettingsFieldId, SettingsPageSplit, SettingsPageSplitItemId, SettingsPageSplitItemPreviewStyle,
+    SettingsRow,
 };
 
-use crate::{StyleRoleId, ThemeDefinition, ThemeResolver, built_in_theme_schema};
+use crate::{
+    ActiveThemeProjection, StyleRoleId, ThemeDefinition, ThemeResolver, built_in_theme_schema,
+};
 
-use field_ids::{property_source_field_id, role_field_id};
+use field_ids::{property_source_field_id, role_field_id, theme_editor_field_target};
 
 pub(super) struct ThemeEditorPageModel {
     pub(super) split: SettingsPageSplit,
     pub(super) rows: Vec<SettingsRow>,
+    pub(super) diagnostics: ThemeEditorPageModelDiagnostics,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ThemeEditorPageModelDiagnostics {
+    pub(super) candidate_definition_build_count: u64,
+    pub(super) last_candidate_definition_build_micros: u64,
+    pub(super) preview_projection_build_count: u64,
+    pub(super) last_preview_projection_build_micros: u64,
+    pub(super) role_preview_style_build_count: u64,
+    pub(super) role_preview_row_count: usize,
+    pub(super) selected_property_detail_row_count: usize,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ThemeEditorPresentationCache {
+    pub(super) full_invalidated: bool,
+    pub(super) projection: Option<ActiveThemeProjection>,
+    pub(super) preview_styles: HashMap<StyleRoleId, SettingsPageSplitItemPreviewStyle>,
+}
+
+#[derive(Debug)]
 pub(super) struct ThemeEditorDraft {
     definition: ThemeDefinition,
     values: HashMap<SettingsFieldId, String>,
+    presentation_cache: RefCell<ThemeEditorPresentationCache>,
+}
+
+impl Clone for ThemeEditorDraft {
+    fn clone(&self) -> Self {
+        Self {
+            definition: self.definition.clone(),
+            values: self.values.clone(),
+            presentation_cache: RefCell::new(ThemeEditorPresentationCache::default()),
+        }
+    }
+}
+
+impl PartialEq for ThemeEditorDraft {
+    fn eq(&self, other: &Self) -> bool {
+        self.definition == other.definition && self.values == other.values
+    }
 }
 
 impl ThemeEditorDraft {
@@ -33,20 +72,19 @@ impl ThemeEditorDraft {
         Self {
             definition: definition.clone(),
             values: HashMap::new(),
+            presentation_cache: RefCell::new(ThemeEditorPresentationCache {
+                full_invalidated: true,
+                ..ThemeEditorPresentationCache::default()
+            }),
         }
     }
 
     pub(super) fn set_field_value(&mut self, field_id: &SettingsFieldId, value: String) -> bool {
-        if !is_theme_editor_field_id(field_id) {
+        if theme_editor_field_target(field_id).is_none() {
             return false;
-        }
+        };
         self.values.insert(field_id.clone(), value);
         true
-    }
-
-    pub(super) fn is_modified_from(&self, baseline: &ThemeDefinition) -> bool {
-        let (definition, errors) = self.candidate_definition(false);
-        definition != *baseline || !errors.is_empty()
     }
 
     pub(super) fn to_definition(

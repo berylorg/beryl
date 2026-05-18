@@ -283,6 +283,19 @@ fn thread_selector_tracks_selected_and_active_thread_rows_separately() {
 }
 
 #[test]
+fn thread_selector_render_source_splits_row_surface_and_text_roles() {
+    let render_source = include_str!("../src/shell/render/thread_selector.rs");
+
+    assert!(render_source.contains("BerylThemeRole::ThreadSelectorRowActive"));
+    assert!(render_source.contains("BerylThemeRole::ThreadSelectorRowActiveText"));
+    assert!(render_source.contains("BerylThemeRole::ThreadSelectorRowSelectedText"));
+    assert!(render_source.contains("BerylThemeRole::ThreadSelectorRowUnavailableText"));
+    assert!(render_source.contains("BerylThemeRole::ThreadSelectorColumnHeaderText"));
+    assert!(render_source.contains("shell.role_background("));
+    assert!(render_source.contains("shell.role_foreground("));
+}
+
+#[test]
 fn thread_selector_close_and_dismissal_keep_anchor_clicks_inside() {
     let workspace_id = BerylWorkspaceId::new("thread_selector").unwrap();
     let mut workspace_state = WorkspaceConversationState::default();

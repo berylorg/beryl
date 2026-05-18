@@ -4,50 +4,17 @@ const NO_PROPERTIES: &[BerylThemeProperty] = &[];
 
 const BACKGROUND_PROPERTIES: &[BerylThemeProperty] = &[BerylThemeProperty::Background];
 
-const BACKGROUND_FONT_WEIGHT_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Background,
-    BerylThemeProperty::FontWeight,
-];
-
 const BORDER_PROPERTIES: &[BerylThemeProperty] = &[BerylThemeProperty::Border];
 
 const COLOR_PROPERTIES: &[BerylThemeProperty] = &[BerylThemeProperty::Color];
 
 const FOREGROUND_PROPERTIES: &[BerylThemeProperty] = &[BerylThemeProperty::Foreground];
 
-const FONT_WEIGHT_PROPERTIES: &[BerylThemeProperty] = &[BerylThemeProperty::FontWeight];
-
-const FONT_FAMILY_FONT_WEIGHT_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::FontFamily,
-    BerylThemeProperty::FontWeight,
-];
-
-const FOREGROUND_FONT_WEIGHT_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontWeight,
-];
-
-const BORDER_FOREGROUND_PROPERTIES: &[BerylThemeProperty] =
-    &[BerylThemeProperty::Border, BerylThemeProperty::Foreground];
-
-const BORDER_FOREGROUND_FONT_WEIGHT_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Border,
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontWeight,
-];
+const TEXT_BACKGROUND_PROPERTIES: &[BerylThemeProperty] = &[BerylThemeProperty::TextBackground];
 
 const BACKGROUND_FOREGROUND_PROPERTIES: &[BerylThemeProperty] = &[
     BerylThemeProperty::Background,
     BerylThemeProperty::Foreground,
-];
-
-const BACKGROUND_BORDER_PROPERTIES: &[BerylThemeProperty] =
-    &[BerylThemeProperty::Background, BerylThemeProperty::Border];
-
-const APP_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Background,
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontWeight,
 ];
 
 const FOREGROUND_TEXT_BACKGROUND_PROPERTIES: &[BerylThemeProperty] = &[
@@ -55,31 +22,10 @@ const FOREGROUND_TEXT_BACKGROUND_PROPERTIES: &[BerylThemeProperty] = &[
     BerylThemeProperty::TextBackground,
 ];
 
-const FOREGROUND_TYPOGRAPHY_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontFamily,
-    BerylThemeProperty::FontSize,
-    BerylThemeProperty::FontWeight,
-];
-
 const SURFACE_PROPERTIES: &[BerylThemeProperty] = &[
     BerylThemeProperty::Background,
     BerylThemeProperty::Border,
     BerylThemeProperty::Foreground,
-];
-
-const WEIGHTED_SURFACE_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Background,
-    BerylThemeProperty::Border,
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontWeight,
-];
-
-const BUTTON_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Background,
-    BerylThemeProperty::Border,
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontWeight,
 ];
 
 const TEXT_PROPERTIES: &[BerylThemeProperty] = &[
@@ -90,17 +36,10 @@ const TEXT_PROPERTIES: &[BerylThemeProperty] = &[
     BerylThemeProperty::FontWeight,
 ];
 
-const BACKGROUND_TEXT_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Background,
-    BerylThemeProperty::Foreground,
-    BerylThemeProperty::FontFamily,
-    BerylThemeProperty::FontSize,
-    BerylThemeProperty::FontWeight,
-];
-
-const TEXT_SURFACE_PROPERTIES: &[BerylThemeProperty] = &[
+const ROOT_PROPERTIES: &[BerylThemeProperty] = &[
     BerylThemeProperty::Background,
     BerylThemeProperty::Border,
+    BerylThemeProperty::Color,
     BerylThemeProperty::Foreground,
     BerylThemeProperty::TextBackground,
     BerylThemeProperty::FontFamily,
@@ -108,22 +47,114 @@ const TEXT_SURFACE_PROPERTIES: &[BerylThemeProperty] = &[
     BerylThemeProperty::FontWeight,
 ];
 
-const STATUS_VALUE_PROPERTIES: &[BerylThemeProperty] = &[
-    BerylThemeProperty::Background,
-    BerylThemeProperty::Border,
-    BerylThemeProperty::Foreground,
-];
-
 pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [BerylThemeProperty] {
     match role {
-        BerylThemeRole::AppWindow => APP_PROPERTIES,
-        BerylThemeRole::MainToolbar => BACKGROUND_FONT_WEIGHT_PROPERTIES,
+        BerylThemeRole::Root => ROOT_PROPERTIES,
+        BerylThemeRole::Text
+        | BerylThemeRole::TextMuted
+        | BerylThemeRole::TextSubtle
+        | BerylThemeRole::TextValue
+        | BerylThemeRole::TextLink
+        | BerylThemeRole::TextCode
+        | BerylThemeRole::TextSemanticInfo
+        | BerylThemeRole::TextSemanticWarning
+        | BerylThemeRole::TextSemanticError
+        | BerylThemeRole::TextSemanticSuccess
+        | BerylThemeRole::ControlButtonLabel
+        | BerylThemeRole::ButtonPrimaryLabel
+        | BerylThemeRole::ButtonSecondaryLabel
+        | BerylThemeRole::ControlInputText
+        | BerylThemeRole::ControlRowLabel
+        | BerylThemeRole::ControlListHeader
+        | BerylThemeRole::ControlMenuItemLabel
+        | BerylThemeRole::ControlPopupHeader
+        | BerylThemeRole::ControlNoticeTitle
+        | BerylThemeRole::ControlNoticeDetail
+        | BerylThemeRole::ControlStatusLabel
+        | BerylThemeRole::ControlStatusValue
+        | BerylThemeRole::ControlDropdownLabel
+        | BerylThemeRole::ControlColorInputLabel
+        | BerylThemeRole::ControlColorInputValue
+        | BerylThemeRole::ControlFilePickerLabel
+        | BerylThemeRole::ControlTooltipText
+        | BerylThemeRole::InputFieldText
+        | BerylThemeRole::SettingsSidebarRowText
+        | BerylThemeRole::SettingsGroupHeaderText
+        | BerylThemeRole::SettingsRowLabel
+        | BerylThemeRole::SettingsRowValue
+        | BerylThemeRole::SettingsRowDisabledText
+        | BerylThemeRole::SettingsInputText
+        | BerylThemeRole::SettingsButtonPrimaryLabel
+        | BerylThemeRole::SettingsButtonSecondaryLabel
+        | BerylThemeRole::GraphColumnHeaderText
+        | BerylThemeRole::GraphRowTopicText
+        | BerylThemeRole::GraphRowChecklistText
+        | BerylThemeRole::GraphRowChecklistItemText
+        | BerylThemeRole::GraphRowThreadRefText
+        | BerylThemeRole::GraphRowThreadRefMeta
+        | BerylThemeRole::GraphRowSoftLinkText
+        | BerylThemeRole::GraphRowSelectedText
+        | BerylThemeRole::GraphRowPendingText
+        | BerylThemeRole::GraphRowInvalidText
+        | BerylThemeRole::GraphRowErrorText
+        | BerylThemeRole::ChecklistHeader
+        | BerylThemeRole::ChecklistRowNumberText
+        | BerylThemeRole::ChecklistRowText
+        | BerylThemeRole::ChecklistStatusTodoText
+        | BerylThemeRole::ChecklistStatusInProgressText
+        | BerylThemeRole::ChecklistStatusDoneText => TEXT_PROPERTIES,
+        BerylThemeRole::Surface
+        | BerylThemeRole::SurfaceWindow
+        | BerylThemeRole::SurfacePanel
+        | BerylThemeRole::SurfaceElevated
+        | BerylThemeRole::SurfaceInset
+        | BerylThemeRole::SurfaceOverlay
+        | BerylThemeRole::Control
+        | BerylThemeRole::ControlButton
+        | BerylThemeRole::ControlInput
+        | BerylThemeRole::ControlSelection
+        | BerylThemeRole::ControlList
+        | BerylThemeRole::ControlMenu
+        | BerylThemeRole::ControlMenuItem
+        | BerylThemeRole::ControlPopup
+        | BerylThemeRole::ControlNotice
+        | BerylThemeRole::ControlStatus
+        | BerylThemeRole::ControlDropdown
+        | BerylThemeRole::ControlColorInput
+        | BerylThemeRole::ControlFilePicker
+        | BerylThemeRole::ControlTooltip
+        | BerylThemeRole::ControlScrollbar
+        | BerylThemeRole::InteractionHover
+        | BerylThemeRole::InteractionPressed
+        | BerylThemeRole::InteractionActive
+        | BerylThemeRole::InteractionSelected
+        | BerylThemeRole::InteractionFocused
+        | BerylThemeRole::InteractionDisabled
+        | BerylThemeRole::SemanticInfo
+        | BerylThemeRole::SemanticWarning
+        | BerylThemeRole::SemanticError
+        | BerylThemeRole::SemanticSuccess => SURFACE_PROPERTIES,
+        BerylThemeRole::Primitive
+        | BerylThemeRole::PrimitiveSeparator
+        | BerylThemeRole::PrimitiveFocusRing
+        | BerylThemeRole::PrimitiveCaret
+        | BerylThemeRole::PrimitiveAccentMarker
+        | BerylThemeRole::PrimitiveResizeHandle
+        | BerylThemeRole::PrimitiveScrollbarThumb => COLOR_PROPERTIES,
+        BerylThemeRole::AppWindow => BACKGROUND_FOREGROUND_PROPERTIES,
+        BerylThemeRole::AppWindowTitle => TEXT_PROPERTIES,
+        BerylThemeRole::MainToolbar => BACKGROUND_PROPERTIES,
+        BerylThemeRole::MainToolbarTitle | BerylThemeRole::MainThreadStripActiveThreadLabel => {
+            TEXT_PROPERTIES
+        }
+        BerylThemeRole::MainThreadStripActiveThread => SURFACE_PROPERTIES,
         BerylThemeRole::MainThreadStrip | BerylThemeRole::InputPanel => BACKGROUND_PROPERTIES,
         BerylThemeRole::MainSeparator | BerylThemeRole::StructuralSeparator => COLOR_PROPERTIES,
         BerylThemeRole::Panel => SURFACE_PROPERTIES,
-        BerylThemeRole::SurfaceRow | BerylThemeRole::SurfaceRowHover => BACKGROUND_PROPERTIES,
+        BerylThemeRole::SurfaceRow => SURFACE_PROPERTIES,
+        BerylThemeRole::SurfaceRowHover => BACKGROUND_PROPERTIES,
         BerylThemeRole::SurfaceRowDisabled => SURFACE_PROPERTIES,
-        BerylThemeRole::SurfaceRowInfo => FOREGROUND_FONT_WEIGHT_PROPERTIES,
+        BerylThemeRole::SurfaceRowInfo => SURFACE_PROPERTIES,
         BerylThemeRole::SurfaceRowSelected
         | BerylThemeRole::SurfaceRowPending
         | BerylThemeRole::SurfaceRowUnavailable
@@ -134,7 +165,7 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         BerylThemeRole::ButtonPrimaryNormal
         | BerylThemeRole::ButtonSecondaryNormal
         | BerylThemeRole::SettingsButtonPrimary
-        | BerylThemeRole::SettingsButtonSecondary => BUTTON_PROPERTIES,
+        | BerylThemeRole::SettingsButtonSecondary => SURFACE_PROPERTIES,
         BerylThemeRole::ButtonPrimaryHover
         | BerylThemeRole::ButtonPrimaryActive
         | BerylThemeRole::ButtonPrimaryDisabled
@@ -149,35 +180,38 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::CodePanelButtonDisabled => NO_PROPERTIES,
 
         BerylThemeRole::InputField => SURFACE_PROPERTIES,
-        BerylThemeRole::InputFieldFocused
-        | BerylThemeRole::InputSelection
-        | BerylThemeRole::InputCaret
-        | BerylThemeRole::InputError => NO_PROPERTIES,
+        BerylThemeRole::InputSelection => TEXT_BACKGROUND_PROPERTIES,
+        BerylThemeRole::InputCaret | BerylThemeRole::FocusRing => COLOR_PROPERTIES,
+        BerylThemeRole::InputFieldFocused | BerylThemeRole::InputError => NO_PROPERTIES,
 
         BerylThemeRole::SettingsWindow => BACKGROUND_PROPERTIES,
-        BerylThemeRole::SettingsGroup
+        BerylThemeRole::SettingsSidebar
+        | BerylThemeRole::SettingsSidebarRowNormal
+        | BerylThemeRole::SettingsSidebarRowSelected
+        | BerylThemeRole::SettingsPage
+        | BerylThemeRole::SettingsGroup
         | BerylThemeRole::SettingsRowNormal
         | BerylThemeRole::SettingsPopup
         | BerylThemeRole::SettingsInputNormal => SURFACE_PROPERTIES,
-        BerylThemeRole::SettingsRowDisabled => FOREGROUND_PROPERTIES,
-        BerylThemeRole::SettingsInputFocused => BORDER_FOREGROUND_PROPERTIES,
-        BerylThemeRole::SettingsInputError => BORDER_PROPERTIES,
-        BerylThemeRole::SettingsInputSelection => BACKGROUND_PROPERTIES,
-        BerylThemeRole::SettingsSidebar
-        | BerylThemeRole::SettingsSidebarRowNormal
-        | BerylThemeRole::SettingsSidebarRowHover
-        | BerylThemeRole::SettingsSidebarRowSelected
-        | BerylThemeRole::SettingsPage
+        BerylThemeRole::SettingsSidebarRowHover
         | BerylThemeRole::SettingsRowHover
-        | BerylThemeRole::SettingsRowModified => NO_PROPERTIES,
+        | BerylThemeRole::SettingsRowModified => BACKGROUND_PROPERTIES,
+        BerylThemeRole::SettingsRowDisabled => NO_PROPERTIES,
+        BerylThemeRole::SettingsInputFocused => BORDER_PROPERTIES,
+        BerylThemeRole::SettingsInputError => BORDER_PROPERTIES,
+        BerylThemeRole::SettingsInputSelection => TEXT_BACKGROUND_PROPERTIES,
+        BerylThemeRole::SettingsInputCaret => COLOR_PROPERTIES,
 
-        BerylThemeRole::TranscriptShell
-        | BerylThemeRole::MediaPlaceholder
+        BerylThemeRole::TranscriptShell => BACKGROUND_FOREGROUND_PROPERTIES,
+        BerylThemeRole::MediaPlaceholder
         | BerylThemeRole::MediaPlaceholderLoading
-        | BerylThemeRole::MediaPlaceholderUnavailable => BACKGROUND_FOREGROUND_PROPERTIES,
+        | BerylThemeRole::MediaPlaceholderUnavailable => BACKGROUND_PROPERTIES,
         BerylThemeRole::TranscriptAssistantFinal
         | BerylThemeRole::TranscriptAssistantCommentary
         | BerylThemeRole::TranscriptAssistantReasoning
+        | BerylThemeRole::TranscriptUserInputText
+        | BerylThemeRole::TranscriptQuotePopupText
+        | BerylThemeRole::TranscriptContextMenuHeaderText
         | BerylThemeRole::MarkdownParagraph
         | BerylThemeRole::MarkdownHeading
         | BerylThemeRole::MarkdownEmphasis
@@ -185,28 +219,30 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::MarkdownInlineCode
         | BerylThemeRole::MarkdownLink
         | BerylThemeRole::MarkdownUnsupportedFallback => TEXT_PROPERTIES,
-        BerylThemeRole::TranscriptUserInput => TEXT_SURFACE_PROPERTIES,
+        BerylThemeRole::TranscriptUserInput => SURFACE_PROPERTIES,
         BerylThemeRole::TranscriptActivityCaret
         | BerylThemeRole::MarkdownThematicBreak
         | BerylThemeRole::CodePanelResizeHandle
         | BerylThemeRole::ScrollbarThumbNormal => COLOR_PROPERTIES,
-        BerylThemeRole::TranscriptSelection => BACKGROUND_PROPERTIES,
+        BerylThemeRole::TranscriptSelection => TEXT_BACKGROUND_PROPERTIES,
         BerylThemeRole::TranscriptQuotePopup
         | BerylThemeRole::TranscriptPending
         | BerylThemeRole::TranscriptUnavailable => SURFACE_PROPERTIES,
-        BerylThemeRole::TranscriptContextMenu => NO_PROPERTIES,
-        BerylThemeRole::MarkdownBlockQuote
-        | BerylThemeRole::CodePanelBorder
-        | BerylThemeRole::MediaBorder => BORDER_PROPERTIES,
-        BerylThemeRole::MarkdownListMarker | BerylThemeRole::CodePanelHeader => {
-            FOREGROUND_TYPOGRAPHY_PROPERTIES
-        }
-        BerylThemeRole::CodePanelBody => BACKGROUND_TEXT_PROPERTIES,
+        BerylThemeRole::TranscriptContextMenu => SURFACE_PROPERTIES,
+        BerylThemeRole::MarkdownBlockQuote | BerylThemeRole::CodePanelBorder => COLOR_PROPERTIES,
+        BerylThemeRole::MediaBorder => BORDER_PROPERTIES,
+        BerylThemeRole::MarkdownListMarker
+        | BerylThemeRole::CodePanelHeaderText
+        | BerylThemeRole::CodePanelBodyText => TEXT_PROPERTIES,
+        BerylThemeRole::CodePanelHeader | BerylThemeRole::CodePanelBody => BACKGROUND_PROPERTIES,
         BerylThemeRole::CodePanelContainer => BACKGROUND_PROPERTIES,
         BerylThemeRole::CodePanelSelection => NO_PROPERTIES,
         BerylThemeRole::TranscriptImageMarker => FOREGROUND_TEXT_BACKGROUND_PROPERTIES,
         BerylThemeRole::ComposerImageMarker => NO_PROPERTIES,
-        BerylThemeRole::MediaCaption => FOREGROUND_PROPERTIES,
+        BerylThemeRole::MediaPlaceholderText
+        | BerylThemeRole::MediaPlaceholderLoadingText
+        | BerylThemeRole::MediaPlaceholderUnavailableText
+        | BerylThemeRole::MediaCaption => TEXT_PROPERTIES,
 
         BerylThemeRole::SyntaxMarkupHeadingMarker
         | BerylThemeRole::SyntaxMarkupQuoteMarker
@@ -238,8 +274,9 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::SyntaxTokenEscape
         | BerylThemeRole::SyntaxError => FOREGROUND_PROPERTIES,
 
-        BerylThemeRole::GraphOverlay | BerylThemeRole::GraphColumn => BACKGROUND_BORDER_PROPERTIES,
-        BerylThemeRole::GraphColumnHeader
+        BerylThemeRole::GraphOverlay
+        | BerylThemeRole::GraphColumn
+        | BerylThemeRole::GraphColumnHeader
         | BerylThemeRole::GraphRowTopic
         | BerylThemeRole::GraphRowChecklist
         | BerylThemeRole::GraphRowChecklistItem
@@ -247,53 +284,86 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::GraphRowSoftLink
         | BerylThemeRole::GraphRowSelected
         | BerylThemeRole::GraphRowInvalid
-        | BerylThemeRole::ChecklistRow
-        | BerylThemeRole::PopupSurface => WEIGHTED_SURFACE_PROPERTIES,
+        | BerylThemeRole::GraphRowError
+        | BerylThemeRole::ChecklistSidebar
+        | BerylThemeRole::ChecklistRow => SURFACE_PROPERTIES,
+        BerylThemeRole::PopupSurface => SURFACE_PROPERTIES,
         BerylThemeRole::GraphRowHover => BACKGROUND_PROPERTIES,
-        BerylThemeRole::GraphRowPending | BerylThemeRole::GraphRowDisabled => FOREGROUND_PROPERTIES,
-        BerylThemeRole::GraphRowError => BACKGROUND_FOREGROUND_PROPERTIES,
-        BerylThemeRole::ChecklistSidebar => SURFACE_PROPERTIES,
-        BerylThemeRole::ChecklistHeader
-        | BerylThemeRole::ChecklistStatusTodo
+        BerylThemeRole::GraphRowPending
+        | BerylThemeRole::GraphRowDisabled
+        | BerylThemeRole::GraphRowDisabledText => NO_PROPERTIES,
+        BerylThemeRole::ChecklistStatusTodo
         | BerylThemeRole::ChecklistStatusInProgress
-        | BerylThemeRole::ChecklistStatusDone => FOREGROUND_FONT_WEIGHT_PROPERTIES,
+        | BerylThemeRole::ChecklistStatusDone => COLOR_PROPERTIES,
 
-        BerylThemeRole::ThreadSelectorSurface | BerylThemeRole::WorkspacePickerSurface => {
-            FONT_WEIGHT_PROPERTIES
-        }
-        BerylThemeRole::ThreadSelectorRow => NO_PROPERTIES,
-        BerylThemeRole::ThreadSelectorRowSelected
-        | BerylThemeRole::ThreadSelectorRowUnavailable => SURFACE_PROPERTIES,
-        BerylThemeRole::WorkspacePickerWorkspaceRow | BerylThemeRole::WorkspacePickerMemberRow => {
-            FONT_FAMILY_FONT_WEIGHT_PROPERTIES
-        }
-        BerylThemeRole::WorkspacePickerRowActive => BORDER_FOREGROUND_FONT_WEIGHT_PROPERTIES,
-        BerylThemeRole::ColumnSelectorColumn
+        BerylThemeRole::ThreadSelectorSurface
+        | BerylThemeRole::ThreadSelectorColumn
+        | BerylThemeRole::ThreadSelectorColumnHeader
+        | BerylThemeRole::ThreadSelectorRow
+        | BerylThemeRole::ThreadSelectorRowActive
+        | BerylThemeRole::WorkspacePickerSurface
+        | BerylThemeRole::WorkspacePickerWorkspaceRow
+        | BerylThemeRole::WorkspacePickerMemberRow
+        | BerylThemeRole::WorkspacePickerRuntimeRow
+        | BerylThemeRole::ColumnSelectorColumn
         | BerylThemeRole::ColumnSelectorHeader
         | BerylThemeRole::ColumnSelectorRow
-        | BerylThemeRole::ColumnSelectorRowSelected
-        | BerylThemeRole::ColumnSelectorAccent => NO_PROPERTIES,
+        | BerylThemeRole::ColumnSelectorRowSelected => SURFACE_PROPERTIES,
+        BerylThemeRole::ThreadSelectorHeaderText
+        | BerylThemeRole::ThreadSelectorColumnHeaderText
+        | BerylThemeRole::ThreadSelectorRowLabel
+        | BerylThemeRole::ThreadSelectorRowMeta
+        | BerylThemeRole::ThreadSelectorRowSelectedText
+        | BerylThemeRole::ThreadSelectorRowActiveText
+        | BerylThemeRole::ThreadSelectorRowUnavailableText
+        | BerylThemeRole::WorkspacePickerHeaderText
+        | BerylThemeRole::WorkspacePickerHeaderDetail
+        | BerylThemeRole::WorkspacePickerWorkspaceRowTitle
+        | BerylThemeRole::WorkspacePickerWorkspaceRowPath
+        | BerylThemeRole::WorkspacePickerMemberRowTitle
+        | BerylThemeRole::WorkspacePickerMemberRowPath
+        | BerylThemeRole::WorkspacePickerRuntimeRowText
+        | BerylThemeRole::WorkspacePickerUnavailableText
+        | BerylThemeRole::ColumnSelectorHeaderText => TEXT_PROPERTIES,
+        BerylThemeRole::ThreadSelectorRowSelected
+        | BerylThemeRole::ThreadSelectorRowUnavailable => SURFACE_PROPERTIES,
+        BerylThemeRole::WorkspacePickerRowActive | BerylThemeRole::ColumnSelectorAccent => {
+            COLOR_PROPERTIES
+        }
 
         BerylThemeRole::PopupRowHover | BerylThemeRole::PopupRowSelected => BACKGROUND_PROPERTIES,
         BerylThemeRole::PopupRowNormal | BerylThemeRole::PopupRowDisabled => NO_PROPERTIES,
         BerylThemeRole::OverlayBackdrop => NO_PROPERTIES,
-        BerylThemeRole::NoticeInfo | BerylThemeRole::NoticeError => WEIGHTED_SURFACE_PROPERTIES,
-        BerylThemeRole::NoticeWarning => SURFACE_PROPERTIES,
-        BerylThemeRole::NoticeSuccess => FOREGROUND_PROPERTIES,
+        BerylThemeRole::NoticeInfo
+        | BerylThemeRole::NoticeWarning
+        | BerylThemeRole::NoticeError
+        | BerylThemeRole::NoticeSuccess => SURFACE_PROPERTIES,
         BerylThemeRole::DiagnosticSurface
         | BerylThemeRole::DiagnosticRow
         | BerylThemeRole::DiagnosticError
         | BerylThemeRole::DiagnosticWarning => NO_PROPERTIES,
-        BerylThemeRole::StatusLine => BACKGROUND_FOREGROUND_PROPERTIES,
-        BerylThemeRole::StatusValueWorking => BORDER_FOREGROUND_PROPERTIES,
-        BerylThemeRole::StatusValueOk | BerylThemeRole::StatusValueError => STATUS_VALUE_PROPERTIES,
-        BerylThemeRole::StatusValueCompacting
+        BerylThemeRole::StatusLine | BerylThemeRole::ActivityPanel => {
+            BACKGROUND_FOREGROUND_PROPERTIES
+        }
+        BerylThemeRole::StatusLineCell | BerylThemeRole::ActivityRow => SURFACE_PROPERTIES,
+        BerylThemeRole::StatusLineLabel
+        | BerylThemeRole::StatusLineValue
+        | BerylThemeRole::ActivityLabel
+        | BerylThemeRole::ActivityValue => TEXT_PROPERTIES,
+        BerylThemeRole::StatusValueWorking
+        | BerylThemeRole::StatusValueOk
+        | BerylThemeRole::StatusValueError
+        | BerylThemeRole::StatusValueCompacting
         | BerylThemeRole::StatusValuePending
         | BerylThemeRole::StatusValueUnavailable
         | BerylThemeRole::StatusValueStreaming => FOREGROUND_PROPERTIES,
-        BerylThemeRole::ScrollbarThumbHover
-        | BerylThemeRole::ScrollbarThumbDragging
-        | BerylThemeRole::FocusRing => NO_PROPERTIES,
+        BerylThemeRole::ActivityIndicatorRunning
+        | BerylThemeRole::ActivityIndicatorOk
+        | BerylThemeRole::ActivityIndicatorError
+        | BerylThemeRole::ActivityResizeHandle => COLOR_PROPERTIES,
+        BerylThemeRole::ScrollbarThumbHover | BerylThemeRole::ScrollbarThumbDragging => {
+            COLOR_PROPERTIES
+        }
     }
 }
 
@@ -302,4 +372,8 @@ pub fn built_in_theme_supports_property(
     property: BerylThemeProperty,
 ) -> bool {
     built_in_theme_supported_properties(role).contains(&property)
+}
+
+pub fn built_in_theme_role_is_editable(role: BerylThemeRole) -> bool {
+    !built_in_theme_supported_properties(role).is_empty()
 }

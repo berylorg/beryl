@@ -2,17 +2,29 @@ use gpui_settings_window::{SettingsFieldId, SettingsPageSplitItemId};
 
 use crate::{BerylThemeRole, StylePropertyId, StyleRoleId};
 
-use super::helpers::{property_kind, role_exists};
+use super::helpers::{property_kind, role_is_editable};
 
 const PROPERTY_FIELD_PREFIX: &str = "themes.editor.role.";
 const PROPERTY_SOURCE_FIELD_SUFFIX: &str = ".source";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ThemeEditorFieldTarget {
+    PropertyValue {
+        role_id: StyleRoleId,
+        property_id: StylePropertyId,
+    },
+    PropertySource {
+        role_id: StyleRoleId,
+        property_id: StylePropertyId,
+    },
+}
 
 pub(super) fn default_role_id() -> StyleRoleId {
     StyleRoleId::from(BerylThemeRole::AppWindow.id())
 }
 
 pub(super) fn validated_role_id(role_id: StyleRoleId) -> StyleRoleId {
-    if role_exists(&role_id) {
+    if role_is_editable(&role_id) {
         role_id
     } else {
         default_role_id()
@@ -21,12 +33,28 @@ pub(super) fn validated_role_id(role_id: StyleRoleId) -> StyleRoleId {
 
 pub(super) fn role_id_from_split_item(item_id: &SettingsPageSplitItemId) -> Option<StyleRoleId> {
     let role_id = StyleRoleId::from(item_id.as_str().to_string());
-    role_exists(&role_id).then_some(role_id)
+    role_is_editable(&role_id).then_some(role_id)
 }
 
 pub(super) fn is_theme_editor_field_id(field_id: &SettingsFieldId) -> bool {
-    parse_property_field_id(field_id).is_some()
-        || parse_property_source_field_id(field_id).is_some()
+    theme_editor_field_target(field_id).is_some()
+}
+
+pub(super) fn theme_editor_field_target(
+    field_id: &SettingsFieldId,
+) -> Option<ThemeEditorFieldTarget> {
+    if let Some((role_id, property_id)) = parse_property_source_field_id(field_id) {
+        return Some(ThemeEditorFieldTarget::PropertySource {
+            role_id,
+            property_id,
+        });
+    }
+    parse_property_field_id(field_id).map(|(role_id, property_id)| {
+        ThemeEditorFieldTarget::PropertyValue {
+            role_id,
+            property_id,
+        }
+    })
 }
 
 pub(super) fn property_field_id(

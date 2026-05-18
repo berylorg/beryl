@@ -69,6 +69,7 @@ pub(crate) enum CodePanelChrome {
         background: Rgba,
         border: Rgba,
         content_background: Rgba,
+        header_background: Rgba,
         header_foreground: Rgba,
         button: CodePanelHeaderButtonTheme,
         resize_handle: Rgba,
@@ -255,6 +256,7 @@ pub(crate) fn render_code_panel(
         background,
         border,
         content_background,
+        header_background,
         header_foreground,
         button,
         resize_handle,
@@ -281,6 +283,7 @@ pub(crate) fn render_code_panel(
     {
         panel = panel.child(render_code_panel_header(
             element_key,
+            header_background,
             header_title.as_deref(),
             header_foreground,
             button,
@@ -333,6 +336,7 @@ fn code_panel_has_header(header: &CodePanelHeader, header_title: Option<&str>) -
 
 fn render_code_panel_header(
     element_key: u64,
+    background: Rgba,
     title: Option<&str>,
     foreground: Rgba,
     button_theme: CodePanelHeaderButtonTheme,
@@ -348,6 +352,7 @@ fn render_code_panel_header(
     div()
         .w_full()
         .min_w(px(0.0))
+        .bg(background)
         .px_3()
         .py_2()
         .flex()

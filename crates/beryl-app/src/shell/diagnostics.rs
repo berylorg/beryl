@@ -3,8 +3,8 @@ use gpui::{App, Context, Window, px, size};
 use crate::diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, ManagedBackendProcessDiagnostic, MemoryDiagnosticSnapshot,
     MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic, ProcessDiagnosticSnapshot,
-    RendererDiagnosticSnapshot, SettingsWindowDiagnosticSnapshot, bounded_diagnostic_string,
-    renderer_snapshot_with_shell_window,
+    RendererDiagnosticSnapshot, SettingsWindowDiagnosticSnapshot, ThemeEditorModelDiagnostic,
+    bounded_diagnostic_string, renderer_snapshot_with_shell_window,
 };
 use crate::memory_diagnostics::{self, RetainedStateSnapshot};
 
@@ -134,6 +134,13 @@ impl ShellView {
         self.settings_window
             .diagnostics_snapshot(cx)
             .map(SettingsWindowDiagnosticSnapshot::from)
+            .map(|snapshot| {
+                snapshot.with_theme_editor_model(
+                    self.settings_state
+                        .theme_editor_diagnostics_snapshot()
+                        .map(ThemeEditorModelDiagnostic::from),
+                )
+            })
             .unwrap_or_else(|error| {
                 SettingsWindowDiagnosticSnapshot::unavailable(error.to_string())
             })
@@ -253,6 +260,22 @@ impl ShellView {
         snapshot.text_input_widget_visible_text_bytes = Some(counts.widget_visible_text_bytes);
         if let Some(total) = snapshot.retained_payload_bytes_lower_bound.as_mut() {
             *total = total.saturating_add(counts.payload_bytes_lower_bound());
+        }
+    }
+}
+
+impl From<super::settings::ThemeEditorDiagnosticsSnapshot> for ThemeEditorModelDiagnostic {
+    fn from(snapshot: super::settings::ThemeEditorDiagnosticsSnapshot) -> Self {
+        Self {
+            candidate_definition_build_count: snapshot.candidate_definition_build_count,
+            last_candidate_definition_build_micros: snapshot.last_candidate_definition_build_micros,
+            preview_projection_build_count: snapshot.preview_projection_build_count,
+            last_preview_projection_build_micros: snapshot.last_preview_projection_build_micros,
+            role_preview_style_build_count: snapshot.role_preview_style_build_count,
+            role_preview_row_count: snapshot.role_preview_row_count,
+            selected_property_detail_row_count: snapshot.selected_property_detail_row_count,
+            modified_state_recompute_count: snapshot.modified_state_recompute_count,
+            last_modified_state_recompute_micros: snapshot.last_modified_state_recompute_micros,
         }
     }
 }

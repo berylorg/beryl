@@ -555,7 +555,7 @@ fn render_block_quote(
         .w_full()
         .min_w(px(0.0))
         .border_l_2()
-        .border_color(theme.block_quote.border())
+        .border_color(theme.block_quote.color())
         .pl_3()
         .py_1()
         .child(render_block_sequence(
@@ -728,7 +728,7 @@ fn render_code_block_with_image_markers(
         .min_w(px(0.0))
         .rounded_md()
         .border_1()
-        .border_color(theme.code_panel_border.border())
+        .border_color(theme.code_panel_border.color())
         .bg(theme.code_panel_body.background())
         .p_3()
         .child(render_inline_lines_with_style_markers_and_selection(

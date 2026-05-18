@@ -76,6 +76,7 @@ impl ShellRenderStyleSnapshot {
         let primary_button_theme = button_theme_from_styles(
             &role_styles,
             crate::BerylThemeRole::ButtonPrimaryNormal,
+            crate::BerylThemeRole::ButtonPrimaryLabel,
             crate::BerylThemeRole::ButtonPrimaryHover,
             crate::BerylThemeRole::ButtonPrimaryActive,
             crate::BerylThemeRole::ButtonPrimaryDisabled,
@@ -84,6 +85,7 @@ impl ShellRenderStyleSnapshot {
         let secondary_button_theme = button_theme_from_styles(
             &role_styles,
             crate::BerylThemeRole::ButtonSecondaryNormal,
+            crate::BerylThemeRole::ButtonSecondaryLabel,
             crate::BerylThemeRole::ButtonSecondaryHover,
             crate::BerylThemeRole::ButtonSecondaryActive,
             crate::BerylThemeRole::ButtonSecondaryDisabled,
@@ -136,7 +138,7 @@ impl ShellRenderStyleSnapshot {
             ),
             input_foreground: style_foreground(
                 &role_styles,
-                crate::BerylThemeRole::InputField,
+                crate::BerylThemeRole::InputFieldText,
                 rgb(0xe2e8f0),
             ),
             transcript_shell_background: style_background(
@@ -182,7 +184,7 @@ impl ShellRenderStyleSnapshot {
             surface_border: style_border(&role_styles, crate::BerylThemeRole::Panel, rgb(0x374151)),
             surface_muted_foreground: style_foreground(
                 &role_styles,
-                crate::BerylThemeRole::SurfaceRowDisabled,
+                crate::BerylThemeRole::TextMuted,
                 rgb(0x94a3b8),
             ),
             surface_foreground: style_foreground(
@@ -238,6 +240,17 @@ impl ShellRenderStyleSnapshot {
         self.role_styles
             .get(&role)
             .and_then(|style| style.foreground)
+            .unwrap_or(fallback)
+    }
+
+    pub(super) fn role_color(
+        &self,
+        role: crate::BerylThemeRole,
+        fallback: gpui::Rgba,
+    ) -> gpui::Rgba {
+        self.role_styles
+            .get(&role)
+            .and_then(|style| style.color)
             .unwrap_or(fallback)
     }
 

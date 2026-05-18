@@ -323,6 +323,7 @@ pub(crate) struct SettingsWindowDiagnosticSnapshot {
     pub detail_rows: Option<SettingsWindowRowSurfaceDiagnostic>,
     pub split_list: Option<SettingsWindowRowSurfaceDiagnostic>,
     pub performance: SettingsWindowPerformanceDiagnostic,
+    pub theme_editor_model: Option<ThemeEditorModelDiagnostic>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -334,6 +335,20 @@ pub(crate) struct SettingsWindowRowSurfaceDiagnostic {
     pub visible_range: Option<PresentationRangeDiagnostic>,
     pub overscan_count: usize,
     pub row_height_strategy: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ThemeEditorModelDiagnostic {
+    pub candidate_definition_build_count: u64,
+    pub last_candidate_definition_build_micros: u64,
+    pub preview_projection_build_count: u64,
+    pub last_preview_projection_build_micros: u64,
+    pub role_preview_style_build_count: u64,
+    pub role_preview_row_count: usize,
+    pub selected_property_detail_row_count: usize,
+    pub modified_state_recompute_count: u64,
+    pub last_modified_state_recompute_micros: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -596,7 +611,16 @@ impl SettingsWindowDiagnosticSnapshot {
             detail_rows: None,
             split_list: None,
             performance: SettingsWindowPerformanceDiagnostic::default(),
+            theme_editor_model: None,
         }
+    }
+
+    pub(crate) fn with_theme_editor_model(
+        mut self,
+        diagnostics: Option<ThemeEditorModelDiagnostic>,
+    ) -> Self {
+        self.theme_editor_model = diagnostics;
+        self
     }
 }
 
@@ -615,6 +639,7 @@ impl From<gpui_settings_window::SettingsWindowDiagnostics> for SettingsWindowDia
                 .split_list
                 .map(SettingsWindowRowSurfaceDiagnostic::from),
             performance: SettingsWindowPerformanceDiagnostic::from(snapshot.performance),
+            theme_editor_model: None,
         }
     }
 }

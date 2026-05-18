@@ -223,7 +223,97 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 
 - This crate owns Beryl's appearance theme data model, installed theme repository, active-theme identity, transient preview state, and render-time style resolver.
 - Theme roles cover every Beryl-owned visible background, border, single-primitive color, text foreground, text background, font family, font size, and font weight for UI chrome, typography, transcript presentation, graph/checklist surfaces, selectors, warning/error/info states, settings-window surfaces, popups, overlays, status values, media placeholders, selection/focus states, disabled states, and unavailable states.
-- Each theme role has a hardcoded supported-property set derived from the Beryl render sites that consume that role. Roles that render single-color separators expose `color` rather than text, font, or border properties.
+- Each theme role has a hardcoded supported-property set derived from the semantic UI element the role represents. Render sites consume that semantic contract; incidental render implementation details must not create incoherent property combinations.
+- The theme role hierarchy starts at `root`, which owns app-wide defaults for background, foreground, border, single-primitive color, text background, font family, font size, and font weight. Common foundation roles derive from `root` for text, surfaces, primitives, controls, interaction states, and semantic states. App-specific roles derive from those common roles rather than directly duplicating root defaults.
+- Surface roles expose background, border, and ambient foreground when they establish a reading context. Surface roles do not expose font family, font size, or font weight solely because child labels render inside that surface; dedicated text, label, header, row, or control roles own typography.
+- Text roles expose foreground and text background. Text roles that own text metrics expose a coherent typography bundle: font family, font size, and font weight. Text roles that only color inherited text expose foreground without isolated font axes.
+- Single-primitive roles, including separators, carets, focus rings, resize handles, accent markers, activity/status indicators, and scrollbar thumbs, expose `color` only.
+- Control roles such as buttons, inputs, rows, lists, menus, popups, notices, status values, dropdowns, segmented controls, checkboxes, switches, sliders, steppers, color inputs, file pickers, and tooltips inherit from the appropriate foundation roles before specializing interaction states.
+- Beryl-specific roles for shell strips, transcript content, composer controls, activity rows, workspace picker rows, thread selector rows, graph rows, checklist rows, settings rows, media placeholders, and theme candidates inherit from common foundation or control roles before adding per-element overrides.
+- The common static-parent lineage is:
+
+```text
+root
+  text
+    text.muted
+    text.subtle
+    text.value
+    text.link
+    text.code
+    text.semantic.info
+    text.semantic.warning
+    text.semantic.error
+    text.semantic.success
+    button.label
+      button.primary.label
+      button.secondary.label
+    input.text
+    row.label
+    list.header
+    menu.item.label
+    popup.header
+    notice.title
+    notice.detail
+    status.label
+    status.value
+    dropdown.label
+    color-input.label
+    color-input.value
+    file-picker.label
+    tooltip.text
+  surface
+    surface.window
+    surface.panel
+    surface.elevated
+    surface.inset
+    surface.overlay
+  primitive
+    separator
+    focus_ring
+    caret
+    accent_marker
+    resize_handle
+    scrollbar.thumb
+  control
+    button
+      interaction.pressed
+    input
+      interaction.focused
+      dropdown
+      color-input
+      file-picker
+    row
+      interaction.hover
+      interaction.selected
+        selection
+      menu.item
+    list
+    menu
+    popup
+      tooltip
+    notice
+      semantic.info
+      semantic.warning
+      semantic.error
+      semantic.success
+    status
+    scrollbar
+    interaction.active
+    interaction.disabled
+  shell
+  transcript
+  composer
+  workspace_picker
+  thread_selector
+  graph
+  checklist
+  settings
+  media
+  theme_candidate
+```
+
+- Common control text roles stay in the `text` lineage so the coherent typography bundle reaches them through static inheritance. Their role ids still name the control they label.
+
 - A style role may define a static parent role. Each supported style property independently resolves from a concrete value, the same property on the static parent chain, the runtime ambient parent style, or a built-in fallback after validation.
 - Runtime ambient inheritance lets embedded transcript and UI content resolve differently by render site without changing the configured role. For example, inline code may use a concrete foreground while inheriting background from final-answer text, user-input text, settings rows, or popups.
 - The active theme is read during rendering rather than cached in individual widgets, so applying settings can refresh all windows without reconstructing the application shell.
@@ -236,10 +326,10 @@ Own the reusable application-shell boundary for Beryl's desktop UI.
 
 ```toml
 [[role]]
-id = "transcript.markdown.inline_code"
+id = "markdown.inline_code"
 static_parent = "text.code"
 foreground = { value = "#00ffff" }
-background = "ambient_parent"
+text_background = "ambient_parent"
 font_family = "static_parent"
 font_size = "static_parent"
 font_weight = "static_parent"

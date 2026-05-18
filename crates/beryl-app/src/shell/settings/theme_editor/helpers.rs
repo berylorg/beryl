@@ -53,13 +53,30 @@ impl PropertySourceChoice {
     }
 }
 
-pub(super) fn source_choices() -> [PropertySourceChoice; 4] {
-    [
+pub(super) fn source_choices(
+    static_parent: Option<&StyleRoleId>,
+) -> Vec<(PropertySourceChoice, String)> {
+    let mut choices = vec![(
         PropertySourceChoice::Value,
-        PropertySourceChoice::StaticParent,
-        PropertySourceChoice::AmbientParent,
-        PropertySourceChoice::Fallback,
-    ]
+        PropertySourceChoice::Value.label().to_string(),
+    )];
+    if let Some(static_parent) = static_parent {
+        choices.push((
+            PropertySourceChoice::StaticParent,
+            static_parent.as_str().to_string(),
+        ));
+    }
+    choices.extend([
+        (
+            PropertySourceChoice::AmbientParent,
+            PropertySourceChoice::AmbientParent.label().to_string(),
+        ),
+        (
+            PropertySourceChoice::Fallback,
+            PropertySourceChoice::Fallback.label().to_string(),
+        ),
+    ]);
+    choices
 }
 
 pub(super) fn projection_from_definition(
@@ -129,10 +146,15 @@ pub(super) fn validate_property_value(
     }
 }
 
-pub(super) fn role_exists(role_id: &StyleRoleId) -> bool {
-    BerylThemeRole::ALL
-        .iter()
-        .any(|role| role.id() == role_id.as_str())
+pub(super) fn role_is_editable(role_id: &StyleRoleId) -> bool {
+    role_schema(role_id).is_some_and(|schema| !schema.properties().is_empty())
+}
+
+pub(super) fn editable_theme_roles() -> impl Iterator<Item = BerylThemeRole> {
+    BerylThemeRole::ALL.iter().copied().filter(|role| {
+        role_schema(&StyleRoleId::from(role.id()))
+            .is_some_and(|schema| !schema.properties().is_empty())
+    })
 }
 
 pub(super) fn role_schema(role_id: &StyleRoleId) -> Option<ThemeRoleSchema> {
@@ -168,35 +190,47 @@ pub(super) fn preview_style(
         let Some(value) = style.property(property_id) else {
             continue;
         };
-        match (property_id.as_str(), value) {
-            ("foreground", StylePropertyValue::Color(value)) => {
-                if let Some(color) = RgbColor::parse(value) {
-                    preview = preview.with_foreground(color);
-                }
-            }
-            ("background", StylePropertyValue::Color(value)) => {
-                if let Some(color) = RgbColor::parse(value) {
-                    preview = preview.with_background(color);
-                }
-            }
-            ("border" | "color", StylePropertyValue::Color(value)) => {
-                if let Some(color) = RgbColor::parse(value) {
-                    preview = preview.with_border(color);
-                }
-            }
-            ("font_family", StylePropertyValue::FontFamily(value)) => {
-                preview = preview.with_font_family(value.clone());
-            }
-            ("font_size", StylePropertyValue::LogicalPixels(value)) => {
-                preview = preview.with_font_size((*value).round().clamp(1.0, 96.0) as u16);
-            }
-            ("font_weight", StylePropertyValue::FontWeight(value)) => {
-                preview = preview.with_font_weight(*value);
-            }
-            _ => {}
-        }
+        preview = apply_preview_value(preview, property_id, value);
     }
     preview
+}
+
+pub(super) fn apply_preview_value(
+    preview: SettingsPageSplitItemPreviewStyle,
+    property_id: &StylePropertyId,
+    value: &StylePropertyValue,
+) -> SettingsPageSplitItemPreviewStyle {
+    match (property_id.as_str(), value) {
+        ("foreground", StylePropertyValue::Color(value)) => {
+            if let Some(color) = RgbColor::parse(value) {
+                preview.with_foreground(color)
+            } else {
+                preview
+            }
+        }
+        ("background", StylePropertyValue::Color(value)) => {
+            if let Some(color) = RgbColor::parse(value) {
+                preview.with_background(color)
+            } else {
+                preview
+            }
+        }
+        ("border" | "color", StylePropertyValue::Color(value)) => {
+            if let Some(color) = RgbColor::parse(value) {
+                preview.with_border(color)
+            } else {
+                preview
+            }
+        }
+        ("font_family", StylePropertyValue::FontFamily(value)) => {
+            preview.with_font_family(value.clone())
+        }
+        ("font_size", StylePropertyValue::LogicalPixels(value)) => {
+            preview.with_font_size((*value).round().clamp(1.0, 96.0) as u16)
+        }
+        ("font_weight", StylePropertyValue::FontWeight(value)) => preview.with_font_weight(*value),
+        _ => preview,
+    }
 }
 
 pub(super) fn property_value_text(

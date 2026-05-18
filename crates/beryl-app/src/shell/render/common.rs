@@ -52,8 +52,12 @@ pub(super) fn startup_shell_frame(
                                     div()
                                         .text_3xl()
                                         .font_weight(shell.role_font_weight(
-                                            BerylThemeRole::AppWindow,
+                                            BerylThemeRole::AppWindowTitle,
                                             gpui::FontWeight::BOLD,
+                                        ))
+                                        .text_color(shell.role_foreground(
+                                            BerylThemeRole::AppWindowTitle,
+                                            shell.general_ui_foreground(),
                                         ))
                                         .child(title),
                                 )
@@ -107,8 +111,12 @@ pub(super) fn startup_shell_frame(
                                 .flex_none()
                                 .text_sm()
                                 .font_weight(shell.role_font_weight(
-                                    BerylThemeRole::MainToolbar,
+                                    BerylThemeRole::MainToolbarTitle,
                                     gpui::FontWeight::BOLD,
+                                ))
+                                .text_color(shell.role_foreground(
+                                    BerylThemeRole::MainToolbarTitle,
+                                    shell.general_ui_foreground(),
                                 ))
                                 .child("Beryl"),
                         )
@@ -155,11 +163,12 @@ pub(super) fn toolbar_controls_strip(
 pub(super) fn section_label(shell: &ShellRenderFrame<'_>, text: &'static str) -> impl IntoElement {
     div()
         .text_xs()
-        .font_weight(
-            shell.role_font_weight(BerylThemeRole::SurfaceRowInfo, gpui::FontWeight::SEMIBOLD),
-        )
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::ControlListHeader,
+            gpui::FontWeight::SEMIBOLD,
+        ))
         .text_color(shell.role_foreground(
-            BerylThemeRole::SurfaceRowInfo,
+            BerylThemeRole::ControlListHeader,
             shell.status_line_value_foreground(),
         ))
         .child(text)

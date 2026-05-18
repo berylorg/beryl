@@ -4,10 +4,13 @@ use gpui::{
     px,
 };
 
-use crate::shell::{
-    ConversationSurfaceState, ShellRenderFrame, ShellView,
-    transcript_branch_menu_state::TranscriptBranchAction,
-    transcript_edit_menu_state::{TranscriptEditDisabledReason, TranscriptEditMenuEntry},
+use crate::{
+    BerylThemeRole,
+    shell::{
+        ConversationSurfaceState, ShellRenderFrame, ShellView,
+        transcript_branch_menu_state::TranscriptBranchAction,
+        transcript_edit_menu_state::{TranscriptEditDisabledReason, TranscriptEditMenuEntry},
+    },
 };
 
 use super::common::{disabled_secondary_button, secondary_button};
@@ -93,8 +96,14 @@ pub(super) fn render_transcript_branch_menu(
                             .occlude()
                             .rounded_lg()
                             .border_1()
-                            .border_color(shell.surface_border())
-                            .bg(shell.popup_surface_background())
+                            .border_color(shell.role_border(
+                                BerylThemeRole::TranscriptContextMenu,
+                                shell.surface_border(),
+                            ))
+                            .bg(shell.role_background(
+                                BerylThemeRole::TranscriptContextMenu,
+                                shell.popup_surface_background(),
+                            ))
                             .shadow_lg()
                             .p_2()
                             .flex()
@@ -210,8 +219,17 @@ fn menu_header(shell: &ShellRenderFrame<'_>, label: &str) -> impl IntoElement {
         .px_2()
         .py_1()
         .text_xs()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(shell.general_ui_foreground())
+        .font_family(
+            shell.role_font_family(BerylThemeRole::TranscriptContextMenuHeaderText, "Inter"),
+        )
+        .font_weight(shell.role_font_weight(
+            BerylThemeRole::TranscriptContextMenuHeaderText,
+            gpui::FontWeight::SEMIBOLD,
+        ))
+        .text_color(shell.role_foreground(
+            BerylThemeRole::TranscriptContextMenuHeaderText,
+            shell.general_ui_foreground(),
+        ))
         .child(label.to_string())
 }
 

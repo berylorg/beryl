@@ -20,7 +20,7 @@ impl AppearanceSettings {
                 BerylThemeRole::TranscriptAssistantCommentary,
             ),
             markdown_header: role_settings(theme, BerylThemeRole::MarkdownHeading),
-            code: role_settings(theme, BerylThemeRole::CodePanelBody),
+            code: code_role_settings(theme),
             emphasis: role_settings(theme, BerylThemeRole::MarkdownEmphasis),
             strong_emphasis: role_settings(theme, BerylThemeRole::MarkdownStrongEmphasis),
             chrome: AppearanceChromeSettings {
@@ -45,6 +45,7 @@ impl AppearanceSettings {
                 primary_button: button_settings(
                     theme,
                     BerylThemeRole::ButtonPrimaryNormal,
+                    BerylThemeRole::ButtonPrimaryLabel,
                     BerylThemeRole::ButtonPrimaryHover,
                     BerylThemeRole::ButtonPrimaryActive,
                     BerylThemeRole::ButtonPrimaryDisabled,
@@ -52,6 +53,7 @@ impl AppearanceSettings {
                 secondary_button: button_settings(
                     theme,
                     BerylThemeRole::ButtonSecondaryNormal,
+                    BerylThemeRole::ButtonSecondaryLabel,
                     BerylThemeRole::ButtonSecondaryHover,
                     BerylThemeRole::ButtonSecondaryActive,
                     BerylThemeRole::ButtonSecondaryDisabled,
@@ -77,7 +79,7 @@ impl AppearanceSettings {
                     ),
                     input_foreground: color(
                         theme,
-                        BerylThemeRole::InputField,
+                        BerylThemeRole::InputFieldText,
                         BerylThemeProperty::Foreground,
                         "#e2e8f0",
                     ),
@@ -143,7 +145,7 @@ impl AppearanceSettings {
                     ),
                     muted_foreground: color(
                         theme,
-                        BerylThemeRole::SurfaceRowDisabled,
+                        BerylThemeRole::TextMuted,
                         BerylThemeProperty::Foreground,
                         "#94a3b8",
                     ),
@@ -170,6 +172,26 @@ fn role_settings(theme: &ActiveThemeProjection, role: BerylThemeRole) -> Appeara
     )
 }
 
+fn code_role_settings(theme: &ActiveThemeProjection) -> AppearanceRoleSettings {
+    AppearanceRoleSettings::new(
+        font_family(theme, BerylThemeRole::CodePanelBodyText, "Consolas"),
+        font_size(theme, BerylThemeRole::CodePanelBodyText, 13.0),
+        font_weight(theme, BerylThemeRole::CodePanelBodyText, 400),
+        color(
+            theme,
+            BerylThemeRole::CodePanelBodyText,
+            BerylThemeProperty::Foreground,
+            "#e2e8f0",
+        ),
+        color(
+            theme,
+            BerylThemeRole::CodePanelBody,
+            BerylThemeProperty::Background,
+            "#111827",
+        ),
+    )
+}
+
 fn foreground_settings(
     theme: &ActiveThemeProjection,
     role: BerylThemeRole,
@@ -185,12 +207,13 @@ fn foreground_settings(
 fn button_settings(
     theme: &ActiveThemeProjection,
     normal: BerylThemeRole,
+    label: BerylThemeRole,
     hover: BerylThemeRole,
     active: BerylThemeRole,
     disabled: BerylThemeRole,
 ) -> AppearanceButtonSettings {
     AppearanceButtonSettings {
-        font_weight: font_weight(theme, normal, 500),
+        font_weight: font_weight(theme, label, 500),
         normal: button_state_settings(theme, normal),
         hover: button_state_settings(theme, hover),
         active: button_state_settings(theme, active),

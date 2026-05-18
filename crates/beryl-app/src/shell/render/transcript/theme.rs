@@ -18,6 +18,7 @@ pub(crate) struct TranscriptTheme {
     pub(crate) assistant_commentary: TranscriptRoleStyle,
     pub(crate) assistant_reasoning: TranscriptRoleStyle,
     pub(crate) user_input: TranscriptRoleStyle,
+    pub(crate) user_input_text: TranscriptRoleStyle,
     pub(crate) paragraph: TranscriptRoleStyle,
     pub(crate) heading: TranscriptRoleStyle,
     pub(crate) emphasis: TranscriptRoleStyle,
@@ -32,15 +33,21 @@ pub(crate) struct TranscriptTheme {
     pub(crate) pending: TranscriptRoleStyle,
     pub(crate) unavailable: TranscriptRoleStyle,
     pub(crate) quote_popup: TranscriptRoleStyle,
+    pub(crate) quote_popup_text: TranscriptRoleStyle,
     pub(crate) code_panel_container: TranscriptRoleStyle,
     pub(crate) code_panel_header: TranscriptRoleStyle,
+    pub(crate) code_panel_header_text: TranscriptRoleStyle,
     pub(crate) code_panel_body: TranscriptRoleStyle,
+    pub(crate) code_panel_body_text: TranscriptRoleStyle,
     pub(crate) code_panel_border: TranscriptRoleStyle,
     pub(crate) code_panel_resize_handle: TranscriptRoleStyle,
     pub(crate) code_panel_button: CodePanelHeaderButtonTheme,
     pub(crate) media_placeholder: TranscriptRoleStyle,
+    pub(crate) media_placeholder_text: TranscriptRoleStyle,
     pub(crate) media_loading: TranscriptRoleStyle,
+    pub(crate) media_loading_text: TranscriptRoleStyle,
     pub(crate) media_unavailable: TranscriptRoleStyle,
+    pub(crate) media_unavailable_text: TranscriptRoleStyle,
     pub(crate) media_border: TranscriptRoleStyle,
     pub(crate) media_caption: TranscriptRoleStyle,
     pub(crate) image_marker: TranscriptRoleStyle,
@@ -103,6 +110,7 @@ impl TranscriptTheme {
         let assistant_reasoning =
             resolved_role_style(theme, BerylThemeRole::TranscriptAssistantReasoning);
         let user_input = resolved_role_style(theme, BerylThemeRole::TranscriptUserInput);
+        let user_input_text = resolved_role_style(theme, BerylThemeRole::TranscriptUserInputText);
         let paragraph = resolved_role_style(theme, BerylThemeRole::MarkdownParagraph);
         let heading = resolved_role_style(theme, BerylThemeRole::MarkdownHeading);
         let emphasis = resolved_role_style(theme, BerylThemeRole::MarkdownEmphasis);
@@ -111,11 +119,12 @@ impl TranscriptTheme {
         let unsupported_fallback =
             resolved_role_style(theme, BerylThemeRole::MarkdownUnsupportedFallback);
         let code_panel_body = resolved_role_style(theme, BerylThemeRole::CodePanelBody);
+        let code_panel_body_text = resolved_role_style(theme, BerylThemeRole::CodePanelBodyText);
         let inline_code = TranscriptInlineCodeStyles {
             assistant_final: inline_code_style(theme, &paragraph.resolved),
             assistant_commentary: inline_code_style(theme, &assistant_commentary.resolved),
             assistant_reasoning: inline_code_style(theme, &assistant_reasoning.resolved),
-            user_input: inline_code_style(theme, &user_input.resolved),
+            user_input: inline_code_style(theme, &user_input_text.resolved),
             unsupported_fallback: inline_code_style(theme, &unsupported_fallback.resolved),
             heading: inline_code_style(theme, &heading.resolved),
             emphasis: inline_code_style(theme, &emphasis.resolved),
@@ -125,11 +134,12 @@ impl TranscriptTheme {
 
         Self {
             revision: theme.style_revision(),
-            syntax: syntax_theme(theme, &code_panel_body.style),
+            syntax: syntax_theme(theme, &code_panel_body_text.style),
             assistant_final: assistant_final.style,
             assistant_commentary: assistant_commentary.style,
             assistant_reasoning: assistant_reasoning.style,
             user_input: user_input.style,
+            user_input_text: user_input_text.style,
             paragraph: paragraph.style,
             heading: heading.style,
             emphasis: emphasis.style,
@@ -144,15 +154,24 @@ impl TranscriptTheme {
             pending: role_style(theme, BerylThemeRole::TranscriptPending),
             unavailable: role_style(theme, BerylThemeRole::TranscriptUnavailable),
             quote_popup: role_style(theme, BerylThemeRole::TranscriptQuotePopup),
+            quote_popup_text: role_style(theme, BerylThemeRole::TranscriptQuotePopupText),
             code_panel_container: role_style(theme, BerylThemeRole::CodePanelContainer),
             code_panel_header: role_style(theme, BerylThemeRole::CodePanelHeader),
+            code_panel_header_text: role_style(theme, BerylThemeRole::CodePanelHeaderText),
             code_panel_body: code_panel_body.style,
+            code_panel_body_text: code_panel_body_text.style,
             code_panel_border: role_style(theme, BerylThemeRole::CodePanelBorder),
             code_panel_resize_handle: role_style(theme, BerylThemeRole::CodePanelResizeHandle),
             code_panel_button: code_panel_button_theme(theme),
             media_placeholder: role_style(theme, BerylThemeRole::MediaPlaceholder),
+            media_placeholder_text: role_style(theme, BerylThemeRole::MediaPlaceholderText),
             media_loading: role_style(theme, BerylThemeRole::MediaPlaceholderLoading),
+            media_loading_text: role_style(theme, BerylThemeRole::MediaPlaceholderLoadingText),
             media_unavailable: role_style(theme, BerylThemeRole::MediaPlaceholderUnavailable),
+            media_unavailable_text: role_style(
+                theme,
+                BerylThemeRole::MediaPlaceholderUnavailableText,
+            ),
             media_border: role_style(theme, BerylThemeRole::MediaBorder),
             media_caption: role_style(theme, BerylThemeRole::MediaCaption),
             image_marker: role_style(theme, BerylThemeRole::TranscriptImageMarker),
@@ -169,7 +188,7 @@ impl TranscriptTheme {
             TranscriptTextRole::AssistantFinal => &self.assistant_final,
             TranscriptTextRole::AssistantCommentary => &self.assistant_commentary,
             TranscriptTextRole::AssistantReasoning => &self.assistant_reasoning,
-            TranscriptTextRole::UserInput => &self.user_input,
+            TranscriptTextRole::UserInput => &self.user_input_text,
         }
     }
 
@@ -189,15 +208,15 @@ impl TranscriptTheme {
 
     pub(crate) fn anchor_theme(&self) -> TranscriptAnchorTheme {
         TranscriptAnchorTheme {
-            conversation: self.user_input.anchor_role(),
+            conversation: self.user_input_text.anchor_role(),
             heading: self.heading.anchor_role(),
             emphasis: self.emphasis.anchor_role(),
             strong_emphasis: self.strong_emphasis.anchor_role(),
             code: self
                 .inline_code_style(TranscriptInlineCodeHost::UserInput)
                 .anchor_role(),
-            code_panel: self.code_panel_body.anchor_role(),
-            code_panel_header: self.code_panel_header.anchor_role(),
+            code_panel: self.code_panel_body_text.anchor_role(),
+            code_panel_header: self.code_panel_header_text.anchor_role(),
         }
     }
 }

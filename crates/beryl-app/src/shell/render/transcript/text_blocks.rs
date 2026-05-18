@@ -28,7 +28,7 @@ pub(super) fn labeled_code_block(
         block = block.child(
             div()
                 .text_xs()
-                .text_color(theme.code_panel_header.foreground())
+                .text_color(theme.code_panel_header_text.foreground())
                 .child(label.to_string()),
         );
     }
@@ -41,13 +41,14 @@ pub(super) fn labeled_code_block(
         display_projection,
         CodePanelChrome::Bordered {
             background: theme.code_panel_container.background(),
-            border: theme.code_panel_border.border(),
+            border: theme.code_panel_border.color(),
             content_background: theme.code_panel_body.background(),
-            header_foreground: theme.code_panel_header.foreground(),
+            header_background: theme.code_panel_header.background(),
+            header_foreground: theme.code_panel_header_text.foreground(),
             button: theme.code_panel_button,
             resize_handle: theme.code_panel_resize_handle.color(),
         },
-        theme.code_panel_body.foreground(),
+        theme.code_panel_body_text.foreground(),
         Some(theme.syntax.clone()),
         syntax_highlight,
         header,

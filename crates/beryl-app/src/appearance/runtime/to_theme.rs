@@ -5,7 +5,7 @@ use super::super::{
     AppearanceInputSettings, AppearanceRoleSettings, AppearanceSettings, AppearanceSettingsError,
     AppearanceSurfaceSettings, BerylThemeProperty, BerylThemeRole, StylePropertySource,
     StylePropertyValue, ThemeDefinition, ThemeResolver, ThemeRoleDefinition,
-    built_in_theme_definition, built_in_theme_schema,
+    built_in_theme_definition, built_in_theme_schema, built_in_theme_supports_property,
 };
 
 impl AppearanceSettings {
@@ -89,11 +89,7 @@ fn appearance_theme_overrides(
         BerylThemeRole::MarkdownHeading,
         &settings.markdown_header,
     );
-    insert_role_settings(
-        &mut overrides,
-        BerylThemeRole::CodePanelBody,
-        &settings.code,
-    );
+    insert_code_settings(&mut overrides, &settings.code);
     insert_role_settings(
         &mut overrides,
         BerylThemeRole::MarkdownEmphasis,
@@ -127,6 +123,7 @@ fn appearance_theme_overrides(
         &mut overrides,
         &settings.chrome.primary_button,
         BerylThemeRole::ButtonPrimaryNormal,
+        BerylThemeRole::ButtonPrimaryLabel,
         BerylThemeRole::ButtonPrimaryHover,
         BerylThemeRole::ButtonPrimaryActive,
         BerylThemeRole::ButtonPrimaryDisabled,
@@ -135,6 +132,7 @@ fn appearance_theme_overrides(
         &mut overrides,
         &settings.chrome.secondary_button,
         BerylThemeRole::ButtonSecondaryNormal,
+        BerylThemeRole::ButtonSecondaryLabel,
         BerylThemeRole::ButtonSecondaryHover,
         BerylThemeRole::ButtonSecondaryActive,
         BerylThemeRole::ButtonSecondaryDisabled,
@@ -142,12 +140,14 @@ fn appearance_theme_overrides(
     insert_input_settings(
         &mut overrides,
         BerylThemeRole::InputField,
+        Some(BerylThemeRole::InputFieldText),
         Some(BerylThemeRole::InputPanel),
         &settings.chrome.input,
     );
     insert_input_settings(
         &mut overrides,
         BerylThemeRole::SettingsInputNormal,
+        Some(BerylThemeRole::SettingsInputText),
         None,
         &settings.chrome.input,
     );
@@ -218,6 +218,45 @@ fn insert_role_settings(
     insert_font_weight(overrides, role, settings.font_weight);
 }
 
+fn insert_code_settings(
+    overrides: &mut BTreeMap<(String, String), StylePropertySource>,
+    settings: &AppearanceRoleSettings,
+) {
+    insert_color(
+        overrides,
+        BerylThemeRole::CodePanelBody,
+        BerylThemeProperty::Background,
+        &settings.background,
+    );
+    insert_color(
+        overrides,
+        BerylThemeRole::CodePanelBodyText,
+        BerylThemeProperty::TextBackground,
+        &settings.background,
+    );
+    insert_color(
+        overrides,
+        BerylThemeRole::CodePanelBodyText,
+        BerylThemeProperty::Foreground,
+        &settings.foreground,
+    );
+    insert_font_family(
+        overrides,
+        BerylThemeRole::CodePanelBodyText,
+        &settings.font_family,
+    );
+    insert_font_size(
+        overrides,
+        BerylThemeRole::CodePanelBodyText,
+        settings.font_size,
+    );
+    insert_font_weight(
+        overrides,
+        BerylThemeRole::CodePanelBodyText,
+        settings.font_weight,
+    );
+}
+
 fn insert_foreground(
     overrides: &mut BTreeMap<(String, String), StylePropertySource>,
     role: BerylThemeRole,
@@ -230,14 +269,12 @@ fn insert_button_settings(
     overrides: &mut BTreeMap<(String, String), StylePropertySource>,
     settings: &AppearanceButtonSettings,
     normal: BerylThemeRole,
+    label: BerylThemeRole,
     hover: BerylThemeRole,
     active: BerylThemeRole,
     disabled: BerylThemeRole,
 ) {
-    insert_font_weight(overrides, normal, settings.font_weight);
-    insert_font_weight(overrides, hover, settings.font_weight);
-    insert_font_weight(overrides, active, settings.font_weight);
-    insert_font_weight(overrides, disabled, settings.font_weight);
+    insert_font_weight(overrides, label, settings.font_weight);
     insert_button_state(overrides, normal, &settings.normal);
     insert_button_state(overrides, hover, &settings.hover);
     insert_button_state(overrides, active, &settings.active);
@@ -278,6 +315,7 @@ fn insert_button_state(
 fn insert_input_settings(
     overrides: &mut BTreeMap<(String, String), StylePropertySource>,
     role: BerylThemeRole,
+    text_role: Option<BerylThemeRole>,
     panel_role: Option<BerylThemeRole>,
     settings: &AppearanceInputSettings,
 ) {
@@ -297,7 +335,7 @@ fn insert_input_settings(
     );
     insert_color(
         overrides,
-        role,
+        text_role.unwrap_or(role),
         BerylThemeProperty::TextBackground,
         &settings.input_background,
     );
@@ -309,7 +347,7 @@ fn insert_input_settings(
     );
     insert_color(
         overrides,
-        role,
+        text_role.unwrap_or(role),
         BerylThemeProperty::Foreground,
         &settings.input_foreground,
     );
@@ -382,7 +420,8 @@ fn insert_surface_settings(
     }
     for role in [
         BerylThemeRole::SurfaceRowDisabled,
-        BerylThemeRole::SettingsRowDisabled,
+        BerylThemeRole::SettingsRowDisabledText,
+        BerylThemeRole::TextMuted,
     ] {
         insert_color(
             overrides,
@@ -452,5 +491,8 @@ fn insert_source(
     property: BerylThemeProperty,
     source: StylePropertySource,
 ) {
+    if !built_in_theme_supports_property(role, property) {
+        return;
+    }
     overrides.insert((role.id().to_string(), property.id().to_string()), source);
 }

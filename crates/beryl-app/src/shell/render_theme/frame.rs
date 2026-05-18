@@ -41,6 +41,14 @@ impl<'a> ShellRenderFrame<'a> {
         self.style.role_foreground(role, fallback)
     }
 
+    pub(in crate::shell) fn role_color(
+        &self,
+        role: crate::BerylThemeRole,
+        fallback: gpui::Rgba,
+    ) -> gpui::Rgba {
+        self.style.role_color(role, fallback)
+    }
+
     pub(in crate::shell) fn role_font_family(
         &self,
         role: crate::BerylThemeRole,

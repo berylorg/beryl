@@ -308,25 +308,28 @@ fn render_picker(
 }
 
 fn render_opening(shell: &ShellRenderFrame<'_>, opening: &OpeningState) -> impl IntoElement {
-    let mut body = div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .child(section_label(shell, "Workspace Startup"))
-        .child(
-            div()
-                .text_lg()
-                .font_weight(
-                    shell.role_font_weight(BerylThemeRole::NoticeInfo, gpui::FontWeight::SEMIBOLD),
-                )
-                .text_color(
-                    shell.role_foreground(BerylThemeRole::NoticeInfo, shell.surface_foreground()),
-                )
-                .child("Opening the selected workspace"),
-        )
-        .child(info_line(shell, "Attempt", &opening.attempt.to_string()))
-        .child(info_line(shell, "Target", &opening.workspace_label))
-        .child(info_line(shell, "Current step", &opening.detail));
+    let mut body =
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(section_label(shell, "Workspace Startup"))
+            .child(
+                div()
+                    .text_lg()
+                    .font_weight(shell.role_font_weight(
+                        BerylThemeRole::TextSemanticInfo,
+                        gpui::FontWeight::SEMIBOLD,
+                    ))
+                    .text_color(shell.role_foreground(
+                        BerylThemeRole::TextSemanticInfo,
+                        shell.surface_foreground(),
+                    ))
+                    .child("Opening the selected workspace"),
+            )
+            .child(info_line(shell, "Attempt", &opening.attempt.to_string()))
+            .child(info_line(shell, "Target", &opening.workspace_label))
+            .child(info_line(shell, "Current step", &opening.detail));
 
     if let Some(progress) = &opening.progress
         && let Some(detail) = progress.detail()
@@ -373,12 +376,14 @@ fn render_blocked(shell: &ShellRenderFrame<'_>, blocked: &BlockedState) -> impl 
         .child(
             div()
                 .text_lg()
-                .font_weight(
-                    shell.role_font_weight(BerylThemeRole::NoticeError, gpui::FontWeight::SEMIBOLD),
-                )
-                .text_color(
-                    shell.role_foreground(BerylThemeRole::NoticeError, shell.surface_foreground()),
-                )
+                .font_weight(shell.role_font_weight(
+                    BerylThemeRole::TextSemanticError,
+                    gpui::FontWeight::SEMIBOLD,
+                ))
+                .text_color(shell.role_foreground(
+                    BerylThemeRole::TextSemanticError,
+                    shell.surface_foreground(),
+                ))
                 .child(blocked.title),
         )
         .child(info_line(shell, "Workspace", &blocked.workspace_label))

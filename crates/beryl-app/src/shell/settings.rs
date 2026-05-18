@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::{BTreeSet, HashMap},
     path::PathBuf,
     sync::{
@@ -6,6 +7,7 @@ use std::{
         mpsc::{self, Receiver},
     },
     thread,
+    time::Instant,
 };
 
 use gpui_settings_window::{
@@ -67,6 +69,33 @@ struct SettingsWindowOptionsCache {
     options: SettingsWindowOptions,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ThemeEditorDiagnosticsSnapshot {
+    pub(super) candidate_definition_build_count: u64,
+    pub(super) last_candidate_definition_build_micros: u64,
+    pub(super) preview_projection_build_count: u64,
+    pub(super) last_preview_projection_build_micros: u64,
+    pub(super) role_preview_style_build_count: u64,
+    pub(super) role_preview_row_count: usize,
+    pub(super) selected_property_detail_row_count: usize,
+    pub(super) modified_state_recompute_count: u64,
+    pub(super) last_modified_state_recompute_micros: u64,
+}
+
+#[derive(Debug, Default)]
+struct ThemeEditorDiagnostics {
+    has_page_model_sample: bool,
+    candidate_definition_build_count: u64,
+    last_candidate_definition_build_micros: u64,
+    preview_projection_build_count: u64,
+    last_preview_projection_build_micros: u64,
+    role_preview_style_build_count: u64,
+    role_preview_row_count: usize,
+    selected_property_detail_row_count: usize,
+    modified_state_recompute_count: u64,
+    last_modified_state_recompute_micros: u64,
+}
+
 pub(super) struct SettingsState {
     active_theme: SharedActiveThemeProjection,
     active_preferences: SharedGuiPreferences,
@@ -88,6 +117,7 @@ pub(super) struct SettingsState {
     queued_save: Option<SettingsSaveSnapshot>,
     window_options_cache: Option<SettingsWindowOptionsCache>,
     last_synced_window_options: Option<SettingsWindowOptions>,
+    theme_editor_diagnostics: RefCell<ThemeEditorDiagnostics>,
 }
 
 pub(super) enum SettingsSavePoll {
@@ -200,6 +230,7 @@ impl SettingsState {
             queued_save: None,
             window_options_cache: None,
             last_synced_window_options: None,
+            theme_editor_diagnostics: RefCell::new(ThemeEditorDiagnostics::default()),
         }
     }
 
@@ -320,7 +351,7 @@ impl SettingsState {
             .theme_editor_draft
             .set_field_value(field_id, value.clone())
         {
-            self.theme_draft_modified = self.compute_theme_draft_modified();
+            self.theme_draft_modified = true;
             self.errors.remove(field_id);
             return;
         }
@@ -420,8 +451,13 @@ impl SettingsState {
 
     pub(super) fn model(&self) -> SettingsWindowModel {
         let theme_editor_model = (self.selected_page_id == themes::editor_page_id()).then(|| {
-            self.theme_editor_draft
-                .page_model(&self.selected_theme_role_id, &self.errors)
+            let model = self
+                .theme_editor_draft
+                .page_model(&self.selected_theme_role_id, &self.errors);
+            self.theme_editor_diagnostics
+                .borrow_mut()
+                .record_page_model(model.diagnostics);
+            model
         });
         let mut sections = vec![themes::settings_section(
             &self.theme_repository_snapshot,
@@ -449,6 +485,15 @@ impl SettingsState {
             self.selected_page_id.clone(),
         )
         .expect("Beryl settings model uses static unique sections and fields")
+    }
+
+    pub(super) fn theme_editor_diagnostics_snapshot(
+        &self,
+    ) -> Option<ThemeEditorDiagnosticsSnapshot> {
+        if self.selected_page_id != themes::editor_page_id() {
+            return None;
+        }
+        self.theme_editor_diagnostics.borrow().snapshot()
     }
 
     pub(super) fn apply(&mut self) -> bool {
@@ -764,8 +809,14 @@ impl SettingsState {
     }
 
     fn compute_theme_draft_modified(&self) -> bool {
-        self.theme_editor_draft
-            .is_modified_from(self.theme_repository_snapshot.active_definition())
+        let started = Instant::now();
+        let modified = self
+            .theme_editor_draft
+            .is_modified_from(self.theme_repository_snapshot.active_definition());
+        self.theme_editor_diagnostics
+            .borrow_mut()
+            .record_modified_state_recompute(started.elapsed().as_micros());
+        modified
     }
 
     fn preference_draft_modified(&self) -> bool {
@@ -774,6 +825,49 @@ impl SettingsState {
             != NotificationSettingsDraft::from_preferences(&active.notifications)
             || self.agent_draft != AgentSettingsDraft::from_preferences(&active.agent)
             || self.operation_draft != OperationSettingsDraft::from_preferences(&active.operations)
+    }
+}
+
+impl ThemeEditorDiagnostics {
+    fn record_page_model(&mut self, diagnostics: theme_editor::ThemeEditorPageModelDiagnostics) {
+        self.has_page_model_sample = true;
+        self.candidate_definition_build_count = self
+            .candidate_definition_build_count
+            .saturating_add(diagnostics.candidate_definition_build_count);
+        self.last_candidate_definition_build_micros =
+            diagnostics.last_candidate_definition_build_micros;
+        self.preview_projection_build_count = self
+            .preview_projection_build_count
+            .saturating_add(diagnostics.preview_projection_build_count);
+        self.last_preview_projection_build_micros =
+            diagnostics.last_preview_projection_build_micros;
+        self.role_preview_style_build_count = self
+            .role_preview_style_build_count
+            .saturating_add(diagnostics.role_preview_style_build_count);
+        self.role_preview_row_count = diagnostics.role_preview_row_count;
+        self.selected_property_detail_row_count = diagnostics.selected_property_detail_row_count;
+    }
+
+    fn record_modified_state_recompute(&mut self, micros: u128) {
+        self.modified_state_recompute_count = self.modified_state_recompute_count.saturating_add(1);
+        self.last_modified_state_recompute_micros = micros.min(u128::from(u64::MAX)) as u64;
+    }
+
+    fn snapshot(&self) -> Option<ThemeEditorDiagnosticsSnapshot> {
+        if !self.has_page_model_sample {
+            return None;
+        }
+        Some(ThemeEditorDiagnosticsSnapshot {
+            candidate_definition_build_count: self.candidate_definition_build_count,
+            last_candidate_definition_build_micros: self.last_candidate_definition_build_micros,
+            preview_projection_build_count: self.preview_projection_build_count,
+            last_preview_projection_build_micros: self.last_preview_projection_build_micros,
+            role_preview_style_build_count: self.role_preview_style_build_count,
+            role_preview_row_count: self.role_preview_row_count,
+            selected_property_detail_row_count: self.selected_property_detail_row_count,
+            modified_state_recompute_count: self.modified_state_recompute_count,
+            last_modified_state_recompute_micros: self.last_modified_state_recompute_micros,
+        })
     }
 }
 

@@ -27,29 +27,43 @@ use super::{
 };
 
 struct GraphNodePalette {
-    normal: GraphRoleStyle,
-    selected: GraphRoleStyle,
+    normal_surface: GraphRoleStyle,
+    normal_text: GraphRoleStyle,
+    selected_surface: GraphRoleStyle,
+    selected_text: GraphRoleStyle,
 }
 
 impl GraphNodePalette {
     fn background(&self, selected: bool) -> gpui::Rgba {
-        self.style(selected).background
+        self.surface_style(selected).background
     }
 
     fn border(&self, selected: bool) -> gpui::Rgba {
-        self.style(selected).border
+        self.surface_style(selected).border
     }
 
     fn foreground(&self, selected: bool) -> gpui::Rgba {
-        self.style(selected).foreground
+        self.text_style(selected).foreground
     }
 
     fn font_weight(&self, selected: bool) -> gpui::FontWeight {
-        self.style(selected).font_weight
+        self.text_style(selected).font_weight
     }
 
-    fn style(&self, selected: bool) -> GraphRoleStyle {
-        if selected { self.selected } else { self.normal }
+    fn surface_style(&self, selected: bool) -> GraphRoleStyle {
+        if selected {
+            self.selected_surface
+        } else {
+            self.normal_surface
+        }
+    }
+
+    fn text_style(&self, selected: bool) -> GraphRoleStyle {
+        if selected {
+            self.selected_text
+        } else {
+            self.normal_text
+        }
     }
 }
 
@@ -264,12 +278,19 @@ fn render_graph_soft_link_row(
         .expect("graph overlay renders only valid soft-link targets");
     let target_summary = target.summary().trim().to_string();
     let normal_style = graph_role_style(shell, BerylThemeRole::GraphRowSoftLink);
+    let normal_text_style = graph_role_style(shell, BerylThemeRole::GraphRowSoftLinkText);
     let selected_style = graph_role_style(shell, BerylThemeRole::GraphRowSelected);
+    let selected_text_style = graph_role_style(shell, BerylThemeRole::GraphRowSelectedText);
     let hover_style = graph_role_style(shell, BerylThemeRole::GraphRowHover);
-    let style = if selected {
+    let surface_style = if selected {
         selected_style
     } else {
         normal_style
+    };
+    let text_style = if selected {
+        selected_text_style
+    } else {
+        normal_text_style
     };
     let hover_background = if selected {
         selected_style.background
@@ -284,9 +305,9 @@ fn render_graph_soft_link_row(
         ))
         .w_full()
         .rounded_md()
-        .bg(style.background)
+        .bg(surface_style.background)
         .border_1()
-        .border_color(style.border)
+        .border_color(surface_style.border)
         .px_3()
         .py_2()
         .cursor_pointer()
@@ -302,7 +323,7 @@ fn render_graph_soft_link_row(
                     div()
                         .flex_none()
                         .text_sm()
-                        .text_color(style.foreground)
+                        .text_color(text_style.foreground)
                         .child(format!("{SOFT_LINK_ROW_MARKER} ")),
                 )
                 .child(
@@ -310,8 +331,8 @@ fn render_graph_soft_link_row(
                         .min_w(px(0.0))
                         .flex_1()
                         .text_sm()
-                        .font_weight(style.font_weight)
-                        .text_color(style.foreground)
+                        .font_weight(text_style.font_weight)
+                        .text_color(text_style.foreground)
                         .whitespace_nowrap()
                         .truncate()
                         .child(target.title().to_string()),
@@ -356,13 +377,20 @@ fn render_graph_thread_ref_row(
         graph_thread_ref_availability(workspace_state, thread_ref, implicit_home_execution_target);
     let invalid_reason = availability.reason().map(str::to_string);
     let normal_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRef);
+    let normal_text_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRefText);
+    let meta_text_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRefMeta);
     let invalid_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalid);
+    let invalid_text_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalidText);
     let hover_style = graph_role_style(shell, BerylThemeRole::GraphRowHover);
-    let disabled_style = graph_role_style(shell, BerylThemeRole::GraphRowDisabled);
-    let row_style = if availability.is_openable() {
+    let row_surface_style = if availability.is_openable() {
         normal_style
     } else {
         invalid_style
+    };
+    let row_text_style = if availability.is_openable() {
+        normal_text_style
+    } else {
+        invalid_text_style
     };
 
     div()
@@ -376,9 +404,9 @@ fn render_graph_thread_ref_row(
                 ))
                 .w_full()
                 .rounded_md()
-                .bg(row_style.background)
+                .bg(row_surface_style.background)
                 .border_1()
-                .border_color(row_style.border)
+                .border_color(row_surface_style.border)
                 .cursor_pointer()
                 .hover(move |style| style.bg(hover_style.background))
                 .p_3()
@@ -408,21 +436,22 @@ fn render_graph_thread_ref_row(
                                 .child(
                                     div()
                                         .text_xs()
-                                        .font_weight(row_style.font_weight)
-                                        .text_color(row_style.foreground)
+                                        .font_weight(row_text_style.font_weight)
+                                        .text_color(row_text_style.foreground)
                                         .child(format!("thread {}", thread_ref.label())),
                                 )
                                 .child(
-                                    div().text_xs().text_color(disabled_style.foreground).child(
-                                        format!(
+                                    div()
+                                        .text_xs()
+                                        .text_color(meta_text_style.foreground)
+                                        .child(format!(
                                             "{}  {}",
                                             thread_ref
                                                 .execution_target()
                                                 .runtime_mode()
                                                 .display_name(),
                                             thread_ref.thread_id().as_str()
-                                        ),
-                                    ),
+                                        )),
                                 ),
                         )
                         .when_some(invalid_reason, |this, reason| {
@@ -449,6 +478,7 @@ fn render_invalid_thread_ref_actions(
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
     let button_theme = shell.secondary_button_theme();
     let invalid_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalid);
+    let invalid_text_style = graph_role_style(shell, BerylThemeRole::GraphRowInvalidText);
 
     div()
         .flex_none()
@@ -470,8 +500,8 @@ fn render_invalid_thread_ref_actions(
                 .items_center()
                 .justify_center()
                 .text_xs()
-                .font_weight(invalid_style.font_weight)
-                .text_color(invalid_style.foreground)
+                .font_weight(invalid_text_style.font_weight)
+                .text_color(invalid_text_style.foreground)
                 .child("!")
                 .tooltip(move |_, cx| {
                     build_graph_summary_tooltip(indicator_reason.clone(), tooltip_theme, cx)
@@ -577,25 +607,34 @@ fn render_checklist_item_status_marker(
     shell: &ShellRenderFrame<'_>,
     status: ChecklistItemStatus,
 ) -> impl IntoElement {
-    let status_style = graph_role_style(shell, checklist_status_role(status));
+    let status_color = shell.role_color(checklist_status_role(status), shell.surface_foreground());
     div()
         .flex_none()
         .text_sm()
-        .text_color(status_style.foreground)
+        .text_color(status_color)
         .child(format!("{} ", checklist_item_status_glyph(status)))
 }
 
 fn graph_node_palette(shell: &ShellRenderFrame<'_>, node: &SemanticNode) -> GraphNodePalette {
-    let role = if node.facets().has_checklist() {
+    let surface_role = if node.facets().has_checklist() {
         BerylThemeRole::GraphRowChecklist
     } else if node.facets().has_checklist_item() {
         BerylThemeRole::GraphRowChecklistItem
     } else {
         BerylThemeRole::GraphRowTopic
     };
+    let text_role = if node.facets().has_checklist() {
+        BerylThemeRole::GraphRowChecklistText
+    } else if node.facets().has_checklist_item() {
+        BerylThemeRole::GraphRowChecklistItemText
+    } else {
+        BerylThemeRole::GraphRowTopicText
+    };
     GraphNodePalette {
-        normal: graph_role_style(shell, role),
-        selected: graph_role_style(shell, BerylThemeRole::GraphRowSelected),
+        normal_surface: graph_role_style(shell, surface_role),
+        normal_text: graph_role_style(shell, text_role),
+        selected_surface: graph_role_style(shell, BerylThemeRole::GraphRowSelected),
+        selected_text: graph_role_style(shell, BerylThemeRole::GraphRowSelectedText),
     }
 }
 

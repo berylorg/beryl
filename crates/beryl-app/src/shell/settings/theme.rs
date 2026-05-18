@@ -20,19 +20,19 @@ pub(super) fn settings_window_theme(theme: &ActiveThemeProjection) -> SettingsWi
         panel: surface_theme(
             theme,
             BerylThemeRole::SettingsGroup,
-            BerylThemeRole::SettingsRowDisabled,
+            BerylThemeRole::SettingsRowDisabledText,
             &defaults.panel,
         ),
         row: surface_theme(
             theme,
             BerylThemeRole::SettingsRowNormal,
-            BerylThemeRole::SettingsRowDisabled,
+            BerylThemeRole::SettingsRowDisabledText,
             &defaults.row,
         ),
         popup: surface_theme(
             theme,
             BerylThemeRole::SettingsPopup,
-            BerylThemeRole::SettingsRowDisabled,
+            BerylThemeRole::SettingsRowDisabledText,
             &defaults.popup,
         ),
         input: SettingsInputTheme {
@@ -62,26 +62,27 @@ pub(super) fn settings_window_theme(theme: &ActiveThemeProjection) -> SettingsWi
             ),
             foreground: color_or(
                 theme,
-                BerylThemeRole::SettingsInputNormal,
+                BerylThemeRole::SettingsInputText,
                 BerylThemeProperty::Foreground,
                 defaults.input.foreground,
             ),
             caret: color_or(
                 theme,
-                BerylThemeRole::SettingsInputFocused,
-                BerylThemeProperty::Foreground,
+                BerylThemeRole::SettingsInputCaret,
+                BerylThemeProperty::Color,
                 defaults.input.caret,
             ),
             selection_background: color_or(
                 theme,
                 BerylThemeRole::SettingsInputSelection,
-                BerylThemeProperty::Background,
+                BerylThemeProperty::TextBackground,
                 defaults.input.selection_background,
             ),
         },
         navigation_button: button_theme(
             theme,
             BerylThemeRole::SettingsButtonSecondary,
+            BerylThemeRole::SettingsButtonSecondaryLabel,
             BerylThemeRole::ButtonSecondaryHover,
             BerylThemeRole::ButtonSecondaryActive,
             BerylThemeRole::ButtonSecondaryDisabled,
@@ -90,6 +91,7 @@ pub(super) fn settings_window_theme(theme: &ActiveThemeProjection) -> SettingsWi
         primary_button: button_theme(
             theme,
             BerylThemeRole::SettingsButtonPrimary,
+            BerylThemeRole::SettingsButtonPrimaryLabel,
             BerylThemeRole::ButtonPrimaryHover,
             BerylThemeRole::ButtonPrimaryActive,
             BerylThemeRole::ButtonPrimaryDisabled,
@@ -98,6 +100,7 @@ pub(super) fn settings_window_theme(theme: &ActiveThemeProjection) -> SettingsWi
         secondary_button: button_theme(
             theme,
             BerylThemeRole::SettingsButtonSecondary,
+            BerylThemeRole::SettingsButtonSecondaryLabel,
             BerylThemeRole::ButtonSecondaryHover,
             BerylThemeRole::ButtonSecondaryActive,
             BerylThemeRole::ButtonSecondaryDisabled,
@@ -138,13 +141,14 @@ fn surface_theme(
 fn button_theme(
     theme: &ActiveThemeProjection,
     normal: BerylThemeRole,
+    label: BerylThemeRole,
     hover: BerylThemeRole,
     active: BerylThemeRole,
     disabled: BerylThemeRole,
     fallback: &SettingsButtonTheme,
 ) -> SettingsButtonTheme {
     SettingsButtonTheme {
-        font_weight: font_weight_or(theme, normal, fallback.font_weight),
+        font_weight: font_weight_or(theme, label, fallback.font_weight),
         normal: button_state_theme(theme, normal, &fallback.normal),
         hover: button_state_theme(theme, hover, &fallback.hover),
         active: button_state_theme(theme, active, &fallback.active),

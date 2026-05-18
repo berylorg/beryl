@@ -198,8 +198,8 @@ pub use appearance::{
     ThemePropertySchema, ThemeRepositoryError, ThemeRepositorySnapshot, ThemeRepositoryStore,
     ThemeResolutionContext, ThemeResolutionError, ThemeResolver, ThemeRoleDefinition,
     ThemeRoleSchema, ThemeSchema, ThemeValidationDiagnostics, built_in_theme_definition,
-    built_in_theme_resolver, built_in_theme_schema, built_in_theme_supported_properties,
-    built_in_theme_supports_property,
+    built_in_theme_resolver, built_in_theme_role_is_editable, built_in_theme_schema,
+    built_in_theme_supported_properties, built_in_theme_supports_property,
 };
 pub use beryl_home_dir::{BerylHomeDir, BerylHomeDirError};
 pub use diagnostic_child_dynamic_tools::{

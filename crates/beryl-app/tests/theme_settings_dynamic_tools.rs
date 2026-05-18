@@ -127,6 +127,22 @@ name = "Non Separator Color"
 id = "app.window"
 color = { value = "#112233" }
 "##,
+        r##"
+schema = 1
+name = "Old Popup Weight"
+
+[[role]]
+id = "popup.surface"
+font_weight = { value = 700 }
+"##,
+        r##"
+schema = 1
+name = "Old Button Weight"
+
+[[role]]
+id = "settings.button.primary"
+font_weight = { value = 700 }
+"##,
     ];
 
     for document in unsupported_property_documents {
@@ -249,6 +265,48 @@ fn theme_schema_read_value_reports_role_specific_supported_properties() {
     assert_eq!(code_panel_properties, expected);
     assert!(!code_panel_properties.contains(&BerylThemeProperty::Border.id().to_string()));
     assert!(!code_panel_properties.contains(&BerylThemeProperty::TextBackground.id().to_string()));
+
+    let graph_topic = theme_schema_value(Some(BerylThemeRole::GraphRowTopic.id()), 8).unwrap();
+    let graph_topic_properties = property_ids(&first_role(&graph_topic)["properties"]);
+    assert_eq!(
+        graph_topic_properties,
+        vec![
+            BerylThemeProperty::Background.id().to_string(),
+            BerylThemeProperty::Border.id().to_string(),
+            BerylThemeProperty::Foreground.id().to_string(),
+        ]
+    );
+    assert!(!graph_topic_properties.contains(&BerylThemeProperty::FontWeight.id().to_string()));
+
+    let checklist_status =
+        theme_schema_value(Some(BerylThemeRole::ChecklistStatusTodo.id()), 8).unwrap();
+    let checklist_status_properties = property_ids(&first_role(&checklist_status)["properties"]);
+    assert_eq!(
+        checklist_status_properties,
+        vec![BerylThemeProperty::Color.id().to_string()]
+    );
+
+    let popup_surface = theme_schema_value(Some(BerylThemeRole::PopupSurface.id()), 8).unwrap();
+    let popup_surface_properties = property_ids(&first_role(&popup_surface)["properties"]);
+    assert_eq!(
+        popup_surface_properties,
+        vec![
+            BerylThemeProperty::Background.id().to_string(),
+            BerylThemeProperty::Border.id().to_string(),
+            BerylThemeProperty::Foreground.id().to_string(),
+        ]
+    );
+    assert!(!popup_surface_properties.contains(&BerylThemeProperty::FontWeight.id().to_string()));
+
+    let button_label =
+        theme_schema_value(Some(BerylThemeRole::ButtonPrimaryLabel.id()), 8).unwrap();
+    let button_label_properties = property_ids(&first_role(&button_label)["properties"]);
+    assert!(button_label_properties.contains(&BerylThemeProperty::FontWeight.id().to_string()));
+    assert!(!button_label_properties.contains(&BerylThemeProperty::Background.id().to_string()));
+
+    let hidden = theme_schema_value(Some(BerylThemeRole::PopupRowNormal.id()), 8).unwrap();
+    assert_eq!(hidden["roleCount"], 0);
+    assert_eq!(hidden["roles"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -417,6 +475,13 @@ fn theme_authoring_guide_role_hints_include_supported_properties() {
         built_in_theme_supported_properties(BerylThemeRole::CodePanelBody).len()
     );
     assert!(!properties.contains(&BerylThemeProperty::Border.id().to_string()));
+
+    let hidden = theme_authoring_guide_value(
+        ThemeAuthoringGuideSection::Overview,
+        Some(BerylThemeRole::PopupRowNormal.id()),
+        4,
+    );
+    assert_eq!(hidden["roleHints"]["roleCount"], 0);
 }
 
 #[test]

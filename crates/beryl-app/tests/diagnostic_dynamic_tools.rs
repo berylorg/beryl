@@ -20,11 +20,11 @@ use diagnostic_dynamic_tools::{
     READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL, READ_TRANSCRIPT_FRAME_METRICS_TOOL,
     READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
-    SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, TranscriptFrameMetric,
-    TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics,
-    VisibleMediaItemDiagnostic, VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
-    dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
-    renderer_snapshot_with_shell_window,
+    SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
+    TranscriptFrameMetric, TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot,
+    VisibleMediaDiagnostics, VisibleMediaItemDiagnostic, VisibleMediaSnapshot,
+    beryl_diagnostic_dynamic_tool_specs, dispatch_beryl_diagnostic_dynamic_tool_call,
+    is_beryl_diagnostic_dynamic_tool, renderer_snapshot_with_shell_window,
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
@@ -318,6 +318,17 @@ fn settings_window_diagnostics_are_content_free_and_dispatchable() {
                     last_render_color_model_lookup_count: 1,
                     dominant_cost_category: "render_tree".to_string(),
                 },
+                theme_editor_model: Some(ThemeEditorModelDiagnostic {
+                    candidate_definition_build_count: 1,
+                    last_candidate_definition_build_micros: 21,
+                    preview_projection_build_count: 1,
+                    last_preview_projection_build_micros: 34,
+                    role_preview_style_build_count: 176,
+                    role_preview_row_count: 176,
+                    selected_property_detail_row_count: 6,
+                    modified_state_recompute_count: 4,
+                    last_modified_state_recompute_micros: 55,
+                }),
             },
             ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
         },
@@ -333,6 +344,14 @@ fn settings_window_diagnostics_are_content_free_and_dispatchable() {
     assert_eq!(
         payload["result"]["performance"]["dominantCostCategory"],
         "render_tree"
+    );
+    assert_eq!(
+        payload["result"]["themeEditorModel"]["rolePreviewRowCount"],
+        176
+    );
+    assert_eq!(
+        payload["result"]["themeEditorModel"]["modifiedStateRecomputeCount"],
+        4
     );
     assert!(!result_text.contains("End-turn sound"));
     assert!(!result_text.contains("developer instructions"));

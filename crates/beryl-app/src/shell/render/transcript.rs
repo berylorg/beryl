@@ -171,9 +171,9 @@ impl TranscriptCodeLayout {
         Self {
             transcript_bordered_panel_columns: code_panel::smart_wrap_columns_for_style(
                 transcript_bordered_panel_width,
-                theme.code_panel_body.font_family(),
-                px(theme.code_panel_body.font_size()),
-                theme.code_panel_body.font_weight(),
+                theme.code_panel_body_text.font_family(),
+                px(theme.code_panel_body_text.font_size()),
+                theme.code_panel_body_text.font_weight(),
                 window,
             ),
             resizable_panel_max_height: transcript_code_panel_max_height(transcript_height),
@@ -1392,7 +1392,10 @@ impl TranscriptPanel {
                         .items_center()
                         .justify_center()
                         .text_sm()
-                        .text_color(theme.quote_popup.foreground())
+                        .font_family(theme.quote_popup_text.font_family().to_string())
+                        .text_size(px(theme.quote_popup_text.font_size()))
+                        .font_weight(theme.quote_popup_text.font_weight())
+                        .text_color(theme.quote_popup_text.foreground())
                         .child("Quote"),
                 )
                 .into_any_element(),
@@ -1473,7 +1476,9 @@ impl TranscriptPanel {
                                                 .items_center()
                                                 .justify_center()
                                                 .text_sm()
-                                                .text_color(theme.media_placeholder.foreground())
+                                                .text_color(
+                                                    theme.media_placeholder_text.foreground(),
+                                                )
                                                 .child(status_text)
                                                 .into_any_element(),
                                         }),
@@ -2712,7 +2717,7 @@ impl Render for TranscriptPanel {
                                 scroll_region = scroll_region.child(
                                     self.render_selected_text_highlights(
                                         entity.clone(),
-                                        theme.selection.background(),
+                                        theme.selection.text_background(),
                                     ),
                                 );
                                 if let Some(quote_popup) =
@@ -2949,7 +2954,7 @@ fn render_turn(
 }
 
 fn transcript_code_panel_button_font_weight(theme: &TranscriptTheme) -> FontWeight {
-    theme.code_panel_body.font_weight()
+    theme.code_panel_body_text.font_weight()
 }
 
 fn transcript_code_panel_max_height(transcript_height: Pixels) -> Pixels {
@@ -2975,11 +2980,11 @@ fn transcript_media_layout(
         window_scale: metrics.window_scale,
         theme: TranscriptMediaTheme {
             placeholder_background: theme.media_placeholder.background(),
-            placeholder_foreground: theme.media_placeholder.foreground(),
+            placeholder_foreground: theme.media_placeholder_text.foreground(),
             loading_background: theme.media_loading.background(),
-            loading_foreground: theme.media_loading.foreground(),
+            loading_foreground: theme.media_loading_text.foreground(),
             unavailable_background: theme.media_unavailable.background(),
-            unavailable_foreground: theme.media_unavailable.foreground(),
+            unavailable_foreground: theme.media_unavailable_text.foreground(),
             border: theme.media_border.border(),
             caption_foreground: theme.media_caption.foreground(),
         },

@@ -56,10 +56,12 @@ struct ChecklistSidebarTheme {
     header: ChecklistRoleStyle,
     row: ChecklistRoleStyle,
     row_hover: ChecklistRoleStyle,
+    row_number_text: ChecklistRoleStyle,
+    row_text: ChecklistRoleStyle,
     row_disabled: ChecklistRoleStyle,
-    status_todo: ChecklistRoleStyle,
-    status_in_progress: ChecklistRoleStyle,
-    status_done: ChecklistRoleStyle,
+    status_todo_text: ChecklistRoleStyle,
+    status_in_progress_text: ChecklistRoleStyle,
+    status_done_text: ChecklistRoleStyle,
     popup: ChecklistRoleStyle,
 }
 
@@ -70,22 +72,24 @@ impl ChecklistSidebarTheme {
             header: checklist_role_style(style, BerylThemeRole::ChecklistHeader),
             row: checklist_role_style(style, BerylThemeRole::ChecklistRow),
             row_hover: checklist_role_style(style, BerylThemeRole::SurfaceRowHover),
+            row_number_text: checklist_role_style(style, BerylThemeRole::ChecklistRowNumberText),
+            row_text: checklist_role_style(style, BerylThemeRole::ChecklistRowText),
             row_disabled: checklist_role_style(style, BerylThemeRole::SurfaceRowDisabled),
-            status_todo: checklist_role_style(style, BerylThemeRole::ChecklistStatusTodo),
-            status_in_progress: checklist_role_style(
+            status_todo_text: checklist_role_style(style, BerylThemeRole::ChecklistStatusTodoText),
+            status_in_progress_text: checklist_role_style(
                 style,
-                BerylThemeRole::ChecklistStatusInProgress,
+                BerylThemeRole::ChecklistStatusInProgressText,
             ),
-            status_done: checklist_role_style(style, BerylThemeRole::ChecklistStatusDone),
+            status_done_text: checklist_role_style(style, BerylThemeRole::ChecklistStatusDoneText),
             popup: checklist_role_style(style, BerylThemeRole::PopupSurface),
         }
     }
 
     fn status(&self, status: Option<ChecklistItemStatus>) -> ChecklistRoleStyle {
         match status.unwrap_or(ChecklistItemStatus::Todo) {
-            ChecklistItemStatus::Todo => self.status_todo,
-            ChecklistItemStatus::InProgress => self.status_in_progress,
-            ChecklistItemStatus::Done => self.status_done,
+            ChecklistItemStatus::Todo => self.status_todo_text,
+            ChecklistItemStatus::InProgress => self.status_in_progress_text,
+            ChecklistItemStatus::Done => self.status_done_text,
         }
     }
 }
@@ -484,7 +488,8 @@ fn render_checklist_item_row(
                     div()
                         .flex_none()
                         .text_sm()
-                        .text_color(theme.row_disabled.foreground)
+                        .font_weight(theme.row_number_text.font_weight)
+                        .text_color(theme.row_number_text.foreground)
                         .child(format!("{}.", row.number)),
                 )
                 .child(
@@ -502,7 +507,8 @@ fn render_checklist_item_row(
                         .text_sm()
                         .overflow_hidden()
                         .whitespace_normal()
-                        .text_color(theme.row.foreground)
+                        .font_weight(theme.row_text.font_weight)
+                        .text_color(theme.row_text.foreground)
                         .child(row.title),
                 ),
         )

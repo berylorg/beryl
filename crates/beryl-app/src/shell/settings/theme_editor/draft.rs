@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use gpui_settings_window::SettingsFieldId;
 
@@ -10,16 +10,68 @@ use crate::{
 
 use super::{
     ThemeEditorDraft,
-    field_ids::{property_field_id, property_source_field_id},
+    field_ids::{
+        ThemeEditorFieldTarget, property_field_id, property_source_field_id,
+        theme_editor_field_target,
+    },
     helpers::{
         PropertySourceChoice, projection_from_definition, property_label, property_value_text,
-        style_value_text, validate_property_value,
+        role_schema, style_value_text, validate_property_value,
     },
 };
 
 impl ThemeEditorDraft {
-    pub(crate) fn preview_definition(&self) -> ThemeDefinition {
-        self.candidate_definition(true).0
+    pub(crate) fn is_modified_from(&self, baseline: &ThemeDefinition) -> bool {
+        if self.definition != *baseline {
+            return true;
+        }
+
+        let mut changed_properties = BTreeSet::new();
+        for field_id in self.values.keys() {
+            match theme_editor_field_target(field_id) {
+                Some(
+                    ThemeEditorFieldTarget::PropertyValue {
+                        role_id,
+                        property_id,
+                    }
+                    | ThemeEditorFieldTarget::PropertySource {
+                        role_id,
+                        property_id,
+                    },
+                ) => {
+                    changed_properties.insert((role_id, property_id));
+                }
+                None => return true,
+            }
+        }
+
+        let mut errors = HashMap::new();
+        for (role_id, property_id) in changed_properties {
+            let Some(kind) = role_schema(&role_id).and_then(|schema| {
+                schema
+                    .properties()
+                    .get(&property_id)
+                    .map(|property| property.kind())
+            }) else {
+                return true;
+            };
+            let candidate =
+                self.candidate_property_source(&role_id, &property_id, kind, false, &mut errors);
+            if !errors.is_empty() {
+                return true;
+            }
+            if candidate != definition_source(baseline, &role_id, &property_id) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub(super) fn effective_static_parent(&self, role_id: &StyleRoleId) -> Option<StyleRoleId> {
+        self.definition_role(role_id)
+            .and_then(|role| role.static_parent().cloned())
+            .or_else(|| role_schema(role_id).and_then(|schema| schema.static_parent().cloned()))
     }
 
     pub(super) fn candidate_definition(
@@ -183,4 +235,17 @@ impl ThemeEditorDraft {
             .and_then(|role| role.properties().get(property_id))
             .cloned()
     }
+}
+
+fn definition_source(
+    definition: &ThemeDefinition,
+    role_id: &StyleRoleId,
+    property_id: &StylePropertyId,
+) -> Option<StylePropertySource> {
+    definition
+        .roles()
+        .iter()
+        .find(|role| role.role_id() == role_id)
+        .and_then(|role| role.properties().get(property_id))
+        .cloned()
 }

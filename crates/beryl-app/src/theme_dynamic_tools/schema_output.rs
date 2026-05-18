@@ -21,7 +21,8 @@ fn theme_schema_value_from_schema(
     limit: usize,
 ) -> Value {
     let filtered = schema.roles().iter().filter(|role| {
-        role_prefix.is_none_or(|prefix| role.role_id().as_str().starts_with(prefix))
+        !role.properties().is_empty()
+            && role_prefix.is_none_or(|prefix| role.role_id().as_str().starts_with(prefix))
     });
     let mut total_count = 0usize;
     let mut roles = Vec::new();

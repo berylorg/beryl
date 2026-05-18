@@ -18,6 +18,8 @@ const TRANSCRIPT_INLINE_MARKDOWN_SOURCE: &str =
     include_str!("../src/shell/render/transcript/inline_markdown.rs");
 const TRANSCRIPT_BLOCK_MARKDOWN_SOURCE: &str =
     include_str!("../src/shell/render/transcript/block_markdown.rs");
+const TRANSCRIPT_TEXT_BLOCKS_SOURCE: &str =
+    include_str!("../src/shell/render/transcript/text_blocks.rs");
 const TRANSCRIPT_MEDIA_BLOCKS_SOURCE: &str =
     include_str!("../src/shell/render/transcript/media_blocks.rs");
 const TRANSCRIPT_TURN_MEDIA_UNITS_SOURCE: &str =
@@ -125,7 +127,8 @@ fn separator_render_snapshot_uses_single_color_property() {
     assert!(SHELL_RENDER_THEME_ROLE_STYLE_SOURCE.contains("BerylThemeProperty::Color"));
     assert!(SHELL_RENDER_THEME_ROLE_STYLE_SOURCE.contains("pub(super) fn style_single_color"));
     assert!(TRANSCRIPT_BLOCK_MARKDOWN_SOURCE.contains(".bg(theme.thematic_break.color())"));
-    assert!(TRANSCRIPT_SOURCE.contains("theme.selection.background()"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.selection.text_background()"));
+    assert!(!TRANSCRIPT_SOURCE.contains("theme.selection.background()"));
     assert!(TRANSCRIPT_THEME_SOURCE.contains("pub(crate) fn color(&self) -> Rgba"));
 }
 
@@ -319,7 +322,7 @@ fn phase6_code_panel_uses_themed_syntax_roles_and_typography() {
         CODE_PANEL_BODY_SOURCE.contains(".font_family(syntax_theme.font_family().to_string())")
     );
     assert!(CODE_PANEL_SOURCE.contains("smart_wrap_columns_for_style"));
-    assert!(TRANSCRIPT_SOURCE.contains("theme.code_panel_body.font_family()"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.code_panel_body_text.font_family()"));
 
     for mapping in SYNTAX_ROLE_MAPPINGS {
         assert!(
@@ -327,6 +330,21 @@ fn phase6_code_panel_uses_themed_syntax_roles_and_typography() {
             "missing syntax role mapping {mapping}"
         );
     }
+}
+
+#[test]
+fn phase52_transcript_code_panel_render_uses_split_surface_and_text_roles() {
+    assert!(TRANSCRIPT_THEME_SOURCE.contains("BerylThemeRole::TranscriptUserInputText"));
+    assert!(TRANSCRIPT_THEME_SOURCE.contains("BerylThemeRole::TranscriptQuotePopupText"));
+    assert!(TRANSCRIPT_THEME_SOURCE.contains("BerylThemeRole::CodePanelHeaderText"));
+    assert!(TRANSCRIPT_THEME_SOURCE.contains("BerylThemeRole::CodePanelBodyText"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.code_panel_body_text.font_family()"));
+    assert!(TRANSCRIPT_SOURCE.contains("theme.quote_popup_text.foreground()"));
+    assert!(TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("theme.code_panel_body.background()"));
+    assert!(TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("theme.code_panel_body_text.foreground()"));
+    assert!(TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("theme.code_panel_header_text.foreground()"));
+    assert!(!TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("theme.code_panel_body.font_family()"));
+    assert!(!TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("theme.code_panel_header.font_weight()"));
 }
 
 const PHASE6_RENDER_SOURCES: &[(&str, &str)] = &[

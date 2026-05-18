@@ -195,7 +195,7 @@ pub(super) fn render_idle_workspace_shell(
                                     div()
                                         .text_lg()
                                         .font_weight(shell.role_font_weight(
-                                            BerylThemeRole::SurfaceRowInfo,
+                                            BerylThemeRole::ControlNoticeTitle,
                                             gpui::FontWeight::SEMIBOLD,
                                         ))
                                         .child("No runtime environment selected"),
@@ -378,7 +378,7 @@ pub(super) fn render_loaded_workspace_shell(
                             div()
                                 .text_lg()
                                 .font_weight(shell.role_font_weight(
-                                    BerylThemeRole::SurfaceRowInfo,
+                                    BerylThemeRole::ControlNoticeTitle,
                                     gpui::FontWeight::SEMIBOLD,
                                 ))
                                 .child("Opening primary workspace member"),
@@ -1283,6 +1283,10 @@ fn render_thread_strip(
                                 .h(px(layout::BUTTON_OUTER_HEIGHT))
                                 .px(px(layout::BUTTON_HORIZONTAL_PADDING))
                                 .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
+                                .bg(shell.role_background(
+                                    BerylThemeRole::MainThreadStripActiveThread,
+                                    gpui::rgba(0x00000000),
+                                ))
                                 .flex()
                                 .items_center()
                                 .when(thread_selector_enabled, |this| {
@@ -1308,11 +1312,14 @@ fn render_thread_strip(
                                             shell.secondary_button_theme().disabled.foreground
                                         } else if surface.thread_selector().is_open() {
                                             shell.role_foreground(
-                                                BerylThemeRole::ThreadSelectorRowSelected,
+                                                BerylThemeRole::MainThreadStripActiveThreadLabel,
                                                 shell.secondary_button_theme().active.foreground,
                                             )
                                         } else {
-                                            shell.general_ui_foreground()
+                                            shell.role_foreground(
+                                                BerylThemeRole::MainThreadStripActiveThreadLabel,
+                                                shell.general_ui_foreground(),
+                                            )
                                         })
                                         .whitespace_nowrap()
                                         .truncate()
@@ -1395,8 +1402,12 @@ fn status_line_cell(
         .w(relative(1.0 / 3.0))
         .min_w(px(0.0))
         .px_4()
+        .bg(shell.role_background(
+            BerylThemeRole::StatusLineCell,
+            shell.status_line_background(),
+        ))
         .border_r_1()
-        .border_color(shell.separator_color())
+        .border_color(shell.role_border(BerylThemeRole::StatusLineCell, shell.separator_color()))
         .flex()
         .items_center()
         .gap_2()
@@ -1404,7 +1415,16 @@ fn status_line_cell(
         .child(
             div()
                 .text_xs()
-                .text_color(shell.status_line_title_foreground())
+                .font_weight(
+                    shell.role_font_weight(
+                        BerylThemeRole::StatusLineLabel,
+                        gpui::FontWeight::NORMAL,
+                    ),
+                )
+                .text_color(shell.role_foreground(
+                    BerylThemeRole::StatusLineLabel,
+                    shell.status_line_title_foreground(),
+                ))
                 .whitespace_nowrap()
                 .child(label),
         )
@@ -1451,6 +1471,9 @@ fn status_line_value(
             .flex_1()
             .min_w(px(0.0))
             .text_xs()
+            .font_weight(
+                shell.role_font_weight(BerylThemeRole::StatusLineValue, gpui::FontWeight::NORMAL),
+            )
             .text_color(value_color)
             .whitespace_nowrap()
             .truncate()
@@ -1466,12 +1489,23 @@ fn status_line_value(
         .overflow_hidden();
     for segment in segments {
         let color = match segment.kind {
-            StatusLineCellValueSegmentKind::Label => shell.status_line_title_foreground(),
+            StatusLineCellValueSegmentKind::Label => shell.role_foreground(
+                BerylThemeRole::StatusLineLabel,
+                shell.status_line_title_foreground(),
+            ),
             StatusLineCellValueSegmentKind::Value => value_color,
         };
+        let font_weight =
+            match segment.kind {
+                StatusLineCellValueSegmentKind::Label => shell
+                    .role_font_weight(BerylThemeRole::StatusLineLabel, gpui::FontWeight::NORMAL),
+                StatusLineCellValueSegmentKind::Value => shell
+                    .role_font_weight(BerylThemeRole::StatusLineValue, gpui::FontWeight::NORMAL),
+            };
         value = value.child(
             div()
                 .text_xs()
+                .font_weight(font_weight)
                 .text_color(color)
                 .whitespace_nowrap()
                 .flex_none()
@@ -1720,9 +1754,15 @@ fn render_tool_activity_panel(
         .w_full()
         .h(panel_height)
         .min_h(panel_height)
-        .bg(shell.status_line_background())
+        .bg(shell.role_background(
+            BerylThemeRole::ActivityPanel,
+            shell.status_line_background(),
+        ))
         .border_t_1()
-        .border_color(shell.separator_color())
+        .border_color(shell.role_color(
+            BerylThemeRole::ActivityResizeHandle,
+            shell.separator_color(),
+        ))
         .overflow_hidden()
         .on_mouse_move(cx.listener(ShellView::note_tool_activity_scrollbar_motion))
         .on_scroll_wheel(cx.listener(ShellView::note_tool_activity_scrollbar_scroll))
@@ -1804,7 +1844,10 @@ fn render_tool_activity_resize_handle(
                 .left_0()
                 .right_0()
                 .h(px(1.0))
-                .bg(shell.separator_color()),
+                .bg(shell.role_color(
+                    BerylThemeRole::ActivityResizeHandle,
+                    shell.separator_color(),
+                )),
         )
 }
 
@@ -1821,8 +1864,9 @@ fn render_tool_activity_row(
         .min_h(px(layout::TOOL_ACTIVITY_ROW_HEIGHT))
         .w_full()
         .px_4()
+        .bg(shell.role_background(BerylThemeRole::ActivityRow, shell.status_line_background()))
         .border_b_1()
-        .border_color(shell.separator_color())
+        .border_color(shell.role_border(BerylThemeRole::ActivityRow, shell.separator_color()))
         .flex()
         .items_center()
         .gap_2()
@@ -1834,7 +1878,13 @@ fn render_tool_activity_row(
                 .max_w(relative(0.35))
                 .min_w(px(0.0))
                 .text_xs()
-                .text_color(shell.status_line_value_foreground())
+                .font_weight(
+                    shell.role_font_weight(BerylThemeRole::ActivityValue, gpui::FontWeight::NORMAL),
+                )
+                .text_color(shell.role_foreground(
+                    BerylThemeRole::ActivityValue,
+                    shell.status_line_value_foreground(),
+                ))
                 .whitespace_nowrap()
                 .truncate()
                 .child(agent_label),
@@ -1845,7 +1895,13 @@ fn render_tool_activity_row(
                 .flex_1()
                 .min_w(px(0.0))
                 .text_xs()
-                .text_color(shell.status_line_value_foreground())
+                .font_weight(
+                    shell.role_font_weight(BerylThemeRole::ActivityValue, gpui::FontWeight::NORMAL),
+                )
+                .text_color(shell.role_foreground(
+                    BerylThemeRole::ActivityValue,
+                    shell.status_line_value_foreground(),
+                ))
                 .whitespace_nowrap()
                 .truncate()
                 .child(tool_display_value),
@@ -1855,7 +1911,13 @@ fn render_tool_activity_row(
 fn tool_activity_label(shell: &ShellRenderFrame<'_>, label: &'static str) -> impl IntoElement {
     div()
         .text_xs()
-        .text_color(shell.status_line_title_foreground())
+        .font_weight(
+            shell.role_font_weight(BerylThemeRole::ActivityLabel, gpui::FontWeight::NORMAL),
+        )
+        .text_color(shell.role_foreground(
+            BerylThemeRole::ActivityLabel,
+            shell.status_line_title_foreground(),
+        ))
         .whitespace_nowrap()
         .child(label)
 }
@@ -1865,16 +1927,16 @@ fn tool_activity_status_disc(
     status: ToolActivityRowStatus,
 ) -> impl IntoElement {
     let color = match status {
-        ToolActivityRowStatus::Running => shell.role_border(
-            BerylThemeRole::StatusValueWorking,
+        ToolActivityRowStatus::Running => shell.role_color(
+            BerylThemeRole::ActivityIndicatorRunning,
             shell.status_line_value_foreground(),
         ),
-        ToolActivityRowStatus::FinishedOk => shell.role_border(
-            BerylThemeRole::StatusValueOk,
+        ToolActivityRowStatus::FinishedOk => shell.role_color(
+            BerylThemeRole::ActivityIndicatorOk,
             shell.status_line_value_foreground(),
         ),
-        ToolActivityRowStatus::FinishedError => shell.role_border(
-            BerylThemeRole::StatusValueError,
+        ToolActivityRowStatus::FinishedError => shell.role_color(
+            BerylThemeRole::ActivityIndicatorError,
             shell.status_line_value_foreground(),
         ),
     };

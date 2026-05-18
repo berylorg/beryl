@@ -55,6 +55,7 @@ impl ChromeButtonStateTheme {
 pub(super) fn button_theme_from_styles(
     styles: &HashMap<crate::BerylThemeRole, ShellRoleStyle>,
     normal: crate::BerylThemeRole,
+    label: crate::BerylThemeRole,
     hover: crate::BerylThemeRole,
     active: crate::BerylThemeRole,
     disabled: crate::BerylThemeRole,
@@ -62,7 +63,7 @@ pub(super) fn button_theme_from_styles(
 ) -> ChromeButtonTheme {
     ChromeButtonTheme {
         font_weight: styles
-            .get(&normal)
+            .get(&label)
             .and_then(|style| style.font_weight)
             .unwrap_or(fallback.font_weight),
         normal: button_state_from_styles(styles, normal, fallback.normal),
