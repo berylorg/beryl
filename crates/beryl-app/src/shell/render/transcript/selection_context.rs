@@ -1,4 +1,4 @@
-use std::{cell::Cell, cell::RefCell, ops::Range, rc::Rc, sync::Arc};
+use std::{cell::Cell, cell::RefCell, collections::HashMap, ops::Range, rc::Rc, sync::Arc};
 
 use gpui::Entity;
 
@@ -9,7 +9,7 @@ use crate::shell::transcript_selection::{
     transcript_context_line_break_before,
 };
 
-use super::super::code_panel::{CodePanelSelectableLine, CodePanelSelection};
+use super::super::code_panel::{CodePanelSelectableLine, CodePanelSelection, SelectedTextStyle};
 use super::TranscriptPanel;
 use super::markdown_copy::code_block_copy_group;
 
@@ -19,11 +19,41 @@ pub(super) struct TranscriptInlineSelectionContext {
     row_identity: String,
     block_path: String,
     line_prefix: String,
+    selection_render: Option<TranscriptTextSelectionRenderState>,
     next_order: Rc<Cell<usize>>,
     next_line_index: Rc<Cell<usize>>,
     next_break_before: Rc<Cell<usize>>,
     pending_start_prefix: Rc<RefCell<Option<String>>>,
     copy_group: Option<TranscriptLineCopyGroup>,
+}
+
+#[derive(Clone)]
+pub(super) struct TranscriptTextSelectionRenderState {
+    selected_ranges: Rc<HashMap<TranscriptTextLineKey, Range<usize>>>,
+    style: SelectedTextStyle,
+}
+
+impl TranscriptTextSelectionRenderState {
+    pub(super) fn new(
+        selected_ranges: HashMap<TranscriptTextLineKey, Range<usize>>,
+        style: SelectedTextStyle,
+    ) -> Self {
+        Self {
+            selected_ranges: Rc::new(selected_ranges),
+            style,
+        }
+    }
+
+    fn selected_text_for_key(
+        &self,
+        key: &TranscriptTextLineKey,
+    ) -> Option<(Range<usize>, SelectedTextStyle)> {
+        self.selected_ranges
+            .get(key)
+            .filter(|range| range.start < range.end)
+            .cloned()
+            .map(|range| (range, self.style))
+    }
 }
 
 impl TranscriptInlineSelectionContext {
@@ -33,12 +63,14 @@ impl TranscriptInlineSelectionContext {
         block_path: impl Into<String>,
         next_order: Rc<Cell<usize>>,
         initial_break_before: usize,
+        selection_render: Option<TranscriptTextSelectionRenderState>,
     ) -> Self {
         Self {
             entity,
             row_identity: row_identity.into(),
             block_path: block_path.into(),
             line_prefix: String::new(),
+            selection_render,
             next_order,
             next_line_index: Rc::new(Cell::new(0)),
             next_break_before: Rc::new(Cell::new(initial_break_before)),
@@ -53,6 +85,7 @@ impl TranscriptInlineSelectionContext {
             row_identity: self.row_identity.clone(),
             block_path: self.block_path.clone(),
             line_prefix: self.line_prefix.clone(),
+            selection_render: self.selection_render.clone(),
             next_order: self.next_order.clone(),
             next_line_index: self.next_line_index.clone(),
             next_break_before: self.next_break_before.clone(),
@@ -67,6 +100,7 @@ impl TranscriptInlineSelectionContext {
             row_identity: self.row_identity.clone(),
             block_path: self.block_path.clone(),
             line_prefix: format!("{}{}", self.line_prefix, prefix.as_ref()),
+            selection_render: self.selection_render.clone(),
             next_order: self.next_order.clone(),
             next_line_index: self.next_line_index.clone(),
             next_break_before: self.next_break_before.clone(),
@@ -81,6 +115,7 @@ impl TranscriptInlineSelectionContext {
             row_identity: self.row_identity.clone(),
             block_path: self.block_path.clone(),
             line_prefix: self.line_prefix.clone(),
+            selection_render: self.selection_render.clone(),
             next_order: self.next_order.clone(),
             next_line_index: self.next_line_index.clone(),
             next_break_before: self.next_break_before.clone(),
@@ -117,16 +152,15 @@ impl TranscriptInlineSelectionContext {
         code: &BlockRenderCode,
     ) -> CodePanelSelection {
         let context = self.clone();
+        let range_context = self.clone();
         let copy_group =
             code_block_copy_group(format!("{}:code:{structural_path}", self.block_path), code);
         let reserved_line_base = Rc::new(Cell::new(None::<usize>));
+        let range_line_base = reserved_line_base.clone();
         CodePanelSelection {
             line_prepaint_action: Arc::new(move |line: CodePanelSelectableLine| {
-                let line_base = reserved_line_base.get().unwrap_or_else(|| {
-                    let line_base = context.reserve_line_indices(line.display_line_count);
-                    reserved_line_base.set(Some(line_base));
-                    line_base
-                });
+                let line_base = context
+                    .reserve_code_panel_line_base(&reserved_line_base, line.display_line_count);
                 let line_index = line_base.saturating_add(line.display_line_index);
                 let copy_text = TranscriptLineCopyText::plain(line.raw_text.clone())
                     .with_group(copy_group.clone());
@@ -142,6 +176,16 @@ impl TranscriptInlineSelectionContext {
                         view.register_selectable_text_line(selectable_line.clone(), bounds, layout);
                     });
                 })
+            }),
+            selected_text_style: self.selection_render.as_ref().map(|state| state.style),
+            selected_range_for_line: Arc::new(move |line: &CodePanelSelectableLine| {
+                let line_base = range_context
+                    .reserve_code_panel_line_base(&range_line_base, line.display_line_count);
+                let line_index = line_base.saturating_add(line.display_line_index);
+                let key = range_context.text_line_key(line_index);
+                range_context
+                    .selected_text_for_key(&key)
+                    .map(|(range, _)| range)
             }),
         }
     }
@@ -205,11 +249,7 @@ impl TranscriptInlineSelectionContext {
 
         TranscriptSelectableTextLine {
             entity: self.entity.clone(),
-            key: TranscriptTextLineKey::new(
-                self.row_identity.clone(),
-                self.block_path.clone(),
-                line_index,
-            ),
+            key: self.text_line_key(line_index),
             order,
             display_text,
             copy_text,
@@ -217,6 +257,42 @@ impl TranscriptInlineSelectionContext {
             display_text_len,
             image_markers: Vec::new(),
         }
+    }
+
+    pub(super) fn selected_text_for_line(
+        &self,
+        line: &TranscriptSelectableTextLine,
+    ) -> Option<(Range<usize>, SelectedTextStyle)> {
+        self.selected_text_for_key(&line.key)
+    }
+
+    fn selected_text_for_key(
+        &self,
+        key: &TranscriptTextLineKey,
+    ) -> Option<(Range<usize>, SelectedTextStyle)> {
+        self.selection_render
+            .as_ref()
+            .and_then(|selection| selection.selected_text_for_key(key))
+    }
+
+    fn reserve_code_panel_line_base(
+        &self,
+        reserved_line_base: &Rc<Cell<Option<usize>>>,
+        display_line_count: usize,
+    ) -> usize {
+        reserved_line_base.get().unwrap_or_else(|| {
+            let line_base = self.reserve_line_indices(display_line_count);
+            reserved_line_base.set(Some(line_base));
+            line_base
+        })
+    }
+
+    fn text_line_key(&self, line_index: usize) -> TranscriptTextLineKey {
+        TranscriptTextLineKey::new(
+            self.row_identity.clone(),
+            self.block_path.clone(),
+            line_index,
+        )
     }
 }
 

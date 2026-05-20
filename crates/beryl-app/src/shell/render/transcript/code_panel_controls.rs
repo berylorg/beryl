@@ -26,7 +26,8 @@ use super::super::{
     scrollbars::ScrollbarVisibilityState,
 };
 use super::{
-    TRANSCRIPT_CODE_PANEL_MIN_HEIGHT, TranscriptCodeLayout, TranscriptFrameProfile, TranscriptPanel,
+    TRANSCRIPT_CODE_PANEL_MIN_HEIGHT, TranscriptCodeLayout, TranscriptFrameProfile,
+    TranscriptPanel, selection_context::TranscriptTextSelectionRenderState,
 };
 
 #[derive(Clone)]
@@ -41,6 +42,7 @@ pub(super) struct TranscriptCodePanelState {
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     rendered_panel_ids: Rc<RefCell<HashSet<String>>>,
+    selection_render: Option<TranscriptTextSelectionRenderState>,
     button_font_weight: FontWeight,
     profiler: Option<Rc<TranscriptFrameProfile>>,
 }
@@ -69,6 +71,7 @@ impl TranscriptCodePanelState {
         syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
         display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
         rendered_panel_ids: Rc<RefCell<HashSet<String>>>,
+        selection_render: Option<TranscriptTextSelectionRenderState>,
         button_font_weight: FontWeight,
         profiler: Option<Rc<TranscriptFrameProfile>>,
     ) -> Self {
@@ -83,6 +86,7 @@ impl TranscriptCodePanelState {
             syntax_highlight_cache,
             display_projection_cache,
             rendered_panel_ids,
+            selection_render,
             button_font_weight,
             profiler,
         }
@@ -90,6 +94,10 @@ impl TranscriptCodePanelState {
 
     pub(super) fn entity(&self) -> Entity<TranscriptPanel> {
         self.entity.clone()
+    }
+
+    pub(super) fn selection_render(&self) -> Option<TranscriptTextSelectionRenderState> {
+        self.selection_render.clone()
     }
 
     pub(super) fn controls_for(

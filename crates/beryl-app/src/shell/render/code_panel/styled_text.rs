@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use gpui::{Font, FontStyle, FontWeight, Rgba, SharedString, TextRun};
 
 use crate::shell::syntax_highlighting::SyntaxTokenRole;
@@ -15,6 +17,12 @@ pub(crate) struct CodePanelSyntaxTheme {
     font_family: String,
     font_size: f32,
     font_weight: FontWeight,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SelectedTextStyle {
+    pub(crate) foreground: Rgba,
+    pub(crate) background: Rgba,
 }
 
 impl CodePanelSyntaxTheme {
@@ -78,6 +86,7 @@ pub(crate) fn code_panel_styled_text_parts(
     display_text: &str,
     syntax_spans: &[CodePanelDisplaySpan],
     syntax_theme: &CodePanelSyntaxTheme,
+    selected_text: Option<(Range<usize>, SelectedTextStyle)>,
 ) -> (String, Vec<TextRun>) {
     let layout_text = if display_text.is_empty() {
         " ".to_string()
@@ -92,7 +101,7 @@ pub(crate) fn code_panel_styled_text_parts(
             syntax_theme.plain_foreground(),
             syntax_theme,
         ));
-        return (layout_text, runs);
+        return (layout_text, apply_selected_text_style(runs, selected_text));
     }
 
     let mut sorted_spans: Vec<_> = syntax_spans.iter().collect();
@@ -141,7 +150,54 @@ pub(crate) fn code_panel_styled_text_parts(
         ));
     }
 
-    (layout_text, runs)
+    (layout_text, apply_selected_text_style(runs, selected_text))
+}
+
+pub(crate) fn apply_selected_text_style(
+    runs: Vec<TextRun>,
+    selected_text: Option<(Range<usize>, SelectedTextStyle)>,
+) -> Vec<TextRun> {
+    let Some((selected_range, style)) = selected_text else {
+        return runs;
+    };
+    if selected_range.start >= selected_range.end {
+        return runs;
+    }
+
+    let mut styled = Vec::with_capacity(runs.len().saturating_add(2));
+    let mut cursor = 0usize;
+    for run in runs {
+        let run_start = cursor;
+        let run_end = run_start.saturating_add(run.len);
+        cursor = run_end;
+
+        let selected_start = selected_range.start.max(run_start);
+        let selected_end = selected_range.end.min(run_end);
+        if selected_start >= selected_end {
+            styled.push(run);
+            continue;
+        }
+
+        if run_start < selected_start {
+            let mut prefix = run.clone();
+            prefix.len = selected_start - run_start;
+            styled.push(prefix);
+        }
+
+        let mut selected = run.clone();
+        selected.len = selected_end - selected_start;
+        selected.color = style.foreground.into();
+        selected.background_color = Some(style.background.into());
+        styled.push(selected);
+
+        if selected_end < run_end {
+            let mut suffix = run;
+            suffix.len = run_end - selected_end;
+            styled.push(suffix);
+        }
+    }
+
+    styled
 }
 
 fn code_panel_text_run(

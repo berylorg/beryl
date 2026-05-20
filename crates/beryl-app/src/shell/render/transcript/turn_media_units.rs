@@ -76,6 +76,7 @@ pub(super) fn flush_media_run(
         format!("media-run:{block_index}"),
         selection_order,
         transcript_narrative_block_break_before(block_index),
+        media_context.selection_render(),
     );
     narrative_blocks.push(render_media_run(
         items.as_slice(),

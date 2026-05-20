@@ -340,6 +340,7 @@ fn render_item_markdown_source(
         block_path.clone(),
         selection_order,
         initial_break_before,
+        code_panel_state.selection_render(),
     );
 
     render_markdown_plan_with_style_and_selection(

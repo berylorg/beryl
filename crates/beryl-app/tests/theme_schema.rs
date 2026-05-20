@@ -647,12 +647,17 @@ fn built_in_active_projection_resolves_all_inventory_roles() {
 }
 
 #[test]
-fn transcript_selection_projection_resolves_text_background_only() {
+fn transcript_selection_projection_resolves_foreground_and_text_background_only() {
     let projection = ActiveThemeProjection::built_in();
     let style = projection
         .default_style(BerylThemeRole::TranscriptSelection.id())
         .expect("transcript.selection should have a built-in default style");
 
+    assert!(
+        style
+            .property(&BerylThemeProperty::Foreground.id().into())
+            .is_some()
+    );
     assert!(
         style
             .property(&BerylThemeProperty::TextBackground.id().into())
@@ -2249,11 +2254,13 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::ScrollbarThumbHover
         | BerylThemeRole::ScrollbarThumbDragging
         | BerylThemeRole::FocusRing => property_set(&[BerylThemeProperty::Color]),
-        BerylThemeRole::InputSelection
-        | BerylThemeRole::TranscriptSelection
-        | BerylThemeRole::SettingsInputSelection => {
+        BerylThemeRole::InputSelection | BerylThemeRole::SettingsInputSelection => {
             property_set(&[BerylThemeProperty::TextBackground])
         }
+        BerylThemeRole::TranscriptSelection => property_set(&[
+            BerylThemeProperty::Foreground,
+            BerylThemeProperty::TextBackground,
+        ]),
         BerylThemeRole::MediaBorder | BerylThemeRole::SettingsInputError => {
             property_set(&[BerylThemeProperty::Border])
         }

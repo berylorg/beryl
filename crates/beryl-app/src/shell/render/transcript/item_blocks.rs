@@ -111,6 +111,7 @@ pub(super) fn render_agent_message(
         format!("item:{}:agent-message", item.id),
         selection_order,
         initial_break_before,
+        code_panel_state.selection_render(),
     );
 
     Some(render_markdown_plan_with_style_and_selection(
@@ -259,6 +260,7 @@ fn markdown_reasoning_blocks(
                 block_path.clone(),
                 selection_order.clone(),
                 initial_break_before,
+                code_panel_state.selection_render(),
             );
             Some(render_markdown_plan_with_style_and_selection(
                 markdown.render_plan(),

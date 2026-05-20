@@ -169,22 +169,28 @@ fn render_code_panel_line(
     selection: Option<CodePanelSelection>,
 ) -> AnyElement {
     let display_text_len = line.display_text.len();
+    let selectable_line = CodePanelSelectableLine {
+        display_line_index,
+        display_line_count,
+        raw_text: line.raw_text,
+        break_before: line.break_before,
+        display_text_len,
+    };
+    let selected_text = selection.as_ref().and_then(|selection| {
+        let style = selection.selected_text_style?;
+        let range = (selection.selected_range_for_line)(&selectable_line)?;
+        Some((range, style))
+    });
     let (layout_text, runs) = code_panel_styled_text_parts(
         line.display_text.as_str(),
         syntax_spans.as_slice(),
         syntax_theme,
+        selected_text,
     );
     let styled_text = StyledText::new(layout_text).with_runs(runs);
     let text_layout = styled_text.layout().clone();
-    let prepaint_action = selection.map(|selection| {
-        (selection.line_prepaint_action)(CodePanelSelectableLine {
-            display_line_index,
-            display_line_count,
-            raw_text: line.raw_text,
-            break_before: line.break_before,
-            display_text_len,
-        })
-    });
+    let prepaint_action =
+        selection.map(|selection| (selection.line_prepaint_action)(selectable_line));
 
     let line = div()
         .w_full()

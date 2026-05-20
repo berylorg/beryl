@@ -20,7 +20,7 @@ use crate::shell::transcript_media::{
 
 use super::{
     TranscriptFrameProfile, TranscriptImageMenuRenderState, TranscriptMediaPromotionState,
-    TranscriptPanel,
+    TranscriptPanel, selection_context::TranscriptTextSelectionRenderState,
 };
 
 #[derive(Clone)]
@@ -29,6 +29,7 @@ pub(super) struct TranscriptMediaRenderContext {
     events: Rc<RefCell<MediaDiagnosticLog>>,
     visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     panel: Entity<TranscriptPanel>,
+    selection_render: Option<TranscriptTextSelectionRenderState>,
     connector: Option<ManagedBackendClientConnector>,
     timeout: Duration,
     row_identity: Option<String>,
@@ -43,6 +44,7 @@ impl TranscriptMediaRenderContext {
         events: Rc<RefCell<MediaDiagnosticLog>>,
         visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
         panel: Entity<TranscriptPanel>,
+        selection_render: Option<TranscriptTextSelectionRenderState>,
         connector: Option<ManagedBackendClientConnector>,
         timeout: Duration,
         promotion: TranscriptMediaPromotionState,
@@ -53,6 +55,7 @@ impl TranscriptMediaRenderContext {
             events,
             visible_media,
             panel,
+            selection_render,
             connector,
             timeout,
             row_identity: None,
@@ -128,6 +131,10 @@ impl TranscriptMediaRenderContext {
 
     pub(super) fn panel(&self) -> Entity<TranscriptPanel> {
         self.panel.clone()
+    }
+
+    pub(super) fn selection_render(&self) -> Option<TranscriptTextSelectionRenderState> {
+        self.selection_render.clone()
     }
 
     pub(super) fn promotion(&self) -> TranscriptMediaPromotionState {

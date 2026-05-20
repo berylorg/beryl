@@ -224,7 +224,7 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::MarkdownThematicBreak
         | BerylThemeRole::CodePanelResizeHandle
         | BerylThemeRole::ScrollbarThumbNormal => COLOR_PROPERTIES,
-        BerylThemeRole::TranscriptSelection => TEXT_BACKGROUND_PROPERTIES,
+        BerylThemeRole::TranscriptSelection => FOREGROUND_TEXT_BACKGROUND_PROPERTIES,
         BerylThemeRole::TranscriptQuotePopup
         | BerylThemeRole::TranscriptPending
         | BerylThemeRole::TranscriptUnavailable => SURFACE_PROPERTIES,

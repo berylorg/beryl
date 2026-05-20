@@ -1,6 +1,7 @@
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
+    ops::Range,
     sync::Arc,
 };
 
@@ -34,7 +35,11 @@ pub(crate) use scrolling::{
     ScrollbarAxes, code_panel_offset_after_scroll_delta, code_panel_scroll_overflow,
     code_panel_stops_scroll_wheel_propagation,
 };
-pub(crate) use styled_text::{CodePanelSyntaxTheme, code_panel_styled_text_parts};
+#[allow(unused_imports)]
+pub(crate) use styled_text::apply_selected_text_style;
+pub(crate) use styled_text::{
+    CodePanelSyntaxTheme, SelectedTextStyle, code_panel_styled_text_parts,
+};
 #[allow(unused_imports)]
 pub(crate) use syntax_projection::{
     CodePanelDisplaySpan, CodePanelDisplaySyntaxSpans, code_panel_display_line_syntax_spans,
@@ -133,6 +138,8 @@ pub(crate) struct CodePanelResize {
 #[derive(Clone)]
 pub(crate) struct CodePanelSelection {
     pub line_prepaint_action: Arc<dyn Fn(CodePanelSelectableLine) -> CodePanelLinePrepaintAction>,
+    pub selected_text_style: Option<SelectedTextStyle>,
+    pub selected_range_for_line: Arc<dyn Fn(&CodePanelSelectableLine) -> Option<Range<usize>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

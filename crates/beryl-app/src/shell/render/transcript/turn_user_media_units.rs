@@ -155,6 +155,7 @@ fn render_user_prompt_markdown_source(
         block_path.clone(),
         selection_order,
         initial_break_before,
+        code_panel_state.selection_render(),
     );
     markdown_prose_block_with_selection(
         "",
@@ -202,6 +203,7 @@ fn render_user_prompt(
         block_path.clone(),
         selection_order,
         initial_break_before,
+        code_panel_state.selection_render(),
     );
     let image_markers = fragment
         .image_markers()

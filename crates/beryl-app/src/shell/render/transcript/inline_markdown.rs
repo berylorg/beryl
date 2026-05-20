@@ -14,6 +14,7 @@ use crate::shell::transcript_markdown::{
 };
 use crate::shell::transcript_selection::TranscriptLineCopyText;
 
+use super::super::code_panel::{SelectedTextStyle, apply_selected_text_style};
 use super::markdown_copy::inline_line_copy_text;
 pub(super) use super::selection_context::{
     TranscriptInlineSelectionContext, TranscriptSelectableImageMarker, TranscriptSelectableTextLine,
@@ -228,10 +229,6 @@ fn render_inline_line(
     let line_markers = line_image_markers(line, markers);
     let display_text = inline_line_display_text(line, line_markers.as_slice());
     let display_text_len = display_text.len();
-    let (layout_text, runs) =
-        styled_text_parts(line, line_markers.as_slice(), theme, block_role, style);
-    let styled_text = StyledText::new(layout_text).with_runs(runs);
-    let text_layout = styled_text.layout().clone();
     let selectable_line = selection_context.as_ref().map(|context| {
         context
             .selectable_line(
@@ -241,6 +238,21 @@ fn render_inline_line(
             )
             .with_image_markers(line_markers.clone())
     });
+    let selected_text = selectable_line.as_ref().and_then(|line| {
+        selection_context
+            .as_ref()
+            .and_then(|context| context.selected_text_for_line(line))
+    });
+    let (layout_text, runs) = styled_text_parts(
+        line,
+        line_markers.as_slice(),
+        theme,
+        block_role,
+        style,
+        selected_text,
+    );
+    let styled_text = StyledText::new(layout_text).with_runs(runs);
+    let text_layout = styled_text.layout().clone();
 
     let line = div()
         .w_full()
@@ -299,18 +311,20 @@ fn styled_text_parts(
     theme: &TranscriptTheme,
     block_role: InlineBlockRole,
     style: InlineMarkdownStyle,
+    selected_text: Option<(Range<usize>, SelectedTextStyle)>,
 ) -> (String, Vec<TextRun>) {
     if line.fragments.is_empty() {
+        let runs = vec![text_run(
+            " ".len(),
+            block_presentation_role(block_role),
+            block_role_settings(theme, block_role, style),
+            theme,
+            false,
+            false,
+        )];
         return (
             " ".to_string(),
-            vec![text_run(
-                " ".len(),
-                block_presentation_role(block_role),
-                block_role_settings(theme, block_role, style),
-                theme,
-                false,
-                false,
-            )],
+            apply_selected_text_style(runs, selected_text),
         );
     }
 
@@ -332,7 +346,7 @@ fn styled_text_parts(
         display_cursor += fragment.text.len();
     }
 
-    (text, runs)
+    (text, apply_selected_text_style(runs, selected_text))
 }
 
 fn fragment_text_runs(

@@ -111,12 +111,18 @@ fn styled_line_parts_for_highlight(
         display_lines[0].display_text.as_str(),
         spans[0].as_slice(),
         &theme,
+        None,
     )
 }
 
 fn assert_run(run: &TextRun, len: usize, color: Rgba) {
     assert_eq!(run.len, len);
     assert_eq!(run.color, color.into());
+}
+
+fn assert_selected_run(run: &TextRun, len: usize, color: Rgba, background: Rgba) {
+    assert_run(run, len, color);
+    assert_eq!(run.background_color, Some(background.into()));
 }
 
 #[test]
@@ -153,6 +159,34 @@ fn unstyled_ranges_fall_back_to_plain_code_appearance() {
     assert_run(&runs[1], 4, rgb(0x606060));
     assert_run(&runs[2], 1, rgb(0x202020));
     assert_run(&runs[3], 6, rgb(0x101010));
+}
+
+#[test]
+fn selected_code_panel_ranges_override_token_foregrounds() {
+    let display_lines =
+        code_panel::code_panel_display_lines("# heading", CodePanelWrapMode::NoWrap);
+    let highlight = highlight_syntax("# heading", Some("markdown"));
+    let spans =
+        code_panel::code_panel_display_line_syntax_spans(&display_lines, highlight.tokens());
+
+    let (text, runs) = code_panel::code_panel_styled_text_parts(
+        display_lines[0].display_text.as_str(),
+        spans[0].as_slice(),
+        &theme(),
+        Some((
+            2.."# heading".len(),
+            code_panel::SelectedTextStyle {
+                foreground: rgb(0xaaaaaa),
+                background: rgb(0x173a5e),
+            },
+        )),
+    );
+
+    assert_eq!(text, "# heading");
+    assert_eq!(runs.len(), 3);
+    assert_run(&runs[0], 1, rgb(0x303030));
+    assert_run(&runs[1], 1, rgb(0x101010));
+    assert_selected_run(&runs[2], 7, rgb(0xaaaaaa), rgb(0x173a5e));
 }
 
 #[test]

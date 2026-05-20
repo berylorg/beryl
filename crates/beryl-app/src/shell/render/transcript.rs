@@ -39,7 +39,7 @@ use gpui::{
     Focusable, Font, FontStyle, FontWeight, Image, KeyBinding, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Pixels, Render, ScrollHandle,
     ScrollWheelEvent, SharedString, Task, TextLayout, TextRun, WeakEntity, Window, anchored,
-    canvas, div, fill, img, point, prelude::*, px,
+    canvas, div, img, point, prelude::*, px,
 };
 use tracing::{Level, debug};
 
@@ -85,6 +85,7 @@ use self::inline_markdown::{TranscriptSelectableImageMarker, TranscriptSelectabl
 use self::media_blocks::{TranscriptMediaRenderLayout, TranscriptMediaTheme};
 use self::media_cache::TranscriptMediaRenderContext;
 use self::nested_scroll::TranscriptNestedScrollOwnership;
+use self::selection_context::TranscriptTextSelectionRenderState;
 use self::selection_highlight::wrapped_line_selection_highlight_bounds;
 use self::stream_projection::{TranscriptStreamProjection, TranscriptStreamProjectionContext};
 pub(crate) use self::theme::{
@@ -1281,38 +1282,6 @@ impl TranscriptPanel {
             .cloned()
     }
 
-    fn selected_text_highlight_bounds(&self) -> Vec<Bounds<Pixels>> {
-        self.text_selection
-            .selected_line_ranges(&self.visible_text_frame)
-            .into_iter()
-            .flat_map(|range| {
-                self.highlight_bounds_for_range(&range.key, range.start, range.end)
-                    .into_iter()
-            })
-            .collect()
-    }
-
-    fn render_selected_text_highlights(
-        &self,
-        entity: Entity<TranscriptPanel>,
-        color: gpui::Rgba,
-    ) -> AnyElement {
-        canvas(
-            |_, _, _| (),
-            move |_, _, window, cx| {
-                let highlights = entity.update(cx, |view, _| view.selected_text_highlight_bounds());
-                for bounds in highlights {
-                    window.paint_quad(fill(bounds, color).corner_radii(px(2.0)));
-                }
-            },
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .into_any_element()
-    }
-
     fn selected_text_bounds(&self) -> Option<Bounds<Pixels>> {
         transcript_quote_popup::selection_bounds_union(
             self.text_selection
@@ -1323,6 +1292,30 @@ impl TranscriptPanel {
                         .into_iter()
                 }),
         )
+    }
+
+    fn text_selection_render_state(
+        &self,
+        theme: &TranscriptTheme,
+    ) -> Option<TranscriptTextSelectionRenderState> {
+        let selected_ranges = self
+            .text_selection
+            .selected_line_ranges(&self.visible_text_frame)
+            .into_iter()
+            .filter(|range| range.start < range.end)
+            .map(|range| (range.key, range.start..range.end))
+            .collect::<HashMap<_, _>>();
+        if selected_ranges.is_empty() {
+            return None;
+        }
+
+        Some(TranscriptTextSelectionRenderState::new(
+            selected_ranges,
+            code_panel::SelectedTextStyle {
+                foreground: theme.selection.foreground(),
+                background: theme.selection.text_background(),
+            },
+        ))
     }
 
     fn render_quote_popup(
@@ -2039,11 +2032,14 @@ impl Render for TranscriptPanel {
         );
         let markdown_context =
             TranscriptMarkdownRenderContext::new(self.markdown_cache.clone(), entity.clone());
+        let theme = snapshot.theme.clone();
+        let selection_render = self.text_selection_render_state(theme.as_ref());
         let media_context = TranscriptMediaRenderContext::new(
             self.media_cache.clone(),
             self.media_events.clone(),
             self.visible_media.clone(),
             entity.clone(),
+            selection_render.clone(),
             shell.read(cx).backend_client_connector(),
             Duration::from_secs(5),
             media_promotion_state.clone(),
@@ -2188,7 +2184,6 @@ impl Render for TranscriptPanel {
             .layout_bounds
             .map(|bounds| bounds.size.height)
             .unwrap_or_else(|| px(TRANSCRIPT_CODE_PANEL_DEFAULT_MAX_HEIGHT));
-        let theme = snapshot.theme.clone();
         let code_layout = TranscriptCodeLayout::for_transcript_size(
             snapshot.transcript_width,
             transcript_panel_height,
@@ -2687,6 +2682,7 @@ impl Render for TranscriptPanel {
                                                         media_layout,
                                                         selection_order,
                                                         narrative_copy_block_count,
+                                                        selection_render.clone(),
                                                         show_activity_caret,
                                                         dimmed_for_edit,
                                                         activity_caret_opacity,
@@ -2714,12 +2710,6 @@ impl Render for TranscriptPanel {
                                 let bounds = transcript_list_state.viewport_bounds();
                                 let max_offset = transcript_list_state.max_offset_for_scrollbar();
                                 let offset = transcript_list_state.scroll_px_offset_for_scrollbar();
-                                scroll_region = scroll_region.child(
-                                    self.render_selected_text_highlights(
-                                        entity.clone(),
-                                        theme.selection.text_background(),
-                                    ),
-                                );
                                 if let Some(quote_popup) =
                                     self.render_quote_popup(bounds, entity.clone(), theme.as_ref())
                                 {
@@ -2864,6 +2854,7 @@ fn render_turn(
     media_layout: TranscriptMediaRenderLayout,
     selection_order: Rc<Cell<usize>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
+    selection_render: Option<TranscriptTextSelectionRenderState>,
     show_activity_caret: bool,
     dimmed_for_edit: bool,
     activity_caret_opacity: f32,
@@ -2935,6 +2926,7 @@ fn render_turn(
             syntax_highlight_cache,
             code_panel_projection_cache,
             rendered_code_panel_ids,
+            selection_render,
             transcript_code_panel_button_font_weight(theme.as_ref()),
             profiler.clone(),
         ),
