@@ -26,8 +26,8 @@ use super::{
     graph::{GraphMutationCommitUpdate, GraphMutationFailureUpdate, GraphMutationUpdate},
     graph::{GraphOptimisticMutation, OptimisticGraphMutationId},
     graph_node_action_policy::graph_node_delete_blocked_by_graph_work,
-    resolve_new_thread_execution_target,
     semantic_thread_start::{SemanticThreadStartSource, start_semantic_backend_thread},
+    workspace_members::resolve_new_thread_execution_target,
 };
 
 const UNTITLED_THREAD_LABEL: &str = "Untitled thread";

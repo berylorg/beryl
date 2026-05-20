@@ -20,8 +20,8 @@ use beryl_backend::{
     TurnStartOptions, list_wsl_distros,
 };
 use beryl_model::conversation::{
-    ConversationThreadId, ConversationThreadTokenUsageSnapshot, RegisteredConversationThread,
-    WorkspaceConversationState,
+    ConversationThreadId, ConversationThreadTokenUsageSnapshot, PrimaryWorkspaceMember,
+    RegisteredConversationThread, WorkspaceConversationState,
 };
 use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId, ThreadRefId};
 use beryl_model::workspace::{
@@ -589,7 +589,7 @@ use workspace_members::{
     WorkspaceMemberAttachRequest, apply_primary_execution_target_selection,
     apply_workspace_member_attachment, apply_workspace_member_detach,
     apply_workspace_member_primary_selection, reconcile_workspace_member_availability,
-    resolve_new_thread_execution_target, resolve_workspace_member_attach_request,
+    resolve_workspace_member_attach_request,
 };
 use workspace_persistence_worker::{
     WorkspacePersistenceFlush, WorkspacePersistenceQueue, spawn_workspace_persistence_worker,
@@ -11771,16 +11771,13 @@ impl ShellView {
                 let workspace = if selected_thread_id.is_some() {
                     ready.execution_target.clone()
                 } else {
-                    match resolve_new_thread_execution_target(
-                        &ready.loaded_workspace.workspace_state,
-                        &ready.execution_target,
-                    ) {
+                    match Self::cached_new_thread_execution_target(&ready.loaded_workspace) {
                         Ok(execution_target) => execution_target,
-                        Err(error) => {
+                        Err(block) => {
                             if let Some(surface) = self.conversation_surface_mut() {
                                 surface.set_notice(SurfaceNotice::new(
                                     "New thread unavailable",
-                                    error.to_string(),
+                                    block.message,
                                 ));
                                 cx.notify();
                             }
@@ -11822,16 +11819,13 @@ impl ShellView {
                     )
                     .unwrap_or_else(|| unavailable.execution_target.clone())
                 } else {
-                    match resolve_new_thread_execution_target(
-                        &unavailable.loaded_workspace.workspace_state,
-                        &unavailable.execution_target,
-                    ) {
+                    match Self::cached_new_thread_execution_target(&unavailable.loaded_workspace) {
                         Ok(execution_target) => execution_target,
-                        Err(error) => {
+                        Err(block) => {
                             if let Some(surface) = self.conversation_surface_mut() {
                                 surface.set_notice(SurfaceNotice::new(
                                     "New thread unavailable",
-                                    error.to_string(),
+                                    block.message,
                                 ));
                                 cx.notify();
                             }
@@ -12612,22 +12606,12 @@ impl ShellView {
 
     fn current_new_thread_target(&self) -> Result<WorkspaceId, BackendOperationBlock> {
         match &self.state {
-            ShellState::Ready(ready) => resolve_new_thread_execution_target(
-                &ready.loaded_workspace.workspace_state,
-                &ready.execution_target,
-            )
-            .map_err(|error| BackendOperationBlock {
-                kind: "not_ready",
-                message: error.to_string(),
-            }),
-            ShellState::BackendUnavailable(unavailable) => resolve_new_thread_execution_target(
-                &unavailable.loaded_workspace.workspace_state,
-                &unavailable.execution_target,
-            )
-            .map_err(|error| BackendOperationBlock {
-                kind: "not_ready",
-                message: error.to_string(),
-            }),
+            ShellState::Ready(ready) => {
+                Self::cached_new_thread_execution_target(&ready.loaded_workspace)
+            }
+            ShellState::BackendUnavailable(unavailable) => {
+                Self::cached_new_thread_execution_target(&unavailable.loaded_workspace)
+            }
             ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
             | ShellState::Blocked(_)
@@ -12636,6 +12620,64 @@ impl ShellView {
             | ShellState::Opening(_) => Err(BackendOperationBlock {
                 kind: "not_ready",
                 message: "Beryl is not on a ready conversation surface.".to_string(),
+            }),
+        }
+    }
+
+    fn cached_new_thread_execution_target(
+        loaded: &LoadedWorkspaceState,
+    ) -> Result<WorkspaceId, BackendOperationBlock> {
+        let Some(primary_member) = loaded.workspace_state.primary_member() else {
+            return Err(BackendOperationBlock {
+                kind: "not_ready",
+                message: "select a runtime environment before starting a new thread".to_string(),
+            });
+        };
+
+        match primary_member {
+            PrimaryWorkspaceMember::Explicit(member) => Ok(member.execution_target()),
+            PrimaryWorkspaceMember::ImplicitHome(runtime) => {
+                Self::cached_implicit_home_execution_target(loaded, runtime)
+            }
+        }
+    }
+
+    fn cached_implicit_home_execution_target(
+        loaded: &LoadedWorkspaceState,
+        runtime: &RuntimeMode,
+    ) -> Result<WorkspaceId, BackendOperationBlock> {
+        let Some(resolution) = loaded.implicit_home_path_resolution.as_ref() else {
+            return Err(BackendOperationBlock {
+                kind: "not_ready",
+                message:
+                    "Beryl is still resolving the implicit home member for this runtime environment."
+                        .to_string(),
+            });
+        };
+        if &resolution.runtime != runtime {
+            return Err(BackendOperationBlock {
+                kind: "not_ready",
+                message:
+                    "Beryl is still resolving the implicit home member for this runtime environment."
+                        .to_string(),
+            });
+        }
+
+        match &resolution.status {
+            ImplicitHomePathResolutionStatus::Resolved(path) => {
+                Ok(WorkspaceId::from_parts(runtime.clone(), path.clone()))
+            }
+            ImplicitHomePathResolutionStatus::Pending => Err(BackendOperationBlock {
+                kind: "not_ready",
+                message:
+                    "Beryl is still resolving the implicit home member for this runtime environment."
+                        .to_string(),
+            }),
+            ImplicitHomePathResolutionStatus::Failed(error) => Err(BackendOperationBlock {
+                kind: "not_ready",
+                message: format!(
+                    "Beryl could not resolve the implicit home member before starting a new thread: {error}"
+                ),
             }),
         }
     }

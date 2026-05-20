@@ -314,6 +314,29 @@ fn backend_unavailable_workspace_surface_disables_backend_controls() {
 }
 
 #[test]
+fn new_thread_control_state_uses_cached_workspace_target() {
+    let shell_source = include_str!("../src/shell.rs");
+    let current_new_thread_target_body =
+        rust_function_body(shell_source, "fn current_new_thread_target");
+    let cached_target_body =
+        rust_function_body(shell_source, "fn cached_new_thread_execution_target");
+    let cached_implicit_home_body =
+        rust_function_body(shell_source, "fn cached_implicit_home_execution_target");
+
+    assert!(!shell_source.contains("resolve_new_thread_execution_target"));
+    assert!(current_new_thread_target_body.contains("cached_new_thread_execution_target"));
+    assert!(!current_new_thread_target_body.contains("resolve_new_thread_execution_target"));
+    assert!(cached_target_body.contains("PrimaryWorkspaceMember::Explicit"));
+    assert!(cached_target_body.contains("PrimaryWorkspaceMember::ImplicitHome"));
+    assert!(cached_implicit_home_body.contains("ImplicitHomePathResolutionStatus::Resolved"));
+    assert!(cached_implicit_home_body.contains("ImplicitHomePathResolutionStatus::Pending"));
+    assert!(cached_implicit_home_body.contains("ImplicitHomePathResolutionStatus::Failed"));
+    assert!(!cached_implicit_home_body.contains("resolve_runtime_home_directory"));
+    assert!(!cached_implicit_home_body.contains("canonicalize_wsl"));
+    assert!(!cached_implicit_home_body.contains("wsl.exe"));
+}
+
+#[test]
 fn backend_unavailable_commands_gate_before_mutating_drafts_or_threads() {
     let shell_source = include_str!("../src/shell.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
