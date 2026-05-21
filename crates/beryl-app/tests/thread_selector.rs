@@ -167,7 +167,7 @@ fn thread_selector_open_preselects_active_thread_path_for_multiple_members() {
     );
     assert_eq!(
         selector.columns()[1].root_key(),
-        &ThreadSelectorColumnKey::root_threads(second_key)
+        &ThreadSelectorColumnKey::root_threads(second_key.clone())
     );
     assert_eq!(
         selector.columns()[1].selection(),
@@ -176,7 +176,7 @@ fn thread_selector_open_preselects_active_thread_path_for_multiple_members() {
 }
 
 #[test]
-fn thread_selector_reconcile_preselects_active_thread_when_refresh_adds_it() {
+fn thread_selector_keeps_open_projection_frozen_when_refresh_adds_active_thread() {
     let (workspace_id, workspace_state, _, second) = workspace_with_two_members();
     let active_thread_id = ConversationThreadId::new("thread_second");
     let initial_snapshot = build_member_thread_inventory_snapshot(
@@ -201,13 +201,24 @@ fn thread_selector_reconcile_preselects_active_thread_when_refresh_adds_it() {
     selector.open(&initial_snapshot, Some(active_thread_id.clone()));
     selector.reconcile_snapshot(&refreshed_snapshot);
 
+    assert_eq!(selector.columns().len(), 1);
+    assert_eq!(
+        selector.columns()[0].root_key(),
+        &ThreadSelectorColumnKey::Members
+    );
+    assert_eq!(selector.columns()[0].selection(), None);
+    assert!(selector.selected_activation_target().is_none());
+
+    selector.close();
+    selector.open(&refreshed_snapshot, Some(active_thread_id.clone()));
+
     assert_eq!(
         selector.columns()[0].selection(),
         Some(&ThreadSelectorSelection::Member(second_key.clone()))
     );
     assert_eq!(
         selector.columns()[1].root_key(),
-        &ThreadSelectorColumnKey::root_threads(second_key)
+        &ThreadSelectorColumnKey::root_threads(second_key.clone())
     );
     assert_eq!(
         selector.columns()[1].selection(),
@@ -293,6 +304,7 @@ fn thread_selector_render_source_splits_row_surface_and_text_roles() {
     assert!(render_source.contains("BerylThemeRole::ThreadSelectorColumnHeaderText"));
     assert!(render_source.contains("shell.role_background("));
     assert!(render_source.contains("shell.role_foreground("));
+    assert!(render_source.matches(".snapshot()").count() >= 3);
 }
 
 #[test]
@@ -344,6 +356,7 @@ fn thread_selector_close_drops_runtime_projection_until_reopen() {
 
     selector.open(&snapshot, Some(thread_id.clone()));
     assert!(selector.is_open());
+    assert_eq!(selector.snapshot(), Some(&snapshot));
     assert!(!selector.columns().is_empty());
     assert!(
         selector
@@ -355,6 +368,7 @@ fn thread_selector_close_drops_runtime_projection_until_reopen() {
     selector.close();
 
     assert!(!selector.is_open());
+    assert!(selector.snapshot().is_none());
     assert!(selector.columns().is_empty());
     assert!(
         selector
@@ -373,6 +387,64 @@ fn thread_selector_close_drops_runtime_projection_until_reopen() {
             .is_some()
     );
     assert!(selector.selected_activation_target().is_some());
+}
+
+#[test]
+fn thread_selector_open_snapshot_remains_frozen_until_reopen() {
+    let (workspace_id, workspace_state, first) = workspace_with_single_member();
+    let initial_snapshot = build_member_thread_inventory_snapshot(
+        workspace_id.clone(),
+        &workspace_state,
+        empty_groups_for_workspace_state(&workspace_state),
+        vec![summary_with_updated(
+            "thread_initial",
+            first.canonical_path(),
+            10,
+        )],
+        50,
+    );
+    let refreshed_snapshot = build_member_thread_inventory_snapshot(
+        workspace_id,
+        &workspace_state,
+        empty_groups_for_workspace_state(&workspace_state),
+        vec![summary_with_updated(
+            "thread_refreshed",
+            first.canonical_path(),
+            20,
+        )],
+        60,
+    );
+    let mut selector = ThreadSelectorState::default();
+
+    selector.open(&initial_snapshot, None);
+    selector.reconcile_snapshot(&refreshed_snapshot);
+
+    assert_eq!(selector.snapshot(), Some(&initial_snapshot));
+    assert_eq!(
+        selector.projection().row_ids_for_column(
+            selector
+                .columns()
+                .first()
+                .expect("root column should be open")
+                .root_key()
+        ),
+        &[ConversationThreadId::new("thread_initial")]
+    );
+
+    selector.close();
+    selector.open(&refreshed_snapshot, None);
+
+    assert_eq!(selector.snapshot(), Some(&refreshed_snapshot));
+    assert_eq!(
+        selector.projection().row_ids_for_column(
+            selector
+                .columns()
+                .first()
+                .expect("root column should reopen")
+                .root_key()
+        ),
+        &[ConversationThreadId::new("thread_refreshed")]
+    );
 }
 
 #[test]
@@ -407,7 +479,7 @@ fn thread_selector_uses_stale_snapshot_while_inventory_refresh_is_pending_or_fai
 }
 
 #[test]
-fn thread_selector_reconciles_columns_when_a_refreshed_snapshot_drops_a_member() {
+fn thread_selector_open_columns_stay_frozen_when_refresh_drops_a_member() {
     let (workspace_id, workspace_state, _, second) = workspace_with_two_members();
     let initial_snapshot = build_member_thread_inventory_snapshot(
         workspace_id.clone(),
@@ -428,7 +500,7 @@ fn thread_selector_reconciles_columns_when_a_refreshed_snapshot_drops_a_member()
     selector.select_member(0, second_key.clone());
     assert_eq!(
         selector.columns()[1].root_key(),
-        &ThreadSelectorColumnKey::root_threads(second_key)
+        &ThreadSelectorColumnKey::root_threads(second_key.clone())
     );
 
     let mut reduced_state = WorkspaceConversationState::default();
@@ -445,6 +517,15 @@ fn thread_selector_reconciles_columns_when_a_refreshed_snapshot_drops_a_member()
 
     selector.reconcile_snapshot(&reduced_snapshot);
 
+    assert_eq!(selector.columns().len(), 2);
+    assert_eq!(
+        selector.columns()[1].root_key(),
+        &ThreadSelectorColumnKey::root_threads(second_key)
+    );
+
+    selector.close();
+    selector.open(&reduced_snapshot, None);
+
     assert_eq!(selector.columns().len(), 1);
     assert_eq!(
         selector.columns()[0].root_key(),
@@ -453,7 +534,7 @@ fn thread_selector_reconciles_columns_when_a_refreshed_snapshot_drops_a_member()
 }
 
 #[test]
-fn thread_selector_drops_activation_target_when_refresh_removes_selected_thread() {
+fn thread_selector_keeps_activation_target_until_reopen_when_refresh_removes_selected_thread() {
     let (workspace_id, workspace_state, first) = workspace_with_single_member();
     let thread_id = ConversationThreadId::new("thread_a");
     let initial_snapshot = build_member_thread_inventory_snapshot(
@@ -473,10 +554,15 @@ fn thread_selector_drops_activation_target_when_refresh_removes_selected_thread(
     let mut selector = ThreadSelectorState::default();
 
     selector.open(&initial_snapshot, None);
-    selector.select_thread(0, thread_id);
+    selector.select_thread(0, thread_id.clone());
     assert!(selector.selected_activation_target().is_some());
 
     selector.reconcile_snapshot(&refreshed_snapshot);
+
+    assert!(selector.selected_activation_target().is_some());
+
+    selector.close();
+    selector.open(&refreshed_snapshot, Some(thread_id));
 
     assert!(selector.selected_activation_target().is_none());
 }
@@ -561,7 +647,18 @@ fn thread_selector_activation_label_reflects_live_backend_name_update() {
     assert_eq!(
         selector
             .selected_activation_target()
-            .expect("updated thread should remain selected")
+            .expect("open selector should keep its frozen title")
+            .label,
+        "Generated title"
+    );
+
+    selector.close();
+    selector.open(&snapshot, Some(thread_id.clone()));
+
+    assert_eq!(
+        selector
+            .selected_activation_target()
+            .expect("next open should use the refreshed title")
             .label,
         "Backend title"
     );
@@ -1395,7 +1492,7 @@ fn thread_selector_projection_handles_large_broad_and_deep_inventory() {
 }
 
 #[test]
-fn thread_selector_reconcile_prunes_invalid_fork_path_without_substitution() {
+fn thread_selector_open_fork_path_stays_frozen_when_refresh_invalidates_it() {
     let (workspace_id, workspace_state, first) = workspace_with_single_member();
     let parent_id = ConversationThreadId::new("thread_parent");
     let child_id = ConversationThreadId::new("thread_child");
@@ -1432,10 +1529,23 @@ fn thread_selector_reconcile_prunes_invalid_fork_path_without_substitution() {
 
     let mut selector = ThreadSelectorState::default();
     selector.open(&initial_snapshot, None);
-    selector.select_thread(0, parent_id);
-    selector.select_thread(1, child_id);
+    selector.select_thread(0, parent_id.clone());
+    selector.select_thread(1, child_id.clone());
 
     selector.reconcile_snapshot(&refreshed_snapshot);
+
+    assert_eq!(selector.columns().len(), 2);
+    assert_eq!(
+        selector.columns()[0].selection(),
+        Some(&ThreadSelectorSelection::Thread(parent_id.clone()))
+    );
+    assert_eq!(
+        selector.columns()[1].selection(),
+        Some(&ThreadSelectorSelection::Thread(child_id.clone()))
+    );
+
+    selector.close();
+    selector.open(&refreshed_snapshot, None);
 
     assert_eq!(selector.columns().len(), 1);
     assert_eq!(selector.columns()[0].selection(), None);

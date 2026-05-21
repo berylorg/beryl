@@ -2,6 +2,8 @@ use std::{cell::Cell, cell::RefCell, collections::HashMap, ops::Range, rc::Rc, s
 
 use gpui::Entity;
 
+use beryl_model::conversation::ConversationThreadId;
+
 use crate::shell::execution_detail::TranscriptImagePreviewState;
 use crate::shell::transcript_markdown::BlockRenderCode;
 use crate::shell::transcript_selection::{
@@ -256,6 +258,7 @@ impl TranscriptInlineSelectionContext {
             break_before,
             display_text_len,
             image_markers: Vec::new(),
+            thread_links: Vec::new(),
         }
     }
 
@@ -306,6 +309,7 @@ pub(super) struct TranscriptSelectableTextLine {
     pub(super) break_before: usize,
     pub(super) display_text_len: usize,
     pub(super) image_markers: Vec<TranscriptSelectableImageMarker>,
+    pub(super) thread_links: Vec<TranscriptSelectableThreadLink>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -319,12 +323,26 @@ pub(super) struct TranscriptSelectableImageMarker {
     pub(super) preview_state: TranscriptImagePreviewState,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TranscriptSelectableThreadLink {
+    pub(super) thread_id: ConversationThreadId,
+    pub(super) display_range: Range<usize>,
+}
+
 impl TranscriptSelectableTextLine {
     pub(super) fn with_image_markers(
         mut self,
         image_markers: Vec<TranscriptSelectableImageMarker>,
     ) -> Self {
         self.image_markers = image_markers;
+        self
+    }
+
+    pub(super) fn with_thread_links(
+        mut self,
+        thread_links: Vec<TranscriptSelectableThreadLink>,
+    ) -> Self {
+        self.thread_links = thread_links;
         self
     }
 }

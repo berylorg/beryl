@@ -1,16 +1,42 @@
 use beryl_model::conversation::ConversationThreadId;
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::{
-    ChecklistItemStatus, SemanticGraph, SemanticGraphPatch, SemanticGraphPatchOp,
-    SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId, SoftLinkDraft, SoftLinkId, SoftLinkKind,
-    ThreadRefDraft, ThreadRefId,
+    ChecklistItemKind, ChecklistItemStatus, SemanticGraph, SemanticGraphPatch,
+    SemanticGraphPatchOp, SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId, SoftLinkDraft,
+    SoftLinkId, SoftLinkKind, ThreadRefDraft, ThreadRefId,
 };
 use beryl_model::workspace::WorkspaceId;
 
 #[test]
 fn checklist_item_facets_require_topic() {
-    assert!(SemanticNodeFacets::new(false, false, true).is_err());
-    assert!(SemanticNodeFacets::new(false, false, false).is_err());
+    assert!(SemanticNodeFacets::new(false, true).is_err());
+    assert!(SemanticNodeFacets::new(false, false).is_err());
+}
+
+#[test]
+fn serialized_checklist_container_facet_is_rejected() {
+    let root_id = SemanticNodeId::new("root").unwrap();
+    let mut graph = SemanticGraph::default();
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: topic_node(root_id.clone(), "Root"),
+                provenance: provenance(1),
+            },
+            set_root_op(&root_id, None, 2),
+        ]))
+        .unwrap();
+
+    let mut value = serde_json::to_value(&graph).unwrap();
+    value["nodes"]
+        .as_object_mut()
+        .unwrap()
+        .get_mut(root_id.as_str())
+        .unwrap()["facets"]["checklist"] = serde_json::json!(true);
+
+    let error = serde_json::from_value::<SemanticGraph>(value).unwrap_err();
+
+    assert!(error.to_string().contains("unknown field `checklist`"));
 }
 
 #[test]
@@ -30,16 +56,11 @@ fn invalid_patch_rolls_back_without_partial_graph_changes() {
                 node: checklist_item_node(item_id.clone(), "Item", ChecklistItemStatus::Todo),
                 provenance: provenance(3),
             },
-            SemanticGraphPatchOp::SetHardParent {
-                child_id: item_id.clone(),
-                parent_id: Some(root_id),
-                index: None,
-                provenance: provenance(4),
-            },
+            set_root_op(&item_id, None, 4),
         ]))
         .unwrap_err();
 
-    assert!(error.to_string().contains("checklist parent"));
+    assert!(error.to_string().contains("topic-capable parent"));
     assert!(graph.node(&item_id).is_none());
     assert!(graph.root_node_ids().is_empty());
 }
@@ -47,6 +68,7 @@ fn invalid_patch_rolls_back_without_partial_graph_changes() {
 #[test]
 fn checklist_children_keep_order_and_status() {
     let list_id = SemanticNodeId::new("list").unwrap();
+    let topic_child_id = SemanticNodeId::new("topic_child").unwrap();
     let first_id = SemanticNodeId::new("first").unwrap();
     let second_id = SemanticNodeId::new("second").unwrap();
     let mut graph = SemanticGraph::default();
@@ -70,28 +92,183 @@ fn checklist_children_keep_order_and_status() {
                 ),
                 provenance: provenance(4),
             },
+            SemanticGraphPatchOp::UpsertNode {
+                node: topic_node(topic_child_id.clone(), "Topic child"),
+                provenance: provenance(5),
+            },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: first_id.clone(),
                 parent_id: Some(list_id.clone()),
                 index: None,
-                provenance: provenance(5),
+                provenance: provenance(6),
             },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: second_id.clone(),
                 parent_id: Some(list_id.clone()),
                 index: Some(0),
-                provenance: provenance(6),
+                provenance: provenance(7),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: topic_child_id.clone(),
+                parent_id: Some(list_id.clone()),
+                index: Some(1),
+                provenance: provenance(8),
             },
         ]))
         .unwrap();
 
     let ordered_children = graph.child_ids_of(&list_id).unwrap();
-    assert_eq!(ordered_children, &[second_id.clone(), first_id.clone()]);
+    assert_eq!(
+        ordered_children,
+        &[second_id.clone(), topic_child_id.clone(), first_id.clone()]
+    );
+    assert_eq!(
+        graph
+            .checklist_item_children_of(&list_id)
+            .into_iter()
+            .map(|node| node.id().clone())
+            .collect::<Vec<_>>(),
+        vec![second_id.clone(), first_id.clone()]
+    );
     assert_eq!(graph.root_node_ids(), &[list_id]);
     assert_eq!(
         graph.node(&second_id).unwrap().checklist_item_status(),
         Some(ChecklistItemStatus::InProgress)
     );
+    assert_eq!(
+        graph.node(&second_id).unwrap().checklist_item_kind(),
+        Some(ChecklistItemKind::Generic)
+    );
+}
+
+#[test]
+fn checklist_item_kind_can_be_set_for_decision_items() {
+    let list_id = SemanticNodeId::new("list").unwrap();
+    let item_id = SemanticNodeId::new("item").unwrap();
+    let mut graph = checklist_graph(&list_id, &item_id, ChecklistItemStatus::Todo);
+
+    graph
+        .apply_patch(&SemanticGraphPatch::from_operation(
+            SemanticGraphPatchOp::SetChecklistItemKind {
+                node_id: item_id.clone(),
+                kind: ChecklistItemKind::Decision,
+                provenance: provenance(10),
+            },
+        ))
+        .unwrap();
+
+    assert_eq!(
+        graph.node(&item_id).unwrap().checklist_item_kind(),
+        Some(ChecklistItemKind::Decision)
+    );
+}
+
+#[test]
+fn legacy_checklist_items_missing_kind_read_as_generic() {
+    let list_id = SemanticNodeId::new("list").unwrap();
+    let item_id = SemanticNodeId::new("item").unwrap();
+    let graph = checklist_graph(&list_id, &item_id, ChecklistItemStatus::Todo);
+    let mut value = serde_json::to_value(&graph).unwrap();
+    value["nodes"]
+        .as_object_mut()
+        .unwrap()
+        .get_mut(item_id.as_str())
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("checklist_item_kind");
+
+    let legacy_graph: SemanticGraph = serde_json::from_value(value).unwrap();
+
+    assert_eq!(
+        legacy_graph.node(&item_id).unwrap().checklist_item_kind(),
+        Some(ChecklistItemKind::Generic)
+    );
+}
+
+#[test]
+fn non_checklist_nodes_reject_checklist_item_kind() {
+    let node_id = SemanticNodeId::new("topic").unwrap();
+    let mut graph = SemanticGraph::default();
+
+    let error = graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: SemanticNodeDraft::new_with_checklist_item_kind(
+                    node_id.clone(),
+                    "Topic",
+                    "Topic summary",
+                    SemanticNodeFacets::topic(),
+                    None,
+                    Some(ChecklistItemKind::Generic),
+                ),
+                provenance: provenance(1),
+            },
+            set_root_op(&node_id, None, 2),
+        ]))
+        .unwrap_err();
+
+    assert!(error.to_string().contains("checklist-item kind"));
+    assert!(graph.node(&node_id).is_none());
+}
+
+#[test]
+fn protected_decision_items_reject_generic_field_mutations_but_allow_noops() {
+    let list_id = SemanticNodeId::new("list").unwrap();
+    let item_id = SemanticNodeId::new("item").unwrap();
+    let mut graph = checklist_graph(&list_id, &item_id, ChecklistItemStatus::Done);
+    graph
+        .apply_patch(&SemanticGraphPatch::from_operation(
+            SemanticGraphPatchOp::SetChecklistItemKind {
+                node_id: item_id.clone(),
+                kind: ChecklistItemKind::Decision,
+                provenance: provenance(10),
+            },
+        ))
+        .unwrap();
+
+    let repeat_kind =
+        SemanticGraphPatch::from_operation(SemanticGraphPatchOp::SetChecklistItemKind {
+            node_id: item_id.clone(),
+            kind: ChecklistItemKind::Decision,
+            provenance: provenance(11),
+        });
+    let status_change =
+        SemanticGraphPatch::from_operation(SemanticGraphPatchOp::SetChecklistItemStatus {
+            node_id: item_id.clone(),
+            status: ChecklistItemStatus::InProgress,
+            provenance: provenance(12),
+        });
+    let downgrade = SemanticGraphPatch::from_operation(SemanticGraphPatchOp::UpsertNode {
+        node: SemanticNodeDraft::new_with_checklist_item_kind(
+            item_id.clone(),
+            "Item",
+            "Item summary",
+            SemanticNodeFacets::topic_and_checklist_item(),
+            Some(ChecklistItemStatus::Done),
+            Some(ChecklistItemKind::Generic),
+        ),
+        provenance: provenance(13),
+    });
+
+    graph
+        .ensure_patch_respects_protected_decision_items(&repeat_kind, [&item_id])
+        .unwrap();
+    let status_error = graph
+        .ensure_patch_respects_protected_decision_items(&status_change, [&item_id])
+        .unwrap_err();
+    let kind_error = graph
+        .ensure_patch_respects_protected_decision_items(&downgrade, [&item_id])
+        .unwrap_err();
+
+    assert!(matches!(
+        status_error,
+        beryl_model::semantic_graph::SemanticGraphError::ProtectedDecisionItemMutation { .. }
+    ));
+    assert!(matches!(
+        kind_error,
+        beryl_model::semantic_graph::SemanticGraphError::ProtectedDecisionItemMutation { .. }
+    ));
 }
 
 #[test]
@@ -512,6 +689,63 @@ fn existing_checklist_item_cannot_be_moved_to_root_and_rolls_back() {
 }
 
 #[test]
+fn checklist_item_can_parent_nested_checklist_items() {
+    let topic_id = SemanticNodeId::new("topic").unwrap();
+    let parent_item_id = SemanticNodeId::new("parent_item").unwrap();
+    let child_item_id = SemanticNodeId::new("child_item").unwrap();
+    let mut graph = SemanticGraph::default();
+
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: topic_node(topic_id.clone(), "Topic"),
+                provenance: provenance(1),
+            },
+            set_root_op(&topic_id, None, 2),
+            SemanticGraphPatchOp::UpsertNode {
+                node: checklist_item_node(
+                    parent_item_id.clone(),
+                    "Parent item",
+                    ChecklistItemStatus::InProgress,
+                ),
+                provenance: provenance(3),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: parent_item_id.clone(),
+                parent_id: Some(topic_id.clone()),
+                index: None,
+                provenance: provenance(4),
+            },
+            SemanticGraphPatchOp::UpsertNode {
+                node: checklist_item_node(
+                    child_item_id.clone(),
+                    "Child item",
+                    ChecklistItemStatus::Todo,
+                ),
+                provenance: provenance(5),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: child_item_id.clone(),
+                parent_id: Some(parent_item_id.clone()),
+                index: None,
+                provenance: provenance(6),
+            },
+        ]))
+        .unwrap();
+
+    assert_eq!(graph.parent_id_of(&parent_item_id), Some(&topic_id));
+    assert_eq!(graph.parent_id_of(&child_item_id), Some(&parent_item_id));
+    assert_eq!(
+        graph
+            .checklist_item_children_of(&parent_item_id)
+            .into_iter()
+            .map(|node| node.id().clone())
+            .collect::<Vec<_>>(),
+        vec![child_item_id]
+    );
+}
+
+#[test]
 fn updating_existing_node_refreshes_last_updated_provenance() {
     let node_id = SemanticNodeId::new("topic").unwrap();
     let mut graph = SemanticGraph::default();
@@ -752,6 +986,34 @@ fn thread_ref_scope_treats_same_path_in_different_runtimes_as_distinct() {
     assert!(!thread_ref.execution_target_in_scope([&wsl_target]));
 }
 
+fn checklist_graph(
+    list_id: &SemanticNodeId,
+    item_id: &SemanticNodeId,
+    status: ChecklistItemStatus,
+) -> SemanticGraph {
+    let mut graph = SemanticGraph::default();
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: checklist_node(list_id.clone(), "List"),
+                provenance: provenance(1),
+            },
+            set_root_op(list_id, None, 2),
+            SemanticGraphPatchOp::UpsertNode {
+                node: checklist_item_node(item_id.clone(), "Item", status),
+                provenance: provenance(3),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: item_id.clone(),
+                parent_id: Some(list_id.clone()),
+                index: None,
+                provenance: provenance(4),
+            },
+        ]))
+        .unwrap();
+    graph
+}
+
 fn provenance(recorded_at_millis: u64) -> MutationProvenance {
     MutationProvenance::new(
         "operator",
@@ -777,7 +1039,7 @@ fn checklist_node(node_id: SemanticNodeId, title: &str) -> SemanticNodeDraft {
         node_id,
         title,
         format!("{title} summary"),
-        SemanticNodeFacets::topic_and_checklist(),
+        SemanticNodeFacets::topic(),
         None,
     )
 }

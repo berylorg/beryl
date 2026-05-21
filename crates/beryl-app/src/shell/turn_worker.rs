@@ -29,7 +29,10 @@ use tracing::{debug, warn};
 use super::execution_detail::{TranscriptImagePathResolver, UserInputFragment};
 use super::graph::GraphMutationUpdate;
 use super::thread_activation::{ExistingThreadActivationError, activate_existing_thread_direct};
-use super::thread_title::ThreadTitleCandidate;
+use super::thread_title::{ThreadTitleCandidate, TurnThreadTitleMode};
+use super::transcript_branch_core::{
+    ForegroundTranscriptBranchPublication, ForegroundTranscriptBranchStart,
+};
 use super::transcript_history::TranscriptHistoryWindow;
 use super::transcript_image_sources::transcript_image_path_resolver_for_turns;
 use crate::memory_diagnostics::MemoryMilestone;
@@ -39,6 +42,7 @@ use crate::{
     diagnostic_bridge_unavailable_response, dispatch_beryl_dynamic_tool_call_with_metadata,
     is_beryl_diagnostic_child_dynamic_tool, is_beryl_diagnostic_dynamic_tool,
     is_beryl_settings_dynamic_tool, is_beryl_theme_dynamic_tool,
+    is_beryl_threaded_decision_dynamic_tool,
 };
 use approval::deny_backend_approval_request;
 use lifecycle_yield::ActiveTurnLifecycleYieldCapture;
@@ -49,8 +53,8 @@ pub(crate) use thread_start::ThreadActivationBackend;
 pub(crate) use thread_start::activate_thread;
 use title::automatic_thread_title_candidate;
 
-const TURN_STREAM_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(10);
-const POST_COMPLETION_GRACE: Duration = Duration::from_millis(500);
+pub(super) const TURN_STREAM_IDLE_POLL_INTERVAL: Duration = Duration::from_secs(10);
+pub(super) const POST_COMPLETION_GRACE: Duration = Duration::from_millis(500);
 const TURN_WORKER_UPDATE_QUEUE_CAPACITY: usize = 1024;
 const DYNAMIC_TOOL_SHELL_REQUEST_QUEUE_CAPACITY: usize = 8;
 const DYNAMIC_TOOL_SHELL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -105,7 +109,10 @@ pub(super) enum TurnWorkerUpdate {
     ThreadTitleEligible {
         execution_target: WorkspaceId,
         candidate: ThreadTitleCandidate,
+        title_mode: TurnThreadTitleMode,
     },
+    ForegroundTranscriptBranchStarted(ForegroundTranscriptBranchStart),
+    ForegroundTranscriptBranchPublicationFinished(ForegroundTranscriptBranchPublication),
     GraphMutationFinished(GraphMutationUpdate),
     LifecycleYieldAccepted(AcceptedLifecycleYield),
     Event(TurnStreamEvent),
@@ -341,7 +348,7 @@ pub(super) fn spawn_turn_worker(
     beryl_workspace_id: BerylWorkspaceId,
     workspace: WorkspaceId,
     selected_thread_id: Option<String>,
-    automatic_title_generation_allowed: bool,
+    title_mode: TurnThreadTitleMode,
     user_input_fragments: Vec<UserInputFragment>,
     turn_options: TurnStartOptions,
     shell_tool_sender: Option<ShellDynamicToolRequestSender>,
@@ -355,7 +362,7 @@ pub(super) fn spawn_turn_worker(
             beryl_workspace_id,
             workspace,
             selected_thread_id,
-            automatic_title_generation_allowed,
+            title_mode,
             user_input_fragments,
             turn_options,
             shell_tool_sender,
@@ -397,7 +404,7 @@ fn run_turn_worker(
     beryl_workspace_id: BerylWorkspaceId,
     workspace: WorkspaceId,
     selected_thread_id: Option<String>,
-    automatic_title_generation_allowed: bool,
+    title_mode: TurnThreadTitleMode,
     user_input_fragments: Vec<UserInputFragment>,
     turn_options: TurnStartOptions,
     shell_tool_sender: Option<ShellDynamicToolRequestSender>,
@@ -486,7 +493,7 @@ fn run_turn_worker(
         first_user_input_fragment
             .map(|fragment| fragment.text.as_str())
             .unwrap_or_default(),
-        automatic_title_generation_allowed,
+        title_mode,
         activation.summary.name.as_deref(),
     ) {
         if send_turn_worker_update(
@@ -494,6 +501,7 @@ fn run_turn_worker(
             TurnWorkerUpdate::ThreadTitleEligible {
                 execution_target: workspace.clone(),
                 candidate,
+                title_mode,
             },
         )
         .is_err()
@@ -579,6 +587,20 @@ pub(crate) fn automatic_thread_title_generation_is_eligible(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn thread_title_candidate_available_for_mode(
+    title_mode: TurnThreadTitleMode,
+    backend_thread_name: Option<&str>,
+) -> bool {
+    title::automatic_thread_title_candidate(
+        "thread_id",
+        "First real branch prompt",
+        title_mode,
+        backend_thread_name,
+    )
+    .is_some()
+}
+
 pub(crate) fn handle_beryl_dynamic_tool_call(
     service: &WorkspaceGraphToolService,
     workspace_id: &BerylWorkspaceId,
@@ -610,6 +632,7 @@ pub(crate) fn handle_beryl_dynamic_tool_call_with_shell_tools(
         || is_beryl_diagnostic_child_dynamic_tool(request)
         || is_beryl_theme_dynamic_tool(request)
         || is_beryl_settings_dynamic_tool(request)
+        || is_beryl_threaded_decision_dynamic_tool(request)
     {
         let response = shell_tool_sender.map_or_else(
             || {

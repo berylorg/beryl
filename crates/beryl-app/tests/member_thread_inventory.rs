@@ -236,6 +236,74 @@ fn inventory_preserves_optional_fork_parent_metadata() {
         child.forked_from_id().map(ConversationThreadId::as_str),
         Some("thread_parent")
     );
+    assert_eq!(
+        child
+            .to_registered_thread()
+            .branch_parent_thread_id()
+            .map(ConversationThreadId::as_str),
+        Some("thread_parent")
+    );
+}
+
+#[test]
+fn registered_branch_parent_metadata_backfills_inventory_and_registration() {
+    let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
+    let first = WorkspaceId::host_windows(r"C:\work\first");
+    let parent_id = ConversationThreadId::new("thread_parent");
+    let child_id = ConversationThreadId::new("thread_child");
+    let mut state = WorkspaceConversationState::default();
+
+    state.designate_primary_execution_target(&first).unwrap();
+    state.remember_thread(RegisteredConversationThread::new(
+        parent_id.clone(),
+        first.clone(),
+        "Parent preview",
+        Some("Parent".to_string()),
+        1,
+        10,
+    ));
+    state.remember_thread(
+        RegisteredConversationThread::new(
+            child_id.clone(),
+            first.clone(),
+            "Child preview",
+            Some("Child".to_string()),
+            2,
+            20,
+        )
+        .with_branch_parent_thread_id(parent_id.clone()),
+    );
+
+    let snapshot = member_thread_inventory::build_member_thread_inventory_snapshot(
+        workspace_id,
+        &state,
+        member_thread_inventory::empty_groups_for_workspace_state(&state),
+        vec![
+            summary(
+                "thread_parent",
+                first.canonical_path(),
+                Some("Parent"),
+                1,
+                10,
+            ),
+            summary("thread_child", first.canonical_path(), Some("Child"), 2, 20),
+        ],
+        50,
+    );
+
+    let child = inventory_thread(&snapshot, "thread_child");
+
+    assert_eq!(
+        child.forked_from_id().map(ConversationThreadId::as_str),
+        Some("thread_parent")
+    );
+    assert_eq!(
+        child
+            .to_registered_thread()
+            .branch_parent_thread_id()
+            .map(ConversationThreadId::as_str),
+        Some("thread_parent")
+    );
 }
 
 #[test]
@@ -1048,7 +1116,7 @@ fn member_set_event_replaces_implicit_home_inventory_and_invalidates_in_flight_r
 }
 
 #[test]
-fn freshness_events_requeue_inventory_without_clearing_snapshot() {
+fn proactive_freshness_events_requeue_inventory_without_clearing_snapshot() {
     let workspace_id = BerylWorkspaceId::new("inventory").unwrap();
     let first = WorkspaceId::host_windows(r"C:\work\first");
     let mut workspace_state = WorkspaceConversationState::default();
@@ -1075,7 +1143,7 @@ fn freshness_events_requeue_inventory_without_clearing_snapshot() {
     inventory.finish_refresh(snapshot.clone(), &workspace_state);
 
     inventory.apply_event(
-        member_thread_inventory::MemberThreadInventoryEvent::SelectorFreshnessRequested,
+        member_thread_inventory::MemberThreadInventoryEvent::InventoryContentsChanged,
         workspace_id.clone(),
         &workspace_state,
     );

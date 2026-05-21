@@ -6,7 +6,9 @@ use std::{
 
 use beryl_backend::{ManagedBackendClientConnector, ThreadListOptions};
 use beryl_model::{
-    conversation::{RegisteredConversationThread, WorkspaceConversationState},
+    conversation::{
+        ConversationThreadId, RegisteredConversationThread, WorkspaceConversationState,
+    },
     workspace::{BerylWorkspaceId, WorkspaceId},
 };
 use tracing::warn;
@@ -20,6 +22,7 @@ use crate::member_thread_inventory::{
     retain_scoped_backend_threads_for_inventory_members, thread_fork_parent_metadata_read_error,
     truncate_scoped_backend_threads_for_member_thread_inventory,
 };
+use crate::threaded_decision_archive_core::normal_selector_hidden_decision_child_thread_ids;
 
 use super::{ShellView, SurfaceNotice, workspace_members};
 
@@ -46,12 +49,18 @@ pub(super) fn spawn_member_thread_inventory_worker(
     workspace_id: BerylWorkspaceId,
     token: MemberThreadInventoryRefreshToken,
     workspace_state: WorkspaceConversationState,
+    hidden_thread_ids: Vec<ConversationThreadId>,
     timeout: Duration,
 ) -> Receiver<MemberThreadInventoryUpdate> {
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
-        let result =
-            run_member_thread_inventory_worker(connectors, &workspace_id, workspace_state, timeout);
+        let result = run_member_thread_inventory_worker(
+            connectors,
+            &workspace_id,
+            workspace_state,
+            hidden_thread_ids,
+            timeout,
+        );
         let _ = sender.send(MemberThreadInventoryUpdate::Finished {
             workspace_id,
             token,
@@ -65,6 +74,7 @@ fn run_member_thread_inventory_worker(
     connectors: Vec<(WorkspaceId, ManagedBackendClientConnector)>,
     workspace_id: &BerylWorkspaceId,
     workspace_state: WorkspaceConversationState,
+    hidden_thread_ids: Vec<ConversationThreadId>,
     timeout: Duration,
 ) -> MemberThreadInventoryResult {
     let members = match resolved_inventory_members(&workspace_state) {
@@ -114,6 +124,12 @@ fn run_member_thread_inventory_worker(
                 };
             }
         };
+
+        runtime_threads.retain(|thread| {
+            !hidden_thread_ids
+                .iter()
+                .any(|hidden_id| hidden_id.as_str() == thread.id)
+        });
 
         if let Err(message) = prepare_backend_threads_for_member_thread_inventory(
             &mut runtime_threads,
@@ -263,6 +279,12 @@ impl ShellView {
         }) else {
             return false;
         };
+        let hidden_thread_ids = self
+            .loaded_workspace()
+            .map(|loaded| {
+                normal_selector_hidden_decision_child_thread_ids(&loaded.threaded_decision_state)
+            })
+            .unwrap_or_default();
         if !self
             .conversation_surface()
             .is_some_and(|surface| surface.member_thread_inventory().needs_refresh())
@@ -285,6 +307,7 @@ impl ShellView {
             workspace_id,
             token,
             workspace_state,
+            hidden_thread_ids,
             self.bootstrap.probe_timeout(),
         ));
         true

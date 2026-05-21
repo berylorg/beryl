@@ -1,4 +1,19 @@
 //! Shared pure-data types used across the Beryl workspace.
+//! The semantic graph has topic-capable nodes and checklist-item nodes directly
+//! under topic-capable parents; it has no separate checklist-container facet.
+//! Semantic checklist-item nodes distinguish ordinary `Generic` items from
+//! threaded-decision `Decision` items through
+//! [`semantic_graph::ChecklistItemKind`].
+//! Threaded-decision workflow identity is kept in
+//! [`threaded_decision::ThreadedDecisionState`] so it can reference semantic
+//! nodes and backend thread ids without copying conversation history. Queued
+//! branch creation records may be invalidated explicitly when the backend or
+//! graph write cannot complete the child-thread binding, and active records can
+//! be looked up by child thread when applying child-local workflow context.
+//! Conversation thread registrations also preserve branch bootstrap provenance
+//! and branch first-real-turn retitle state so GUI orchestration can keep
+//! backend-owned branch history durable without treating Beryl-authored
+//! bootstrap turns as user exploration.
 //!
 //! ```rust
 //! use beryl_model::conversation::{
@@ -11,6 +26,7 @@
 //!     SemanticGraph, SemanticGraphPatch, SemanticGraphPatchOp, SemanticNodeDraft,
 //!     SemanticNodeFacets, SemanticNodeId, ThreadRefDraft, ThreadRefId,
 //! };
+//! use beryl_model::threaded_decision::ThreadedDecisionState;
 //! use beryl_model::workspace::{derive_workspace_slug, BerylWorkspaceManifest, WorkspaceId};
 //!
 //! let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
@@ -93,9 +109,18 @@
 //!     .unwrap();
 //! assert_eq!(graph.node(&node_id).unwrap().title(), "Renderer");
 //! assert_eq!(graph.root_node_ids(), &[node_id]);
+//!
+//! let decisions = ThreadedDecisionState::default();
+//! assert!(decisions.records().is_empty());
+//! assert!(
+//!     decisions
+//!         .active_record_for_child_thread(&ConversationThreadId::new("thread_child"))
+//!         .is_none()
+//! );
 //! ```
 
 pub mod conversation;
 pub mod provenance;
 pub mod semantic_graph;
+pub mod threaded_decision;
 pub mod workspace;

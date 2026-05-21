@@ -12,6 +12,8 @@ mod lifecycle_yield;
 mod notifications;
 #[path = "../src/shell/pending_turn_input.rs"]
 mod pending_turn_input;
+#[path = "../src/shell/thread_title.rs"]
+mod thread_title;
 
 use beryl_backend::TurnStartOptions;
 use beryl_model::workspace::WorkspaceId;

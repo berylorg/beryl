@@ -162,7 +162,7 @@ fn role_groups_section() -> Value {
             { "prefix": "code_panel.", "use": "fenced code block container, header, body, buttons, selection, and resize handle" },
             { "prefix": "syntax.", "use": "parser-backed code token colors" },
             { "prefix": "graph.", "use": "graph overlay columns and rows" },
-            { "prefix": "checklist.", "use": "checklist sidebar rows and status markers" },
+            { "prefix": "checklist.", "use": "checklist status markers and legacy checklist roles" },
             { "prefix": "status.", "use": "bottom status line and dynamic turn-state values" },
             { "prefix": "notice.", "use": "info, warning, error, and success notices" },
             { "prefix": "media.", "use": "transcript media placeholders, borders, and captions" }

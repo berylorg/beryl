@@ -1,9 +1,9 @@
 use beryl_model::{
     provenance::MutationProvenance,
     semantic_graph::{
-        ChecklistItemStatus, SemanticGraphIdError, SemanticGraphPatch, SemanticGraphPatchOp,
-        SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId, SoftLinkDraft, SoftLinkId,
-        SoftLinkKind,
+        ChecklistItemKind, ChecklistItemStatus, SemanticGraphIdError, SemanticGraphPatch,
+        SemanticGraphPatchOp, SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId, SoftLinkDraft,
+        SoftLinkId, SoftLinkKind,
     },
     workspace::BerylWorkspaceId,
 };
@@ -31,7 +31,7 @@ pub(super) struct GraphNeighborhoodArguments {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ChecklistReadArguments {
-    checklist_node_id: String,
+    topic_node_id: String,
 }
 
 #[derive(Deserialize)]
@@ -42,10 +42,11 @@ pub(super) struct UpsertGraphNodeArguments {
     title: String,
     summary: String,
     topic: bool,
-    checklist: bool,
     checklist_item: bool,
     #[serde(default)]
     checklist_item_status: Option<DynamicChecklistItemStatus>,
+    #[serde(default)]
+    checklist_item_kind: Option<DynamicChecklistItemKind>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +82,13 @@ enum DynamicChecklistItemStatus {
     Done,
 }
 
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DynamicChecklistItemKind {
+    Generic,
+    Decision,
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum NullableGraphIdArgument {
@@ -112,7 +120,7 @@ impl ChecklistReadArguments {
     ) -> Result<ChecklistReadRequest, DynamicGraphToolError> {
         Ok(ChecklistReadRequest {
             workspace_id: workspace_id.clone(),
-            checklist_node_id: semantic_node_id("checklistNodeId", self.checklist_node_id)?,
+            topic_node_id: semantic_node_id("topicNodeId", self.topic_node_id)?,
         })
     }
 }
@@ -129,12 +137,13 @@ impl UpsertGraphNodeArguments {
             .map(|node_id| semantic_node_id("parentId", node_id))
             .transpose()?;
         let node_operation = SemanticGraphPatchOp::UpsertNode {
-            node: SemanticNodeDraft::new(
+            node: SemanticNodeDraft::new_with_checklist_item_kind(
                 node_id.clone(),
                 validated_text("title", self.title, 1, MAX_DYNAMIC_NODE_TITLE_CHARS)?,
                 validated_text("summary", self.summary, 0, MAX_DYNAMIC_NODE_SUMMARY_CHARS)?,
-                semantic_node_facets("facets", self.topic, self.checklist, self.checklist_item)?,
+                semantic_node_facets("facets", self.topic, self.checklist_item)?,
                 checklist_item_status_for_node(self.checklist_item, self.checklist_item_status)?,
+                checklist_item_kind_for_node(self.checklist_item, self.checklist_item_kind)?,
             ),
             provenance: provenance.clone(),
         };
@@ -212,6 +221,15 @@ impl DynamicChecklistItemStatus {
     }
 }
 
+impl DynamicChecklistItemKind {
+    fn into_checklist_item_kind(self) -> ChecklistItemKind {
+        match self {
+            Self::Generic => ChecklistItemKind::Generic,
+            Self::Decision => ChecklistItemKind::Decision,
+        }
+    }
+}
+
 impl NullableGraphIdArgument {
     fn into_option(self) -> Option<String> {
         match self {
@@ -249,10 +267,9 @@ fn invalid_id(field: &'static str, source: SemanticGraphIdError) -> DynamicGraph
 fn semantic_node_facets(
     field: &'static str,
     topic: bool,
-    checklist: bool,
     checklist_item: bool,
 ) -> Result<SemanticNodeFacets, DynamicGraphToolError> {
-    SemanticNodeFacets::new(topic, checklist, checklist_item)
+    SemanticNodeFacets::new(topic, checklist_item)
         .map_err(|detail| DynamicGraphToolError::InvalidField { field, detail })
 }
 
@@ -268,6 +285,21 @@ fn checklist_item_status_for_node(
         }),
         (false, Some(_)) => Err(DynamicGraphToolError::InvalidField {
             field: "checklistItemStatus",
+            detail: "must be omitted unless checklistItem is true".to_string(),
+        }),
+        (false, None) => Ok(None),
+    }
+}
+
+fn checklist_item_kind_for_node(
+    checklist_item: bool,
+    kind: Option<DynamicChecklistItemKind>,
+) -> Result<Option<ChecklistItemKind>, DynamicGraphToolError> {
+    match (checklist_item, kind) {
+        (true, Some(kind)) => Ok(Some(kind.into_checklist_item_kind())),
+        (true, None) => Ok(None),
+        (false, Some(_)) => Err(DynamicGraphToolError::InvalidField {
+            field: "checklistItemKind",
             detail: "must be omitted unless checklistItem is true".to_string(),
         }),
         (false, None) => Ok(None),

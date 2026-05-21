@@ -67,17 +67,80 @@ fn graph_thread_ref_rows_render_invalid_indicator_and_explicit_rebind_action() {
     let rows_source = include_str!("../src/shell/render/graph_overlay/rows.rs");
     let shell_source = include_str!("../src/shell.rs");
     let row_body = rust_function_body(rows_source, "fn render_graph_thread_ref_row");
+    let node_tree_body = rust_function_body(rows_source, "pub(super) fn render_graph_node_tree");
+    let node_row_body = rust_function_body(rows_source, "fn render_graph_node_row");
     let invalid_actions_body =
         rust_function_body(rows_source, "fn render_invalid_thread_ref_actions");
     let select_body = rust_function_body(shell_source, "fn select_graph_thread_ref");
 
     assert!(row_body.contains("graph_thread_ref_availability"));
+    assert!(node_tree_body.contains("threaded_decision_state"));
+    assert!(node_row_body.contains("decision_item_badges"));
+    assert!(node_row_body.contains("render_decision_item_badges"));
+    assert!(rows_source.contains("open_active_decision_branch_from_graph_row"));
+    assert!(rows_source.contains("open_decision_handoff_from_graph_row"));
+    assert!(row_body.contains("decision_thread_ref_badge"));
+    assert!(row_body.contains("graph-thread-ref-decision-badge"));
     assert!(row_body.contains("render_invalid_thread_ref_actions"));
     assert!(invalid_actions_body.contains(".child(\"!\")"));
     assert!(invalid_actions_body.contains("\"Rebind\""));
     assert!(invalid_actions_body.contains("open_graph_thread_ref_rebind_menu"));
     assert!(select_body.contains("graph_thread_ref_availability"));
     assert!(select_body.contains("availability.notice_title()"));
+}
+
+#[test]
+fn graph_node_action_menu_starts_checklist_item_threads_without_sidebar_popup() {
+    let menu_source = include_str!("../src/shell/render/graph_link_menu.rs");
+    let action_source = concat!(
+        include_str!("../src/shell/graph_link_menu.rs"),
+        include_str!("../src/shell/graph_link_menu/decisions.rs"),
+    );
+    let node_menu_body = rust_function_body(menu_source, "fn render_node_action_menu");
+    let action_body = rust_function_body(
+        action_source,
+        "pub(crate) fn start_checklist_item_thread_from_graph_action_menu",
+    );
+
+    assert!(node_menu_body.contains("target_is_checklist_item"));
+    assert!(node_menu_body.contains("target_can_start_topic_decision"));
+    assert!(!node_menu_body.contains("cx.entity()"));
+    assert!(!node_menu_body.contains(".read(cx)"));
+    assert!(node_menu_body.contains("\"Start Decision\""));
+    assert!(node_menu_body.contains("topic_decision_start_disabled_reason"));
+    assert!(node_menu_body.contains("start_topic_decision_from_graph_action_menu"));
+    assert!(node_menu_body.contains("\"Start Decision Branch\""));
+    assert!(node_menu_body.contains("decision_branch_start_label"));
+    assert!(node_menu_body.contains("start_decision_branch_from_graph_action_menu"));
+    assert!(node_menu_body.contains("\"Open Active Branch\""));
+    assert!(node_menu_body.contains("open_active_decision_branch_from_graph_action_menu"));
+    assert!(node_menu_body.contains("\"Open Handoff\""));
+    assert!(node_menu_body.contains("open_decision_handoff_from_graph_action_menu"));
+    assert!(node_menu_body.contains("\"Retry Checklist Update\""));
+    assert!(node_menu_body.contains("retry_decision_checklist_update_from_graph_action_menu"));
+    assert!(node_menu_body.contains("\"Retry Branch Close\""));
+    assert!(node_menu_body.contains("retry_decision_archive_from_graph_action_menu"));
+    assert!(node_menu_body.contains("\"Start New Codex Thread\""));
+    assert!(node_menu_body.contains("start_checklist_item_thread_from_graph_action_menu"));
+    assert!(action_source.contains("fn active_graph_menu_node_id"));
+    assert!(action_source.contains("graph_thread_link_menu().active()"));
+    assert!(action_body.contains("start_checklist_item_thread_from_node"));
+
+    let decision_action_body = rust_function_body(
+        action_source,
+        "pub(crate) fn start_decision_branch_from_graph_action_menu",
+    );
+    assert!(decision_action_body.contains("active_graph_menu_node_id"));
+    assert!(decision_action_body.contains("start_decision_branch_from_node"));
+    let topic_decision_action_body = rust_function_body(
+        action_source,
+        "pub(crate) fn start_topic_decision_from_graph_action_menu",
+    );
+    assert!(topic_decision_action_body.contains("active_graph_menu_node_id"));
+    assert!(topic_decision_action_body.contains("start_topic_decision_from_node"));
+    assert!(action_source.contains("queue_decision_resolution_job"));
+    assert!(action_source.contains("queue_decision_archive_job"));
+    assert!(action_source.contains("finish_pending_decision_handoff_navigation_for_thread"));
 }
 
 #[test]
@@ -1524,7 +1587,7 @@ fn workspace_management_seed_patch(
                 root_id.clone(),
                 "Workspace Management",
                 "Workspace management test root",
-                SemanticNodeFacets::topic_and_checklist(),
+                SemanticNodeFacets::topic(),
                 None,
             ),
             provenance: provenance(20),

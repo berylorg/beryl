@@ -25,6 +25,7 @@ pub(crate) struct ThreadSelectorState {
     popup_bounds: Option<Bounds<Pixels>>,
     columns: ThreadSelectorColumns,
     projection: ThreadSelectorProjection,
+    snapshot: Option<MemberThreadInventorySnapshot>,
     active_thread_id: Option<ConversationThreadId>,
 }
 
@@ -96,6 +97,7 @@ impl Default for ThreadSelectorState {
             popup_bounds: None,
             columns: ThreadSelectorColumns::new(),
             projection: ThreadSelectorProjection::default(),
+            snapshot: None,
             active_thread_id: None,
         }
     }
@@ -112,6 +114,10 @@ impl ThreadSelectorState {
 
     pub(crate) fn projection(&self) -> &ThreadSelectorProjection {
         &self.projection
+    }
+
+    pub(crate) fn snapshot(&self) -> Option<&MemberThreadInventorySnapshot> {
+        self.snapshot.as_ref()
     }
 
     pub(crate) fn anchor_bounds(&self) -> Option<Bounds<Pixels>> {
@@ -141,6 +147,7 @@ impl ThreadSelectorState {
         self.popup_bounds = None;
         self.active_thread_id = active_thread_id;
         self.projection = ThreadSelectorProjection::new(snapshot);
+        self.snapshot = Some(snapshot.clone());
         self.columns = initial_thread_selector_columns(snapshot);
         self.select_active_thread_path(snapshot);
     }
@@ -150,6 +157,7 @@ impl ThreadSelectorState {
         self.popup_bounds = None;
         self.columns.clear();
         self.projection = ThreadSelectorProjection::default();
+        self.snapshot = None;
     }
 
     pub(crate) fn set_anchor_bounds(&mut self, bounds: Option<Bounds<Pixels>>) {
@@ -164,40 +172,9 @@ impl ThreadSelectorState {
         self.active_thread_id = active_thread_id;
     }
 
-    pub(crate) fn reconcile_snapshot(&mut self, snapshot: &MemberThreadInventorySnapshot) {
-        if !self.open {
-            return;
-        }
-
-        let previous_member_selection = self.columns().iter().find_map(|column| {
-            matches!(column.root_key(), ThreadSelectorColumnKey::Members)
-                .then(|| column.selection())
-                .flatten()
-                .and_then(ThreadSelectorSelection::member_key)
-                .cloned()
-        });
-        let previous_thread_selections = self
-            .columns()
-            .iter()
-            .filter_map(|column| column.selection())
-            .filter_map(ThreadSelectorSelection::thread_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        let had_selection =
-            previous_member_selection.is_some() || !previous_thread_selections.is_empty();
-
-        self.projection = ThreadSelectorProjection::new(snapshot);
-        self.columns = initial_thread_selector_columns(snapshot);
-
-        self.restore_selection_path(
-            snapshot,
-            previous_member_selection,
-            &previous_thread_selections,
-        );
-
-        if !had_selection && !self.has_selection() {
-            self.select_active_thread_path(snapshot);
-        }
+    pub(crate) fn reconcile_snapshot(&mut self, _snapshot: &MemberThreadInventorySnapshot) {
+        // Open selector projections are intentionally frozen. Closing the selector drops
+        // the projection, and the next open builds from the latest completed inventory.
     }
 
     pub(crate) fn select_member(
@@ -265,65 +242,6 @@ impl ThreadSelectorState {
                 label: thread.title().to_string(),
                 execution_target: thread.execution_target().clone(),
             })
-    }
-
-    fn restore_selection_path(
-        &mut self,
-        snapshot: &MemberThreadInventorySnapshot,
-        previous_member_selection: Option<MemberThreadInventoryMemberKey>,
-        previous_thread_selections: &[ConversationThreadId],
-    ) -> bool {
-        let Some(member_key) = previous_member_selection
-            .filter(|member_key| snapshot.group(member_key).is_some())
-            .or_else(|| {
-                previous_thread_selections
-                    .first()
-                    .and_then(|thread_id| self.projection.member_key_for_thread(thread_id))
-            })
-        else {
-            return false;
-        };
-
-        let mut changed = false;
-        let mut thread_column_index = 0;
-        match snapshot.groups() {
-            [group] if group.key() == &member_key => {}
-            [..] => {
-                if self.columns().first().is_none_or(|column| {
-                    !matches!(column.root_key(), ThreadSelectorColumnKey::Members)
-                }) {
-                    return false;
-                }
-                changed |= self.select_member(0, member_key.clone());
-                thread_column_index = 1;
-            }
-        }
-
-        for thread_id in previous_thread_selections {
-            let Some(column_key) = self
-                .columns()
-                .get(thread_column_index)
-                .map(|column| column.root_key().clone())
-            else {
-                break;
-            };
-            if !self
-                .projection
-                .thread_exists_in_column(&column_key, thread_id)
-            {
-                break;
-            }
-            changed |= self.select_thread(thread_column_index, thread_id.clone());
-            thread_column_index += 1;
-        }
-
-        changed
-    }
-
-    fn has_selection(&self) -> bool {
-        self.columns()
-            .iter()
-            .any(|column| column.selection().is_some())
     }
 
     fn select_active_thread_path(&mut self, snapshot: &MemberThreadInventorySnapshot) -> bool {
@@ -394,13 +312,6 @@ impl ThreadSelectorState {
 }
 
 impl ThreadSelectorSelection {
-    pub(crate) fn member_key(&self) -> Option<&MemberThreadInventoryMemberKey> {
-        match self {
-            Self::Member(member_key) => Some(member_key),
-            Self::Thread(_) => None,
-        }
-    }
-
     pub(crate) fn thread_id(&self) -> Option<&ConversationThreadId> {
         match self {
             Self::Member(_) => None,

@@ -1,7 +1,7 @@
 use beryl_backend::TurnStartOptions;
 use beryl_model::workspace::WorkspaceId;
 
-use super::execution_detail::UserInputFragment;
+use super::{execution_detail::UserInputFragment, thread_title::TurnThreadTitleMode};
 
 pub(super) const PENDING_TURN_INPUT_MAX_FRAGMENTS: usize = 64;
 pub(super) const PENDING_TURN_INPUT_MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
@@ -12,7 +12,7 @@ pub(super) const PENDING_ACTIVE_TURN_STEERING_MAX_PAYLOAD_BYTES: usize = 1024 * 
 pub(super) struct PendingTurnInputQueue {
     thread_id: String,
     execution_target: WorkspaceId,
-    automatic_title_generation_allowed: bool,
+    title_mode: TurnThreadTitleMode,
     turn_options: TurnStartOptions,
     turn_index: usize,
     fragments: Vec<UserInputFragment>,
@@ -38,7 +38,7 @@ impl PendingTurnInputQueue {
     pub(super) fn new(
         thread_id: String,
         execution_target: WorkspaceId,
-        automatic_title_generation_allowed: bool,
+        title_mode: impl Into<TurnThreadTitleMode>,
         turn_options: TurnStartOptions,
         turn_index: usize,
         first_fragment: UserInputFragment,
@@ -46,7 +46,7 @@ impl PendingTurnInputQueue {
         Self::try_new(
             thread_id,
             execution_target,
-            automatic_title_generation_allowed,
+            title_mode,
             turn_options,
             turn_index,
             first_fragment,
@@ -57,7 +57,7 @@ impl PendingTurnInputQueue {
     pub(super) fn try_new(
         thread_id: String,
         execution_target: WorkspaceId,
-        automatic_title_generation_allowed: bool,
+        title_mode: impl Into<TurnThreadTitleMode>,
         turn_options: TurnStartOptions,
         turn_index: usize,
         first_fragment: UserInputFragment,
@@ -69,7 +69,7 @@ impl PendingTurnInputQueue {
         Ok(Self {
             thread_id,
             execution_target,
-            automatic_title_generation_allowed,
+            title_mode: title_mode.into(),
             turn_options,
             turn_index,
             fragments: vec![first_fragment],
@@ -84,8 +84,13 @@ impl PendingTurnInputQueue {
         &self.execution_target
     }
 
+    pub(super) fn title_mode(&self) -> TurnThreadTitleMode {
+        self.title_mode
+    }
+
+    #[allow(dead_code)]
     pub(super) fn automatic_title_generation_allowed(&self) -> bool {
-        self.automatic_title_generation_allowed
+        self.title_mode != TurnThreadTitleMode::Disabled
     }
 
     pub(super) fn turn_options(&self) -> &TurnStartOptions {
@@ -169,12 +174,13 @@ pub(super) fn validate_pending_turn_input_fragments(
     existing: Option<&PendingTurnInputQueue>,
     thread_id: &str,
     execution_target: &WorkspaceId,
-    automatic_title_generation_allowed: bool,
+    title_mode: impl Into<TurnThreadTitleMode>,
     turn_options: &TurnStartOptions,
     new_turn_index: usize,
     fragments: &[UserInputFragment],
 ) -> Result<bool, PendingInputAdmissionError> {
     let mut simulated = existing.cloned();
+    let title_mode = title_mode.into();
     let mut accepted_any = false;
     for fragment in fragments {
         match PendingTurnInputQueue::submission_plan(simulated.as_ref(), thread_id) {
@@ -190,7 +196,7 @@ pub(super) fn validate_pending_turn_input_fragments(
                 simulated = Some(PendingTurnInputQueue::try_new(
                     thread_id.to_string(),
                     execution_target.clone(),
-                    automatic_title_generation_allowed,
+                    title_mode,
                     turn_options.clone(),
                     new_turn_index,
                     fragment.clone(),

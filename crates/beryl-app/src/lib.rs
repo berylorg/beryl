@@ -3,11 +3,13 @@
 //! ```no_run
 //! use beryl_app::{
 //!     ActiveThemeProjection, AppBootstrap, BerylThemeRole, NotificationPreferences, OperationPreferences,
+//!     RESOLVE_DECISION_BRANCH_TOOL, START_DECISION_BRANCH_TOOL, START_TOPIC_DECISION_TOOL,
 //!     StylePropertyKind, StylePropertyValue, ThemeDefinition, ThemePropertySchema,
 //!     ThemeResolutionContext, ThemeResolver, ThemeRoleSchema, ThemeSchema,
 //!     WorkspaceGraphSummaryRequest, WorkspaceGraphToolService, WorkspaceUiState,
 //!     beryl_user_thread_start_options, run_app,
 //! };
+//! use beryl_model::threaded_decision::ThreadedDecisionState;
 //! use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 //!
 //! let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
@@ -16,9 +18,13 @@
 //! let workspace_store = beryl_home_dir.workspace_persistence();
 //! let preferences_store = beryl_home_dir.gui_preferences_store();
 //! let _default_ui_state = WorkspaceUiState::default();
+//! let _empty_threaded_decisions = ThreadedDecisionState::default();
 //! let _notifications = NotificationPreferences::default();
 //! let _operations = OperationPreferences::default();
 //! let _thread_options = beryl_user_thread_start_options();
+//! let _decision_branch_tool_name = START_DECISION_BRANCH_TOOL;
+//! let _topic_decision_tool_name = START_TOPIC_DECISION_TOOL;
+//! let _decision_resolution_tool_name = RESOLVE_DECISION_BRANCH_TOOL;
 //! let graph_tools = WorkspaceGraphToolService::new(workspace_store.clone());
 //! let theme_schema = ThemeSchema::new(vec![ThemeRoleSchema::new("text").with_property(
 //!     "foreground",
@@ -45,6 +51,7 @@
 mod appearance;
 mod backend_failure;
 mod beryl_home_dir;
+mod branch_bootstrap_core;
 mod diagnostic_child_control;
 mod diagnostic_child_dynamic_tools;
 mod diagnostic_child_protocol;
@@ -67,6 +74,14 @@ mod startup_state;
 mod text_input;
 mod theme_dynamic_tools;
 mod thread_start_options;
+mod thread_strip_breadcrumbs;
+mod threaded_decision_archive_core;
+mod threaded_decision_branch_core;
+mod threaded_decision_child_thread;
+mod threaded_decision_context;
+mod threaded_decision_dynamic_tools;
+mod threaded_decision_graph_presentation;
+mod threaded_decision_resolution_core;
 mod title_generation;
 mod workspace_graph_commit;
 mod workspace_image_assets;
@@ -289,6 +304,15 @@ pub use theme_dynamic_tools::{
     theme_schema_value, validate_theme_document_value,
 };
 pub use thread_start_options::{beryl_thread_start_options, beryl_user_thread_start_options};
+pub use threaded_decision_dynamic_tools::{
+    DecisionBranchToolItemResult, DecisionBranchToolItemStatus, DecisionResolutionToolResult,
+    RESOLVE_DECISION_BRANCH_TOOL, START_DECISION_BRANCH_TOOL, START_TOPIC_DECISION_TOOL,
+    ThreadedDecisionDynamicToolError, ThreadedDecisionDynamicToolRequest, TopicDecisionToolResult,
+    beryl_threaded_decision_dynamic_tool_specs, decision_branch_tool_success_response,
+    decision_resolution_tool_success_response, is_beryl_threaded_decision_dynamic_tool,
+    parse_beryl_threaded_decision_dynamic_tool_request, threaded_decision_tool_failure_response,
+    topic_decision_tool_success_response,
+};
 pub use workspace_graph_commit::{
     WorkspaceGraphMutationCommit, WorkspaceGraphRevision, WorkspaceGraphStateSnapshot,
 };

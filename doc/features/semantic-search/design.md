@@ -5,7 +5,7 @@ Define Beryl's local semantic search as a derived workspace retrieval layer that
 ## Non-goals
 
 - Replacing `doc/design.md`, feature design documents, plans, research notes, source documents, semantic graph state, or backend-owned conversation history as the authoritative source of project facts.
-- Owning the semantic graph model, graph overlay, checklist sidebar, graph mutation tools, graph refs, graph provenance, graph upkeep workflows, graph upkeep instructions, or source- and conversation-driven graph maintenance.
+- Owning the semantic graph model, graph overlay, graph mutation tools, graph refs, graph provenance, graph upkeep workflows, graph upkeep instructions, or source- and conversation-driven graph maintenance.
 - Mirroring every conversation turn, reasoning event, backend event, tool log, transcript dump, or transient activity record into the search corpus.
 - Owning a dedicated user-facing semantic search panel, search field, result list, or search popup.
 - Requiring a remote search service or remote search request to answer local workspace knowledge queries.

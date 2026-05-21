@@ -21,6 +21,11 @@ use crate::{
             graph_node_leaf_delete_availability, graph_node_recursive_delete_disabled_reason,
         },
     },
+    threaded_decision_graph_presentation::{
+        active_decision_branch_record_for_item, archive_retry_record_for_item,
+        checklist_update_retry_record_for_item, decision_branch_start_label,
+        latest_handoff_record_for_item,
+    },
 };
 
 use super::common::{disabled_secondary_button, secondary_button};
@@ -129,11 +134,19 @@ pub(super) fn render_graph_thread_link_menu(
     shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
+    new_thread_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> Option<AnyElement> {
     let menu = surface.graph_thread_link_menu().active()?;
     let entity = cx.entity();
-    let content = render_menu_content(shell, loaded, surface, menu.view(), cx);
+    let content = render_menu_content(
+        shell,
+        loaded,
+        surface,
+        menu.view(),
+        new_thread_controls_disabled,
+        cx,
+    );
     let scroll_handle = surface.graph_thread_link_menu_scroll_handle();
     let scrollbar_visibility =
         shell.scrollbar_visibility_policy(&ScrollbarRegion::GraphThreadLinkMenu, cx);
@@ -195,12 +208,14 @@ fn render_menu_content(
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
     view: &GraphThreadLinkMenuView,
+    new_thread_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
     let snapshot = surface.member_thread_inventory().snapshot();
     match view {
         GraphThreadLinkMenuView::Root => {
-            render_node_action_menu(shell, loaded, surface, cx).into_any_element()
+            render_node_action_menu(shell, loaded, surface, new_thread_controls_disabled, cx)
+                .into_any_element()
         }
         GraphThreadLinkMenuView::LinkThreads if loaded.selected_runtime().is_none() => {
             render_missing_runtime_menu(shell, ThreadLinkMenuMode::Link, cx).into_any_element()
@@ -273,6 +288,7 @@ fn render_node_action_menu(
     shell: &ShellRenderFrame<'_>,
     loaded: &LoadedWorkspaceState,
     surface: &ConversationSurfaceState,
+    new_thread_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let active_node_id = surface
@@ -280,9 +296,50 @@ fn render_node_action_menu(
         .active()
         .map(|open| open.node_id().clone());
     let graph = surface.graph_overlay().graph();
+    let target_node = active_node_id
+        .as_ref()
+        .and_then(|node_id| graph.node(node_id));
     let target_exists = active_node_id
         .as_ref()
         .is_some_and(|node_id| graph.node(node_id).is_some());
+    let target_is_checklist_item =
+        target_node.is_some_and(|node| node.facets().has_checklist_item());
+    let target_can_start_topic_decision = target_node
+        .is_some_and(|node| node.facets().has_topic() && !node.facets().has_checklist_item());
+    let decision_start_label = active_node_id
+        .as_ref()
+        .map(|node_id| decision_branch_start_label(&loaded.threaded_decision_state, node_id))
+        .unwrap_or("Start Decision Branch");
+    let topic_decision_disabled = active_node_id
+        .as_ref()
+        .and_then(|node_id| shell.topic_decision_start_disabled_reason(node_id));
+    let has_active_decision_branch = active_node_id.as_ref().is_some_and(|node_id| {
+        active_decision_branch_record_for_item(&loaded.threaded_decision_state, node_id).is_some()
+    });
+    let has_decision_handoff = active_node_id.as_ref().is_some_and(|node_id| {
+        latest_handoff_record_for_item(&loaded.threaded_decision_state, node_id).is_some()
+    });
+    let has_checklist_retry = active_node_id.as_ref().is_some_and(|node_id| {
+        checklist_update_retry_record_for_item(&loaded.threaded_decision_state, node_id).is_some()
+    });
+    let has_archive_retry = active_node_id.as_ref().is_some_and(|node_id| {
+        archive_retry_record_for_item(&loaded.threaded_decision_state, node_id).is_some()
+    });
+    let decision_branch_disabled = active_node_id
+        .as_ref()
+        .and_then(|node_id| shell.decision_branch_start_disabled_reason(node_id));
+    let active_branch_open_disabled = active_node_id
+        .as_ref()
+        .and_then(|node_id| shell.active_decision_branch_open_disabled_reason(node_id));
+    let handoff_open_disabled = active_node_id
+        .as_ref()
+        .and_then(|node_id| shell.decision_handoff_open_disabled_reason(node_id));
+    let checklist_retry_disabled = active_node_id
+        .as_ref()
+        .and_then(|node_id| shell.decision_checklist_update_retry_disabled_reason(node_id));
+    let archive_retry_disabled = active_node_id
+        .as_ref()
+        .and_then(|node_id| shell.decision_archive_retry_disabled_reason(node_id));
     let has_hard_children = active_node_id.as_ref().is_some_and(|node_id| {
         graph
             .child_ids_of(node_id)
@@ -368,6 +425,156 @@ fn render_node_action_menu(
             "Delete Recursively",
             reason,
         ));
+    }
+
+    if target_can_start_topic_decision {
+        if let Some(reason) = new_thread_controls_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-start-topic-decision-disabled-row",
+                "Start Decision",
+                reason.to_string(),
+            ));
+        } else if let Some(reason) = topic_decision_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-start-topic-decision-disabled-row",
+                "Start Decision",
+                reason,
+            ));
+        } else {
+            menu = menu.child(action_row(
+                shell,
+                "graph-node-action-start-topic-decision-row",
+                "Start Decision",
+                cx.listener(ShellView::start_topic_decision_from_graph_action_menu),
+            ));
+        }
+    }
+
+    if target_is_checklist_item {
+        if let Some(reason) = new_thread_controls_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-start-decision-branch-disabled-row",
+                decision_start_label,
+                reason.to_string(),
+            ));
+        } else if let Some(reason) = decision_branch_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-start-decision-branch-disabled-row",
+                decision_start_label,
+                reason,
+            ));
+        } else {
+            menu = menu.child(action_row(
+                shell,
+                "graph-node-action-start-decision-branch-row",
+                decision_start_label,
+                cx.listener(ShellView::start_decision_branch_from_graph_action_menu),
+            ));
+        }
+
+        if !has_active_decision_branch {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-open-active-decision-branch-disabled-row",
+                "Open Active Branch",
+                "This checklist item has no active decision branch.".to_string(),
+            ));
+        } else if let Some(reason) = active_branch_open_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-open-active-decision-branch-disabled-row",
+                "Open Active Branch",
+                reason,
+            ));
+        } else {
+            menu = menu.child(action_row(
+                shell,
+                "graph-node-action-open-active-decision-branch-row",
+                "Open Active Branch",
+                cx.listener(ShellView::open_active_decision_branch_from_graph_action_menu),
+            ));
+        }
+
+        if !has_decision_handoff {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-open-decision-handoff-disabled-row",
+                "Open Handoff",
+                "This decision has no parent handoff turn yet.".to_string(),
+            ));
+        } else if let Some(reason) = handoff_open_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-open-decision-handoff-disabled-row",
+                "Open Handoff",
+                reason,
+            ));
+        } else {
+            menu = menu.child(action_row(
+                shell,
+                "graph-node-action-open-decision-handoff-row",
+                "Open Handoff",
+                cx.listener(ShellView::open_decision_handoff_from_graph_action_menu),
+            ));
+        }
+
+        if has_checklist_retry {
+            if let Some(reason) = checklist_retry_disabled {
+                menu = menu.child(disabled_graph_action_message_row(
+                    shell,
+                    "graph-node-action-retry-decision-checklist-disabled-row",
+                    "Retry Checklist Update",
+                    reason,
+                ));
+            } else {
+                menu = menu.child(action_row(
+                    shell,
+                    "graph-node-action-retry-decision-checklist-row",
+                    "Retry Checklist Update",
+                    cx.listener(ShellView::retry_decision_checklist_update_from_graph_action_menu),
+                ));
+            }
+        }
+
+        if has_archive_retry {
+            if let Some(reason) = archive_retry_disabled {
+                menu = menu.child(disabled_graph_action_message_row(
+                    shell,
+                    "graph-node-action-retry-decision-archive-disabled-row",
+                    "Retry Branch Close",
+                    reason,
+                ));
+            } else {
+                menu = menu.child(action_row(
+                    shell,
+                    "graph-node-action-retry-decision-archive-row",
+                    "Retry Branch Close",
+                    cx.listener(ShellView::retry_decision_archive_from_graph_action_menu),
+                ));
+            }
+        }
+
+        if let Some(reason) = new_thread_controls_disabled {
+            menu = menu.child(disabled_graph_action_message_row(
+                shell,
+                "graph-node-action-start-checklist-thread-disabled-row",
+                "Start New Codex Thread",
+                reason.to_string(),
+            ));
+        } else if graph_work_blocked {
+            menu = menu.child(disabled_graph_work_row(shell, "Start New Codex Thread"));
+        } else {
+            menu = menu.child(action_row(
+                shell,
+                "graph-node-action-start-checklist-thread-row",
+                "Start New Codex Thread",
+                cx.listener(ShellView::start_checklist_item_thread_from_graph_action_menu),
+            ));
+        }
     }
 
     if loaded.selected_runtime().is_none() {
@@ -464,6 +671,17 @@ fn disabled_graph_action_row(
     let tooltip_theme = LinkMenuTooltipTheme::from_shell(shell);
     disabled_secondary_button(shell, id, label)
         .tooltip(move |_, cx| build_link_menu_tooltip(reason.to_string(), tooltip_theme, cx))
+}
+
+fn disabled_graph_action_message_row(
+    shell: &ShellRenderFrame<'_>,
+    id: &'static str,
+    label: &'static str,
+    reason: String,
+) -> impl IntoElement {
+    let tooltip_theme = LinkMenuTooltipTheme::from_shell(shell);
+    disabled_secondary_button(shell, id, label)
+        .tooltip(move |_, cx| build_link_menu_tooltip(reason.clone(), tooltip_theme, cx))
 }
 
 fn render_member_list(

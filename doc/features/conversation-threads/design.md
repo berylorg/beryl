@@ -27,6 +27,8 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - Thread display title precedence is manual GUI-local title, then backend-provided thread name, then one temporary untitled label while automatic naming is pending or unavailable.
 - Beryl consumes backend thread names from thread metadata, member-thread inventory refreshes, and live thread-name update notifications.
 - Beryl-created threads without a manual or backend title become eligible for automatic title generation once both the first submitted user input fragment and backend thread id are known.
+- Beryl-created branch threads may have a provisional backend title derived from the branch source or decision item so they are navigable immediately after creation. The Beryl-generated bootstrap turn is not a title seed.
+- After the first real user-authored turn in a Beryl-created branch thread, Beryl schedules automatic title generation from that real user input and may replace the provisional Beryl-generated backend title. This branch retitling must not override a GUI-local manual title, an explicit user-initiated title update, or another title worker already targeting the same thread.
 - Automatic title generation runs asynchronously on a background backend client connection for the target runtime and must not wait for the first assistant response or terminal turn state.
 - Title generation uses a fresh app-server ephemeral maintenance thread per attempt, fixed Beryl title-generation instructions, explicit medium reasoning, and no global developer-instructions preference.
 - Maintenance threads never appear in selectors, inventories, semantic graph refs, active-thread state, or transcript UI.
@@ -52,13 +54,15 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - Inventory refresh may enrich list summaries with metadata-only thread reads to obtain fork parent ids. That enrichment remains part of the background refresh job and must not move backend calls into selector rendering.
 - Fork parent metadata does not affect member grouping. A thread remains grouped by its own recorded working directory.
 - Thread rows use the current title precedence before publication so manual titles and backend metadata changes are reflected consistently.
+- Beryl schedules inventory refresh in response to operations that can change the inventory, including successful thread creation, branch bootstrap completion, archive or unarchive observation, backend thread-name update or title publication, workspace member changes, default-runtime changes that alter the implicit member, and backend reconnect or target reopening.
 
 ## Thread Selector
 
 - The thread selector is a popup opened from the active thread title control. It switches the active Codex thread without requiring semantic graph interaction.
 - Opening the selector closes the graph overlay and graph context menus so only one column-selector surface is interactive.
 - The selector renders from the latest available member-thread inventory snapshot and does not synchronously call `codex app-server`.
-- Opening the selector may request a background inventory refresh for backend-available targets while stale snapshot content remains usable.
+- Opening the selector must not itself mark inventory for refresh or start backend enumeration. It uses the latest completed snapshot prepared by background maintenance.
+- A selector popup's visible rows, columns, and ordering remain stable while the popup is open. If a newer inventory refresh completes while the selector is open, Beryl defers applying it to that open selector projection until the selector is closed and reopened, unless a later explicit apply-refresh affordance is designed.
 - With exactly one available member, including the implicit home case, the selector opens directly to that member's root/orphan thread column.
 - With multiple available members, the first column lists members and selecting a member opens that member's root/orphan thread column.
 - Root/orphan columns include threads whose fork parent is absent from the same member group, missing, stale, malformed, filtered out, or grouped under another member.
@@ -67,16 +71,22 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - Opening the selector preselects the active thread row when it appears in the latest snapshot.
 - Single-click selects rows and may open child columns. Double-clicking a thread row or pressing `Enter` activates that exact thread. `Escape` closes without changing selection.
 - After activation is accepted, the selector closes and the transcript region shows pending activation state for the target thread.
-- Refresh reconciliation preserves selector path by member and thread identity, pruning invalid fork columns without substituting another selected thread.
+- Snapshot reconciliation preserves closed selector state and next-open projections by member and thread identity, pruning invalid fork columns without substituting another selected thread.
 
 ## Thread Branching
 
 - Branching creates a new backend-owned Codex thread from an active source thread, preserves history through the clicked parent turn in the new thread, removes later turns from the new thread, and leaves the source thread unchanged.
 - If the clicked area belongs to an assistant response inside a parent turn, the branch keeps that assistant response because the target is the whole parent turn.
 - Branching is unavailable when Beryl cannot identify a backend turn id and non-empty user input for the clicked turn, when the source thread is not idle, during selected-thread compaction or activation, or when app-server fork/rollback primitives are unavailable.
-- `Branch and switch to` activates the new branch only after fork, rollback, local branch registration, title scheduling, and initial transcript activation succeed.
-- `Branch in background` registers the branch, schedules inventory refresh, and keeps the current active transcript selected.
-- Branched threads are Beryl-created threads. Their automatic title seed is the clicked turn's ordered user input fragments, not the source title or assistant output.
+- Every Beryl-created branch thread begins with a visible bootstrap user turn in backend history after fork/rollback or child-thread creation succeeds. The bootstrap turn records branch provenance such as `Branched from [<parent thread title>](beryl_threadid://<parent_thread_id>)` and may include branch-specific context. It is ordinary transcript history from the app-server perspective.
+- The bootstrap turn is a Beryl-authored provenance turn, not real user exploration. It must not seed automatic title generation, count as child progress for feature workflows, or be hidden from the transcript.
+- Bootstrap turns do not consume global developer-instructions or graph-upkeep hidden-context settings. Any branch-specific context needed by future model turns must be present in the visible bootstrap message.
+- Beryl publishes a branch into durable GUI-local workspace state only after the bootstrap turn reaches terminal success and the branch thread is proven to be a real openable backend thread. Durable branch publication includes graph thread refs, decision bindings, branch registration, branch inventory visibility, and branch title scheduling. If bootstrap turn creation, terminal execution, or durability proof fails, Beryl shows an error and leaves none of that durable Beryl-owned branch state behind for the failed branch creation.
+- `Branch and switch to` is a foreground branch workflow. After fork/rollback succeeds and the visible bootstrap turn is accepted with an exact turn id, Beryl immediately selects the new branch thread and attaches the shell UI to that bootstrap turn stream. The transcript shows the branched history plus the visible bootstrap user message while the bootstrap turn is running, and the status line represents the bootstrap as a Beryl-owned active turn with normal applicable foreground controls. Durable branch publication still waits for terminal bootstrap success and durability proof.
+- If a foregrounded `Branch and switch to` bootstrap later fails or cannot be proven durable, Beryl reports the failure in the selected branch workflow and still leaves no graph thread ref, decision binding, branch registration, branch inventory publication, or title-scheduling state for that failed branch. The already-selected backend thread is treated only as transient foreground backend state until a later explicit user action or successful publication gives it durable Beryl branch metadata.
+- `Branch in background` is a background branch workflow. It registers and publishes the branch only after terminal bootstrap success and durability proof, schedules inventory refresh, and keeps the current active transcript selected while the branch is being prepared.
+- When the selected thread is a Beryl-known branch, the thread strip renders its parent lineage as breadcrumbs before the active thread label, for example `Parent Thread > Branch Thread`. Breadcrumbs use GUI-local branch parent metadata and current title precedence; they must not trigger backend reads or inventory refresh during rendering. Branch parent metadata comes from successful Beryl branch publication, transient foreground branch state, and already-enriched thread summary or member-inventory `forkedFromId` metadata as those summaries are registered into workspace state. Parent breadcrumb segments activate the exact registered parent thread when activation is available and become disabled when the parent is missing or requires rebind. During foreground `Branch and switch to`, the transient branch state supplies the parent breadcrumb before durable branch publication succeeds.
+- Branched threads are Beryl-created threads. Their provisional title seed is the clicked turn's ordered user input fragments, not the source title or assistant output. Their first real user-authored branch turn triggers branch retitling as defined in Thread Display Titles.
 - Branch orchestration runs away from the `gpui` thread and does not mutate source transcript projection.
 
 ## Thread Editing
@@ -92,12 +102,12 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - After validation succeeds, edit commit rolls back the selected backend thread by the exact trailing user-turn count, resets visible transcript state from the rollback response, and starts a replacement backend turn from the current draft.
 - If selection changes while edit commit is in flight, rollback and replacement responses remain scoped to the original target thread and must not apply to unrelated visible transcripts.
 - If rollback succeeds but replacement start or delivery fails, the discarded tail remains deleted. Beryl keeps the draft intact and reports the failure.
-- Thread editing does not revert filesystem changes, semantic graph/checklist mutations, workspace state, thread title metadata, durable image assets, or other non-history side effects produced by discarded turns.
+- Thread editing does not revert filesystem changes, semantic graph/checklist-item mutations, workspace state, thread title metadata, durable image assets, or other non-history side effects produced by discarded turns.
 
 ## Backend Requirements
 
 - Thread activation depends on exact resume by thread id and bounded paginated history reads.
-- Branching depends on app-server fork and rollback primitives. When unavailable, Beryl must not emulate branching by copying backend history locally.
+- Branching depends on app-server fork, rollback, turn-start, and exact reopen/read primitives. When unavailable, Beryl must not emulate branching by copying backend history locally.
 - Editing depends on app-server rollback and turn-start primitives. When unavailable or when exact rollback scope cannot be proven, Beryl must not emulate editing locally.
 - On-demand title updates depend on app-server ephemeral-thread creation, turn-start, turn-stream observation, maintenance-thread cleanup, and `thread/name/set`. When those primitives or a backend client for the exact target runtime are unavailable, Beryl must not emulate retitling through GUI-local title metadata.
 - Thread selector and link-thread menus must render from inventory snapshots and stay responsive while refresh or activation work is pending.

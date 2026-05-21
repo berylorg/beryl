@@ -41,6 +41,16 @@ fn invalidated_discarded_turn_events_are_filtered_by_thread_and_turn_identity() 
             status: ThreadStatus::Idle,
         },)
     );
+    assert!(
+        !invalidations.event_targets_invalidated_turn(&TurnStreamEvent::ThreadArchived {
+            thread_id: "thread_a".to_string(),
+        })
+    );
+    assert!(
+        !invalidations.event_targets_invalidated_turn(&TurnStreamEvent::ThreadUnarchived {
+            thread_id: "thread_a".to_string(),
+        })
+    );
 
     invalidations.clear();
     assert!(

@@ -7,6 +7,9 @@ use gpui::{
     div, prelude::*, px,
 };
 
+use beryl_model::conversation::ConversationThreadId;
+
+use crate::branch_bootstrap_core::parse_beryl_thread_link;
 use crate::shell::execution_detail::{TranscriptImageMarker, TranscriptImagePreviewState};
 use crate::shell::transcript_markdown::{
     Inline, InlineRenderFragment, InlineRenderLine, InlineRenderRole, InlineRenderStyle,
@@ -17,7 +20,8 @@ use crate::shell::transcript_selection::TranscriptLineCopyText;
 use super::super::code_panel::{SelectedTextStyle, apply_selected_text_style};
 use super::markdown_copy::inline_line_copy_text;
 pub(super) use super::selection_context::{
-    TranscriptInlineSelectionContext, TranscriptSelectableImageMarker, TranscriptSelectableTextLine,
+    TranscriptInlineSelectionContext, TranscriptSelectableImageMarker,
+    TranscriptSelectableTextLine, TranscriptSelectableThreadLink,
 };
 use super::{TranscriptInlineCodeHost, TranscriptRoleStyle, TranscriptTextRole, TranscriptTheme};
 
@@ -227,6 +231,7 @@ fn render_inline_line(
     let base_role = block_role_settings(theme, block_role, style);
     let base_presentation_role = block_presentation_role(block_role);
     let line_markers = line_image_markers(line, markers);
+    let thread_links = line_thread_links(line);
     let display_text = inline_line_display_text(line, line_markers.as_slice());
     let display_text_len = display_text.len();
     let selectable_line = selection_context.as_ref().map(|context| {
@@ -237,6 +242,7 @@ fn render_inline_line(
                 inline_line_copy_text_with_markers(line, line_markers.as_slice()),
             )
             .with_image_markers(line_markers.clone())
+            .with_thread_links(thread_links.clone())
     });
     let selected_text = selectable_line.as_ref().and_then(|line| {
         selection_context
@@ -457,6 +463,48 @@ fn line_image_markers(
     line_markers.sort_by_key(|marker| marker.display_range.start);
     line_markers.dedup_by(|left, right| left.occurrence_id == right.occurrence_id);
     line_markers
+}
+
+fn line_thread_links(line: &InlineRenderLine) -> Vec<TranscriptSelectableThreadLink> {
+    let mut display_cursor = 0usize;
+    let mut links = Vec::new();
+
+    for fragment in &line.fragments {
+        let display_range = display_cursor..display_cursor + fragment.text.len();
+        display_cursor = display_range.end;
+        if display_range.start == display_range.end {
+            continue;
+        }
+        let Some(thread_id) = fragment
+            .link_destination
+            .as_deref()
+            .and_then(parse_beryl_thread_link)
+        else {
+            continue;
+        };
+        push_thread_link_range(&mut links, thread_id, display_range);
+    }
+
+    links
+}
+
+fn push_thread_link_range(
+    links: &mut Vec<TranscriptSelectableThreadLink>,
+    thread_id: ConversationThreadId,
+    display_range: Range<usize>,
+) {
+    if let Some(previous) = links.last_mut()
+        && previous.thread_id == thread_id
+        && previous.display_range.end == display_range.start
+    {
+        previous.display_range.end = display_range.end;
+        return;
+    }
+
+    links.push(TranscriptSelectableThreadLink {
+        thread_id,
+        display_range,
+    });
 }
 
 fn push_fragment_display_text(

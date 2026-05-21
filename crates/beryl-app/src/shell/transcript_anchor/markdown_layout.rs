@@ -129,6 +129,7 @@ fn plain_fallback_blocks(source: &str) -> Vec<BlockRenderNode> {
                         fragments: vec![InlineRenderFragment {
                             text: line,
                             style,
+                            link_destination: None,
                             source_span: None,
                             display_source_span: None,
                             copy_prefix: String::new(),
@@ -381,6 +382,7 @@ fn fallback_lines(source: &str, role: InlineRenderRole) -> Vec<InlineRenderLine>
                     fragments: vec![InlineRenderFragment {
                         text: line,
                         style,
+                        link_destination: None,
                         source_span: None,
                         display_source_span: None,
                         copy_prefix: String::new(),

@@ -11,6 +11,7 @@ use beryl_model::conversation::{
     WorkspaceConversationStateError,
 };
 use beryl_model::semantic_graph::{SemanticGraph, SemanticGraphError, SemanticGraphPatch};
+use beryl_model::threaded_decision::ThreadedDecisionState;
 use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, BerylWorkspaceTitleError, RuntimeMode,
     derive_workspace_slug,
@@ -44,6 +45,7 @@ const WORKSPACE_UI_STATE_KEY: &str = "ui_state";
 const WORKSPACE_GRAPH_UPKEEP_POLICY_KEY: &str = "graph_upkeep_policy";
 const WORKSPACE_GRAPH_STATE_KEY: &str = "semantic_graph_state";
 const WORKSPACE_GRAPH_REVISION_KEY: &str = "semantic_graph_revision";
+const WORKSPACE_THREADED_DECISION_STATE_KEY: &str = "threaded_decision_state";
 const WORKSPACE_IMAGE_ASSETS_KEY: &str = "image_assets";
 const WORKSPACE_RENAME_TRANSACTION_FILE_NAME: &str = "workspace-rename-transaction.json";
 const DEFAULT_TOOL_ACTIVITY_PANEL_HEIGHT_PX: f32 = 112.0;
@@ -915,6 +917,47 @@ impl BerylWorkspacePersistence {
             WORKSPACE_GRAPH_UPKEEP_POLICY_KEY,
             "workspace graph upkeep policy",
             &policy.clone().normalized(),
+        )
+    }
+
+    pub fn load_workspace_threaded_decision_state(
+        &self,
+        workspace_id: &BerylWorkspaceId,
+    ) -> Result<ThreadedDecisionState, WorkspacePersistenceError> {
+        self.ensure_workspaces_root()?;
+        let database_path = self.workspace_database_path(workspace_id);
+        if !database_path.exists() {
+            return Ok(ThreadedDecisionState::default());
+        }
+
+        Ok(
+            load_workspace_record_from_database::<ThreadedDecisionState>(
+                &database_path,
+                WORKSPACE_THREADED_DECISION_STATE_KEY,
+                "workspace threaded-decision state",
+            )?
+            .unwrap_or_default(),
+        )
+    }
+
+    pub fn save_workspace_threaded_decision_state(
+        &self,
+        workspace_id: &BerylWorkspaceId,
+        state: &ThreadedDecisionState,
+    ) -> Result<(), WorkspacePersistenceError> {
+        self.ensure_workspaces_root()?;
+        let workspace_dir = self.workspace_dir(workspace_id);
+        fs::create_dir_all(&workspace_dir).map_err(|source| {
+            WorkspacePersistenceError::CreateDirectory {
+                path: workspace_dir.display().to_string(),
+                source,
+            }
+        })?;
+        save_workspace_record_to_database(
+            &self.workspace_database_path(workspace_id),
+            WORKSPACE_THREADED_DECISION_STATE_KEY,
+            "workspace threaded-decision state",
+            state,
         )
     }
 

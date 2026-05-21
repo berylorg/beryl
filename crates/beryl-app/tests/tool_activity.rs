@@ -503,6 +503,29 @@ fn projection_retains_history_and_finishes_lingering_running_rows() {
 }
 
 #[test]
+fn archive_notification_finishes_lingering_running_rows() {
+    let mut projection = ToolActivityProjection::default();
+
+    projection.apply_stream_event(
+        &started("thread_branch", "turn_branch", command_item("cmd_branch")),
+        Some("Decision".to_string()),
+    );
+    assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
+
+    projection.apply_stream_event(
+        &TurnStreamEvent::ThreadArchived {
+            thread_id: "thread_branch".to_string(),
+        },
+        None,
+    );
+
+    assert_eq!(
+        projection.rows()[0].status,
+        ToolActivityRowStatus::FinishedOk
+    );
+}
+
+#[test]
 fn projection_scopes_visible_rows_to_selected_thread_and_owned_subagents() {
     let mut projection = ToolActivityProjection::default();
 

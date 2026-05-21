@@ -8,7 +8,9 @@ mod graph_upkeep_context;
 mod status_line;
 
 use beryl_backend::TurnStartOptions;
-use graph_upkeep_context::compose_hidden_developer_instructions;
+use graph_upkeep_context::{
+    compose_hidden_developer_instructions, compose_hidden_developer_instructions_with_contexts,
+};
 use status_line::ThreadTurnDefaults;
 
 #[test]
@@ -43,6 +45,24 @@ fn graph_upkeep_context_precedes_global_developer_instructions() {
     assert!(workspace_header < workspace_policy);
     assert!(workspace_policy < global_index);
     assert!(composed.ends_with(global));
+}
+
+#[test]
+fn additional_hidden_contexts_are_between_graph_upkeep_and_global_instructions() {
+    let policy =
+        WorkspaceGraphUpkeepPolicy::with_instructions(Some("Track decisions.".to_string()));
+    let decision_context = "Beryl threaded-decision branch context:\n- Decision checklist item: Pick parser (pick_parser)";
+    let global = "Use the operator's global rules.";
+
+    let composed = compose_hidden_developer_instructions_with_contexts(
+        Some(&policy),
+        [decision_context.to_string()],
+        Some(global.to_string()),
+    )
+    .expect("hidden context should be composed");
+
+    assert_order(&composed, "Track decisions.", decision_context);
+    assert_order(&composed, decision_context, global);
 }
 
 #[test]
@@ -102,4 +122,10 @@ fn graph_upkeep_policy_is_late_bound_for_later_request_assembly() {
     assert_ne!(first_context, second_context);
     assert!(first_context.contains("Track Phase 1."));
     assert!(second_context.contains("Track Phase 2."));
+}
+
+fn assert_order(haystack: &str, before: &str, after: &str) {
+    let before_index = haystack.find(before).expect("before text should exist");
+    let after_index = haystack.find(after).expect("after text should exist");
+    assert!(before_index < after_index);
 }

@@ -2,6 +2,8 @@
 mod execution_detail;
 #[path = "../src/shell/pending_turn_input.rs"]
 mod pending_turn_input;
+#[path = "../src/shell/thread_title.rs"]
+mod thread_title;
 
 use beryl_backend::{TurnStartOptions, UserInput};
 use beryl_model::workspace::WorkspaceId;

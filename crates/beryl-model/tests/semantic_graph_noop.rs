@@ -1,7 +1,7 @@
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::{
-    ChecklistItemStatus, SemanticGraph, SemanticGraphPatch, SemanticGraphPatchOp,
-    SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId,
+    ChecklistItemKind, ChecklistItemStatus, SemanticGraph, SemanticGraphPatch,
+    SemanticGraphPatchOp, SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId,
 };
 
 #[test]
@@ -208,6 +208,63 @@ fn repeated_checklist_status_write_preserves_provenance_as_noop() {
     );
 }
 
+#[test]
+fn repeated_checklist_item_kind_write_preserves_provenance_as_noop() {
+    let list_id = SemanticNodeId::new("list").unwrap();
+    let item_id = SemanticNodeId::new("item").unwrap();
+    let mut graph = SemanticGraph::default();
+
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: checklist_node(list_id.clone(), "List"),
+                provenance: provenance(1),
+            },
+            set_root_op(&list_id, None, 2),
+            SemanticGraphPatchOp::UpsertNode {
+                node: checklist_item_node(item_id.clone(), "Item", ChecklistItemStatus::Todo),
+                provenance: provenance(3),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: item_id.clone(),
+                parent_id: Some(list_id),
+                index: None,
+                provenance: provenance(4),
+            },
+            SemanticGraphPatchOp::SetChecklistItemKind {
+                node_id: item_id.clone(),
+                kind: ChecklistItemKind::Decision,
+                provenance: provenance(5),
+            },
+        ]))
+        .unwrap();
+
+    let changed = graph
+        .apply_patch(&SemanticGraphPatch::from_operation(
+            SemanticGraphPatchOp::SetChecklistItemKind {
+                node_id: item_id.clone(),
+                kind: ChecklistItemKind::Decision,
+                provenance: provenance(99),
+            },
+        ))
+        .unwrap();
+
+    assert!(!changed);
+    assert_eq!(
+        graph.node(&item_id).unwrap().checklist_item_kind(),
+        Some(ChecklistItemKind::Decision)
+    );
+    assert_eq!(
+        graph
+            .node(&item_id)
+            .unwrap()
+            .provenance()
+            .last_updated()
+            .recorded_at_millis(),
+        5
+    );
+}
+
 fn provenance(recorded_at_millis: u64) -> MutationProvenance {
     MutationProvenance::new(
         "operator",
@@ -233,7 +290,7 @@ fn checklist_node(node_id: SemanticNodeId, title: &str) -> SemanticNodeDraft {
         node_id,
         title,
         format!("{title} summary"),
-        SemanticNodeFacets::topic_and_checklist(),
+        SemanticNodeFacets::topic(),
         None,
     )
 }

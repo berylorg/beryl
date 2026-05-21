@@ -14,9 +14,13 @@ use beryl_model::conversation::{
 };
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::{
-    ChecklistItemStatus, SemanticGraph, SemanticGraphPatch, SemanticGraphPatchOp,
-    SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId, SoftLinkDraft, SoftLinkId, SoftLinkKind,
-    ThreadRefDraft, ThreadRefId,
+    ChecklistItemKind, ChecklistItemStatus, SemanticGraph, SemanticGraphPatch,
+    SemanticGraphPatchOp, SemanticNodeDraft, SemanticNodeFacets, SemanticNodeId, SoftLinkDraft,
+    SoftLinkId, SoftLinkKind, ThreadRefDraft, ThreadRefId,
+};
+use beryl_model::threaded_decision::{
+    ThreadedDecisionOperationId, ThreadedDecisionOutcome, ThreadedDecisionRecord,
+    ThreadedDecisionRecordId, ThreadedDecisionState,
 };
 use beryl_model::workspace::{BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId};
 
@@ -620,14 +624,11 @@ fn checklist_reads_preserve_item_order_and_thread_refs() {
     let response = service
         .read_checklist(&ChecklistReadRequest {
             workspace_id: workspace_id.clone(),
-            checklist_node_id: SemanticNodeId::new("checklist").unwrap(),
+            topic_node_id: SemanticNodeId::new("checklist").unwrap(),
         })
         .unwrap();
 
-    assert_eq!(
-        response.checklist.id,
-        SemanticNodeId::new("checklist").unwrap()
-    );
+    assert_eq!(response.topic.id, SemanticNodeId::new("checklist").unwrap());
     assert_eq!(response.summary.root_node_count, 1);
     assert_eq!(response.summary.root_nodes[0].id.as_str(), "root");
     assert!(!response.truncated);
@@ -642,6 +643,14 @@ fn checklist_reads_preserve_item_order_and_thread_refs() {
     );
     assert_eq!(response.items[0].thread_refs.len(), 1);
     assert!(response.items[1].thread_refs.is_empty());
+    assert_eq!(
+        response.items[0].node.checklist_item_kind,
+        Some(ChecklistItemKind::Generic)
+    );
+    assert_eq!(
+        response.items[1].node.checklist_item_kind,
+        Some(ChecklistItemKind::Decision)
+    );
 
     root.close().unwrap();
 }
@@ -662,7 +671,7 @@ fn checklist_read_under_later_root_returns_ordered_root_summary() {
     let response = service
         .read_checklist(&ChecklistReadRequest {
             workspace_id: workspace_id.clone(),
-            checklist_node_id: SemanticNodeId::new("checklist_b").unwrap(),
+            topic_node_id: SemanticNodeId::new("checklist_b").unwrap(),
         })
         .unwrap();
 
@@ -677,7 +686,7 @@ fn checklist_read_under_later_root_returns_ordered_root_summary() {
     );
     assert_eq!(response.summary.root_node_count, 2);
     assert_eq!(
-        response.checklist.id,
+        response.topic.id,
         SemanticNodeId::new("checklist_b").unwrap()
     );
     assert_eq!(response.items.len(), 1);
@@ -690,7 +699,7 @@ fn checklist_read_under_later_root_returns_ordered_root_summary() {
 }
 
 #[test]
-fn checklist_read_rejects_non_checklist_nodes() {
+fn checklist_read_returns_itemized_children_under_topic_nodes() {
     let root = unique_temp_dir();
     let persistence = BerylWorkspacePersistence::new(&root);
     let service = WorkspaceGraphToolService::new(persistence.clone());
@@ -703,17 +712,15 @@ fn checklist_read_rejects_non_checklist_nodes() {
         .save_workspace_graph_state(&workspace_id, &graph)
         .unwrap();
 
-    let error = service
+    let response = service
         .read_checklist(&ChecklistReadRequest {
             workspace_id: workspace_id.clone(),
-            checklist_node_id: SemanticNodeId::new("root").unwrap(),
+            topic_node_id: SemanticNodeId::new("root").unwrap(),
         })
-        .unwrap_err();
+        .unwrap();
 
-    assert!(matches!(
-        error,
-        WorkspaceGraphToolError::NodeNotChecklist { .. }
-    ));
+    assert_eq!(response.topic.id, SemanticNodeId::new("root").unwrap());
+    assert!(response.items.is_empty());
 
     root.close().unwrap();
 }
@@ -735,7 +742,7 @@ fn checklist_read_truncates_large_item_sets() {
     let response = service
         .read_checklist(&ChecklistReadRequest {
             workspace_id: workspace_id.clone(),
-            checklist_node_id: SemanticNodeId::new("checklist").unwrap(),
+            topic_node_id: SemanticNodeId::new("checklist").unwrap(),
         })
         .unwrap();
 
@@ -780,7 +787,7 @@ fn checklist_item_thread_ref_upsert_attaches_to_existing_item_node() {
     let checklist = service
         .read_checklist(&ChecklistReadRequest {
             workspace_id: workspace_id.clone(),
-            checklist_node_id: SemanticNodeId::new("checklist").unwrap(),
+            topic_node_id: SemanticNodeId::new("checklist").unwrap(),
         })
         .unwrap();
     let stored = persistence
@@ -860,6 +867,115 @@ fn graph_patch_writes_use_the_durable_repository_path() {
     assert_eq!(response.summary.root_nodes[0].id, root_id);
     assert!(!repeat.commit.changed);
     assert!(graph.node(&SemanticNodeId::new("root").unwrap()).is_some());
+
+    root.close().unwrap();
+}
+
+#[test]
+fn graph_patch_writes_reject_protected_resolved_decision_item_status_mutation() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("graph_tools").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Graph Tools", 42);
+    let list_id = SemanticNodeId::new("decisions").unwrap();
+    let item_id = SemanticNodeId::new("decision_item").unwrap();
+    let mut graph = SemanticGraph::default();
+    graph
+        .apply_patch(&SemanticGraphPatch::new(vec![
+            SemanticGraphPatchOp::UpsertNode {
+                node: SemanticNodeDraft::new(
+                    list_id.clone(),
+                    "Decisions",
+                    "Decision checklist.",
+                    SemanticNodeFacets::topic(),
+                    None,
+                ),
+                provenance: provenance(9),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: list_id.clone(),
+                parent_id: None,
+                index: None,
+                provenance: provenance(10),
+            },
+            SemanticGraphPatchOp::UpsertNode {
+                node: SemanticNodeDraft::new_with_checklist_item_kind(
+                    item_id.clone(),
+                    "Decision",
+                    "Resolved decision.",
+                    SemanticNodeFacets::topic_and_checklist_item(),
+                    Some(ChecklistItemStatus::Done),
+                    Some(ChecklistItemKind::Decision),
+                ),
+                provenance: provenance(11),
+            },
+            SemanticGraphPatchOp::SetHardParent {
+                child_id: item_id.clone(),
+                parent_id: Some(list_id),
+                index: None,
+                provenance: provenance(12),
+            },
+        ]))
+        .unwrap();
+    let mut decisions = ThreadedDecisionState::default();
+    let record_id = ThreadedDecisionRecordId::new("record").unwrap();
+    decisions
+        .insert_record(ThreadedDecisionRecord::active_branch(
+            record_id.clone(),
+            item_id.clone(),
+            ConversationThreadId::new("parent_thread"),
+            ConversationThreadId::new("child_thread"),
+            Some(ConversationTurnId::new("branch_point")),
+            ThreadedDecisionOperationId::new("branch_op").unwrap(),
+            1,
+            provenance(1),
+        ))
+        .unwrap();
+    decisions
+        .mark_pending_resolution(
+            &record_id,
+            ThreadedDecisionOutcome::Accepted,
+            "Use it.",
+            "Handoff.",
+            ThreadedDecisionOperationId::new("resolve_op").unwrap(),
+            provenance(2),
+        )
+        .unwrap();
+    decisions
+        .mark_checklist_updated(
+            &record_id,
+            ConversationTurnId::new("handoff"),
+            provenance(3),
+        )
+        .unwrap();
+
+    persistence.save_workspace_manifest(&manifest).unwrap();
+    persistence
+        .save_workspace_graph_state(&workspace_id, &graph)
+        .unwrap();
+    persistence
+        .save_workspace_threaded_decision_state(&workspace_id, &decisions)
+        .unwrap();
+
+    let error = service
+        .apply_graph_patch(&GraphPatchWriteRequest {
+            workspace_id: workspace_id.clone(),
+            patch: SemanticGraphPatch::from_operation(
+                SemanticGraphPatchOp::SetChecklistItemStatus {
+                    node_id: item_id,
+                    status: ChecklistItemStatus::InProgress,
+                    provenance: provenance(20),
+                },
+            ),
+            expected_base_revision: None,
+        })
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        WorkspaceGraphToolError::ProtectedDecisionItemMutation { .. }
+    ));
 
     root.close().unwrap();
 }
@@ -1071,7 +1187,7 @@ fn multi_root_checklist_graph() -> SemanticGraph {
                     checklist_id.clone(),
                     "Checklist B",
                     "Checklist B summary",
-                    SemanticNodeFacets::topic_and_checklist(),
+                    SemanticNodeFacets::topic(),
                     None,
                 ),
                 provenance: provenance(22),
@@ -1171,7 +1287,7 @@ fn sample_graph() -> SemanticGraph {
                     checklist_id.clone(),
                     "Checklist",
                     "Checklist summary",
-                    SemanticNodeFacets::topic_and_checklist(),
+                    SemanticNodeFacets::topic(),
                     None,
                 ),
                 provenance: provenance(2),
@@ -1196,6 +1312,11 @@ fn sample_graph() -> SemanticGraph {
                 ),
                 provenance: provenance(4),
             },
+            SemanticGraphPatchOp::SetChecklistItemKind {
+                node_id: item_b_id.clone(),
+                kind: ChecklistItemKind::Decision,
+                provenance: provenance(5),
+            },
             SemanticGraphPatchOp::UpsertNode {
                 node: SemanticNodeDraft::new(
                     sibling_id.clone(),
@@ -1204,37 +1325,37 @@ fn sample_graph() -> SemanticGraph {
                     SemanticNodeFacets::topic(),
                     None,
                 ),
-                provenance: provenance(5),
+                provenance: provenance(6),
             },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: root_id.clone(),
                 parent_id: None,
                 index: None,
-                provenance: provenance(6),
+                provenance: provenance(7),
             },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: checklist_id.clone(),
                 parent_id: Some(root_id.clone()),
                 index: None,
-                provenance: provenance(7),
+                provenance: provenance(8),
             },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: item_a_id.clone(),
                 parent_id: Some(checklist_id.clone()),
                 index: Some(0),
-                provenance: provenance(8),
+                provenance: provenance(9),
             },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: item_b_id.clone(),
                 parent_id: Some(checklist_id.clone()),
                 index: Some(1),
-                provenance: provenance(9),
+                provenance: provenance(10),
             },
             SemanticGraphPatchOp::SetHardParent {
                 child_id: sibling_id.clone(),
                 parent_id: Some(root_id),
                 index: Some(1),
-                provenance: provenance(10),
+                provenance: provenance(11),
             },
             SemanticGraphPatchOp::UpsertSoftLink {
                 link: SoftLinkDraft::new(
@@ -1243,7 +1364,7 @@ fn sample_graph() -> SemanticGraph {
                     sibling_id,
                     SoftLinkKind::new("depends_on").unwrap(),
                 ),
-                provenance: provenance(11),
+                provenance: provenance(12),
             },
             SemanticGraphPatchOp::UpsertThreadRef {
                 thread_ref: ThreadRefDraft::new(
@@ -1253,7 +1374,7 @@ fn sample_graph() -> SemanticGraph {
                     WorkspaceId::host_windows(r"C:\work\beryl"),
                     "Item thread",
                 ),
-                provenance: provenance(12),
+                provenance: provenance(13),
             },
         ]))
         .unwrap();
@@ -1314,7 +1435,7 @@ fn wide_checklist(item_count: usize) -> SemanticGraph {
             checklist_id.clone(),
             "Checklist",
             "Checklist summary",
-            SemanticNodeFacets::topic_and_checklist(),
+            SemanticNodeFacets::topic(),
             None,
         ),
         provenance: provenance(1),

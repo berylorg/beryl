@@ -660,6 +660,27 @@ fn cancellable_turn_target_enables_turn_operations_cell_when_backend_allows_it()
 }
 
 #[test]
+fn non_owned_active_turn_state_does_not_enable_turn_operations_cell() {
+    let projection = StatusLineProjection {
+        model: "gpt-5.5".to_string(),
+        reasoning_effort: "high".to_string(),
+        context_space_left: "42%".to_string(),
+        context_value_segments: Vec::new(),
+        last_turn_state: "active".to_string(),
+        model_reasoning_available: false,
+        context_operation_available: false,
+        cancellable_active_turn: None,
+        hard_stop_targets: None,
+    };
+
+    let specs = status_line::status_line_cell_specs(projection, false, false, true);
+
+    assert_eq!(specs[2].value, "active");
+    assert_eq!(specs[2].action, StatusLineCellAction::None);
+    assert!(!specs[2].enabled);
+}
+
+#[test]
 fn context_percent_uses_selected_thread_last_input_tokens() {
     let mut state = StatusLineState::default();
     assert!(state.apply_token_usage(

@@ -154,6 +154,10 @@ fn render_header(
     surface: &ConversationSurfaceState,
 ) -> impl IntoElement {
     let inventory = surface.member_thread_inventory();
+    let selector_snapshot = surface
+        .thread_selector()
+        .snapshot()
+        .unwrap_or_else(|| inventory.snapshot());
     let mut status = if inventory.refreshing() {
         Some("Refreshing thread list...".to_string())
     } else {
@@ -208,7 +212,7 @@ fn render_header(
                         .truncate()
                         .child(format!(
                             "{} member groups",
-                            surface.member_thread_inventory().snapshot().groups().len()
+                            selector_snapshot.groups().len()
                         )),
                 ),
         );
@@ -355,7 +359,10 @@ fn render_column_rows(
     let viewport_height = thread_selector_row_viewport_height(&scroll_handle);
     let scroll_offset = -scroll_handle.offset().y;
     let mut rows = div().w_full().p_3();
-    let snapshot = surface.member_thread_inventory().snapshot();
+    let snapshot = surface
+        .thread_selector()
+        .snapshot()
+        .unwrap_or_else(|| surface.member_thread_inventory().snapshot());
 
     match &column_key {
         ThreadSelectorColumnKey::Members => {
@@ -516,7 +523,10 @@ fn render_thread_group_rows(
     scroll_offset: gpui::Pixels,
     cx: &mut Context<ShellView>,
 ) -> AnyElement {
-    let snapshot = surface.member_thread_inventory().snapshot();
+    let snapshot = surface
+        .thread_selector()
+        .snapshot()
+        .unwrap_or_else(|| surface.member_thread_inventory().snapshot());
     let ThreadSelectorColumnKey::Threads {
         member_key,
         parent_thread_id,
@@ -843,7 +853,10 @@ fn column_header_label(
     surface: &ConversationSurfaceState,
     column_key: &ThreadSelectorColumnKey,
 ) -> String {
-    let snapshot = surface.member_thread_inventory().snapshot();
+    let snapshot = surface
+        .thread_selector()
+        .snapshot()
+        .unwrap_or_else(|| surface.member_thread_inventory().snapshot());
     match column_key {
         ThreadSelectorColumnKey::Members => "Members".to_string(),
         ThreadSelectorColumnKey::Threads {

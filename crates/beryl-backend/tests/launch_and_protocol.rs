@@ -14,9 +14,10 @@ use beryl_backend::{
     ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession,
     ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
     ModelListOptions, ModelListResponse, NonSteerableTurnKind, SortDirection,
-    ThreadBranchCapabilityProbe, ThreadForkOptions, ThreadListOptions, ThreadListResponse,
-    ThreadLoadedListResponse, ThreadSortKey, ThreadStartOptions, ThreadStatus, TurnStartOptions,
-    TurnStatus, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
+    ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
+    ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey,
+    ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput,
+    active_turn_not_steerable_error,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
@@ -1003,6 +1004,134 @@ fn websocket_thread_fork_and_rollback_use_observed_branch_protocol() {
 }
 
 #[test]
+fn websocket_thread_archive_and_unarchive_use_observed_protocol() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/archive"));
+        assert_eq!(
+            request["params"],
+            json!({
+                "threadId": "thread_branch"
+            })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "result": {}
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(3));
+        assert_eq!(request["method"], json!("thread/unarchive"));
+        assert_eq!(
+            request["params"],
+            json!({
+                "threadId": "thread_branch"
+            })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "result": {
+                        "thread": {
+                            "createdAt": 1,
+                            "cwd": "C:/work/beryl",
+                            "ephemeral": false,
+                            "id": "thread_branch",
+                            "modelProvider": "openai",
+                            "preview": "Decision branch",
+                            "status": {
+                                "type": "notLoaded"
+                            },
+                            "turns": [],
+                            "updatedAt": 2
+                        }
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    client
+        .archive_thread("thread_branch", Duration::from_secs(2))
+        .unwrap();
+
+    let unarchive = client
+        .unarchive_thread("thread_branch", Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(unarchive.thread.summary().id, "thread_branch");
+    assert_eq!(unarchive.thread.status, ThreadStatus::NotLoaded);
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_archive_preserves_request_error_detail() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/archive"));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32600,
+                        "message": "no rollout found for thread id thread_branch"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let error = client
+        .archive_thread("thread_branch", Duration::from_secs(2))
+        .unwrap_err();
+    let ManagedBackendError::RequestFailed { method, error } = error else {
+        panic!("expected request failure");
+    };
+    assert_eq!(method, "thread/archive");
+    assert_eq!(error.code, -32600);
+    assert_eq!(
+        error.message,
+        "no rollout found for thread id thread_branch"
+    );
+    server.join().unwrap();
+}
+
+#[test]
 fn websocket_thread_fork_metadata_only_sets_exclude_turns() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
@@ -1657,6 +1786,87 @@ fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
 }
 
 #[test]
+fn websocket_thread_archive_capability_probe_reports_optional_method_support() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/archive"));
+        assert_eq!(
+            request["params"],
+            json!({
+                "threadId": "00000000-0000-0000-0000-000000000000"
+            })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32600,
+                        "message": "no rollout found for thread id"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(3));
+        assert_eq!(request["method"], json!("thread/unarchive"));
+        assert_eq!(
+            request["params"],
+            json!({
+                "threadId": "00000000-0000-0000-0000-000000000000"
+            })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "error": {
+                        "code": -32601,
+                        "message": "method not found"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let report = client
+        .probe_thread_archive_capabilities(Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(report.probe_results().len(), 2);
+    assert_eq!(
+        report.probe_results()[0].probe(),
+        ThreadArchiveCapabilityProbe::ThreadArchive
+    );
+    assert!(report.probe_results()[0].supported());
+    assert_eq!(
+        report.probe_results()[1].probe(),
+        ThreadArchiveCapabilityProbe::ThreadUnarchive
+    );
+    assert!(!report.probe_results()[1].supported());
+    assert!(report.capabilities().thread_archive());
+    assert!(!report.capabilities().thread_unarchive());
+    assert!(!report.capabilities().thread_archiving());
+    server.join().unwrap();
+}
+
+#[test]
 fn websocket_turn_steer_preserves_non_steerable_request_error() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
@@ -2244,6 +2454,26 @@ fn thread_list_options_serialize_filter_sort_and_page_controls() {
             "sortKey": "created_at",
             "sortDirection": "asc"
         })
+    );
+
+    assert_eq!(
+        serde_json::to_value(ThreadListOptions::page(10).archived()).unwrap(),
+        json!({
+            "limit": 10,
+            "archived": true
+        })
+    );
+
+    assert_eq!(
+        serde_json::to_value(ThreadListOptions::default().non_archived()).unwrap(),
+        json!({
+            "archived": false
+        })
+    );
+
+    assert_eq!(
+        serde_json::to_value(ThreadListOptions::default()).unwrap(),
+        json!({})
     );
 }
 

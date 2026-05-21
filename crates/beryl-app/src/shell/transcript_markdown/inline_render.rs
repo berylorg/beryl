@@ -12,6 +12,7 @@ pub(crate) struct InlineRenderLine {
 pub(crate) struct InlineRenderFragment {
     pub(crate) text: String,
     pub(crate) style: InlineRenderStyle,
+    pub(crate) link_destination: Option<String>,
     pub(crate) source_span: Option<MarkdownSourceSpan>,
     pub(crate) display_source_span: Option<MarkdownSourceSpan>,
     pub(crate) copy_prefix: String,
@@ -50,17 +51,18 @@ impl Default for InlineRenderStyle {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct StyleState {
     emphasis: bool,
     strong: bool,
     link: bool,
+    link_destination: Option<String>,
     fallback: bool,
     source_span: Option<MarkdownSourceSpan>,
 }
 
 impl StyleState {
-    fn render_style(self) -> InlineRenderStyle {
+    fn render_style(&self) -> InlineRenderStyle {
         InlineRenderStyle {
             role: if self.fallback {
                 InlineRenderRole::Code
@@ -95,6 +97,14 @@ impl StyleState {
 
     fn link(self) -> Self {
         Self { link: true, ..self }
+    }
+
+    fn link_destination(self, destination: &str) -> Self {
+        Self {
+            link: true,
+            link_destination: Some(destination.to_string()),
+            ..self
+        }
     }
 
     fn fallback(self) -> Self {
@@ -165,6 +175,7 @@ impl InlineLineBuilder {
         &mut self,
         text: &str,
         style: InlineRenderStyle,
+        link_destination: Option<&str>,
         source_span: Option<MarkdownSourceSpan>,
         markdown_source: Option<&str>,
     ) {
@@ -177,6 +188,7 @@ impl InlineLineBuilder {
                 self.push_fragment(
                     chunk,
                     style,
+                    link_destination.map(str::to_string),
                     source_span,
                     copy_source.display_source_span,
                     copy_source.copy_prefix,
@@ -190,6 +202,7 @@ impl InlineLineBuilder {
         &mut self,
         text: &str,
         style: InlineRenderStyle,
+        link_destination: Option<String>,
         source_span: Option<MarkdownSourceSpan>,
         display_source_span: Option<MarkdownSourceSpan>,
         copy_prefix: String,
@@ -201,6 +214,7 @@ impl InlineLineBuilder {
             .expect("inline render builder always keeps a current line");
         if let Some(previous) = line.fragments.last_mut()
             && previous.style == style
+            && previous.link_destination == link_destination
             && previous.source_span == source_span
             && previous.display_source_span == display_source_span
             && previous.copy_prefix == copy_prefix
@@ -214,6 +228,7 @@ impl InlineLineBuilder {
         line.fragments.push(InlineRenderFragment {
             text: text.to_string(),
             style,
+            link_destination,
             source_span,
             display_source_span,
             copy_prefix,
@@ -245,6 +260,7 @@ fn push_inline(
         Inline::Text(text) => builder.push_text(
             text,
             state.render_style(),
+            state.link_destination.as_deref(),
             leaf_source_span,
             markdown_source,
         ),
@@ -276,17 +292,21 @@ fn push_inline(
             builder.push_text(
                 source,
                 style,
+                state.link_destination.as_deref(),
                 node_source_span.or(state.source_span),
                 markdown_source,
             );
         }
         Inline::Link(link) => {
-            let link_state = state.source_span(node_source_span).link();
+            let link_state = state
+                .source_span(node_source_span)
+                .link_destination(link.destination());
             if link.children().is_empty() {
                 builder.push_text(
                     link.destination(),
                     link_state.render_style(),
-                    node_source_span.or(state.source_span),
+                    link_state.link_destination.as_deref(),
+                    node_source_span.or(link_state.source_span),
                     markdown_source,
                 );
             } else {
@@ -300,25 +320,37 @@ fn push_inline(
                 );
             }
         }
-        Inline::Image(image) => builder.push_text(
-            &image_fallback_text(image),
-            state.fallback().render_style(),
-            node_source_span.or(state.source_span),
-            markdown_source,
-        ),
-        Inline::Math(math) => builder.push_text(
-            &math_fallback_text(math),
-            state.fallback().render_style(),
-            node_source_span.or(state.source_span),
-            markdown_source,
-        ),
+        Inline::Image(image) => {
+            let fallback_state = state.fallback();
+            builder.push_text(
+                &image_fallback_text(image),
+                fallback_state.render_style(),
+                fallback_state.link_destination.as_deref(),
+                node_source_span.or(fallback_state.source_span),
+                markdown_source,
+            );
+        }
+        Inline::Math(math) => {
+            let fallback_state = state.fallback();
+            builder.push_text(
+                &math_fallback_text(math),
+                fallback_state.render_style(),
+                fallback_state.link_destination.as_deref(),
+                node_source_span.or(fallback_state.source_span),
+                markdown_source,
+            );
+        }
         Inline::SoftBreak | Inline::HardBreak => builder.push_line_break(),
-        Inline::Unsupported(unsupported) => builder.push_text(
-            &unsupported_fallback_text(unsupported),
-            state.fallback().render_style(),
-            node_source_span.or(state.source_span),
-            markdown_source,
-        ),
+        Inline::Unsupported(unsupported) => {
+            let fallback_state = state.fallback();
+            builder.push_text(
+                &unsupported_fallback_text(unsupported),
+                fallback_state.render_style(),
+                fallback_state.link_destination.as_deref(),
+                node_source_span.or(fallback_state.source_span),
+                markdown_source,
+            );
+        }
     }
 }
 
@@ -334,7 +366,7 @@ fn push_children(
         let path = markdown_inline_child_source_path(parent_path, index);
         push_inline(
             child,
-            state,
+            state.clone(),
             builder,
             source_map,
             path.as_str(),

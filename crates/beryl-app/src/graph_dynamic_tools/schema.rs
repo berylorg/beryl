@@ -43,13 +43,13 @@ pub(super) fn graph_neighborhood_schema() -> Value {
 pub(super) fn checklist_read_schema() -> Value {
     json!({
         "type": "object",
-        "required": ["checklistNodeId"],
+        "required": ["topicNodeId"],
         "properties": {
-            "checklistNodeId": graph_id_schema("Checklist-capable semantic node id to read.")
+            "topicNodeId": graph_id_schema("Topic-capable semantic node id whose checklist-item children should be read.")
         },
         "additionalProperties": false,
         "examples": [{
-            "checklistNodeId": "release_checklist"
+            "topicNodeId": "release"
         }]
     })
 }
@@ -57,7 +57,7 @@ pub(super) fn checklist_read_schema() -> Value {
 pub(super) fn upsert_graph_node_schema() -> Value {
     json!({
         "type": "object",
-        "required": ["nodeId", "parentId", "title", "summary", "topic", "checklist", "checklistItem"],
+        "required": ["nodeId", "parentId", "title", "summary", "topic", "checklistItem"],
         "properties": {
             "nodeId": graph_id_schema("Stable semantic node id to create or update."),
             "parentId": nullable_graph_id_schema("Parent semantic node id. Use null when this node should be root-level."),
@@ -76,16 +76,15 @@ pub(super) fn upsert_graph_node_schema() -> Value {
                 "type": "boolean",
                 "description": "True when this node can be used as a work topic."
             },
-            "checklist": {
-                "type": "boolean",
-                "description": "True when this node owns checklist-item child nodes."
-            },
             "checklistItem": {
                 "type": "boolean",
                 "description": "True when this node is an actionable checklist item. Checklist items must also set topic=true."
             },
             "checklistItemStatus": checklist_item_status_schema_with_description(
                 "Required when checklistItem=true. Omit for non-checklist-item nodes."
+            ),
+            "checklistItemKind": checklist_item_kind_schema_with_description(
+                "Optional when checklistItem=true. Use generic for ordinary checklist rows or decision for threaded-decision candidates. Omit on updates to preserve the existing kind; new checklist items default to generic."
             )
         },
         "additionalProperties": false,
@@ -95,7 +94,6 @@ pub(super) fn upsert_graph_node_schema() -> Value {
             "title": "Root",
             "summary": "Workspace root topic.",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }]
     })
@@ -169,6 +167,14 @@ fn checklist_item_status_schema_with_description(description: &str) -> Value {
     json!({
         "type": "string",
         "enum": ["todo", "in_progress", "done"],
+        "description": description
+    })
+}
+
+fn checklist_item_kind_schema_with_description(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "enum": ["generic", "decision"],
         "description": description
     })
 }

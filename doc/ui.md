@@ -13,7 +13,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Transcript region, media, quote popup, and transcript turn context menu UI are defined in `doc/features/transcript/design.md`.
 - Status line and status popups are defined in `doc/features/status-line/design.md`.
 - Activity panel UI is defined in `doc/features/activity-panel/design.md`.
-- Graph overlay, checklist sidebar, sidebar splitter, graph rows, and graph context menus are defined in `doc/features/semantic-graph/design.md`.
+- Graph overlay, graph rows, and graph context menus are defined in `doc/features/semantic-graph/design.md`.
 - Settings window, settings rows, and color inputs are defined in `doc/features/settings/design.md`.
 - Theme editor and theme candidate code panels are defined in `doc/features/theming/design.md`.
 - Surface notices are defined in `doc/features/notifications/design.md`.
@@ -49,7 +49,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 ## Main Workspace Shell
 
 - The main workspace window is a pinned toolbar strip above a workspace body and a fixed status line strip anchored to the OS window bottom edge.
-- The workspace body contains a thread strip above a left conversation column and, when visible, a right checklist sidebar separated by a draggable sidebar splitter.
+- The workspace body contains a thread strip above the conversation column.
 - The conversation column is vertically stacked with a stretchable transcript region, optional activity panel, and pinned user input panel above the status line strip.
 - Freshly created workspaces render through the same main workspace shell as initialized workspaces on a pending-new-thread draft.
 - Runtime, member, and backend-availability recovery states may disable submission or show localized recovery information, but they do not replace the main workspace shell with a separate fresh-startup screen.
@@ -158,4 +158,4 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 
 - The workspace window preserves pinned toolbar, thread strip, user input panel, visible activity panel, and status line within OS window bounds.
 - Feature-owned overlays and popups remain bounded instead of pushing pinned strips or active transcript off-screen.
-- The minimum OS window size for the main workspace window derives from minimum sizes of the visible toolbar strip, thread strip, conversation column, checklist sidebar when visible, transcript region, visible activity panel, user input panel, and status line strip.
+- The minimum OS window size for the main workspace window derives from minimum sizes of the visible toolbar strip, thread strip, conversation column, transcript region, visible activity panel, user input panel, and status line strip.

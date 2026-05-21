@@ -335,6 +335,24 @@ impl WorkspaceConversationState {
             if existing.beryl_created() {
                 thread.mark_beryl_created();
             }
+            if thread.branch_parent_thread_id.is_none() {
+                thread
+                    .branch_parent_thread_id
+                    .clone_from(&existing.branch_parent_thread_id);
+            }
+            if thread.branch_source_turn_id.is_none() {
+                thread
+                    .branch_source_turn_id
+                    .clone_from(&existing.branch_source_turn_id);
+            }
+            if thread.branch_bootstrap_turn_id.is_none() {
+                thread
+                    .branch_bootstrap_turn_id
+                    .clone_from(&existing.branch_bootstrap_turn_id);
+            }
+            if thread.branch_title_retitle_state == BranchThreadTitleRetitleState::NotBranch {
+                thread.branch_title_retitle_state = existing.branch_title_retitle_state;
+            }
             if thread.backend_name().is_some() {
                 thread.ignored_backend_name_for_automatic_title = None;
             } else if thread.ignored_backend_name_for_automatic_title().is_none() {
@@ -441,6 +459,37 @@ impl WorkspaceConversationState {
                 thread_id: thread_id.clone(),
             })?
             .mark_automatic_title_generation_abandoned();
+        Ok(changed)
+    }
+
+    pub fn thread_branch_title_retitle_pending(&self, thread_id: &ConversationThreadId) -> bool {
+        self.thread_registration(thread_id)
+            .is_some_and(RegisteredConversationThread::branch_title_retitle_pending)
+    }
+
+    pub fn mark_thread_branch_title_retitle_started(
+        &mut self,
+        thread_id: &ConversationThreadId,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        let changed = self
+            .thread_registration_mut(thread_id)
+            .ok_or_else(|| WorkspaceConversationStateError::MissingThread {
+                thread_id: thread_id.clone(),
+            })?
+            .mark_branch_title_retitle_started();
+        Ok(changed)
+    }
+
+    pub fn mark_thread_branch_title_retitle_finished(
+        &mut self,
+        thread_id: &ConversationThreadId,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        let changed = self
+            .thread_registration_mut(thread_id)
+            .ok_or_else(|| WorkspaceConversationStateError::MissingThread {
+                thread_id: thread_id.clone(),
+            })?
+            .mark_branch_title_retitle_finished();
         Ok(changed)
     }
 

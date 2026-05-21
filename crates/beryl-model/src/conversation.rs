@@ -1,15 +1,12 @@
+mod error;
 mod state;
 mod thread_metadata;
 mod token_usage;
-
-use std::path::PathBuf;
-use std::{error::Error, fmt};
+mod wire;
 
 use serde::{Deserialize, Serialize};
 
-use crate::workspace::{
-    RuntimeMode, WorkspaceId, WorkspaceMember, WorkspaceMemberAvailability, WorkspaceMemberId,
-};
+use crate::workspace::{RuntimeMode, WorkspaceId, WorkspaceMember, WorkspaceMemberId};
 
 pub use thread_metadata::{
     ConversationThreadMemberBinding, ConversationThreadRebindRequirement, ConversationThreadTitle,
@@ -44,6 +41,14 @@ pub struct RegisteredConversationThread {
     token_usage_snapshot: Option<ConversationThreadTokenUsageSnapshot>,
     #[serde(default)]
     beryl_created: bool,
+    #[serde(default)]
+    branch_parent_thread_id: Option<ConversationThreadId>,
+    #[serde(default)]
+    branch_source_turn_id: Option<ConversationTurnId>,
+    #[serde(default)]
+    branch_bootstrap_turn_id: Option<ConversationTurnId>,
+    #[serde(default)]
+    branch_title_retitle_state: BranchThreadTitleRetitleState,
     #[serde(
         default,
         rename = "automatic_title_generation_state",
@@ -63,6 +68,16 @@ pub enum ThreadAutomaticTitleGenerationState {
     InFlight,
     Abandoned,
     Applied,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BranchThreadTitleRetitleState {
+    #[default]
+    NotBranch,
+    AwaitingFirstRealUserTurn,
+    RetitleInFlight,
+    Finished,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,34 +124,6 @@ pub enum PrimaryWorkspaceMember<'a> {
     ImplicitHome(&'a RuntimeMode),
 }
 
-#[derive(Deserialize)]
-struct WorkspaceConversationStateWire {
-    #[serde(default, alias = "selected_runtime")]
-    default_runtime: Option<RuntimeMode>,
-    #[serde(default)]
-    explicit_members: Vec<WorkspaceMemberWire>,
-    #[serde(default)]
-    primary_explicit_member_id: Option<WorkspaceMemberId>,
-    #[serde(default)]
-    next_member_number: u64,
-    #[serde(default)]
-    threads: Vec<RegisteredConversationThread>,
-    #[serde(default)]
-    active_thread: Option<ConversationThreadId>,
-}
-
-#[derive(Deserialize)]
-struct WorkspaceMemberWire {
-    id: WorkspaceMemberId,
-    #[serde(default)]
-    runtime_mode: Option<RuntimeMode>,
-    canonical_path: PathBuf,
-    #[serde(default)]
-    availability: Option<WorkspaceMemberAvailability>,
-    #[serde(default)]
-    available: Option<bool>,
-}
-
 impl ConversationThreadId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -154,78 +141,6 @@ impl ConversationTurnId {
 
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for WorkspaceConversationState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let wire = WorkspaceConversationStateWire::deserialize(deserializer)?;
-        let default_runtime = wire.default_runtime;
-        let explicit_members = wire
-            .explicit_members
-            .into_iter()
-            .map(|member| {
-                let runtime_mode = member
-                    .runtime_mode
-                    .or_else(|| default_runtime.clone())
-                    .ok_or_else(|| {
-                        serde::de::Error::custom(format!(
-                            "workspace member {} at {} is missing a runtime mode",
-                            member.id.as_str(),
-                            member.canonical_path.display()
-                        ))
-                    })?;
-                let availability = member.availability.unwrap_or_else(|| {
-                    if member.available == Some(false) {
-                        WorkspaceMemberAvailability::PathNotFound
-                    } else {
-                        WorkspaceMemberAvailability::Available
-                    }
-                });
-
-                Ok(WorkspaceMember::new_with_availability(
-                    member.id,
-                    runtime_mode,
-                    member.canonical_path,
-                    availability,
-                ))
-            })
-            .collect::<Result<Vec<_>, D::Error>>()?;
-
-        let mut state = Self {
-            default_runtime,
-            explicit_members,
-            primary_explicit_member_id: wire.primary_explicit_member_id,
-            next_member_number: wire.next_member_number,
-            threads: wire.threads,
-            active_thread: wire.active_thread,
-        };
-        state.normalize_unavailable_primary_after_deserialize();
-        Ok(state)
-    }
-}
-
-impl WorkspaceConversationState {
-    fn normalize_unavailable_primary_after_deserialize(&mut self) {
-        let Some(primary_id) = self.primary_explicit_member_id.as_ref() else {
-            return;
-        };
-        let primary_available = self
-            .explicit_members
-            .iter()
-            .any(|member| member.id() == primary_id && member.is_available());
-        if primary_available {
-            return;
-        }
-
-        self.primary_explicit_member_id = self
-            .explicit_members
-            .iter()
-            .find(|member| member.is_available())
-            .map(|member| member.id().clone());
     }
 }
 
@@ -249,6 +164,10 @@ impl RegisteredConversationThread {
             rebind_required: None,
             token_usage_snapshot: None,
             beryl_created: false,
+            branch_parent_thread_id: None,
+            branch_source_turn_id: None,
+            branch_bootstrap_turn_id: None,
+            branch_title_retitle_state: BranchThreadTitleRetitleState::NotBranch,
             automatic_title_generation_state: ThreadAutomaticTitleGenerationState::NotStarted,
             created_at_millis,
             updated_at_millis,
@@ -319,6 +238,26 @@ impl RegisteredConversationThread {
         self.beryl_created
     }
 
+    pub fn branch_parent_thread_id(&self) -> Option<&ConversationThreadId> {
+        self.branch_parent_thread_id.as_ref()
+    }
+
+    pub fn branch_source_turn_id(&self) -> Option<&ConversationTurnId> {
+        self.branch_source_turn_id.as_ref()
+    }
+
+    pub fn branch_bootstrap_turn_id(&self) -> Option<&ConversationTurnId> {
+        self.branch_bootstrap_turn_id.as_ref()
+    }
+
+    pub fn branch_title_retitle_state(&self) -> BranchThreadTitleRetitleState {
+        self.branch_title_retitle_state
+    }
+
+    pub fn branch_title_retitle_pending(&self) -> bool {
+        self.branch_title_retitle_state == BranchThreadTitleRetitleState::AwaitingFirstRealUserTurn
+    }
+
     pub fn automatic_title_generation_attempted(&self) -> bool {
         self.automatic_title_generation_state != ThreadAutomaticTitleGenerationState::NotStarted
     }
@@ -357,6 +296,22 @@ impl RegisteredConversationThread {
     pub fn with_beryl_created(mut self) -> Self {
         self.beryl_created = true;
         self.apply_existing_backend_name_to_title_generation_state();
+        self
+    }
+
+    pub fn with_branch_parent_thread_id(mut self, parent_thread_id: ConversationThreadId) -> Self {
+        self.branch_parent_thread_id = Some(parent_thread_id);
+        self
+    }
+
+    pub fn with_transcript_branch_bootstrap(
+        mut self,
+        source_turn_id: ConversationTurnId,
+        bootstrap_turn_id: Option<ConversationTurnId>,
+    ) -> Self {
+        self.branch_source_turn_id = Some(source_turn_id);
+        self.branch_bootstrap_turn_id = bootstrap_turn_id;
+        self.branch_title_retitle_state = BranchThreadTitleRetitleState::AwaitingFirstRealUserTurn;
         self
     }
 
@@ -406,6 +361,29 @@ impl RegisteredConversationThread {
 
         self.automatic_title_generation_state = ThreadAutomaticTitleGenerationState::Applied;
         self.ignored_backend_name_for_automatic_title = None;
+        true
+    }
+
+    pub fn mark_branch_title_retitle_started(&mut self) -> bool {
+        if self.branch_title_retitle_state
+            != BranchThreadTitleRetitleState::AwaitingFirstRealUserTurn
+        {
+            return false;
+        }
+
+        self.branch_title_retitle_state = BranchThreadTitleRetitleState::RetitleInFlight;
+        true
+    }
+
+    pub fn mark_branch_title_retitle_finished(&mut self) -> bool {
+        if matches!(
+            self.branch_title_retitle_state,
+            BranchThreadTitleRetitleState::NotBranch | BranchThreadTitleRetitleState::Finished
+        ) {
+            return false;
+        }
+
+        self.branch_title_retitle_state = BranchThreadTitleRetitleState::Finished;
         true
     }
 
@@ -534,53 +512,6 @@ impl RegisteredConversationThread {
         }
     }
 }
-
-impl fmt::Display for WorkspaceConversationStateError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::RuntimeEnvironmentLocked => write!(
-                f,
-                "the workspace runtime environment cannot change while explicit workspace members are attached"
-            ),
-            Self::RuntimeEnvironmentNotSelected => {
-                write!(
-                    f,
-                    "select a workspace runtime environment before attaching members"
-                )
-            }
-            Self::MissingWorkspaceMember { member_id } => {
-                write!(f, "workspace member {} is not attached", member_id.as_str())
-            }
-            Self::UnavailableWorkspaceMember { member_id } => {
-                write!(
-                    f,
-                    "workspace member {} is unavailable and cannot be primary",
-                    member_id.as_str()
-                )
-            }
-            Self::MissingThread { thread_id } => {
-                write!(
-                    f,
-                    "conversation thread {} is not registered",
-                    thread_id.as_str()
-                )
-            }
-            Self::EmptyThreadTitle => write!(f, "conversation thread title must not be empty"),
-            Self::EmptyRebindRequirement => write!(f, "thread rebind detail must not be empty"),
-            Self::WorkspaceMemberOverlap {
-                existing_member_id,
-                existing_path,
-                candidate_path,
-            } => write!(
-                f,
-                "workspace member {candidate_path} overlaps attached member {} at {existing_path}",
-                existing_member_id.as_str()
-            ),
-        }
-    }
-}
-
-impl Error for WorkspaceConversationStateError {}
 
 fn normalize_optional_title(value: Option<String>) -> Option<String> {
     value.and_then(|value| {

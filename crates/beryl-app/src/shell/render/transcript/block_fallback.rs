@@ -54,6 +54,7 @@ fn fallback_inline_lines_inner(
                     fragments: vec![InlineRenderFragment {
                         text: line.to_string(),
                         style,
+                        link_destination: None,
                         source_span: display_source_span,
                         display_source_span,
                         copy_prefix: String::new(),

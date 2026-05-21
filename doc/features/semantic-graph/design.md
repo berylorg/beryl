@@ -1,6 +1,6 @@
 # Goals
 
-Define Beryl's semantic graph as the durable workspace scope map that helps users organize project capabilities, decisions, bugs, ideas, checklists, source documents, and important Codex threads without making the graph a transcript index or a replacement for authoritative project documents.
+Define Beryl's semantic graph as the durable workspace scope map that helps users organize project capabilities, decisions, bugs, ideas, itemized work, source documents, and important Codex threads without making the graph a transcript index or a replacement for authoritative project documents.
 
 ## Non-goals
 
@@ -12,15 +12,19 @@ Define Beryl's semantic graph as the durable workspace scope map that helps user
 
 ## Product Features
 
-Beryl presents the semantic graph as a per-workspace scope map for durable work concepts. Users can use it to organize project capabilities, bugs, ideas, open questions, design areas, implementation tasks, checklists, source documents, and important Codex conversations.
+Beryl presents the semantic graph as a per-workspace scope map for durable work concepts. Users can use it to organize project capabilities, bugs, ideas, open questions, design areas, implementation tasks, itemized work, source documents, and important Codex conversations.
 
 The graph is semantic rather than conversational. Conversation threads may be attached to graph nodes, but ordinary transcript turns, backend events, tool logs, and activity records are not graph nodes.
 
-Semantic nodes have stable identity, short titles, concise summaries, and one or more constrained semantic facets. The supported facets are `Topic`, `Checklist`, and `ChecklistItem`.
+Semantic nodes have stable identity, short titles, concise summaries, and one or more constrained semantic facets. The supported facets are `Topic` and `ChecklistItem`.
 
 Topic-capable nodes represent reusable work concepts. Starting Codex work from a topic-capable node creates a new user-facing Codex conversation thread through the current primary workspace member, attaches that thread to the existing node, and activates the resulting transcript.
 
-Checklist-capable nodes own ordered checklist-item nodes. Checklist items have visible status values such as `todo`, `in_progress`, and `done`, and are also topic-capable so a user can start Codex work directly from an existing checklist item.
+Checklist-item nodes are topic-capable semantic nodes with visible status values such as `todo`, `in_progress`, and `done`, plus an item kind such as `generic` or `decision`. They represent individual itemized work directly under ordinary topic nodes rather than under a dedicated checklist container node.
+
+Generic checklist items have the existing flexible checklist behavior. Decision checklist items may be governed by the threaded-decision workflow defined in `doc/features/threaded-decisions/design.md`, including active decision-branch bindings, closed branch history, resolution outcomes, and protected resolved state.
+
+Beryl has no user-facing checklist container node type. Creating a single checklist item must not require creating a checklist parent first. Dedicated grouped-list behavior, if needed later, is modeled through ordinary topic nodes that own checklist-item children.
 
 The hard graph structure is an ordered forest. Users can browse root-level semantic nodes, follow hard parent-child structure, and preserve root and child ordering as durable workspace organization.
 
@@ -38,23 +42,25 @@ Graph upkeep may use graph records, graph refs, graph tools, and graph provenanc
 
 Semantic search may consume semantic graph records, thread refs, markdown refs, graph provenance, and graph proximity metadata. Retrieval behavior, search result contracts, search-owned dynamic tools, and search-owned caches are defined in `doc/features/semantic-search/design.md`.
 
-Graph mutation failures are localized. A failed write reports a recoverable state without deleting unrelated visible graph state, closing the graph overlay, discarding checklist sidebar scroll, or switching the active transcript.
+Graph mutation failures are localized. A failed write reports a recoverable state without deleting unrelated visible graph state, closing the graph overlay, or switching the active transcript.
 
-Backend-unavailable states disable backend-required graph actions for the affected runtime target, such as opening a thread ref or starting a new thread from a node. GUI-owned graph browsing, checklist viewing, and source refs remain usable when their data is already available locally.
+Backend-unavailable states disable backend-required graph actions for the affected runtime target, such as opening a thread ref or starting a new thread from a node. GUI-owned graph browsing, checklist-item viewing, and source refs remain usable when their data is already available locally.
 
 ## Architecture
 
-GUI-local workspace state owns the semantic graph, checklist state, semantic node summaries, soft links, thread refs, markdown refs, graph provenance, and graph revision metadata.
+GUI-local workspace state owns the semantic graph, checklist-item state, semantic node summaries, soft links, thread refs, markdown refs, graph provenance, and graph revision metadata.
 
 Backend conversation history remains owned by `codex app-server`. The graph stores only refs and metadata needed to reopen or describe relevant conversations; it does not copy transcript history into graph state.
 
 Workspace members and member-thread inventories are not semantic nodes. They are external workspace/runtime context used to validate thread refs, start graph-created threads, and present link-thread choices.
 
-The pure semantic graph model stores semantic nodes, constrained facets, hard parent links, root order, soft links, thread refs, markdown refs, checklist-item status, provenance-bearing records, and atomic patch application types.
+The pure semantic graph model stores semantic nodes, constrained facets, hard parent links, root order, soft links, thread refs, markdown refs, checklist-item status, checklist-item kind, provenance-bearing records, and atomic patch application types.
 
 A non-empty hard graph is an ordered single-parent forest. Every non-root node has exactly one hard parent, every node is reachable from exactly one root-level node, and hard-parent updates reject self-parenting and cycles.
 
-Checklist-item nodes may only be hard children of checklist-capable nodes. Checklist-capable nodes may only own checklist-item hard children.
+Checklist-item nodes may be hard children of topic-capable nodes. Root-level checklist-item nodes are not used in V1; a root topic should be created first when itemized work has no existing parent. Because checklist items are topic-capable, a checklist item may itself own ordinary topic descendants or checklist-item descendants when the hard-forest structure needs that detail.
+
+Beryl does not preserve a legacy compatibility mode for removed checklist container nodes. Workspaces that still contain the old `Checklist` facet should be recreated or repaired explicitly rather than silently migrated through compatibility behavior.
 
 Soft links are outside the hard forest. They may be cyclic and may cross root-level hard-tree components. Deleting a semantic node removes any soft links whose source or target is deleted.
 
@@ -68,11 +74,11 @@ Markdown ref resolution first uses explicit anchor ids, then heading paths, then
 
 Graph mutations record provenance identifying the actor, timestamp, source conversation turn or tool action, and dynamic tool-call identity when a tool caused the mutation.
 
-Model-supplied graph write arguments are never trusted as provenance. Beryl injects provenance from the app-server thread, turn, and tool-call context before persisting graph or checklist mutations.
+Model-supplied graph write arguments are never trusted as provenance. Beryl injects provenance from the app-server thread, turn, and tool-call context before persisting graph or checklist-item mutations.
 
-Graph write validation is mechanical. It enforces tool schemas, graph invariants, workspace/path bounds, source-ref shape, provenance injection, and operation-specific constraints, but it does not judge the factual correctness of model-authored summaries, links, checklist updates, or structural graph changes.
+Graph write validation is mechanical. It enforces tool schemas, graph invariants, workspace/path bounds, source-ref shape, provenance injection, threaded-decision ownership constraints, and operation-specific constraints, but it does not judge the factual correctness of model-authored summaries, links, checklist-item updates, or structural graph changes.
 
-Patch operations that restate already-current graph facts are no-ops for semantic records. Repository revision metadata may advance, but no-op writes do not change provenance, root order, child order, soft-link identity, thread refs, markdown refs, or checklist state solely to record a redundant write.
+Patch operations that restate already-current graph facts are no-ops for semantic records. Repository revision metadata may advance, but no-op writes do not change provenance, root order, child order, soft-link identity, thread refs, markdown refs, or checklist-item state solely to record a redundant write.
 
 Per-workspace persistence stores the semantic graph aggregate and graph revision metadata as durable workspace content. Durable graph mutations atomically update the graph aggregate, graph revision metadata, and workspace last-updated metadata.
 
@@ -82,11 +88,11 @@ The shell graph projection applies graph mutation commits in revision order. Sta
 
 Direct GUI graph actions may apply an optimistic graph projection over the latest committed graph plus pending local patches. Optimistic projection is presentation state and never becomes authoritative durable graph state.
 
-Pending optimistic mutations are keyed by mutation identity and affected semantic ids so rows, menus, checklist projections, thread refs, and markdown refs can show pending or disabled state without replacing the graph overlay body.
+Pending optimistic mutations are keyed by mutation identity and affected semantic ids so rows, menus, checklist-item projections, thread refs, and markdown refs can show pending or disabled state without replacing the graph overlay body.
 
-Successful graph commits reconcile visible graph overlay state, checklist sidebar state, context menus, selection, expansion, and scroll by semantic identity. Full graph reload is reserved for startup, workspace open, and explicit recovery.
+Successful graph commits reconcile visible graph overlay state, context menus, selection, expansion, and scroll by semantic identity. Full graph reload is reserved for startup, workspace open, and explicit recovery.
 
-Dynamic graph tools expose bounded targeted reads, such as root summaries, node-centered neighborhoods, checklist slices, source refs for one node, and stale markdown refs.
+Dynamic graph tools expose bounded targeted reads, such as root summaries, node-centered neighborhoods, checklist-item children for one topic node, source refs for one node, and stale markdown refs.
 
 Dynamic graph tools expose operation-specific writes rather than a polymorphic internal patch DSL. Node upsert includes parent or root-level assignment in the same operation so hard-forest invariants remain atomic. Markdown-ref writes are likewise operation-specific, such as source-ref upsert, source-ref status update, and source-ref repair, and must flow through graph-owned validation and provenance injection.
 
@@ -100,17 +106,19 @@ Workspace-level metadata such as titles, the default runtime environment, runtim
 
 ## UI
 
-The semantic graph UI consists of the graph overlay, graph node context menu, checklist sidebar, sidebar splitter, and graph-ref status treatments.
+The semantic graph UI consists of the graph overlay, graph node context menu, and graph-ref status treatments.
+
+Beryl does not provide a separate checklist sidebar. Checklist-item navigation and actions are graph-overlay responsibilities so checklist-item state has one primary user-facing surface.
 
 The graph overlay is a toggleable overlay surface shown above the conversation column. It is hidden by default, closes the thread selector when opened, and is the only column-browser surface interactive while visible.
 
 The graph overlay anchors its left and right edges to the conversation column and its top edge to the bottom edge of the thread strip. Its default height is bounded near the upper half of the visible conversation-column space.
 
-The graph overlay remains bounded within the visible conversation column in small-window layouts. It must not push the toolbar strip, thread strip, checklist sidebar, user input panel, status line strip, or transcript region off-screen.
+The graph overlay remains bounded within the visible conversation column in small-window layouts. It must not push the toolbar strip, thread strip, user input panel, status line strip, or transcript region off-screen.
 
 When the OS window cannot provide the graph overlay's preferred height, the overlay clamps its height within the conversation column and leaves scrolling to the graph browser viewport and browser columns.
 
-The graph overlay does not reflow the main workspace layout. It floats above the transcript region, leaves the toolbar strip, thread strip, user input panel, status line strip, and checklist sidebar in place, and prevents underlying transcript content from acting as the active interaction surface while open.
+The graph overlay does not reflow the main workspace layout. It floats above the transcript region, leaves the toolbar strip, thread strip, user input panel, and status line strip in place, and prevents underlying transcript content from acting as the active interaction surface while open.
 
 The graph overlay has a fixed header strip and a graph browser viewport below that header. The header strip may show compact graph scope or status information, but it does not show node summaries, graph-wide node counts, or long explanatory text inline.
 
@@ -152,6 +160,8 @@ Ordinary graph mutations keep the graph overlay body and browser columns mounted
 
 Right-clicking a semantic-node row opens a graph node context menu without changing the active transcript thread.
 
+Right-clicking a topic-capable semantic-node row may expose commands to create checklist-item children under that topic. Creating a checklist item from a topic row creates an ordinary checklist-item child node; creating a decision from a topic row is owned by the threaded-decision workflow.
+
 The graph node context menu is a bounded context menu surface layered above the graph overlay and clamped within the OS window bounds. The menu and its submenus own vertical scrolling when their rows exceed the bounded height.
 
 The graph node context menu contains compact menu items. Disabled menu items remain visible and expose the disabled reason through a hover tooltip.
@@ -172,24 +182,10 @@ When the active workspace has more than one available member, `Link thread` open
 
 Thread-list submenu rows show only the thread display title and are sorted by last-updated time descending. A member with no linkable threads shows a disabled `No threads` menu item.
 
-Graph mutation failures from context-menu commands report localized error or recovery state near the menu or graph surface, clear the in-flight state, and preserve unaffected graph columns and checklist sidebar state.
+Graph mutation failures from context-menu commands report localized error or recovery state near the menu or graph surface, clear the in-flight state, and preserve unaffected graph columns.
 
-The checklist sidebar is an optional right-edge panel that shows the currently selected checklist-capable semantic node. It is hidden by default, can be hidden explicitly, and auto-shows when a checklist-capable node is selected.
+Right-clicking a checklist-item semantic-node row opens a graph node context menu that includes `Start New Codex Thread`. That command creates and activates a new Codex thread attached to the existing checklist-item node rather than creating a new semantic child node.
 
-The checklist sidebar anchors its top edge to the bottom edge of the thread strip, its right edge to the OS window, its bottom edge to the top edge of the status line strip, and its left edge to the sidebar splitter when visible.
+Threaded-decision commands for checklist-item rows, including `Start Decision Branch`, are defined by `doc/features/threaded-decisions/design.md` and use the same graph node context-menu surface.
 
-The sidebar splitter is a draggable vertical separator between the conversation column and the checklist sidebar. It is visible only while the checklist sidebar is visible.
-
-Dragging the sidebar splitter changes the transcript/sidebar width split while respecting the minimum sizes of the conversation column, transcript region, checklist sidebar, user input panel, and status line strip.
-
-The checklist sidebar owns vertical scrolling for checklist rows and does not own horizontal scrolling. Checklist-item text wraps within the visible sidebar width.
-
-The checklist sidebar presents a flat numbered list of checklist-item rows. Visible rows preserve item identity, order, numbering, status labels, and thread-start affordances.
-
-Checklist sidebar rows are materialized from the current semantic graph for the visible row window. The sidebar does not create a second durable checklist model.
-
-Checklist-affecting graph mutations update the sidebar in place when the selected checklist remains valid. If the selected checklist is deleted or loses checklist capability, Beryl clears or hides only invalidated checklist sidebar state.
-
-Right-clicking a checklist-item row opens a context menu with `Start New Codex Thread`. That command creates and activates a new Codex thread attached to the existing checklist-item node rather than creating a new semantic child node.
-
-Surface notices report graph recovery, invalid thread refs, invalid markdown refs, backend-unavailable graph actions, and graph mutation failures without replacing the graph overlay or checklist sidebar.
+Surface notices report graph recovery, invalid thread refs, invalid markdown refs, backend-unavailable graph actions, and graph mutation failures without replacing the graph overlay.

@@ -28,7 +28,6 @@ fn phase7_graph_and_checklist_sources_name_surface_roles() {
     let graph_overlay = include_str!("../src/shell/render/graph_overlay.rs");
     let graph_rows = include_str!("../src/shell/render/graph_overlay/rows.rs");
     let graph_menu_rows = include_str!("../src/shell/render/graph_link_menu_rows.rs");
-    let checklist = include_str!("../src/shell/render/checklist_sidebar.rs");
 
     for role in [
         "BerylThemeRole::GraphOverlay",
@@ -46,8 +45,6 @@ fn phase7_graph_and_checklist_sources_name_surface_roles() {
     for role in [
         "BerylThemeRole::GraphRowTopic",
         "BerylThemeRole::GraphRowTopicText",
-        "BerylThemeRole::GraphRowChecklist",
-        "BerylThemeRole::GraphRowChecklistText",
         "BerylThemeRole::GraphRowChecklistItem",
         "BerylThemeRole::GraphRowChecklistItemText",
         "BerylThemeRole::GraphRowThreadRef",
@@ -60,6 +57,9 @@ fn phase7_graph_and_checklist_sources_name_surface_roles() {
         "BerylThemeRole::GraphRowSelectedText",
         "BerylThemeRole::GraphRowInvalid",
         "BerylThemeRole::GraphRowInvalidText",
+        "BerylThemeRole::ChecklistStatusTodo",
+        "BerylThemeRole::ChecklistStatusInProgress",
+        "BerylThemeRole::ChecklistStatusDone",
     ] {
         assert!(graph_rows.contains(role), "graph rows should use {role}");
     }
@@ -68,20 +68,6 @@ fn phase7_graph_and_checklist_sources_name_surface_roles() {
         graph_menu_rows.contains("BerylThemeRole::GraphRowError"),
         "held destructive graph action progress should resolve from graph error styling"
     );
-
-    for role in [
-        "BerylThemeRole::ChecklistSidebar",
-        "BerylThemeRole::ChecklistHeader",
-        "BerylThemeRole::ChecklistRow",
-        "BerylThemeRole::ChecklistStatusTodo",
-        "BerylThemeRole::ChecklistStatusInProgress",
-        "BerylThemeRole::ChecklistStatusDone",
-    ] {
-        assert!(
-            checklist.contains(role),
-            "checklist sidebar should use {role}"
-        );
-    }
 }
 
 #[test]
@@ -145,10 +131,6 @@ const PHASE7_RENDER_SOURCES: &[(&str, &str)] = &[
     (
         "src/shell/render/graph_link_menu_rows.rs",
         include_str!("../src/shell/render/graph_link_menu_rows.rs"),
-    ),
-    (
-        "src/shell/render/checklist_sidebar.rs",
-        include_str!("../src/shell/render/checklist_sidebar.rs"),
     ),
     (
         "src/shell/render/thread_selector.rs",

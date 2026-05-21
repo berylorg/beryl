@@ -44,6 +44,7 @@ mod protocol;
 mod response_sanitizer;
 mod server;
 mod session;
+mod thread_archive;
 mod thread_branch;
 mod thread_history;
 mod turn;
@@ -87,6 +88,10 @@ pub use session::{
     ManagedBackendClientOptions, ManagedBackendError, ManagedBackendProbeReport,
     ManagedBackendSession, ManagedBackendStartupProgress, ManagedBackendStartupStage,
     ManagedWebSocketError, ProbeMethodSuccess,
+};
+pub use thread_archive::{
+    ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
+    ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadUnarchiveResponse,
 };
 pub use thread_branch::{
     ThreadBranchCapabilities, ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult,

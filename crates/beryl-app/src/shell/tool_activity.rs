@@ -391,6 +391,9 @@ impl ToolActivityProjection {
             TurnStreamEvent::ThreadClosed { thread_id } => {
                 self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
             }
+            TurnStreamEvent::ThreadArchived { thread_id } => {
+                self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
+            }
             TurnStreamEvent::ProtocolError { .. } => {
                 self.finish_all_running(ToolActivityRowStatus::FinishedError)
             }

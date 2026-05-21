@@ -137,7 +137,6 @@ pub(crate) struct PopupUiState {
     pub thread_selector_open: bool,
     pub graph_thread_link_menu_open: bool,
     pub transcript_branch_menu_open: bool,
-    pub checklist_thread_start_menu_open: bool,
     pub status_line_operations_open: bool,
     pub composer_image_popup_open: bool,
     pub transcript_image_preview_open: bool,

@@ -178,11 +178,9 @@ impl ShellView {
         let Some((workspace_id, execution_target, graph, graph_revision)) =
             self.prepare_semantic_thread_start(source, column_index, &node_id)
         else {
-            self.notify_checklist_sidebar_panel(cx);
             cx.notify();
             return;
         };
-        self.notify_checklist_sidebar_panel(cx);
 
         if let Some(block) = self.backend_required_target_block(&execution_target) {
             self.set_graph_thread_start_notice("Thread start unavailable", block.message);

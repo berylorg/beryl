@@ -3,8 +3,8 @@ mod workspace_state;
 
 use beryl_model::conversation::ConversationThreadId;
 use beryl_model::semantic_graph::{
-    ChecklistItemStatus, SemanticGraph, SemanticNode, SemanticNodeFacets, SemanticNodeId,
-    SoftLinkId, SoftLinkKind, ThreadRef, ThreadRefId,
+    ChecklistItemKind, ChecklistItemStatus, SemanticGraph, SemanticNode, SemanticNodeFacets,
+    SemanticNodeId, SoftLinkId, SoftLinkKind, ThreadRef, ThreadRefId,
 };
 use beryl_model::workspace::{BerylWorkspaceId, BerylWorkspaceManifest, ExecutionTargetId};
 use serde::{Deserialize, Serialize};
@@ -55,8 +55,8 @@ pub enum WorkspaceGraphToolError {
         workspace_id: String,
         node_id: String,
     },
-    #[error("semantic graph node {node_id} is not checklist-capable in workspace {workspace_id}")]
-    NodeNotChecklist {
+    #[error("semantic graph node {node_id} is not topic-capable in workspace {workspace_id}")]
+    NodeNotTopic {
         workspace_id: String,
         node_id: String,
     },
@@ -70,6 +70,11 @@ pub enum WorkspaceGraphToolError {
     MissingThreadRefAfterWrite {
         workspace_id: String,
         thread_ref_id: String,
+    },
+    #[error("protected resolved decision item mutation in workspace {workspace_id}: {detail}")]
+    ProtectedDecisionItemMutation {
+        workspace_id: String,
+        detail: String,
     },
 }
 
@@ -93,7 +98,7 @@ pub struct GraphNeighborhoodRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ChecklistReadRequest {
     pub workspace_id: BerylWorkspaceId,
-    pub checklist_node_id: SemanticNodeId,
+    pub topic_node_id: SemanticNodeId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,7 +142,7 @@ pub struct GraphNeighborhoodNode {
 #[serde(rename_all = "camelCase")]
 pub struct ChecklistReadResponse {
     pub summary: WorkspaceGraphSummary,
-    pub checklist: GraphNodeSnapshot,
+    pub topic: GraphNodeSnapshot,
     pub truncated: bool,
     #[serde(default)]
     pub items: Vec<ChecklistItemSnapshot>,
@@ -160,6 +165,8 @@ pub struct GraphNodeSnapshot {
     pub facets: SemanticNodeFacets,
     #[serde(default)]
     pub checklist_item_status: Option<ChecklistItemStatus>,
+    #[serde(default)]
+    pub checklist_item_kind: Option<ChecklistItemKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -260,18 +267,20 @@ impl WorkspaceGraphToolService {
         request: &ChecklistReadRequest,
     ) -> Result<ChecklistReadResponse, WorkspaceGraphToolError> {
         let bundle = self.load_workspace_bundle(&request.workspace_id)?;
-        let checklist = bundle
+        let topic = bundle
             .graph
-            .node(&request.checklist_node_id)
-            .ok_or_else(|| self.missing_node(&request.workspace_id, &request.checklist_node_id))?;
-        if !checklist.facets().has_checklist() {
-            return Err(WorkspaceGraphToolError::NodeNotChecklist {
+            .node(&request.topic_node_id)
+            .ok_or_else(|| self.missing_node(&request.workspace_id, &request.topic_node_id))?;
+        if !topic.facets().has_topic() {
+            return Err(WorkspaceGraphToolError::NodeNotTopic {
                 workspace_id: request.workspace_id.as_str().to_string(),
-                node_id: request.checklist_node_id.as_str().to_string(),
+                node_id: request.topic_node_id.as_str().to_string(),
             });
         }
 
-        let items = bundle.graph.checklist_items(&request.checklist_node_id);
+        let items = bundle
+            .graph
+            .checklist_item_children_of(&request.topic_node_id);
         let truncated = items.len() > MAX_CHECKLIST_ITEM_COUNT;
         let items = items
             .into_iter()
@@ -288,7 +297,7 @@ impl WorkspaceGraphToolService {
 
         Ok(ChecklistReadResponse {
             summary: workspace_graph_summary(bundle.manifest, &bundle.graph),
-            checklist: GraphNodeSnapshot::from_node(checklist),
+            topic: GraphNodeSnapshot::from_node(topic),
             truncated,
             items,
         })
@@ -361,6 +370,7 @@ impl GraphNodeSnapshot {
             summary: node.summary().to_string(),
             facets: node.facets().clone(),
             checklist_item_status: node.checklist_item_status(),
+            checklist_item_kind: node.checklist_item_kind(),
         }
     }
 }

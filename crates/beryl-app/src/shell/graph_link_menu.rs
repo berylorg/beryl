@@ -21,6 +21,8 @@ use super::{
 
 pub(crate) use super::graph_link_menu_state::{GraphThreadLinkMenuState, GraphThreadLinkMenuView};
 
+mod decisions;
+
 impl ShellView {
     pub(crate) fn open_graph_node_thread_link_menu(
         &mut self,
@@ -34,7 +36,6 @@ impl ShellView {
             let changed = surface.select_graph_node(column_index, &node_id);
             surface.transcript_branch_menu_mut().close();
             surface.status_line_operations_mut().close();
-            surface.checklist_thread_start_menu_mut().close();
             surface
                 .graph_thread_link_menu_mut()
                 .open_node(node_id.clone(), event.position);
@@ -43,7 +44,6 @@ impl ShellView {
         });
         if changed {
             self.prune_graph_scrollbar_visibility();
-            self.notify_checklist_sidebar_panel(cx);
         }
         cx.stop_propagation();
         cx.notify();
@@ -69,7 +69,6 @@ impl ShellView {
             let changed = surface.select_graph_node(column_index, &node_id);
             surface.transcript_branch_menu_mut().close();
             surface.status_line_operations_mut().close();
-            surface.checklist_thread_start_menu_mut().close();
             surface.graph_thread_link_menu_mut().open_thread_ref_rebind(
                 node_id,
                 thread_ref_id.clone(),
@@ -80,7 +79,6 @@ impl ShellView {
         });
         if changed {
             self.prune_graph_scrollbar_visibility();
-            self.notify_checklist_sidebar_panel(cx);
         }
         cx.stop_propagation();
         cx.notify();

@@ -64,6 +64,10 @@ fn inline_render_plan_assigns_roles_and_keeps_link_decoration_separate() {
     assert_eq!(fragments[3].style, style(InlineRenderRole::Conversation));
     assert_eq!(fragments[4].text, "link ");
     assert_eq!(
+        fragments[4].link_destination.as_deref(),
+        Some("https://example.invalid")
+    );
+    assert_eq!(
         fragments[4].style,
         InlineRenderStyle {
             role: InlineRenderRole::Conversation,
@@ -75,6 +79,10 @@ fn inline_render_plan_assigns_roles_and_keeps_link_decoration_separate() {
         }
     );
     assert_eq!(fragments[5].text, "code");
+    assert_eq!(
+        fragments[5].link_destination.as_deref(),
+        Some("https://example.invalid")
+    );
     assert_eq!(
         fragments[5].style,
         InlineRenderStyle {

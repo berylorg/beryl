@@ -44,11 +44,7 @@ pub(super) fn validate_node(node: &SemanticNode) -> Result<(), SemanticGraphErro
         });
     }
 
-    if let Err(detail) = SemanticNodeFacets::new(
-        node.facets.topic,
-        node.facets.checklist,
-        node.facets.checklist_item,
-    ) {
+    if let Err(detail) = SemanticNodeFacets::new(node.facets.topic, node.facets.checklist_item) {
         return Err(SemanticGraphError::InvalidNodeFacets {
             node_id: node.id.clone(),
             detail,
@@ -57,6 +53,12 @@ pub(super) fn validate_node(node: &SemanticNode) -> Result<(), SemanticGraphErro
 
     if node.facets.has_checklist_item() != node.checklist_item_status.is_some() {
         return Err(SemanticGraphError::InvalidChecklistItemStatus {
+            node_id: node.id.clone(),
+        });
+    }
+
+    if !node.facets.has_checklist_item() && node.checklist_item_kind.is_some() {
+        return Err(SemanticGraphError::InvalidChecklistItemKind {
             node_id: node.id.clone(),
         });
     }
@@ -179,20 +181,6 @@ fn validate_hard_forest(
             }
             listed_children.insert(child_id.clone());
         }
-
-        if nodes[parent_id].facets.has_checklist() {
-            for child_id in &ordered.child_ids {
-                if !nodes[child_id].facets.has_checklist_item() {
-                    return Err(SemanticGraphError::InvalidHardForest {
-                        detail: format!(
-                            "checklist parent {} owns non-checklist child {}",
-                            parent_id.as_str(),
-                            child_id.as_str()
-                        ),
-                    });
-                }
-            }
-        }
     }
 
     for child_id in hard_links.keys() {
@@ -211,15 +199,15 @@ fn validate_hard_forest(
             let Some(parent_id) = hard_links.get(&node.id).map(|link| &link.parent_id) else {
                 return Err(SemanticGraphError::InvalidHardForest {
                     detail: format!(
-                        "checklist-item node {} must have a checklist parent",
+                        "checklist-item node {} must have a topic-capable parent",
                         node.id.as_str()
                     ),
                 });
             };
-            if !nodes[parent_id].facets.has_checklist() {
+            if !nodes[parent_id].facets.has_topic() {
                 return Err(SemanticGraphError::InvalidHardForest {
                     detail: format!(
-                        "checklist-item node {} must have a checklist parent",
+                        "checklist-item node {} must have a topic-capable parent",
                         node.id.as_str()
                     ),
                 });

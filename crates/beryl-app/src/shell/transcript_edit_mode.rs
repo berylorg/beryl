@@ -444,7 +444,6 @@ impl ShellView {
             || self.conversation_surface().is_some_and(|surface| {
                 surface.graph_thread_link_menu().is_open()
                     || surface.transcript_branch_menu().is_open()
-                    || surface.checklist_thread_start_menu().is_open()
                     || surface.thread_selector().is_open()
                     || surface.status_line_operations().is_open()
             })

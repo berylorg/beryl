@@ -617,7 +617,7 @@ fn sample_graph() -> SemanticGraph {
                     checklist_id.clone(),
                     "Checklist",
                     "Checklist summary",
-                    SemanticNodeFacets::topic_and_checklist(),
+                    SemanticNodeFacets::topic(),
                     None,
                 ),
                 provenance: seed_provenance(2),

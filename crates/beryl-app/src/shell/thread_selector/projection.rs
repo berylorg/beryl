@@ -120,6 +120,7 @@ impl ThreadSelectorProjection {
             .and_then(|member| member.child_count_digit_count(parent_thread_id.as_ref()))
     }
 
+    #[cfg(test)]
     pub(crate) fn thread_exists_in_column(
         &self,
         column_key: &ThreadSelectorColumnKey,

@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet, hash_map::DefaultHasher},
+    collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
     ops::Range,
     path::PathBuf,
@@ -20,10 +20,12 @@ use beryl_backend::{
     TurnStartOptions, list_wsl_distros,
 };
 use beryl_model::conversation::{
-    ConversationThreadId, ConversationThreadTokenUsageSnapshot, PrimaryWorkspaceMember,
-    RegisteredConversationThread, WorkspaceConversationState,
+    BranchThreadTitleRetitleState, ConversationThreadId, ConversationThreadTokenUsageSnapshot,
+    ConversationTurnId, PrimaryWorkspaceMember, RegisteredConversationThread,
+    WorkspaceConversationState,
 };
 use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId, ThreadRefId};
+use beryl_model::threaded_decision::{ThreadedDecisionRecordId, ThreadedDecisionState};
 use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId, WorkspaceMemberId,
 };
@@ -70,7 +72,6 @@ use crate::diagnostic_dynamic_tools::{
     dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result,
     transcript_frame_metrics_result, visible_media_result,
 };
-use crate::graph_upkeep_context::compose_hidden_developer_instructions;
 use crate::gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CancellableTurnUiState,
     ClosePopupsResult, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, PopupUiState,
@@ -95,6 +96,8 @@ use crate::text_input::{
     TextInputSelectionExport,
 };
 use crate::theme_dynamic_tools::is_beryl_theme_dynamic_tool;
+use crate::threaded_decision_archive_core::child_thread_is_read_only_decision_branch;
+use crate::threaded_decision_dynamic_tools::is_beryl_threaded_decision_dynamic_tool;
 use crate::{
     AppBootstrap, GuiPreferences, WorkspaceActivityPanelMode, WorkspaceGraphRevision,
     WorkspaceGraphUpkeepPolicy, WorkspaceUiState,
@@ -225,6 +228,24 @@ fn bounded_known_threads(
     retained
 }
 
+fn retain_normal_selector_threads_for_decisions(
+    known_threads: &mut Vec<ThreadSummary>,
+    threaded_decision_state: &ThreadedDecisionState,
+) {
+    let hidden_thread_ids =
+        crate::threaded_decision_archive_core::normal_selector_hidden_decision_child_thread_ids(
+            threaded_decision_state,
+        );
+    if hidden_thread_ids.is_empty() {
+        return;
+    }
+    known_threads.retain(|thread| {
+        !hidden_thread_ids
+            .iter()
+            .any(|hidden_id| hidden_id.as_str() == thread.id)
+    });
+}
+
 fn clamp_ui_range(range: Range<usize>, item_count: usize) -> Range<usize> {
     let start = range.start.min(item_count);
     let end = range.end.min(item_count).max(start);
@@ -275,10 +296,20 @@ fn selected_thread_state_diagnostic_label(surface: &ConversationSurfaceState) ->
     if surface.execution_details.working_turn_index().is_some() {
         return "working";
     }
+    if surface
+        .execution_details
+        .non_owned_active_turn_index()
+        .is_some()
+    {
+        return "active";
+    }
 
     match surface.selected_thread_status.as_ref() {
         Some(ThreadStatus::Idle) => "idle",
-        Some(ThreadStatus::Active { .. }) => "working",
+        Some(status @ ThreadStatus::Active { .. }) if status.waiting_on_user_input() => {
+            "waiting_on_user_input"
+        }
+        Some(ThreadStatus::Active { .. }) => "active",
         Some(ThreadStatus::NotLoaded) => "not_loaded",
         Some(ThreadStatus::SystemError) => "system_error",
         None => "unknown",
@@ -362,10 +393,6 @@ gpui::actions!(
 
 mod account_rate_limits;
 mod backend_availability;
-mod checklist_sidebar_panel_state;
-mod checklist_sidebar_projection;
-mod checklist_sidebar_visibility;
-mod checklist_thread_menu;
 mod column_selector;
 mod composer_clipboard;
 mod composer_draft;
@@ -378,6 +405,7 @@ mod composer_measurement;
 mod composer_submission;
 mod composer_submit;
 mod context_compaction;
+mod developer_instructions;
 mod diagnostics;
 mod discovery;
 mod dynamic_settings;
@@ -411,15 +439,21 @@ mod settings;
 mod status_line;
 mod status_operation;
 mod status_operation_state;
+mod surface_accessors;
 mod surface_notice;
 #[allow(dead_code)]
 mod syntax_highlighting;
 mod theme_candidates;
 mod thread_activation;
+mod thread_helpers;
 mod thread_history_worker;
 mod thread_selection;
 mod thread_selector;
 mod thread_title;
+mod threaded_decision_archive;
+mod threaded_decision_branch;
+mod threaded_decision_progress;
+mod threaded_decision_resolution;
 mod token_usage_snapshot;
 mod tool_activity;
 mod tool_activity_nickname;
@@ -442,6 +476,7 @@ mod transcript_markdown;
 #[allow(dead_code)]
 mod transcript_media;
 mod transcript_media_runs;
+mod transcript_panel_snapshot;
 mod transcript_presentation;
 mod transcript_projection;
 #[allow(dead_code)]
@@ -466,11 +501,6 @@ mod workspace_title;
 use account_rate_limits::{
     AccountRateLimitsOutcome, AccountRateLimitsUpdate, spawn_account_rate_limits_worker,
 };
-use checklist_sidebar_projection::{
-    ChecklistSidebarProjection, ChecklistSidebarProjectionCache, ChecklistSidebarRow,
-};
-use checklist_sidebar_visibility::ChecklistSidebarVisibilityState;
-use checklist_thread_menu::ChecklistThreadStartMenuState;
 use column_selector::{
     ColumnSelectorKeyboardIntent, ColumnSelectorScrollState, ColumnSelectorSurface,
 };
@@ -542,18 +572,28 @@ use surface_notice::{
     SurfaceNotice, SurfaceNoticeQueue, local_turn_failure_notice,
     selected_backend_turn_error_notice,
 };
+use thread_helpers::{
+    first_real_branch_user_input_fragment_text, normalized_thread_name,
+    registered_thread_from_summary,
+};
 use thread_history_worker::{
     ThreadHistoryPageOutcome, ThreadHistoryPageUpdate, spawn_older_thread_history_page_worker,
 };
 use thread_selection::{
     ThreadSelectionRequest, exact_thread_selection_request, graph_thread_ref_availability,
+    thread_rebind_detail,
 };
 use thread_selector::{
     ThreadSelectorActivationTarget, ThreadSelectorColumnKey, ThreadSelectorState,
 };
 use thread_title::{
     ThreadTitleCancellation, ThreadTitleResult, ThreadTitleTask, ThreadTitleTaskOutcome,
-    spawn_thread_title_worker,
+    TurnThreadTitleMode, spawn_thread_title_worker,
+};
+use threaded_decision_archive::{DecisionArchiveTask, QueuedDecisionArchiveJob};
+use threaded_decision_branch::{DecisionBranchStartTask, QueuedDecisionBranchJob};
+use threaded_decision_resolution::{
+    DecisionResolutionGraphTask, PendingDecisionHandoffTurn, QueuedDecisionResolutionJob,
 };
 use tool_activity::ToolActivityProjection;
 use tool_activity_nickname::{
@@ -580,9 +620,9 @@ use turn_steering::{
 };
 use turn_stop::TurnStopUpdate;
 use turn_worker::{
-    AcceptedLifecycleYield, ShellDynamicToolRequest, ThreadActivationUpdate, TurnWorkerOutcome,
-    TurnWorkerUpdate, shell_dynamic_tool_request_channel, spawn_thread_activation_worker,
-    spawn_turn_worker,
+    AcceptedLifecycleYield, ShellDynamicToolRequest, ThreadActivationOutcome,
+    ThreadActivationUpdate, TurnWorkerOutcome, TurnWorkerUpdate,
+    shell_dynamic_tool_request_channel, spawn_thread_activation_worker, spawn_turn_worker,
 };
 use virtual_list::{ListAlignment, ListOffset, ListScrollEvent, ListScrollPosition, ListState};
 use workspace_members::{
@@ -814,7 +854,18 @@ pub(super) struct ShellView {
     workspace_receiver: Option<Receiver<WorkspaceUpdate>>,
     graph_receiver: Option<GraphWorkerTask>,
     graph_thread_start_receiver: Option<GraphThreadStartTask>,
+    decision_branch_start_receiver: Option<DecisionBranchStartTask>,
+    decision_child_progress_receiver: Option<GraphWorkerTask>,
+    decision_resolution_graph_receiver: Option<DecisionResolutionGraphTask>,
+    decision_resolution_parent_activation_record_id: Option<ThreadedDecisionRecordId>,
+    decision_archive_receiver: Option<DecisionArchiveTask>,
+    pending_decision_handoff_turn: Option<PendingDecisionHandoffTurn>,
+    pending_decision_handoff_navigation: Option<PendingDecisionHandoffNavigation>,
+    pending_decision_branch_jobs: VecDeque<QueuedDecisionBranchJob>,
+    pending_decision_resolution_jobs: VecDeque<QueuedDecisionResolutionJob>,
+    pending_decision_archive_jobs: VecDeque<QueuedDecisionArchiveJob>,
     transcript_branch_receiver: Option<Receiver<TranscriptBranchUpdate>>,
+    foreground_transcript_branch: Option<transcript_branch_core::ForegroundTranscriptBranchState>,
     transcript_edit_commit_receiver: Option<Receiver<TranscriptEditCommitUpdate>>,
     member_thread_inventory_receiver: Option<Receiver<MemberThreadInventoryUpdate>>,
     thread_activation_receiver: Option<Receiver<ThreadActivationUpdate>>,
@@ -863,7 +914,6 @@ pub(super) struct ShellView {
     pending_composer_image_asset_paste: Option<PendingComposerImageAssetPaste>,
     composer_image_popup: Option<ComposerImagePopupState>,
     transcript_panel: Entity<render::transcript::TranscriptPanel>,
-    checklist_sidebar_panel: Entity<render::checklist_sidebar::ChecklistSidebarPanel>,
     startup_scroll_handle: ScrollHandle,
     scrollbar_visibility: HashMap<ScrollbarRegion, ScrollbarVisibilityState>,
     next_attempt: u32,
@@ -1186,6 +1236,7 @@ struct LoadedWorkspaceState {
     workspace_picker_member_paths: workspace_picker::WorkspacePickerMemberPaths,
     workspace_state: WorkspaceConversationState,
     workspace_ui_state: WorkspaceUiState,
+    threaded_decision_state: ThreadedDecisionState,
     startup_warning: Option<String>,
     implicit_home_path_resolution: Option<ImplicitHomePathResolution>,
     workspace_members_notice: Option<String>,
@@ -1257,6 +1308,12 @@ struct BlockedState {
 #[derive(Clone)]
 struct PendingThreadActivation {
     label: String,
+}
+
+struct PendingDecisionHandoffNavigation {
+    record_id: ThreadedDecisionRecordId,
+    parent_thread_id: ConversationThreadId,
+    handoff_turn_id: ConversationTurnId,
 }
 
 enum ThreadActivationStart {
@@ -1374,8 +1431,6 @@ struct ConversationSurfaceState {
     graph_thread_link_menu: graph_link_menu::GraphThreadLinkMenuState,
     transcript_branch_menu: transcript_branch_menu_state::TranscriptBranchMenuState,
     transcript_edit_mode: Option<transcript_edit_mode_state::TranscriptEditModeState>,
-    checklist_thread_start_menu: ChecklistThreadStartMenuState,
-    checklist_sidebar_projection: ChecklistSidebarProjectionCache,
     member_thread_inventory: MemberThreadInventoryState,
     graph_column_selector_scroll: ColumnSelectorScrollState<GraphColumnKey>,
     thread_column_selector_scroll: ColumnSelectorScrollState<ThreadSelectorColumnKey>,
@@ -1383,18 +1438,10 @@ struct ConversationSurfaceState {
     graph_thread_link_menu_scroll_handle: ScrollHandle,
     status_operation_scroll_handle: ScrollHandle,
     graph_overlay_panel_height: Pixels,
-    checklist_sidebar_visibility: ChecklistSidebarVisibilityState,
-    checklist_sidebar_ratio: f32,
     layout_bounds: Option<Bounds<Pixels>>,
     split_bounds: Option<Bounds<Pixels>>,
-    divider_drag: Option<DividerDragState>,
     graph_overlay_drag: Option<GraphOverlayDragState>,
     tool_activity_panel_drag: Option<ToolActivityPanelDragState>,
-}
-
-#[derive(Clone, Copy)]
-struct DividerDragState {
-    pointer_offset: Pixels,
 }
 
 #[derive(Clone, Copy)]
@@ -1436,6 +1483,7 @@ struct DiscoveryOutcome {
     workspace_picker_member_paths: workspace_picker::WorkspacePickerMemberPaths,
     workspace_state: WorkspaceConversationState,
     workspace_ui_state: WorkspaceUiState,
+    threaded_decision_state: ThreadedDecisionState,
     graph_upkeep_policy: WorkspaceGraphUpkeepPolicy,
 }
 
@@ -1588,7 +1636,6 @@ struct BackendUnavailableFailure {
     surface_seed: WorkspaceSurfaceSeed,
 }
 
-const DEFAULT_CHECKLIST_SIDEBAR_RATIO: f32 = 0.34;
 const GRAPH_OVERLAY_TOGGLE_KEYSTROKE: &str = "ctrl-shift-g";
 fn column_selector_scrollbar_region(surface: ColumnSelectorSurface) -> ScrollbarRegion {
     match surface {
@@ -1622,6 +1669,7 @@ impl LoadedWorkspaceState {
         workspace_picker_member_paths: workspace_picker::WorkspacePickerMemberPaths,
         workspace_state: WorkspaceConversationState,
         workspace_ui_state: WorkspaceUiState,
+        threaded_decision_state: ThreadedDecisionState,
         startup_warning: Option<String>,
     ) -> Self {
         Self {
@@ -1630,6 +1678,7 @@ impl LoadedWorkspaceState {
             workspace_picker_member_paths,
             workspace_state,
             workspace_ui_state,
+            threaded_decision_state,
             startup_warning,
             implicit_home_path_resolution: None,
             workspace_members_notice: None,
@@ -2016,8 +2065,6 @@ impl ConversationSurfaceState {
             transcript_branch_menu:
                 transcript_branch_menu_state::TranscriptBranchMenuState::default(),
             transcript_edit_mode: None,
-            checklist_thread_start_menu: ChecklistThreadStartMenuState::default(),
-            checklist_sidebar_projection: ChecklistSidebarProjectionCache::default(),
             member_thread_inventory: MemberThreadInventoryState::new(workspace_id, workspace_state),
             graph_column_selector_scroll: ColumnSelectorScrollState::new(),
             thread_column_selector_scroll: ColumnSelectorScrollState::new(),
@@ -2025,11 +2072,8 @@ impl ConversationSurfaceState {
             graph_thread_link_menu_scroll_handle: ScrollHandle::new(),
             status_operation_scroll_handle: ScrollHandle::new(),
             graph_overlay_panel_height: Pixels::ZERO,
-            checklist_sidebar_visibility: ChecklistSidebarVisibilityState::default(),
-            checklist_sidebar_ratio: DEFAULT_CHECKLIST_SIDEBAR_RATIO,
             layout_bounds: None,
             split_bounds: None,
-            divider_drag: None,
             graph_overlay_drag: None,
             tool_activity_panel_drag: None,
         };
@@ -2053,7 +2097,6 @@ impl ConversationSurfaceState {
         state.apply_known_thread_agent_labels();
         state.hydrate_token_usage_snapshots(workspace_state);
         state.reconcile_graph_scroll_handles();
-        state.refresh_checklist_sidebar_projection();
         state
     }
 
@@ -2845,17 +2888,11 @@ impl ConversationSurfaceState {
     }
 
     fn transcript_width(&self) -> Pixels {
-        let total_width = self
-            .split_bounds
+        self.split_bounds
             .or(self.layout_bounds)
             .map(|bounds| bounds.size.width)
-            .unwrap_or_else(|| px(layout::WINDOW_MIN_WIDTH));
-        layout::split_layout(
-            total_width,
-            self.checklist_sidebar_ratio,
-            self.checklist_sidebar_visible(),
-        )
-        .left_width
+            .unwrap_or_else(|| px(layout::WINDOW_MIN_WIDTH))
+            .max(Pixels::ZERO)
     }
 
     fn graph_overlay(&self) -> &GraphOverlayState {
@@ -2882,14 +2919,6 @@ impl ConversationSurfaceState {
         &mut self.graph_thread_link_menu
     }
 
-    fn checklist_thread_start_menu(&self) -> &ChecklistThreadStartMenuState {
-        &self.checklist_thread_start_menu
-    }
-
-    fn checklist_thread_start_menu_mut(&mut self) -> &mut ChecklistThreadStartMenuState {
-        &mut self.checklist_thread_start_menu
-    }
-
     fn member_thread_inventory(&self) -> &MemberThreadInventoryState {
         &self.member_thread_inventory
     }
@@ -2906,7 +2935,7 @@ impl ConversationSurfaceState {
                 || self.context_compaction_thread_id.is_some()
                 || self.pending_turn_input_queue.is_some()
                 || self.pending_active_turn_steering_queue.is_some()
-                || self.execution_details.working_turn_index().is_some(),
+                || self.execution_details.has_backend_active_turn(),
             inventory_work: self.member_thread_inventory.refreshing()
                 || self.member_thread_inventory.needs_refresh(),
             status_work: self.status_line_operations.stop_request_in_flight()
@@ -2921,22 +2950,6 @@ impl ConversationSurfaceState {
 
     fn thread_selector_columns_scroll_handle(&self) -> ScrollHandle {
         self.thread_column_selector_scroll.horizontal_handle()
-    }
-
-    fn checklist_sidebar_projection(&self) -> Option<&ChecklistSidebarProjection> {
-        self.checklist_sidebar_projection.projection()
-    }
-
-    fn checklist_sidebar_row(&self, index: usize) -> Option<ChecklistSidebarRow> {
-        self.checklist_sidebar_projection
-            .projection()?
-            .row(self.graph_overlay.graph(), index)
-    }
-
-    fn checklist_sidebar_viewport_height_hint(&self) -> Pixels {
-        self.layout_bounds
-            .map(|bounds| (bounds.size.height - px(96.0)).max(px(0.0)))
-            .unwrap_or_else(|| px(layout::WINDOW_MIN_HEIGHT - 96.0))
     }
 
     fn release_transcript_submit_anchor(&mut self) -> bool {
@@ -2982,6 +2995,30 @@ impl ConversationSurfaceState {
         self.transcript_presentation.latest_user_prompt_anchor()
     }
 
+    fn scroll_to_turn_id(&mut self, thread_id: &str, turn_id: &str) -> bool {
+        if self.selected_thread_id() != Some(thread_id) {
+            return false;
+        }
+
+        let Some(source_turn_index) = self.execution_details.turns().iter().position(|turn| {
+            turn.thread_id.as_deref() == Some(thread_id) && turn.turn_id.as_deref() == Some(turn_id)
+        }) else {
+            return false;
+        };
+        let Some(presentation_index) = self
+            .transcript_presentation
+            .presentation_index_for_source_turn(source_turn_index)
+        else {
+            return false;
+        };
+
+        self.transcript_list_state
+            .scroll_to_reveal_item(presentation_index);
+        self.release_transcript_submit_anchor();
+        self.set_transcript_user_scrolled(true);
+        true
+    }
+
     fn graph_column_scroll_handle(&self, column_index: usize) -> Option<ScrollHandle> {
         self.graph_column_selector_scroll
             .column_handle(column_index)
@@ -2992,19 +3029,6 @@ impl ConversationSurfaceState {
             .column_handle(column_index)
     }
 
-    fn checklist_sidebar_visible(&self) -> bool {
-        self.checklist_sidebar_visibility.visible()
-    }
-
-    fn selected_checklist_node_id(&self) -> Option<&SemanticNodeId> {
-        let selected_node_id = self.graph_overlay.selected_node_id()?;
-        let selected_node = self.graph_overlay.graph().node(selected_node_id)?;
-        selected_node
-            .facets()
-            .has_checklist()
-            .then_some(selected_node_id)
-    }
-
     fn notice(&self) -> Option<&SurfaceNotice> {
         self.notices.active()
     }
@@ -3013,10 +3037,6 @@ impl ConversationSurfaceState {
         self.pending_thread_activation
             .as_ref()
             .map(|pending| pending.label.as_str())
-    }
-
-    fn checklist_sidebar_ratio(&self) -> f32 {
-        self.checklist_sidebar_ratio
     }
 
     fn snapshot(&self) -> Self {
@@ -3061,8 +3081,6 @@ impl ConversationSurfaceState {
             graph_thread_link_menu: self.graph_thread_link_menu.clone(),
             transcript_branch_menu: self.transcript_branch_menu.clone(),
             transcript_edit_mode: self.transcript_edit_mode.clone(),
-            checklist_thread_start_menu: self.checklist_thread_start_menu.clone(),
-            checklist_sidebar_projection: self.checklist_sidebar_projection.clone(),
             member_thread_inventory: self.member_thread_inventory.clone(),
             graph_column_selector_scroll: self.graph_column_selector_scroll.clone(),
             thread_column_selector_scroll: self.thread_column_selector_scroll.clone(),
@@ -3070,11 +3088,8 @@ impl ConversationSurfaceState {
             graph_thread_link_menu_scroll_handle: self.graph_thread_link_menu_scroll_handle.clone(),
             status_operation_scroll_handle: self.status_operation_scroll_handle.clone(),
             graph_overlay_panel_height: self.graph_overlay_panel_height,
-            checklist_sidebar_visibility: self.checklist_sidebar_visibility.clone(),
-            checklist_sidebar_ratio: self.checklist_sidebar_ratio,
             layout_bounds: None,
             split_bounds: None,
-            divider_drag: None,
             graph_overlay_drag: None,
             tool_activity_panel_drag: None,
         }
@@ -3176,18 +3191,7 @@ impl ConversationSurfaceState {
         self.member_thread_inventory.prepare_for_backend_reopen();
         self.reconcile_graph_scroll_handles();
         self.reconcile_thread_selector_state();
-        self.reconcile_checklist_sidebar_visibility();
         self.sync_thread_selector_active_thread();
-    }
-
-    fn toggle_checklist_sidebar(&mut self) {
-        let selected_checklist_id = self.selected_checklist_node_id().cloned();
-        self.checklist_sidebar_visibility
-            .toggle(selected_checklist_id.as_ref());
-        self.divider_drag = None;
-        if !self.checklist_sidebar_visible() {
-            self.checklist_thread_start_menu.close();
-        }
     }
 
     fn toggle_graph_overlay(&mut self) -> bool {
@@ -3212,7 +3216,6 @@ impl ConversationSurfaceState {
             self.graph_overlay.close();
             self.graph_thread_link_menu.close();
             self.transcript_branch_menu.close();
-            self.checklist_thread_start_menu.close();
             self.thread_column_selector_scroll
                 .reconcile(self.thread_selector.columns());
         } else {
@@ -3270,8 +3273,7 @@ impl ConversationSurfaceState {
         if changed {
             self.reconcile_graph_scroll_handles();
         }
-        let visibility_changed = changed && self.reconcile_checklist_sidebar_visibility();
-        changed || visibility_changed
+        changed
     }
 
     fn select_graph_soft_link(
@@ -3286,8 +3288,7 @@ impl ConversationSurfaceState {
         if changed {
             self.reconcile_graph_scroll_handles();
         }
-        let visibility_changed = changed && self.reconcile_checklist_sidebar_visibility();
-        changed || visibility_changed
+        changed
     }
 
     fn toggle_graph_node_expansion(
@@ -3312,7 +3313,6 @@ impl ConversationSurfaceState {
             .begin_optimistic_mutation(mutation)
             .map_err(|error| error.to_string())?;
         self.reconcile_graph_scroll_handles();
-        self.reconcile_checklist_sidebar_visibility();
         Ok(())
     }
 
@@ -3325,7 +3325,6 @@ impl ConversationSurfaceState {
         self.graph_overlay.finish_mutation(graph, revision, warning);
         self.close_stale_graph_node_action_menu();
         self.reconcile_graph_scroll_handles();
-        self.reconcile_checklist_sidebar_visibility();
     }
 
     fn finish_graph_mutation_commit_update(
@@ -3339,7 +3338,6 @@ impl ConversationSurfaceState {
         if matches!(application, GraphCommitApplication::Applied { .. }) {
             self.close_stale_graph_node_action_menu();
             self.reconcile_graph_scroll_handles();
-            self.reconcile_checklist_sidebar_visibility();
         }
         Ok(application)
     }
@@ -3360,7 +3358,6 @@ impl ConversationSurfaceState {
         self.graph_thread_link_menu_mut().clear_delete_in_flight();
         self.close_stale_graph_node_action_menu();
         self.reconcile_graph_scroll_handles();
-        self.reconcile_checklist_sidebar_visibility();
         Ok(())
     }
 
@@ -3411,26 +3408,6 @@ impl ConversationSurfaceState {
         self.thread_selector.reconcile_snapshot(snapshot);
         self.thread_column_selector_scroll
             .reconcile(self.thread_selector.columns());
-    }
-
-    fn reconcile_checklist_sidebar_visibility(&mut self) -> bool {
-        let selected_checklist_id = self.selected_checklist_node_id().cloned();
-        let changed = self
-            .checklist_sidebar_visibility
-            .reconcile_selection(selected_checklist_id.as_ref());
-        let projection_changed = self.refresh_checklist_sidebar_projection();
-        if !self.checklist_sidebar_visible() {
-            self.checklist_thread_start_menu.close();
-        }
-        changed || projection_changed
-    }
-
-    fn refresh_checklist_sidebar_projection(&mut self) -> bool {
-        let selected_checklist_id = self.selected_checklist_node_id().cloned();
-        let refresh = self
-            .checklist_sidebar_projection
-            .refresh(self.graph_overlay.graph(), selected_checklist_id.as_ref());
-        refresh.changed()
     }
 
     fn start_new_thread(&mut self) {
@@ -3794,7 +3771,7 @@ impl ConversationSurfaceState {
         &mut self,
         thread_id: String,
         execution_target: WorkspaceId,
-        automatic_title_generation_allowed: bool,
+        title_mode: TurnThreadTitleMode,
         turn_options: TurnStartOptions,
         fragments: Vec<SteeringInputFragment>,
     ) -> bool {
@@ -3811,7 +3788,7 @@ impl ConversationSurfaceState {
             self.pending_turn_input_queue.as_ref(),
             &thread_id,
             &execution_target,
-            automatic_title_generation_allowed,
+            title_mode,
             &turn_options,
             self.execution_details.turns().len(),
             &user_inputs,
@@ -3829,7 +3806,7 @@ impl ConversationSurfaceState {
             queued &= self.queue_pending_turn_fragment(
                 thread_id.clone(),
                 execution_target.clone(),
-                automatic_title_generation_allowed,
+                title_mode,
                 turn_options.clone(),
                 user_input,
             );
@@ -3866,7 +3843,7 @@ impl ConversationSurfaceState {
         &mut self,
         thread_id: String,
         execution_target: WorkspaceId,
-        automatic_title_generation_allowed: bool,
+        title_mode: TurnThreadTitleMode,
         turn_options: TurnStartOptions,
         user_input: UserInputFragment,
     ) -> bool {
@@ -3898,7 +3875,7 @@ impl ConversationSurfaceState {
                 let queue = match PendingTurnInputQueue::try_new(
                     thread_id,
                     execution_target,
-                    automatic_title_generation_allowed,
+                    title_mode,
                     turn_options,
                     self.execution_details.turns().len(),
                     user_input.clone(),
@@ -4294,46 +4271,6 @@ impl ConversationSurfaceState {
         self.split_bounds = Some(bounds);
     }
 
-    fn begin_divider_drag(&mut self, divider_left: Pixels, pointer_x: Pixels) {
-        self.divider_drag = Some(DividerDragState {
-            pointer_offset: pointer_x - divider_left,
-        });
-    }
-
-    fn update_divider_drag(&mut self, pointer_x: Pixels) -> bool {
-        let (Some(bounds), Some(drag)) = (self.split_bounds, self.divider_drag) else {
-            return false;
-        };
-
-        if bounds.size.width <= px(0.0) {
-            return false;
-        }
-
-        let divider_left = pointer_x - drag.pointer_offset;
-        let available_width = (bounds.size.width - px(layout::PANEL_DIVIDER_WIDTH)).max(px(0.0));
-        let desired_secondary_width =
-            (bounds.right() - divider_left - px(layout::PANEL_DIVIDER_WIDTH)).max(px(0.0));
-        let desired_ratio = if available_width <= px(0.0) {
-            DEFAULT_CHECKLIST_SIDEBAR_RATIO
-        } else {
-            layout::clamped_checklist_sidebar_ratio(
-                available_width,
-                desired_secondary_width / available_width,
-            )
-        };
-
-        if (desired_ratio - self.checklist_sidebar_ratio).abs() < f32::EPSILON {
-            return false;
-        }
-
-        self.checklist_sidebar_ratio = desired_ratio;
-        true
-    }
-
-    fn end_divider_drag(&mut self) {
-        self.divider_drag = None;
-    }
-
     fn graph_overlay_height(&self, composer_height: Pixels) -> Pixels {
         let available_height = self.graph_overlay_available_height(composer_height);
         let desired_height = if self.graph_overlay_panel_height <= Pixels::ZERO {
@@ -4554,9 +4491,6 @@ impl ShellView {
         });
         let transcript_panel =
             cx.new(|cx| render::transcript::TranscriptPanel::new(shell_entity.clone(), cx));
-        let checklist_sidebar_panel = cx.new(|cx| {
-            render::checklist_sidebar::ChecklistSidebarPanel::new(shell_entity.clone(), cx)
-        });
         let workspace_persistence_queue = spawn_workspace_persistence_worker(
             app_state
                 .as_ref()
@@ -4595,7 +4529,18 @@ impl ShellView {
             workspace_receiver: None,
             graph_receiver: None,
             graph_thread_start_receiver: None,
+            decision_branch_start_receiver: None,
+            decision_child_progress_receiver: None,
+            decision_resolution_graph_receiver: None,
+            decision_resolution_parent_activation_record_id: None,
+            decision_archive_receiver: None,
+            pending_decision_handoff_turn: None,
+            pending_decision_handoff_navigation: None,
+            pending_decision_branch_jobs: VecDeque::new(),
+            pending_decision_resolution_jobs: VecDeque::new(),
+            pending_decision_archive_jobs: VecDeque::new(),
             transcript_branch_receiver: None,
+            foreground_transcript_branch: None,
             transcript_edit_commit_receiver: None,
             member_thread_inventory_receiver: None,
             thread_activation_receiver: None,
@@ -4643,7 +4588,6 @@ impl ShellView {
             pending_composer_image_asset_paste: None,
             composer_image_popup: None,
             transcript_panel,
-            checklist_sidebar_panel,
             startup_scroll_handle: ScrollHandle::new(),
             scrollbar_visibility: HashMap::new(),
             next_attempt: 1,
@@ -4919,7 +4863,17 @@ impl ShellView {
         self.discovery_receiver = None;
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
+        self.decision_branch_start_receiver = None;
+        self.decision_child_progress_receiver = None;
+        self.decision_resolution_graph_receiver = None;
+        self.decision_resolution_parent_activation_record_id = None;
+        self.decision_archive_receiver = None;
+        self.pending_decision_handoff_turn = None;
+        self.pending_decision_branch_jobs.clear();
+        self.pending_decision_resolution_jobs.clear();
+        self.pending_decision_archive_jobs.clear();
         self.transcript_branch_receiver = None;
+        self.foreground_transcript_branch = None;
         self.transcript_edit_commit_receiver = None;
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
@@ -4960,7 +4914,17 @@ impl ShellView {
         self.discovery_receiver = None;
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
+        self.decision_branch_start_receiver = None;
+        self.decision_child_progress_receiver = None;
+        self.decision_resolution_graph_receiver = None;
+        self.decision_resolution_parent_activation_record_id = None;
+        self.decision_archive_receiver = None;
+        self.pending_decision_handoff_turn = None;
+        self.pending_decision_branch_jobs.clear();
+        self.pending_decision_resolution_jobs.clear();
+        self.pending_decision_archive_jobs.clear();
         self.transcript_branch_receiver = None;
+        self.foreground_transcript_branch = None;
         self.transcript_edit_commit_receiver = None;
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
@@ -5019,6 +4983,9 @@ impl ShellView {
                 let workspace_ui_state = workspace_persistence
                     .load_workspace_ui_state(startup.active_workspace().id())
                     .map_err(crate::StartupStateError::WorkspacePersistence)?;
+                let threaded_decision_state = workspace_persistence
+                    .load_workspace_threaded_decision_state(startup.active_workspace().id())
+                    .map_err(crate::StartupStateError::WorkspacePersistence)?;
                 let graph_upkeep_policy = workspace_persistence
                     .load_workspace_graph_upkeep_policy(startup.active_workspace().id())
                     .map_err(crate::StartupStateError::WorkspacePersistence)?;
@@ -5048,6 +5015,7 @@ impl ShellView {
                     workspace_picker_member_paths,
                     workspace_state,
                     workspace_ui_state,
+                    threaded_decision_state,
                     graph_upkeep_policy,
                 })
             })
@@ -5164,6 +5132,15 @@ impl ShellView {
         self.discard_workspace_open_receiver("starting a new workspace open");
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
+        self.decision_branch_start_receiver = None;
+        self.decision_child_progress_receiver = None;
+        self.decision_resolution_graph_receiver = None;
+        self.decision_resolution_parent_activation_record_id = None;
+        self.decision_archive_receiver = None;
+        self.pending_decision_handoff_turn = None;
+        self.pending_decision_branch_jobs.clear();
+        self.pending_decision_resolution_jobs.clear();
+        self.pending_decision_archive_jobs.clear();
         self.transcript_branch_receiver = None;
         self.transcript_edit_commit_receiver = None;
         self.member_thread_inventory_receiver = None;
@@ -5272,6 +5249,17 @@ impl ShellView {
             || self.workspace_receiver.is_some()
             || self.graph_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
+            || self.decision_branch_start_receiver.is_some()
+            || self.decision_child_progress_receiver.is_some()
+            || self.decision_resolution_graph_receiver.is_some()
+            || self
+                .decision_resolution_parent_activation_record_id
+                .is_some()
+            || self.decision_archive_receiver.is_some()
+            || self.pending_decision_handoff_turn.is_some()
+            || !self.pending_decision_branch_jobs.is_empty()
+            || !self.pending_decision_resolution_jobs.is_empty()
+            || !self.pending_decision_archive_jobs.is_empty()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
             || self.member_thread_inventory_receiver.is_some()
@@ -5336,8 +5324,20 @@ impl ShellView {
         let mut blockers = WorkspaceRenameBlockers {
             workspace_lifecycle: self.workspace_receiver.is_some()
                 || matches!(self.state, ShellState::Opening(_)),
-            graph_work: self.graph_receiver.is_some() || self.graph_thread_start_receiver.is_some(),
+            graph_work: self.graph_receiver.is_some()
+                || self.graph_thread_start_receiver.is_some()
+                || self.decision_branch_start_receiver.is_some()
+                || self.decision_child_progress_receiver.is_some()
+                || self.decision_resolution_graph_receiver.is_some()
+                || self.decision_archive_receiver.is_some(),
             transcript_work: self.transcript_branch_receiver.is_some()
+                || !self.pending_decision_branch_jobs.is_empty()
+                || !self.pending_decision_resolution_jobs.is_empty()
+                || !self.pending_decision_archive_jobs.is_empty()
+                || self
+                    .decision_resolution_parent_activation_record_id
+                    .is_some()
+                || self.pending_decision_handoff_turn.is_some()
                 || self.transcript_edit_commit_receiver.is_some()
                 || self.thread_activation_receiver.is_some()
                 || self.thread_history_page_receiver.is_some()
@@ -5384,16 +5384,23 @@ impl ShellView {
         updated |= self.poll_workspace_updates(window);
         updated |= self.poll_graph_updates();
         updated |= self.poll_graph_thread_start_updates();
+        updated |= self.poll_decision_branch_start_updates(window, cx);
+        updated |= self.poll_decision_child_progress_updates();
+        updated |= self.poll_decision_resolution_graph_updates(window, cx);
+        updated |= self.poll_decision_archive_updates();
         updated |= self.poll_transcript_branch_updates(window, cx);
         updated |= self.poll_transcript_edit_commit_updates(window, cx);
         updated |= self.poll_member_thread_inventory_updates();
-        updated |= self.poll_thread_activation_updates();
+        updated |= self.poll_thread_activation_updates(window, cx);
         updated |= self.poll_thread_history_page_updates();
         updated |= self.poll_composer_image_label_scan_updates();
         updated |= self.poll_composer_image_asset_updates(cx);
         updated |= self.poll_diagnostic_target_requests(window, cx);
         updated |= self.poll_shell_dynamic_tool_requests(window, cx);
         updated |= self.poll_turn_updates(window, cx);
+        updated |= self.begin_next_ready_decision_resolution_handoff(window, cx);
+        updated |= self.begin_next_ready_decision_archive_cleanup(window, cx);
+        updated |= self.begin_next_ready_queued_decision_branch(window, cx);
         updated |= self.poll_turn_steering_updates();
         updated |= self.poll_composer_image_delivery_updates(cx);
         updated |= self.poll_thread_title_updates();
@@ -5439,7 +5446,6 @@ impl ShellView {
         self.schedule_poll_if_needed(window, cx);
         if updated {
             self.notify_transcript_panel(cx);
-            self.notify_checklist_sidebar_panel(cx);
             cx.notify();
         }
     }
@@ -5542,6 +5548,7 @@ impl ShellView {
                         outcome.workspace_picker_member_paths,
                         outcome.workspace_state,
                         outcome.workspace_ui_state,
+                        outcome.threaded_decision_state,
                         startup_warning,
                     );
                     window.set_window_title(&format!("Beryl - {}", workspace.title()));
@@ -5717,7 +5724,11 @@ impl ShellView {
         updated
     }
 
-    fn poll_thread_activation_updates(&mut self) -> bool {
+    fn poll_thread_activation_updates(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(receiver) = self.thread_activation_receiver.as_ref() else {
             return false;
         };
@@ -5726,13 +5737,23 @@ impl ShellView {
         match receiver.try_recv() {
             Ok(ThreadActivationUpdate::Finished(outcome)) => {
                 self.thread_activation_receiver = None;
-                self.finish_thread_activation_worker(outcome);
+                let activation_succeeded =
+                    matches!(outcome, ThreadActivationOutcome::Activated { .. });
+                let activated_thread_id = self.finish_thread_activation_worker(outcome);
+                self.finish_decision_resolution_parent_activation(activation_succeeded, window, cx);
                 updated = true;
+                if let Some(thread_id) = activated_thread_id {
+                    updated |= self.finish_pending_decision_handoff_navigation_for_thread(
+                        &thread_id, window, cx,
+                    );
+                }
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 self.thread_activation_receiver = None;
                 self.handle_thread_activation_worker_stopped();
+                self.finish_decision_resolution_parent_activation(false, window, cx);
+                self.pending_decision_handoff_navigation = None;
                 updated = true;
             }
         }
@@ -5865,6 +5886,7 @@ impl ShellView {
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
                     self.pending_lifecycle_phase_continue = None;
+                    self.cancel_pending_decision_handoff_turn_after_worker_stop();
                     let sound_candidate = self.handle_turn_worker_stopped();
                     self.finish_transcript_edit_replacement_turn(
                         edit_replacement_failed_before_start,
@@ -5911,13 +5933,27 @@ impl ShellView {
                         &thread,
                         activated_new_thread,
                     );
+                    if activated_new_thread {
+                        self.mark_member_thread_inventory_refresh_needed();
+                    }
                     updated |= self.repair_selected_thread_title_if_needed(execution_target);
                 }
                 TurnWorkerUpdate::ThreadTitleEligible {
                     execution_target,
                     candidate,
+                    title_mode,
                 } => {
-                    updated |= self.repair_thread_title_from_candidate(execution_target, candidate);
+                    updated |= self.handle_thread_title_candidate_from_turn(
+                        execution_target,
+                        candidate,
+                        title_mode,
+                    );
+                }
+                TurnWorkerUpdate::ForegroundTranscriptBranchStarted(start) => {
+                    updated |= self.begin_foreground_transcript_branch(start, cx);
+                }
+                TurnWorkerUpdate::ForegroundTranscriptBranchPublicationFinished(publication) => {
+                    updated |= self.finish_foreground_transcript_branch_publication(publication);
                 }
                 TurnWorkerUpdate::GraphMutationFinished(update) => {
                     updated |= self.finish_graph_mutation_update(update);
@@ -5953,6 +5989,11 @@ impl ShellView {
                     updated |= self.apply_thread_name_update(thread_id, thread_name);
                 }
                 TurnWorkerUpdate::Event(event) => {
+                    let refresh_inventory_for_event = matches!(
+                        &event,
+                        beryl_backend::TurnStreamEvent::ThreadArchived { .. }
+                            | beryl_backend::TurnStreamEvent::ThreadUnarchived { .. }
+                    );
                     let execution_target = match &self.state {
                         ShellState::Ready(ready) => Some(ready.execution_target.clone()),
                         ShellState::BackendUnavailable(unavailable) => {
@@ -5969,10 +6010,19 @@ impl ShellView {
                         }
                         _ => None,
                     };
+                    let suppress_bootstrap_title_candidate =
+                        self.foreground_transcript_branch_event_is_bootstrap_terminal(&event);
                     let mut applied_stream_event = AppliedStreamEvent::default();
                     let mut pending_steering = None;
                     if let Some((thread_id, _)) = started_turn.as_ref() {
                         self.note_transcript_edit_replacement_turn_started(thread_id, cx);
+                    }
+                    if let Some((thread_id, turn_id)) = started_turn.as_ref() {
+                        updated |= self.note_decision_child_turn_started(thread_id, turn_id, cx);
+                    }
+                    if let Some((thread_id, turn_id)) = started_turn.as_ref() {
+                        updated |=
+                            self.note_decision_handoff_turn_started(thread_id, turn_id, window, cx);
                     }
                     if let Some(surface) = self.conversation_surface_mut() {
                         if let Some((thread_id, _)) = started_turn.as_ref() {
@@ -5980,6 +6030,9 @@ impl ShellView {
                         }
                         applied_stream_event =
                             surface.apply_stream_event(event, execution_target.as_ref());
+                        if suppress_bootstrap_title_candidate {
+                            applied_stream_event.title_candidate = None;
+                        }
                         if let Some((thread_id, turn_id)) = started_turn.as_ref()
                             && let Some(fragments) = surface
                                 .take_pending_active_turn_steering_for_started_turn(
@@ -5993,6 +6046,10 @@ impl ShellView {
                     }
                     if let Some((thread_id, turn_id, fragments)) = pending_steering {
                         self.begin_turn_steering(thread_id, turn_id, fragments);
+                    }
+                    if refresh_inventory_for_event {
+                        self.mark_member_thread_inventory_refresh_needed();
+                        updated = true;
                     }
                     if let Some(candidate) = applied_stream_event.title_candidate {
                         self.queue_workspace_title_candidate(
@@ -6038,6 +6095,9 @@ impl ShellView {
                             .is_some_and(|replacement| !replacement.turn_started);
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
+                    if failure_message.is_some() {
+                        self.cancel_pending_decision_handoff_turn_after_worker_stop();
+                    }
                     let sound_candidate = self.finish_turn_worker(outcome);
                     if failure_message.is_some() {
                         self.pending_lifecycle_phase_continue = None;
@@ -6049,12 +6109,18 @@ impl ShellView {
                         cx,
                     );
                     if let Some(thread_id) = pending_thread_id {
-                        match self.pending_lifecycle_phase_continue.take() {
-                            Some(request) if request.thread_id() == thread_id => {
-                                self.begin_lifecycle_phase_continue(request, window, cx);
-                            }
-                            Some(_) | None => {
-                                self.begin_pending_turn_input_queue_for_thread(&thread_id);
+                        if self.has_queued_decision_branch_jobs_for_parent(&thread_id) {
+                            self.begin_next_ready_queued_decision_branch(window, cx);
+                        } else if self.has_queued_decision_resolution_jobs_for_child(&thread_id) {
+                            self.begin_next_ready_decision_resolution_handoff(window, cx);
+                        } else {
+                            match self.pending_lifecycle_phase_continue.take() {
+                                Some(request) if request.thread_id() == thread_id => {
+                                    self.begin_lifecycle_phase_continue(request, window, cx);
+                                }
+                                Some(_) | None => {
+                                    self.begin_pending_turn_input_queue_for_thread(&thread_id);
+                                }
                             }
                         }
                     }
@@ -6102,6 +6168,15 @@ impl ShellView {
                     }
                     if is_beryl_theme_dynamic_tool(request.request()) {
                         self.handle_beryl_theme_dynamic_tool_shell_request(request, window, cx);
+                        continue;
+                    }
+                    if is_beryl_threaded_decision_dynamic_tool(request.request()) {
+                        let response = self.handle_beryl_threaded_decision_dynamic_tool_request(
+                            request.request(),
+                            window,
+                            cx,
+                        );
+                        request.respond(response);
                         continue;
                     }
                     let response = if is_beryl_settings_dynamic_tool(request.request()) {
@@ -6342,6 +6417,82 @@ impl ShellView {
         )
     }
 
+    fn handle_thread_title_candidate_from_turn(
+        &mut self,
+        execution_target: WorkspaceId,
+        candidate: thread_title::ThreadTitleCandidate,
+        title_mode: TurnThreadTitleMode,
+    ) -> bool {
+        match title_mode {
+            TurnThreadTitleMode::Disabled => false,
+            TurnThreadTitleMode::AutomaticIfMissing => {
+                self.repair_thread_title_from_candidate(execution_target, candidate)
+            }
+            TurnThreadTitleMode::BranchRetitleAfterFirstUserTurn => {
+                self.begin_branch_thread_retitle_from_candidate(execution_target, candidate)
+            }
+        }
+    }
+
+    fn begin_branch_thread_retitle_from_candidate(
+        &mut self,
+        execution_target: WorkspaceId,
+        candidate: thread_title::ThreadTitleCandidate,
+    ) -> bool {
+        let thread_id = candidate.target_thread_id().to_string();
+        if !self.branch_thread_retitle_pending(&thread_id) {
+            return false;
+        }
+        if self.thread_has_manual_gui_title(&thread_id) {
+            return self.mark_branch_thread_title_retitle_finished(&thread_id);
+        }
+        if self.thread_title_task_active_for_thread(&thread_id)
+            || !self.thread_title_worker_capacity_available()
+        {
+            return false;
+        }
+        if !self.begin_thread_title_update(execution_target, candidate) {
+            return false;
+        }
+
+        self.mark_branch_thread_title_retitle_started(&thread_id)
+    }
+
+    fn begin_pending_branch_retitle_from_known_history(&mut self, thread_id: &str) -> bool {
+        if !self.branch_thread_retitle_pending(thread_id)
+            || self.thread_title_task_active_for_thread(thread_id)
+        {
+            return false;
+        }
+        if self.thread_has_manual_gui_title(thread_id) {
+            return self.mark_branch_thread_title_retitle_finished(thread_id);
+        }
+
+        let thread_id_model = ConversationThreadId::new(thread_id.to_string());
+        let Some((execution_target, user_input)) =
+            self.workspace_shell_state().and_then(|loaded| {
+                let registration = loaded
+                    .workspace_state
+                    .thread_registration(&thread_id_model)?;
+                let surface = self.conversation_surface()?;
+                (surface.selected_thread_id() == Some(thread_id)).then(|| {
+                    first_real_branch_user_input_fragment_text(surface, registration)
+                        .map(|input| (registration.execution_target().clone(), input.to_string()))
+                })?
+            })
+        else {
+            return false;
+        };
+
+        let Some(candidate) =
+            thread_title::ThreadTitleCandidate::new(thread_id.to_string(), user_input)
+        else {
+            return false;
+        };
+
+        self.begin_branch_thread_retitle_from_candidate(execution_target, candidate)
+    }
+
     fn repair_missing_thread_title_for_thread(
         &mut self,
         execution_target: WorkspaceId,
@@ -6444,13 +6595,24 @@ impl ShellView {
 
     fn earliest_known_user_input_for_thread(&self, thread_id: &str) -> Option<String> {
         let surface = self.conversation_surface()?;
-        (surface.selected_thread_id() == Some(thread_id))
-            .then(|| {
-                surface
-                    .earliest_known_user_input_fragment_text()
-                    .map(str::to_string)
-            })
-            .flatten()
+        if surface.selected_thread_id() != Some(thread_id) {
+            return None;
+        }
+
+        if let Some(registration) = self.workspace_shell_state().and_then(|loaded| {
+            loaded
+                .workspace_state
+                .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+        }) && registration.branch_title_retitle_state()
+            != BranchThreadTitleRetitleState::NotBranch
+        {
+            return first_real_branch_user_input_fragment_text(surface, registration)
+                .map(str::to_string);
+        }
+
+        surface
+            .earliest_known_user_input_fragment_text()
+            .map(str::to_string)
     }
 
     fn thread_title_task_active_for_thread(&self, thread_id: &str) -> bool {
@@ -6581,6 +6743,36 @@ impl ShellView {
         })
     }
 
+    pub(super) fn thread_title_mode_for_user_submission(
+        &self,
+        thread_id: Option<&str>,
+        automatic_title_generation_allowed: bool,
+    ) -> TurnThreadTitleMode {
+        let Some(loaded) = self.workspace_shell_state() else {
+            return TurnThreadTitleMode::automatic_if_allowed(automatic_title_generation_allowed);
+        };
+        Self::thread_title_mode_for_user_submission_state(
+            &loaded.workspace_state,
+            thread_id,
+            automatic_title_generation_allowed,
+        )
+    }
+
+    fn thread_title_mode_for_user_submission_state(
+        workspace_state: &WorkspaceConversationState,
+        thread_id: Option<&str>,
+        automatic_title_generation_allowed: bool,
+    ) -> TurnThreadTitleMode {
+        if let Some(thread_id) = thread_id {
+            let thread_id = ConversationThreadId::new(thread_id.to_string());
+            if workspace_state.thread_branch_title_retitle_pending(&thread_id) {
+                return TurnThreadTitleMode::BranchRetitleAfterFirstUserTurn;
+            }
+        }
+
+        TurnThreadTitleMode::automatic_if_allowed(automatic_title_generation_allowed)
+    }
+
     fn finish_thread_title_task_outcomes(
         &mut self,
         outcomes: Vec<ThreadTitleTaskOutcome>,
@@ -6642,9 +6834,9 @@ impl ShellView {
     }
 
     fn finish_thread_title_update(&mut self, thread_id: String, result: ThreadTitleResult) -> bool {
-        match result {
+        let mut updated = match result {
             ThreadTitleResult::Applied { title } => {
-                let _ = self.apply_authoritative_thread_name_update(thread_id, Some(title));
+                let _ = self.apply_authoritative_thread_name_update(thread_id.clone(), Some(title));
                 self.mark_member_thread_inventory_refresh_needed();
                 true
             }
@@ -6663,7 +6855,9 @@ impl ShellView {
                     &message,
                 )
             }
-        }
+        };
+        updated |= self.begin_pending_branch_retitle_from_known_history(&thread_id);
+        updated
     }
 
     fn finish_thread_title_update_request(
@@ -6673,22 +6867,27 @@ impl ShellView {
     ) -> bool {
         match result {
             ThreadTitleResult::Applied { title } => {
-                let _ = self.apply_authoritative_thread_name_update(thread_id, Some(title));
+                let _ = self.apply_authoritative_thread_name_update(thread_id.clone(), Some(title));
                 self.mark_member_thread_inventory_refresh_needed();
+                self.mark_branch_thread_title_retitle_finished(&thread_id);
                 true
             }
-            ThreadTitleResult::Cancelled => false,
+            ThreadTitleResult::Cancelled => {
+                self.mark_branch_thread_title_retitle_finished(&thread_id)
+            }
             ThreadTitleResult::Failed { message } => {
                 warn!(
                     thread_id = thread_id.as_str(),
                     error = %message,
                     "user-initiated thread-title update failed"
                 );
-                self.block_if_backend_process_dead(
-                    "Managed backend disconnected during title update",
-                    "The backend process exited while Beryl was updating the thread title.",
-                    &message,
-                )
+                let updated = self.mark_branch_thread_title_retitle_finished(&thread_id);
+                updated
+                    | self.block_if_backend_process_dead(
+                        "Managed backend disconnected during title update",
+                        "The backend process exited while Beryl was updating the thread title.",
+                        &message,
+                    )
             }
         }
     }
@@ -6746,6 +6945,73 @@ impl ShellView {
         };
 
         if changed && persist {
+            self.persist_current_workspace_state(false);
+        }
+        changed
+    }
+
+    fn branch_thread_retitle_pending(&self, thread_id: &str) -> bool {
+        let thread_id = ConversationThreadId::new(thread_id.to_string());
+        self.workspace_shell_state().is_some_and(|loaded| {
+            loaded
+                .workspace_state
+                .thread_branch_title_retitle_pending(&thread_id)
+        })
+    }
+
+    fn mark_branch_thread_title_retitle_started(&mut self, thread_id: &str) -> bool {
+        let thread_id = ConversationThreadId::new(thread_id.to_string());
+        let changed = {
+            let Some(loaded) = self.workspace_shell_state_mut() else {
+                return false;
+            };
+
+            match loaded
+                .workspace_state
+                .mark_thread_branch_title_retitle_started(&thread_id)
+            {
+                Ok(changed) => changed,
+                Err(error) => {
+                    warn!(
+                        thread_id = thread_id.as_str(),
+                        error = %error,
+                        "could not record branch thread-title retitle start"
+                    );
+                    false
+                }
+            }
+        };
+
+        if changed {
+            self.persist_current_workspace_state(false);
+        }
+        changed
+    }
+
+    fn mark_branch_thread_title_retitle_finished(&mut self, thread_id: &str) -> bool {
+        let thread_id = ConversationThreadId::new(thread_id.to_string());
+        let changed = {
+            let Some(loaded) = self.workspace_shell_state_mut() else {
+                return false;
+            };
+
+            match loaded
+                .workspace_state
+                .mark_thread_branch_title_retitle_finished(&thread_id)
+            {
+                Ok(changed) => changed,
+                Err(error) => {
+                    warn!(
+                        thread_id = thread_id.as_str(),
+                        error = %error,
+                        "could not record branch thread-title retitle completion"
+                    );
+                    false
+                }
+            }
+        };
+
+        if changed {
             self.persist_current_workspace_state(false);
         }
         changed
@@ -8178,6 +8444,7 @@ impl ShellView {
             opened.workspace_picker_member_paths,
             opened.workspace_state,
             opened.workspace_ui_state,
+            opened.threaded_decision_state,
             None,
         );
         if loaded.selected_runtime().is_some() {
@@ -8219,6 +8486,9 @@ impl ShellView {
                 outcome.workspace_picker_member_paths,
                 workspace_state,
                 outcome.replacement_workspace_ui_state.unwrap_or_default(),
+                outcome
+                    .replacement_threaded_decision_state
+                    .unwrap_or_default(),
                 None,
             );
             if loaded.selected_runtime().is_some() {
@@ -8717,7 +8987,6 @@ impl ShellView {
 
     fn refresh_active_theme_surfaces(&self, cx: &mut Context<Self>) {
         self.notify_transcript_panel(cx);
-        self.notify_checklist_sidebar_panel(cx);
         cx.refresh_windows();
         cx.notify();
     }
@@ -9129,30 +9398,6 @@ impl ShellView {
         }
     }
 
-    fn current_developer_instructions_preference(&self) -> Option<String> {
-        match self.gui_preferences.lock() {
-            Ok(preferences) => preferences.agent.developer_instructions.clone(),
-            Err(error) => {
-                warn!(
-                    error = %error,
-                    "failed to read developer-instructions preferences"
-                );
-                None
-            }
-        }
-    }
-
-    fn current_hidden_developer_instructions(&self) -> Option<String> {
-        let graph_upkeep_policy = self.loaded_workspace().and_then(|loaded| {
-            self.settings_state
-                .active_graph_upkeep_policy_for_workspace(loaded.workspace.id())
-        });
-        compose_hidden_developer_instructions(
-            graph_upkeep_policy.as_ref(),
-            self.current_developer_instructions_preference(),
-        )
-    }
-
     fn current_context_compaction_timeout(&self) -> Duration {
         match self.gui_preferences.lock() {
             Ok(preferences) => preferences.context_compaction_timeout(),
@@ -9164,45 +9409,6 @@ impl ShellView {
                 GuiPreferences::default().context_compaction_timeout()
             }
         }
-    }
-
-    fn turn_options_with_current_developer_instructions(
-        &self,
-        selected_thread_id: Option<&str>,
-        options: TurnStartOptions,
-    ) -> TurnStartOptions {
-        let Some(defaults) = self
-            .conversation_surface()
-            .map(|surface| surface.effective_turn_context_defaults(selected_thread_id))
-        else {
-            return options;
-        };
-        self.turn_options_with_current_developer_instructions_defaults(
-            selected_thread_id,
-            options,
-            defaults,
-        )
-    }
-
-    fn turn_options_with_current_developer_instructions_defaults(
-        &self,
-        selected_thread_id: Option<&str>,
-        options: TurnStartOptions,
-        defaults: ThreadTurnDefaults,
-    ) -> TurnStartOptions {
-        let Some(_model) = defaults.model() else {
-            warn!(
-                thread_id = selected_thread_id.unwrap_or("<new-thread>"),
-                "hidden developer-instructions context could not be applied or reset because no effective model is known for turn-start collaboration settings"
-            );
-            return options.without_developer_instructions_context();
-        };
-
-        status_line::turn_start_options_with_developer_instructions_context(
-            options,
-            self.current_hidden_developer_instructions(),
-            defaults,
-        )
     }
 
     fn selected_lifecycle_notification_sound_path(
@@ -9593,7 +9799,6 @@ impl ShellView {
             .is_some_and(|surface| surface.select_graph_node(column_index, &node_id));
         if changed {
             self.prune_graph_scrollbar_visibility();
-            self.notify_checklist_sidebar_panel(cx);
             cx.notify();
         }
     }
@@ -9612,7 +9817,6 @@ impl ShellView {
         });
         if changed {
             self.prune_graph_scrollbar_visibility();
-            self.notify_checklist_sidebar_panel(cx);
             cx.notify();
         }
     }
@@ -9667,6 +9871,96 @@ impl ShellView {
 
         self.activate_thread_selector_target(target, window, cx);
         true
+    }
+
+    pub(super) fn activate_beryl_thread_link(
+        &mut self,
+        thread_id: ConversationThreadId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let target = match self.activated_link_thread_target(&thread_id) {
+            Ok(target) => target,
+            Err((title, message)) => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(title, message));
+                }
+                cx.notify();
+                return false;
+            }
+        };
+
+        matches!(
+            self.activate_thread_selector_target(target, window, cx),
+            ThreadActivationStart::Started | ThreadActivationStart::AlreadySelected
+        )
+    }
+
+    fn activated_link_thread_target(
+        &self,
+        thread_id: &ConversationThreadId,
+    ) -> Result<ThreadSelectorActivationTarget, (&'static str, String)> {
+        let loaded = self.loaded_workspace().ok_or_else(|| {
+            (
+                "Thread link unavailable",
+                "No workspace is loaded.".to_string(),
+            )
+        })?;
+        let registration = loaded
+            .workspace_state
+            .thread_registration(thread_id)
+            .ok_or_else(|| {
+                (
+                    "Thread link unavailable",
+                    format!(
+                        "Beryl cannot activate thread link {} because the thread is not registered in this workspace.",
+                        thread_id.as_str()
+                    ),
+                )
+            })?;
+        let execution_target = registration.execution_target().clone();
+        let label = resolved_thread_title(
+            &loaded.workspace_state,
+            thread_id,
+            &execution_target,
+            registration.preview(),
+            registration.backend_name(),
+            registration.created_at_millis(),
+            registration.updated_at_millis(),
+        );
+        let label = if label.trim().is_empty() {
+            "Linked thread".to_string()
+        } else {
+            label
+        };
+
+        if let Some(requirement) = registration.rebind_required() {
+            return Err((
+                "Thread requires rebind",
+                thread_rebind_detail(&label, &execution_target, requirement.detail()),
+            ));
+        }
+
+        let implicit_home_target = loaded.resolved_implicit_home_execution_target();
+        if !loaded
+            .workspace_state
+            .execution_target_in_workspace_scope(&execution_target, implicit_home_target.as_ref())
+        {
+            return Err((
+                "Thread link unavailable",
+                thread_rebind_detail(
+                    &label,
+                    &execution_target,
+                    "The recorded thread target is outside the current workspace scope.",
+                ),
+            ));
+        }
+
+        Ok(ThreadSelectorActivationTarget {
+            thread_id: thread_id.clone(),
+            label,
+            execution_target,
+        })
     }
 
     fn activate_thread_selector_target(
@@ -10603,16 +10897,12 @@ impl ShellView {
             cx.notify();
             return;
         }
-        let Some(opened) = self
+        if self
             .conversation_surface_mut()
             .map(ConversationSurfaceState::toggle_thread_selector)
-        else {
+            .is_none()
+        {
             return;
-        };
-        if opened {
-            self.apply_member_thread_inventory_event(
-                MemberThreadInventoryEvent::SelectorFreshnessRequested,
-            );
         }
         self.schedule_poll_if_needed(window, cx);
         cx.notify();
@@ -10631,19 +10921,6 @@ impl ShellView {
         });
         if dismissed {
             self.surface_notice_text_input_notice_id.set(None);
-            cx.notify();
-        }
-    }
-
-    fn toggle_checklist_sidebar(
-        &mut self,
-        _: &gpui::ClickEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface.toggle_checklist_sidebar();
-            self.notify_checklist_sidebar_panel(cx);
             cx.notify();
         }
     }
@@ -11893,13 +12170,17 @@ impl ShellView {
 
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
         self.shell_tool_receiver = Some(shell_tool_receiver);
+        let title_mode = self.thread_title_mode_for_user_submission(
+            selected_thread_id.as_deref(),
+            automatic_title_generation_allowed,
+        );
         self.turn_receiver = Some(spawn_turn_worker(
             persistence,
             connector,
             beryl_workspace_id,
             workspace,
             selected_thread_id,
-            automatic_title_generation_allowed,
+            title_mode,
             vec![fragment],
             turn_options,
             Some(shell_tool_sender),
@@ -12085,11 +12366,15 @@ impl ShellView {
                 | ShellState::Opening(_) => return false,
             };
 
+        let title_mode = self.thread_title_mode_for_user_submission(
+            Some(thread_id.as_str()),
+            automatic_title_generation_allowed,
+        );
         let queued = match &mut self.state {
             ShellState::Ready(ready) => ready.surface.queue_pending_turn_fragment(
                 thread_id,
                 execution_target,
-                automatic_title_generation_allowed,
+                title_mode,
                 turn_options,
                 fragment,
             ),
@@ -12097,7 +12382,7 @@ impl ShellView {
                 unavailable.surface.queue_pending_turn_fragment(
                     thread_id,
                     execution_target,
-                    automatic_title_generation_allowed,
+                    title_mode,
                     turn_options,
                     fragment,
                 )
@@ -12212,11 +12497,13 @@ impl ShellView {
             | ShellState::Opening(_) => return false,
         };
 
+        let title_mode =
+            TurnThreadTitleMode::automatic_if_allowed(automatic_title_generation_allowed);
         let queued = match &mut self.state {
             ShellState::Ready(ready) => ready.surface.queue_pending_turn_fragment(
                 thread_id.clone(),
                 execution_target,
-                automatic_title_generation_allowed,
+                title_mode,
                 turn_options,
                 request.resume_fragment(),
             ),
@@ -12224,7 +12511,7 @@ impl ShellView {
                 unavailable.surface.queue_pending_turn_fragment(
                     thread_id.clone(),
                     execution_target,
-                    automatic_title_generation_allowed,
+                    title_mode,
                     turn_options,
                     request.resume_fragment(),
                 )
@@ -12312,13 +12599,18 @@ impl ShellView {
                     .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
                         thread_id.clone(),
                     ));
+                let title_mode = Self::thread_title_mode_for_user_submission_state(
+                    &ready.loaded_workspace.workspace_state,
+                    Some(thread_id.as_str()),
+                    automatic_title_generation_allowed,
+                );
                 let turn_options = ready
                     .surface
                     .pending_turn_start_options(Some(thread_id.as_str()));
                 queued = ready.surface.move_steering_fragments_to_pending_turn(
                     thread_id.clone(),
                     ready.execution_target.clone(),
-                    automatic_title_generation_allowed,
+                    title_mode,
                     turn_options,
                     fragments,
                 );
@@ -12336,6 +12628,11 @@ impl ShellView {
                     .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
                         thread_id.clone(),
                     ));
+                let title_mode = Self::thread_title_mode_for_user_submission_state(
+                    &unavailable.loaded_workspace.workspace_state,
+                    Some(thread_id.as_str()),
+                    automatic_title_generation_allowed,
+                );
                 let turn_options = unavailable
                     .surface
                     .pending_turn_start_options(Some(thread_id.as_str()));
@@ -12347,7 +12644,7 @@ impl ShellView {
                 queued = unavailable.surface.move_steering_fragments_to_pending_turn(
                     thread_id.clone(),
                     execution_target,
-                    automatic_title_generation_allowed,
+                    title_mode,
                     turn_options,
                     fragments,
                 );
@@ -12414,7 +12711,7 @@ impl ShellView {
             return false;
         };
         let selected_thread_id = Some(queue.thread_id().to_string());
-        let automatic_title_generation_allowed = queue.automatic_title_generation_allowed();
+        let title_mode = queue.title_mode();
         let turn_options = self.turn_options_with_current_developer_instructions(
             selected_thread_id.as_deref(),
             queue.turn_options().clone(),
@@ -12428,7 +12725,7 @@ impl ShellView {
             beryl_workspace_id,
             workspace,
             selected_thread_id,
-            automatic_title_generation_allowed,
+            title_mode,
             user_input_fragments,
             turn_options,
             Some(shell_tool_sender),
@@ -12446,18 +12743,6 @@ impl ShellView {
     fn record_surface_split_bounds(&mut self, bounds: Bounds<Pixels>, _: &mut Context<Self>) {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.set_split_bounds(bounds);
-        }
-    }
-
-    fn begin_surface_divider_drag(
-        &mut self,
-        divider_left: Pixels,
-        event: &MouseDownEvent,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_divider_drag(divider_left, event.position.x);
-            cx.notify();
         }
     }
 
@@ -12495,7 +12780,6 @@ impl ShellView {
     fn update_surface_drag(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         let mut updated = false;
         if let Some(surface) = self.conversation_surface_mut() {
-            updated |= surface.update_divider_drag(event.position.x);
             updated |= surface.update_graph_overlay_drag(event.position.y);
             updated |= surface.update_tool_activity_panel_drag(event.position.y);
         }
@@ -12508,7 +12792,6 @@ impl ShellView {
     fn end_surface_drag(&mut self, _: &MouseUpEvent, cx: &mut Context<Self>) {
         let mut persist_ui_state = false;
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.end_divider_drag();
             surface.end_graph_overlay_drag();
             persist_ui_state = surface.end_tool_activity_panel_drag();
             cx.notify();
@@ -12715,10 +12998,34 @@ impl ShellView {
     }
 
     fn current_conversation_submission_block(&self) -> Option<BackendOperationBlock> {
+        if let Some(block) = self.closed_decision_branch_submission_block() {
+            return Some(block);
+        }
+
         match self.current_conversation_submission_target() {
             Ok(target) => self.backend_required_target_block(&target),
             Err(block) => Some(block),
         }
+    }
+
+    fn closed_decision_branch_submission_block(&self) -> Option<BackendOperationBlock> {
+        let thread_id = self
+            .conversation_surface()
+            .and_then(ConversationSurfaceState::selected_thread_id)?;
+        self.thread_is_read_only_decision_branch(thread_id)
+            .then(|| BackendOperationBlock {
+            kind: "closed_decision_branch",
+            message:
+                "This is a closed decision branch. The transcript is read-only; continue from the parent handoff or start a superseding decision branch."
+                    .to_string(),
+        })
+    }
+
+    fn thread_is_read_only_decision_branch(&self, thread_id: &str) -> bool {
+        let thread_id = ConversationThreadId::new(thread_id.to_string());
+        self.workspace_shell_state().is_some_and(|loaded| {
+            child_thread_is_read_only_decision_branch(&loaded.threaded_decision_state, &thread_id)
+        })
     }
 
     fn current_new_thread_block(&self) -> Option<BackendOperationBlock> {
@@ -12736,6 +13043,48 @@ impl ShellView {
             .workspace_state
             .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
             .map(|thread| thread.execution_target().clone())
+    }
+
+    fn finish_pending_decision_handoff_navigation_for_thread(
+        &mut self,
+        thread_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let matches_parent = self
+            .pending_decision_handoff_navigation
+            .as_ref()
+            .is_some_and(|pending| pending.parent_thread_id.as_str() == thread_id);
+        if !matches_parent {
+            return false;
+        }
+        let Some(pending) = self.pending_decision_handoff_navigation.take() else {
+            return false;
+        };
+
+        let did_scroll = self.conversation_surface_mut().is_some_and(|surface| {
+            surface.scroll_to_turn_id(
+                pending.parent_thread_id.as_str(),
+                pending.handoff_turn_id.as_str(),
+            )
+        });
+        if did_scroll {
+            self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
+            return true;
+        }
+
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.set_notice(SurfaceNotice::new(
+                "Decision handoff opened",
+                format!(
+                    "Beryl opened the parent thread for decision record {}, but the recorded handoff turn {} is not loaded in the visible transcript history.",
+                    pending.record_id.as_str(),
+                    pending.handoff_turn_id.as_str()
+                ),
+            ));
+        }
+        cx.notify();
+        true
     }
 
     fn selected_thread_registered_execution_target(
@@ -12817,6 +13166,7 @@ impl ShellView {
             workspace_picker_member_paths,
             workspace_state,
             WorkspaceUiState::default(),
+            ThreadedDecisionState::default(),
             None,
         )
     }
@@ -12953,8 +13303,13 @@ impl ShellView {
         let thread_registry_changed =
             self.remember_known_threads_for_target(execution_target, known_threads);
 
+        let active_thread_is_read_only_decision_branch = active_thread_id
+            .is_some_and(|thread_id| self.thread_is_read_only_decision_branch(thread_id));
+
         if let Some(loaded) = self.workspace_shell_state_mut() {
-            if let Some(active_thread_id) = active_thread_id {
+            if let Some(active_thread_id) = active_thread_id
+                && !active_thread_is_read_only_decision_branch
+            {
                 should_persist |= loaded
                     .workspace_state
                     .activate_thread(&ConversationThreadId::new(active_thread_id.to_string()))
@@ -12976,6 +13331,16 @@ impl ShellView {
         summary: &ThreadSummary,
         beryl_created: bool,
     ) {
+        self.remember_thread_summary(execution_target, summary, beryl_created, true);
+    }
+
+    fn remember_thread_summary(
+        &mut self,
+        execution_target: &WorkspaceId,
+        summary: &ThreadSummary,
+        beryl_created: bool,
+        activate: bool,
+    ) {
         let ignored_backend_name = self
             .thread_ignores_backend_name_for_automatic_title(&summary.id, summary.name.as_deref());
         let Some(loaded) = self.workspace_shell_state_mut() else {
@@ -12990,11 +13355,12 @@ impl ShellView {
             registered_thread = registered_thread.with_beryl_created();
         }
         let touched_manifest = loaded.workspace_state.remember_thread(registered_thread);
-        let should_persist = loaded
-            .workspace_state
-            .activate_thread(&ConversationThreadId::new(summary.id.clone()))
-            .is_some()
-            || touched_manifest;
+        let activated = activate
+            && loaded
+                .workspace_state
+                .activate_thread(&ConversationThreadId::new(summary.id.clone()))
+                .is_some();
+        let should_persist = activated || touched_manifest;
 
         if should_persist {
             self.persist_current_workspace_state(touched_manifest);
@@ -13029,6 +13395,22 @@ impl ShellView {
             workspace_state,
             touch_manifest,
         );
+    }
+
+    fn persist_current_threaded_decision_state(&mut self) {
+        let Some((workspace_id, threaded_decision_state)) =
+            self.workspace_shell_state().map(|loaded| {
+                (
+                    loaded.workspace.id().clone(),
+                    loaded.threaded_decision_state.clone(),
+                )
+            })
+        else {
+            return;
+        };
+
+        self.workspace_persistence_queue
+            .save_threaded_decision_state(workspace_id, threaded_decision_state);
     }
 
     fn touch_loaded_workspace_manifest_in_memory(&mut self, workspace_id: &BerylWorkspaceId) {
@@ -13762,8 +14144,6 @@ impl ShellView {
                 .is_some_and(|surface| surface.graph_thread_link_menu().is_open()),
             transcript_branch_menu_open: surface
                 .is_some_and(|surface| surface.transcript_branch_menu().is_open()),
-            checklist_thread_start_menu_open: surface
-                .is_some_and(|surface| surface.checklist_thread_start_menu().is_open()),
             status_line_operations_open: surface
                 .is_some_and(|surface| surface.status_line_operations().is_open()),
             composer_image_popup_open: self.composer_image_popup.is_some(),
@@ -14453,10 +14833,6 @@ impl ShellView {
                 surface.transcript_branch_menu_mut().close();
                 closed.push("transcript_branch_menu".to_string());
             }
-            if surface.checklist_thread_start_menu().is_open() {
-                surface.checklist_thread_start_menu_mut().close();
-                closed.push("checklist_thread_start_menu".to_string());
-            }
             if surface.status_line_operations().is_open() {
                 surface.status_line_operations_mut().close();
                 closed.push("status_line_operations".to_string());
@@ -14480,6 +14856,10 @@ impl ShellView {
             self.workspace_receiver.is_some(),
             self.graph_receiver.is_some(),
             self.graph_thread_start_receiver.is_some(),
+            self.decision_branch_start_receiver.is_some(),
+            self.decision_child_progress_receiver.is_some(),
+            self.decision_resolution_graph_receiver.is_some(),
+            self.decision_archive_receiver.is_some(),
             self.transcript_branch_receiver.is_some(),
             self.transcript_edit_commit_receiver.is_some(),
             self.member_thread_inventory_receiver.is_some(),
@@ -14509,6 +14889,8 @@ impl ShellView {
     fn backend_client_connection_estimate(&self) -> usize {
         [
             self.workspace_receiver.is_some(),
+            self.decision_branch_start_receiver.is_some(),
+            self.decision_archive_receiver.is_some(),
             self.member_thread_inventory_receiver.is_some(),
             self.thread_activation_receiver.is_some(),
             self.thread_history_page_receiver.is_some(),
@@ -14609,184 +14991,4 @@ impl ShellView {
             self.notify_transcript_panel(cx);
         }
     }
-
-    fn prune_graph_scrollbar_visibility(&mut self) {
-        let active_graph_columns: Vec<_> = self
-            .conversation_surface()
-            .map(|surface| {
-                surface
-                    .graph_column_selector_scroll
-                    .column_keys()
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        self.scrollbar_visibility.retain(|region, _| match region {
-            ScrollbarRegion::GraphColumn(column_key) => active_graph_columns.contains(&column_key),
-            _ => true,
-        });
-    }
-
-    fn notify_transcript_panel(&self, cx: &mut Context<Self>) {
-        self.transcript_panel.update(cx, |_, cx| {
-            cx.notify();
-        });
-    }
-
-    fn notify_checklist_sidebar_panel(&self, cx: &mut Context<Self>) {
-        self.checklist_sidebar_panel.update(cx, |_, cx| {
-            cx.notify();
-        });
-    }
-
-    fn transcript_panel_snapshot(&self) -> Option<render::transcript::TranscriptPanelSnapshot> {
-        let style_snapshot_started = Instant::now();
-        let style_snapshot = self.render_style_snapshot();
-        let style_snapshot_micros = diagnostic_duration_micros(style_snapshot_started.elapsed());
-        let transcript_theme = style_snapshot.transcript_theme();
-        let composer_measurement_micros = self.last_composer_measurement_micros();
-        match &self.state {
-            ShellState::Ready(ready) => Some(render::transcript::TranscriptPanelSnapshot {
-                workspace_id: Some(ready.loaded_workspace.workspace.id().clone()),
-                workspace: ready.execution_target.clone(),
-                theme: transcript_theme.clone(),
-                selected_thread_present: ready.surface.selected_thread().is_some(),
-                selected_thread_id: ready.surface.selected_thread_id().map(str::to_string),
-                theme_candidates: self.theme_candidate_state.snapshot(),
-                pending_thread_activation_label: ready
-                    .surface
-                    .pending_thread_activation_label()
-                    .map(str::to_string),
-                transcript_width: ready.surface.transcript_width(),
-                transcript_list_state: ready.surface.transcript_list_state(),
-                submit_anchor: ready.surface.transcript_submit_anchor_snapshot(),
-                loaded_history_anchor_pending: ready.surface.loaded_history_anchor_pending(),
-                older_history_loading: ready.surface.older_history_loading(),
-                metrics: tracing::enabled!(tracing::Level::DEBUG)
-                    .then(|| ready.surface.transcript_presentation().render_metrics()),
-                activity_caret: ready.surface.transcript_activity_caret(),
-                transcript_edit_mode: ready.surface.transcript_edit_mode_snapshot(),
-                transcript_reset_generation: ready.surface.transcript_reset_generation(),
-                content_release_generation: ready.surface.transcript_content_release_generation(),
-                content_release_row_identities: ready
-                    .surface
-                    .transcript_content_release_row_identities()
-                    .to_vec(),
-                style_snapshot_micros,
-                composer_measurement_micros,
-            }),
-            ShellState::BackendUnavailable(unavailable) => {
-                Some(render::transcript::TranscriptPanelSnapshot {
-                    workspace_id: Some(unavailable.loaded_workspace.workspace.id().clone()),
-                    workspace: unavailable.execution_target.clone(),
-                    theme: transcript_theme.clone(),
-                    selected_thread_present: unavailable.surface.selected_thread().is_some(),
-                    selected_thread_id: unavailable
-                        .surface
-                        .selected_thread_id()
-                        .map(str::to_string),
-                    theme_candidates: self.theme_candidate_state.snapshot(),
-                    pending_thread_activation_label: unavailable
-                        .surface
-                        .pending_thread_activation_label()
-                        .map(str::to_string),
-                    transcript_width: unavailable.surface.transcript_width(),
-                    transcript_list_state: unavailable.surface.transcript_list_state(),
-                    submit_anchor: unavailable.surface.transcript_submit_anchor_snapshot(),
-                    loaded_history_anchor_pending: unavailable
-                        .surface
-                        .loaded_history_anchor_pending(),
-                    older_history_loading: unavailable.surface.older_history_loading(),
-                    metrics: tracing::enabled!(tracing::Level::DEBUG).then(|| {
-                        unavailable
-                            .surface
-                            .transcript_presentation()
-                            .render_metrics()
-                    }),
-                    activity_caret: unavailable.surface.transcript_activity_caret(),
-                    transcript_edit_mode: unavailable.surface.transcript_edit_mode_snapshot(),
-                    transcript_reset_generation: unavailable.surface.transcript_reset_generation(),
-                    content_release_generation: unavailable
-                        .surface
-                        .transcript_content_release_generation(),
-                    content_release_row_identities: unavailable
-                        .surface
-                        .transcript_content_release_row_identities()
-                        .to_vec(),
-                    style_snapshot_micros,
-                    composer_measurement_micros,
-                })
-            }
-            ShellState::Blocked(blocked) => blocked.surface.as_ref().map(|surface| {
-                render::transcript::TranscriptPanelSnapshot {
-                    workspace_id: blocked
-                        .loaded_workspace
-                        .as_ref()
-                        .map(|loaded| loaded.workspace.id().clone()),
-                    workspace: blocked.target.workspace(),
-                    theme: transcript_theme.clone(),
-                    selected_thread_present: surface.selected_thread().is_some(),
-                    selected_thread_id: surface.selected_thread_id().map(str::to_string),
-                    theme_candidates: self.theme_candidate_state.snapshot(),
-                    pending_thread_activation_label: surface
-                        .pending_thread_activation_label()
-                        .map(str::to_string),
-                    transcript_width: surface.transcript_width(),
-                    transcript_list_state: surface.transcript_list_state(),
-                    submit_anchor: surface.transcript_submit_anchor_snapshot(),
-                    loaded_history_anchor_pending: surface.loaded_history_anchor_pending(),
-                    older_history_loading: surface.older_history_loading(),
-                    metrics: tracing::enabled!(tracing::Level::DEBUG)
-                        .then(|| surface.transcript_presentation().render_metrics()),
-                    activity_caret: surface.transcript_activity_caret(),
-                    transcript_edit_mode: surface.transcript_edit_mode_snapshot(),
-                    transcript_reset_generation: surface.transcript_reset_generation(),
-                    content_release_generation: surface.transcript_content_release_generation(),
-                    content_release_row_identities: surface
-                        .transcript_content_release_row_identities()
-                        .to_vec(),
-                    style_snapshot_micros,
-                    composer_measurement_micros,
-                }
-            }),
-            ShellState::Discovering(_)
-            | ShellState::Picker(_)
-            | ShellState::Opening(_)
-            | ShellState::WorkspaceIdle(_)
-            | ShellState::WorkspaceLoaded(_) => None,
-        }
-    }
-
-    fn conversation_surface(&self) -> Option<&ConversationSurfaceState> {
-        match &self.state {
-            ShellState::BackendUnavailable(unavailable) => Some(&unavailable.surface),
-            ShellState::Ready(ready) => Some(&ready.surface),
-            ShellState::Blocked(blocked) => blocked.surface.as_ref(),
-            ShellState::Discovering(_)
-            | ShellState::Picker(_)
-            | ShellState::Opening(_)
-            | ShellState::WorkspaceIdle(_)
-            | ShellState::WorkspaceLoaded(_) => None,
-        }
-    }
-}
-
-fn registered_thread_from_summary(
-    execution_target: &WorkspaceId,
-    summary: &ThreadSummary,
-) -> RegisteredConversationThread {
-    RegisteredConversationThread::new(
-        ConversationThreadId::new(summary.id.clone()),
-        execution_target.clone(),
-        summary.preview.clone(),
-        summary.name.clone(),
-        summary.created_at,
-        summary.updated_at,
-    )
-}
-
-fn normalized_thread_name(name: Option<&str>) -> Option<String> {
-    name.map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
 }

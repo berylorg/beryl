@@ -47,14 +47,18 @@ fn code_panel_actions_and_syntax_use_displayed_source_revision() {
 fn transcript_snapshots_carry_panel_state_without_synthetic_theme_offer_rows() {
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
     let shell_source = include_str!("../src/shell.rs");
+    let transcript_panel_snapshot_source =
+        include_str!("../src/shell/transcript_panel_snapshot.rs");
 
     assert!(transcript_source.contains("theme_candidates: ThemeCandidatePanelSnapshot"));
     assert!(transcript_source.contains("theme_candidates: Arc<ThemeCandidatePanelSnapshot>"));
-    assert!(shell_source.contains("self.theme_candidate_state.snapshot()"));
+    assert!(transcript_panel_snapshot_source.contains("self.theme_candidate_state.snapshot()"));
     assert!(!transcript_source.contains("ThemeCandidateRow"));
     assert!(!transcript_source.contains("ThemeOfferRow"));
     assert!(!shell_source.contains("ThemeCandidateRow"));
+    assert!(!transcript_panel_snapshot_source.contains("ThemeCandidateRow"));
     assert!(!shell_source.contains("ThemeOfferRow"));
+    assert!(!transcript_panel_snapshot_source.contains("ThemeOfferRow"));
 }
 
 #[test]

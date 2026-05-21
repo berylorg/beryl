@@ -37,7 +37,6 @@ fn dynamic_write_dispatch_retains_operation_specific_committed_patches() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );
@@ -78,7 +77,6 @@ fn dynamic_write_dispatch_retains_operation_specific_committed_patches() {
             "title": "Checklist",
             "summary": "Checklist summary",
             "topic": true,
-            "checklist": true,
             "checklistItem": false
         }),
     );
@@ -95,7 +93,6 @@ fn dynamic_write_dispatch_retains_operation_specific_committed_patches() {
             "title": "Draft",
             "summary": "Draft summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": true,
             "checklistItemStatus": "todo"
         }),
@@ -204,7 +201,6 @@ fn repeated_dynamic_writes_publish_noop_commits_without_identity_churn() {
             "title": "First",
             "summary": "First summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );
@@ -224,7 +220,6 @@ fn repeated_dynamic_writes_publish_noop_commits_without_identity_churn() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );
@@ -358,7 +353,6 @@ fn repeated_dynamic_root_writes_preserve_ordered_roots_without_identity_churn() 
             "title": "Root B",
             "summary": "Root B summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );

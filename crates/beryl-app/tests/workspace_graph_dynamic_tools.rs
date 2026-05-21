@@ -22,14 +22,18 @@ use beryl_app::{
     READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
     READ_THEME_AUTHORING_GUIDE_TOOL, READ_THEME_REPOSITORY_TOOL, READ_THEME_SCHEMA_TOOL,
     READ_TRANSCRIPT_FRAME_METRICS_TOOL, READ_VISIBLE_MEDIA_TOOL, READ_WORKSPACE_GRAPH_SUMMARY_TOOL,
-    SAVE_THEME_AS_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL, SET_GRAPH_NODE_PARENT_TOOL,
-    STOP_THEME_PREVIEW_TOOL, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL, UPSERT_GRAPH_NODE_TOOL,
-    UPSERT_GRAPH_SOFT_LINK_TOOL, VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
-    WorkspaceGraphToolService, YIELD_TOOL, beryl_diagnostic_child_dynamic_tool_specs,
-    beryl_dynamic_tool_specs, beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
-    beryl_user_thread_start_options, dispatch_beryl_dynamic_tool_call_with_metadata,
-    dispatch_beryl_graph_dynamic_tool_call, dispatch_beryl_graph_dynamic_tool_call_with_metadata,
-    dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata, validate_unique_dynamic_tool_names,
+    RESOLVE_DECISION_BRANCH_TOOL, SAVE_THEME_AS_TOOL, SET_CHECKLIST_ITEM_STATUS_TOOL,
+    SET_GRAPH_NODE_PARENT_TOOL, START_DECISION_BRANCH_TOOL, START_TOPIC_DECISION_TOOL,
+    STOP_THEME_PREVIEW_TOOL, ThreadedDecisionDynamicToolRequest, UPDATE_GUI_SETTINGS_TOOL,
+    UPDATE_THEME_TOOL, UPSERT_GRAPH_NODE_TOOL, UPSERT_GRAPH_SOFT_LINK_TOOL,
+    VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL, WorkspaceGraphToolService,
+    YIELD_TOOL, beryl_diagnostic_child_dynamic_tool_specs, beryl_dynamic_tool_specs,
+    beryl_lifecycle_dynamic_tool_specs, beryl_thread_start_options,
+    beryl_threaded_decision_dynamic_tool_specs, beryl_user_thread_start_options,
+    dispatch_beryl_dynamic_tool_call_with_metadata, dispatch_beryl_graph_dynamic_tool_call,
+    dispatch_beryl_graph_dynamic_tool_call_with_metadata,
+    dispatch_beryl_lifecycle_dynamic_tool_call_with_metadata,
+    parse_beryl_threaded_decision_dynamic_tool_request, validate_unique_dynamic_tool_names,
 };
 use beryl_backend::{
     DynamicToolCallOutputContentItem, DynamicToolCallRequest, DynamicToolCallResponse,
@@ -37,7 +41,7 @@ use beryl_backend::{
 };
 use beryl_model::{
     provenance::MutationSource,
-    semantic_graph::{ChecklistItemStatus, SemanticNodeId, SoftLinkId},
+    semantic_graph::{ChecklistItemKind, ChecklistItemStatus, SemanticNodeId, SoftLinkId},
     workspace::{BerylWorkspaceId, BerylWorkspaceManifest},
 };
 use serde_json::{Value, json};
@@ -79,6 +83,18 @@ fn beryl_thread_start_options_register_graph_and_lifecycle_dynamic_tools() {
             (
                 Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
                 SET_CHECKLIST_ITEM_STATUS_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                START_DECISION_BRANCH_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                START_TOPIC_DECISION_TOOL
+            ),
+            (
+                Some(BERYL_DYNAMIC_TOOL_NAMESPACE),
+                RESOLVE_DECISION_BRANCH_TOOL
             ),
             (Some(BERYL_DYNAMIC_TOOL_NAMESPACE), YIELD_TOOL),
             (
@@ -249,6 +265,179 @@ fn graph_parent_tool_schema_requires_explicit_root_placement() {
             .unwrap()
             .contains("Use null to make the child root-level")
     );
+}
+
+#[test]
+fn graph_node_tool_schema_exposes_checklist_item_kind() {
+    let tools = beryl_dynamic_tool_specs();
+    let node_tool = tools
+        .iter()
+        .find(|tool| tool.name == UPSERT_GRAPH_NODE_TOOL)
+        .expect("node upsert tool must be registered");
+
+    assert_eq!(
+        node_tool.input_schema["required"],
+        json!([
+            "nodeId",
+            "parentId",
+            "title",
+            "summary",
+            "topic",
+            "checklistItem"
+        ])
+    );
+    assert!(node_tool.input_schema["properties"]["checklist"].is_null());
+    assert_eq!(
+        node_tool.input_schema["properties"]["checklistItemKind"]["enum"],
+        json!(["generic", "decision"])
+    );
+    assert!(
+        node_tool.input_schema["properties"]["checklistItemKind"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("preserve the existing kind")
+    );
+}
+
+#[test]
+fn threaded_decision_branch_tool_schema_requires_explicit_checklist_items() {
+    let tools = beryl_dynamic_tool_specs();
+    let branch_tool = tools
+        .iter()
+        .find(|tool| tool.name == START_DECISION_BRANCH_TOOL)
+        .expect("decision branch tool must be registered");
+
+    assert_eq!(
+        branch_tool.input_schema["required"],
+        json!(["checklistItemIds"])
+    );
+    assert_eq!(
+        branch_tool.input_schema["properties"]["checklistItemIds"]["minItems"],
+        json!(1)
+    );
+    assert_eq!(
+        branch_tool.input_schema["properties"]["checklistItemIds"]["maxItems"],
+        json!(16)
+    );
+}
+
+#[test]
+fn threaded_topic_decision_tool_schema_requires_exact_topic_and_title() {
+    let tools = beryl_dynamic_tool_specs();
+    let topic_tool = tools
+        .iter()
+        .find(|tool| tool.name == START_TOPIC_DECISION_TOOL)
+        .expect("topic decision tool must be registered");
+
+    assert_eq!(
+        topic_tool.input_schema["required"],
+        json!(["topicNodeId", "title"])
+    );
+    assert_eq!(
+        topic_tool.input_schema["properties"]["topicNodeId"]["pattern"],
+        json!("^[a-z0-9_-]+$")
+    );
+    assert_eq!(
+        topic_tool.input_schema["properties"]["title"]["maxLength"],
+        json!(160)
+    );
+
+    let parsed = parse_beryl_threaded_decision_dynamic_tool_request(&dynamic_tool_request(
+        START_TOPIC_DECISION_TOOL,
+        json!({
+            "topicNodeId": "architecture",
+            "title": "Choose queue backend",
+            "summary": "Compare the realistic queue options."
+        }),
+    ))
+    .expect("topic decision arguments should parse");
+    match parsed {
+        ThreadedDecisionDynamicToolRequest::StartTopicDecision {
+            topic_node_id,
+            title,
+            summary,
+        } => {
+            assert_eq!(topic_node_id.as_str(), "architecture");
+            assert_eq!(title, "Choose queue backend");
+            assert_eq!(summary, "Compare the realistic queue options.");
+        }
+        other => panic!("unexpected threaded-decision request: {other:?}"),
+    }
+
+    let invalid = parse_beryl_threaded_decision_dynamic_tool_request(&dynamic_tool_request(
+        START_TOPIC_DECISION_TOOL,
+        json!({
+            "topicNodeId": "Architecture",
+            "title": "Choose queue backend"
+        }),
+    ))
+    .expect_err("topic id validation should be exact");
+    assert_eq!(invalid.kind(), "invalid_field");
+}
+
+#[test]
+fn threaded_decision_resolution_tool_schema_accepts_only_final_outcomes() {
+    let tools = beryl_dynamic_tool_specs();
+    let resolution_tool = tools
+        .iter()
+        .find(|tool| tool.name == RESOLVE_DECISION_BRANCH_TOOL)
+        .expect("decision resolution tool must be registered");
+
+    assert_eq!(
+        resolution_tool.input_schema["required"],
+        json!(["outcome", "summary", "handoffMessage"])
+    );
+    assert_eq!(
+        resolution_tool.input_schema["properties"]["outcome"]["enum"],
+        json!(["accepted", "rejected"])
+    );
+    assert_eq!(
+        resolution_tool.input_schema["additionalProperties"],
+        json!(false)
+    );
+}
+
+#[test]
+fn threaded_decision_dynamic_tools_are_thread_start_registered_once() {
+    let threaded_tools = beryl_threaded_decision_dynamic_tool_specs();
+    validate_unique_dynamic_tool_names(&threaded_tools).unwrap();
+    assert_eq!(threaded_tools.len(), 3);
+    assert_eq!(threaded_tools[0].name, START_DECISION_BRANCH_TOOL);
+    assert_eq!(threaded_tools[1].name, START_TOPIC_DECISION_TOOL);
+    assert_eq!(threaded_tools[2].name, RESOLVE_DECISION_BRANCH_TOOL);
+    assert_eq!(
+        threaded_tools[0].namespace.as_deref(),
+        Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+    );
+
+    let start_options = beryl_user_thread_start_options();
+    let registered_count = start_options
+        .dynamic_tools()
+        .iter()
+        .filter(|tool| {
+            tool.namespace.as_deref() == Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+                && tool.name == START_DECISION_BRANCH_TOOL
+        })
+        .count();
+    assert_eq!(registered_count, 1);
+    let resolution_registered_count = start_options
+        .dynamic_tools()
+        .iter()
+        .filter(|tool| {
+            tool.namespace.as_deref() == Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+                && tool.name == RESOLVE_DECISION_BRANCH_TOOL
+        })
+        .count();
+    assert_eq!(resolution_registered_count, 1);
+    let topic_registered_count = start_options
+        .dynamic_tools()
+        .iter()
+        .filter(|tool| {
+            tool.namespace.as_deref() == Some(BERYL_DYNAMIC_TOOL_NAMESPACE)
+                && tool.name == START_TOPIC_DECISION_TOOL
+        })
+        .count();
+    assert_eq!(topic_registered_count, 1);
 }
 
 #[test]
@@ -587,7 +776,6 @@ fn dynamic_summary_call_returns_ordered_root_snapshots() {
                 "title": "Root A",
                 "summary": "Root A summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -599,7 +787,6 @@ fn dynamic_summary_call_returns_ordered_root_snapshots() {
                 "title": "Root B",
                 "summary": "Root B summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -639,7 +826,6 @@ fn dynamic_graph_neighborhood_without_anchor_returns_root_level_response_shape()
                 "title": "Root A",
                 "summary": "Root A summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -651,7 +837,6 @@ fn dynamic_graph_neighborhood_without_anchor_returns_root_level_response_shape()
                 "title": "Root B",
                 "summary": "Root B summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -693,7 +878,6 @@ fn dynamic_write_call_injects_app_server_call_provenance() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );
@@ -748,7 +932,6 @@ fn explicit_dynamic_write_tools_apply_atomic_patches() {
                 "title": "Root",
                 "summary": "Root summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -760,7 +943,6 @@ fn explicit_dynamic_write_tools_apply_atomic_patches() {
                 "title": "Release checklist",
                 "summary": "Prepare the release.",
                 "topic": true,
-                "checklist": true,
                 "checklistItem": false
             }),
         ),
@@ -772,9 +954,9 @@ fn explicit_dynamic_write_tools_apply_atomic_patches() {
                 "title": "Draft release notes",
                 "summary": "Write the release notes.",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": true,
-                "checklistItemStatus": "todo"
+                "checklistItemStatus": "todo",
+                "checklistItemKind": "decision"
             }),
         ),
         dynamic_tool_request(
@@ -785,7 +967,6 @@ fn explicit_dynamic_write_tools_apply_atomic_patches() {
                 "title": "Archive checklist",
                 "summary": "Preserve release artifacts.",
                 "topic": true,
-                "checklist": true,
                 "checklistItem": false
             }),
         ),
@@ -804,7 +985,6 @@ fn explicit_dynamic_write_tools_apply_atomic_patches() {
                 "title": "Docs",
                 "summary": "Documentation work.",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -851,10 +1031,30 @@ fn explicit_dynamic_write_tools_apply_atomic_patches() {
         graph.node(&draft_id).unwrap().checklist_item_status(),
         Some(ChecklistItemStatus::Done)
     );
+    assert_eq!(
+        graph.node(&draft_id).unwrap().checklist_item_kind(),
+        Some(ChecklistItemKind::Decision)
+    );
     assert_eq!(graph.soft_link(&link_id).unwrap().source_id(), &draft_id);
     assert_eq!(
         graph.soft_link(&link_id).unwrap().target_id(),
         &docs_root_id
+    );
+
+    let response = dispatch_beryl_graph_dynamic_tool_call(
+        &service,
+        &workspace_id,
+        &dynamic_tool_request(
+            READ_CHECKLIST_TOOL,
+            json!({
+                "topicNodeId": "archive_checklist"
+            }),
+        ),
+    );
+    let payload = response_json(&response);
+    assert_eq!(
+        payload["result"]["items"][0]["node"]["checklistItemKind"],
+        "decision"
     );
 
     root.close().unwrap();
@@ -878,7 +1078,6 @@ fn dynamic_parent_update_with_null_moves_child_to_root() {
                 "title": "Root",
                 "summary": "Root summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -890,7 +1089,6 @@ fn dynamic_parent_update_with_null_moves_child_to_root() {
                 "title": "Child",
                 "summary": "Child summary",
                 "topic": true,
-                "checklist": false,
                 "checklistItem": false
             }),
         ),
@@ -944,7 +1142,6 @@ fn dynamic_write_rejects_model_supplied_provenance() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false,
             "provenance": { "actor": "untrusted" }
         }),
@@ -979,7 +1176,6 @@ fn dynamic_node_upsert_requires_explicit_parent_id() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );
@@ -993,6 +1189,76 @@ fn dynamic_node_upsert_requires_explicit_parent_id() {
     assert_eq!(payload["ok"], false);
     assert_eq!(payload["error"]["kind"], "invalid_arguments");
     assert!(graph.node(&SemanticNodeId::new("root").unwrap()).is_none());
+
+    root.close().unwrap();
+}
+
+#[test]
+fn dynamic_node_upsert_rejects_checklist_item_kind_on_non_checklist_items() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("graph_dynamic").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Graph Dynamic", 42);
+    persistence.save_workspace_manifest(&manifest).unwrap();
+
+    let request = dynamic_tool_request(
+        UPSERT_GRAPH_NODE_TOOL,
+        json!({
+            "nodeId": "root",
+            "parentId": null,
+            "title": "Root",
+            "summary": "Root summary",
+            "topic": true,
+            "checklistItem": false,
+            "checklistItemKind": "decision"
+        }),
+    );
+    let response = dispatch_beryl_graph_dynamic_tool_call(&service, &workspace_id, &request);
+    let payload = response_json(&response);
+    let graph = persistence
+        .load_workspace_graph_state(&workspace_id)
+        .unwrap();
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "invalid_field");
+    assert!(graph.node(&SemanticNodeId::new("root").unwrap()).is_none());
+
+    root.close().unwrap();
+}
+
+#[test]
+fn dynamic_node_upsert_rejects_removed_checklist_container_argument() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("graph_dynamic").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Graph Dynamic", 42);
+    persistence.save_workspace_manifest(&manifest).unwrap();
+
+    let request = dynamic_tool_request(
+        UPSERT_GRAPH_NODE_TOOL,
+        json!({
+            "nodeId": "list",
+            "parentId": null,
+            "title": "List",
+            "summary": "Old checklist container shape.",
+            "topic": true,
+            "checklist": true,
+            "checklistItem": false
+        }),
+    );
+    let response = dispatch_beryl_graph_dynamic_tool_call(&service, &workspace_id, &request);
+    let payload = response_json(&response);
+    let graph = persistence
+        .load_workspace_graph_state(&workspace_id)
+        .unwrap();
+
+    assert!(!response.success);
+    assert_eq!(payload["ok"], false);
+    assert_eq!(payload["error"]["kind"], "invalid_arguments");
+    assert!(graph.node(&SemanticNodeId::new("list").unwrap()).is_none());
 
     root.close().unwrap();
 }

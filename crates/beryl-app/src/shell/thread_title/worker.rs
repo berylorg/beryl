@@ -340,6 +340,8 @@ impl ThreadTitleAttempt {
                 }
             }
             TurnStreamEvent::ThreadClosed { .. }
+            | TurnStreamEvent::ThreadArchived { .. }
+            | TurnStreamEvent::ThreadUnarchived { .. }
             | TurnStreamEvent::AgentLabelUpdated { .. }
             | TurnStreamEvent::ThreadStarted { .. }
             | TurnStreamEvent::ThreadStatusChanged { .. }

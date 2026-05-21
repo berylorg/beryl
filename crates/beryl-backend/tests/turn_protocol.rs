@@ -788,6 +788,39 @@ fn thread_closed_notification_parses_from_turn_stream() {
 }
 
 #[test]
+fn thread_archive_notifications_parse_from_turn_stream() {
+    let archived = parse_turn_stream_event(
+        "thread/archived",
+        Some(json!({
+            "threadId": "thread_branch"
+        })),
+    )
+    .unwrap()
+    .unwrap();
+
+    let TurnStreamEvent::ThreadArchived { thread_id } = archived else {
+        panic!("expected thread archived");
+    };
+
+    assert_eq!(thread_id, "thread_branch");
+
+    let unarchived = parse_turn_stream_event(
+        "thread/unarchived",
+        Some(json!({
+            "threadId": "thread_branch"
+        })),
+    )
+    .unwrap()
+    .unwrap();
+
+    let TurnStreamEvent::ThreadUnarchived { thread_id } = unarchived else {
+        panic!("expected thread unarchived");
+    };
+
+    assert_eq!(thread_id, "thread_branch");
+}
+
+#[test]
 fn thread_started_notification_preserves_agent_nickname_metadata() {
     let event = parse_turn_stream_event(
         "thread/started",

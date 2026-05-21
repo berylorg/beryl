@@ -24,10 +24,18 @@ pub enum ChecklistItemStatus {
     Done,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChecklistItemKind {
+    #[default]
+    Generic,
+    Decision,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticNodeFacets {
     topic: bool,
-    checklist: bool,
     checklist_item: bool,
 }
 
@@ -38,6 +46,8 @@ pub struct SemanticNodeDraft {
     summary: String,
     facets: SemanticNodeFacets,
     checklist_item_status: Option<ChecklistItemStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checklist_item_kind: Option<ChecklistItemKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +57,8 @@ pub struct SemanticNode {
     summary: String,
     facets: SemanticNodeFacets,
     checklist_item_status: Option<ChecklistItemStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checklist_item_kind: Option<ChecklistItemKind>,
     provenance: ElementProvenance,
 }
 
@@ -123,46 +135,30 @@ pub struct SemanticGraph {
 }
 
 impl SemanticNodeFacets {
-    pub fn new(topic: bool, checklist: bool, checklist_item: bool) -> Result<Self, String> {
-        if !topic && !checklist && !checklist_item {
+    pub fn new(topic: bool, checklist_item: bool) -> Result<Self, String> {
+        if !topic && !checklist_item {
             return Err("at least one semantic facet is required".to_string());
         }
         if checklist_item && !topic {
             return Err("ChecklistItem requires Topic".to_string());
         }
-        if checklist && checklist_item {
-            return Err("Checklist and ChecklistItem do not coexist in V1".to_string());
-        }
 
         Ok(Self {
             topic,
-            checklist,
             checklist_item,
         })
     }
 
     pub fn topic() -> Self {
-        Self::new(true, false, false).expect("topic facets are valid")
-    }
-
-    pub fn checklist() -> Self {
-        Self::new(false, true, false).expect("checklist facets are valid")
-    }
-
-    pub fn topic_and_checklist() -> Self {
-        Self::new(true, true, false).expect("topic + checklist facets are valid")
+        Self::new(true, false).expect("topic facets are valid")
     }
 
     pub fn topic_and_checklist_item() -> Self {
-        Self::new(true, false, true).expect("topic + checklist-item facets are valid")
+        Self::new(true, true).expect("topic + checklist-item facets are valid")
     }
 
     pub fn has_topic(&self) -> bool {
         self.topic
-    }
-
-    pub fn has_checklist(&self) -> bool {
-        self.checklist
     }
 
     pub fn has_checklist_item(&self) -> bool {
@@ -184,6 +180,25 @@ impl SemanticNodeDraft {
             summary: summary.into(),
             facets,
             checklist_item_status,
+            checklist_item_kind: None,
+        }
+    }
+
+    pub fn new_with_checklist_item_kind(
+        id: SemanticNodeId,
+        title: impl Into<String>,
+        summary: impl Into<String>,
+        facets: SemanticNodeFacets,
+        checklist_item_status: Option<ChecklistItemStatus>,
+        checklist_item_kind: Option<ChecklistItemKind>,
+    ) -> Self {
+        Self {
+            id,
+            title: title.into(),
+            summary: summary.into(),
+            facets,
+            checklist_item_status,
+            checklist_item_kind,
         }
     }
 }
@@ -193,12 +208,15 @@ impl SemanticNode {
         draft: SemanticNodeDraft,
         provenance: MutationProvenance,
     ) -> Result<Self, SemanticGraphError> {
+        let checklist_item_kind =
+            checklist_item_kind_for_new_node(&draft.facets, draft.checklist_item_kind);
         let node = Self {
             id: draft.id,
             title: draft.title,
             summary: draft.summary,
             facets: draft.facets,
             checklist_item_status: draft.checklist_item_status,
+            checklist_item_kind,
             provenance: ElementProvenance::new(provenance),
         };
         validate_node(&node)?;
@@ -210,10 +228,13 @@ impl SemanticNode {
         draft: SemanticNodeDraft,
         provenance: MutationProvenance,
     ) -> Result<(), SemanticGraphError> {
+        let checklist_item_kind =
+            self.checklist_item_kind_for_update(&draft.facets, draft.checklist_item_kind);
         if self.title == draft.title
             && self.summary == draft.summary
             && self.facets == draft.facets
             && self.checklist_item_status == draft.checklist_item_status
+            && checklist_item_kind_matches(self, &draft.facets, checklist_item_kind)
         {
             return Ok(());
         }
@@ -222,6 +243,7 @@ impl SemanticNode {
         self.summary = draft.summary;
         self.facets = draft.facets;
         self.checklist_item_status = draft.checklist_item_status;
+        self.checklist_item_kind = checklist_item_kind;
         self.provenance.touch(provenance);
         validate_node(self)
     }
@@ -246,8 +268,34 @@ impl SemanticNode {
         self.checklist_item_status
     }
 
+    pub fn checklist_item_kind(&self) -> Option<ChecklistItemKind> {
+        if self.facets.has_checklist_item() {
+            Some(self.checklist_item_kind.unwrap_or_default())
+        } else {
+            None
+        }
+    }
+
     pub fn provenance(&self) -> &ElementProvenance {
         &self.provenance
+    }
+
+    fn checklist_item_kind_for_update(
+        &self,
+        draft_facets: &SemanticNodeFacets,
+        draft_kind: Option<ChecklistItemKind>,
+    ) -> Option<ChecklistItemKind> {
+        if draft_facets.has_checklist_item() {
+            draft_kind.or_else(|| {
+                if self.facets.has_checklist_item() {
+                    self.checklist_item_kind
+                } else {
+                    Some(ChecklistItemKind::Generic)
+                }
+            })
+        } else {
+            draft_kind
+        }
     }
 }
 
@@ -448,5 +496,28 @@ impl SemanticGraph {
 
     pub fn thread_ref(&self, thread_ref_id: &ThreadRefId) -> Option<&ThreadRef> {
         self.thread_refs.get(thread_ref_id)
+    }
+}
+
+fn checklist_item_kind_for_new_node(
+    facets: &SemanticNodeFacets,
+    kind: Option<ChecklistItemKind>,
+) -> Option<ChecklistItemKind> {
+    if facets.has_checklist_item() {
+        Some(kind.unwrap_or_default())
+    } else {
+        kind
+    }
+}
+
+fn checklist_item_kind_matches(
+    node: &SemanticNode,
+    draft_facets: &SemanticNodeFacets,
+    draft_kind: Option<ChecklistItemKind>,
+) -> bool {
+    if draft_facets.has_checklist_item() {
+        node.checklist_item_kind() == Some(draft_kind.unwrap_or_default())
+    } else {
+        node.checklist_item_kind == draft_kind
     }
 }

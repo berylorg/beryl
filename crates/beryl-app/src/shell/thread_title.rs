@@ -58,6 +58,13 @@ pub(super) struct ThreadTitleCancellation {
     cancelled: Arc<AtomicBool>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TurnThreadTitleMode {
+    Disabled,
+    AutomaticIfMissing,
+    BranchRetitleAfterFirstUserTurn,
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ThreadTitlePromptSource {
@@ -133,6 +140,22 @@ impl ThreadTitleCancellation {
 
     pub(super) fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Acquire)
+    }
+}
+
+impl TurnThreadTitleMode {
+    pub(super) fn automatic_if_allowed(allowed: bool) -> Self {
+        if allowed {
+            Self::AutomaticIfMissing
+        } else {
+            Self::Disabled
+        }
+    }
+}
+
+impl From<bool> for TurnThreadTitleMode {
+    fn from(allowed: bool) -> Self {
+        Self::automatic_if_allowed(allowed)
     }
 }
 
@@ -243,6 +266,8 @@ fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
         TurnStreamEvent::AgentLabelUpdated { thread_id, .. }
         | TurnStreamEvent::ThreadStatusChanged { thread_id, .. }
         | TurnStreamEvent::ThreadClosed { thread_id }
+        | TurnStreamEvent::ThreadArchived { thread_id }
+        | TurnStreamEvent::ThreadUnarchived { thread_id }
         | TurnStreamEvent::TurnStarted { thread_id, .. }
         | TurnStreamEvent::TurnCompleted { thread_id, .. }
         | TurnStreamEvent::ItemStarted { thread_id, .. }

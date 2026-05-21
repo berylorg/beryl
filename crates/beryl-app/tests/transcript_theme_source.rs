@@ -6,6 +6,8 @@ const SHELL_RENDER_THEME_ROLE_STYLE_SOURCE: &str =
 const SHELL_RENDER_SOURCE: &str = include_str!("../src/shell/render.rs");
 const SHELL_RENDER_COMMON_SOURCE: &str = include_str!("../src/shell/render/common.rs");
 const SHELL_RENDER_SCROLLBARS_SOURCE: &str = include_str!("../src/shell/render/scrollbars.rs");
+const SHELL_TRANSCRIPT_PANEL_SNAPSHOT_SOURCE: &str =
+    include_str!("../src/shell/transcript_panel_snapshot.rs");
 const TRANSCRIPT_SOURCE: &str = include_str!("../src/shell/render/transcript.rs");
 const TRANSCRIPT_PRESENTATION_SOURCE: &str =
     include_str!("../src/shell/transcript_presentation.rs");
@@ -35,7 +37,7 @@ fn phase6_transcript_render_sources_use_transcript_theme_boundary() {
     assert!(TRANSCRIPT_SOURCE.contains("pub theme: Arc<TranscriptTheme>"));
     assert!(!TRANSCRIPT_SOURCE.contains("pub appearance: AppearanceSettings"));
     assert_eq!(
-        SHELL_SOURCE
+        SHELL_TRANSCRIPT_PANEL_SNAPSHOT_SOURCE
             .matches("theme: transcript_theme.clone()")
             .count(),
         3
@@ -76,8 +78,10 @@ fn phase12_render_theme_cache_owns_hot_theme_resolution() {
     let render_style_snapshot_body = rust_function_body(SHELL_SOURCE, "fn render_style_snapshot");
     let style_snapshot_body =
         rust_function_body(SHELL_RENDER_THEME_SOURCE, "fn style_snapshot(&self)");
-    let transcript_panel_snapshot_body =
-        rust_function_body(SHELL_SOURCE, "fn transcript_panel_snapshot");
+    let transcript_panel_snapshot_body = rust_function_body(
+        SHELL_TRANSCRIPT_PANEL_SNAPSHOT_SOURCE,
+        "fn transcript_panel_snapshot",
+    );
 
     assert!(SHELL_SOURCE.contains("render_theme_cache: RefCell<ShellRenderThemeCache>"));
     assert!(SHELL_RENDER_THEME_SOURCE.contains("struct ShellRenderThemeCache"));
@@ -232,8 +236,10 @@ fn phase13_transcript_render_avoids_redundant_hot_path_work() {
 
 #[test]
 fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
-    let transcript_panel_snapshot_body =
-        rust_function_body(SHELL_SOURCE, "fn transcript_panel_snapshot");
+    let transcript_panel_snapshot_body = rust_function_body(
+        SHELL_TRANSCRIPT_PANEL_SNAPSHOT_SOURCE,
+        "fn transcript_panel_snapshot",
+    );
     let render_metrics_body = rust_function_body(
         TRANSCRIPT_PRESENTATION_SOURCE,
         "pub(crate) fn render_metrics(&self)",
@@ -426,10 +432,6 @@ const PHASE14_SHELL_RENDER_SOURCES: &[(&str, &str)] = &[
     (
         "src/shell/render/graph_overlay.rs",
         include_str!("../src/shell/render/graph_overlay.rs"),
-    ),
-    (
-        "src/shell/render/checklist_sidebar.rs",
-        include_str!("../src/shell/render/checklist_sidebar.rs"),
     ),
 ];
 

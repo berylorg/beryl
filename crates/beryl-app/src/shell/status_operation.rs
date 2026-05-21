@@ -354,7 +354,6 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.thread_selector_mut().close();
             surface.graph_thread_link_menu_mut().close();
-            surface.checklist_thread_start_menu_mut().close();
             surface.transcript_branch_menu_mut().close();
             surface
                 .status_line_operations_mut()
@@ -383,7 +382,6 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.thread_selector_mut().close();
             surface.graph_thread_link_menu_mut().close();
-            surface.checklist_thread_start_menu_mut().close();
             surface.transcript_branch_menu_mut().close();
             surface
                 .status_line_operations_mut()
@@ -416,7 +414,6 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.thread_selector_mut().close();
             surface.graph_thread_link_menu_mut().close();
-            surface.checklist_thread_start_menu_mut().close();
             surface.transcript_branch_menu_mut().close();
             surface
                 .status_line_operations_mut()

@@ -1,28 +1,30 @@
 use std::time::Instant;
 
 use gpui::{
-    AnyElement, AnyView, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas, div, img,
-    prelude::*, px, relative, rgba,
+    AnyElement, AnyView, App, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas,
+    div, img, prelude::*, px, relative, rgba,
 };
 
-use crate::shell::{
-    BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
-    ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
-    ScrollbarRegion, ShellRenderFrame, ShellView, SurfaceNotice,
-    composer_measurement::ComposerInputMeasurementKey,
-    image_preview_popup, layout,
-    status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
-    status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
-    tool_activity::ToolActivityRowStatus,
-};
 use crate::text_input::SingleLineInput;
 use crate::{BerylThemeRole, WorkspaceActivityPanelMode};
-
-use super::checklist_sidebar::{
-    ChecklistSidebarPanel, render_checklist_thread_start_menu,
-    render_checklist_thread_start_menu_listeners,
+use crate::{
+    shell::{
+        BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
+        ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
+        ScrollbarRegion, ShellRenderFrame, ShellView, SurfaceNotice,
+        ThreadSelectorActivationTarget,
+        composer_measurement::ComposerInputMeasurementKey,
+        image_preview_popup, layout,
+        status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
+        status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
+        tool_activity::ToolActivityRowStatus,
+    },
+    thread_strip_breadcrumbs::{
+        ThreadStripBreadcrumbSegment, TransientBranchParent, thread_strip_breadcrumb_trail,
+    },
 };
+
 use super::common::{
     button, card, disabled_secondary_button, inline_notice, secondary_button,
     secondary_fixed_label_button, secondary_labeled_cycle_button_with_active_state, section_label,
@@ -48,7 +50,6 @@ pub(super) fn render_ready_shell(
     shell: &ShellRenderFrame<'_>,
     ready: &ReadyState,
     transcript_panel: &Entity<TranscriptPanel>,
-    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
     wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -65,7 +66,6 @@ pub(super) fn render_ready_shell(
         ready.report.initialize().user_agent.as_str(),
         &ready.surface,
         transcript_panel,
-        checklist_sidebar_panel,
         wsl_distro_input,
         workspace_picker_filter_input,
         workspace_rename_input,
@@ -81,7 +81,6 @@ pub(super) fn render_backend_unavailable_shell(
     shell: &ShellRenderFrame<'_>,
     unavailable: &BackendUnavailableState,
     transcript_panel: &Entity<TranscriptPanel>,
-    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
     wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -136,7 +135,6 @@ pub(super) fn render_backend_unavailable_shell(
         "backend unavailable",
         &unavailable.surface,
         transcript_panel,
-        checklist_sidebar_panel,
         wsl_distro_input,
         workspace_picker_filter_input,
         workspace_rename_input,
@@ -422,7 +420,6 @@ pub(super) fn render_blocked_shell(
     shell: &ShellRenderFrame<'_>,
     blocked: &BlockedState,
     transcript_panel: &Entity<TranscriptPanel>,
-    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
     wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -478,7 +475,6 @@ pub(super) fn render_blocked_shell(
         "backend unavailable",
         surface,
         transcript_panel,
-        checklist_sidebar_panel,
         wsl_distro_input,
         workspace_picker_filter_input,
         workspace_rename_input,
@@ -504,7 +500,6 @@ fn render_workspace_surface(
     _backend_label: &str,
     surface: &ConversationSurfaceState,
     transcript_panel: &Entity<TranscriptPanel>,
-    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
     _wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -531,6 +526,7 @@ fn render_workspace_surface(
         shell,
         execution_target,
         &loaded_workspace.workspace_state,
+        &loaded_workspace.threaded_decision_state,
         surface,
         new_thread_controls_disabled.as_deref(),
         thread_selector_controls_disabled.as_deref(),
@@ -555,7 +551,6 @@ fn render_workspace_surface(
         transcript_panel,
         surface,
         conversation_input,
-        checklist_sidebar_panel,
         &composer_measurement,
         backend_controls_disabled.as_deref(),
         cx,
@@ -711,7 +706,13 @@ fn render_workspace_surface(
 
     if surface.graph_thread_link_menu().is_open() {
         body = body.child(render_graph_thread_link_menu_listeners(cx));
-        if let Some(menu) = render_graph_thread_link_menu(shell, loaded_workspace, surface, cx) {
+        if let Some(menu) = render_graph_thread_link_menu(
+            shell,
+            loaded_workspace,
+            surface,
+            new_thread_controls_disabled.as_deref(),
+            cx,
+        ) {
             body = body.child(menu);
         }
     }
@@ -719,19 +720,6 @@ fn render_workspace_surface(
     if surface.transcript_branch_menu().is_open() {
         body = body.child(render_transcript_branch_menu_listeners(cx));
         if let Some(menu) = render_transcript_branch_menu(shell, surface, cx) {
-            body = body.child(menu);
-        }
-    }
-
-    if surface.checklist_thread_start_menu().is_open() {
-        body = body.child(render_checklist_thread_start_menu_listeners(cx));
-        if let Some(menu) = render_checklist_thread_start_menu(
-            shell,
-            loaded_workspace,
-            surface,
-            new_thread_controls_disabled.as_deref(),
-            cx,
-        ) {
             body = body.child(menu);
         }
     }
@@ -1134,7 +1122,6 @@ fn activity_mode_button(
 }
 
 const GRAPH_TOGGLE_LABELS: [&str; 2] = ["Graph", "Hide Graph"];
-const CHECKLIST_TOGGLE_LABELS: [&str; 2] = ["Show Checklist", "Hide Checklist"];
 
 fn toolbar_toggle_label(labels: &'static [&'static str; 2], active: bool) -> &'static str {
     labels[usize::from(active)]
@@ -1170,16 +1157,6 @@ fn render_toolbar(
                 &GRAPH_TOGGLE_LABELS,
                 cx.listener(ShellView::toggle_graph_overlay),
             ))
-            .child(secondary_fixed_label_button(
-                shell,
-                "toggle-checklist-sidebar",
-                toolbar_toggle_label(
-                    &CHECKLIST_TOGGLE_LABELS,
-                    surface.checklist_sidebar_visible(),
-                ),
-                &CHECKLIST_TOGGLE_LABELS,
-                cx.listener(ShellView::toggle_checklist_sidebar),
-            ))
             .child(secondary_button(
                 shell,
                 "settings-toolbar",
@@ -1201,6 +1178,7 @@ fn render_thread_strip(
     shell: &ShellRenderFrame<'_>,
     workspace: &beryl_model::workspace::WorkspaceId,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    _threaded_decision_state: &beryl_model::threaded_decision::ThreadedDecisionState,
     surface: &ConversationSurfaceState,
     new_thread_controls_disabled: Option<&str>,
     thread_selector_controls_disabled: Option<&str>,
@@ -1209,11 +1187,46 @@ fn render_thread_strip(
     let entity = cx.entity();
     let new_thread_enabled = new_thread_controls_disabled.is_none();
     let thread_selector_enabled = thread_selector_controls_disabled.is_none();
-    let active_label = surface
-        .pending_thread_activation_label()
+    let pending_thread_activation_label = surface.pending_thread_activation_label();
+    let active_label = pending_thread_activation_label
         .map(|label| format!("Opening {label}"))
         .or_else(|| surface.selected_thread_display_label(workspace_state, workspace))
         .unwrap_or_else(|| "New conversation".to_string());
+    let selected_thread_id = surface.selected_thread_id();
+    let transient_branch_parent = shell
+        .foreground_transcript_branch
+        .as_ref()
+        .and_then(|branch| {
+            let branch_thread_id = branch.branch_thread_id()?;
+            (selected_thread_id == Some(branch_thread_id.as_str())).then(|| {
+                (
+                    branch_thread_id.clone(),
+                    beryl_model::conversation::ConversationThreadId::new(
+                        branch.source_thread_id().to_string(),
+                    ),
+                )
+            })
+        });
+    let transient_branch_parent =
+        transient_branch_parent
+            .as_ref()
+            .map(
+                |(child_thread_id, parent_thread_id)| TransientBranchParent {
+                    child_thread_id,
+                    parent_thread_id,
+                },
+            );
+    let branch_breadcrumbs = pending_thread_activation_label
+        .is_none()
+        .then(|| {
+            thread_strip_breadcrumb_trail(
+                workspace_state,
+                selected_thread_id,
+                &active_label,
+                transient_branch_parent,
+            )
+        })
+        .flatten();
 
     div()
         .w_full()
@@ -1263,74 +1276,285 @@ fn render_thread_strip(
                         )
                     },
                 )
+                .child(match branch_breadcrumbs {
+                    Some(breadcrumbs) => render_thread_strip_breadcrumbs(
+                        shell,
+                        entity,
+                        breadcrumbs.segments().to_vec(),
+                        thread_selector_enabled,
+                        surface.thread_selector().is_open(),
+                        thread_selector_controls_disabled,
+                        cx,
+                    )
+                    .into_any_element(),
+                    None => render_thread_strip_active_thread_title(
+                        shell,
+                        entity,
+                        active_label,
+                        thread_selector_enabled,
+                        surface.thread_selector().is_open(),
+                        cx,
+                    )
+                    .into_any_element(),
+                }),
+        )
+}
+
+fn render_thread_strip_breadcrumbs(
+    shell: &ShellRenderFrame<'_>,
+    entity: Entity<ShellView>,
+    segments: Vec<ThreadStripBreadcrumbSegment>,
+    thread_selector_enabled: bool,
+    thread_selector_open: bool,
+    thread_selector_controls_disabled: Option<&str>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    let mut row = div()
+        .w_full()
+        .h_full()
+        .flex()
+        .items_center()
+        .gap_2()
+        .overflow_hidden();
+
+    let last_index = segments.len().saturating_sub(1);
+    for (index, segment) in segments.into_iter().enumerate() {
+        if index > 0 {
+            row = row.child(
+                div()
+                    .flex_none()
+                    .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
+                    .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                    .text_color(shell.surface_muted_foreground())
+                    .child(">"),
+            );
+        }
+
+        if index == last_index && segment.active() {
+            row = row.child(render_thread_strip_active_thread_title(
+                shell,
+                entity.clone(),
+                segment.label().to_string(),
+                thread_selector_enabled,
+                thread_selector_open,
+                cx,
+            ));
+        } else {
+            row = row.child(render_thread_strip_parent_breadcrumb(
+                shell,
+                segment,
+                index,
+                thread_selector_controls_disabled,
+                cx,
+            ));
+        }
+    }
+
+    row
+}
+
+fn render_thread_strip_active_thread_title(
+    shell: &ShellRenderFrame<'_>,
+    entity: Entity<ShellView>,
+    active_label: String,
+    thread_selector_enabled: bool,
+    thread_selector_open: bool,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    div()
+        .on_children_prepainted(move |children, _, cx| {
+            let bounds = children.first().copied();
+            entity.update(cx, |view, cx| {
+                view.record_thread_selector_anchor_bounds(bounds, cx)
+            });
+        })
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .flex()
+        .items_center()
+        .child(
+            div()
+                .id("thread-strip-active-thread-title")
+                .w_full()
+                .h(px(layout::BUTTON_OUTER_HEIGHT))
+                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+                .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
+                .bg(shell.role_background(
+                    BerylThemeRole::MainThreadStripActiveThread,
+                    gpui::rgba(0x00000000),
+                ))
+                .flex()
+                .items_center()
+                .when(thread_selector_enabled, |this| {
+                    this.hover({
+                        let theme = shell.secondary_button_theme();
+                        move |style| style.bg(theme.hover.background)
+                    })
+                })
+                .when(thread_selector_enabled, |this| {
+                    this.active({
+                        let theme = shell.secondary_button_theme();
+                        move |style| style.bg(theme.active.background)
+                    })
+                })
+                .when(thread_selector_enabled, |this| this.cursor_pointer())
                 .child(
                     div()
-                        .on_children_prepainted(move |children, _, cx| {
-                            let bounds = children.first().copied();
-                            entity.update(cx, |view, cx| {
-                                view.record_thread_selector_anchor_bounds(bounds, cx)
-                            });
-                        })
-                        .flex_1()
                         .min_w(px(0.0))
-                        .h_full()
-                        .flex()
-                        .items_center()
-                        .child(
-                            div()
-                                .id("thread-strip-active-thread-title")
-                                .w_full()
-                                .h(px(layout::BUTTON_OUTER_HEIGHT))
-                                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
-                                .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
-                                .bg(shell.role_background(
-                                    BerylThemeRole::MainThreadStripActiveThread,
-                                    gpui::rgba(0x00000000),
-                                ))
-                                .flex()
-                                .items_center()
-                                .when(thread_selector_enabled, |this| {
-                                    this.hover({
-                                        let theme = shell.secondary_button_theme();
-                                        move |style| style.bg(theme.hover.background)
-                                    })
-                                })
-                                .when(thread_selector_enabled, |this| {
-                                    this.active({
-                                        let theme = shell.secondary_button_theme();
-                                        move |style| style.bg(theme.active.background)
-                                    })
-                                })
-                                .when(thread_selector_enabled, |this| this.cursor_pointer())
-                                .child(
-                                    div()
-                                        .min_w(px(0.0))
-                                        .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
-                                        .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
-                                        .font_weight(shell.secondary_button_theme().font_weight)
-                                        .text_color(if !thread_selector_enabled {
-                                            shell.secondary_button_theme().disabled.foreground
-                                        } else if surface.thread_selector().is_open() {
-                                            shell.role_foreground(
-                                                BerylThemeRole::MainThreadStripActiveThreadLabel,
-                                                shell.secondary_button_theme().active.foreground,
-                                            )
-                                        } else {
-                                            shell.role_foreground(
-                                                BerylThemeRole::MainThreadStripActiveThreadLabel,
-                                                shell.general_ui_foreground(),
-                                            )
-                                        })
-                                        .whitespace_nowrap()
-                                        .truncate()
-                                        .child(active_label),
-                                )
-                                .when(thread_selector_enabled, |this| {
-                                    this.on_click(cx.listener(ShellView::toggle_thread_selector))
-                                }),
-                        ),
-                ),
+                        .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
+                        .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                        .font_weight(shell.secondary_button_theme().font_weight)
+                        .text_color(if !thread_selector_enabled {
+                            shell.secondary_button_theme().disabled.foreground
+                        } else if thread_selector_open {
+                            shell.role_foreground(
+                                BerylThemeRole::MainThreadStripActiveThreadLabel,
+                                shell.secondary_button_theme().active.foreground,
+                            )
+                        } else {
+                            shell.role_foreground(
+                                BerylThemeRole::MainThreadStripActiveThreadLabel,
+                                shell.general_ui_foreground(),
+                            )
+                        })
+                        .whitespace_nowrap()
+                        .truncate()
+                        .child(active_label),
+                )
+                .when(thread_selector_enabled, |this| {
+                    this.on_click(cx.listener(ShellView::toggle_thread_selector))
+                }),
         )
+}
+
+fn render_thread_strip_parent_breadcrumb(
+    shell: &ShellRenderFrame<'_>,
+    breadcrumb: ThreadStripBreadcrumbSegment,
+    index: usize,
+    thread_selector_controls_disabled: Option<&str>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    let label = breadcrumb.label().to_string();
+    let disabled_reason = thread_selector_controls_disabled
+        .map(str::to_string)
+        .or_else(|| breadcrumb.disabled_reason().map(str::to_string));
+    let activation_target = if disabled_reason.is_none() && breadcrumb.activation_available() {
+        breadcrumb
+            .execution_target()
+            .map(|execution_target| ThreadSelectorActivationTarget {
+                thread_id: breadcrumb.thread_id().clone(),
+                label: label.clone(),
+                execution_target: execution_target.clone(),
+            })
+    } else {
+        None
+    };
+    let theme = shell.secondary_button_theme();
+    let button_state = if activation_target.is_some() {
+        theme.normal
+    } else {
+        theme.disabled
+    };
+
+    let mut breadcrumb_button = div()
+        .id(("thread-strip-branch-parent-breadcrumb", index))
+        .flex_none()
+        .max_w(relative(0.32))
+        .min_w(px(0.0))
+        .h(px(layout::BUTTON_OUTER_HEIGHT))
+        .px(px(layout::BUTTON_HORIZONTAL_PADDING))
+        .py(px(layout::BUTTON_VERTICAL_PADDING))
+        .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
+        .bg(button_state.background)
+        .border_1()
+        .border_color(button_state.border)
+        .flex()
+        .items_center()
+        .overflow_hidden()
+        .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
+        .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+        .font_weight(theme.font_weight)
+        .text_color(button_state.foreground)
+        .child(
+            div()
+                .min_w(px(0.0))
+                .whitespace_nowrap()
+                .truncate()
+                .child(label.clone()),
+        );
+
+    if let Some(target) = activation_target {
+        breadcrumb_button = breadcrumb_button
+            .hover(move |style| {
+                style
+                    .bg(theme.hover.background)
+                    .border_color(theme.hover.border)
+            })
+            .active(move |style| {
+                style
+                    .bg(theme.active.background)
+                    .border_color(theme.active.border)
+            })
+            .cursor_pointer()
+            .on_click(cx.listener(move |view, _event, window, cx| {
+                view.activate_thread_selector_target(target.clone(), window, cx);
+            }));
+    } else if let Some(reason) = disabled_reason {
+        let tooltip_theme = ThreadStripBreadcrumbTooltipTheme::from_shell(shell);
+        breadcrumb_button = breadcrumb_button.tooltip(move |_, cx| {
+            build_thread_strip_breadcrumb_tooltip(reason.clone(), tooltip_theme, cx)
+        });
+    }
+
+    breadcrumb_button
+}
+
+struct ThreadStripBreadcrumbTooltip {
+    message: String,
+    theme: ThreadStripBreadcrumbTooltipTheme,
+}
+
+#[derive(Clone, Copy)]
+struct ThreadStripBreadcrumbTooltipTheme {
+    background: gpui::Rgba,
+    border: gpui::Rgba,
+    foreground: gpui::Rgba,
+}
+
+impl ThreadStripBreadcrumbTooltipTheme {
+    fn from_shell(shell: &ShellRenderFrame<'_>) -> Self {
+        Self {
+            background: shell.popup_surface_background(),
+            border: shell.surface_border(),
+            foreground: shell.general_ui_foreground(),
+        }
+    }
+}
+
+fn build_thread_strip_breadcrumb_tooltip(
+    message: String,
+    theme: ThreadStripBreadcrumbTooltipTheme,
+    cx: &mut App,
+) -> AnyView {
+    cx.new(|_| ThreadStripBreadcrumbTooltip { message, theme })
+        .into()
+}
+
+impl Render for ThreadStripBreadcrumbTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .w(px(280.0))
+            .rounded_md()
+            .bg(self.theme.background)
+            .border_1()
+            .border_color(self.theme.border)
+            .px_3()
+            .py_2()
+            .text_xs()
+            .text_color(self.theme.foreground)
+            .child(self.message.clone())
+    }
 }
 
 fn render_status_line(
@@ -1518,7 +1742,7 @@ fn status_line_value(
 
 fn last_turn_state_color(shell: &ShellRenderFrame<'_>, state: &str) -> gpui::Rgba {
     match state {
-        "working" => shell.role_foreground(
+        "working" | "active" => shell.role_foreground(
             BerylThemeRole::StatusValueWorking,
             shell.status_line_value_foreground(),
         ),
@@ -1564,33 +1788,11 @@ fn render_split_surface(
     transcript_panel: &Entity<TranscriptPanel>,
     surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
-    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
     composer_measurement: &layout::ComposerInputMeasurement,
     backend_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let entity = cx.entity();
-    let total_width = surface
-        .split_bounds
-        .or(surface.layout_bounds)
-        .map(|bounds| bounds.size.width)
-        .unwrap_or_else(|| px(layout::WINDOW_MIN_WIDTH));
-    let split_layout = layout::split_layout(
-        total_width,
-        surface.checklist_sidebar_ratio,
-        surface.checklist_sidebar_visible(),
-    );
-    let visible_width = (split_layout.left_width + split_layout.right_width).max(px(1.0));
-    let left_ratio = if surface.checklist_sidebar_visible() {
-        split_layout.left_width / visible_width
-    } else {
-        1.0
-    };
-    let right_ratio = if surface.checklist_sidebar_visible() {
-        split_layout.right_width / visible_width
-    } else {
-        0.0
-    };
     let composer_height = composer_measurement.composer_height;
 
     let left_panel = render_left_panel(transcript_panel).into_any_element();
@@ -1603,9 +1805,6 @@ fn render_split_surface(
     )
     .into_any_element();
     let tool_activity_panel = render_tool_activity_panel(shell, surface, composer_height, cx);
-    let checklist_sidebar = surface
-        .checklist_sidebar_visible()
-        .then(|| render_checklist_sidebar_panel(checklist_sidebar_panel).into_any_element());
 
     div()
         .relative()
@@ -1627,68 +1826,23 @@ fn render_split_surface(
             .size_full(),
         )
         .child(
-            div()
-                .size_full()
-                .flex()
-                .gap_0()
-                .child(
-                    div()
-                        .w(relative(left_ratio))
-                        .min_w(px(layout::PANEL_MIN_WIDTH))
-                        .h_full()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_h(px(layout::MAIN_REGION_MIN_HEIGHT))
-                                .child(left_panel),
-                        )
-                        .when_some(tool_activity_panel, |this, panel| this.child(panel))
-                        .child(composer),
-                )
-                .when_some(checklist_sidebar, |this, checklist_sidebar| {
-                    this.child(render_checklist_sidebar_divider(shell, cx))
-                        .child(
-                            div()
-                                .w(relative(right_ratio))
-                                .min_w(px(layout::PANEL_MIN_WIDTH))
-                                .h_full()
-                                .child(checklist_sidebar),
-                        )
-                }),
+            div().size_full().flex().gap_0().child(
+                div()
+                    .w_full()
+                    .min_w(px(layout::PANEL_MIN_WIDTH))
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h(px(layout::MAIN_REGION_MIN_HEIGHT))
+                            .child(left_panel),
+                    )
+                    .when_some(tool_activity_panel, |this, panel| this.child(panel))
+                    .child(composer),
+            ),
         )
-}
-
-fn render_checklist_sidebar_divider(
-    shell: &ShellRenderFrame<'_>,
-    cx: &mut Context<ShellView>,
-) -> impl IntoElement {
-    let entity = cx.entity();
-
-    canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _cx| {
-            window.on_mouse_event({
-                let entity = entity.clone();
-                move |event: &MouseDownEvent, _, _, cx| {
-                    if !bounds.contains(&event.position) {
-                        return;
-                    }
-
-                    entity.update(cx, |view, cx| {
-                        view.begin_surface_divider_drag(bounds.left(), event, cx);
-                    });
-                }
-            });
-        },
-    )
-    .w(px(layout::PANEL_DIVIDER_WIDTH))
-    .h_full()
-    .cursor(CursorStyle::ResizeColumn)
-    .bg(shell.input_background())
-    .border_x_1()
-    .border_color(shell.separator_color())
 }
 
 fn render_left_panel(transcript_panel: &Entity<TranscriptPanel>) -> impl IntoElement {
@@ -1947,14 +2101,6 @@ fn tool_activity_status_disc(
         .rounded_full()
         .flex_none()
         .bg(color)
-}
-
-fn render_checklist_sidebar_panel(
-    checklist_sidebar_panel: &Entity<ChecklistSidebarPanel>,
-) -> impl IntoElement {
-    let cached_root = div();
-    let cached_style = cached_root.size_full().min_h(px(0.0)).style().clone();
-    AnyView::from(checklist_sidebar_panel.clone()).cached(cached_style)
 }
 
 fn measure_composer_input(

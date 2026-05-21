@@ -20,6 +20,7 @@ pub use beryl_app::{
     dispatch_beryl_dynamic_tool_call_with_metadata, dispatch_beryl_graph_dynamic_tool_call,
     dispatch_beryl_graph_dynamic_tool_call_with_metadata, is_beryl_diagnostic_child_dynamic_tool,
     is_beryl_diagnostic_dynamic_tool, is_beryl_settings_dynamic_tool, is_beryl_theme_dynamic_tool,
+    is_beryl_threaded_decision_dynamic_tool,
 };
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,
@@ -48,14 +49,19 @@ mod shell {
     pub(crate) mod execution_detail;
     #[path = "../../src/shell/graph.rs"]
     pub(super) mod graph;
-    #[path = "../../src/shell/graph_worker.rs"]
-    pub(super) mod graph_worker;
     #[path = "../../src/shell/thread_activation.rs"]
     pub(super) mod thread_activation;
     #[path = "../../src/shell/thread_selection.rs"]
     pub(super) mod thread_selection;
     #[path = "../../src/shell/thread_title.rs"]
     pub(super) mod thread_title;
+    pub(super) mod transcript_branch_core {
+        #[derive(Clone, Debug)]
+        pub(crate) struct ForegroundTranscriptBranchStart;
+
+        #[derive(Clone, Debug)]
+        pub(crate) enum ForegroundTranscriptBranchPublication {}
+    }
     #[path = "../../src/shell/transcript_history.rs"]
     pub(super) mod transcript_history;
     #[path = "../../src/shell/transcript_image_sources.rs"]
@@ -100,12 +106,13 @@ mod shell {
 }
 
 use shell::{
-    thread_title::title_generation_turn_options,
+    thread_title::{TurnThreadTitleMode, title_generation_turn_options},
     turn_worker::{
         ThreadActivationBackend, TurnStreamBackend, activate_thread,
         automatic_thread_title_generation_is_eligible, handle_beryl_dynamic_tool_call,
         handle_beryl_dynamic_tool_call_with_shell_tools,
         shell_dynamic_tool_request_channel_with_capacity_for_test, stream_active_turn_events,
+        thread_title_candidate_available_for_mode,
     },
 };
 
@@ -806,7 +813,6 @@ fn graph_dynamic_write_call_publishes_graph_commit_update() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": false
         }),
     );
@@ -860,7 +866,6 @@ fn graph_dynamic_write_failure_publishes_graph_failure_update() {
             "title": "Root",
             "summary": "Root summary",
             "topic": true,
-            "checklist": false,
             "checklistItem": true
         }),
     );
@@ -927,6 +932,18 @@ fn title_candidate_uses_normalized_backend_name_for_eligibility() {
 fn title_candidate_requires_submit_path_eligibility() {
     assert!(!automatic_thread_title_generation_is_eligible(false, None));
     assert!(automatic_thread_title_generation_is_eligible(true, None));
+}
+
+#[test]
+fn branch_retitle_title_candidate_ignores_existing_backend_name() {
+    assert!(!thread_title_candidate_available_for_mode(
+        TurnThreadTitleMode::AutomaticIfMissing,
+        Some("Provisional branch title"),
+    ));
+    assert!(thread_title_candidate_available_for_mode(
+        TurnThreadTitleMode::BranchRetitleAfterFirstUserTurn,
+        Some("Provisional branch title"),
+    ));
 }
 
 #[test]

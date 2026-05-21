@@ -116,6 +116,25 @@ impl WorkspaceGraphToolService {
         request: &GraphPatchWriteRequest,
     ) -> Result<GraphPatchWriteResponse, WorkspaceGraphToolError> {
         self.ensure_workspace_exists(&request.workspace_id)?;
+        self.ensure_patch_respects_threaded_decision_protection(
+            &request.workspace_id,
+            &request.patch,
+        )?;
+        self.apply_graph_patch_unchecked(request)
+    }
+
+    pub(crate) fn apply_threaded_decision_graph_patch(
+        &self,
+        request: &GraphPatchWriteRequest,
+    ) -> Result<GraphPatchWriteResponse, WorkspaceGraphToolError> {
+        self.ensure_workspace_exists(&request.workspace_id)?;
+        self.apply_graph_patch_unchecked(request)
+    }
+
+    fn apply_graph_patch_unchecked(
+        &self,
+        request: &GraphPatchWriteRequest,
+    ) -> Result<GraphPatchWriteResponse, WorkspaceGraphToolError> {
         let commit = self.persistence.apply_workspace_graph_patch(
             &request.workspace_id,
             &request.patch,
@@ -127,6 +146,32 @@ impl WorkspaceGraphToolService {
             summary: workspace_graph_summary(bundle.manifest, &bundle.graph),
             commit,
         })
+    }
+
+    fn ensure_patch_respects_threaded_decision_protection(
+        &self,
+        workspace_id: &BerylWorkspaceId,
+        patch: &SemanticGraphPatch,
+    ) -> Result<(), WorkspaceGraphToolError> {
+        let decisions = self
+            .persistence
+            .load_workspace_threaded_decision_state(workspace_id)?;
+        let protected_item_ids = decisions
+            .protected_resolved_checklist_item_ids()
+            .collect::<Vec<_>>();
+        if protected_item_ids.is_empty() {
+            return Ok(());
+        }
+
+        let graph = self.persistence.load_workspace_graph_state(workspace_id)?;
+        graph
+            .ensure_patch_respects_protected_decision_items(patch, protected_item_ids)
+            .map_err(
+                |error| WorkspaceGraphToolError::ProtectedDecisionItemMutation {
+                    workspace_id: workspace_id.as_str().to_string(),
+                    detail: error.to_string(),
+                },
+            )
     }
 
     pub fn delete_node_subtree(

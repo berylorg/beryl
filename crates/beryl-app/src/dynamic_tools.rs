@@ -23,6 +23,7 @@ use crate::{
     },
     settings_dynamic_tools::beryl_settings_dynamic_tool_specs,
     theme_dynamic_tools::beryl_theme_dynamic_tool_specs,
+    threaded_decision_dynamic_tools::beryl_threaded_decision_dynamic_tool_specs,
 };
 
 pub const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
@@ -44,6 +45,7 @@ pub struct DynamicToolRegistryError {
 pub fn beryl_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
     let mut tools = Vec::new();
     tools.extend(beryl_graph_dynamic_tool_specs());
+    tools.extend(beryl_threaded_decision_dynamic_tool_specs());
     tools.extend(beryl_lifecycle_dynamic_tool_specs());
     tools.extend(beryl_theme_dynamic_tool_specs());
     tools.extend(beryl_settings_dynamic_tool_specs());

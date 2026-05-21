@@ -703,6 +703,58 @@ fn execution_detail_loads_selected_thread_history() {
 }
 
 #[test]
+fn execution_detail_marks_loaded_active_history_as_non_owned() {
+    let response: ThreadSessionResponse = serde_json::from_value(json!({
+        "approvalPolicy": "never",
+        "approvalsReviewer": "user",
+        "cwd": "C:/work/beryl",
+        "model": "gpt-5.4",
+        "modelProvider": "openai",
+        "sandbox": {
+            "mode": "danger-full-access",
+            "networkAccess": true
+        },
+        "thread": {
+            "cliVersion": "0.128.0",
+            "createdAt": 1,
+            "cwd": "C:/work/beryl",
+            "ephemeral": false,
+            "id": "thread_1",
+            "modelProvider": "openai",
+            "preview": "Running elsewhere",
+            "source": "appServer",
+            "status": {
+                "type": "active",
+                "activeFlags": []
+            },
+            "turns": [{
+                "id": "turn_active",
+                "items": [{
+                    "id": "cmd_active",
+                    "type": "commandExecution",
+                    "command": "cargo nextest run",
+                    "cwd": "C:/work/beryl",
+                    "status": "inProgress"
+                }],
+                "status": "inProgress"
+            }],
+            "updatedAt": 2
+        }
+    }))
+    .unwrap();
+
+    let mut state = ExecutionDetailState::default();
+    state.load_thread_history(&response.thread);
+
+    assert_eq!(state.working_turn_index(), None);
+    assert_eq!(state.active_turn_identity(), None);
+    assert_eq!(state.non_owned_active_turn_index(), Some(0));
+    assert!(state.has_backend_active_turn());
+    assert_eq!(state.last_turn_state(), LastTurnState::Active);
+    assert_eq!(state.last_turn_state().label(), "active");
+}
+
+#[test]
 fn execution_detail_preserves_ordered_history_user_fragments() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",

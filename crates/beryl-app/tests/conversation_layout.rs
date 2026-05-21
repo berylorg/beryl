@@ -6,26 +6,6 @@ use gpui::{Entity, Pixels, px};
 use gpui_text_input::{TextInput, TextInputAtom, TextInputGeometry};
 
 #[test]
-fn split_layout_clamps_checklist_sidebar_to_minimum_width() {
-    let split = layout::split_layout(px(640.0), 0.05, true);
-
-    assert!(split.left_width >= px(layout::PANEL_MIN_WIDTH));
-    assert!(split.right_width >= px(layout::PANEL_MIN_WIDTH));
-    assert_eq!(
-        split.left_width + split.right_width + px(layout::PANEL_DIVIDER_WIDTH),
-        px(640.0)
-    );
-}
-
-#[test]
-fn split_layout_uses_full_width_when_checklist_sidebar_is_hidden() {
-    let split = layout::split_layout(px(640.0), 0.34, false);
-
-    assert_eq!(split.left_width, px(640.0));
-    assert_eq!(split.right_width, px(0.0));
-}
-
-#[test]
 fn composer_height_stops_at_remaining_available_height() {
     let composer_height = layout::clamp_composer_height(px(240.0), px(760.0), px(220.0));
 
@@ -101,7 +81,7 @@ fn composer_growth_uses_content_height_before_internal_scroll(cx: &mut gpui::Tes
 }
 
 #[gpui::test]
-fn composer_remeasures_when_sidebar_or_window_changes_width(cx: &mut gpui::TestAppContext) {
+fn composer_remeasures_when_window_changes_width(cx: &mut gpui::TestAppContext) {
     let text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
     let (input, cx) = cx.add_window_view(|_, cx| TextInput::multiline(text, "Body", cx));
 
@@ -412,63 +392,6 @@ fn tool_activity_row_window_keeps_scroll_geometry_for_empty_viewports() {
     assert_eq!(
         window.content_height,
         px(layout::TOOL_ACTIVITY_ROW_HEIGHT * 10.0)
-    );
-}
-
-#[test]
-fn checklist_sidebar_row_window_adds_overscan_and_preserves_content_height() {
-    let window = layout::checklist_sidebar_row_window(
-        80,
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 4.0),
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 12.0),
-        2,
-    );
-
-    assert_eq!(window.range, 10..18);
-    assert_eq!(
-        window.top_spacer_height,
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 10.0)
-    );
-    assert_eq!(
-        window.bottom_spacer_height,
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 62.0)
-    );
-    assert_eq!(
-        window.content_height,
-        window.top_spacer_height
-            + px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * window.range.len() as f32)
-            + window.bottom_spacer_height
-    );
-}
-
-#[test]
-fn checklist_sidebar_row_window_clamps_scroll_offsets_to_valid_content() {
-    let tail_window = layout::checklist_sidebar_row_window(8, px(112.0), px(10_000.0), 1);
-    assert_eq!(tail_window.range, 5..8);
-    assert_eq!(
-        tail_window.top_spacer_height,
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 5.0)
-    );
-    assert_eq!(tail_window.bottom_spacer_height, px(0.0));
-
-    let top_window = layout::checklist_sidebar_row_window(8, px(112.0), px(-10.0), 1);
-    assert_eq!(top_window.range, 0..3);
-    assert_eq!(top_window.top_spacer_height, px(0.0));
-}
-
-#[test]
-fn checklist_sidebar_row_window_keeps_scroll_geometry_for_empty_viewports() {
-    let window = layout::checklist_sidebar_row_window(8, px(0.0), px(0.0), 3);
-
-    assert_eq!(window.range, 0..0);
-    assert_eq!(window.top_spacer_height, px(0.0));
-    assert_eq!(
-        window.bottom_spacer_height,
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 8.0)
-    );
-    assert_eq!(
-        window.content_height,
-        px(layout::CHECKLIST_SIDEBAR_ROW_HEIGHT * 8.0)
     );
 }
 

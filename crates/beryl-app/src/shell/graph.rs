@@ -211,6 +211,7 @@ impl GraphOverlayState {
         self.columns.columns()
     }
 
+    #[cfg(test)]
     pub(crate) fn selected_node_id(&self) -> Option<&SemanticNodeId> {
         self.columns().iter().rev().find_map(|column| {
             column

@@ -118,13 +118,17 @@ impl ShellView {
         );
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
         self.shell_tool_receiver = Some(shell_tool_receiver);
+        let title_mode = self.thread_title_mode_for_user_submission(
+            Some(request.source_thread_id()),
+            request.automatic_title_generation_allowed(),
+        );
         self.turn_receiver = Some(spawn_turn_worker(
             persistence,
             connector,
             request.workspace_id().clone(),
             request.execution_target().clone(),
             Some(request.source_thread_id().to_string()),
-            request.automatic_title_generation_allowed(),
+            title_mode,
             vec![fragment],
             turn_options,
             Some(shell_tool_sender),

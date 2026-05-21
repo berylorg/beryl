@@ -4,7 +4,7 @@ Define Beryl's graph upkeep as policy-controlled maintenance that keeps the sema
 
 ## Non-goals
 
-- Owning the semantic graph model, graph invariants, graph persistence format, graph overlay, checklist sidebar, primitive graph read/write tools, graph refs, or graph provenance fields.
+- Owning the semantic graph model, graph invariants, graph persistence format, graph overlay, primitive graph read/write tools, graph refs, or graph provenance fields.
 - Owning semantic search, local knowledge indexing, embedding generation, ranking, search result contracts, or search-owned caches.
 - Replacing `doc/design.md`, feature design documents, plans, research notes, source documents, or backend-owned conversation history as the authoritative source of project facts.
 - Mirroring every conversation turn, backend event, tool log, source-document change, or transient activity record into semantic graph state.
@@ -23,11 +23,13 @@ The V1 graph-upkeep implementation slice provides workspace graph-upkeep instruc
 
 Each workspace may define graph upkeep instructions. Those instructions describe the workspace-specific curation policy, such as which root nodes matter, which concepts deserve nodes, which source documents are authoritative, and which graph changes should be conservative.
 
-AI-assisted graph upkeep uses graph tools to read bounded graph neighborhoods, create or update nodes, update checklist statuses, attach thread refs, attach markdown refs, create soft links, and reconcile stale source refs. It must not rely on whole-workspace graph dumps as the normal context source.
+AI-assisted graph upkeep uses graph tools to read bounded graph neighborhoods, create or update nodes, update checklist-item statuses, attach thread refs, attach markdown refs, create soft links, and reconcile stale source refs. It must not rely on whole-workspace graph dumps as the normal context source.
 
 Graph upkeep may update graph-owned summaries, refs, statuses, structure, and links through explicit graph tool operations. When the AI decides to update the graph and the graph-owned write path accepts the operation as mechanically valid, the graph is updated.
 
-Graph upkeep may use ongoing conversation context to attach important threads, update summaries, create missing work-topic nodes, add checklist items, or link source documents when those changes match the workspace policy and graph invariants.
+Graph upkeep must not bypass threaded-decision ownership constraints. Resolved decision checklist items may not have their decision-owned status, item kind, decision metadata, or decision-owned summary changed by generic graph-upkeep writes; those changes require threaded-decision actions or explicit human repair.
+
+Graph upkeep may use ongoing conversation context to attach important threads, update summaries, create missing work-topic nodes, add checklist-item nodes, or link source documents when those changes match the workspace policy and graph invariants.
 
 Graph upkeep may read current project source documents during an AI upkeep pass to repair refs, update summaries, add new refs, or make structural graph updates. Source documents remain authoritative, and graph summaries remain navigational. Out-of-turn source edits are handled as current source reality when AI upkeep next reads the affected documents or refs, not by a filesystem-event synchronization pipeline.
 
@@ -55,7 +57,7 @@ Automatic post-turn graph upkeep must stay off the user-visible response path. U
 
 Graph upkeep work, bounded source-document reads, markdown parsing for requested source targets, source-ref reconciliation, and repository work must not block the `gpui` thread.
 
-Upkeep failures are localized. A failed mechanical graph write, stale-ref repair, or source read reports bounded failure state without deleting unrelated graph state, closing the graph overlay, discarding checklist sidebar scroll, or switching the active transcript.
+Upkeep failures are localized. A failed mechanical graph write, stale-ref repair, or source read reports bounded failure state without deleting unrelated graph state, closing the graph overlay, or switching the active transcript.
 
 ## UI
 
@@ -67,4 +69,4 @@ Applying graph upkeep instructions updates the workspace-scoped active graph pol
 
 When no workspace is selected, the `Graph` tab remains visible but the graph upkeep instructions row is disabled with a workspace-required state and cannot apply a draft. During a workspace switch, unapplied graph-upkeep drafts for the previous workspace are discarded and the row is rebound to the newly selected workspace's applied policy. If workspace persistence is unavailable or an apply attempt cannot prove the target workspace still matches the selected workspace, applying graph-upkeep instructions fails without mutating the active policy.
 
-Stale-ref repair failures, source-read failures, and mechanically rejected upkeep writes are reported through localized notices or bounded surface state without replacing the graph overlay or checklist sidebar.
+Stale-ref repair failures, source-read failures, and mechanically rejected upkeep writes are reported through localized notices or bounded surface state without replacing the graph overlay.

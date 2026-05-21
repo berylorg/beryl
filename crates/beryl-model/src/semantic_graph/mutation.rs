@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::provenance::{ElementProvenance, MutationProvenance};
 
@@ -24,6 +24,75 @@ impl SemanticGraph {
 
         *self = next;
         Ok(true)
+    }
+
+    pub fn ensure_patch_respects_protected_decision_items<'a>(
+        &self,
+        patch: &SemanticGraphPatch,
+        protected_item_ids: impl IntoIterator<Item = &'a SemanticNodeId>,
+    ) -> Result<(), SemanticGraphError> {
+        let protected_item_ids: BTreeSet<SemanticNodeId> =
+            protected_item_ids.into_iter().cloned().collect();
+        if protected_item_ids.is_empty() {
+            return Ok(());
+        }
+
+        for operation in patch.operations() {
+            match operation {
+                SemanticGraphPatchOp::UpsertNode { node, .. }
+                    if protected_item_ids.contains(&node.id) =>
+                {
+                    let Some(existing) = self.nodes.get(&node.id) else {
+                        return Err(SemanticGraphError::ProtectedDecisionItemMutation {
+                            node_id: node.id.clone(),
+                        });
+                    };
+                    let next_kind = existing
+                        .checklist_item_kind_for_update(&node.facets, node.checklist_item_kind);
+                    if existing.title != node.title
+                        || existing.summary != node.summary
+                        || existing.facets != node.facets
+                        || existing.checklist_item_status != node.checklist_item_status
+                        || !super::checklist_item_kind_matches(existing, &node.facets, next_kind)
+                    {
+                        return Err(SemanticGraphError::ProtectedDecisionItemMutation {
+                            node_id: node.id.clone(),
+                        });
+                    }
+                }
+                SemanticGraphPatchOp::SetChecklistItemStatus {
+                    node_id, status, ..
+                } if protected_item_ids.contains(node_id) => {
+                    let Some(existing) = self.nodes.get(node_id) else {
+                        return Err(SemanticGraphError::ProtectedDecisionItemMutation {
+                            node_id: node_id.clone(),
+                        });
+                    };
+                    if existing.checklist_item_status() != Some(*status) {
+                        return Err(SemanticGraphError::ProtectedDecisionItemMutation {
+                            node_id: node_id.clone(),
+                        });
+                    }
+                }
+                SemanticGraphPatchOp::SetChecklistItemKind { node_id, kind, .. }
+                    if protected_item_ids.contains(node_id) =>
+                {
+                    let Some(existing) = self.nodes.get(node_id) else {
+                        return Err(SemanticGraphError::ProtectedDecisionItemMutation {
+                            node_id: node_id.clone(),
+                        });
+                    };
+                    if existing.checklist_item_kind() != Some(*kind) {
+                        return Err(SemanticGraphError::ProtectedDecisionItemMutation {
+                            node_id: node_id.clone(),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     fn apply_operation(
@@ -60,6 +129,11 @@ impl SemanticGraph {
                 status,
                 provenance,
             } => self.set_checklist_item_status(node_id, *status, provenance.clone()),
+            SemanticGraphPatchOp::SetChecklistItemKind {
+                node_id,
+                kind,
+                provenance,
+            } => self.set_checklist_item_kind(node_id, *kind, provenance.clone()),
         }
     }
 
@@ -209,6 +283,32 @@ impl SemanticGraph {
         }
 
         node.checklist_item_status = Some(status);
+        node.provenance.touch(provenance);
+        Ok(())
+    }
+
+    fn set_checklist_item_kind(
+        &mut self,
+        node_id: &SemanticNodeId,
+        kind: super::ChecklistItemKind,
+        provenance: MutationProvenance,
+    ) -> Result<(), SemanticGraphError> {
+        let node = self
+            .nodes
+            .get_mut(node_id)
+            .ok_or_else(|| SemanticGraphError::MissingNode {
+                node_id: node_id.clone(),
+            })?;
+        if !node.facets.has_checklist_item() {
+            return Err(SemanticGraphError::InvalidChecklistItemKind {
+                node_id: node_id.clone(),
+            });
+        }
+        if node.checklist_item_kind() == Some(kind) {
+            return Ok(());
+        }
+
+        node.checklist_item_kind = Some(kind);
         node.provenance.touch(provenance);
         Ok(())
     }

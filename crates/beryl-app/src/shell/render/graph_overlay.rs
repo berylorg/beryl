@@ -121,12 +121,7 @@ pub(super) fn render_graph_overlay(
     }
 
     let viewport = window.viewport_size();
-    let split = layout::split_layout(
-        viewport.width,
-        surface.checklist_sidebar_ratio(),
-        surface.checklist_sidebar_visible(),
-    );
-    let overlay_width = split.left_width.max(px(layout::PANEL_MIN_WIDTH));
+    let overlay_width = viewport.width.max(px(layout::PANEL_MIN_WIDTH));
     let overlay_height = surface.graph_overlay_height(composer_height);
     let entity = cx.entity();
 
@@ -167,6 +162,7 @@ pub(super) fn render_graph_overlay(
             div().flex_1().min_h(px(0.0)).child(render_graph_columns(
                 shell,
                 &loaded_workspace.workspace_state,
+                &loaded_workspace.threaded_decision_state,
                 loaded_workspace
                     .resolved_implicit_home_execution_target()
                     .as_ref(),
@@ -346,6 +342,7 @@ fn render_overlay_header_status(
 fn render_graph_columns(
     shell: &ShellRenderFrame<'_>,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    threaded_decision_state: &beryl_model::threaded_decision::ThreadedDecisionState,
     implicit_home_execution_target: Option<&beryl_model::workspace::WorkspaceId>,
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
@@ -362,6 +359,7 @@ fn render_graph_columns(
             render_graph_column(
                 shell,
                 workspace_state,
+                threaded_decision_state,
                 implicit_home_execution_target,
                 index,
                 surface,
@@ -388,6 +386,7 @@ fn render_graph_columns(
 fn render_graph_column(
     shell: &ShellRenderFrame<'_>,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    threaded_decision_state: &beryl_model::threaded_decision::ThreadedDecisionState,
     implicit_home_execution_target: Option<&beryl_model::workspace::WorkspaceId>,
     column_index: usize,
     surface: &ConversationSurfaceState,
@@ -422,6 +421,7 @@ fn render_graph_column(
                 root_rows = root_rows.child(render_graph_node_tree(
                     shell,
                     workspace_state,
+                    threaded_decision_state,
                     implicit_home_execution_target,
                     column_index,
                     column,
@@ -459,6 +459,7 @@ fn render_graph_column(
                 .child(render_graph_node_tree(
                     shell,
                     workspace_state,
+                    threaded_decision_state,
                     implicit_home_execution_target,
                     column_index,
                     column,

@@ -135,8 +135,4 @@ const THEMED_SCROLLBAR_CALLERS: &[(&str, &str)] = &[
         "src/shell/render/graph_link_menu.rs",
         include_str!("../src/shell/render/graph_link_menu.rs"),
     ),
-    (
-        "src/shell/render/checklist_sidebar.rs",
-        include_str!("../src/shell/render/checklist_sidebar.rs"),
-    ),
 ];

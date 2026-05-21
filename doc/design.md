@@ -26,11 +26,12 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Workspace startup, workspace identity, workspace picker, runtime environments, workspace members, and workspace persistence are defined in `doc/features/workspaces/design.md`.
 - Backend runtime availability, managed app-server lifecycle, capability probing, backend-unavailable states, and connection-loss recovery are defined in `doc/features/backend-runtime-recovery/design.md`.
 - Conversation thread selection, activation, inventory, binding, branch/edit workflows, automatic thread-title generation, and user-initiated thread-title updates are defined in `doc/features/conversation-threads/design.md`.
+- Threaded decision workflows that bind checklist items to decision child branches, parent handoff turns, resolution outcomes, and child cleanup are defined in `doc/features/threaded-decisions/design.md`.
 - Composer behavior, draft submission, image input, input queues, composer history, quote insertion, and developer-instructions injection on user turns are defined in `doc/features/composer/design.md`.
 - Transcript rendering, Markdown, media, selection, quote harvesting, turn context menus, history pagination, and transcript scroll anchoring are defined in `doc/features/transcript/design.md`.
 - Status line behavior, model/reasoning controls, context/rate-limit display, context compaction controls, and turn stop controls are defined in `doc/features/status-line/design.md`.
 - Activity panel behavior and activity projection are defined in `doc/features/activity-panel/design.md`.
-- Semantic graph, graph overlay, checklist sidebar, primitive graph tools, graph provenance, and markdown/thread refs are defined in `doc/features/semantic-graph/design.md`.
+- Semantic graph, graph overlay, primitive graph tools, graph provenance, and markdown/thread refs are defined in `doc/features/semantic-graph/design.md`.
 - Graph upkeep, graph upkeep instructions, AI-assisted graph maintenance, on-demand source-ref repair, and graph-upkeep write policy are defined in `doc/features/graph-upkeep/design.md`.
 - Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches are defined in `doc/features/semantic-search/design.md`.
 - Settings window shell, settings rows, settings persistence, and settings dynamic tools are defined in `doc/features/settings/design.md`.
@@ -67,7 +68,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 
 - The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, default-runtime selection, runtime-bound workspace-member registrations, semantic graph state, GUI-local thread refs, thread-title display precedence, automatic and user-initiated thread-title orchestration, derived member-thread inventory snapshots, GUI-local settings, installed themes, and GUI-local persistence.
 - Backend conversation history remains backend-owned even when Beryl renders, branches, edits, titles, or links threads.
-- Conversation thread editing mutates backend conversation history only. It must not present or assume rollback of filesystem changes, semantic graph/checklist mutations, workspace state, thread-title metadata, durable image assets, in-memory activity records, or other non-history side effects.
+- Conversation thread editing mutates backend conversation history only. It must not present or assume rollback of filesystem changes, semantic graph/checklist-item mutations, workspace state, thread-title metadata, durable image assets, in-memory activity records, or other non-history side effects.
 - Deleting or retitling a Beryl workspace changes only GUI-owned workspace state and must not delete or mutate backend-owned Codex thread history.
 - Deleting semantic graph nodes changes only GUI-owned semantic graph state and must not delete or mutate backend-owned Codex thread history.
 - User-facing backend status metadata is presentation state derived from exact app-server responses, notifications, and GUI-held projections. Missing backend fields render as unknown or are omitted rather than guessed.

@@ -2,6 +2,8 @@ use std::time::Instant;
 
 use beryl_backend::{HardStopCapabilities, ThreadSummary};
 use beryl_model::conversation::RegisteredConversationThread;
+use beryl_model::provenance::{MutationProvenance, MutationSource};
+use beryl_model::semantic_graph::SemanticGraph;
 use beryl_model::workspace::WorkspaceId;
 
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
@@ -82,6 +84,8 @@ impl ShellView {
                     attempt,
                     process_id,
                 );
+                let threaded_decision_state_changed =
+                    reconcile_loaded_threaded_decision_state(&mut loaded_workspace, &opened.graph);
                 let workspace_id_for_log = loaded_workspace.workspace.id().as_str().to_string();
                 let active_thread_id = opened.selected_thread_id.clone().or_else(|| {
                     opened
@@ -89,7 +93,11 @@ impl ShellView {
                         .as_ref()
                         .map(|thread| thread.summary().id)
                 });
-                let known_threads = opened.known_threads.clone();
+                let mut known_threads = opened.known_threads.clone();
+                super::retain_normal_selector_threads_for_decisions(
+                    &mut known_threads,
+                    &loaded_workspace.threaded_decision_state,
+                );
                 let inventory_workspace_id = loaded_workspace.workspace.id().clone();
                 let inventory_workspace_state = loaded_workspace.workspace_state.clone();
                 let mut surface = match preserved_surface {
@@ -163,6 +171,9 @@ impl ShellView {
                 if restored_implicit_home_threads {
                     self.persist_current_workspace_state(true);
                 }
+                if threaded_decision_state_changed {
+                    self.persist_current_threaded_decision_state();
+                }
                 MemoryMilestone::new("workspace_open_ui_applied")
                     .workspace_id(workspace_id_for_log)
                     .backend_pid(process_id)
@@ -196,6 +207,10 @@ impl ShellView {
                     "workspace open failed"
                 );
                 if let Some(backend_unavailable) = error.backend_unavailable.as_ref() {
+                    let threaded_decision_state_changed = reconcile_loaded_threaded_decision_state(
+                        &mut loaded_workspace,
+                        &backend_unavailable.surface_seed.graph,
+                    );
                     let availability = loaded_workspace.record_backend_unavailable(
                         backend_unavailable.target.clone(),
                         attempt,
@@ -216,6 +231,9 @@ impl ShellView {
                         availability,
                         surface,
                     });
+                    if threaded_decision_state_changed {
+                        self.persist_current_threaded_decision_state();
+                    }
                     return;
                 }
                 let disconnect = preserved_surface.is_some();
@@ -301,9 +319,17 @@ impl ShellView {
         match outcome {
             TurnWorkerOutcome::Finished {
                 execution_target,
-                known_threads,
+                mut known_threads,
                 active_thread_id,
             } => {
+                if let Some(known_threads) = known_threads.as_mut()
+                    && let Some(loaded) = self.loaded_workspace()
+                {
+                    super::retain_normal_selector_threads_for_decisions(
+                        known_threads,
+                        &loaded.threaded_decision_state,
+                    );
+                }
                 if let ShellState::Ready(ready) = &mut self.state {
                     ready.execution_target = execution_target.clone();
                 }
@@ -326,9 +352,13 @@ impl ShellView {
                 None
             }
             TurnWorkerOutcome::Failed { message } => {
+                let foreground_branch_failed = self.foreground_transcript_branch.is_some();
                 let sound_candidate = self
                     .conversation_surface_mut()
                     .and_then(|surface| surface.finish_turn_failure(message.clone()));
+                if foreground_branch_failed {
+                    self.finish_failed_foreground_transcript_branch(message.clone());
+                }
 
                 self.block_if_backend_process_dead(
                     "Managed backend disconnected during turn execution",
@@ -340,7 +370,10 @@ impl ShellView {
         }
     }
 
-    pub(super) fn finish_thread_activation_worker(&mut self, outcome: ThreadActivationOutcome) {
+    pub(super) fn finish_thread_activation_worker(
+        &mut self,
+        outcome: ThreadActivationOutcome,
+    ) -> Option<String> {
         match outcome {
             ThreadActivationOutcome::Activated {
                 execution_target,
@@ -413,8 +446,15 @@ impl ShellView {
                         .retained_state_if_enabled(|| self.retained_state_snapshot())
                         .log();
                 }
+                let read_only_decision_branch =
+                    self.thread_is_read_only_decision_branch(summary.id.as_str());
                 if let Some(active_execution_target) = active_execution_target {
-                    self.remember_active_thread_summary(&active_execution_target, &summary, false);
+                    self.remember_thread_summary(
+                        &active_execution_target,
+                        &summary,
+                        false,
+                        !read_only_decision_branch,
+                    );
                     self.hydrate_selected_thread_token_usage_snapshot();
                     self.mark_member_thread_inventory_refresh_needed();
                     self.repair_selected_thread_title_if_needed(active_execution_target);
@@ -424,6 +464,7 @@ impl ShellView {
                     thread_activation_ui_finish_ms = super::elapsed_ms(ui_finish_started.elapsed()),
                     "finished activated thread UI application"
                 );
+                Some(summary.id.clone())
             }
             ThreadActivationOutcome::RequiresRebind { detail } => {
                 MemoryMilestone::new("thread_activation_requires_rebind").log();
@@ -434,6 +475,7 @@ impl ShellView {
                 self.apply_member_thread_inventory_event(
                     MemberThreadInventoryEvent::InventoryContentsChanged,
                 );
+                None
             }
             ThreadActivationOutcome::Failed { message } => {
                 MemoryMilestone::new("thread_activation_failed").log();
@@ -450,6 +492,7 @@ impl ShellView {
                     "The backend process for the selected workspace exited before Beryl could reopen the requested thread.",
                     &message,
                 );
+                None
             }
         }
     }
@@ -493,9 +536,15 @@ impl ShellView {
 
     pub(super) fn handle_turn_worker_stopped(&mut self) -> Option<TurnCompletionSoundCandidate> {
         let message = "Beryl lost the background task that was streaming the active turn.";
+        let foreground_branch_failed = self.foreground_transcript_branch.is_some();
         let sound_candidate = self
             .conversation_surface_mut()
             .and_then(|surface| surface.finish_turn_failure(message));
+        if foreground_branch_failed {
+            self.finish_failed_foreground_transcript_branch(
+                "Beryl lost the background task that was foregrounding the branch.",
+            );
+        }
 
         self.block_if_backend_process_dead(
             "Turn execution stopped unexpectedly",
@@ -590,6 +639,23 @@ fn seed_backend_unavailable_surface(
     )
 }
 
+fn reconcile_loaded_threaded_decision_state(
+    loaded_workspace: &mut LoadedWorkspaceState,
+    graph: &SemanticGraph,
+) -> bool {
+    let provenance = MutationProvenance::new(
+        "beryl",
+        super::token_usage_snapshot::current_unix_millis(),
+        MutationSource::workspace_action("threaded_decision_reconcile")
+            .expect("static workspace action is valid"),
+        Some(100),
+    )
+    .expect("static threaded-decision reconciliation provenance is valid");
+    loaded_workspace
+        .threaded_decision_state
+        .reconcile_references(graph, &loaded_workspace.workspace_state, provenance)
+}
+
 fn unavailable_surface_thread_seed(
     loaded_workspace: &LoadedWorkspaceState,
     execution_target: &WorkspaceId,
@@ -612,7 +678,9 @@ fn unavailable_surface_thread_seed(
 fn thread_summary_from_registration(thread: &RegisteredConversationThread) -> ThreadSummary {
     ThreadSummary {
         id: thread.thread_id().as_str().to_string(),
-        forked_from_id: None,
+        forked_from_id: thread
+            .branch_parent_thread_id()
+            .map(|thread_id| thread_id.as_str().to_string()),
         cwd: thread.execution_target().canonical_path().to_path_buf(),
         preview: thread.preview().to_string(),
         name: thread.backend_name().map(str::to_string),

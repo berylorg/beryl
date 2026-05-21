@@ -62,12 +62,12 @@ pub fn beryl_graph_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
         ),
         graph_tool_spec(
             READ_CHECKLIST_TOOL,
-            "Read a bounded checklist slice from this Beryl workspace semantic graph.",
+            "Read bounded checklist-item children from one topic-capable node in this Beryl workspace semantic graph.",
             checklist_read_schema(),
         ),
         graph_tool_spec(
             UPSERT_GRAPH_NODE_TOOL,
-            r#"Create or update one semantic graph node in this Beryl workspace and assign its hard-forest parent or root-level placement atomically. Use parentId=null for a root-level node. Use topic=true for ordinary work topics, checklist=true for checklist containers, and checklistItem=true plus checklistItemStatus for checklist rows. Example arguments: {"nodeId":"root","parentId":null,"title":"Root","summary":"Workspace root topic.","topic":true,"checklist":false,"checklistItem":false}"#,
+            r#"Create or update one semantic graph node in this Beryl workspace and assign its hard-forest parent or root-level placement atomically. Use parentId=null for a root-level topic. Use topic=true for ordinary work topics, and checklistItem=true plus checklistItemStatus for checklist rows. checklistItemKind is optional for checklist rows; omit it on updates to preserve the existing kind. Example arguments: {"nodeId":"root","parentId":null,"title":"Root","summary":"Workspace root topic.","topic":true,"checklistItem":false}"#,
             upsert_graph_node_schema(),
         ),
         graph_tool_spec(

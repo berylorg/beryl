@@ -6,8 +6,9 @@ use std::{
 use beryl_model::workspace::BerylWorkspaceId;
 
 use crate::{
-    BerylWorkspacePersistence, NodeLeafDeleteRequest, NodeSubtreeDeleteRequest,
-    ThreadRefUpsertRequest, WorkspaceGraphRevision, WorkspaceGraphToolService,
+    BerylWorkspacePersistence, GraphPatchWriteRequest, NodeLeafDeleteRequest,
+    NodeSubtreeDeleteRequest, ThreadRefUpsertRequest, WorkspaceGraphRevision,
+    WorkspaceGraphToolService,
 };
 use beryl_model::semantic_graph::SemanticGraph;
 use beryl_model::workspace::BerylWorkspaceManifest;
@@ -121,6 +122,48 @@ pub(super) fn spawn_node_leaf_delete_worker(
     task
 }
 
+pub(super) fn spawn_graph_patch_worker(
+    persistence: BerylWorkspacePersistence,
+    workspace_id: BerylWorkspaceId,
+    request: GraphPatchWriteRequest,
+    optimistic_mutation_id: Option<OptimisticGraphMutationId>,
+    no_op_message: impl Into<String>,
+) -> GraphWorkerTask {
+    let no_op_message = no_op_message.into();
+    let (sender, receiver) = mpsc::channel();
+    let task = GraphWorkerTask::new(workspace_id.clone(), optimistic_mutation_id, receiver);
+    thread::spawn(move || {
+        let update = graph_worker_update(
+            workspace_id,
+            optimistic_mutation_id,
+            run_graph_patch(&persistence, &request, no_op_message),
+        );
+        let _ = sender.send(GraphUpdate::MutationFinished(update));
+    });
+    task
+}
+
+pub(super) fn spawn_threaded_decision_graph_patch_worker(
+    persistence: BerylWorkspacePersistence,
+    workspace_id: BerylWorkspaceId,
+    request: GraphPatchWriteRequest,
+    optimistic_mutation_id: Option<OptimisticGraphMutationId>,
+    no_op_message: impl Into<String>,
+) -> GraphWorkerTask {
+    let no_op_message = no_op_message.into();
+    let (sender, receiver) = mpsc::channel();
+    let task = GraphWorkerTask::new(workspace_id.clone(), optimistic_mutation_id, receiver);
+    thread::spawn(move || {
+        let update = graph_worker_update(
+            workspace_id,
+            optimistic_mutation_id,
+            run_threaded_decision_graph_patch(&persistence, &request, no_op_message),
+        );
+        let _ = sender.send(GraphUpdate::MutationFinished(update));
+    });
+    task
+}
+
 pub(super) fn spawn_graph_reload_worker(
     persistence: BerylWorkspacePersistence,
     workspace_id: BerylWorkspaceId,
@@ -156,6 +199,38 @@ fn graph_worker_update(
             None => GraphMutationUpdate::failure(workspace_id, error),
         },
     }
+}
+
+fn run_graph_patch(
+    persistence: &BerylWorkspacePersistence,
+    request: &GraphPatchWriteRequest,
+    no_op_message: String,
+) -> Result<GraphMutationCommitUpdate, String> {
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let response = service
+        .apply_graph_patch(request)
+        .map_err(|error| error.to_string())?;
+
+    Ok(GraphMutationCommitUpdate::new(
+        response.commit,
+        no_op_message,
+    ))
+}
+
+fn run_threaded_decision_graph_patch(
+    persistence: &BerylWorkspacePersistence,
+    request: &GraphPatchWriteRequest,
+    no_op_message: String,
+) -> Result<GraphMutationCommitUpdate, String> {
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let response = service
+        .apply_threaded_decision_graph_patch(request)
+        .map_err(|error| error.to_string())?;
+
+    Ok(GraphMutationCommitUpdate::new(
+        response.commit,
+        no_op_message,
+    ))
 }
 
 fn run_thread_ref_link(

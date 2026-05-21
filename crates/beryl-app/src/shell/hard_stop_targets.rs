@@ -102,7 +102,8 @@ impl HardStopTargetProjection {
             {
                 self.finish_thread(thread_id)
             }
-            TurnStreamEvent::ThreadClosed { thread_id } => self.finish_thread(thread_id),
+            TurnStreamEvent::ThreadClosed { thread_id }
+            | TurnStreamEvent::ThreadArchived { thread_id } => self.finish_thread(thread_id),
             TurnStreamEvent::ProtocolError { .. } => self.clear_active_targets(),
             _ => false,
         }

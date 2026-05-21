@@ -1,19 +1,24 @@
-use super::super::thread_title::ThreadTitleCandidate;
+use super::super::thread_title::{ThreadTitleCandidate, TurnThreadTitleMode};
 
 pub(super) fn automatic_thread_title_candidate(
     thread_id: &str,
     user_input: &str,
-    automatic_title_generation_allowed: bool,
+    title_mode: TurnThreadTitleMode,
     backend_thread_name: Option<&str>,
 ) -> Option<ThreadTitleCandidate> {
-    if !automatic_thread_title_generation_is_eligible(
-        automatic_title_generation_allowed,
-        backend_thread_name,
-    ) {
-        return None;
-    }
+    match title_mode {
+        TurnThreadTitleMode::Disabled => None,
+        TurnThreadTitleMode::AutomaticIfMissing => {
+            if !automatic_thread_title_generation_is_eligible(true, backend_thread_name) {
+                return None;
+            }
 
-    ThreadTitleCandidate::new(thread_id.to_string(), user_input.to_string())
+            ThreadTitleCandidate::new(thread_id.to_string(), user_input.to_string())
+        }
+        TurnThreadTitleMode::BranchRetitleAfterFirstUserTurn => {
+            ThreadTitleCandidate::new(thread_id.to_string(), user_input.to_string())
+        }
+    }
 }
 
 pub(crate) fn automatic_thread_title_generation_is_eligible(

@@ -6,6 +6,7 @@ use std::{
 
 use beryl_model::{
     conversation::WorkspaceConversationState,
+    threaded_decision::ThreadedDecisionState,
     workspace::{BerylWorkspaceId, BerylWorkspaceManifest, WorkspaceId},
 };
 
@@ -40,6 +41,7 @@ pub(super) struct WorkspacePickerOpenedWorkspace {
     pub(super) workspace_picker_member_paths: WorkspacePickerMemberPaths,
     pub(super) workspace_state: WorkspaceConversationState,
     pub(super) workspace_ui_state: WorkspaceUiState,
+    pub(super) threaded_decision_state: ThreadedDecisionState,
     pub(super) graph_upkeep_policy: WorkspaceGraphUpkeepPolicy,
 }
 
@@ -48,6 +50,7 @@ pub(super) struct WorkspacePickerDeletionOutcome {
     pub(super) replacement_workspace: Option<BerylWorkspaceManifest>,
     pub(super) replacement_workspace_state: Option<WorkspaceConversationState>,
     pub(super) replacement_workspace_ui_state: Option<WorkspaceUiState>,
+    pub(super) replacement_threaded_decision_state: Option<ThreadedDecisionState>,
     pub(super) replacement_graph_upkeep_policy: Option<WorkspaceGraphUpkeepPolicy>,
     pub(super) known_workspaces: Vec<BerylWorkspaceManifest>,
     pub(super) workspace_picker_member_paths: WorkspacePickerMemberPaths,
@@ -167,6 +170,9 @@ fn create_workspace_for_target(
     let workspace_ui_state = workspace_persistence
         .load_workspace_ui_state(workspace.id())
         .map_err(|error| error.to_string())?;
+    let threaded_decision_state = workspace_persistence
+        .load_workspace_threaded_decision_state(workspace.id())
+        .map_err(|error| error.to_string())?;
     let graph_upkeep_policy = workspace_persistence
         .load_workspace_graph_upkeep_policy(workspace.id())
         .map_err(|error| error.to_string())?;
@@ -198,6 +204,7 @@ fn create_workspace_for_target(
         workspace_picker_member_paths,
         workspace_state,
         workspace_ui_state,
+        threaded_decision_state,
         graph_upkeep_policy,
     })
 }
@@ -226,6 +233,9 @@ fn switch_workspace_for_picker(
     }
     let workspace_ui_state = workspace_persistence
         .load_workspace_ui_state(&workspace_id)
+        .map_err(|error| error.to_string())?;
+    let threaded_decision_state = workspace_persistence
+        .load_workspace_threaded_decision_state(&workspace_id)
         .map_err(|error| error.to_string())?;
     let graph_upkeep_policy = workspace_persistence
         .load_workspace_graph_upkeep_policy(&workspace_id)
@@ -266,6 +276,7 @@ fn switch_workspace_for_picker(
         workspace_picker_member_paths,
         workspace_state,
         workspace_ui_state,
+        threaded_decision_state,
         graph_upkeep_policy,
     })
 }
@@ -303,6 +314,16 @@ fn delete_workspace_for_picker(
             Some(
                 workspace_persistence
                     .load_workspace_ui_state(replacement_workspace.id())
+                    .map_err(|error| error.to_string())?,
+            )
+        } else {
+            None
+        };
+    let replacement_threaded_decision_state =
+        if let Some(replacement_workspace) = replacement_workspace.as_ref() {
+            Some(
+                workspace_persistence
+                    .load_workspace_threaded_decision_state(replacement_workspace.id())
                     .map_err(|error| error.to_string())?,
             )
         } else {
@@ -349,6 +370,7 @@ fn delete_workspace_for_picker(
         replacement_workspace,
         replacement_workspace_state,
         replacement_workspace_ui_state,
+        replacement_threaded_decision_state,
         replacement_graph_upkeep_policy,
         known_workspaces,
         workspace_picker_member_paths,

@@ -19,8 +19,11 @@ impl SemanticGraph {
             .collect()
     }
 
-    pub fn checklist_items(&self, checklist_node_id: &SemanticNodeId) -> Vec<&SemanticNode> {
-        self.child_nodes_of(checklist_node_id)
+    pub fn checklist_item_children_of(&self, parent_id: &SemanticNodeId) -> Vec<&SemanticNode> {
+        self.child_nodes_of(parent_id)
+            .into_iter()
+            .filter(|node| node.facets().has_checklist_item())
+            .collect()
     }
 
     pub fn path_to_root(&self, node_id: &SemanticNodeId) -> Option<Vec<&SemanticNode>> {

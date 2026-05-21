@@ -3,6 +3,7 @@ use beryl_model::{
     semantic_graph::{
         ChecklistItemStatus, SemanticGraph, SemanticNode, SemanticNodeId, SoftLink, ThreadRef,
     },
+    threaded_decision::ThreadedDecisionState,
     workspace::WorkspaceId,
 };
 use gpui::{
@@ -17,6 +18,9 @@ use crate::{
         graph::{DEFAULT_GRAPH_COLUMN_EXPANDED_DEPTH, GraphColumnSelection, GraphColumnState},
         layout,
         thread_selection::graph_thread_ref_availability,
+    },
+    threaded_decision_graph_presentation::{
+        DecisionGraphBadge, DecisionGraphBadgeTone, decision_item_badges, decision_thread_ref_badge,
     },
 };
 
@@ -70,6 +74,7 @@ impl GraphNodePalette {
 pub(super) fn render_graph_node_tree(
     shell: &ShellRenderFrame<'_>,
     workspace_state: &WorkspaceConversationState,
+    threaded_decision_state: &ThreadedDecisionState,
     implicit_home_execution_target: Option<&WorkspaceId>,
     column_index: usize,
     column: &GraphColumnState,
@@ -102,6 +107,7 @@ pub(super) fn render_graph_node_tree(
             shell,
             column_index,
             node,
+            threaded_decision_state,
             depth,
             !children.is_empty() || has_attached_rows,
             expanded,
@@ -132,6 +138,7 @@ pub(super) fn render_graph_node_tree(
             rows = rows.child(render_graph_thread_ref_row(
                 shell,
                 workspace_state,
+                threaded_decision_state,
                 implicit_home_execution_target,
                 column_index,
                 thread_ref,
@@ -144,6 +151,7 @@ pub(super) fn render_graph_node_tree(
             rows = rows.child(render_graph_node_tree(
                 shell,
                 workspace_state,
+                threaded_decision_state,
                 implicit_home_execution_target,
                 column_index,
                 column,
@@ -164,6 +172,7 @@ fn render_graph_node_row(
     shell: &ShellRenderFrame<'_>,
     column_index: usize,
     node: &SemanticNode,
+    threaded_decision_state: &ThreadedDecisionState,
     depth: usize,
     has_children: bool,
     expanded: bool,
@@ -177,7 +186,37 @@ fn render_graph_node_row(
     let summary = node.summary().trim().to_string();
     let palette = graph_node_palette(shell, node);
     let status = node.checklist_item_status();
+    let decision_badges = decision_item_badges(node, threaded_decision_state);
     let tooltip_theme = GraphSummaryTooltipTheme::from_shell(shell);
+    let mut title_content = div()
+        .w_full()
+        .min_w(px(0.0))
+        .flex()
+        .items_center()
+        .gap_2()
+        .when_some(status, |title_row, status| {
+            title_row.child(render_checklist_item_status_marker(shell, status))
+        })
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex_1()
+                .text_sm()
+                .font_weight(palette.font_weight(selected))
+                .text_color(palette.foreground(selected))
+                .whitespace_nowrap()
+                .truncate()
+                .child(node.title().to_string()),
+        );
+    if !decision_badges.is_empty() {
+        title_content = title_content.child(render_decision_item_badges(
+            shell,
+            column_index,
+            node.id().clone(),
+            decision_badges,
+            cx,
+        ));
+    }
     let mut title_hitbox = div()
         .id((
             ElementId::from(("graph-node-row", column_index)),
@@ -186,28 +225,7 @@ fn render_graph_node_row(
         .flex_1()
         .min_w(px(0.0))
         .cursor_pointer()
-        .child(
-            div()
-                .w_full()
-                .min_w(px(0.0))
-                .flex()
-                .items_center()
-                .gap_0()
-                .when_some(status, |title_row, status| {
-                    title_row.child(render_checklist_item_status_marker(shell, status))
-                })
-                .child(
-                    div()
-                        .min_w(px(0.0))
-                        .flex_1()
-                        .text_sm()
-                        .font_weight(palette.font_weight(selected))
-                        .text_color(palette.foreground(selected))
-                        .whitespace_nowrap()
-                        .truncate()
-                        .child(node.title().to_string()),
-                ),
-        )
+        .child(title_content)
         .on_click(cx.listener(move |view, event, window, cx| {
             view.handle_graph_node_click(column_index, node_id.clone(), event, window, cx);
         }));
@@ -363,6 +381,7 @@ fn render_graph_soft_link_row(
 fn render_graph_thread_ref_row(
     shell: &ShellRenderFrame<'_>,
     workspace_state: &WorkspaceConversationState,
+    threaded_decision_state: &ThreadedDecisionState,
     implicit_home_execution_target: Option<&WorkspaceId>,
     column_index: usize,
     thread_ref: &ThreadRef,
@@ -370,12 +389,14 @@ fn render_graph_thread_ref_row(
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let thread_ref_id = thread_ref.id().clone();
+    let thread_ref_key = stable_id_key(thread_ref.id().as_str());
     let thread_id = thread_ref.thread_id().as_str().to_string();
     let execution_target = thread_ref.execution_target().clone();
     let label = thread_ref.label().to_string();
     let availability =
         graph_thread_ref_availability(workspace_state, thread_ref, implicit_home_execution_target);
     let invalid_reason = availability.reason().map(str::to_string);
+    let decision_badge = decision_thread_ref_badge(threaded_decision_state, thread_ref);
     let normal_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRef);
     let normal_text_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRefText);
     let meta_text_style = graph_role_style(shell, BerylThemeRole::GraphRowThreadRefMeta);
@@ -454,6 +475,16 @@ fn render_graph_thread_ref_row(
                                         )),
                                 ),
                         )
+                        .when_some(decision_badge, |this, badge| {
+                            this.child(render_decision_badge(
+                                shell,
+                                ElementId::from((
+                                    ElementId::from("graph-thread-ref-decision-badge"),
+                                    thread_ref_key.clone(),
+                                )),
+                                badge,
+                            ))
+                        })
                         .when_some(invalid_reason, |this, reason| {
                             this.child(render_invalid_thread_ref_actions(
                                 shell,
@@ -465,6 +496,124 @@ fn render_graph_thread_ref_row(
                         }),
                 ),
         )
+}
+
+fn render_decision_item_badges(
+    shell: &ShellRenderFrame<'_>,
+    column_index: usize,
+    node_id: SemanticNodeId,
+    badges: Vec<DecisionGraphBadge>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    let mut row = div().flex_none().flex().items_center().gap_1();
+    let node_id_key = stable_id_key(node_id.as_str());
+    for (index, badge) in badges.into_iter().enumerate() {
+        let badge_id = ElementId::from((
+            ElementId::from((
+                ElementId::from(("graph-decision-item-badge", column_index)),
+                node_id_key.clone(),
+            )),
+            index.to_string(),
+        ));
+        row = row.child(render_decision_item_badge(
+            shell,
+            badge_id,
+            node_id.clone(),
+            badge,
+            cx,
+        ));
+    }
+    row
+}
+
+fn render_decision_item_badge(
+    shell: &ShellRenderFrame<'_>,
+    id: ElementId,
+    node_id: SemanticNodeId,
+    badge: DecisionGraphBadge,
+    cx: &mut Context<ShellView>,
+) -> AnyElement {
+    let label = badge.label();
+    let mut pill = decision_badge_base(shell, id, badge);
+    match label {
+        "active" => {
+            pill = pill
+                .cursor_pointer()
+                .on_click(cx.listener(move |view, event, window, cx| {
+                    view.open_active_decision_branch_from_graph_row(
+                        node_id.clone(),
+                        event,
+                        window,
+                        cx,
+                    );
+                }));
+        }
+        "accepted" | "rejected" | "closed" | "checklist retry" => {
+            pill = pill
+                .cursor_pointer()
+                .on_click(cx.listener(move |view, event, window, cx| {
+                    view.open_decision_handoff_from_graph_row(node_id.clone(), event, window, cx);
+                }));
+        }
+        _ => {}
+    }
+    pill.into_any_element()
+}
+
+fn render_decision_badge(
+    shell: &ShellRenderFrame<'_>,
+    id: impl Into<ElementId>,
+    badge: DecisionGraphBadge,
+) -> impl IntoElement {
+    decision_badge_base(shell, id.into(), badge)
+}
+
+fn decision_badge_base(
+    shell: &ShellRenderFrame<'_>,
+    id: ElementId,
+    badge: DecisionGraphBadge,
+) -> gpui::Stateful<gpui::Div> {
+    let (surface_style, text_style) = decision_badge_styles(shell, badge.tone());
+    div()
+        .id(id)
+        .max_w(px(96.0))
+        .flex_none()
+        .rounded_sm()
+        .border_1()
+        .border_color(surface_style.border)
+        .bg(surface_style.background)
+        .px_1()
+        .py_0()
+        .text_xs()
+        .font_weight(text_style.font_weight)
+        .text_color(text_style.foreground)
+        .whitespace_nowrap()
+        .truncate()
+        .child(badge.label())
+}
+
+fn decision_badge_styles(
+    shell: &ShellRenderFrame<'_>,
+    tone: DecisionGraphBadgeTone,
+) -> (GraphRoleStyle, GraphRoleStyle) {
+    match tone {
+        DecisionGraphBadgeTone::Neutral => (
+            graph_role_style(shell, BerylThemeRole::GraphRowDisabled),
+            graph_role_style(shell, BerylThemeRole::GraphRowDisabledText),
+        ),
+        DecisionGraphBadgeTone::Pending => (
+            graph_role_style(shell, BerylThemeRole::GraphRowPending),
+            graph_role_style(shell, BerylThemeRole::GraphRowPendingText),
+        ),
+        DecisionGraphBadgeTone::Warning => (
+            graph_role_style(shell, BerylThemeRole::GraphRowInvalid),
+            graph_role_style(shell, BerylThemeRole::GraphRowInvalidText),
+        ),
+        DecisionGraphBadgeTone::Error => (
+            graph_role_style(shell, BerylThemeRole::GraphRowError),
+            graph_role_style(shell, BerylThemeRole::GraphRowErrorText),
+        ),
+    }
 }
 
 fn render_invalid_thread_ref_actions(
@@ -616,16 +765,12 @@ fn render_checklist_item_status_marker(
 }
 
 fn graph_node_palette(shell: &ShellRenderFrame<'_>, node: &SemanticNode) -> GraphNodePalette {
-    let surface_role = if node.facets().has_checklist() {
-        BerylThemeRole::GraphRowChecklist
-    } else if node.facets().has_checklist_item() {
+    let surface_role = if node.facets().has_checklist_item() {
         BerylThemeRole::GraphRowChecklistItem
     } else {
         BerylThemeRole::GraphRowTopic
     };
-    let text_role = if node.facets().has_checklist() {
-        BerylThemeRole::GraphRowChecklistText
-    } else if node.facets().has_checklist_item() {
+    let text_role = if node.facets().has_checklist_item() {
         BerylThemeRole::GraphRowChecklistItemText
     } else {
         BerylThemeRole::GraphRowTopicText

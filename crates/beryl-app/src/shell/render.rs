@@ -1,4 +1,3 @@
-pub(super) mod checklist_sidebar;
 mod code_panel;
 mod code_panel_projection_cache;
 mod code_panel_syntax;
@@ -55,7 +54,6 @@ impl Render for ShellView {
                 shell,
                 ready,
                 &self.transcript_panel,
-                &self.checklist_sidebar_panel,
                 &self.wsl_distro_input,
                 &self.workspace_picker_filter_input,
                 &self.workspace_rename_input,
@@ -68,7 +66,6 @@ impl Render for ShellView {
                     shell,
                     unavailable,
                     &self.transcript_panel,
-                    &self.checklist_sidebar_panel,
                     &self.wsl_distro_input,
                     &self.workspace_picker_filter_input,
                     &self.workspace_rename_input,
@@ -82,7 +79,6 @@ impl Render for ShellView {
                     shell,
                     blocked,
                     &self.transcript_panel,
-                    &self.checklist_sidebar_panel,
                     &self.wsl_distro_input,
                     &self.workspace_picker_filter_input,
                     &self.workspace_rename_input,

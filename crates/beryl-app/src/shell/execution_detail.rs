@@ -92,6 +92,7 @@ pub(super) enum TurnExecutionStatus {
 pub(super) enum LastTurnState {
     Unknown,
     Working,
+    Active,
     Ok,
     Error,
 }
@@ -456,10 +457,22 @@ impl ExecutionDetailState {
     }
 
     pub fn working_turn_index(&self) -> Option<usize> {
-        if let Some(index) = self.active_turn_index {
-            return Some(index);
-        }
+        let index = self.active_turn_index?;
+        self.turns
+            .get(index)
+            .is_some_and(|turn| {
+                matches!(
+                    turn.status,
+                    TurnExecutionStatus::Starting | TurnExecutionStatus::Running
+                )
+            })
+            .then_some(index)
+    }
 
+    pub fn non_owned_active_turn_index(&self) -> Option<usize> {
+        if self.active_turn_index.is_some() {
+            return None;
+        }
         self.turns
             .last()
             .is_some_and(|turn| {
@@ -469,6 +482,10 @@ impl ExecutionDetailState {
                 )
             })
             .then(|| self.turns.len().saturating_sub(1))
+    }
+
+    pub fn has_backend_active_turn(&self) -> bool {
+        self.working_turn_index().is_some() || self.non_owned_active_turn_index().is_some()
     }
 
     pub fn active_turn_identity(&self) -> Option<ActiveTurnIdentity> {
@@ -486,14 +503,14 @@ impl ExecutionDetailState {
     }
 
     pub fn last_turn_state(&self) -> LastTurnState {
-        if self.active_turn_index.is_some() {
+        if self.working_turn_index().is_some() {
             return LastTurnState::Working;
         }
 
         match self.turns.last().map(|turn| turn.status) {
             None | Some(TurnExecutionStatus::Queued) => LastTurnState::Unknown,
             Some(TurnExecutionStatus::Starting | TurnExecutionStatus::Running) => {
-                LastTurnState::Working
+                LastTurnState::Active
             }
             Some(TurnExecutionStatus::Completed) => LastTurnState::Ok,
             Some(TurnExecutionStatus::Interrupted | TurnExecutionStatus::Failed) => {
@@ -849,6 +866,8 @@ impl ExecutionDetailState {
                 TurnStreamEvent::AccountRateLimitsUpdated { .. } => {}
                 TurnStreamEvent::ThreadNameUpdated { .. } => {}
                 TurnStreamEvent::ThreadClosed { .. } => {}
+                TurnStreamEvent::ThreadArchived { .. } => {}
+                TurnStreamEvent::ThreadUnarchived { .. } => {}
                 TurnStreamEvent::ApprovalRequested(_) => {}
                 TurnStreamEvent::DynamicToolCallRequested(_) => {}
                 TurnStreamEvent::ProtocolError { .. } => {}
@@ -869,6 +888,8 @@ fn stream_event_matches_active_turn(turn: &TurnExecutionRecord, event: &TurnStre
         TurnStreamEvent::AgentLabelUpdated { thread_id, .. }
         | TurnStreamEvent::ThreadStatusChanged { thread_id, .. }
         | TurnStreamEvent::ThreadClosed { thread_id }
+        | TurnStreamEvent::ThreadArchived { thread_id }
+        | TurnStreamEvent::ThreadUnarchived { thread_id }
         | TurnStreamEvent::ThreadNameUpdated { thread_id, .. } => {
             turn.thread_id.as_deref() == Some(thread_id.as_str())
         }
@@ -974,6 +995,7 @@ impl LastTurnState {
         match self {
             Self::Unknown => "Unknown",
             Self::Working => "working",
+            Self::Active => "active",
             Self::Ok => "ok",
             Self::Error => "error",
         }

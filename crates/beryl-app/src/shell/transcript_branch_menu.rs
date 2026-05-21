@@ -11,7 +11,9 @@ use super::{
         TranscriptThreadTitleUpdateRequest, TranscriptThreadTitleUpdateTarget,
         transcript_branch_menu_can_open, transcript_thread_title_update_menu_entry,
     },
-    transcript_branch_worker::spawn_transcript_branch_worker,
+    transcript_branch_worker::{
+        spawn_foreground_transcript_branch_worker, spawn_transcript_branch_worker,
+    },
     transcript_edit_menu_state::{
         TranscriptEditMenuEntry, TranscriptEditMenuGate, TranscriptEditTarget,
         transcript_edit_menu_entry,
@@ -238,7 +240,7 @@ impl ShellView {
         transcript_thread_title_update_menu_entry(target, gate)
     }
 
-    fn thread_has_manual_gui_title(&self, thread_id: &str) -> bool {
+    pub(super) fn thread_has_manual_gui_title(&self, thread_id: &str) -> bool {
         self.workspace_shell_state()
             .and_then(|loaded| {
                 loaded
@@ -339,7 +341,6 @@ impl ShellView {
 
         surface.thread_selector_mut().close();
         surface.graph_thread_link_menu_mut().close();
-        surface.checklist_thread_start_menu_mut().close();
         surface.status_line_operations_mut().close();
         surface
             .transcript_branch_menu_mut()
@@ -589,12 +590,58 @@ impl ShellView {
             return;
         };
 
-        self.transcript_branch_receiver = Some(spawn_transcript_branch_worker(
-            connector,
-            request,
-            self.bootstrap.probe_timeout(),
-        ));
+        let parent_thread_title =
+            self.transcript_branch_parent_thread_title(request.target().source_thread_id());
+        let request = request.with_parent_thread_title(parent_thread_title);
+        match request.action() {
+            TranscriptBranchAction::Background => {
+                self.transcript_branch_receiver = Some(spawn_transcript_branch_worker(
+                    connector,
+                    request,
+                    self.bootstrap.probe_timeout(),
+                ));
+            }
+            TranscriptBranchAction::SwitchTo => {
+                let Some(execution_target) = self.current_ready_execution_target_for_branch()
+                else {
+                    self.set_transcript_branch_notice(
+                        "Thread branch unavailable",
+                        "Beryl cannot foreground a branch when the workspace is not ready.",
+                    );
+                    return;
+                };
+                self.foreground_transcript_branch = Some(
+                    super::transcript_branch_core::ForegroundTranscriptBranchState::starting(
+                        &request,
+                    ),
+                );
+                self.turn_receiver = Some(spawn_foreground_transcript_branch_worker(
+                    connector,
+                    request,
+                    execution_target,
+                    self.bootstrap.probe_timeout(),
+                ));
+            }
+        }
         self.schedule_poll_if_needed(window, cx);
+    }
+
+    fn transcript_branch_parent_thread_title(&self, source_thread_id: &str) -> Option<String> {
+        let source_thread_id = ConversationThreadId::new(source_thread_id.to_string());
+        let loaded = self.workspace_shell_state()?;
+        let thread = loaded
+            .workspace_state
+            .thread_registration(&source_thread_id)?;
+
+        Some(crate::member_thread_inventory::resolved_thread_title(
+            &loaded.workspace_state,
+            &source_thread_id,
+            thread.execution_target(),
+            thread.preview(),
+            thread.backend_name(),
+            thread.created_at_millis(),
+            thread.updated_at_millis(),
+        ))
     }
 
     fn dispatch_transcript_thread_title_update_request(
@@ -685,10 +732,11 @@ impl ShellView {
             return;
         }
 
+        self.mark_branch_thread_title_retitle_finished(target.source_thread_id());
         self.schedule_poll_if_needed(window, cx);
     }
 
-    fn transcript_branch_capability_available(&self) -> bool {
+    pub(super) fn transcript_branch_capability_available(&self) -> bool {
         match &self.state {
             ShellState::Ready(ready) => {
                 ready.report.thread_branch_capabilities().thread_branching()

@@ -339,6 +339,8 @@ pub struct ThreadListOptions {
     pub cursor: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<bool>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cwd: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -385,6 +387,16 @@ impl ThreadListOptions {
         P: Into<PathBuf>,
     {
         self.cwd.extend(cwds.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn archived(mut self) -> Self {
+        self.archived = Some(true);
+        self
+    }
+
+    pub fn non_archived(mut self) -> Self {
+        self.archived = Some(false);
         self
     }
 

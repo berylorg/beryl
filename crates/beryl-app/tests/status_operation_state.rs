@@ -8,6 +8,10 @@ mod status_line;
 mod execution_detail;
 
 #[allow(dead_code)]
+#[path = "../src/shell/thread_title.rs"]
+mod thread_title;
+
+#[allow(dead_code)]
 #[path = "../src/shell/pending_turn_input.rs"]
 mod pending_turn_input;
 

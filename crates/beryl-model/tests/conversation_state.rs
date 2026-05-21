@@ -1,8 +1,9 @@
 use beryl_model::conversation::{
-    ConversationThreadId, ConversationThreadMemberBinding, ConversationThreadTitleSource,
-    ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown, ConversationTurnId,
-    PrimaryWorkspaceMember, RegisteredConversationThread, ThreadAutomaticTitleGenerationState,
-    WorkspaceConversationState, WorkspaceConversationStateError,
+    BranchThreadTitleRetitleState, ConversationThreadId, ConversationThreadMemberBinding,
+    ConversationThreadTitleSource, ConversationThreadTokenUsageSnapshot,
+    ConversationTokenUsageBreakdown, ConversationTurnId, PrimaryWorkspaceMember,
+    RegisteredConversationThread, ThreadAutomaticTitleGenerationState, WorkspaceConversationState,
+    WorkspaceConversationStateError,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId, WorkspaceMemberAvailability};
 
@@ -690,6 +691,80 @@ fn automatic_thread_title_generation_lifecycle_distinguishes_retryable_and_termi
         ThreadAutomaticTitleGenerationState::Applied
     );
     assert!(!state.thread_automatic_title_generation_eligible(&thread_id));
+}
+
+#[test]
+fn transcript_branch_bootstrap_metadata_and_retitle_state_survive_thread_refresh() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let parent_thread_id = ConversationThreadId::new("parent_thread");
+    let thread_id = ConversationThreadId::new("branch_thread");
+    let source_turn_id = ConversationTurnId::new("source_turn");
+    let bootstrap_turn_id = ConversationTurnId::new("bootstrap_turn");
+    let mut state = WorkspaceConversationState::default();
+
+    state.remember_thread(
+        RegisteredConversationThread::new(
+            thread_id.clone(),
+            execution_target.clone(),
+            "Branch preview",
+            None,
+            1,
+            2,
+        )
+        .with_beryl_created()
+        .with_branch_parent_thread_id(parent_thread_id.clone())
+        .with_transcript_branch_bootstrap(source_turn_id.clone(), Some(bootstrap_turn_id.clone())),
+    );
+
+    let thread = state.thread_registration(&thread_id).unwrap();
+    assert_eq!(thread.branch_parent_thread_id(), Some(&parent_thread_id));
+    assert_eq!(thread.branch_source_turn_id(), Some(&source_turn_id));
+    assert_eq!(thread.branch_bootstrap_turn_id(), Some(&bootstrap_turn_id));
+    assert_eq!(
+        thread.branch_title_retitle_state(),
+        BranchThreadTitleRetitleState::AwaitingFirstRealUserTurn
+    );
+    assert!(state.thread_branch_title_retitle_pending(&thread_id));
+
+    assert!(
+        state
+            .mark_thread_branch_title_retitle_started(&thread_id)
+            .unwrap()
+    );
+    assert_eq!(
+        state
+            .thread_registration(&thread_id)
+            .unwrap()
+            .branch_title_retitle_state(),
+        BranchThreadTitleRetitleState::RetitleInFlight
+    );
+
+    state.remember_thread(RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target,
+        "Refreshed preview",
+        None,
+        10,
+        20,
+    ));
+    let thread = state.thread_registration(&thread_id).unwrap();
+    assert_eq!(thread.branch_parent_thread_id(), Some(&parent_thread_id));
+    assert_eq!(thread.branch_source_turn_id(), Some(&source_turn_id));
+    assert_eq!(thread.branch_bootstrap_turn_id(), Some(&bootstrap_turn_id));
+    assert_eq!(
+        thread.branch_title_retitle_state(),
+        BranchThreadTitleRetitleState::RetitleInFlight
+    );
+
+    let serialized = serde_json::to_string(&state).unwrap();
+    assert!(serialized.contains("\"branch_parent_thread_id\":\"parent_thread\""));
+
+    assert!(
+        state
+            .mark_thread_branch_title_retitle_finished(&thread_id)
+            .unwrap()
+    );
+    assert!(!state.thread_branch_title_retitle_pending(&thread_id));
 }
 
 #[test]

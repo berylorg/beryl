@@ -45,6 +45,7 @@ pub(crate) enum TranscriptBranchAction {
 pub(crate) struct TranscriptBranchRequest {
     action: TranscriptBranchAction,
     target: TranscriptBranchTarget,
+    parent_thread_title: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -215,7 +216,11 @@ impl TranscriptBranchMenuState {
         action: TranscriptBranchAction,
     ) -> Option<TranscriptBranchRequest> {
         let target = self.open.take()?.branch_target?;
-        Some(TranscriptBranchRequest { action, target })
+        Some(TranscriptBranchRequest {
+            action,
+            target,
+            parent_thread_title: None,
+        })
     }
 
     pub(crate) fn accept_edit(&mut self) -> Option<TranscriptEditRequest> {
@@ -282,6 +287,30 @@ impl TranscriptBranchMenuOpen {
 }
 
 impl TranscriptBranchTarget {
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        source_thread_id: impl Into<String>,
+        source_turn_id: impl Into<String>,
+        source_turn_index: usize,
+        title_seed_fragments: Vec<String>,
+    ) -> Option<Self> {
+        let source_thread_id = source_thread_id.into();
+        let source_turn_id = source_turn_id.into();
+        if source_thread_id.trim().is_empty()
+            || source_turn_id.trim().is_empty()
+            || title_seed_fragments.is_empty()
+        {
+            return None;
+        }
+
+        Some(Self {
+            source_thread_id,
+            source_turn_id,
+            source_turn_index,
+            title_seed_fragments,
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(
         source_thread_id: impl Into<String>,
@@ -289,12 +318,13 @@ impl TranscriptBranchTarget {
         source_turn_index: usize,
         title_seed_fragments: Vec<String>,
     ) -> Self {
-        Self {
-            source_thread_id: source_thread_id.into(),
-            source_turn_id: source_turn_id.into(),
+        Self::new(
+            source_thread_id,
+            source_turn_id,
             source_turn_index,
             title_seed_fragments,
-        }
+        )
+        .expect("test transcript branch target must be valid")
     }
 
     pub(crate) fn from_presented_row(row: &TranscriptPresentedRow) -> Option<Self> {
@@ -342,9 +372,22 @@ impl TranscriptBranchTarget {
 }
 
 impl TranscriptBranchRequest {
+    #[allow(dead_code)]
+    pub(crate) fn new(action: TranscriptBranchAction, target: TranscriptBranchTarget) -> Self {
+        Self {
+            action,
+            target,
+            parent_thread_title: None,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(action: TranscriptBranchAction, target: TranscriptBranchTarget) -> Self {
-        Self { action, target }
+        Self {
+            action,
+            target,
+            parent_thread_title: None,
+        }
     }
 
     pub(crate) fn action(&self) -> TranscriptBranchAction {
@@ -353,6 +396,18 @@ impl TranscriptBranchRequest {
 
     pub(crate) fn target(&self) -> &TranscriptBranchTarget {
         &self.target
+    }
+
+    pub(crate) fn parent_thread_title(&self) -> Option<&str> {
+        self.parent_thread_title.as_deref()
+    }
+
+    pub(crate) fn with_parent_thread_title(mut self, title: Option<String>) -> Self {
+        self.parent_thread_title = title.and_then(|title| {
+            let title = title.trim().to_string();
+            (!title.is_empty()).then_some(title)
+        });
+        self
     }
 }
 

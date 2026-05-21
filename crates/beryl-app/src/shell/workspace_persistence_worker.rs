@@ -13,6 +13,7 @@ use beryl_model::{
     conversation::{
         ConversationThreadId, ConversationThreadTokenUsageSnapshot, WorkspaceConversationState,
     },
+    threaded_decision::ThreadedDecisionState,
     workspace::BerylWorkspaceId,
 };
 use tracing::warn;
@@ -39,6 +40,10 @@ enum WorkspacePersistenceCommand {
     SaveWorkspaceUiState {
         workspace_id: BerylWorkspaceId,
         state: WorkspaceUiState,
+    },
+    SaveThreadedDecisionState {
+        workspace_id: BerylWorkspaceId,
+        state: ThreadedDecisionState,
     },
     RecordTokenUsageSnapshot {
         workspace_id: BerylWorkspaceId,
@@ -158,6 +163,31 @@ impl WorkspacePersistenceQueueState {
                     true
                 }
             }
+            WorkspacePersistenceCommand::SaveThreadedDecisionState {
+                workspace_id,
+                state,
+            } => {
+                if let Some(index) =
+                    self.threaded_decision_state_command_index(tail_start, &workspace_id)
+                {
+                    let _ = self.commands.remove(index);
+                    self.commands.push_back(
+                        WorkspacePersistenceCommand::SaveThreadedDecisionState {
+                            workspace_id,
+                            state,
+                        },
+                    );
+                    false
+                } else {
+                    self.commands.push_back(
+                        WorkspacePersistenceCommand::SaveThreadedDecisionState {
+                            workspace_id,
+                            state,
+                        },
+                    );
+                    true
+                }
+            }
             WorkspacePersistenceCommand::RecordTokenUsageSnapshot {
                 workspace_id,
                 thread_id,
@@ -269,6 +299,24 @@ impl WorkspacePersistenceQueueState {
             .skip(tail_start)
             .find_map(|(index, command)| match command {
                 WorkspacePersistenceCommand::SaveWorkspaceUiState {
+                    workspace_id: existing_workspace_id,
+                    ..
+                } if existing_workspace_id == workspace_id => Some(index),
+                _ => None,
+            })
+    }
+
+    fn threaded_decision_state_command_index(
+        &self,
+        tail_start: usize,
+        workspace_id: &BerylWorkspaceId,
+    ) -> Option<usize> {
+        self.commands
+            .iter()
+            .enumerate()
+            .skip(tail_start)
+            .find_map(|(index, command)| match command {
+                WorkspacePersistenceCommand::SaveThreadedDecisionState {
                     workspace_id: existing_workspace_id,
                     ..
                 } if existing_workspace_id == workspace_id => Some(index),
@@ -394,6 +442,25 @@ impl WorkspacePersistenceQueue {
             warn!(
                 workspace_id = workspace_id.as_str(),
                 "workspace persistence worker stopped before saving workspace UI state"
+            );
+        }
+    }
+
+    pub(super) fn save_threaded_decision_state(
+        &self,
+        workspace_id: BerylWorkspaceId,
+        state: ThreadedDecisionState,
+    ) {
+        if self
+            .send_command(WorkspacePersistenceCommand::SaveThreadedDecisionState {
+                workspace_id: workspace_id.clone(),
+                state,
+            })
+            .is_err()
+        {
+            warn!(
+                workspace_id = workspace_id.as_str(),
+                "workspace persistence worker stopped before saving threaded-decision state"
             );
         }
     }
@@ -738,6 +805,10 @@ pub(crate) enum WorkspacePersistenceCommandForTest {
         workspace_id: String,
         panel_height_px: f32,
     },
+    ThreadedDecisionState {
+        workspace_id: String,
+        record_count: usize,
+    },
     TokenSnapshot {
         workspace_id: String,
         thread_id: String,
@@ -824,6 +895,13 @@ fn workspace_persistence_command_detail_for_test(
                 state,
             }
         }
+        WorkspacePersistenceCommandForTest::ThreadedDecisionState {
+            workspace_id,
+            record_count: _,
+        } => WorkspacePersistenceCommand::SaveThreadedDecisionState {
+            workspace_id: BerylWorkspaceId::new(workspace_id).unwrap(),
+            state: ThreadedDecisionState::default(),
+        },
         WorkspacePersistenceCommandForTest::TokenSnapshot {
             workspace_id,
             thread_id,
@@ -870,6 +948,7 @@ fn workspace_persistence_command_kind_for_test(
         WorkspacePersistenceCommand::Flush { .. } => WorkspacePersistenceCommandKindForTest::Flush,
         WorkspacePersistenceCommand::SaveWorkspaceState { .. }
         | WorkspacePersistenceCommand::SaveWorkspaceUiState { .. }
+        | WorkspacePersistenceCommand::SaveThreadedDecisionState { .. }
         | WorkspacePersistenceCommand::RecordTokenUsageSnapshot { .. }
         | WorkspacePersistenceCommand::MarkImageAssetsReferenced { .. }
         | WorkspacePersistenceCommand::MarkImageAssetsRetained { .. }
@@ -898,6 +977,13 @@ fn workspace_persistence_command_detail_from_command_for_test(
         } => WorkspacePersistenceCommandForTest::WorkspaceUiState {
             workspace_id: workspace_id.as_str().to_string(),
             panel_height_px: state.tool_activity_panel_height_px(),
+        },
+        WorkspacePersistenceCommand::SaveThreadedDecisionState {
+            workspace_id,
+            state,
+        } => WorkspacePersistenceCommandForTest::ThreadedDecisionState {
+            workspace_id: workspace_id.as_str().to_string(),
+            record_count: state.records().len(),
         },
         WorkspacePersistenceCommand::RecordTokenUsageSnapshot {
             workspace_id,
@@ -993,6 +1079,13 @@ fn persist_command_batch(
                 flush_token_snapshots(persistence, &mut pending_token_snapshots);
                 persist_workspace_ui_state(persistence, workspace_id, state);
             }
+            WorkspacePersistenceCommand::SaveThreadedDecisionState {
+                workspace_id,
+                state,
+            } => {
+                flush_token_snapshots(persistence, &mut pending_token_snapshots);
+                persist_threaded_decision_state(persistence, workspace_id, state);
+            }
             WorkspacePersistenceCommand::MarkImageAssetsReferenced {
                 workspace_id,
                 asset_ids,
@@ -1083,6 +1176,20 @@ fn persist_workspace_ui_state(
     }
 }
 
+fn persist_threaded_decision_state(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: BerylWorkspaceId,
+    state: ThreadedDecisionState,
+) {
+    if let Err(error) = persistence.save_workspace_threaded_decision_state(&workspace_id, &state) {
+        warn!(
+            workspace_id = workspace_id.as_str(),
+            error = %error,
+            "failed to persist threaded-decision state"
+        );
+    }
+}
+
 fn mark_image_assets_referenced(
     persistence: &BerylWorkspacePersistence,
     workspace_id: BerylWorkspaceId,
@@ -1154,6 +1261,13 @@ fn log_persistence_unavailable(command: &WorkspacePersistenceCommand, error: &st
                 workspace_id = workspace_id.as_str(),
                 error = %error,
                 "failed to access workspace persistence while saving workspace UI state"
+            );
+        }
+        WorkspacePersistenceCommand::SaveThreadedDecisionState { workspace_id, .. } => {
+            warn!(
+                workspace_id = workspace_id.as_str(),
+                error = %error,
+                "failed to access workspace persistence while saving threaded-decision state"
             );
         }
         WorkspacePersistenceCommand::RecordTokenUsageSnapshot {

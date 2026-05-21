@@ -22,17 +22,21 @@ use crate::{
     DynamicToolCallRequest, DynamicToolCallResponse, HardStopCapabilityProbe,
     HardStopCapabilityProbeResult, HardStopCapabilityReport, HardStopTarget, HardStopTargetOutcome,
     InitializeResponse, JsonRpcError, ModelInfo, ModelListOptions, ModelListResponse,
-    ThreadBranchCapabilities, ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult,
-    ThreadBranchCapabilityReport, ThreadForkOptions, ThreadForkResponse, ThreadListResponse,
-    ThreadLoadedListResponse, ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse,
-    ThreadResumeOptions, ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions,
-    ThreadSummary, ThreadTurnsListOptions, ThreadTurnsListResponse, ThreadUnsubscribeResponse,
-    TurnStartOptions, TurnStartResponse, TurnSteerResponse, TurnStreamEvent, UserInput,
+    ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
+    ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadBranchCapabilities,
+    ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport,
+    ThreadForkOptions, ThreadForkResponse, ThreadListResponse, ThreadLoadedListResponse,
+    ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions,
+    ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions, ThreadSummary,
+    ThreadTurnsListOptions, ThreadTurnsListResponse, ThreadUnarchiveResponse,
+    ThreadUnsubscribeResponse, TurnStartOptions, TurnStartResponse, TurnSteerResponse,
+    TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
     managed_process::SupervisedBackendProcess,
     protocol::{SortDirection, ThreadListOptions, ThreadSortKey},
     response_sanitizer::{response_sanitizer_kind, sanitize_json_rpc_message},
+    thread_archive::{THREAD_ARCHIVE_CAPABILITY_PROBES, ThreadArchiveParams},
     thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
     thread_history::{ThreadReadParams, ThreadResumeParams, ThreadTurnsListParams},
     turn::{
@@ -63,6 +67,8 @@ const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "thread/started",
     "thread/status/changed",
     "thread/closed",
+    "thread/archived",
+    "thread/unarchived",
     "thread/name/updated",
     "thread/tokenUsage/updated",
     "account/rateLimits/updated",
@@ -123,6 +129,7 @@ pub struct ManagedBackendProbeReport {
     initialize: InitializeResponse,
     compatibility: CompatibilitySnapshot,
     method_successes: Vec<ProbeMethodSuccess>,
+    thread_archive_capabilities: ThreadArchiveCapabilities,
     thread_branch_capabilities: ThreadBranchCapabilities,
     config_defaults: BackendConfigDefaults,
     model_list: Vec<ModelInfo>,
@@ -702,6 +709,31 @@ impl ManagedBackendSession {
         )
     }
 
+    pub fn archive_thread(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<(), ManagedBackendError> {
+        let _: ThreadArchiveResponse = self.request(
+            "thread/archive",
+            &ThreadArchiveParams::new(thread_id),
+            timeout,
+        )?;
+        Ok(())
+    }
+
+    pub fn unarchive_thread(
+        &mut self,
+        thread_id: &str,
+        timeout: Duration,
+    ) -> Result<ThreadUnarchiveResponse, ManagedBackendError> {
+        self.request(
+            "thread/unarchive",
+            &ThreadArchiveParams::new(thread_id),
+            timeout,
+        )
+    }
+
     pub fn rollback_thread(
         &mut self,
         thread_id: &str,
@@ -894,6 +926,18 @@ impl ManagedBackendSession {
         }
 
         Ok(ThreadBranchCapabilityReport::new(results))
+    }
+
+    pub fn probe_thread_archive_capabilities(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<ThreadArchiveCapabilityReport, ManagedBackendError> {
+        let mut results = Vec::with_capacity(THREAD_ARCHIVE_CAPABILITY_PROBES.len());
+        for probe in THREAD_ARCHIVE_CAPABILITY_PROBES {
+            results.push(self.probe_thread_archive_capability(*probe, timeout)?);
+        }
+
+        Ok(ThreadArchiveCapabilityReport::new(results))
     }
 
     pub fn deny_approval_request(
@@ -1160,11 +1204,15 @@ impl ManagedBackendSession {
         let thread_branch_capabilities = self
             .probe_thread_branch_capabilities(timeout)?
             .capabilities();
+        let thread_archive_capabilities = self
+            .probe_thread_archive_capabilities(timeout)?
+            .capabilities();
 
         Ok(ManagedBackendProbeReport {
             initialize,
             compatibility,
             method_successes,
+            thread_archive_capabilities,
             thread_branch_capabilities,
             config_defaults,
             model_list,
@@ -1377,6 +1425,32 @@ impl ManagedBackendSession {
             }
             JsonRpcRequestOutcome::Error(_) => Ok(
                 ThreadBranchCapabilityProbeResult::for_supported_probe(probe),
+            ),
+        }
+    }
+
+    fn probe_thread_archive_capability(
+        &mut self,
+        probe: ThreadArchiveCapabilityProbe,
+        timeout: Duration,
+    ) -> Result<ThreadArchiveCapabilityProbeResult, ManagedBackendError> {
+        let params =
+            serde_json::to_value(ThreadArchiveParams::new(PROBE_THREAD_ID)).map_err(|source| {
+                ManagedBackendError::SerializeRequest {
+                    method: probe.method().to_string(),
+                    source,
+                }
+            })?;
+
+        match self.request_json(probe.method(), &params, timeout)? {
+            JsonRpcRequestOutcome::Result(_) => Ok(
+                ThreadArchiveCapabilityProbeResult::for_supported_probe(probe),
+            ),
+            JsonRpcRequestOutcome::Error(error) if error.code == JSONRPC_METHOD_NOT_FOUND => Ok(
+                ThreadArchiveCapabilityProbeResult::unsupported(probe, error),
+            ),
+            JsonRpcRequestOutcome::Error(_) => Ok(
+                ThreadArchiveCapabilityProbeResult::for_supported_probe(probe),
             ),
         }
     }
@@ -1846,6 +1920,10 @@ impl ManagedBackendProbeReport {
 
     pub fn method_successes(&self) -> &[ProbeMethodSuccess] {
         &self.method_successes
+    }
+
+    pub fn thread_archive_capabilities(&self) -> &ThreadArchiveCapabilities {
+        &self.thread_archive_capabilities
     }
 
     pub fn thread_branch_capabilities(&self) -> &ThreadBranchCapabilities {

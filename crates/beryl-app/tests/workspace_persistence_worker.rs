@@ -56,6 +56,14 @@ fn repeated_workspace_state_and_ui_state_commands_coalesce_before_flush() {
                 workspace_id: "workspace".to_string(),
                 panel_height_px: 240.0,
             },
+            Command::ThreadedDecisionState {
+                workspace_id: "workspace".to_string(),
+                record_count: 0,
+            },
+            Command::ThreadedDecisionState {
+                workspace_id: "workspace".to_string(),
+                record_count: 0,
+            },
             Command::Flush,
         ]),
         vec![vec![
@@ -66,6 +74,10 @@ fn repeated_workspace_state_and_ui_state_commands_coalesce_before_flush() {
             Command::WorkspaceUiState {
                 workspace_id: "workspace".to_string(),
                 panel_height_px: 240.0,
+            },
+            Command::ThreadedDecisionState {
+                workspace_id: "workspace".to_string(),
+                record_count: 0,
             },
             Command::Flush,
         ]]

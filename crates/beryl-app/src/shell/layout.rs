@@ -26,12 +26,9 @@ pub(crate) const TOOL_ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub(crate) const TOOL_ACTIVITY_OVERSCAN_ROWS: usize = 3;
 pub(crate) const TOOL_ACTIVITY_MIN_PANEL_HEIGHT: f32 = TOOL_ACTIVITY_ROW_HEIGHT;
 pub(crate) const TOOL_ACTIVITY_RESIZE_HANDLE_HEIGHT: f32 = 8.0;
-pub(crate) const CHECKLIST_SIDEBAR_ROW_HEIGHT: f32 = 56.0;
-pub(crate) const CHECKLIST_SIDEBAR_OVERSCAN_ROWS: usize = 4;
 pub(crate) const THREAD_SELECTOR_ROW_HEIGHT: f32 = 42.0;
 pub(crate) const THREAD_SELECTOR_ROW_GAP: f32 = 8.0;
 pub(crate) const THREAD_SELECTOR_OVERSCAN_ROWS: usize = 4;
-pub(crate) const PANEL_DIVIDER_WIDTH: f32 = 10.0;
 pub(crate) const PANEL_MIN_WIDTH: f32 = 100.0;
 pub(crate) const MAIN_REGION_MIN_HEIGHT: f32 = 120.0;
 pub(crate) const COMPOSER_MIN_HEIGHT: f32 = 74.0;
@@ -85,22 +82,8 @@ pub(crate) const fn button_required_outer_height() -> f32 {
     BUTTON_BORDER_WIDTH * 2.0 + BUTTON_VERTICAL_PADDING * 2.0 + BUTTON_LABEL_LINE_HEIGHT
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct SplitLayout {
-    pub(crate) left_width: Pixels,
-    pub(crate) right_width: Pixels,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ToolActivityRowWindow {
-    pub(crate) range: Range<usize>,
-    pub(crate) top_spacer_height: Pixels,
-    pub(crate) bottom_spacer_height: Pixels,
-    pub(crate) content_height: Pixels,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ChecklistSidebarRowWindow {
     pub(crate) range: Range<usize>,
     pub(crate) top_spacer_height: Pixels,
     pub(crate) bottom_spacer_height: Pixels,
@@ -135,44 +118,6 @@ struct FixedRowWindow {
     top_spacer_height: Pixels,
     bottom_spacer_height: Pixels,
     content_height: Pixels,
-}
-
-pub(crate) fn split_layout(
-    total_width: Pixels,
-    desired_sidebar_ratio: f32,
-    sidebar_visible: bool,
-) -> SplitLayout {
-    if !sidebar_visible {
-        return SplitLayout {
-            left_width: total_width.max(Pixels::ZERO),
-            right_width: Pixels::ZERO,
-        };
-    }
-
-    let divider_width = px(PANEL_DIVIDER_WIDTH);
-    let available_width = (total_width - divider_width).max(Pixels::ZERO);
-    let sidebar_ratio = clamped_checklist_sidebar_ratio(available_width, desired_sidebar_ratio);
-    let right_width = available_width * sidebar_ratio;
-
-    SplitLayout {
-        left_width: available_width - right_width,
-        right_width,
-    }
-}
-
-pub(crate) fn clamped_checklist_sidebar_ratio(
-    available_width: Pixels,
-    desired_sidebar_ratio: f32,
-) -> f32 {
-    let desired_sidebar_ratio = desired_sidebar_ratio.clamp(0.0, 1.0);
-    let min_panel_width = px(PANEL_MIN_WIDTH);
-
-    if available_width <= min_panel_width * 2.0 {
-        return 0.5;
-    }
-
-    let min_secondary_ratio = min_panel_width / available_width;
-    desired_sidebar_ratio.clamp(min_secondary_ratio, 1.0 - min_secondary_ratio)
 }
 
 pub(crate) fn clamp_composer_height(
@@ -229,12 +174,6 @@ pub(crate) fn tool_activity_content_height(row_count: usize) -> Pixels {
 
 #[cfg(test)]
 #[allow(dead_code)]
-pub(crate) fn checklist_sidebar_content_height(row_count: usize) -> Pixels {
-    fixed_row_content_height(row_count, px(CHECKLIST_SIDEBAR_ROW_HEIGHT), px(0.0))
-}
-
-#[cfg(test)]
-#[allow(dead_code)]
 pub(crate) fn thread_selector_content_height(row_count: usize) -> Pixels {
     fixed_row_content_height(
         row_count,
@@ -259,29 +198,6 @@ pub(crate) fn tool_activity_row_window(
     );
 
     ToolActivityRowWindow {
-        range: window.range,
-        top_spacer_height: window.top_spacer_height,
-        bottom_spacer_height: window.bottom_spacer_height,
-        content_height: window.content_height,
-    }
-}
-
-pub(crate) fn checklist_sidebar_row_window(
-    row_count: usize,
-    viewport_height: Pixels,
-    scroll_offset: Pixels,
-    overscan_rows: usize,
-) -> ChecklistSidebarRowWindow {
-    let window = fixed_row_window(
-        row_count,
-        viewport_height,
-        scroll_offset,
-        overscan_rows,
-        px(CHECKLIST_SIDEBAR_ROW_HEIGHT),
-        px(0.0),
-    );
-
-    ChecklistSidebarRowWindow {
         range: window.range,
         top_spacer_height: window.top_spacer_height,
         bottom_spacer_height: window.bottom_spacer_height,

@@ -27,8 +27,10 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
     );
     assert!(toolbar_body.contains("activity_mode_button"));
     assert!(toolbar_body.contains("\"toggle-graph-overlay\""));
-    assert!(toolbar_body.contains("\"toggle-checklist-sidebar\""));
+    assert!(!toolbar_body.contains("\"toggle-checklist-sidebar\""));
     assert!(thread_strip_body.contains("\"thread-strip-new-thread\""));
+    assert!(thread_strip_body.contains("thread_strip_breadcrumb_trail("));
+    assert!(thread_strip_body.contains("render_thread_strip_breadcrumbs("));
     assert!(split_surface_body.contains("render_composer("));
     assert!(!split_surface_body.contains("measure_composer_input("));
     assert!(measure_composer_body.contains("ComposerInputMeasurementKey::new"));
@@ -91,19 +93,14 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
     assert!(toolbar_body.contains("surface.tool_activity_panel_mode().value_label()"));
     assert!(toolbar_body.contains("secondary_fixed_label_button"));
     assert!(toolbar_body.contains("GRAPH_TOGGLE_LABELS"));
-    assert!(toolbar_body.contains("CHECKLIST_TOGGLE_LABELS"));
     assert!(
         render_source
             .contains("const GRAPH_TOGGLE_LABELS: [&str; 2] = [\"Graph\", \"Hide Graph\"];")
     );
-    assert!(render_source.contains(
-        "const CHECKLIST_TOGGLE_LABELS: [&str; 2] = [\"Show Checklist\", \"Hide Checklist\"];"
-    ));
-    assert_eq!(toolbar_body.matches("toolbar_toggle_label").count(), 2);
+    assert!(!render_source.contains("CHECKLIST_TOGGLE_LABELS"));
+    assert_eq!(toolbar_body.matches("toolbar_toggle_label").count(), 1);
     assert!(!toolbar_body.contains("\"Graph\""));
     assert!(!toolbar_body.contains("\"Hide Graph\""));
-    assert!(!toolbar_body.contains("\"Show Checklist\""));
-    assert!(!toolbar_body.contains("\"Hide Checklist\""));
     assert!(labeled_cycle_button_body.contains("shell.secondary_button_theme()"));
     assert!(labeled_cycle_button_body.contains("visual_state.theme_state(theme)"));
     assert!(labeled_cycle_button_body.contains("possible_value_labels"));
@@ -309,8 +306,40 @@ fn backend_unavailable_workspace_surface_disables_backend_controls() {
     assert!(thread_strip_body.contains("disabled_secondary_button"));
     assert!(thread_strip_body.contains("new_thread_enabled"));
     assert!(thread_strip_body.contains("thread_selector_enabled"));
+    assert!(thread_strip_body.contains("thread_strip_breadcrumb_trail"));
     assert!(composer_body.contains("set_enabled(enabled"));
     assert!(composer_body.contains("backend_controls_disabled"));
+}
+
+#[test]
+fn thread_strip_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let render_workspace_surface_body =
+        rust_function_body(render_source, "fn render_workspace_surface");
+    let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
+    let breadcrumb_body = rust_function_body(render_source, "fn render_thread_strip_breadcrumbs");
+    let parent_breadcrumb_body =
+        rust_function_body(render_source, "fn render_thread_strip_parent_breadcrumb");
+
+    assert!(render_workspace_surface_body.contains("&loaded_workspace.threaded_decision_state"));
+    assert!(thread_strip_body.contains("pending_thread_activation_label"));
+    assert!(thread_strip_body.contains(".is_none()"));
+    assert!(thread_strip_body.contains("thread_strip_breadcrumb_trail"));
+    assert!(thread_strip_body.contains("TransientBranchParent"));
+    assert!(thread_strip_body.contains("foreground_transcript_branch"));
+    assert!(thread_strip_body.contains("surface.selected_thread_id()"));
+    assert!(breadcrumb_body.contains(".child(\">\")"));
+    assert!(breadcrumb_body.contains("render_thread_strip_active_thread_title"));
+    assert!(parent_breadcrumb_body.contains("\"thread-strip-branch-parent-breadcrumb\""));
+    assert!(parent_breadcrumb_body.contains("ThreadSelectorActivationTarget"));
+    assert!(parent_breadcrumb_body.contains("breadcrumb.thread_id().clone()"));
+    assert!(parent_breadcrumb_body.contains("label.clone()"));
+    assert!(parent_breadcrumb_body.contains("view.activate_thread_selector_target"));
+    assert!(parent_breadcrumb_body.contains(".max_w(relative(0.32))"));
+    assert!(parent_breadcrumb_body.contains(".min_w(px(0.0))"));
+    assert!(parent_breadcrumb_body.contains(".overflow_hidden()"));
+    assert!(parent_breadcrumb_body.contains(".truncate()"));
+    assert!(parent_breadcrumb_body.contains(".tooltip("));
 }
 
 #[test]
@@ -422,7 +451,7 @@ fn backend_unavailable_commands_gate_before_mutating_drafts_or_threads() {
     assert!(inventory_refresh_body.contains("spawn_member_thread_inventory_worker"));
     assert!(!inventory_refresh_body.contains("begin_open_target"));
     assert!(!inventory_refresh_body.contains("thread_selector().is_open()"));
-    assert!(shell_source.contains("MemberThreadInventoryEvent::SelectorFreshnessRequested"));
+    assert!(!shell_source.contains("MemberThreadInventoryEvent::SelectorFreshnessRequested"));
 }
 
 #[test]
@@ -475,6 +504,33 @@ fn hidden_developer_instructions_route_only_user_facing_turn_starts() {
 }
 
 #[test]
+fn threaded_decision_context_is_not_hidden_or_pinned_for_child_threads() {
+    let shell_source = include_str!("../src/shell.rs");
+    let developer_instructions_source = include_str!("../src/shell/developer_instructions.rs");
+    let transcript_panel_snapshot_source =
+        include_str!("../src/shell/transcript_panel_snapshot.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let text_blocks_source = include_str!("../src/shell/render/transcript/text_blocks.rs");
+    let current_hidden_body = rust_function_body(
+        developer_instructions_source,
+        "fn current_hidden_developer_instructions",
+    );
+    let snapshot_body = rust_function_body(
+        transcript_panel_snapshot_source,
+        "fn transcript_panel_snapshot",
+    );
+    let transcript_render_body = rust_function_body(transcript_source, "fn render(&mut self");
+
+    assert!(!shell_source.contains("fn threaded_decision_child_context"));
+    assert!(!current_hidden_body.contains("decision_context"));
+    assert!(!current_hidden_body.contains("compose_hidden_developer_instructions_with_contexts"));
+    assert!(!snapshot_body.contains("decision_context"));
+    assert!(!transcript_render_body.contains("snapshot.decision_context"));
+    assert!(!transcript_render_body.contains("decision_context_state"));
+    assert!(!text_blocks_source.contains("pub(super) fn decision_context_state"));
+}
+
+#[test]
 fn user_initiated_thread_title_updates_bypass_automatic_title_eligibility_guards() {
     let shell_source = include_str!("../src/shell.rs");
     let branch_menu_source = include_str!("../src/shell/transcript_branch_menu.rs");
@@ -507,11 +563,61 @@ fn user_initiated_thread_title_updates_bypass_automatic_title_eligibility_guards
 }
 
 #[test]
+fn branch_retitle_scheduling_waits_for_first_real_turn_and_respects_manual_titles() {
+    let shell_source = include_str!("../src/shell.rs");
+    let helper_source = include_str!("../src/shell/thread_helpers.rs");
+    let mode_body = rust_function_body(
+        shell_source,
+        "fn thread_title_mode_for_user_submission_state(",
+    );
+    let pending_history_body = rust_function_body(
+        shell_source,
+        "fn begin_pending_branch_retitle_from_known_history(",
+    );
+    let earliest_input_body =
+        rust_function_body(shell_source, "fn earliest_known_user_input_for_thread(");
+    let begin_retitle_body = rust_function_body(
+        shell_source,
+        "fn begin_branch_thread_retitle_from_candidate(",
+    );
+
+    assert!(helper_source.contains("branch_bootstrap_turn_id()"));
+    assert_order(
+        helper_source,
+        "branch_bootstrap_turn_id()",
+        ".saturating_add(1)",
+    );
+    assert!(helper_source.contains("find_map(|turn| turn.first_user_input_fragment_text())"));
+    assert!(pending_history_body.contains("first_real_branch_user_input_fragment_text"));
+    assert!(earliest_input_body.contains("first_real_branch_user_input_fragment_text"));
+    assert!(mode_body.contains("thread_branch_title_retitle_pending"));
+    assert!(mode_body.contains("TurnThreadTitleMode::BranchRetitleAfterFirstUserTurn"));
+    assert_order(
+        mode_body,
+        "thread_branch_title_retitle_pending",
+        "TurnThreadTitleMode::BranchRetitleAfterFirstUserTurn",
+    );
+    assert!(begin_retitle_body.contains("thread_has_manual_gui_title"));
+    assert_order(
+        begin_retitle_body,
+        "thread_has_manual_gui_title",
+        "mark_branch_thread_title_retitle_finished",
+    );
+    assert_order(
+        begin_retitle_body,
+        "begin_thread_title_update",
+        "mark_branch_thread_title_retitle_started",
+    );
+    assert!(!begin_retitle_body.contains("thread_title_generation_can_start"));
+    assert!(!begin_retitle_body.contains("thread_automatic_title_generation_eligible"));
+}
+
+#[test]
 fn backend_unavailable_target_gates_are_target_scoped() {
     let shell_source = include_str!("../src/shell.rs");
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let graph_thread_start_source = include_str!("../src/shell/graph_thread_start.rs");
-    let checklist_thread_menu_source = include_str!("../src/shell/checklist_thread_menu.rs");
+    let graph_link_menu_render_source = include_str!("../src/shell/render/graph_link_menu.rs");
     let status_operation_source = include_str!("../src/shell/status_operation.rs");
     let status_operation_state_source = include_str!("../src/shell/status_operation_state.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
@@ -589,10 +695,8 @@ fn backend_unavailable_target_gates_are_target_scoped() {
         graph_thread_start_source,
         "fn prepare_semantic_thread_start",
     );
-    let checklist_menu_body = rust_function_body(
-        checklist_thread_menu_source,
-        "pub(crate) fn start_checklist_item_thread_from_menu",
-    );
+    let graph_node_action_menu_body =
+        rust_function_body(graph_link_menu_render_source, "fn render_node_action_menu");
 
     assert_order(
         backend_required_target_block_body,
@@ -698,8 +802,8 @@ fn backend_unavailable_target_gates_are_target_scoped() {
             .contains("&unavailable.loaded_workspace.workspace_state")
     );
     assert!(prepare_semantic_thread_start_body.contains("&unavailable.execution_target"));
-    assert!(checklist_menu_body.contains("new_thread_controls_disabled_message()"));
-    assert!(!checklist_menu_body.contains("backend_controls_disabled_message()"));
+    assert!(graph_node_action_menu_body.contains("new_thread_controls_disabled"));
+    assert!(graph_node_action_menu_body.contains("Start New Codex Thread"));
 }
 
 #[test]
@@ -790,7 +894,7 @@ fn active_theme_refresh_notifies_open_surfaces_without_reconstructing_workspace_
     assert!(dynamic_repository_snapshot_body.contains("self.refresh_theme_candidate_surfaces(cx)"));
     assert!(!dynamic_repository_snapshot_body.contains("cx.notify()"));
     assert!(refresh_body.contains("self.notify_transcript_panel(cx)"));
-    assert!(refresh_body.contains("self.notify_checklist_sidebar_panel(cx)"));
+    assert!(!refresh_body.contains("self.notify_checklist_sidebar_panel(cx)"));
     assert!(refresh_body.contains("cx.refresh_windows()"));
     assert!(refresh_body.contains("cx.notify()"));
     assert!(!refresh_body.contains("LoadedWorkspaceState::new"));
@@ -1006,6 +1110,191 @@ fn phase29_theme_settings_modules_are_split_into_focused_sources() {
     assert!(!theme_store_source.contains("fn snapshot_from_loaded"));
     assert!(theme_store_io_source.contains("fn read_manifest"));
     assert!(theme_store_snapshot_source.contains("fn snapshot_from_loaded"));
+}
+
+#[test]
+fn threaded_decision_dynamic_tool_routes_through_live_shell_bridge() {
+    let turn_worker_source = include_str!("../src/shell/turn_worker.rs");
+    let shell_source = include_str!("../src/shell.rs");
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let member_thread_inventory_source = include_str!("../src/shell/member_thread_inventory.rs");
+    let archive_source = include_str!("../src/shell/threaded_decision_archive.rs");
+    let resolution_source = include_str!("../src/shell/threaded_decision_resolution.rs");
+    let resolution_tool_source = include_str!("../src/shell/threaded_decision_resolution/tool.rs");
+    let resolution_graph_source =
+        include_str!("../src/shell/threaded_decision_resolution/graph_update.rs");
+    let routed_tools_body = rust_function_body(
+        turn_worker_source,
+        "pub(crate) fn handle_beryl_dynamic_tool_call_with_shell_tools",
+    );
+    let shell_poll_body = rust_function_body(shell_source, "fn poll_shell_dynamic_tool_requests");
+
+    assert!(routed_tools_body.contains("is_beryl_threaded_decision_dynamic_tool"));
+    assert!(shell_poll_body.contains("is_beryl_threaded_decision_dynamic_tool"));
+    assert!(shell_poll_body.contains("handle_beryl_threaded_decision_dynamic_tool_request"));
+    assert!(shell_source.contains("poll_decision_resolution_graph_updates"));
+    assert!(shell_source.contains("begin_next_ready_decision_resolution_handoff"));
+    assert!(shell_source.contains("note_decision_handoff_turn_started"));
+    assert!(resolution_tool_source.contains("mark_pending_resolution"));
+    assert!(resolution_source.contains("mark_handoff_started"));
+    assert!(resolution_graph_source.contains("mark_checklist_updated"));
+    assert!(resolution_graph_source.contains("spawn_threaded_decision_graph_patch_worker"));
+    assert!(resolution_graph_source.contains("queue_decision_archive_job"));
+    assert!(shell_source.contains("poll_decision_archive_updates"));
+    assert!(shell_source.contains("begin_next_ready_decision_archive_cleanup"));
+    assert!(shell_source.contains("closed_decision_branch_submission_block"));
+    assert!(shell_source.contains("normal_selector_hidden_decision_child_thread_ids"));
+    assert!(lifecycle_source.contains("thread_is_read_only_decision_branch"));
+    assert!(lifecycle_source.contains("remember_thread_summary"));
+    assert!(member_thread_inventory_source.contains("hidden_thread_ids"));
+    assert!(
+        member_thread_inventory_source.contains("normal_selector_hidden_decision_child_thread_ids")
+    );
+    assert!(archive_source.contains("mark_archive_pending"));
+    assert!(archive_source.contains("archive_thread"));
+    assert!(archive_source.contains("ThreadListOptions::page(100)"));
+    assert!(archive_source.contains(".archived()"));
+    assert!(archive_source.contains("mark_closed"));
+    assert!(archive_source.contains("mark_archive_failed"));
+    assert!(!archive_source.contains("unarchive_thread"));
+}
+
+#[test]
+fn thread_inventory_refresh_is_scheduled_from_thread_lifecycle_events() {
+    let shell_source = include_str!("../src/shell.rs");
+    let transcript_branch_source = concat!(
+        include_str!("../src/shell/transcript_branch_worker.rs"),
+        include_str!("../src/shell/transcript_branch_worker/handlers.rs"),
+    );
+    let decision_branch_source = concat!(
+        include_str!("../src/shell/threaded_decision_branch.rs"),
+        include_str!("../src/shell/threaded_decision_branch/completion.rs"),
+    );
+    let decision_archive_source = include_str!("../src/shell/threaded_decision_archive.rs");
+    let poll_turn_body = rust_function_body(shell_source, "fn poll_turn_updates");
+
+    assert!(poll_turn_body.contains("activated_new_thread"));
+    assert_order(
+        poll_turn_body,
+        "if activated_new_thread",
+        "repair_selected_thread_title_if_needed",
+    );
+    assert!(poll_turn_body.contains("refresh_inventory_for_event"));
+    assert!(poll_turn_body.contains("ThreadArchived"));
+    assert!(poll_turn_body.contains("ThreadUnarchived"));
+    assert!(transcript_branch_source.contains("mark_member_thread_inventory_refresh_needed"));
+    assert!(decision_branch_source.contains("mark_member_thread_inventory_refresh_needed"));
+    assert!(decision_archive_source.contains("mark_member_thread_inventory_refresh_needed"));
+}
+
+#[test]
+fn branch_and_switch_uses_foreground_owned_bootstrap_stream() {
+    let shell_source = include_str!("../src/shell.rs");
+    let branch_menu_source = include_str!("../src/shell/transcript_branch_menu.rs");
+    let branch_worker_source = concat!(
+        include_str!("../src/shell/transcript_branch_worker.rs"),
+        include_str!("../src/shell/transcript_branch_worker/foreground.rs"),
+        include_str!("../src/shell/transcript_branch_worker/handlers.rs"),
+    );
+    let branch_core_source = include_str!("../src/shell/transcript_branch_core.rs");
+    let poll_turn_body = rust_function_body(shell_source, "fn poll_turn_updates");
+    let dispatch_body =
+        rust_function_body(branch_menu_source, "fn dispatch_transcript_branch_request");
+    let begin_body = rust_function_body(
+        branch_worker_source,
+        "fn begin_foreground_transcript_branch(",
+    );
+
+    assert!(branch_core_source.contains("prepare_transcript_branch"));
+    assert!(branch_worker_source.contains("start_branch_bootstrap_turn_only"));
+    assert!(branch_worker_source.contains("stream_foreground_branch_bootstrap_events"));
+    assert!(branch_worker_source.contains("prove_branch_thread_completed_bootstrap_from_history"));
+    assert!(dispatch_body.contains("TranscriptBranchAction::SwitchTo"));
+    assert!(dispatch_body.contains("spawn_foreground_transcript_branch_worker"));
+    assert!(dispatch_body.contains("self.turn_receiver = Some"));
+    assert!(dispatch_body.contains("TranscriptBranchAction::Background"));
+    assert!(dispatch_body.contains("spawn_transcript_branch_worker"));
+    assert!(begin_body.contains("surface.load_thread_history(start.thread())"));
+    assert!(begin_body.contains("surface.begin_turn_for_thread"));
+    assert!(begin_body.contains("TurnStreamEvent::TurnStarted"));
+    assert!(poll_turn_body.contains("ForegroundTranscriptBranchStarted"));
+    assert!(poll_turn_body.contains("ForegroundTranscriptBranchPublicationFinished"));
+    assert!(poll_turn_body.contains("foreground_transcript_branch_event_is_bootstrap_terminal"));
+    assert!(poll_turn_body.contains("applied_stream_event.title_candidate = None"));
+    assert!(branch_worker_source.contains("saw_target_idle_before_completion = true"));
+    assert!(branch_worker_source.contains("pending_idle_event"));
+    assert!(branch_worker_source.contains("TurnStreamEvent::TurnCompleted"));
+    assert_order(
+        dispatch_body,
+        "spawn_foreground_transcript_branch_worker",
+        "self.schedule_poll_if_needed",
+    );
+    assert_order(
+        begin_body,
+        "surface.load_thread_history(start.thread())",
+        "surface.begin_turn_for_thread",
+    );
+    assert_order(
+        begin_body,
+        "surface.begin_turn_for_thread",
+        "TurnStreamEvent::TurnStarted",
+    );
+}
+
+#[test]
+fn decision_branch_publication_validates_registration_and_binding_before_graph_persistence() {
+    let decision_branch_source = concat!(
+        include_str!("../src/shell/threaded_decision_branch.rs"),
+        include_str!("../src/shell/threaded_decision_branch/worker.rs"),
+        include_str!("../src/shell/threaded_decision_branch/completion.rs"),
+    );
+    let run_body = rust_function_body(decision_branch_source, "fn run_decision_branch_start(");
+    let finish_body = rust_function_body(
+        decision_branch_source,
+        "fn finish_successful_decision_branch(",
+    );
+
+    assert!(!decision_branch_source.contains("GraphRefPersistenceStarted"));
+    assert!(!run_body.contains("apply_graph_patch"));
+    assert!(!run_body.contains("apply_threaded_decision_graph_patch"));
+    assert!(finish_body.contains("let mut candidate_workspace_state"));
+    assert!(finish_body.contains("let mut candidate_threaded_decision_state"));
+    assert!(finish_body.contains("register_transcript_branch_thread"));
+    assert!(finish_body.contains("activate_branch_with_bootstrap_turn"));
+    assert!(finish_body.contains("apply_threaded_decision_graph_patch"));
+    assert_order(
+        finish_body,
+        "register_transcript_branch_thread",
+        "activate_branch_with_bootstrap_turn",
+    );
+    assert_order(
+        finish_body,
+        "activate_branch_with_bootstrap_turn",
+        "apply_threaded_decision_graph_patch",
+    );
+}
+
+#[test]
+fn decision_branch_bootstrap_uses_visible_parent_context_source_content() {
+    let decision_branch_source = concat!(
+        include_str!("../src/shell/threaded_decision_branch.rs"),
+        include_str!("../src/shell/threaded_decision_branch/worker.rs"),
+        include_str!("../src/shell/threaded_decision_branch/queue.rs"),
+        include_str!("../src/shell/threaded_decision_branch/support.rs"),
+    );
+    let context_source = include_str!("../src/threaded_decision_context.rs");
+    let run_body = rust_function_body(decision_branch_source, "fn run_decision_branch_start(");
+    let resolve_body =
+        rust_function_body(decision_branch_source, "fn resolve_branch_point_for_job");
+
+    assert!(decision_branch_source.contains("parent_context_source: Option<String>"));
+    assert!(decision_branch_source.contains("fn parent_context_source_for_turn("));
+    assert!(resolve_body.contains("parent_context_source_for_turn(turn)"));
+    assert!(run_body.contains("branch_context: Some(context.text())"));
+    assert!(run_body.contains("parent_context_source: job.parent_context_source.as_deref()"));
+    assert!(context_source.contains("parent_context_source: Option<&'a str>"));
+    assert!(context_source.contains("Parent context source content:"));
+    assert!(context_source.contains("bootstrap turn records context"));
 }
 
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {

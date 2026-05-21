@@ -6,8 +6,8 @@ use crate::conversation::ConversationThreadId;
 use crate::provenance::MutationProvenance;
 
 use super::{
-    ChecklistItemStatus, SemanticNodeDraft, SemanticNodeId, SoftLinkDraft, SoftLinkId,
-    SoftLinkKind, ThreadRefDraft, ThreadRefId,
+    ChecklistItemKind, ChecklistItemStatus, SemanticNodeDraft, SemanticNodeId, SoftLinkDraft,
+    SoftLinkId, SoftLinkKind, ThreadRefDraft, ThreadRefId,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +26,9 @@ pub enum SemanticGraphError {
         detail: String,
     },
     InvalidChecklistItemStatus {
+        node_id: SemanticNodeId,
+    },
+    InvalidChecklistItemKind {
         node_id: SemanticNodeId,
     },
     InvalidChildIndex {
@@ -55,6 +58,9 @@ pub enum SemanticGraphError {
         thread_id: ConversationThreadId,
         existing_thread_ref_id: ThreadRefId,
         conflicting_thread_ref_id: ThreadRefId,
+    },
+    ProtectedDecisionItemMutation {
+        node_id: SemanticNodeId,
     },
 }
 
@@ -95,6 +101,11 @@ pub enum SemanticGraphPatchOp {
     SetChecklistItemStatus {
         node_id: SemanticNodeId,
         status: ChecklistItemStatus,
+        provenance: MutationProvenance,
+    },
+    SetChecklistItemKind {
+        node_id: SemanticNodeId,
+        kind: ChecklistItemKind,
         provenance: MutationProvenance,
     },
 }
@@ -141,6 +152,11 @@ impl fmt::Display for SemanticGraphError {
             Self::InvalidChecklistItemStatus { node_id } => write!(
                 f,
                 "semantic graph node {} has an invalid checklist-item status",
+                node_id.as_str()
+            ),
+            Self::InvalidChecklistItemKind { node_id } => write!(
+                f,
+                "semantic graph node {} has an invalid checklist-item kind",
                 node_id.as_str()
             ),
             Self::InvalidChildIndex {
@@ -191,6 +207,11 @@ impl fmt::Display for SemanticGraphError {
                 node_id.as_str(),
                 existing_thread_ref_id.as_str(),
                 conflicting_thread_ref_id.as_str()
+            ),
+            Self::ProtectedDecisionItemMutation { node_id } => write!(
+                f,
+                "semantic graph node {} is a protected resolved decision item",
+                node_id.as_str()
             ),
         }
     }

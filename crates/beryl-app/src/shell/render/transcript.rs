@@ -33,7 +33,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
+use beryl_model::{
+    conversation::ConversationThreadId,
+    workspace::{BerylWorkspaceId, WorkspaceId},
+};
 use gpui::{
     AnyElement, App, AsyncApp, Bounds, ClipboardItem, Context, DispatchPhase, Entity, FocusHandle,
     Focusable, Font, FontStyle, FontWeight, Image, KeyBinding, KeyDownEvent, MouseButton,
@@ -81,7 +84,9 @@ use crate::shell::{
 
 use self::code_panel_controls::TranscriptCodePanelState;
 use self::image_markdown::markdown_source_with_image_marker_placeholders;
-use self::inline_markdown::{TranscriptSelectableImageMarker, TranscriptSelectableTextLine};
+use self::inline_markdown::{
+    TranscriptSelectableImageMarker, TranscriptSelectableTextLine, TranscriptSelectableThreadLink,
+};
 use self::media_blocks::{TranscriptMediaRenderLayout, TranscriptMediaTheme};
 use self::media_cache::TranscriptMediaRenderContext;
 use self::nested_scroll::TranscriptNestedScrollOwnership;
@@ -472,6 +477,7 @@ struct TranscriptTextLineHitGeometry {
     layout: TextLayout,
     display_text_len: usize,
     image_markers: Vec<TranscriptSelectableImageMarker>,
+    thread_links: Vec<TranscriptSelectableThreadLink>,
 }
 
 struct TranscriptImagePreviewPopupState {
@@ -725,6 +731,7 @@ impl TranscriptPanel {
         let order = line.order;
         let display_text_len = line.display_text_len;
         let image_markers = line.image_markers;
+        let thread_links = line.thread_links;
         self.next_visible_text_geometry.insert(
             key.clone(),
             TranscriptTextLineGeometry {
@@ -741,6 +748,7 @@ impl TranscriptPanel {
                 layout,
                 display_text_len,
                 image_markers,
+                thread_links,
             });
     }
 
@@ -875,6 +883,14 @@ impl TranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(thread_id) = self.thread_link_for_position(event.position) {
+            self.shell.update(cx, |shell, cx| {
+                shell.activate_beryl_thread_link(thread_id, window, cx);
+            });
+            window.focus(&self.focus_handle);
+            return true;
+        }
+
         if let Some(marker) = self.image_marker_for_position(event.position) {
             self.open_image_marker_preview(marker, event.position, cx);
             window.focus(&self.focus_handle);
@@ -1280,6 +1296,24 @@ impl TranscriptPanel {
                     && display_offset < marker.display_range.end
             })
             .cloned()
+    }
+
+    fn thread_link_for_position(
+        &self,
+        position: gpui::Point<Pixels>,
+    ) -> Option<ConversationThreadId> {
+        let geometry = self.text_hit_geometry_for_position(position, true)?;
+        let display_offset = match geometry.layout.index_for_position(position) {
+            Ok(offset) | Err(offset) => offset.min(geometry.display_text_len),
+        };
+        geometry
+            .thread_links
+            .iter()
+            .find(|link| {
+                display_offset >= link.display_range.start
+                    && display_offset < link.display_range.end
+            })
+            .map(|link| link.thread_id.clone())
     }
 
     fn selected_text_bounds(&self) -> Option<Bounds<Pixels>> {

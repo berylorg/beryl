@@ -64,7 +64,6 @@ pub(crate) struct MemberThreadInventoryBackendThread {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MemberThreadInventoryEvent {
     MemberSetChanged,
-    SelectorFreshnessRequested,
     BackendTargetOpening,
     BackendTargetAvailable,
     InventoryContentsChanged,
@@ -364,8 +363,7 @@ impl MemberThreadInventoryState {
             MemberThreadInventoryEvent::MemberSetChanged => {
                 self.reset_for_workspace_state(workspace_id, workspace_state);
             }
-            MemberThreadInventoryEvent::SelectorFreshnessRequested
-            | MemberThreadInventoryEvent::BackendTargetAvailable
+            MemberThreadInventoryEvent::BackendTargetAvailable
             | MemberThreadInventoryEvent::InventoryContentsChanged => {
                 self.mark_refresh_needed();
             }
@@ -446,14 +444,18 @@ impl MemberThreadInventoryThread {
     }
 
     pub(crate) fn to_registered_thread(&self) -> RegisteredConversationThread {
-        RegisteredConversationThread::new(
+        let mut thread = RegisteredConversationThread::new(
             self.thread_id.clone(),
             self.execution_target.clone(),
             self.preview.clone(),
             self.backend_name.clone(),
             self.created_at_millis,
             self.updated_at_millis,
-        )
+        );
+        if let Some(parent_thread_id) = self.forked_from_id.as_ref() {
+            thread = thread.with_branch_parent_thread_id(parent_thread_id.clone());
+        }
+        thread
     }
 
     fn update_backend_name(
@@ -829,12 +831,19 @@ fn thread_from_summary(
         summary.updated_at,
     );
 
+    let forked_from_id = summary
+        .forked_from_id
+        .as_ref()
+        .map(|thread_id| ConversationThreadId::new(thread_id.clone()))
+        .or_else(|| {
+            registered_thread
+                .and_then(RegisteredConversationThread::branch_parent_thread_id)
+                .cloned()
+        });
+
     MemberThreadInventoryThread {
         thread_id,
-        forked_from_id: summary
-            .forked_from_id
-            .as_ref()
-            .map(|thread_id| ConversationThreadId::new(thread_id.clone())),
+        forked_from_id,
         title,
         execution_target,
         preview: summary.preview.clone(),
