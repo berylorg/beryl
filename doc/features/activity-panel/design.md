@@ -12,12 +12,10 @@ Show bounded live and recent backend activity for the selected conversation with
 
 ## Visibility And Layout
 
-- The main toolbar owns an `Activity` mode control with labels `Activity Auto`, `Activity On`, and `Activity Off`.
-- New workspace UI state defaults to `Activity Auto`.
-- In `Activity Auto`, the panel is visible from the moment a parent turn is accepted on the conversation surface until that turn ends, and while selected-thread context compaction is active. It is hidden outside active-work periods.
-- In `Activity On`, the panel remains visible between transcript and user input even when it has no rows.
-- In `Activity Off`, the panel is hidden and consumes no conversation-column height.
-- The mode and panel height persist as workspace-scoped GUI-local state.
+- The activity panel has no main-toolbar mode control. Its visibility behavior is fixed to Auto.
+- In Auto behavior, the panel is visible from the moment a parent turn is accepted on the conversation surface until that turn ends, and while selected-thread context compaction is active. It is hidden outside active-work periods.
+- Legacy persisted activity mode values are ignored by the conversation surface; loaded workspaces use Auto behavior.
+- The panel height persists as workspace-scoped GUI-local state.
 - The panel is vertically resizable by dragging its top border, taking space from or returning space to the transcript region while preserving the pinned composer and status line.
 - If visible rows exceed the panel height, the panel owns vertical scrolling. Otherwise it does not scroll.
 - Row rendering is bounded to the viewport-visible range plus small overscan while preserving scroll geometry for the full visible row set.

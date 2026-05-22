@@ -25,12 +25,24 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
             .count(),
         1
     );
-    assert!(toolbar_body.contains("activity_mode_button"));
-    assert!(toolbar_body.contains("\"toggle-graph-overlay\""));
+    assert!(toolbar_body.contains("graph_toolbar_button"));
+    assert!(!toolbar_body.contains("activity_mode_button"));
+    assert!(!toolbar_body.contains("thread_navigation_button"));
+    assert!(!toolbar_body.contains("\"thread-navigation-backward"));
+    assert!(!toolbar_body.contains("\"thread-navigation-forward"));
+    assert!(thread_strip_body.contains("thread_navigation_button"));
+    assert!(thread_strip_body.contains("\"thread-navigation-backward-thread-strip\""));
+    assert!(thread_strip_body.contains("\"thread-navigation-forward-thread-strip\""));
+    assert!(toolbar_body.contains("surface.graph_overlay().visible()"));
+    assert!(toolbar_body.contains("\"settings-toolbar\""));
+    assert!(render_source.contains("\"graph-toolbar\""));
+    assert!(!toolbar_body.contains("\"toggle-graph-overlay\""));
     assert!(!toolbar_body.contains("\"toggle-checklist-sidebar\""));
+    assert!(toolbar_body.contains("toolbar_branch_breadcrumb_segments("));
+    assert!(render_source.contains("fn render_toolbar_branch_breadcrumbs("));
     assert!(thread_strip_body.contains("\"thread-strip-new-thread\""));
-    assert!(thread_strip_body.contains("thread_strip_breadcrumb_trail("));
-    assert!(thread_strip_body.contains("render_thread_strip_breadcrumbs("));
+    assert!(!thread_strip_body.contains("thread_strip_breadcrumb_trail("));
+    assert!(!thread_strip_body.contains("render_thread_strip_breadcrumbs("));
     assert!(split_surface_body.contains("render_composer("));
     assert!(!split_surface_body.contains("measure_composer_input("));
     assert!(measure_composer_body.contains("ComposerInputMeasurementKey::new"));
@@ -88,56 +100,235 @@ fn transcript_thread_link_activation_defers_shell_update_from_panel_handler() {
 }
 
 #[test]
-fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
+fn thread_navigation_history_is_source_aware_and_committed_after_success() {
+    let shell_source = include_str!("../src/shell.rs");
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let thread_navigation_actions_source =
+        include_str!("../src/shell/thread_navigation_actions.rs");
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let selector_selection_body =
+        rust_function_body(shell_source, "fn activate_thread_selector_selection");
+    let transcript_link_body =
+        rust_function_body(shell_source, "pub(super) fn activate_beryl_thread_link");
+    let breadcrumb_body = rust_function_body(render_source, "fn render_toolbar_parent_breadcrumb");
+    let activation_body = rust_function_body(shell_source, "fn activate_thread_selector_target");
+    let finish_thread_body = rust_function_body(
+        lifecycle_source,
+        "pub(super) fn finish_thread_activation_worker",
+    );
+    let finish_workspace_body =
+        rust_function_body(lifecycle_source, "pub(super) fn finish_workspace_open");
+
+    assert!(selector_selection_body.contains("ThreadNavigationActivationSource::ThreadSelector"));
+    assert!(
+        transcript_link_body.contains("ThreadNavigationActivationSource::TranscriptThreadLink")
+    );
+    assert!(breadcrumb_body.contains("activate_branch_breadcrumb_thread_target"));
+    assert!(
+        thread_navigation_actions_source
+            .contains("ThreadNavigationActivationSource::BranchBreadcrumb")
+    );
+    assert!(
+        activation_body
+            .contains("pending_thread_navigation_activation_for_target(source, &target)")
+    );
+    assert_order(
+        activation_body,
+        "known_backend_unavailable_block_for_target(&execution_target)",
+        "self.pending_thread_navigation_activation = pending_navigation",
+    );
+    assert!(activation_body.contains("WorkspaceOpenIntent::ThreadSelectorActivation"));
+    assert!(finish_thread_body.contains("finish_pending_thread_navigation_activation"));
+    assert!(finish_thread_body.contains("discard_pending_thread_navigation_activation"));
+    assert!(finish_workspace_body.contains("finish_pending_thread_navigation_activation"));
+    assert!(finish_workspace_body.contains("discard_pending_thread_navigation_activation"));
+}
+
+#[test]
+fn thread_navigation_rejection_paths_do_not_consume_history_before_success() {
+    let shell_source = include_str!("../src/shell.rs");
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let thread_navigation_actions_source =
+        include_str!("../src/shell/thread_navigation_actions.rs");
+    let activation_body = rust_function_body(shell_source, "fn activate_thread_selector_target");
+    let activation_target_body = rust_function_body(
+        thread_navigation_actions_source,
+        "fn thread_navigation_activation_target",
+    );
+    let activate_navigation_body = rust_function_body(
+        thread_navigation_actions_source,
+        "fn activate_thread_navigation(",
+    );
+    let finish_pending_body = rust_function_body(
+        thread_navigation_actions_source,
+        "pub(super) fn finish_pending_thread_navigation_activation",
+    );
+    let finish_thread_body = rust_function_body(
+        lifecycle_source,
+        "pub(super) fn finish_thread_activation_worker",
+    );
+    let handle_thread_stopped_body = rust_function_body(
+        lifecycle_source,
+        "pub(super) fn handle_thread_activation_worker_stopped",
+    );
+
+    assert_order(
+        activation_body,
+        "if self.workspace_receiver.is_some()",
+        "let pending_navigation =",
+    );
+    assert_order(
+        activation_body,
+        "known_backend_unavailable_block_for_target(&execution_target)",
+        "self.pending_thread_navigation_activation = pending_navigation",
+    );
+    let already_selected_tail = activation_body
+        .split("current_execution_target == execution_target")
+        .nth(1)
+        .expect("activation should check the already-selected thread");
+    let already_selected_branch = &already_selected_tail[..already_selected_tail
+        .find("let Some(connector)")
+        .expect("already-selected branch should precede connector requirement")];
+    assert!(already_selected_branch.contains("ThreadActivationStart::AlreadySelected"));
+    assert!(!already_selected_branch.contains("pending_thread_navigation_activation"));
+    assert!(activation_target_body.contains("activated_link_thread_target"));
+    assert!(activation_target_body.contains("recorded navigation target no longer matches"));
+    assert_order(
+        activate_navigation_body,
+        "thread_navigation_activation_target(&entry)",
+        "self.activate_thread_selector_target(target, source, window, cx)",
+    );
+    assert!(activate_navigation_body.contains("navigation_target_unavailable"));
+    assert_order(
+        finish_pending_body,
+        "target.thread_id().as_str() != activated_thread_id",
+        ".thread_navigation_histories",
+    );
+    assert_order(
+        finish_pending_body,
+        "target.execution_target() != execution_target",
+        ".thread_navigation_histories",
+    );
+    assert!(finish_pending_body.contains("ConversationSurfaceState::selected_thread_id"));
+    assert!(finish_thread_body.contains("ThreadActivationOutcome::RequiresRebind"));
+    assert!(finish_thread_body.contains("ThreadActivationOutcome::Failed"));
+    let requires_rebind_tail = finish_thread_body
+        .split("ThreadActivationOutcome::RequiresRebind")
+        .nth(1)
+        .expect("finish body should handle rebind failures");
+    let requires_rebind_arm = &requires_rebind_tail[..requires_rebind_tail
+        .find("ThreadActivationOutcome::Failed")
+        .expect("rebind arm should precede failed arm")];
+    let failed_tail = finish_thread_body
+        .split("ThreadActivationOutcome::Failed")
+        .nth(1)
+        .expect("finish body should handle activation failures");
+    assert!(requires_rebind_arm.contains("self.discard_pending_thread_navigation_activation();"));
+    assert!(failed_tail.contains("self.discard_pending_thread_navigation_activation();"));
+    assert!(handle_thread_stopped_body.contains("discard_pending_thread_navigation_activation"));
+}
+
+#[test]
+fn thread_navigation_history_is_pruned_when_backend_sessions_teardown() {
+    let shell_source = include_str!("../src/shell.rs");
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let thread_navigation_source = include_str!("../src/shell/thread_navigation.rs");
+    let thread_navigation_actions_source =
+        include_str!("../src/shell/thread_navigation_actions.rs");
+    let finish_workspace_body =
+        rust_function_body(lifecycle_source, "pub(super) fn finish_workspace_open");
+    let shutdown_target_body = rust_function_body(
+        shell_source,
+        "pub(super) fn shutdown_backend_server_for_target_in_background",
+    );
+    let shutdown_all_body = rust_function_body(
+        shell_source,
+        "pub(super) fn shutdown_all_backend_servers_in_background",
+    );
+    let application_shutdown_body =
+        rust_function_body(shell_source, "fn begin_application_shutdown");
+    let prune_history_body = rust_function_body(
+        thread_navigation_source,
+        "pub(crate) fn discard_entries_for_execution_target",
+    );
+    let prune_shell_body = rust_function_body(
+        thread_navigation_actions_source,
+        "pub(super) fn discard_thread_navigation_for_execution_target",
+    );
+
+    assert_order(
+        finish_workspace_body,
+        "self.backend_servers.contains_key(&opened.execution_target)",
+        "spawn_managed_backend_shutdown",
+    );
+    assert_order(
+        finish_workspace_body,
+        "discard_thread_navigation_for_execution_target(&opened.execution_target)",
+        "self.finish_pending_thread_navigation_activation",
+    );
+    assert_order(
+        finish_workspace_body,
+        "discard_thread_navigation_for_execution_target(\n                        &backend_unavailable.target",
+        "ShellState::BackendUnavailable",
+    );
+    assert!(shutdown_target_body.contains("discard_thread_navigation_for_execution_target"));
+    assert!(shutdown_all_body.contains("discard_all_thread_navigation_histories"));
+    assert!(application_shutdown_body.contains("discard_all_thread_navigation_histories"));
+    assert!(prune_history_body.contains("self.current"));
+    assert!(prune_history_body.contains("self.backward"));
+    assert!(prune_history_body.contains("self.forward"));
+    assert_eq!(prune_history_body.matches(".retain(|entry|").count(), 2);
+    assert!(prune_shell_body.contains("thread_navigation_histories.retain"));
+    assert!(prune_shell_body.contains("history.discard_entries_for_execution_target"));
+    assert!(prune_shell_body.contains("!history.is_empty()"));
+}
+
+#[test]
+fn toolbar_uses_graph_toggle_and_activity_is_auto_only() {
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let common_source = include_str!("../src/shell/render/common.rs");
-    let activity_mode_body = rust_function_body(render_source, "fn activity_mode_button");
+    let shell_source = include_str!("../src/shell.rs");
     let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
-    let labeled_cycle_button_body = rust_function_body(
+    let graph_button_body = rust_function_body(render_source, "fn graph_toolbar_button");
+    let secondary_active_button_body = rust_function_body(
         common_source,
-        "pub(super) fn secondary_labeled_cycle_button_with_active_state",
+        "pub(super) fn secondary_button_with_active_state",
     );
-    let fixed_label_button_body =
-        rust_function_body(common_source, "pub(super) fn secondary_fixed_label_button");
-    let fixed_label_slot_body = rust_function_body(common_source, "fn fixed_label_slot");
+    let seeded_surface_body = rust_function_body(shell_source, "fn seeded");
+    let shell_graph_toggle_body = rust_function_body(
+        shell_source,
+        "fn toggle_graph_overlay(\n        &mut self,\n        _: &gpui::ClickEvent",
+    );
     let themed_button_base_body = rust_function_body(common_source, "fn themed_button_base");
     let themed_button_container_body =
         rust_function_body(common_source, "fn themed_button_container");
 
-    assert!(activity_mode_body.contains("secondary_labeled_cycle_button_with_active_state"));
-    assert!(activity_mode_body.contains("\"Activity\""));
-    assert!(activity_mode_body.contains("WorkspaceActivityPanelMode::cycle_value_labels()"));
-    assert!(toolbar_body.contains("surface.tool_activity_panel_mode().value_label()"));
-    assert!(toolbar_body.contains("secondary_fixed_label_button"));
-    assert!(toolbar_body.contains("GRAPH_TOGGLE_LABELS"));
+    assert!(toolbar_body.contains("graph_toolbar_button"));
+    assert!(!toolbar_body.contains("activity_mode_button"));
+    assert!(!toolbar_body.contains("surface.tool_activity_panel_mode()"));
+    assert!(!toolbar_body.contains("surface.tool_activity_panel_visible()"));
+    assert!(!render_source.contains("fn activity_mode_button"));
+    assert!(!render_source.contains("cycle_tool_activity_panel_mode"));
+    assert!(graph_button_body.contains("secondary_button_with_active_state"));
+    assert!(graph_button_body.contains("\"graph-toolbar\""));
+    assert!(graph_button_body.contains("\"Graph\""));
+    assert!(graph_button_body.contains("graph_visible"));
+    assert!(graph_button_body.contains("ShellView::toggle_graph_overlay"));
+    assert!(shell_graph_toggle_body.contains("surface.toggle_graph_overlay()"));
     assert!(
-        render_source
-            .contains("const GRAPH_TOGGLE_LABELS: [&str; 2] = [\"Graph\", \"Hide Graph\"];")
+        seeded_surface_body.contains("tool_activity_panel_mode: WorkspaceActivityPanelMode::Auto")
     );
+    assert!(!seeded_surface_body.contains("workspace_ui_state.tool_activity_panel_mode()"));
+    assert!(!toolbar_body.contains("secondary_fixed_label_button"));
+    assert!(!toolbar_body.contains("GRAPH_TOGGLE_LABELS"));
+    assert!(!render_source.contains("GRAPH_TOGGLE_LABELS"));
     assert!(!render_source.contains("CHECKLIST_TOGGLE_LABELS"));
-    assert_eq!(toolbar_body.matches("toolbar_toggle_label").count(), 1);
-    assert!(!toolbar_body.contains("\"Graph\""));
+    assert_eq!(toolbar_body.matches("toolbar_toggle_label").count(), 0);
     assert!(!toolbar_body.contains("\"Hide Graph\""));
-    assert!(labeled_cycle_button_body.contains("shell.secondary_button_theme()"));
-    assert!(labeled_cycle_button_body.contains("visual_state.theme_state(theme)"));
-    assert!(labeled_cycle_button_body.contains("possible_value_labels"));
-    assert!(
-        labeled_cycle_button_body.contains("fixed_label_slot(value_label, possible_value_labels)")
-    );
-    assert!(fixed_label_button_body.contains("themed_fixed_label_button"));
-    assert!(labeled_cycle_button_body.contains(".bg(button_state.border)"));
-    assert!(labeled_cycle_button_body.contains(".group_hover("));
-    assert!(labeled_cycle_button_body.contains("theme.hover.border"));
-    assert!(labeled_cycle_button_body.contains(".group_active("));
-    assert!(labeled_cycle_button_body.contains("theme.active.border"));
-    assert!(!labeled_cycle_button_body.contains("shell.separator_color()"));
-    assert!(labeled_cycle_button_body.contains(".on_click("));
-    assert!(labeled_cycle_button_body.contains(".w(px(1.0))"));
-    assert!(fixed_label_slot_body.contains(".opacity(0.0)"));
-    assert!(fixed_label_slot_body.contains("for possible_label in possible_labels"));
-    assert!(fixed_label_slot_body.contains(".absolute()"));
-    assert!(fixed_label_slot_body.contains(".inset_0()"));
-    assert!(fixed_label_slot_body.contains("layout::BUTTON_HORIZONTAL_PADDING"));
+    assert!(secondary_active_button_body.contains("shell.secondary_button_theme()"));
+    assert!(secondary_active_button_body.contains("ChromeButtonVisualState::Active"));
+    assert!(secondary_active_button_body.contains("ChromeButtonVisualState::Normal"));
+    assert!(secondary_active_button_body.contains("themed_button(theme, visual_state"));
     assert!(themed_button_base_body.contains("themed_button_container"));
     assert!(themed_button_container_body.contains(".flex_none()"));
     assert!(themed_button_container_body.contains(".hover("));
@@ -145,6 +336,99 @@ fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
     assert!(!themed_button_container_body.contains("theme.hover.foreground"));
     assert!(!themed_button_container_body.contains("theme.active.foreground"));
     assert!(themed_button_container_body.contains(".font_weight(theme.font_weight)"));
+}
+
+#[test]
+fn toolbar_places_breadcrumbs_after_workspaces_and_thread_strip_places_navigation_before_selector()
+{
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let workspace_picker_source = include_str!("../src/shell/render/workspace_picker.rs");
+    let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
+    let graph_button_body = rust_function_body(render_source, "fn graph_toolbar_button");
+    let workspace_picker_button_body = rust_function_body(
+        workspace_picker_source,
+        "pub(super) fn render_workspace_picker_button",
+    );
+    let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
+    let thread_strip_action_body = rust_function_body(render_source, "fn thread_strip_action");
+    let navigation_button_body = rust_function_body(render_source, "fn thread_navigation_button");
+    let thread_navigation_actions_source =
+        include_str!("../src/shell/thread_navigation_actions.rs");
+
+    assert!(!toolbar_body.contains("thread_navigation_backward_disabled_reason"));
+    assert!(!toolbar_body.contains("thread_navigation_forward_disabled_reason"));
+    assert!(thread_strip_body.contains("thread_navigation_backward_disabled_reason"));
+    assert!(thread_strip_body.contains("thread_navigation_forward_disabled_reason"));
+    assert_order(
+        toolbar_body,
+        "render_workspace_picker_button",
+        "render_toolbar_branch_breadcrumbs",
+    );
+    assert_order(
+        toolbar_body,
+        "render_toolbar_branch_breadcrumbs",
+        ".flex_1()",
+    );
+    assert_order(
+        thread_strip_body,
+        "\"thread-strip-new-thread\"",
+        "\"thread-navigation-backward-thread-strip\"",
+    );
+    assert_order(
+        thread_strip_body,
+        "\"thread-navigation-backward-thread-strip\"",
+        "\"thread-navigation-forward-thread-strip\"",
+    );
+    assert_order(
+        thread_strip_body,
+        "\"thread-navigation-forward-thread-strip\"",
+        "render_thread_strip_active_thread_title",
+    );
+    assert_order(toolbar_body, ".flex_1()", "graph_toolbar_button");
+    assert_order(toolbar_body, "graph_toolbar_button", "\"settings-toolbar\"");
+    assert!(!toolbar_body.contains("\"retry-backend-toolbar\""));
+    assert!(toolbar_body.contains(".gap_3()"));
+    assert!(toolbar_body.contains("surface.graph_overlay().visible()"));
+    assert!(!toolbar_body.contains("activity_mode_button"));
+    assert!(
+        workspace_picker_button_body.contains(".w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))")
+    );
+    assert!(thread_strip_action_body.contains(".w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))"));
+    assert!(thread_strip_body.contains("disabled_secondary_button"));
+    assert!(thread_strip_body.contains(".w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))"));
+    assert!(graph_button_body.contains("ShellView::toggle_graph_overlay"));
+    assert!(navigation_button_body.contains("disabled_secondary_button"));
+    assert!(navigation_button_body.contains(".opacity(0.62)"));
+    assert!(navigation_button_body.contains("build_thread_navigation_tooltip"));
+    assert!(navigation_button_body.contains("secondary_button(shell, id, label, on_click)"));
+    assert!(navigation_button_body.contains(".w(px(layout::BUTTON_ICON_OUTER_WIDTH))"));
+    assert!(thread_navigation_actions_source.contains("No backward thread history."));
+    assert!(thread_navigation_actions_source.contains("No forward thread history."));
+    assert!(thread_navigation_actions_source.contains("thread_activation_busy_message"));
+    assert!(
+        thread_navigation_actions_source.contains("known_backend_unavailable_block_for_target")
+    );
+    assert!(thread_navigation_actions_source.contains("thread_navigation_activation_target"));
+}
+
+#[test]
+fn thread_navigation_render_and_disabled_paths_do_not_refresh_inventory() {
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let thread_navigation_actions_source =
+        include_str!("../src/shell/thread_navigation_actions.rs");
+    let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
+    let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
+    let disabled_reason_body = rust_function_body(
+        thread_navigation_actions_source,
+        "fn thread_navigation_disabled_reason",
+    );
+
+    for body in [toolbar_body, thread_strip_body, disabled_reason_body] {
+        assert!(!body.contains("mark_member_thread_inventory_refresh_needed"));
+        assert!(!body.contains("build_member_thread_inventory_snapshot"));
+        assert!(!body.contains("begin_refresh"));
+        assert!(!body.contains("finish_refresh"));
+    }
 }
 
 #[test]
@@ -305,6 +589,7 @@ fn backend_unavailable_workspace_surface_disables_backend_controls() {
         "pub(super) fn render_backend_unavailable_shell",
     );
     let workspace_surface_body = rust_function_body(render_source, "fn render_workspace_surface");
+    let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
     let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
     let composer_body = rust_function_body(render_source, "fn render_composer(");
     let backend_controls_body = rust_function_body(
@@ -323,36 +608,50 @@ fn backend_unavailable_workspace_surface_disables_backend_controls() {
     assert!(thread_strip_body.contains("disabled_secondary_button"));
     assert!(thread_strip_body.contains("new_thread_enabled"));
     assert!(thread_strip_body.contains("thread_selector_enabled"));
-    assert!(thread_strip_body.contains("thread_strip_breadcrumb_trail"));
+    assert!(toolbar_body.contains("toolbar_branch_breadcrumb_segments"));
+    assert!(!thread_strip_body.contains("thread_strip_breadcrumb_trail"));
     assert!(composer_body.contains("set_enabled(enabled"));
     assert!(composer_body.contains("backend_controls_disabled"));
 }
 
 #[test]
-fn thread_strip_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
+fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let render_workspace_surface_body =
         rust_function_body(render_source, "fn render_workspace_surface");
+    let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
     let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
-    let breadcrumb_body = rust_function_body(render_source, "fn render_thread_strip_breadcrumbs");
+    let breadcrumb_source_body =
+        rust_function_body(render_source, "fn toolbar_branch_breadcrumb_segments");
+    let breadcrumb_body = rust_function_body(render_source, "fn render_toolbar_branch_breadcrumbs");
     let parent_breadcrumb_body =
-        rust_function_body(render_source, "fn render_thread_strip_parent_breadcrumb");
+        rust_function_body(render_source, "fn render_toolbar_parent_breadcrumb");
 
     assert!(render_workspace_surface_body.contains("&loaded_workspace.threaded_decision_state"));
-    assert!(thread_strip_body.contains("pending_thread_activation_label"));
-    assert!(thread_strip_body.contains(".is_none()"));
-    assert!(thread_strip_body.contains("thread_strip_breadcrumb_trail"));
-    assert!(thread_strip_body.contains("TransientBranchParent"));
-    assert!(thread_strip_body.contains("foreground_transcript_branch"));
-    assert!(thread_strip_body.contains("surface.selected_thread_id()"));
+    assert!(toolbar_body.contains("toolbar_branch_breadcrumb_segments"));
+    assert!(thread_strip_body.contains("render_thread_strip_active_thread_title"));
+    assert!(!thread_strip_body.contains("thread_strip_breadcrumb_trail"));
+    assert!(!breadcrumb_source_body.contains("pending_thread_activation_label().is_some()"));
+    assert!(toolbar_body.contains("selected_thread_title_label"));
+    assert!(toolbar_body.contains("&selected_label"));
+    assert!(breadcrumb_source_body.contains("thread_strip_breadcrumb_trail"));
+    assert!(breadcrumb_source_body.contains("TransientBranchParent"));
+    assert!(breadcrumb_source_body.contains("foreground_transcript_branch"));
+    assert!(breadcrumb_source_body.contains("surface.selected_thread_id()"));
+    assert!(breadcrumb_source_body.contains(".filter(|segment| !segment.active())"));
     assert!(breadcrumb_body.contains(".child(\">\")"));
-    assert!(breadcrumb_body.contains("render_thread_strip_active_thread_title"));
-    assert!(parent_breadcrumb_body.contains("\"thread-strip-branch-parent-breadcrumb\""));
+    assert!(!breadcrumb_body.contains("render_thread_strip_active_thread_title"));
+    assert!(parent_breadcrumb_body.contains("\"toolbar-branch-parent-breadcrumb\""));
     assert!(parent_breadcrumb_body.contains("ThreadSelectorActivationTarget"));
     assert!(parent_breadcrumb_body.contains("breadcrumb.thread_id().clone()"));
     assert!(parent_breadcrumb_body.contains("label.clone()"));
-    assert!(parent_breadcrumb_body.contains("view.activate_thread_selector_target"));
-    assert!(parent_breadcrumb_body.contains(".max_w(relative(0.32))"));
+    assert!(parent_breadcrumb_body.contains("view.activate_branch_breadcrumb_thread_target"));
+    assert!(breadcrumb_body.contains(".max_w(px(layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH))"));
+    assert!(!breadcrumb_body.contains(".max_w(relative(0.42))"));
+    assert!(
+        parent_breadcrumb_body.contains(".max_w(px(layout::TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH))")
+    );
+    assert!(!parent_breadcrumb_body.contains(".max_w(relative(0.32))"));
     assert!(parent_breadcrumb_body.contains(".min_w(px(0.0))"));
     assert!(parent_breadcrumb_body.contains(".overflow_hidden()"));
     assert!(parent_breadcrumb_body.contains(".truncate()"));

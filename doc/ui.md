@@ -8,7 +8,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 
 - Workspace picker and workspace member UI are defined in `doc/features/workspaces/design.md`.
 - Backend-unavailable and connection recovery UI behavior is defined in `doc/features/backend-runtime-recovery/design.md`.
-- Thread selector UI is defined in `doc/features/conversation-threads/design.md`.
+- Thread selector and thread history navigation UI are defined in `doc/features/conversation-threads/design.md`.
 - User input panel UI is defined in `doc/features/composer/design.md`.
 - Transcript region, media, quote popup, and transcript turn context menu UI are defined in `doc/features/transcript/design.md`.
 - Status line and status popups are defined in `doc/features/status-line/design.md`.
@@ -55,9 +55,10 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Runtime, member, and backend-availability recovery states may disable submission or show localized recovery information, but they do not replace the main workspace shell with a separate fresh-startup screen.
 - The toolbar strip is fixed-height, stretches horizontally, and is controls-only.
 - The toolbar does not reserve persistent static workspace-name text, thread-count text, visible graph-hotkey labels, or non-interactive status chips.
-- Feature-owned toolbar controls include the workspace picker control from `doc/features/workspaces/design.md` and the activity mode control from `doc/features/activity-panel/design.md`.
+- Feature-owned toolbar controls include the workspace picker control from `doc/features/workspaces/design.md`, branch breadcrumbs from `doc/features/conversation-threads/design.md`, the graph overlay toggle from `doc/features/semantic-graph/design.md`, and the settings control from `doc/features/settings/design.md`.
+- The main workspace toolbar arranges Workspaces and optional content-sized branch breadcrumbs at the leading edge, reserves flexible space in the middle, and aligns Graph and Settings controls to the trailing edge. While an asynchronous thread activation is pending, toolbar breadcrumbs keep rendering from the last selected-thread projection until the new selected thread is applied.
 - The thread strip is fixed-height beneath the toolbar, stretches horizontally, and keeps long thread labels from causing outer scrolling.
-- The thread strip includes feature-owned thread controls from `doc/features/conversation-threads/design.md`, including `New Thread` and the active thread title selector.
+- The thread strip includes feature-owned thread controls from `doc/features/conversation-threads/design.md`, including `New Thread`, backward/forward thread-navigation controls, and the active thread title selector. Branch breadcrumbs belong in the toolbar, not in the thread strip.
 - The conversation column itself is not a scrolling surface. Its child transcript region, activity panel, and user input panel follow their own feature contracts.
 
 ## Appearance

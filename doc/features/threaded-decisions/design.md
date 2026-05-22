@@ -135,7 +135,7 @@ Resolution commands are disabled with specific reasons when the child thread has
 
 Partial-resolution or archive-failure states show a compact warning on the affected checklist-item graph row and expose retry actions from the graph node context menu.
 
-Decision child threads show a compact clickable parent-thread breadcrumb in the thread strip when horizontal space allows. The breadcrumb uses the parent thread display title and activates the exact bound parent thread. The decision checklist item remains visible through the child thread title, tooltip, graph row, and visible bootstrap turn rather than as the primary thread-strip breadcrumb.
+Decision child threads show a compact clickable parent-thread breadcrumb in the toolbar when horizontal space allows. The breadcrumb uses the parent thread display title, hugs that label under normal toolbar space, remains visible from the selected child projection while another thread activation is pending, and activates the exact bound parent thread. The decision checklist item remains visible through the child thread title, tooltip, graph row, and visible bootstrap turn rather than as the primary breadcrumb.
 
 ## Failure And Recovery
 

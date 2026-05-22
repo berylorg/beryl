@@ -284,47 +284,9 @@ pub enum WorkspacePersistenceError {
 }
 
 impl WorkspaceActivityPanelMode {
-    pub const CYCLE_MODES: [Self; 3] = [Self::Auto, Self::On, Self::Off];
-    pub const CYCLE_VALUE_LABELS: [&'static str; 3] = ["Auto", "On", "Off"];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Auto => "Activity Auto",
-            Self::On => "Activity On",
-            Self::Off => "Activity Off",
-        }
-    }
-
-    pub fn value_label(self) -> &'static str {
-        Self::CYCLE_VALUE_LABELS[self.cycle_index()]
-    }
-
-    pub fn cycle_value_labels() -> &'static [&'static str] {
-        &Self::CYCLE_VALUE_LABELS
-    }
-
-    fn cycle_index(self) -> usize {
-        match self {
-            Self::Auto => 0,
-            Self::On => 1,
-            Self::Off => 2,
-        }
-    }
-
-    pub fn next(self) -> Self {
-        match self {
-            Self::Auto => Self::On,
-            Self::On => Self::Off,
-            Self::Off => Self::Auto,
-        }
-    }
-
     pub fn panel_visible(self, parent_turn_active: bool, context_compaction_active: bool) -> bool {
-        match self {
-            Self::Auto => parent_turn_active || context_compaction_active,
-            Self::On => true,
-            Self::Off => false,
-        }
+        let _ = self;
+        parent_turn_active || context_compaction_active
     }
 }
 

@@ -43,6 +43,9 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 - The Markdown language is a registered syntax-highlighting language. Unsupported, unknown, empty, partial, or invalid labels render as plain text while preserving source and selection semantics.
 - `beryl-theme` fenced code blocks remain ordinary transcript content, with theme-specific actions owned by `doc/features/theming/design.md`.
 - If an agent turn produces a non-image file artifact that exists on the local filesystem, the GUI represents that artifact as a clickable file link and asks the operating system to open it with the default associated application.
+- Markdown links using the Beryl-owned `beryl_threadid://<percent-encoded-thread-id>` scheme are internal transcript thread links. Activating one requests exact conversation-thread activation through the conversation-threads feature and must not ask the operating system to open a URL.
+- Transcript thread-link activation is user-initiated thread navigation. Successful activation contributes to the workspace-local thread navigation history defined by `doc/features/conversation-threads/design.md`.
+- Unknown, malformed, empty, unregistered, out-of-scope, or rebind-required transcript thread links fail with bounded Beryl UI notice behavior and leave the active thread unchanged.
 
 ## Transcript Images And Media
 

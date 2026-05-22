@@ -447,6 +447,9 @@ mod theme_candidates;
 mod thread_activation;
 mod thread_helpers;
 mod thread_history_worker;
+#[allow(dead_code)]
+mod thread_navigation;
+mod thread_navigation_actions;
 mod thread_selection;
 mod thread_selector;
 mod thread_title;
@@ -486,6 +489,7 @@ mod transcript_scroll;
 #[allow(dead_code)]
 mod transcript_selection;
 mod transcript_stream_invalidation;
+mod transcript_thread_links;
 mod turn_steering;
 mod turn_stop;
 mod turn_worker;
@@ -579,9 +583,10 @@ use thread_helpers::{
 use thread_history_worker::{
     ThreadHistoryPageOutcome, ThreadHistoryPageUpdate, spawn_older_thread_history_page_worker,
 };
+pub(super) use thread_navigation::ThreadNavigationActivationSource;
+use thread_navigation::{PendingThreadNavigationActivation, ThreadNavigationHistory};
 use thread_selection::{
     ThreadSelectionRequest, exact_thread_selection_request, graph_thread_ref_availability,
-    thread_rebind_detail,
 };
 use thread_selector::{
     ThreadSelectorActivationTarget, ThreadSelectorColumnKey, ThreadSelectorState,
@@ -869,6 +874,8 @@ pub(super) struct ShellView {
     transcript_edit_commit_receiver: Option<Receiver<TranscriptEditCommitUpdate>>,
     member_thread_inventory_receiver: Option<Receiver<MemberThreadInventoryUpdate>>,
     thread_activation_receiver: Option<Receiver<ThreadActivationUpdate>>,
+    pending_thread_navigation_activation: Option<PendingThreadNavigationActivation>,
+    thread_navigation_histories: HashMap<BerylWorkspaceId, ThreadNavigationHistory>,
     thread_history_page_receiver: Option<Receiver<ThreadHistoryPageUpdate>>,
     composer_image_label_scan_receiver: Option<Receiver<ComposerImageLabelScanUpdate>>,
     composer_image_asset_receiver: Option<Receiver<ComposerImageAssetUpdate>>,
@@ -2036,7 +2043,7 @@ impl ConversationSurfaceState {
                 projection
             },
             lifecycle_yields: LifecycleYieldState::default(),
-            tool_activity_panel_mode: workspace_ui_state.tool_activity_panel_mode(),
+            tool_activity_panel_mode: WorkspaceActivityPanelMode::Auto,
             tool_activity_panel_height: px(workspace_ui_state.tool_activity_panel_height_px()),
             status_line: StatusLineState::default(),
             status_line_operations: StatusLineOperationState::default(),
@@ -2505,10 +2512,6 @@ impl ConversationSurfaceState {
 
     fn reset_status_operation_scroll(&mut self) {
         self.status_operation_scroll_handle = ScrollHandle::new();
-    }
-
-    fn cycle_tool_activity_panel_mode(&mut self) {
-        self.tool_activity_panel_mode = self.tool_activity_panel_mode.next();
     }
 
     fn workspace_ui_state(&self) -> WorkspaceUiState {
@@ -4544,6 +4547,8 @@ impl ShellView {
             transcript_edit_commit_receiver: None,
             member_thread_inventory_receiver: None,
             thread_activation_receiver: None,
+            pending_thread_navigation_activation: None,
+            thread_navigation_histories: HashMap::new(),
             thread_history_page_receiver: None,
             composer_image_label_scan_receiver: None,
             composer_image_asset_receiver: None,
@@ -4816,6 +4821,7 @@ impl ShellView {
             return;
         };
 
+        self.discard_thread_navigation_for_execution_target(execution_target);
         spawn_managed_backend_shutdown(server, reason);
     }
 
@@ -4841,6 +4847,7 @@ impl ShellView {
     pub(super) fn shutdown_all_backend_servers_in_background(&mut self, reason: &'static str) {
         self.tool_activity_nickname_resolver.reset();
         self.account_rate_limits_receiver = None;
+        self.discard_all_thread_navigation_histories();
         for (_, server) in self.backend_servers.drain() {
             spawn_managed_backend_shutdown(server, reason);
         }
@@ -4854,6 +4861,7 @@ impl ShellView {
 
         self.cancel_thread_title_workers();
         self.cancel_workspace_open();
+        self.discard_all_thread_navigation_histories();
         let active_servers = self
             .backend_servers
             .drain()
@@ -5113,6 +5121,9 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if intent != WorkspaceOpenIntent::ThreadSelectorActivation {
+            self.pending_thread_navigation_activation = None;
+        }
         self.apply_member_thread_inventory_event(MemberThreadInventoryEvent::BackendTargetOpening);
         let previous_failure = self.failure_summary();
         let attempt = self.next_attempt;
@@ -9869,7 +9880,12 @@ impl ShellView {
             return false;
         };
 
-        self.activate_thread_selector_target(target, window, cx);
+        self.activate_thread_selector_target(
+            target,
+            ThreadNavigationActivationSource::ThreadSelector,
+            window,
+            cx,
+        );
         true
     }
 
@@ -9891,81 +9907,20 @@ impl ShellView {
         };
 
         matches!(
-            self.activate_thread_selector_target(target, window, cx),
+            self.activate_thread_selector_target(
+                target,
+                ThreadNavigationActivationSource::TranscriptThreadLink,
+                window,
+                cx,
+            ),
             ThreadActivationStart::Started | ThreadActivationStart::AlreadySelected
         )
-    }
-
-    fn activated_link_thread_target(
-        &self,
-        thread_id: &ConversationThreadId,
-    ) -> Result<ThreadSelectorActivationTarget, (&'static str, String)> {
-        let loaded = self.loaded_workspace().ok_or_else(|| {
-            (
-                "Thread link unavailable",
-                "No workspace is loaded.".to_string(),
-            )
-        })?;
-        let registration = loaded
-            .workspace_state
-            .thread_registration(thread_id)
-            .ok_or_else(|| {
-                (
-                    "Thread link unavailable",
-                    format!(
-                        "Beryl cannot activate thread link {} because the thread is not registered in this workspace.",
-                        thread_id.as_str()
-                    ),
-                )
-            })?;
-        let execution_target = registration.execution_target().clone();
-        let label = resolved_thread_title(
-            &loaded.workspace_state,
-            thread_id,
-            &execution_target,
-            registration.preview(),
-            registration.backend_name(),
-            registration.created_at_millis(),
-            registration.updated_at_millis(),
-        );
-        let label = if label.trim().is_empty() {
-            "Linked thread".to_string()
-        } else {
-            label
-        };
-
-        if let Some(requirement) = registration.rebind_required() {
-            return Err((
-                "Thread requires rebind",
-                thread_rebind_detail(&label, &execution_target, requirement.detail()),
-            ));
-        }
-
-        let implicit_home_target = loaded.resolved_implicit_home_execution_target();
-        if !loaded
-            .workspace_state
-            .execution_target_in_workspace_scope(&execution_target, implicit_home_target.as_ref())
-        {
-            return Err((
-                "Thread link unavailable",
-                thread_rebind_detail(
-                    &label,
-                    &execution_target,
-                    "The recorded thread target is outside the current workspace scope.",
-                ),
-            ));
-        }
-
-        Ok(ThreadSelectorActivationTarget {
-            thread_id: thread_id.clone(),
-            label,
-            execution_target,
-        })
     }
 
     fn activate_thread_selector_target(
         &mut self,
         target: ThreadSelectorActivationTarget,
+        source: ThreadNavigationActivationSource,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ThreadActivationStart {
@@ -10007,6 +9962,8 @@ impl ShellView {
             }
         };
 
+        let pending_navigation =
+            self.pending_thread_navigation_activation_for_target(source, &target);
         let thread_selection = exact_thread_selection_request(&target.thread_id, &target.label);
         let thread_id = target.thread_id.as_str().to_string();
         let label = target.label;
@@ -10035,13 +9992,19 @@ impl ShellView {
                 window,
                 cx,
             );
+            if self.workspace_receiver.is_some() {
+                self.pending_thread_navigation_activation = pending_navigation;
+            } else {
+                self.discard_pending_thread_navigation_activation();
+            }
             return ThreadActivationStart::Started;
         }
 
-        if self
-            .conversation_surface()
-            .and_then(ConversationSurfaceState::selected_thread_id)
-            == Some(thread_id.as_str())
+        if current_execution_target == execution_target
+            && self
+                .conversation_surface()
+                .and_then(ConversationSurfaceState::selected_thread_id)
+                == Some(thread_id.as_str())
         {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.clear_notice();
@@ -10079,6 +10042,7 @@ impl ShellView {
             };
         };
 
+        self.pending_thread_navigation_activation = pending_navigation;
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
             surface.begin_thread_activation(label.clone());
@@ -10864,22 +10828,8 @@ impl ShellView {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(surface) = self.conversation_surface_mut()
-            && surface.toggle_graph_overlay()
-        {
-            cx.notify();
-        }
-    }
-
-    fn cycle_tool_activity_panel_mode(
-        &mut self,
-        _: &gpui::ClickEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.cycle_tool_activity_panel_mode();
-            self.persist_current_workspace_ui_state();
+            surface.toggle_graph_overlay();
             cx.notify();
         }
     }
@@ -14640,7 +14590,12 @@ impl ShellView {
                 return Err((kind, message));
             }
         };
-        let started = self.activate_thread_selector_target(target, window, cx);
+        let started = self.activate_thread_selector_target(
+            target,
+            ThreadNavigationActivationSource::NonHistory,
+            window,
+            cx,
+        );
         let (status, message) = match started {
             ThreadActivationStart::Started => (
                 "pending".to_string(),

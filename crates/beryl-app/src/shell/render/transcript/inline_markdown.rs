@@ -7,15 +7,13 @@ use gpui::{
     div, prelude::*, px,
 };
 
-use beryl_model::conversation::ConversationThreadId;
-
-use crate::branch_bootstrap_core::parse_beryl_thread_link;
 use crate::shell::execution_detail::{TranscriptImageMarker, TranscriptImagePreviewState};
 use crate::shell::transcript_markdown::{
     Inline, InlineRenderFragment, InlineRenderLine, InlineRenderRole, InlineRenderStyle,
     inline_render_lines,
 };
 use crate::shell::transcript_selection::TranscriptLineCopyText;
+use crate::shell::transcript_thread_links::inline_thread_link_ranges;
 
 use super::super::code_panel::{SelectedTextStyle, apply_selected_text_style};
 use super::markdown_copy::inline_line_copy_text;
@@ -466,45 +464,13 @@ fn line_image_markers(
 }
 
 fn line_thread_links(line: &InlineRenderLine) -> Vec<TranscriptSelectableThreadLink> {
-    let mut display_cursor = 0usize;
-    let mut links = Vec::new();
-
-    for fragment in &line.fragments {
-        let display_range = display_cursor..display_cursor + fragment.text.len();
-        display_cursor = display_range.end;
-        if display_range.start == display_range.end {
-            continue;
-        }
-        let Some(thread_id) = fragment
-            .link_destination
-            .as_deref()
-            .and_then(parse_beryl_thread_link)
-        else {
-            continue;
-        };
-        push_thread_link_range(&mut links, thread_id, display_range);
-    }
-
-    links
-}
-
-fn push_thread_link_range(
-    links: &mut Vec<TranscriptSelectableThreadLink>,
-    thread_id: ConversationThreadId,
-    display_range: Range<usize>,
-) {
-    if let Some(previous) = links.last_mut()
-        && previous.thread_id == thread_id
-        && previous.display_range.end == display_range.start
-    {
-        previous.display_range.end = display_range.end;
-        return;
-    }
-
-    links.push(TranscriptSelectableThreadLink {
-        thread_id,
-        display_range,
-    });
+    inline_thread_link_ranges(line)
+        .into_iter()
+        .map(|link| TranscriptSelectableThreadLink {
+            thread_id: link.thread_id().clone(),
+            display_range: link.display_range(),
+        })
+        .collect()
 }
 
 fn push_fragment_display_text(

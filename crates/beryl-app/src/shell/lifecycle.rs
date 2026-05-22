@@ -93,6 +93,7 @@ impl ShellView {
                         .as_ref()
                         .map(|thread| thread.summary().id)
                 });
+                let thread_navigation_activation_thread_id = active_thread_id.clone();
                 let mut known_threads = opened.known_threads.clone();
                 super::retain_normal_selector_threads_for_decisions(
                     &mut known_threads,
@@ -150,6 +151,11 @@ impl ShellView {
                 );
                 let restored_implicit_home_threads = loaded_workspace
                     .set_resolved_implicit_home_path_from_target(&opened.execution_target);
+                let replacing_backend_session =
+                    self.backend_servers.contains_key(&opened.execution_target);
+                if replacing_backend_session {
+                    self.discard_thread_navigation_for_execution_target(&opened.execution_target);
+                }
                 if let Some(replaced_server) = self
                     .backend_servers
                     .insert(opened.execution_target.clone(), opened.server)
@@ -185,6 +191,18 @@ impl ShellView {
                     active_thread_id.as_deref(),
                     workspace_backend_state_changed,
                 );
+                if intent == super::WorkspaceOpenIntent::ThreadSelectorActivation {
+                    if let Some(active_thread_id) =
+                        thread_navigation_activation_thread_id.as_deref()
+                    {
+                        self.finish_pending_thread_navigation_activation(
+                            active_thread_id,
+                            &opened.execution_target,
+                        );
+                    } else {
+                        self.discard_pending_thread_navigation_activation();
+                    }
+                }
                 self.apply_member_thread_inventory_event(
                     MemberThreadInventoryEvent::BackendTargetAvailable,
                 );
@@ -192,6 +210,9 @@ impl ShellView {
                 self.repair_selected_thread_title_if_needed(opened.execution_target);
             }
             Err(error) => {
+                if intent == super::WorkspaceOpenIntent::ThreadSelectorActivation {
+                    self.discard_pending_thread_navigation_activation();
+                }
                 let error = normalize_workspace_failure(error);
                 let stage_label = failure_stage_label(error.stage);
                 MemoryMilestone::new("workspace_open_failed")
@@ -210,6 +231,9 @@ impl ShellView {
                     let threaded_decision_state_changed = reconcile_loaded_threaded_decision_state(
                         &mut loaded_workspace,
                         &backend_unavailable.surface_seed.graph,
+                    );
+                    self.discard_thread_navigation_for_execution_target(
+                        &backend_unavailable.target,
                     );
                     let availability = loaded_workspace.record_backend_unavailable(
                         backend_unavailable.target.clone(),
@@ -464,9 +488,11 @@ impl ShellView {
                     thread_activation_ui_finish_ms = super::elapsed_ms(ui_finish_started.elapsed()),
                     "finished activated thread UI application"
                 );
+                self.finish_pending_thread_navigation_activation(&summary.id, &execution_target);
                 Some(summary.id.clone())
             }
             ThreadActivationOutcome::RequiresRebind { detail } => {
+                self.discard_pending_thread_navigation_activation();
                 MemoryMilestone::new("thread_activation_requires_rebind").log();
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.clear_pending_thread_activation();
@@ -478,6 +504,7 @@ impl ShellView {
                 None
             }
             ThreadActivationOutcome::Failed { message } => {
+                self.discard_pending_thread_navigation_activation();
                 MemoryMilestone::new("thread_activation_failed").log();
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.clear_pending_thread_activation();
@@ -556,6 +583,7 @@ impl ShellView {
 
     pub(super) fn handle_thread_activation_worker_stopped(&mut self) {
         let message = "Beryl lost the background task that was reopening the requested thread.";
+        self.discard_pending_thread_navigation_activation();
         if let Some(surface) = self.conversation_surface_mut() {
             surface.clear_pending_thread_activation();
             surface.set_notice(SurfaceNotice::new("Thread activation failed", message));

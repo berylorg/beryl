@@ -983,44 +983,6 @@ fn workspace_ui_state_mode_field_wins_over_legacy_boolean() {
 }
 
 #[test]
-fn workspace_activity_panel_mode_cycles_in_toolbar_order() {
-    assert_eq!(
-        WorkspaceActivityPanelMode::CYCLE_MODES,
-        [
-            WorkspaceActivityPanelMode::Auto,
-            WorkspaceActivityPanelMode::On,
-            WorkspaceActivityPanelMode::Off
-        ]
-    );
-    assert_eq!(
-        WorkspaceActivityPanelMode::Auto.next(),
-        WorkspaceActivityPanelMode::On
-    );
-    assert_eq!(
-        WorkspaceActivityPanelMode::On.next(),
-        WorkspaceActivityPanelMode::Off
-    );
-    assert_eq!(
-        WorkspaceActivityPanelMode::Off.next(),
-        WorkspaceActivityPanelMode::Auto
-    );
-    assert_eq!(WorkspaceActivityPanelMode::Auto.label(), "Activity Auto");
-    assert_eq!(WorkspaceActivityPanelMode::On.label(), "Activity On");
-    assert_eq!(WorkspaceActivityPanelMode::Off.label(), "Activity Off");
-    assert_eq!(WorkspaceActivityPanelMode::Auto.value_label(), "Auto");
-    assert_eq!(WorkspaceActivityPanelMode::On.value_label(), "On");
-    assert_eq!(WorkspaceActivityPanelMode::Off.value_label(), "Off");
-    assert_eq!(
-        WorkspaceActivityPanelMode::cycle_value_labels(),
-        &["Auto", "On", "Off"]
-    );
-    assert_eq!(
-        WorkspaceActivityPanelMode::CYCLE_MODES.map(WorkspaceActivityPanelMode::value_label),
-        WorkspaceActivityPanelMode::CYCLE_VALUE_LABELS
-    );
-}
-
-#[test]
 fn activity_auto_shows_for_accepted_parent_turn_and_hides_when_it_ends() {
     assert!(WorkspaceActivityPanelMode::Auto.panel_visible(true, false));
     assert!(!WorkspaceActivityPanelMode::Auto.panel_visible(false, false));
@@ -1033,11 +995,13 @@ fn activity_auto_shows_during_selected_thread_context_compaction() {
 }
 
 #[test]
-fn activity_on_and_off_override_current_work_state() {
-    assert!(WorkspaceActivityPanelMode::On.panel_visible(false, false));
-    assert!(WorkspaceActivityPanelMode::On.panel_visible(true, true));
+fn legacy_activity_modes_use_auto_visibility_contract() {
+    assert!(!WorkspaceActivityPanelMode::On.panel_visible(false, false));
+    assert!(WorkspaceActivityPanelMode::On.panel_visible(true, false));
+    assert!(WorkspaceActivityPanelMode::On.panel_visible(false, true));
     assert!(!WorkspaceActivityPanelMode::Off.panel_visible(false, false));
-    assert!(!WorkspaceActivityPanelMode::Off.panel_visible(true, true));
+    assert!(WorkspaceActivityPanelMode::Off.panel_visible(true, false));
+    assert!(WorkspaceActivityPanelMode::Off.panel_visible(false, true));
 }
 
 #[test]

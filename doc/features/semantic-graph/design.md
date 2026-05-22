@@ -110,6 +110,8 @@ The semantic graph UI consists of the graph overlay, graph node context menu, an
 
 Beryl does not provide a separate checklist sidebar. Checklist-item navigation and actions are graph-overlay responsibilities so checklist-item state has one primary user-facing surface.
 
+The main toolbar exposes a `Graph` toggle in the trailing toolbar group before Settings. The control opens and closes the graph overlay and uses the active button visual while the overlay is visible.
+
 The graph overlay is a toggleable overlay surface shown above the conversation column. It is hidden by default, closes the thread selector when opened, and is the only column-browser surface interactive while visible.
 
 The graph overlay anchors its left and right edges to the conversation column and its top edge to the bottom edge of the thread strip. Its default height is bounded near the upper half of the visible conversation-column space.

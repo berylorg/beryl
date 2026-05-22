@@ -1,6 +1,6 @@
 # Goals
 
-Let users create, resume, branch, edit, title, and select backend-owned Codex conversation threads from a Beryl workspace while preserving exact runtime/member bindings and keeping backend history ownership in `codex app-server`.
+Let users create, resume, branch, edit, title, navigate between, and select backend-owned Codex conversation threads from a Beryl workspace while preserving exact runtime/member bindings and keeping backend history ownership in `codex app-server`.
 
 ## Non-goals
 
@@ -73,6 +73,24 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - After activation is accepted, the selector closes and the transcript region shows pending activation state for the target thread.
 - Snapshot reconciliation preserves closed selector state and next-open projections by member and thread identity, pruning invalid fork columns without substituting another selected thread.
 
+## Thread History Navigation
+
+- The main toolbar exposes any selected branch's clickable parent breadcrumbs immediately after the Workspaces control. Breadcrumb buttons are content-sized under normal space and truncate only when long parent titles hit the bounded breadcrumb area.
+- The thread strip exposes workspace-local backward and forward thread-navigation controls immediately after New Thread and before the active thread selector.
+- Graph and Settings controls remain in the toolbar trailing group after flexible spacing.
+- The Workspaces and New Thread controls use the same compact width without a wide leading chrome slot.
+- Thread-navigation controls are icon-like command buttons using compact backward and forward labels. They remain visible and render disabled with a local unavailable reason when no corresponding navigation target exists or when thread activation is currently blocked.
+- Thread-navigation history is GUI-local in-memory session state scoped to the loaded Beryl workspace. It survives thread switching within that workspace and is discarded on app restart or workspace/backend-session teardown.
+- History entries identify exact backend conversation thread ids and the runtime/member execution target known at the time the entry was recorded. They are not backend conversation history and are not persisted as workspace content.
+- Successful user-initiated thread switches from the thread selector, transcript `beryl_threadid://` links, and toolbar branch breadcrumbs update the navigation history.
+- Failed, rejected, canceled, already-selected, background-only, inventory-refresh, title-update, workspace-selection, pending-new-thread, automatic restore, and backend recovery selections do not push thread-navigation entries.
+- When a new user-initiated thread switch succeeds after the user has navigated backward, Beryl truncates the forward stack before recording the new target.
+- Backward and forward commands use the same exact activation path and activation gates as thread selector activation, including backend availability, busy selected-thread work, current workspace scope, rebind-required checks, and pending activation presentation.
+- Activation failure during backward or forward navigation leaves the current thread and navigation stacks unchanged except for any bounded surface notice produced by the normal activation path.
+- Navigating to a thread whose recorded target is no longer in current workspace scope, whose registration is missing, or whose registration requires rebind is rejected instead of substituting another thread.
+- Thread-navigation rendering must not synchronously call `codex app-server`, enumerate inventories, refresh thread summaries, or read transcript history.
+- Pending thread activation may change the active thread selector label to an `Opening ...` presentation, but it must not blank the toolbar breadcrumb trail. Breadcrumbs continue to render from the last selected-thread branch projection until the activation result applies the new selected thread or reports failure.
+
 ## Thread Branching
 
 - Branching creates a new backend-owned Codex thread from an active source thread, preserves history through the clicked parent turn in the new thread, removes later turns from the new thread, and leaves the source thread unchanged.
@@ -85,7 +103,7 @@ Let users create, resume, branch, edit, title, and select backend-owned Codex co
 - `Branch and switch to` is a foreground branch workflow. After fork/rollback succeeds and the visible bootstrap turn is accepted with an exact turn id, Beryl immediately selects the new branch thread and attaches the shell UI to that bootstrap turn stream. The transcript shows the branched history plus the visible bootstrap user message while the bootstrap turn is running, and the status line represents the bootstrap as a Beryl-owned active turn with normal applicable foreground controls. Durable branch publication still waits for terminal bootstrap success and durability proof.
 - If a foregrounded `Branch and switch to` bootstrap later fails or cannot be proven durable, Beryl reports the failure in the selected branch workflow and still leaves no graph thread ref, decision binding, branch registration, branch inventory publication, or title-scheduling state for that failed branch. The already-selected backend thread is treated only as transient foreground backend state until a later explicit user action or successful publication gives it durable Beryl branch metadata.
 - `Branch in background` is a background branch workflow. It registers and publishes the branch only after terminal bootstrap success and durability proof, schedules inventory refresh, and keeps the current active transcript selected while the branch is being prepared.
-- When the selected thread is a Beryl-known branch, the thread strip renders its parent lineage as breadcrumbs before the active thread label, for example `Parent Thread > Branch Thread`. Breadcrumbs use GUI-local branch parent metadata and current title precedence; they must not trigger backend reads or inventory refresh during rendering. Branch parent metadata comes from successful Beryl branch publication, transient foreground branch state, and already-enriched thread summary or member-inventory `forkedFromId` metadata as those summaries are registered into workspace state. Parent breadcrumb segments activate the exact registered parent thread when activation is available and become disabled when the parent is missing or requires rebind. During foreground `Branch and switch to`, the transient branch state supplies the parent breadcrumb before durable branch publication succeeds.
+- When the selected thread is a Beryl-known branch, the toolbar renders its parent lineage as breadcrumbs after Workspaces, for example `Parent Thread > Parent Branch`. The thread strip renders `New Thread`, backward/forward controls, and the active thread title selector. Breadcrumb buttons hug their text label under normal toolbar space, while very long labels truncate inside the bounded breadcrumb trail so Graph and Settings remain reachable. Breadcrumbs use GUI-local branch parent metadata and current title precedence for the selected thread; they must not trigger backend reads or inventory refresh during rendering. If another thread activation is pending, the existing selected-thread breadcrumbs stay visible until the new thread is applied or activation fails. Branch parent metadata comes from successful Beryl branch publication, transient foreground branch state, and already-enriched thread summary or member-inventory `forkedFromId` metadata as those summaries are registered into workspace state. Parent breadcrumb segments activate the exact registered parent thread when activation is available and become disabled when the parent is missing or requires rebind. During foreground `Branch and switch to`, the transient branch state supplies the parent breadcrumb before durable branch publication succeeds.
 - Branched threads are Beryl-created threads. Their provisional title seed is the clicked turn's ordered user input fragments, not the source title or assistant output. Their first real user-authored branch turn triggers branch retitling as defined in Thread Display Titles.
 - Branch orchestration runs away from the `gpui` thread and does not mutate source transcript projection.
 

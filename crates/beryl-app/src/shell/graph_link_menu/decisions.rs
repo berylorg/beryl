@@ -11,7 +11,7 @@ use crate::{
 
 use super::super::{
     PendingDecisionHandoffNavigation, ShellView, SurfaceNotice, ThreadActivationStart,
-    thread_selector::ThreadSelectorActivationTarget,
+    ThreadNavigationActivationSource, thread_selector::ThreadSelectorActivationTarget,
 };
 
 impl ShellView {
@@ -343,7 +343,12 @@ impl ShellView {
                 };
             }
         };
-        self.activate_thread_selector_target(target, window, cx)
+        self.activate_thread_selector_target(
+            target,
+            ThreadNavigationActivationSource::NonHistory,
+            window,
+            cx,
+        )
     }
 
     fn registered_thread_activation_target(

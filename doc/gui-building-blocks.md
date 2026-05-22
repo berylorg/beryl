@@ -37,7 +37,7 @@ Examples: `OK`, `Cancel`, `New Thread`.
 
 A **toggle button** is a standalone button-looking control with persistent on/off state.
 
-A **labeled cycle button** is a button-looking control that displays a stable label part and a current value part inside one button, separated visually, such as `Activity | Auto`. Activating it advances the value through a finite ordered set of allowed values.
+A **labeled cycle button** is a button-looking control that displays a stable label part and a current value part inside one button, separated visually, such as `Sort | Recent`. Activating it advances the value through a finite ordered set of allowed values.
 
 The internal divider separates the label part from the value part; it does not create separate activation targets. A labeled cycle button is not a split button, because it has one activation behavior and no adjacent menu or flyout trigger area.
 

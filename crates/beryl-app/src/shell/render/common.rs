@@ -292,74 +292,20 @@ pub(super) fn secondary_button(
     themed_button(theme, ChromeButtonVisualState::Normal, id, label, on_click)
 }
 
-pub(super) fn secondary_fixed_label_button(
+pub(super) fn secondary_button_with_active_state(
     shell: &ShellRenderFrame<'_>,
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
-    possible_labels: &'static [&'static str],
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> gpui::Stateful<gpui::Div> {
-    let theme = shell.secondary_button_theme();
-    themed_fixed_label_button(
-        theme,
-        ChromeButtonVisualState::Normal,
-        id,
-        label,
-        possible_labels,
-        on_click,
-    )
-}
-
-pub(super) fn secondary_labeled_cycle_button_with_active_state(
-    shell: &ShellRenderFrame<'_>,
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    value_label: impl Into<SharedString>,
-    possible_value_labels: &'static [&'static str],
     active: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
-    let label = label.into();
-    let value_label = value_label.into();
-    let id = id.into();
     let theme = shell.secondary_button_theme();
     let visual_state = if active {
         ChromeButtonVisualState::Active
     } else {
         ChromeButtonVisualState::Normal
     };
-    let button_state = visual_state.theme_state(theme);
-    let divider_group_id: SharedString = format!("{id}-divider").into();
-    let divider_element_id: SharedString = format!("{divider_group_id}-element").into();
-    themed_button_container(theme, visual_state, id)
-        .group(divider_group_id.clone())
-        .overflow_hidden()
-        .child(
-            div()
-                .h_full()
-                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(label),
-        )
-        .child(
-            div()
-                .h_full()
-                .w(px(1.0))
-                .bg(button_state.border)
-                .id(divider_element_id)
-                .group_hover(divider_group_id.clone(), move |style| {
-                    style.bg(theme.hover.border)
-                })
-                .group_active(divider_group_id, move |style| style.bg(theme.active.border)),
-        )
-        .child(
-            div()
-                .h_full()
-                .child(fixed_label_slot(value_label, possible_value_labels)),
-        )
-        .on_click(move |event, window, cx| on_click(event, window, cx))
+    themed_button(theme, visual_state, id, label, on_click)
 }
 
 pub(super) fn disabled_secondary_button(
@@ -403,18 +349,6 @@ fn themed_button(
         .on_click(move |event, window, cx| on_click(event, window, cx))
 }
 
-fn themed_fixed_label_button(
-    theme: ChromeButtonTheme,
-    visual_state: ChromeButtonVisualState,
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    possible_labels: &'static [&'static str],
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> gpui::Stateful<gpui::Div> {
-    themed_fixed_label_button_base(theme, visual_state, id, label, possible_labels)
-        .on_click(move |event, window, cx| on_click(event, window, cx))
-}
-
 fn themed_button_base(
     theme: ChromeButtonTheme,
     visual_state: ChromeButtonVisualState,
@@ -426,57 +360,6 @@ fn themed_button_base(
         .px(px(layout::BUTTON_HORIZONTAL_PADDING))
         .py(px(layout::BUTTON_VERTICAL_PADDING))
         .child(label)
-}
-
-fn themed_fixed_label_button_base(
-    theme: ChromeButtonTheme,
-    visual_state: ChromeButtonVisualState,
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    possible_labels: &'static [&'static str],
-) -> gpui::Stateful<gpui::Div> {
-    let label = label.into();
-    themed_button_container(theme, visual_state, id).child(fixed_label_slot(label, possible_labels))
-}
-
-fn fixed_label_slot(
-    label: SharedString,
-    possible_labels: &'static [&'static str],
-) -> impl IntoElement {
-    debug_assert!(!possible_labels.is_empty());
-    let mut reserved_labels = div()
-        .h_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .overflow_hidden()
-        .opacity(0.0);
-    for possible_label in possible_labels {
-        reserved_labels = reserved_labels.child(
-            div()
-                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(*possible_label),
-        );
-    }
-
-    div()
-        .relative()
-        .h_full()
-        .overflow_hidden()
-        .child(reserved_labels)
-        .child(
-            div()
-                .absolute()
-                .inset_0()
-                .px(px(layout::BUTTON_HORIZONTAL_PADDING))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(label),
-        )
 }
 
 fn themed_button_container(

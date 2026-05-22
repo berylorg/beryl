@@ -6,8 +6,8 @@ use gpui::{
     div, img, prelude::*, px, relative, rgba,
 };
 
+use crate::BerylThemeRole;
 use crate::text_input::SingleLineInput;
-use crate::{BerylThemeRole, WorkspaceActivityPanelMode};
 use crate::{
     shell::{
         BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
@@ -27,8 +27,7 @@ use crate::{
 
 use super::common::{
     button, card, disabled_secondary_button, inline_notice, secondary_button,
-    secondary_fixed_label_button, secondary_labeled_cycle_button_with_active_state, section_label,
-    toolbar_controls_strip,
+    secondary_button_with_active_state, section_label, toolbar_controls_strip,
 };
 use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
@@ -494,7 +493,7 @@ pub(super) fn render_blocked_shell(
 fn render_workspace_surface(
     shell: &ShellRenderFrame<'_>,
     loaded_workspace: &LoadedWorkspaceState,
-    workspace_title: &str,
+    _workspace_title: &str,
     execution_target: &beryl_model::workspace::WorkspaceId,
     _process_id: Option<u32>,
     _backend_label: &str,
@@ -514,11 +513,9 @@ fn render_workspace_surface(
     let toolbar = render_toolbar(
         shell,
         loaded_workspace,
-        workspace_title,
         execution_target,
         surface,
-        blocked.is_some(),
-        backend_controls_disabled.as_deref(),
+        thread_selector_controls_disabled.as_deref(),
         cx,
     )
     .into_any_element();
@@ -1104,94 +1101,92 @@ fn render_composer_image_preview(shell: &ShellRenderFrame<'_>, label: &str) -> i
         )
 }
 
-fn activity_mode_button(
-    shell: &ShellRenderFrame<'_>,
-    value_label: &'static str,
-    active: bool,
-    cx: &mut Context<ShellView>,
-) -> impl IntoElement {
-    secondary_labeled_cycle_button_with_active_state(
-        shell,
-        "activity-mode",
-        "Activity",
-        value_label,
-        WorkspaceActivityPanelMode::cycle_value_labels(),
-        active,
-        cx.listener(ShellView::cycle_tool_activity_panel_mode),
-    )
-}
-
-const GRAPH_TOGGLE_LABELS: [&str; 2] = ["Graph", "Hide Graph"];
-
-fn toolbar_toggle_label(labels: &'static [&'static str; 2], active: bool) -> &'static str {
-    labels[usize::from(active)]
-}
-
 fn render_toolbar(
     shell: &ShellRenderFrame<'_>,
     loaded_workspace: &LoadedWorkspaceState,
-    _workspace_title: &str,
-    _execution_target: &beryl_model::workspace::WorkspaceId,
+    execution_target: &beryl_model::workspace::WorkspaceId,
     surface: &ConversationSurfaceState,
-    blocked: bool,
-    _backend_controls_disabled: Option<&str>,
+    thread_selector_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
+    let selected_label =
+        selected_thread_title_label(surface, &loaded_workspace.workspace_state, execution_target);
+    let branch_breadcrumb_segments = toolbar_branch_breadcrumb_segments(
+        shell,
+        &loaded_workspace.workspace_state,
+        surface,
+        &selected_label,
+    );
+
     toolbar_controls_strip(
         shell,
         div()
             .flex()
             .items_center()
-            .gap_3()
-            .child(render_workspace_picker_button(shell, loaded_workspace, cx))
-            .child(activity_mode_button(
-                shell,
-                surface.tool_activity_panel_mode().value_label(),
-                surface.tool_activity_panel_visible(),
-                cx,
-            ))
-            .child(secondary_fixed_label_button(
-                shell,
-                "toggle-graph-overlay",
-                toolbar_toggle_label(&GRAPH_TOGGLE_LABELS, surface.graph_overlay().visible()),
-                &GRAPH_TOGGLE_LABELS,
-                cx.listener(ShellView::toggle_graph_overlay),
-            ))
-            .child(secondary_button(
-                shell,
-                "settings-toolbar",
-                "Settings",
-                cx.listener(ShellView::open_settings_window),
-            ))
-            .when(blocked, |this| {
-                this.child(button(
-                    shell,
-                    "retry-backend-toolbar",
-                    "Retry Backend",
-                    cx.listener(ShellView::retry_workspace),
-                ))
-            }),
+            .w_full()
+            .gap_2()
+            .child(
+                div()
+                    .flex_initial()
+                    .min_w(px(0.0))
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(render_workspace_picker_button(shell, loaded_workspace, cx))
+                    .when_some(branch_breadcrumb_segments, |this, segments| {
+                        this.child(render_toolbar_branch_breadcrumbs(
+                            shell,
+                            segments,
+                            thread_selector_controls_disabled,
+                            cx,
+                        ))
+                    }),
+            )
+            .child(div().flex_1().min_w(px(0.0)))
+            .child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(graph_toolbar_button(
+                        shell,
+                        surface.graph_overlay().visible(),
+                        cx,
+                    ))
+                    .child(secondary_button(
+                        shell,
+                        "settings-toolbar",
+                        "Settings",
+                        cx.listener(ShellView::open_settings_window),
+                    )),
+            ),
     )
 }
 
-fn render_thread_strip(
-    shell: &ShellRenderFrame<'_>,
-    workspace: &beryl_model::workspace::WorkspaceId,
-    workspace_state: &beryl_model::conversation::WorkspaceConversationState,
-    _threaded_decision_state: &beryl_model::threaded_decision::ThreadedDecisionState,
+fn selected_thread_title_label(
     surface: &ConversationSurfaceState,
-    new_thread_controls_disabled: Option<&str>,
-    thread_selector_controls_disabled: Option<&str>,
-    cx: &mut Context<ShellView>,
-) -> impl IntoElement {
-    let entity = cx.entity();
-    let new_thread_enabled = new_thread_controls_disabled.is_none();
-    let thread_selector_enabled = thread_selector_controls_disabled.is_none();
-    let pending_thread_activation_label = surface.pending_thread_activation_label();
-    let active_label = pending_thread_activation_label
+    workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    workspace: &beryl_model::workspace::WorkspaceId,
+) -> String {
+    surface
+        .selected_thread_display_label(workspace_state, workspace)
+        .unwrap_or_else(|| "New conversation".to_string())
+}
+
+fn active_thread_title_label(surface: &ConversationSurfaceState, selected_label: String) -> String {
+    surface
+        .pending_thread_activation_label()
         .map(|label| format!("Opening {label}"))
-        .or_else(|| surface.selected_thread_display_label(workspace_state, workspace))
-        .unwrap_or_else(|| "New conversation".to_string());
+        .unwrap_or(selected_label)
+}
+
+fn toolbar_branch_breadcrumb_segments(
+    shell: &ShellRenderFrame<'_>,
+    workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    surface: &ConversationSurfaceState,
+    selected_label: &str,
+) -> Option<Vec<ThreadStripBreadcrumbSegment>> {
     let selected_thread_id = surface.selected_thread_id();
     let transient_branch_parent = shell
         .foreground_transcript_branch
@@ -1216,17 +1211,149 @@ fn render_thread_strip(
                     parent_thread_id,
                 },
             );
-    let branch_breadcrumbs = pending_thread_activation_label
-        .is_none()
-        .then(|| {
-            thread_strip_breadcrumb_trail(
-                workspace_state,
-                selected_thread_id,
-                &active_label,
-                transient_branch_parent,
-            )
-        })
-        .flatten();
+    let segments = thread_strip_breadcrumb_trail(
+        workspace_state,
+        selected_thread_id,
+        selected_label,
+        transient_branch_parent,
+    )?
+    .segments()
+    .iter()
+    .filter(|segment| !segment.active())
+    .cloned()
+    .collect::<Vec<_>>();
+
+    (!segments.is_empty()).then_some(segments)
+}
+
+fn render_toolbar_branch_breadcrumbs(
+    shell: &ShellRenderFrame<'_>,
+    segments: Vec<ThreadStripBreadcrumbSegment>,
+    thread_selector_controls_disabled: Option<&str>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    let mut row = div()
+        .flex_initial()
+        .max_w(px(layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH))
+        .min_w(px(0.0))
+        .h_full()
+        .flex()
+        .items_center()
+        .gap_2()
+        .overflow_hidden();
+
+    for (index, segment) in segments.into_iter().enumerate() {
+        if index > 0 {
+            row = row.child(
+                div()
+                    .flex_none()
+                    .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
+                    .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                    .text_color(shell.surface_muted_foreground())
+                    .child(">"),
+            );
+        }
+
+        row = row.child(render_toolbar_parent_breadcrumb(
+            shell,
+            segment,
+            index,
+            thread_selector_controls_disabled,
+            cx,
+        ));
+    }
+
+    row
+}
+
+fn graph_toolbar_button(
+    shell: &ShellRenderFrame<'_>,
+    graph_visible: bool,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    secondary_button_with_active_state(
+        shell,
+        "graph-toolbar",
+        "Graph",
+        graph_visible,
+        cx.listener(ShellView::toggle_graph_overlay),
+    )
+}
+
+fn thread_navigation_button(
+    shell: &ShellRenderFrame<'_>,
+    id: &'static str,
+    label: &'static str,
+    disabled_reason: Option<String>,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    match disabled_reason {
+        Some(reason) => {
+            let tooltip = ThreadNavigationTooltip {
+                message: reason,
+                background: shell.popup_surface_background(),
+                border: shell.surface_border(),
+                foreground: shell.general_ui_foreground(),
+            };
+            disabled_secondary_button(shell, id, label)
+                .w(px(layout::BUTTON_ICON_OUTER_WIDTH))
+                .opacity(0.62)
+                .tooltip(move |_, cx| build_thread_navigation_tooltip(tooltip.clone(), cx))
+                .into_any_element()
+        }
+        None => secondary_button(shell, id, label, on_click)
+            .w(px(layout::BUTTON_ICON_OUTER_WIDTH))
+            .into_any_element(),
+    }
+}
+
+#[derive(Clone)]
+struct ThreadNavigationTooltip {
+    message: String,
+    background: gpui::Rgba,
+    border: gpui::Rgba,
+    foreground: gpui::Rgba,
+}
+
+fn build_thread_navigation_tooltip(tooltip: ThreadNavigationTooltip, cx: &mut App) -> AnyView {
+    cx.new(|_| tooltip).into()
+}
+
+impl Render for ThreadNavigationTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .w(px(280.0))
+            .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
+            .bg(self.background)
+            .border_1()
+            .border_color(self.border)
+            .px_3()
+            .py_2()
+            .text_xs()
+            .text_color(self.foreground)
+            .child(self.message.clone())
+    }
+}
+
+fn render_thread_strip(
+    shell: &ShellRenderFrame<'_>,
+    workspace: &beryl_model::workspace::WorkspaceId,
+    workspace_state: &beryl_model::conversation::WorkspaceConversationState,
+    _threaded_decision_state: &beryl_model::threaded_decision::ThreadedDecisionState,
+    surface: &ConversationSurfaceState,
+    new_thread_controls_disabled: Option<&str>,
+    thread_selector_controls_disabled: Option<&str>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
+    let entity = cx.entity();
+    let new_thread_enabled = new_thread_controls_disabled.is_none();
+    let thread_selector_enabled = thread_selector_controls_disabled.is_none();
+    let active_label = active_thread_title_label(
+        surface,
+        selected_thread_title_label(surface, workspace_state, workspace),
+    );
+    let backward_disabled_reason = shell.thread_navigation_backward_disabled_reason();
+    let forward_disabled_reason = shell.thread_navigation_forward_disabled_reason();
 
     div()
         .w_full()
@@ -1248,8 +1375,27 @@ fn render_thread_strip(
             .into_any_element()
         } else {
             disabled_secondary_button(shell, "thread-strip-new-thread", "New Thread")
+                .w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))
                 .into_any_element()
         })
+        .child(thread_navigation_button(
+            shell,
+            "thread-navigation-backward-thread-strip",
+            "<",
+            backward_disabled_reason,
+            cx.listener(|view, _event, window, cx| {
+                view.activate_thread_navigation_backward(window, cx);
+            }),
+        ))
+        .child(thread_navigation_button(
+            shell,
+            "thread-navigation-forward-thread-strip",
+            ">",
+            forward_disabled_reason,
+            cx.listener(|view, _event, window, cx| {
+                view.activate_thread_navigation_forward(window, cx);
+            }),
+        ))
         .child(
             div()
                 .flex_1()
@@ -1276,81 +1422,15 @@ fn render_thread_strip(
                         )
                     },
                 )
-                .child(match branch_breadcrumbs {
-                    Some(breadcrumbs) => render_thread_strip_breadcrumbs(
-                        shell,
-                        entity,
-                        breadcrumbs.segments().to_vec(),
-                        thread_selector_enabled,
-                        surface.thread_selector().is_open(),
-                        thread_selector_controls_disabled,
-                        cx,
-                    )
-                    .into_any_element(),
-                    None => render_thread_strip_active_thread_title(
-                        shell,
-                        entity,
-                        active_label,
-                        thread_selector_enabled,
-                        surface.thread_selector().is_open(),
-                        cx,
-                    )
-                    .into_any_element(),
-                }),
+                .child(render_thread_strip_active_thread_title(
+                    shell,
+                    entity,
+                    active_label,
+                    thread_selector_enabled,
+                    surface.thread_selector().is_open(),
+                    cx,
+                )),
         )
-}
-
-fn render_thread_strip_breadcrumbs(
-    shell: &ShellRenderFrame<'_>,
-    entity: Entity<ShellView>,
-    segments: Vec<ThreadStripBreadcrumbSegment>,
-    thread_selector_enabled: bool,
-    thread_selector_open: bool,
-    thread_selector_controls_disabled: Option<&str>,
-    cx: &mut Context<ShellView>,
-) -> impl IntoElement {
-    let mut row = div()
-        .w_full()
-        .h_full()
-        .flex()
-        .items_center()
-        .gap_2()
-        .overflow_hidden();
-
-    let last_index = segments.len().saturating_sub(1);
-    for (index, segment) in segments.into_iter().enumerate() {
-        if index > 0 {
-            row = row.child(
-                div()
-                    .flex_none()
-                    .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
-                    .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
-                    .text_color(shell.surface_muted_foreground())
-                    .child(">"),
-            );
-        }
-
-        if index == last_index && segment.active() {
-            row = row.child(render_thread_strip_active_thread_title(
-                shell,
-                entity.clone(),
-                segment.label().to_string(),
-                thread_selector_enabled,
-                thread_selector_open,
-                cx,
-            ));
-        } else {
-            row = row.child(render_thread_strip_parent_breadcrumb(
-                shell,
-                segment,
-                index,
-                thread_selector_controls_disabled,
-                cx,
-            ));
-        }
-    }
-
-    row
 }
 
 fn render_thread_strip_active_thread_title(
@@ -1428,7 +1508,7 @@ fn render_thread_strip_active_thread_title(
         )
 }
 
-fn render_thread_strip_parent_breadcrumb(
+fn render_toolbar_parent_breadcrumb(
     shell: &ShellRenderFrame<'_>,
     breadcrumb: ThreadStripBreadcrumbSegment,
     index: usize,
@@ -1458,9 +1538,9 @@ fn render_thread_strip_parent_breadcrumb(
     };
 
     let mut breadcrumb_button = div()
-        .id(("thread-strip-branch-parent-breadcrumb", index))
-        .flex_none()
-        .max_w(relative(0.32))
+        .id(("toolbar-branch-parent-breadcrumb", index))
+        .flex_initial()
+        .max_w(px(layout::TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH))
         .min_w(px(0.0))
         .h(px(layout::BUTTON_OUTER_HEIGHT))
         .px(px(layout::BUTTON_HORIZONTAL_PADDING))
@@ -1498,7 +1578,7 @@ fn render_thread_strip_parent_breadcrumb(
             })
             .cursor_pointer()
             .on_click(cx.listener(move |view, _event, window, cx| {
-                view.activate_thread_selector_target(target.clone(), window, cx);
+                view.activate_branch_breadcrumb_thread_target(target.clone(), window, cx);
             }));
     } else if let Some(reason) = disabled_reason {
         let tooltip_theme = ThreadStripBreadcrumbTooltipTheme::from_shell(shell);
@@ -1780,7 +1860,7 @@ fn thread_strip_action(
     label: &'static str,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    secondary_button(shell, id, label, on_click)
+    secondary_button(shell, id, label, on_click).w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))
 }
 
 fn render_split_surface(
