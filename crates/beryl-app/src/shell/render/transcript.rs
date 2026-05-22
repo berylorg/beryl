@@ -884,8 +884,11 @@ impl TranscriptPanel {
         cx: &mut Context<Self>,
     ) -> bool {
         if let Some(thread_id) = self.thread_link_for_position(event.position) {
-            self.shell.update(cx, |shell, cx| {
-                shell.activate_beryl_thread_link(thread_id, window, cx);
+            let shell = self.shell.clone();
+            window.defer(cx, move |window, cx| {
+                shell.update(cx, |shell, cx| {
+                    shell.activate_beryl_thread_link(thread_id, window, cx);
+                });
             });
             window.focus(&self.focus_handle);
             return true;

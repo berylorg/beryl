@@ -71,6 +71,23 @@ fn workspace_shell_rendering_uses_initialized_controls_and_shared_composer_frame
 }
 
 #[test]
+fn transcript_thread_link_activation_defers_shell_update_from_panel_handler() {
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let body = rust_function_body(transcript_source, "fn handle_transcript_mouse_down");
+
+    assert!(body.contains("if let Some(thread_id) = self.thread_link_for_position"));
+    assert!(body.contains("let shell = self.shell.clone();"));
+    assert!(body.contains("window.defer(cx"));
+    assert_order(body, "window.defer(cx", "shell.activate_beryl_thread_link");
+    assert!(!body.contains(
+        "self.shell.update(cx, |shell, cx| {\r\n                shell.activate_beryl_thread_link"
+    ));
+    assert!(!body.contains(
+        "self.shell.update(cx, |shell, cx| {\n                shell.activate_beryl_thread_link"
+    ));
+}
+
+#[test]
 fn activity_mode_uses_labeled_cycle_button_with_regular_button_theme() {
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let common_source = include_str!("../src/shell/render/common.rs");
