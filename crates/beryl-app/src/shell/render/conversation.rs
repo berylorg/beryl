@@ -1174,13 +1174,6 @@ fn selected_thread_title_label(
         .unwrap_or_else(|| "New conversation".to_string())
 }
 
-fn active_thread_title_label(surface: &ConversationSurfaceState, selected_label: String) -> String {
-    surface
-        .pending_thread_activation_label()
-        .map(|label| format!("Opening {label}"))
-        .unwrap_or(selected_label)
-}
-
 fn toolbar_branch_breadcrumb_segments(
     shell: &ShellRenderFrame<'_>,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
@@ -1237,9 +1230,10 @@ fn render_toolbar_branch_breadcrumbs(
         .max_w(px(layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH))
         .min_w(px(0.0))
         .h_full()
+        .px(px(layout::BUTTON_BORDER_WIDTH))
         .flex()
         .items_center()
-        .gap_2()
+        .gap(px(layout::TOOLBAR_BREADCRUMB_GAP))
         .overflow_hidden();
 
     for (index, segment) in segments.into_iter().enumerate() {
@@ -1247,8 +1241,10 @@ fn render_toolbar_branch_breadcrumbs(
             row = row.child(
                 div()
                     .flex_none()
+                    .w(px(layout::TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH))
                     .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                     .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
+                    .text_center()
                     .text_color(shell.surface_muted_foreground())
                     .child(">"),
             );
@@ -1348,10 +1344,7 @@ fn render_thread_strip(
     let entity = cx.entity();
     let new_thread_enabled = new_thread_controls_disabled.is_none();
     let thread_selector_enabled = thread_selector_controls_disabled.is_none();
-    let active_label = active_thread_title_label(
-        surface,
-        selected_thread_title_label(surface, workspace_state, workspace),
-    );
+    let active_label = selected_thread_title_label(surface, workspace_state, workspace);
     let backward_disabled_reason = shell.thread_navigation_backward_disabled_reason();
     let forward_disabled_reason = shell.thread_navigation_forward_disabled_reason();
 
@@ -1375,7 +1368,6 @@ fn render_thread_strip(
             .into_any_element()
         } else {
             disabled_secondary_button(shell, "thread-strip-new-thread", "New Thread")
-                .w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))
                 .into_any_element()
         })
         .child(thread_navigation_button(
@@ -1405,23 +1397,6 @@ fn render_thread_strip(
                 .items_center()
                 .gap_3()
                 .overflow_hidden()
-                .when(
-                    matches!(
-                        workspace.runtime_mode(),
-                        beryl_model::workspace::RuntimeMode::WslLinux { .. }
-                    ),
-                    |this| {
-                        this.child(
-                            div()
-                                .text_xs()
-                                .text_color(shell.role_foreground(
-                                    BerylThemeRole::NoticeInfo,
-                                    shell.surface_foreground(),
-                                ))
-                                .child(workspace.runtime_mode().display_name()),
-                        )
-                    },
-                )
                 .child(render_thread_strip_active_thread_title(
                     shell,
                     entity,
@@ -1551,7 +1526,6 @@ fn render_toolbar_parent_breadcrumb(
         .border_color(button_state.border)
         .flex()
         .items_center()
-        .overflow_hidden()
         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
         .font_weight(theme.font_weight)
@@ -1559,6 +1533,7 @@ fn render_toolbar_parent_breadcrumb(
         .child(
             div()
                 .min_w(px(0.0))
+                .overflow_hidden()
                 .whitespace_nowrap()
                 .truncate()
                 .child(label.clone()),
@@ -1860,7 +1835,7 @@ fn thread_strip_action(
     label: &'static str,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    secondary_button(shell, id, label, on_click).w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))
+    secondary_button(shell, id, label, on_click)
 }
 
 fn render_split_surface(

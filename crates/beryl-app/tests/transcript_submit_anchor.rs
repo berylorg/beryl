@@ -232,18 +232,6 @@ fn submit_anchor_does_not_add_a_synthetic_list_row() {
 }
 
 #[test]
-fn passive_loaded_history_anchor_keeps_forced_viewport_disabled() {
-    let anchor =
-        transcript_anchor::TranscriptSubmitAnchor::passive(1, 0, "loaded prompt".to_string());
-
-    let snapshot = anchor.snapshot();
-    assert_eq!(snapshot.turn_index, 1);
-    assert_eq!(snapshot.fragment_index, 0);
-    assert_eq!(snapshot.user_input, "loaded prompt");
-    assert!(!snapshot.force_viewport);
-}
-
-#[test]
 fn manual_scroll_release_only_stops_forced_viewport_once() {
     let mut anchor = Some(transcript_anchor::TranscriptSubmitAnchor::new(
         2,

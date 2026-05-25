@@ -28,7 +28,6 @@ impl ShellView {
                 transcript_width: ready.surface.transcript_width(),
                 transcript_list_state: ready.surface.transcript_list_state(),
                 submit_anchor: ready.surface.transcript_submit_anchor_snapshot(),
-                loaded_history_anchor_pending: ready.surface.loaded_history_anchor_pending(),
                 older_history_loading: ready.surface.older_history_loading(),
                 metrics: tracing::enabled!(tracing::Level::DEBUG)
                     .then(|| ready.surface.transcript_presentation().render_metrics()),
@@ -61,9 +60,6 @@ impl ShellView {
                     transcript_width: unavailable.surface.transcript_width(),
                     transcript_list_state: unavailable.surface.transcript_list_state(),
                     submit_anchor: unavailable.surface.transcript_submit_anchor_snapshot(),
-                    loaded_history_anchor_pending: unavailable
-                        .surface
-                        .loaded_history_anchor_pending(),
                     older_history_loading: unavailable.surface.older_history_loading(),
                     metrics: tracing::enabled!(tracing::Level::DEBUG).then(|| {
                         unavailable
@@ -102,7 +98,6 @@ impl ShellView {
                     transcript_width: surface.transcript_width(),
                     transcript_list_state: surface.transcript_list_state(),
                     submit_anchor: surface.transcript_submit_anchor_snapshot(),
-                    loaded_history_anchor_pending: surface.loaded_history_anchor_pending(),
                     older_history_loading: surface.older_history_loading(),
                     metrics: tracing::enabled!(tracing::Level::DEBUG)
                         .then(|| surface.transcript_presentation().render_metrics()),

@@ -102,10 +102,7 @@ use self::{
         platform_caret_blink_interval,
     },
     markdown_cache::TranscriptMarkdownRenderContext,
-    text_blocks::{
-        empty_state, older_history_loading_state, pending_thread_activation_state,
-        released_history_placeholder_state,
-    },
+    text_blocks::{empty_state, older_history_loading_state, released_history_placeholder_state},
     turn_blocks::{render_turn_card, user_prompt_block_path},
 };
 use super::super::virtual_list::{
@@ -506,7 +503,6 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub transcript_width: Pixels,
     pub transcript_list_state: ListState,
     pub submit_anchor: Option<TranscriptSubmitAnchorSnapshot>,
-    pub loaded_history_anchor_pending: bool,
     pub older_history_loading: bool,
     pub metrics: Option<TranscriptRenderMetrics>,
     pub activity_caret: Option<TranscriptActivityCaret>,
@@ -2054,8 +2050,6 @@ impl Render for TranscriptPanel {
             .read(cx)
             .conversation_surface()
             .is_some_and(|surface| !surface.transcript_presentation().is_empty());
-        let pending_thread_activation_label = snapshot.pending_thread_activation_label.clone();
-        let has_pending_thread_activation = pending_thread_activation_label.is_some();
         let entity = cx.entity();
         let transcript_list_state = snapshot.transcript_list_state.clone();
         let media_promotion_state = TranscriptMediaPromotionState::new(self.promoted_media.clone());
@@ -2327,7 +2321,6 @@ impl Render for TranscriptPanel {
         ));
         let media_context = media_context.with_profiler(profiler.clone());
         let workspace = snapshot.workspace.clone();
-        let loaded_history_anchor_pending = snapshot.loaded_history_anchor_pending;
         let older_history_loading = snapshot.older_history_loading;
         let activity_caret = snapshot.activity_caret.clone();
         let transcript_edit_mode = snapshot.transcript_edit_mode.clone();
@@ -2419,16 +2412,7 @@ impl Render for TranscriptPanel {
                         .min_h(px(0.0))
                         .flex()
                         .flex_col()
-                        .when_some(pending_thread_activation_label, |this, label| {
-                            this.child(
-                                div()
-                                    .px_3()
-                                    .pt_4()
-                                    .pb_3()
-                                    .child(pending_thread_activation_state(&label, theme.as_ref())),
-                            )
-                        })
-                        .when(!has_turns && !has_pending_thread_activation, |this| {
+                        .when(!has_turns, |this| {
                             this.child(
                                 div()
                                     .px_3()
@@ -2596,14 +2580,6 @@ impl Render for TranscriptPanel {
                                                     view.clear_stale_transcript_image_menu_target(
                                                         cx,
                                                     );
-                                                });
-                                            }
-                                            if loaded_history_anchor_pending {
-                                                let shell = shell.clone();
-                                                cx.defer(move |cx| {
-                                                    shell.update(cx, |view, cx| {
-                                                        view.install_loaded_history_transcript_anchor(cx);
-                                                    });
                                                 });
                                             }
                                         }

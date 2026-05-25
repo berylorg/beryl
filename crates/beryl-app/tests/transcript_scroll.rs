@@ -14,7 +14,6 @@ mod virtual_list;
 #[path = "../src/shell/transcript_scroll.rs"]
 mod transcript_scroll;
 
-use beryl_app::{AppearanceRoleSettings, AppearanceSettings};
 use gpui::px;
 use transcript_scroll::{
     LiveTranscriptRows, TranscriptTurnJumpDirection, sync_live_transcript_rows,
@@ -248,6 +247,29 @@ fn bottom_aligned_sync_keeps_default_bottom_scroll() {
     );
 
     assert_eq!(list_state.scroll_position(), ListScrollPosition::Bottom);
+}
+
+#[test]
+fn loaded_history_reset_keeps_bottom_intent_through_tail_allowance_clear() {
+    let list_state = ListState::new(3, ListAlignment::Bottom, px(320.0));
+    test_support::set_measured_item_heights(&list_state, &[px(120.0), px(120.0), px(120.0)]);
+    test_support::set_viewport_height(&list_state, px(120.0));
+    list_state.set_virtual_trailing_scroll_allowance(px(80.0));
+    list_state.scroll_to_position(ListScrollPosition::VirtualTail {
+        offset_from_content_end: px(40.0),
+    });
+
+    list_state.reset(1);
+    test_support::set_measured_item_heights(&list_state, &[px(360.0)]);
+
+    assert_eq!(list_state.item_count(), 1);
+    assert_eq!(list_state.scroll_position(), ListScrollPosition::Bottom);
+    assert_eq!(test_support::visible_range(&list_state), 0..1);
+
+    list_state.set_virtual_trailing_scroll_allowance(px(0.0));
+
+    assert_eq!(list_state.scroll_position(), ListScrollPosition::Bottom);
+    assert_eq!(test_support::visible_range(&list_state), 0..1);
 }
 
 #[test]

@@ -33,7 +33,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 
 - `OS window` is the native top-level application window.
 - `Toolbar strip` is a fixed-height top row reserved for global controls such as settings and workspace actions.
-- `Thread strip` is the fixed-height row beneath the toolbar for thread creation, active thread title, and runtime context.
+- `Thread strip` is the fixed-height row beneath the toolbar for thread creation, thread history navigation, and the active thread title selector.
 - `Conversation column` is the workspace area beneath the thread strip that contains transcript, optional activity panel, and user input panel.
 - `Transcript region` is the stretchable workspace area that shows the active Codex thread.
 - `Activity panel` is the optional strip that shows selected-thread in-memory activity.
@@ -58,8 +58,10 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Feature-owned toolbar controls include the workspace picker control from `doc/features/workspaces/design.md`, branch breadcrumbs from `doc/features/conversation-threads/design.md`, the graph overlay toggle from `doc/features/semantic-graph/design.md`, and the settings control from `doc/features/settings/design.md`.
 - The main workspace toolbar arranges Workspaces and optional content-sized branch breadcrumbs at the leading edge, reserves flexible space in the middle, and aligns Graph and Settings controls to the trailing edge. While an asynchronous thread activation is pending, toolbar breadcrumbs keep rendering from the last selected-thread projection until the new selected thread is applied.
 - The thread strip is fixed-height beneath the toolbar, stretches horizontally, and keeps long thread labels from causing outer scrolling.
-- The thread strip includes feature-owned thread controls from `doc/features/conversation-threads/design.md`, including `New Thread`, backward/forward thread-navigation controls, and the active thread title selector. Branch breadcrumbs belong in the toolbar, not in the thread strip.
+- The thread strip includes feature-owned thread controls from `doc/features/conversation-threads/design.md`, including `New Thread`, backward/forward thread-navigation controls, and the active thread title selector. Branch breadcrumbs and static runtime-context labels belong outside the thread strip; the thread strip must not render `wsl-linux:<distro>` or other runtime labels before the active thread title selector.
 - The conversation column itself is not a scrolling surface. Its child transcript region, activity panel, and user input panel follow their own feature contracts.
+- When an asynchronous operation changes the selected thread, established selected-thread chrome and the transcript region keep rendering the previous coherent state until the replacement thread history is ready to apply. Progress feedback belongs in status, notices, or other localized affordances that do not replace existing labels or content with transient `Opening ...` or loading placeholders.
+- Applying a newly selected thread is a single UI transaction: the selected-thread chrome, transcript rows, and initial transcript viewport state are chosen before the new transcript becomes visible. The transcript renderer may measure rows and reconcile ordinary live layout, but it must not install a second selected-thread-activation scroll position through prepaint, deferred, or post-frame work after the first new-thread frame.
 
 ## Appearance
 
@@ -73,7 +75,10 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Button outer height is one shared command-control height.
 - Button labels use standard UI font family, shared button-label size, shared button-label line height, and active button role font weight.
 - Internal padding is centralized separately for vertical and horizontal axes.
+- Normal text-labeled command buttons use the shared horizontal padding exactly and remain content-sized unless a specific finite-label contract reserves width for label changes. They must not add fixed leading chrome width merely to make unrelated controls appear equal-width.
+- Square or icon-like command buttons may override horizontal padding or width only as needed to preserve a square footprint.
 - Text buttons and icon-only buttons share the same outer height and corner shape.
+- Button containers must preserve their own outer border and label padding under bounded-width truncation; truncation may shorten label text but must not clip, mask, or hide the command button's right or bottom edge.
 - Buttons whose visible text comes from a known finite cycling or toggle label set reserve width for the longest label in that set.
 - Button geometry is invariant across normal, hover, pressed, active, and disabled states.
 - Interaction states must not change width, height, padding, border width, font size, line height, font weight, transform, shadow, or flex sizing.

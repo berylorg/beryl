@@ -101,6 +101,8 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 ## Responsiveness And Performance
 
 - UI responsiveness, including input latency and render latency, is a first-order design constraint rather than deferred polish.
+- Beryl UI must not flicker. Asynchronous work must not blank, swap out, or replace established user-visible content with transient loading placeholders or temporary `Opening ...` labels when the prior content can remain coherent until the replacement content is ready to apply.
+- Beryl UI must not introduce flicker through transient viewport changes. When asynchronous work replaces a coherent surface such as the selected transcript, the replacement content and its initial viewport state must apply as one transaction; render, prepaint, deferred, or post-frame callbacks must not revise that activation-owned viewport after the first visible frame.
 - RAM efficiency and CPU efficiency are first-order design constraints.
 - The application must not perform blocking filesystem, process, network, parsing, image decoding, persistence, or backend protocol work on the thread that drives `gpui`.
 - Interactive code paths must avoid avoidable algorithmic complexity cliffs as transcript size, semantic graph size, workspace count, or backend event volume grows.

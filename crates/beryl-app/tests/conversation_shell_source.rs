@@ -229,6 +229,88 @@ fn thread_navigation_rejection_paths_do_not_consume_history_before_success() {
 }
 
 #[test]
+fn pending_thread_activation_preserves_visible_transcript_until_history_apply() {
+    let shell_source = include_str!("../src/shell.rs");
+    let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let begin_activation_body = rust_function_body(shell_source, "fn begin_thread_activation");
+    let load_history_body = rust_function_body(shell_source, "fn load_thread_history_window");
+    let finish_activation_body = rust_function_body(
+        lifecycle_source,
+        "pub(super) fn finish_thread_activation_worker",
+    );
+
+    assert!(begin_activation_body.contains("self.pending_thread_activation = Some"));
+    assert!(begin_activation_body.contains("self.notices.clear_all()"));
+    assert!(begin_activation_body.contains("self.transcript_branch_menu.close()"));
+    assert!(begin_activation_body.contains("self.cancel_transcript_edit_mode()"));
+    assert!(!begin_activation_body.contains("self.execution_details"));
+    assert!(!begin_activation_body.contains("self.transcript_presentation"));
+    assert!(!begin_activation_body.contains("self.transcript_history_window"));
+    assert!(!begin_activation_body.contains("self.transcript_list_state"));
+    assert!(!begin_activation_body.contains("self.transcript_reset_generation"));
+    assert!(!begin_activation_body.contains("load_thread_history_window"));
+    assert!(finish_activation_body.contains("surface.load_thread_history_window"));
+    assert_order(
+        load_history_body,
+        ".replace_from_turns(self.execution_details.turns())",
+        "self.pending_thread_activation = None",
+    );
+    assert_order(
+        load_history_body,
+        ".replace_from_turns(self.execution_details.turns())",
+        "self.transcript_list_state",
+    );
+}
+
+#[test]
+fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
+    let shell_source = include_str!("../src/shell.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let snapshot_source = include_str!("../src/shell/transcript_panel_snapshot.rs");
+    let anchor_source = include_str!("../src/shell/transcript_anchor.rs");
+    let load_history_body = rust_function_body(shell_source, "fn load_thread_history_window");
+    let render_body = rust_function_body(transcript_source, "fn render(&mut self");
+
+    for source in [
+        shell_source,
+        transcript_source,
+        snapshot_source,
+        anchor_source,
+    ] {
+        assert!(!source.contains("loaded_history_anchor_pending"));
+        assert!(!source.contains("install_loaded_history_transcript_anchor"));
+        assert!(!source.contains("TranscriptSubmitAnchor::passive"));
+    }
+    assert!(!anchor_source.contains("fn passive("));
+    assert!(load_history_body.contains("self.transcript_submit_anchor = None;"));
+    assert!(!load_history_body.contains("latest_user_prompt_anchor"));
+    assert!(!load_history_body.contains("sync_live_transcript_rows"));
+    assert!(!load_history_body.contains("scroll_to_reveal_item_end"));
+    assert_eq!(load_history_body.matches(".reset(").count(), 1);
+    assert_eq!(
+        render_body
+            .matches("transcript_list_state.scroll_to(ListOffset")
+            .count(),
+        1
+    );
+    assert_order(
+        render_body,
+        "let trailing_scroll_allowance = snapshot",
+        "transcript_list_state.scroll_to(ListOffset",
+    );
+    assert_order(
+        render_body,
+        ".submit_anchor",
+        "transcript_list_state.scroll_to(ListOffset",
+    );
+    assert_order(
+        load_history_body,
+        "self.transcript_submit_anchor = None;",
+        ".reset(self.transcript_list_item_count())",
+    );
+}
+
+#[test]
 fn thread_navigation_history_is_pruned_when_backend_sessions_teardown() {
     let shell_source = include_str!("../src/shell.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
@@ -343,6 +425,7 @@ fn toolbar_places_breadcrumbs_after_workspaces_and_thread_strip_places_navigatio
 {
     let render_source = include_str!("../src/shell/render/conversation.rs");
     let workspace_picker_source = include_str!("../src/shell/render/workspace_picker.rs");
+    let common_source = include_str!("../src/shell/render/common.rs");
     let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
     let graph_button_body = rust_function_body(render_source, "fn graph_toolbar_button");
     let workspace_picker_button_body = rust_function_body(
@@ -352,6 +435,7 @@ fn toolbar_places_breadcrumbs_after_workspaces_and_thread_strip_places_navigatio
     let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
     let thread_strip_action_body = rust_function_body(render_source, "fn thread_strip_action");
     let navigation_button_body = rust_function_body(render_source, "fn thread_navigation_button");
+    let themed_button_base_body = rust_function_body(common_source, "fn themed_button_base");
     let thread_navigation_actions_source =
         include_str!("../src/shell/thread_navigation_actions.rs");
 
@@ -384,18 +468,24 @@ fn toolbar_places_breadcrumbs_after_workspaces_and_thread_strip_places_navigatio
         "\"thread-navigation-forward-thread-strip\"",
         "render_thread_strip_active_thread_title",
     );
+    assert!(!thread_strip_body.contains("workspace.runtime_mode().display_name()"));
+    assert!(!thread_strip_body.contains("RuntimeMode::WslLinux"));
+    assert!(!thread_strip_body.contains("WslLinux {"));
     assert_order(toolbar_body, ".flex_1()", "graph_toolbar_button");
     assert_order(toolbar_body, "graph_toolbar_button", "\"settings-toolbar\"");
     assert!(!toolbar_body.contains("\"retry-backend-toolbar\""));
     assert!(toolbar_body.contains(".gap_3()"));
     assert!(toolbar_body.contains("surface.graph_overlay().visible()"));
     assert!(!toolbar_body.contains("activity_mode_button"));
-    assert!(
-        workspace_picker_button_body.contains(".w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))")
-    );
-    assert!(thread_strip_action_body.contains(".w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))"));
+    assert!(workspace_picker_button_body.contains("secondary_button("));
+    assert!(!workspace_picker_button_body.contains("MAIN_CHROME_LEADING_CONTROL_WIDTH"));
+    assert!(!workspace_picker_button_body.contains(".w(px("));
+    assert!(thread_strip_action_body.contains("secondary_button(shell, id, label, on_click)"));
+    assert!(!thread_strip_action_body.contains("MAIN_CHROME_LEADING_CONTROL_WIDTH"));
+    assert!(!thread_strip_action_body.contains(".w(px("));
     assert!(thread_strip_body.contains("disabled_secondary_button"));
-    assert!(thread_strip_body.contains(".w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH))"));
+    assert!(!thread_strip_body.contains("MAIN_CHROME_LEADING_CONTROL_WIDTH"));
+    assert!(themed_button_base_body.contains(".px(px(layout::BUTTON_HORIZONTAL_PADDING))"));
     assert!(graph_button_body.contains("ShellView::toggle_graph_overlay"));
     assert!(navigation_button_body.contains("disabled_secondary_button"));
     assert!(navigation_button_body.contains(".opacity(0.62)"));
@@ -617,6 +707,9 @@ fn backend_unavailable_workspace_surface_disables_backend_controls() {
 #[test]
 fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
     let render_source = include_str!("../src/shell/render/conversation.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let transcript_text_blocks_source =
+        include_str!("../src/shell/render/transcript/text_blocks.rs");
     let render_workspace_surface_body =
         rust_function_body(render_source, "fn render_workspace_surface");
     let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
@@ -628,8 +721,12 @@ fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
         rust_function_body(render_source, "fn render_toolbar_parent_breadcrumb");
 
     assert!(render_workspace_surface_body.contains("&loaded_workspace.threaded_decision_state"));
+    assert!(!render_source.contains("fn active_thread_title_label"));
+    assert!(!render_source.contains("format!(\"Opening {label}\")"));
     assert!(toolbar_body.contains("toolbar_branch_breadcrumb_segments"));
     assert!(thread_strip_body.contains("render_thread_strip_active_thread_title"));
+    assert!(thread_strip_body.contains("let active_label = selected_thread_title_label"));
+    assert!(!thread_strip_body.contains("pending_thread_activation_label"));
     assert!(!thread_strip_body.contains("thread_strip_breadcrumb_trail"));
     assert!(!breadcrumb_source_body.contains("pending_thread_activation_label().is_some()"));
     assert!(toolbar_body.contains("selected_thread_title_label"));
@@ -640,6 +737,10 @@ fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
     assert!(breadcrumb_source_body.contains("surface.selected_thread_id()"));
     assert!(breadcrumb_source_body.contains(".filter(|segment| !segment.active())"));
     assert!(breadcrumb_body.contains(".child(\">\")"));
+    assert!(breadcrumb_body.contains(".gap(px(layout::TOOLBAR_BREADCRUMB_GAP))"));
+    assert!(breadcrumb_body.contains(".px(px(layout::BUTTON_BORDER_WIDTH))"));
+    assert!(breadcrumb_body.contains(".w(px(layout::TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH))"));
+    assert!(breadcrumb_body.contains(".text_center()"));
     assert!(!breadcrumb_body.contains("render_thread_strip_active_thread_title"));
     assert!(parent_breadcrumb_body.contains("\"toolbar-branch-parent-breadcrumb\""));
     assert!(parent_breadcrumb_body.contains("ThreadSelectorActivationTarget"));
@@ -653,9 +754,20 @@ fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
     );
     assert!(!parent_breadcrumb_body.contains(".max_w(relative(0.32))"));
     assert!(parent_breadcrumb_body.contains(".min_w(px(0.0))"));
-    assert!(parent_breadcrumb_body.contains(".overflow_hidden()"));
+    assert_eq!(
+        parent_breadcrumb_body.matches(".overflow_hidden()").count(),
+        1
+    );
+    assert!(parent_breadcrumb_body.contains(
+        ".child(\r\n            div()\r\n                .min_w(px(0.0))\r\n                .overflow_hidden()"
+    ) || parent_breadcrumb_body.contains(
+        ".child(\n            div()\n                .min_w(px(0.0))\n                .overflow_hidden()"
+    ));
     assert!(parent_breadcrumb_body.contains(".truncate()"));
     assert!(parent_breadcrumb_body.contains(".tooltip("));
+    assert!(!transcript_source.contains("pending_thread_activation_state"));
+    assert!(!transcript_source.contains("has_pending_thread_activation"));
+    assert!(!transcript_text_blocks_source.contains("Opening {label}"));
 }
 
 #[test]

@@ -41,15 +41,12 @@ pub(super) fn render_workspace_picker_button(
                 view.record_workspace_picker_anchor_bounds(bounds, cx)
             });
         })
-        .child(
-            secondary_button(
-                shell,
-                "workspace-picker-button",
-                label,
-                cx.listener(ShellView::toggle_workspace_picker),
-            )
-            .w(px(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH)),
-        )
+        .child(secondary_button(
+            shell,
+            "workspace-picker-button",
+            label,
+            cx.listener(ShellView::toggle_workspace_picker),
+        ))
         .into_any_element()
 }
 

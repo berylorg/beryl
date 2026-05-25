@@ -79,31 +79,6 @@ pub(super) fn empty_state(
         .child(message)
 }
 
-pub(super) fn pending_thread_activation_state(
-    label: &str,
-    theme: &TranscriptTheme,
-) -> impl IntoElement {
-    div()
-        .rounded_md()
-        .bg(theme.pending.background())
-        .border_1()
-        .border_color(theme.pending.border())
-        .p_3()
-        .flex()
-        .items_center()
-        .gap_2()
-        .child(div().w_2().h_2().rounded_full().bg(theme.pending.border()))
-        .child(
-            div()
-                .min_w(gpui::px(0.0))
-                .text_sm()
-                .text_color(theme.pending.foreground())
-                .whitespace_nowrap()
-                .truncate()
-                .child(format!("Opening {label}")),
-        )
-}
-
 pub(super) fn older_history_loading_state(theme: &TranscriptTheme) -> impl IntoElement {
     div()
         .rounded_md()

@@ -1414,7 +1414,6 @@ struct ConversationSurfaceState {
     status_line: StatusLineState,
     status_line_operations: StatusLineOperationState,
     transcript_submit_anchor: Option<TranscriptSubmitAnchor>,
-    loaded_history_anchor_pending: bool,
     transcript_user_scrolled: bool,
     transcript_history_window: TranscriptHistoryWindow,
     transcript_reset_generation: u64,
@@ -2048,7 +2047,6 @@ impl ConversationSurfaceState {
             status_line: StatusLineState::default(),
             status_line_operations: StatusLineOperationState::default(),
             transcript_submit_anchor: None,
-            loaded_history_anchor_pending: false,
             transcript_user_scrolled: false,
             transcript_history_window: TranscriptHistoryWindow::default(),
             transcript_reset_generation: 0,
@@ -2717,10 +2715,6 @@ impl ConversationSurfaceState {
             .map(TranscriptSubmitAnchor::snapshot)
     }
 
-    fn loaded_history_anchor_pending(&self) -> bool {
-        self.loaded_history_anchor_pending
-    }
-
     fn older_history_loading(&self) -> bool {
         self.transcript_history_window.is_loading_older()
     }
@@ -2965,39 +2959,6 @@ impl ConversationSurfaceState {
         }
     }
 
-    fn install_loaded_history_transcript_anchor(&mut self) -> bool {
-        if !self.loaded_history_anchor_pending {
-            return false;
-        }
-        self.loaded_history_anchor_pending = false;
-        if self.transcript_submit_anchor.is_some() {
-            return false;
-        }
-
-        let previous_turn_count = self.transcript_presentation.len();
-        let Some((turn_index, fragment_index, user_input)) = self.latest_user_prompt_anchor()
-        else {
-            return false;
-        };
-
-        self.transcript_submit_anchor = Some(TranscriptSubmitAnchor::passive(
-            turn_index,
-            fragment_index,
-            user_input,
-        ));
-        self.transcript_user_scrolled = false;
-        self.sync_live_transcript_rows(previous_turn_count);
-        if previous_turn_count > 0 {
-            self.transcript_list_state
-                .scroll_to_reveal_item_end(previous_turn_count - 1);
-        }
-        true
-    }
-
-    fn latest_user_prompt_anchor(&self) -> Option<(usize, usize, String)> {
-        self.transcript_presentation.latest_user_prompt_anchor()
-    }
-
     fn scroll_to_turn_id(&mut self, thread_id: &str, turn_id: &str) -> bool {
         if self.selected_thread_id() != Some(thread_id) {
             return false;
@@ -3057,7 +3018,6 @@ impl ConversationSurfaceState {
             status_line: self.status_line.clone(),
             status_line_operations: self.status_line_operations.clone(),
             transcript_submit_anchor: self.transcript_submit_anchor.clone(),
-            loaded_history_anchor_pending: self.loaded_history_anchor_pending,
             transcript_user_scrolled: self.transcript_user_scrolled,
             transcript_history_window: self.transcript_history_window.clone(),
             transcript_reset_generation: self.transcript_reset_generation,
@@ -3423,7 +3383,6 @@ impl ConversationSurfaceState {
         self.status_line.clear_session_metadata();
         self.status_line.clear_pending_new_thread_defaults();
         self.transcript_submit_anchor = None;
-        self.loaded_history_anchor_pending = false;
         self.transcript_user_scrolled = false;
         self.transcript_history_window = TranscriptHistoryWindow::default();
         self.transcript_reset_generation = self.transcript_reset_generation.saturating_add(1);
@@ -3512,7 +3471,6 @@ impl ConversationSurfaceState {
         }
         self.status_line.clear_session_metadata();
         self.transcript_submit_anchor = None;
-        self.loaded_history_anchor_pending = self.latest_user_prompt_anchor().is_some();
         self.transcript_user_scrolled = false;
         self.transcript_history_window = history_window;
         self.transcript_reset_generation = self.transcript_reset_generation.saturating_add(1);
@@ -3567,7 +3525,6 @@ impl ConversationSurfaceState {
             });
         self.transcript_submit_anchor =
             presentation_index.map(|index| TranscriptSubmitAnchor::new(index, 0, anchor_text));
-        self.loaded_history_anchor_pending = false;
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
         self.transcript_branch_menu.close();
@@ -3662,7 +3619,6 @@ impl ConversationSurfaceState {
             });
         self.transcript_submit_anchor = presentation_index
             .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
-        self.loaded_history_anchor_pending = false;
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
         self.sync_live_transcript_rows(before);
@@ -3917,7 +3873,6 @@ impl ConversationSurfaceState {
             });
         self.transcript_submit_anchor = presentation_index
             .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
-        self.loaded_history_anchor_pending = false;
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
         self.sync_live_transcript_rows(before);
@@ -7720,16 +7675,6 @@ impl ShellView {
         ));
         self.schedule_poll_if_needed(window, cx);
         true
-    }
-
-    fn install_loaded_history_transcript_anchor(&mut self, cx: &mut Context<Self>) {
-        let installed = self
-            .conversation_surface_mut()
-            .is_some_and(ConversationSurfaceState::install_loaded_history_transcript_anchor);
-        if installed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
-        }
     }
 
     fn note_workspace_picker_scrollbar_motion(

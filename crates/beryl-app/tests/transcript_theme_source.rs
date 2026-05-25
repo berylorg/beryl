@@ -74,6 +74,23 @@ fn phase6_transcript_render_sources_use_transcript_theme_boundary() {
 }
 
 #[test]
+fn pending_thread_activation_does_not_replace_transcript_region() {
+    let render_body = rust_function_body(
+        TRANSCRIPT_SOURCE,
+        "fn render(&mut self, window: &mut Window, cx: &mut Context<Self>)",
+    );
+
+    assert!(TRANSCRIPT_SOURCE.contains("pub pending_thread_activation_label: Option<String>"));
+    assert!(SHELL_SOURCE.contains("surface.begin_thread_activation(label.clone())"));
+    assert!(!TRANSCRIPT_SOURCE.contains("pending_thread_activation_state"));
+    assert!(!TRANSCRIPT_SOURCE.contains("has_pending_thread_activation"));
+    assert!(!TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("Opening {label}"));
+    assert!(!render_body.contains(".when_some(pending_thread_activation_label"));
+    assert!(render_body.contains(".when(!has_turns"));
+    assert!(render_body.contains(".when(has_turns"));
+}
+
+#[test]
 fn phase12_render_theme_cache_owns_hot_theme_resolution() {
     let render_style_snapshot_body = rust_function_body(SHELL_SOURCE, "fn render_style_snapshot");
     let style_snapshot_body =

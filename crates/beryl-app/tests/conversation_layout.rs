@@ -248,13 +248,16 @@ fn button_geometry_fits_inside_fixed_chrome_strips() {
     assert_eq!(layout::BUTTON_OUTER_HEIGHT, 32.0);
     assert!(layout::BUTTON_OUTER_HEIGHT > layout::STANDARD_UI_TEXT_LINE_HEIGHT);
     assert_eq!(layout::BUTTON_ICON_OUTER_WIDTH, layout::BUTTON_OUTER_HEIGHT);
-    assert_eq!(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH, 112.0);
-    assert!(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH > layout::BUTTON_ICON_OUTER_WIDTH);
-    assert!(layout::MAIN_CHROME_LEADING_CONTROL_WIDTH < 144.0);
-    assert_eq!(layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH, 420.0);
+    assert_eq!(layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH, 680.0);
     assert_eq!(layout::TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH, 320.0);
+    assert_eq!(layout::TOOLBAR_BREADCRUMB_GAP, 8.0);
+    assert_eq!(
+        layout::TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH,
+        layout::BUTTON_LABEL_FONT_SIZE
+    );
     assert!(
-        layout::TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH < layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH
+        layout::TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH
+            >= layout::toolbar_breadcrumb_two_button_required_width()
     );
     assert!(layout::BUTTON_OUTER_HEIGHT <= layout::THREAD_STRIP_HEIGHT);
     assert!(layout::BUTTON_OUTER_HEIGHT <= layout::TOOLBAR_STRIP_HEIGHT);

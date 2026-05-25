@@ -22,9 +22,10 @@ pub(crate) const BUTTON_LABEL_LINE_HEIGHT: f32 = 18.0;
 pub(crate) const BUTTON_BORDER_WIDTH: f32 = 1.0;
 pub(crate) const BUTTON_VERTICAL_PADDING: f32 = 6.0;
 pub(crate) const BUTTON_HORIZONTAL_PADDING: f32 = 10.0;
-pub(crate) const MAIN_CHROME_LEADING_CONTROL_WIDTH: f32 = 112.0;
-pub(crate) const TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH: f32 = 420.0;
+pub(crate) const TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH: f32 = 680.0;
 pub(crate) const TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH: f32 = 320.0;
+pub(crate) const TOOLBAR_BREADCRUMB_GAP: f32 = 8.0;
+pub(crate) const TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH: f32 = BUTTON_LABEL_FONT_SIZE;
 pub(crate) const TOOL_ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub(crate) const TOOL_ACTIVITY_OVERSCAN_ROWS: usize = 3;
 pub(crate) const TOOL_ACTIVITY_MIN_PANEL_HEIGHT: f32 = TOOL_ACTIVITY_ROW_HEIGHT;
@@ -83,6 +84,14 @@ pub(crate) const WORKSPACE_PICKER_MAX_HEIGHT_RATIO: f32 = 0.72;
 
 pub(crate) const fn button_required_outer_height() -> f32 {
     BUTTON_BORDER_WIDTH * 2.0 + BUTTON_VERTICAL_PADDING * 2.0 + BUTTON_LABEL_LINE_HEIGHT
+}
+
+#[cfg(test)]
+pub(crate) const fn toolbar_breadcrumb_two_button_required_width() -> f32 {
+    BUTTON_BORDER_WIDTH * 2.0
+        + TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH * 2.0
+        + TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH
+        + TOOLBAR_BREADCRUMB_GAP * 2.0
 }
 
 #[derive(Clone, Debug, PartialEq)]

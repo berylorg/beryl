@@ -77,15 +77,6 @@ impl TranscriptSubmitAnchor {
         }
     }
 
-    pub(crate) fn passive(turn_index: usize, fragment_index: usize, user_input: String) -> Self {
-        Self {
-            turn_index,
-            fragment_index,
-            user_input,
-            force_viewport: false,
-        }
-    }
-
     pub(crate) fn snapshot(&self) -> TranscriptSubmitAnchorSnapshot {
         TranscriptSubmitAnchorSnapshot {
             turn_index: self.turn_index,

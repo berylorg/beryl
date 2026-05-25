@@ -317,6 +317,7 @@ impl TranscriptPresentationState {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn latest_user_prompt_anchor(&self) -> Option<(usize, usize, String)> {
         self.latest_user_prompt_anchor.clone()
     }

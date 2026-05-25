@@ -29,7 +29,8 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 - Transcript scroll-frame work must not clone, scan, parse, or retain widget state for the whole loaded history.
 - Offscreen pages may remain in a bounded cache, but cache retention must not make ordinary scroll frames process all loaded history.
 - Releasing offscreen presentation data must preserve chronological scroll geometry, row identity for retained rows, and the ability to fetch missing history again.
-- Pending activation of an existing thread renders a visible pending state with the target label rather than leaving the previous transcript looking idle.
+- Pending activation of an existing thread does not replace, blank, or overlay the transcript with a full-region pending/loading state. The previous coherent transcript projection remains visible until the newly loaded thread history is ready to apply atomically; activation progress belongs in chrome, status, or localized notices.
+- Applying loaded history for selected-thread activation also applies the transcript's initial viewport state atomically. Existing-thread activation opens the latest loaded page at the transcript tail unless a future feature defines a different explicit activation viewport policy. Render, prepaint, deferred, and post-frame callbacks must not install a follow-up activation-owned scroll position after the newly activated transcript has first rendered.
 
 ## Markdown And Code
 
@@ -106,7 +107,8 @@ Render backend-owned Codex conversation history as a responsive parent conversat
 - If content below the latest fragment line is too short to make that line naturally reachable at the top, the transcript uses bounded virtual trailing scroll allowance.
 - Trailing allowance shrinks as real response content grows and disappears once real content fills the viewport below the anchor.
 - If the user manually scrolls during or after a turn, Beryl stops forcing the submit-time anchor but keeps trailing allowance while needed.
-- Existing-thread loads without a submit-time anchor open at the real end of the loaded window while preserving trailing allowance for the latest loaded user input fragment when needed.
+- Existing-thread loads without a submit-time anchor open at the real end of the loaded window as their one selected-thread-activation viewport decision and do not synthesize submit-time trailing allowance for already-loaded user input fragments.
+- Submit-time anchoring is distinct from selected-thread activation. It belongs to accepted user input and active response streaming, not to renderer-installed passive anchors for already-loaded history.
 - While the selected thread has an active parent turn, the transcript renders a non-interactive block activity caret at the end of the parent conversation narrative.
 - The activity caret is not transcript content, Markdown source, selectable text, copyable text, quoteable text, or draft-caret state.
 - The caret has stable geometry while blinking, does not cause reflow, disappears when the parent turn stops working, and follows platform text-caret blink policy when available. When blinking is disabled or reduced-motion requests apply, it renders steadily.
