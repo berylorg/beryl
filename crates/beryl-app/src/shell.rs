@@ -3805,7 +3805,8 @@ impl ConversationSurfaceState {
     ) -> bool {
         let before = self.transcript_presentation.len();
         let anchor_text = user_input.text.clone();
-        self.observe_composer_image_labels_in_thread_fragment(&thread_id, &user_input);
+        let observed_thread_id = thread_id.clone();
+        let observed_user_input = user_input.clone();
         let queued = match PendingTurnInputQueue::submission_plan(
             self.pending_turn_input_queue.as_ref(),
             &thread_id,
@@ -3855,6 +3856,11 @@ impl ConversationSurfaceState {
         let Some((turn_index, fragment_index)) = queued else {
             return false;
         };
+
+        self.observe_composer_image_labels_in_thread_fragment(
+            &observed_thread_id,
+            &observed_user_input,
+        );
 
         let presentation_index = self
             .execution_details
@@ -11099,9 +11105,10 @@ impl ShellView {
             self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
             return;
         }
+        let reserved_labels = self.composer_draft.image_labels();
         let Some(label_result) = self
             .conversation_surface_mut()
-            .map(ConversationSurfaceState::try_allocate_composer_image_label)
+            .map(|surface| surface.try_allocate_composer_image_label(&reserved_labels))
         else {
             self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
             return;
@@ -11162,7 +11169,9 @@ impl ShellView {
         }
 
         self.sync_composer_draft_from_input(cx);
-        let Some(label_mapping) = self.composer_clipboard_paste_label_mapping(&payload, same_scope)
+        let reserved_labels = self.composer_draft.image_labels();
+        let Some(label_mapping) =
+            self.composer_clipboard_paste_label_mapping(&payload, same_scope, reserved_labels)
         else {
             return;
         };
@@ -11222,6 +11231,7 @@ impl ShellView {
         &mut self,
         payload: &ComposerClipboardPayload,
         same_scope: bool,
+        mut reserved_labels: Vec<String>,
     ) -> Option<HashMap<String, String>> {
         let mut mapping = HashMap::new();
         if same_scope {
@@ -11233,7 +11243,10 @@ impl ShellView {
 
         let surface = self.conversation_surface_mut()?;
         for image in payload.images() {
-            let label = surface.try_allocate_composer_image_label().ok()?;
+            let label = surface
+                .try_allocate_composer_image_label(&reserved_labels)
+                .ok()?;
+            reserved_labels.push(label.clone());
             mapping.insert(image.label().to_string(), label);
         }
         Some(mapping)

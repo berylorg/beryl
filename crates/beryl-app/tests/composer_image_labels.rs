@@ -46,7 +46,7 @@ fn generated_backend_label_text_seeds_next_label_only_when_attached_to_image() {
         ],
     );
 
-    assert_eq!(state.allocate(None), "Z");
+    assert_eq!(state.allocate(None, no_labels()), "Z");
 }
 
 #[test]
@@ -61,23 +61,25 @@ fn delayed_generated_backend_label_text_seeds_next_label() {
         ],
     );
 
-    assert_eq!(state.allocate(Some("thread_1")), "C");
+    assert_eq!(state.allocate(Some("thread_1"), no_labels()), "C");
 }
 
 #[test]
 fn selected_threads_and_pending_new_thread_have_independent_sequences() {
     let mut state = ComposerImageLabelState::default();
 
-    assert_eq!(state.allocate(Some("thread_1")), "A");
-    assert_eq!(state.allocate(Some("thread_1")), "B");
-    assert_eq!(state.allocate(Some("thread_2")), "A");
-    assert_eq!(state.allocate(None), "A");
-    assert_eq!(state.allocate(None), "B");
+    assert_eq!(state.allocate(Some("thread_1"), no_labels()), "A");
+    assert_eq!(state.allocate(Some("thread_1"), labels(&["A"])), "B");
+    assert_eq!(state.allocate(Some("thread_2"), no_labels()), "A");
+    assert_eq!(state.allocate(None, no_labels()), "A");
+    assert_eq!(state.allocate(None, labels(&["A"])), "B");
 
+    state.observe_backend_input(None, &image_records("A"));
+    state.observe_backend_input(None, &image_records("B"));
     state.bind_pending_new_thread_to_thread("thread_3");
 
-    assert_eq!(state.allocate(Some("thread_3")), "C");
-    assert_eq!(state.allocate(None), "A");
+    assert_eq!(state.allocate(Some("thread_3"), no_labels()), "C");
+    assert_eq!(state.allocate(None, no_labels()), "A");
 }
 
 #[test]
@@ -87,8 +89,8 @@ fn loaded_thread_history_advances_thread_allocator() {
 
     state.observe_thread_turns("thread_1", &[turn]);
 
-    assert_eq!(state.allocate(Some("thread_1")), "AB");
-    assert_eq!(state.allocate(Some("thread_2")), "A");
+    assert_eq!(state.allocate(Some("thread_1"), no_labels()), "AB");
+    assert_eq!(state.allocate(Some("thread_2"), no_labels()), "A");
 }
 
 #[test]
@@ -101,7 +103,7 @@ fn observed_discarded_tail_labels_are_not_reused_after_rollback_projection() {
     );
     state.observe_thread_turns("thread_1", &[image_turn("kept", "A")]);
 
-    assert_eq!(state.allocate(Some("thread_1")), "AB");
+    assert_eq!(state.allocate(Some("thread_1"), no_labels()), "AB");
 }
 
 #[test]
@@ -124,7 +126,7 @@ fn existing_thread_paste_is_blocked_until_history_scan_completes() {
         state.paste_readiness(Some("thread_1")),
         ComposerImagePasteReadiness::Ready
     );
-    assert_eq!(state.allocate(Some("thread_1")), "AA");
+    assert_eq!(state.allocate(Some("thread_1"), no_labels()), "AA");
 }
 
 #[test]
@@ -227,14 +229,46 @@ fn guarded_allocation_does_not_advance_when_existing_thread_history_is_not_ready
     state.prepare_thread_history_scan("thread_1", true);
 
     assert!(matches!(
-        state.try_allocate(Some("thread_1")),
+        state.try_allocate(Some("thread_1"), no_labels()),
         Err(ComposerImagePasteReadiness::Scanning)
     ));
 
     state.finish_thread_history_scan("thread_1", ComposerImageLabelObservations::default());
 
-    assert_eq!(state.try_allocate(Some("thread_1")), Ok("A".to_string()));
-    assert_eq!(state.try_allocate(None), Ok("A".to_string()));
+    assert_eq!(
+        state.try_allocate(Some("thread_1"), no_labels()),
+        Ok("A".to_string())
+    );
+    assert_eq!(state.try_allocate(None, no_labels()), Ok("A".to_string()));
+}
+
+#[test]
+fn draft_only_labels_are_reserved_only_by_active_markers() {
+    let mut state = ComposerImageLabelState::default();
+
+    assert_eq!(state.try_allocate(None, no_labels()), Ok("A".to_string()));
+    assert_eq!(state.try_allocate(None, no_labels()), Ok("A".to_string()));
+    assert_eq!(
+        state.try_allocate(None, labels(&["A"])),
+        Ok("B".to_string())
+    );
+    assert_eq!(
+        state.try_allocate(None, labels(&["B"])),
+        Ok("A".to_string())
+    );
+}
+
+#[test]
+fn accepted_or_observed_labels_remain_reserved_after_draft_clear() {
+    let mut state = ComposerImageLabelState::default();
+
+    state.observe_backend_input(None, &image_records("A"));
+
+    assert_eq!(state.try_allocate(None, no_labels()), Ok("B".to_string()));
+    assert_eq!(
+        state.try_allocate(None, labels(&["B"])),
+        Ok("C".to_string())
+    );
 }
 
 #[test]
@@ -257,7 +291,10 @@ fn validation_invalidation_preserves_high_water_label_state() {
     );
     assert!(state.begin_thread_history_validation("thread_1"));
     assert!(state.finish_thread_history_validation("thread_1", frontier));
-    assert_eq!(state.try_allocate(Some("thread_1")), Ok("AB".to_string()));
+    assert_eq!(
+        state.try_allocate(Some("thread_1"), no_labels()),
+        Ok("AB".to_string())
+    );
 }
 
 #[test]
@@ -303,7 +340,7 @@ fn stale_in_flight_scan_completion_after_invalidation_does_not_unblock_paste() {
         ComposerImagePasteReadiness::Scanning
     );
     assert_eq!(
-        state.try_allocate(Some("thread_1")),
+        state.try_allocate(Some("thread_1"), no_labels()),
         Err(ComposerImagePasteReadiness::Scanning)
     );
     assert_eq!(
@@ -334,7 +371,7 @@ fn stale_in_flight_validation_completion_after_invalidation_does_not_unblock_pas
         ComposerImagePasteReadiness::Validating
     );
     assert_eq!(
-        state.try_allocate(Some("thread_1")),
+        state.try_allocate(Some("thread_1"), no_labels()),
         Err(ComposerImagePasteReadiness::Validating)
     );
     assert_eq!(
@@ -388,7 +425,7 @@ fn validation_failure_keeps_existing_thread_paste_unavailable() {
             message: "validation unavailable".to_string(),
         }
     );
-    assert_eq!(state.allocate(None), "A");
+    assert_eq!(state.allocate(None, no_labels()), "A");
 }
 
 #[test]
@@ -401,7 +438,7 @@ fn existing_thread_without_unloaded_history_is_paste_ready() {
         state.paste_readiness(Some("thread_1")),
         ComposerImagePasteReadiness::Ready
     );
-    assert_eq!(state.allocate(Some("thread_1")), "A");
+    assert_eq!(state.allocate(Some("thread_1"), no_labels()), "A");
 }
 
 #[test]
@@ -417,7 +454,7 @@ fn scan_failure_keeps_existing_thread_paste_blocked() {
             message: "history unavailable".to_string()
         }
     );
-    assert_eq!(state.allocate(None), "A");
+    assert_eq!(state.allocate(None, no_labels()), "A");
 }
 
 #[test]
@@ -476,4 +513,19 @@ fn image_turn(id: &str, label: &str) -> TurnInfo {
             ],
         })],
     }
+}
+
+fn image_records(label: &str) -> Vec<UserInput> {
+    vec![
+        UserInput::text(format!("Image {label}:")),
+        UserInput::local_image(format!("/tmp/{label}.png")),
+    ]
+}
+
+fn labels(labels: &[&str]) -> Vec<String> {
+    labels.iter().map(|label| label.to_string()).collect()
+}
+
+fn no_labels() -> Vec<String> {
+    Vec::new()
 }

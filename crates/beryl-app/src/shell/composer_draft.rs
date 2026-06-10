@@ -45,6 +45,7 @@ pub(super) struct ComposerImageInsertion {
 pub(super) enum ComposerDraftImageAdmissionError {
     TooManyImages { limit: usize },
     TooManyImageBytes { limit: usize, attempted: usize },
+    ImageLabelPayloadMismatch { label: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -327,8 +328,11 @@ impl ComposerDraft {
         data: ComposerDraftImageData,
     ) -> Result<bool, ComposerDraftImageAdmissionError> {
         let label = label.into();
-        if self.images.iter().any(|image| image.label == label) {
-            return Ok(false);
+        if let Some(image) = self.images.iter().find(|image| image.label == label) {
+            if image.data.same_image_identity(&data) {
+                return Ok(false);
+            }
+            return Err(ComposerDraftImageAdmissionError::ImageLabelPayloadMismatch { label });
         }
 
         self.validate_image_admission(&label, &data)?;
@@ -750,6 +754,14 @@ impl ComposerDraftImageData {
             None => self.clone(),
         }
     }
+
+    fn same_image_identity(&self, other: &Self) -> bool {
+        if let (Some(left), Some(right)) = (self.asset_id.as_deref(), other.asset_id.as_deref()) {
+            return left == right && self.format == other.format;
+        }
+
+        self == other
+    }
 }
 
 impl ComposerDraftImageAdmissionError {
@@ -762,6 +774,10 @@ impl ComposerDraftImageAdmissionError {
                 "A draft can retain at most {} MiB of pasted image data; this paste would retain {} MiB.",
                 bytes_to_mib_floor(*limit),
                 bytes_to_mib_ceil(*attempted)
+            ),
+            Self::ImageLabelPayloadMismatch { label } => format!(
+                "The copied image marker {} no longer matches the image currently using that label. Copy the image again.",
+                composer_image_marker(label)
             ),
         }
     }

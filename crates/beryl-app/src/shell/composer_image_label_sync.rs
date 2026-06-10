@@ -36,10 +36,11 @@ pub(super) struct ComposerImageLabelValidationTask {
 impl ConversationSurfaceState {
     pub(super) fn try_allocate_composer_image_label(
         &mut self,
+        reserved_labels: &[String],
     ) -> Result<String, ComposerImagePasteReadiness> {
         let selected_thread_id = self.selected_thread_id().map(str::to_string);
         self.composer_image_labels
-            .try_allocate(selected_thread_id.as_deref())
+            .try_allocate(selected_thread_id.as_deref(), reserved_labels)
     }
 
     pub(super) fn composer_image_paste_readiness(&self) -> ComposerImagePasteReadiness {

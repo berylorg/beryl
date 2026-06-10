@@ -986,6 +986,7 @@ fn composer_image_paste_completion_rechecks_scope_and_readiness_before_allocatin
     assert!(poll_body.contains("finish_composer_image_asset_paste(result, window, cx)"));
     assert!(finish_body.contains("is_composer_clipboard_label_scope_current"));
     assert!(finish_body.contains("ensure_composer_image_paste_readiness(window, cx)"));
+    assert!(finish_body.contains("self.composer_draft.image_labels()"));
     assert!(finish_body.contains("try_allocate_composer_image_label"));
     assert_order(
         finish_body,
@@ -995,6 +996,11 @@ fn composer_image_paste_completion_rechecks_scope_and_readiness_before_allocatin
     assert_order(
         finish_body,
         "ensure_composer_image_paste_readiness(window, cx)",
+        "self.composer_draft.image_labels()",
+    );
+    assert_order(
+        finish_body,
+        "self.composer_draft.image_labels()",
         "try_allocate_composer_image_label",
     );
     assert_order(
@@ -1019,7 +1025,30 @@ fn composer_cross_scope_marker_paste_uses_guarded_label_allocation() {
     );
     assert!(mapping_body.contains("if same_scope"));
     assert!(mapping_body.contains("try_allocate_composer_image_label"));
+    assert!(mapping_body.contains("reserved_labels.push(label.clone())"));
     assert!(!mapping_body.contains("surface.allocate_composer_image_label()"));
+}
+
+#[test]
+fn pending_queued_image_labels_are_observed_only_after_queue_admission() {
+    let shell_source = include_str!("../src/shell.rs");
+    let queue_body = rust_function_body(shell_source, "fn queue_pending_turn_fragment");
+
+    assert_order(
+        queue_body,
+        "match queue.try_append(user_input.clone())",
+        "observe_composer_image_labels_in_thread_fragment",
+    );
+    assert_order(
+        queue_body,
+        "PendingTurnInputQueue::try_new",
+        "observe_composer_image_labels_in_thread_fragment",
+    );
+    assert_order(
+        queue_body,
+        "let Some((turn_index, fragment_index)) = queued else",
+        "observe_composer_image_labels_in_thread_fragment",
+    );
 }
 
 #[test]

@@ -17,7 +17,7 @@ use composer_clipboard::{
     ComposerClipboardPastePlan, ComposerClipboardPastePlanError, ComposerClipboardPayload,
     ComposerClipboardPayloadError, ComposerClipboardStore,
 };
-use composer_draft::ComposerDraftImageData;
+use composer_draft::{ComposerDraft, ComposerDraftImageAdmissionError, ComposerDraftImageData};
 use gpui::{ClipboardItem, ImageFormat};
 
 fn png(bytes: &[u8]) -> ComposerDraftImageData {
@@ -38,6 +38,31 @@ fn payload_for_label(label: &str, bytes: &[u8]) -> ComposerClipboardPayload {
             copy_text,
         )],
         vec![ComposerClipboardImage::new(label.to_string(), png(bytes))],
+    )
+    .expect("test payload should be valid")
+}
+
+fn durable_payload_for_label(
+    label: &str,
+    bytes: &[u8],
+    asset_id: &str,
+) -> ComposerClipboardPayload {
+    let marker = format!("[{label}]");
+    let copy_text = format!("[Image {label}]");
+    ComposerClipboardPayload::new(
+        format!("See {marker}"),
+        format!("See {copy_text}"),
+        ComposerClipboardLabelScope::PendingNewThread(1),
+        vec![ComposerClipboardAtom::new(
+            label.to_string(),
+            4..4 + marker.len(),
+            marker,
+            copy_text,
+        )],
+        vec![ComposerClipboardImage::new(
+            label.to_string(),
+            ComposerDraftImageData::with_asset_id(ImageFormat::Png, bytes.to_vec(), asset_id),
+        )],
     )
     .expect("test payload should be valid")
 }
@@ -210,6 +235,85 @@ fn paste_plan_preserves_same_scope_labels_and_repeated_image_payloads() {
     assert_eq!(plan.images().len(), 1);
     assert_eq!(plan.images()[0].label(), "A");
     assert_eq!(plan.images()[0].data(), &png(b"image"));
+}
+
+#[test]
+fn same_scope_paste_rejects_stale_payload_after_draft_label_reuse() {
+    let old_payload = payload_for_label("A", b"old-image");
+    let mut draft = ComposerDraft::default();
+    let old = draft.replace_range_with_image(0..0, "A", png(b"old-image"));
+    assert!(draft.remove_image_atom_by_id(old.atom_id()));
+    draft.replace_range_with_image(0..0, "A", png(b"new-image"));
+    let label_mapping = HashMap::from([("A".to_string(), "A".to_string())]);
+
+    let plan = ComposerClipboardPastePlan::new(&old_payload, &label_mapping, |label| {
+        format!("composer-image:{label}:stale")
+    })
+    .expect("same-scope paste plan can preserve the copied label");
+    let mut admission_probe = draft.clone();
+
+    assert_eq!(
+        admission_probe.ensure_image_payload(
+            plan.images()[0].label().to_string(),
+            plan.images()[0].data().clone(),
+        ),
+        Err(
+            ComposerDraftImageAdmissionError::ImageLabelPayloadMismatch {
+                label: "A".to_string()
+            }
+        )
+    );
+    assert_eq!(draft.image_data_for_label("A"), Some(&png(b"new-image")));
+}
+
+#[test]
+fn same_scope_paste_accepts_same_durable_asset_after_retained_bytes_are_compacted() {
+    let payload = durable_payload_for_label("A", b"image-bytes", "asset-a");
+    let mut draft = ComposerDraft::default();
+    draft.replace_range_with_image(
+        0..0,
+        "A",
+        ComposerDraftImageData::durable_reference(ImageFormat::Png, "asset-a"),
+    );
+    let label_mapping = HashMap::from([("A".to_string(), "A".to_string())]);
+
+    let plan = ComposerClipboardPastePlan::new(&payload, &label_mapping, |label| {
+        format!("composer-image:{label}:durable")
+    })
+    .expect("same-scope paste plan can preserve the copied label");
+    let mut admission_probe = draft.clone();
+
+    assert_eq!(
+        admission_probe.ensure_image_payload(
+            plan.images()[0].label().to_string(),
+            plan.images()[0].data().clone(),
+        ),
+        Ok(false)
+    );
+
+    let mut mismatch_probe = draft.clone();
+    assert_eq!(
+        mismatch_probe.ensure_image_payload(
+            "A",
+            ComposerDraftImageData::with_asset_id(
+                ImageFormat::Png,
+                b"different".to_vec(),
+                "asset-b"
+            ),
+        ),
+        Err(
+            ComposerDraftImageAdmissionError::ImageLabelPayloadMismatch {
+                label: "A".to_string()
+            }
+        )
+    );
+    assert_eq!(
+        draft.image_data_for_label("A"),
+        Some(&ComposerDraftImageData::durable_reference(
+            ImageFormat::Png,
+            "asset-a"
+        ))
+    );
 }
 
 #[test]

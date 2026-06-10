@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use beryl_backend::{ThreadInfo, ThreadItem, TurnInfo, TurnStatus, UserInput};
 
@@ -199,16 +199,24 @@ impl ComposerImageLabelHistoryFrontierBuilder {
 }
 
 impl ComposerImageLabelState {
-    pub(super) fn allocate(&mut self, selected_thread_id: Option<&str>) -> String {
-        self.allocator_mut(selected_thread_id).allocate()
+    pub(super) fn allocate(
+        &mut self,
+        selected_thread_id: Option<&str>,
+        reserved_labels: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> String {
+        self.allocator_mut(selected_thread_id)
+            .allocate(reserved_labels)
     }
 
     pub(super) fn try_allocate(
         &mut self,
         selected_thread_id: Option<&str>,
+        reserved_labels: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> Result<String, ComposerImagePasteReadiness> {
         match self.paste_readiness(selected_thread_id) {
-            ComposerImagePasteReadiness::Ready => Ok(self.allocate(selected_thread_id)),
+            ComposerImagePasteReadiness::Ready => {
+                Ok(self.allocate(selected_thread_id, reserved_labels))
+            }
             blocked => Err(blocked),
         }
     }
@@ -638,10 +646,16 @@ fn turn_status_digest_byte(status: TurnStatus) -> u8 {
 }
 
 impl ComposerImageLabelAllocator {
-    fn allocate(&mut self) -> String {
-        let label = image_label_for_index(self.next_index);
-        self.next_index = self.next_index.saturating_add(1);
-        label
+    fn allocate(&self, reserved_labels: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+        let reserved_indexes = reserved_label_indexes(reserved_labels);
+        let mut index = self.next_index;
+        while reserved_indexes.contains(&index) {
+            let Some(next_index) = index.checked_add(1) else {
+                break;
+            };
+            index = next_index;
+        }
+        image_label_for_index(index)
     }
 
     fn merge(&mut self, other: Self) {
@@ -661,6 +675,13 @@ impl ComposerImageLabelAllocator {
     fn observe_next_index(&mut self, next_index: usize) {
         self.next_index = self.next_index.max(next_index);
     }
+}
+
+fn reserved_label_indexes(labels: impl IntoIterator<Item = impl AsRef<str>>) -> HashSet<usize> {
+    labels
+        .into_iter()
+        .filter_map(|label| image_label_index(label.as_ref()))
+        .collect()
 }
 
 impl ComposerImageLabelObservations {

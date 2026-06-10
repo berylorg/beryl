@@ -36,8 +36,10 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 - Pasting image clipboard content into the composer inserts an inline image marker at the caret or replaces the selected draft range.
 - Pasted images are stored as durable Beryl image assets under workspace-local state for backend submission, composer preview, accepted transcript markers, retries, and preview after restart.
 - Image labels are correctness-critical model-visible data, because CAS image input records do not carry Beryl's GUI-owned label and Beryl sends labels as adjacent text.
-- Image labels are allocated from selected-thread or pending-new-thread monotonic high-water label state as `A`, `B`, `C`, continuing spreadsheet-style when needed.
-- Labels remain stable while the draft, accepted fragment, queued fragment, or retry state exists. Removing label `B` does not rename later labels or allow reuse in the same scope while surrounding text may refer to it.
+- Image labels are allocated from selected-thread or pending-new-thread reserved-label state as `A`, `B`, `C`, continuing spreadsheet-style when needed.
+- The reserved label floor is seeded from validated backend history plus accepted fragments, queued fragments, and retry state. Active draft image markers reserve their labels only while at least one marker occurrence remains in the draft.
+- Labels remain stable while a draft marker, accepted fragment, queued fragment, or retry state exists. Removing the final active marker for a draft-only image releases that label when the image has not been accepted, queued, retried, or observed in backend history.
+- Removing one active draft label does not rename later active draft labels. A later paste may fill the released gap only when no active marker, accepted fragment, queued fragment, retry state, or reliable backend-history evidence still reserves that label.
 - Beryl must never allocate a label that overlaps a same-thread image label it has reliable evidence may have existed. When current history is uncertain, sparse or gapped labels are preferable to reuse; Beryl should only avoid gaps when exact validated history makes doing so safe.
 - Multiple markers may show the same label only when they reference the same pasted image payload.
 - The compact visual marker such as `[A]` is presentation. It is not submitted as literal user-authored text.
@@ -59,7 +61,7 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 - Copying or cutting a selection containing image markers writes explanatory fallback text such as `[Image A]` to the system clipboard.
 - Beryl may also write private clipboard metadata with an opaque token for restoring marker atoms while the transient payload is still live.
 - Original image bytes must not be serialized into clipboard metadata.
-- Pasting copied Beryl marker metadata in the same label scope creates another marker reference to the same image and keeps the same label.
+- Pasting copied Beryl marker metadata in the same label scope creates another marker reference to the same image and keeps the same label. Durable Beryl image asset id equality is sufficient to identify the same image even when accepted-history compaction has dropped retained bytes. If that label has since been released and reused by a different draft-only image payload or different durable asset id, the stale private marker payload must be rejected before inserting an atom.
 - Cutting and then pasting a marker is the user-visible way to move that image reference inside the draft.
 - Pasting copied marker metadata into another conversation or pending-new-thread scope allocates fresh labels from the target scope, subject to prior-label readiness.
 - Clipboard text that merely looks like `[Image A]` without valid Beryl metadata always pastes as ordinary text.
@@ -77,6 +79,7 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 - If active-turn steering is rejected because the turn is not steerable or the expected id no longer matches, the fragment remains queued for the next eligible turn.
 - During selected-thread context compaction, accepted fragments are rendered immediately and queued for the next backend turn after compaction completes. Beryl must not try to steer a compaction operation.
 - Multiple queued fragments preserve accepted order and remain separate visible user blocks.
+- Pending queue admission is part of submission acceptance. Over-budget pending fragments must be rejected before composer clear, transcript projection, backend delivery queue state, or image-label protected state mutates.
 - User input fragments accepted before or during a stop request remain visible and ordered. If they cannot be delivered to the interrupted turn, they remain queued for the next eligible turn.
 - Accepted fragments are delivered through app-server turn primitives or preserved as pending GUI-held input with explicit failure presentation. Beryl must not mutate backend history locally to pretend delivery succeeded.
 
