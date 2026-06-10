@@ -314,6 +314,13 @@ pub(crate) mod test_support {
         state.invalidate_item_measurement(ix);
     }
 
+    pub(crate) fn item_measurement_is_dirty(state: &ListState, ix: usize) -> bool {
+        matches!(
+            state.0.borrow().items.iter().nth(ix),
+            Some(ListItem::DirtyMeasured { .. })
+        )
+    }
+
     pub(crate) fn apply_item_height_change_to_content_anchor(
         state: &ListState,
         item_ix: usize,

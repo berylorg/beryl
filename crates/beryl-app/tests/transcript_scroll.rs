@@ -173,6 +173,7 @@ fn live_tail_remeasurement_preserves_manual_scroll_offset() {
         LiveTranscriptRows {
             previous_turn_count: 3,
             current_turn_count: 3,
+            replaced_row_index: None,
             preserve_user_scroll: true,
         },
     );
@@ -199,6 +200,7 @@ fn live_tail_remeasurement_without_manual_scroll_keeps_existing_scroll_intent() 
         LiveTranscriptRows {
             previous_turn_count: 3,
             current_turn_count: 3,
+            replaced_row_index: None,
             preserve_user_scroll: false,
         },
     );
@@ -225,12 +227,14 @@ fn live_tail_remeasurement_does_not_collapse_measured_scroll_geometry() {
         LiveTranscriptRows {
             previous_turn_count: 3,
             current_turn_count: 3,
+            replaced_row_index: Some(2),
             preserve_user_scroll: false,
         },
     );
 
     assert_eq!(list_state.max_offset_for_scrollbar(), max_before);
     assert_eq!(list_state.measured_item_size(2).unwrap().height, px(140.0));
+    assert!(test_support::item_measurement_is_dirty(&list_state, 2));
 }
 
 #[test]
@@ -242,6 +246,7 @@ fn bottom_aligned_sync_keeps_default_bottom_scroll() {
         LiveTranscriptRows {
             previous_turn_count: 3,
             current_turn_count: 3,
+            replaced_row_index: None,
             preserve_user_scroll: false,
         },
     );
@@ -285,6 +290,7 @@ fn turn_count_changes_do_not_restore_stale_scroll_offsets() {
         LiveTranscriptRows {
             previous_turn_count: 2,
             current_turn_count: 3,
+            replaced_row_index: Some(2),
             preserve_user_scroll: true,
         },
     );

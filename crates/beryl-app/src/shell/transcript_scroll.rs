@@ -67,6 +67,7 @@ fn turn_top(item_ix: usize) -> ListScrollPosition {
 pub(crate) struct LiveTranscriptRows {
     pub(crate) previous_turn_count: usize,
     pub(crate) current_turn_count: usize,
+    pub(crate) replaced_row_index: Option<usize>,
     pub(crate) preserve_user_scroll: bool,
 }
 
@@ -75,9 +76,16 @@ pub(crate) fn sync_live_transcript_rows(list_state: &ListState, rows: LiveTransc
         && rows.previous_turn_count == rows.current_turn_count
         && rows.current_turn_count > 0)
         .then(|| list_state.scroll_position());
+    let replaced_row_to_invalidate = (rows.previous_turn_count == rows.current_turn_count)
+        .then_some(rows.replaced_row_index)
+        .flatten()
+        .filter(|row_index| *row_index < rows.current_turn_count);
 
     splice_live_transcript_rows(list_state, rows);
 
+    if let Some(row_index) = replaced_row_to_invalidate {
+        list_state.invalidate_item_measurement(row_index);
+    }
     if let Some(scroll_top) = preserved_scroll {
         list_state.scroll_to_position(scroll_top);
     }

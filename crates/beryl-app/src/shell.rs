@@ -3531,7 +3531,7 @@ impl ConversationSurfaceState {
                 active_flags: Vec::new(),
             });
         }
-        self.sync_live_transcript_rows(before);
+        self.sync_live_transcript_rows(before, None);
     }
 
     fn selected_active_turn_steering_target(&self) -> Option<ActiveTurnSteeringTarget> {
@@ -3617,7 +3617,7 @@ impl ConversationSurfaceState {
             .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
-        self.sync_live_transcript_rows(before);
+        self.sync_live_transcript_rows(before, presentation_index);
         Some(steering_fragment)
     }
 
@@ -3871,7 +3871,7 @@ impl ConversationSurfaceState {
             .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
-        self.sync_live_transcript_rows(before);
+        self.sync_live_transcript_rows(before, presentation_index);
         true
     }
 
@@ -4039,11 +4039,15 @@ impl ConversationSurfaceState {
         if let Some(notice) = turn_error_notice {
             self.set_notice(notice);
         }
-        if let Some(turn) = self.execution_details.turns().get(turn_index) {
-            self.transcript_presentation
-                .replace_turn(turn_index, turn.clone());
-        }
-        self.sync_live_transcript_rows(before);
+        let replaced_row_index = self
+            .execution_details
+            .turns()
+            .get(turn_index)
+            .and_then(|turn| {
+                self.transcript_presentation
+                    .replace_turn(turn_index, turn.clone())
+            });
+        self.sync_live_transcript_rows(before, replaced_row_index);
         let suppresses_ordinary_end_turn_sound = lifecycle_yield
             .as_ref()
             .is_some_and(TerminalLifecycleYield::suppresses_ordinary_end_turn_sound);
@@ -4087,11 +4091,15 @@ impl ConversationSurfaceState {
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
             self.mark_selected_turn_finished_idle(&thread_id);
         }
-        if let Some(turn) = self.execution_details.turns().get(turn_index) {
-            self.transcript_presentation
-                .replace_turn(turn_index, turn.clone());
-        }
-        self.sync_live_transcript_rows(before);
+        let replaced_row_index = self
+            .execution_details
+            .turns()
+            .get(turn_index)
+            .and_then(|turn| {
+                self.transcript_presentation
+                    .replace_turn(turn_index, turn.clone())
+            });
+        self.sync_live_transcript_rows(before, replaced_row_index);
         active_turn
             .map(|active| TurnCompletionSoundCandidate::new(active.thread_id, active.turn_id))
     }
