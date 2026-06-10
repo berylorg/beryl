@@ -266,47 +266,133 @@ fn pending_thread_activation_preserves_visible_transcript_until_history_apply() 
 fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     let shell_source = include_str!("../src/shell.rs");
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let item_blocks_source = include_str!("../src/shell/render/transcript/item_blocks.rs");
     let snapshot_source = include_str!("../src/shell/transcript_panel_snapshot.rs");
     let anchor_source = include_str!("../src/shell/transcript_anchor.rs");
+    let live_scroll_source = include_str!("../src/shell/transcript_live_scroll.rs");
+    let live_scroll_detection_source =
+        include_str!("../src/shell/transcript_live_scroll_detection.rs");
     let load_history_body = rust_function_body(shell_source, "fn load_thread_history_window");
     let render_body = rust_function_body(transcript_source, "fn render(&mut self");
+    let live_effect_body = rust_function_body(transcript_source, "fn apply_live_scroll_effect");
+    let prompt_effect_body = rust_function_body(transcript_source, "fn apply_prompt_scroll_effect");
+    let final_effect_body = rust_function_body(transcript_source, "fn apply_final_start_effect");
+    let final_read_body = rust_function_body(transcript_source, "fn final_read_trailing_allowance");
+    let final_runway_body =
+        rust_function_body(transcript_source, "fn final_start_trailing_allowance");
+    let final_runway_placement_body =
+        rust_function_body(transcript_source, "fn final_start_trailing_placement");
+    let final_detection_body =
+        rust_function_body(live_scroll_detection_source, "fn live_scroll_final_message");
+    let markdown_style_body = rust_function_body(
+        item_blocks_source,
+        "pub(super) fn agent_message_markdown_style",
+    );
 
     for source in [
         shell_source,
         transcript_source,
         snapshot_source,
         anchor_source,
+        live_scroll_source,
     ] {
         assert!(!source.contains("loaded_history_anchor_pending"));
         assert!(!source.contains("install_loaded_history_transcript_anchor"));
         assert!(!source.contains("TranscriptSubmitAnchor::passive"));
     }
     assert!(!anchor_source.contains("fn passive("));
-    assert!(load_history_body.contains("self.transcript_submit_anchor = None;"));
+    assert!(load_history_body.contains("self.transcript_live_scroll.clear_for_tail_activation();"));
+    assert!(!load_history_body.contains("self.transcript_submit_anchor = None;"));
     assert!(!load_history_body.contains("latest_user_prompt_anchor"));
     assert!(!load_history_body.contains("sync_live_transcript_rows"));
     assert!(!load_history_body.contains("scroll_to_reveal_item_end"));
     assert_eq!(load_history_body.matches(".reset(").count(), 1);
+    assert!(render_body.contains("apply_live_scroll_effect("));
+    assert!(render_body.contains("set_content_anchor_resize_policy"));
+    assert!(render_body.contains("snapshot.live_scroll_preserves_anchor_offset"));
+    assert!(transcript_source.contains("TranscriptMarkdownRenderUnit::Media"));
+    assert!(transcript_source.contains("ExecutionItem::Reasoning(reasoning)"));
+    assert!(transcript_source.contains("ExecutionItem::GeneratedImage(_)"));
+    assert!(transcript_source.contains("flush_pending_media_geometry"));
+    assert!(live_scroll_detection_source.contains("turn.narrative_entries()"));
+    assert!(live_scroll_detection_source.contains(".rev()"));
+    assert!(final_detection_body.contains("Some(ProtocolPhase::FinalAnswer) | None"));
+    assert!(
+        markdown_style_body
+            .contains("None => InlineMarkdownStyle::base(TranscriptTextRole::AssistantFinal)")
+    );
     assert_eq!(
         render_body
             .matches("transcript_list_state.scroll_to(ListOffset")
             .count(),
-        1
+        0
     );
     assert_order(
         render_body,
-        "let trailing_scroll_allowance = snapshot",
-        "transcript_list_state.scroll_to(ListOffset",
+        "let trailing_scroll_allowance = apply_live_scroll_effect(",
+        "transcript_list_state.set_virtual_trailing_scroll_allowance(trailing_scroll_allowance)",
     );
     assert_order(
         render_body,
-        ".submit_anchor",
-        "transcript_list_state.scroll_to(ListOffset",
+        "snapshot.live_scroll.as_ref()",
+        "transcript_list_state.set_virtual_trailing_scroll_allowance(trailing_scroll_allowance)",
     );
     assert_order(
         load_history_body,
-        "self.transcript_submit_anchor = None;",
+        "self.transcript_live_scroll.clear_for_tail_activation();",
         ".reset(self.transcript_list_item_count())",
+    );
+    assert_order(
+        prompt_effect_body,
+        "transcript_list_state.scroll_to(ListOffset",
+        "cx.defer(move |cx|",
+    );
+    assert_order(
+        prompt_effect_body,
+        "cx.defer(move |cx|",
+        "view.mark_prompt_reread_applied(&applied_anchor, cx)",
+    );
+    assert!(prompt_effect_body.contains("let applied_anchor = anchor.clone();"));
+    assert_order(
+        final_effect_body,
+        "transcript_list_state.scroll_to(ListOffset",
+        "cx.defer(move |cx|",
+    );
+    assert_order(
+        final_effect_body,
+        "cx.defer(move |cx|",
+        "view.mark_final_start_applied(&applied_anchor, applied_scroll_offset, cx)",
+    );
+    assert!(final_effect_body.contains("let applied_anchor = anchor.clone();"));
+    assert!(final_effect_body.contains("let applied_scroll_offset = final_start.scroll_offset;"));
+    assert!(final_read_body.contains("placement.scroll_offset != anchor.applied_scroll_offset"));
+    assert!(final_read_body.contains(
+        "transcript_list_state.scroll_position() == ListScrollPosition::Content(previous_target)"
+    ));
+    assert!(live_scroll_source.contains("last_final_anchor"));
+    assert!(live_scroll_source.contains("TranscriptLiveScrollEffectSnapshot::FinalRunway"));
+    assert!(live_effect_body.contains(
+        "TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor) => final_start_trailing_allowance("
+    ));
+    assert_order(
+        live_scroll_source,
+        "if let Some(anchor) = &self.last_final_anchor",
+        "self.last_prompt_anchor.as_ref()",
+    );
+    assert!(final_runway_body.contains("final_start_trailing_placement("));
+    assert!(!final_runway_body.contains("scroll_to("));
+    assert!(!final_runway_body.contains("mark_final_start_applied"));
+    assert!(!final_runway_placement_body.contains("scroll_to("));
+    assert!(!final_runway_placement_body.contains("mark_final_start_applied"));
+    assert_order(
+        final_read_body,
+        "if placement.scroll_offset != anchor.applied_scroll_offset",
+        "transcript_list_state.scroll_to(target)",
+    );
+    assert_order(
+        final_read_body,
+        "transcript_list_state.scroll_to(target)",
+        "view.mark_final_start_applied(&applied_anchor, applied_scroll_offset, cx)",
     );
 }
 
@@ -833,6 +919,10 @@ fn transcript_scroll_schedules_detail_loads_without_waiting_for_prepaint() {
         scroll_event_body
             .contains("self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx)")
     );
+    assert!(
+        scroll_event_body.contains("self.note_transcript_scroll(event.is_scrolled, window, cx);")
+    );
+    assert!(!scroll_event_body.contains("self.note_transcript_scroll(true, window, cx);"));
     assert!(
         scroll_event_body
             .contains("self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);")

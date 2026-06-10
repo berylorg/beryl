@@ -6,17 +6,21 @@ use super::super::transcript_markdown::{
     MARKDOWN_LIST_MARKER_BODY_GAP_M, markdown_list_marker_width_m,
 };
 use super::{
-    CODE_PANEL_BORDER, CODE_PANEL_CONTENT_PADDING, CODE_PANEL_HEADER_CONTENT_BORDER,
-    CODE_PANEL_HEADER_VERTICAL_PADDING, MARKDOWN_HEADING_BOTTOM_PADDING, MARKDOWN_NORMAL_BLOCK_GAP,
+    CODE_PANEL_BORDER, CODE_PANEL_CONTENT_PADDING, CODE_PANEL_DEFAULT_MAX_HEIGHT,
+    CODE_PANEL_HEADER_CONTENT_BORDER, CODE_PANEL_HEADER_MIN_CONTENT_HEIGHT,
+    CODE_PANEL_HEADER_VERTICAL_PADDING, CODE_PANEL_MIN_HEIGHT,
+    CODE_PANEL_RESIZABLE_CONTENT_VERTICAL_PADDING, CODE_PANEL_RESIZE_HANDLE_HEIGHT,
+    CODE_PANEL_VISIBLE_LINE_CAP, MARKDOWN_HEADING_BOTTOM_PADDING, MARKDOWN_NORMAL_BLOCK_GAP,
     MARKDOWN_QUOTE_BORDER, MARKDOWN_QUOTE_PADDING_LEFT, MARKDOWN_QUOTE_PADDING_VERTICAL,
     MARKDOWN_THEMATIC_BREAK_HEIGHT, MARKDOWN_THEMATIC_BREAK_MARGIN_VERTICAL,
     MARKDOWN_TIGHT_BLOCK_GAP, prompt_lines,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct PromptBlockLayout {
     pub(super) height: Pixels,
     pub(super) last_line_top: Pixels,
+    pub(super) visual_line_tops: Vec<Pixels>,
 }
 
 impl PromptBlockLayout {
@@ -24,6 +28,7 @@ impl PromptBlockLayout {
         Self {
             height: line_height,
             last_line_top: px(0.0),
+            visual_line_tops: vec![px(0.0)],
         }
     }
 }
@@ -64,8 +69,6 @@ pub(super) trait PromptTextMeasurer {
     fn code_line_height(&self) -> Pixels;
 
     fn code_header_line_height(&self) -> Pixels;
-
-    fn code_columns_for_width(&mut self, wrap_width: Pixels) -> usize;
 }
 
 #[cfg(test)]
@@ -159,6 +162,7 @@ fn measure_block_sequence(
 
     let mut cursor = px(0.0);
     let mut last_line_top = px(0.0);
+    let mut visual_line_tops = Vec::new();
 
     for (index, block) in blocks.iter().enumerate() {
         if index > 0 {
@@ -167,12 +171,19 @@ fn measure_block_sequence(
 
         let block_layout = measure_block(block, width, transcript_code_columns, measurer);
         last_line_top = cursor + block_layout.last_line_top;
+        visual_line_tops.extend(
+            block_layout
+                .visual_line_tops
+                .into_iter()
+                .map(|line_top| cursor + line_top),
+        );
         cursor += block_layout.height;
     }
 
     PromptBlockLayout {
         height: cursor,
         last_line_top,
+        visual_line_tops,
     }
 }
 
@@ -196,6 +207,7 @@ fn measure_block(
             PromptBlockLayout {
                 height: text_layout.height + px(MARKDOWN_HEADING_BOTTOM_PADDING),
                 last_line_top: text_layout.last_line_top,
+                visual_line_tops: text_layout.visual_line_tops,
             }
         }
         BlockRenderNode::List(list) => measure_list(list, width, transcript_code_columns, measurer),
@@ -214,6 +226,11 @@ fn measure_block(
                     + child_layout.height
                     + px(MARKDOWN_QUOTE_PADDING_VERTICAL),
                 last_line_top: px(MARKDOWN_QUOTE_PADDING_VERTICAL) + child_layout.last_line_top,
+                visual_line_tops: child_layout
+                    .visual_line_tops
+                    .into_iter()
+                    .map(|line_top| px(MARKDOWN_QUOTE_PADDING_VERTICAL) + line_top)
+                    .collect(),
             }
         }
         BlockRenderNode::Code(code) => {
@@ -238,6 +255,7 @@ fn measure_block(
                     + px(MARKDOWN_THEMATIC_BREAK_HEIGHT)
                     + px(MARKDOWN_THEMATIC_BREAK_MARGIN_VERTICAL),
                 last_line_top: line_top,
+                visual_line_tops: vec![line_top],
             }
         }
     }
@@ -256,9 +274,13 @@ fn measure_inline_lines(
 
     let mut cursor = px(0.0);
     let mut last_line_top = px(0.0);
+    let mut visual_line_tops = Vec::new();
 
     for line in lines {
         let visual_line_count = measurer.inline_visual_line_count(line, role, width).max(1);
+        visual_line_tops.extend(
+            (0..visual_line_count).map(|visual_index| cursor + (line_height * visual_index as f32)),
+        );
         last_line_top = cursor + (line_height * visual_line_count.saturating_sub(1) as f32);
         cursor += line_height * visual_line_count as f32;
     }
@@ -266,6 +288,7 @@ fn measure_inline_lines(
     PromptBlockLayout {
         height: cursor,
         last_line_top,
+        visual_line_tops,
     }
 }
 
@@ -291,6 +314,7 @@ fn measure_list(
     let marker_height = measurer.block_line_height(AnchorBlockRole::Conversation);
     let mut cursor = px(0.0);
     let mut last_line_top = px(0.0);
+    let mut visual_line_tops = Vec::new();
 
     for (index, item) in list.items.iter().enumerate() {
         if index > 0 {
@@ -305,12 +329,19 @@ fn measure_list(
             measurer,
         );
         last_line_top = cursor + child_layout.last_line_top;
+        visual_line_tops.extend(
+            child_layout
+                .visual_line_tops
+                .into_iter()
+                .map(|line_top| cursor + line_top),
+        );
         cursor += child_layout.height.max(marker_height);
     }
 
     PromptBlockLayout {
         height: cursor,
         last_line_top,
+        visual_line_tops,
     }
 }
 
@@ -330,34 +361,57 @@ fn list_marker_width(list: &BlockRenderList, conversation_m_advance: Pixels) -> 
 
 fn measure_code_block(
     code: &BlockRenderCode,
-    width: Pixels,
-    transcript_code_columns: usize,
+    _width: Pixels,
+    _transcript_code_columns: usize,
     measurer: &mut impl PromptTextMeasurer,
 ) -> PromptBlockLayout {
-    let content_width =
-        (width - px((CODE_PANEL_BORDER * 2.0) + (CODE_PANEL_CONTENT_PADDING * 2.0))).max(px(1.0));
-    let width_columns = measurer.code_columns_for_width(content_width).max(1);
-    let columns = transcript_code_columns.max(1).min(width_columns);
-    let line_count = smart_wrapped_code_line_count(code.source.as_str(), columns).max(1);
+    let line_count = no_wrap_code_line_count(code.source.as_str()).max(1);
+    let visible_line_count = line_count.min(CODE_PANEL_VISIBLE_LINE_CAP);
     let line_height = measurer.code_line_height();
-    let has_header = code
-        .language
-        .as_ref()
-        .is_some_and(|language| !language.is_empty());
-    let header_height = if has_header {
-        px(CODE_PANEL_HEADER_VERTICAL_PADDING * 2.0)
-            + measurer.code_header_line_height()
-            + px(CODE_PANEL_HEADER_CONTENT_BORDER)
-    } else {
-        px(0.0)
-    };
+    let header_height = px(CODE_PANEL_HEADER_VERTICAL_PADDING * 2.0)
+        + measurer
+            .code_header_line_height()
+            .max(px(CODE_PANEL_HEADER_MIN_CONTENT_HEIGHT))
+        + px(CODE_PANEL_HEADER_CONTENT_BORDER);
     let content_top = px(CODE_PANEL_BORDER + CODE_PANEL_CONTENT_PADDING) + header_height;
-    let text_height = line_height * line_count as f32;
+    let resizable_content_height = (px(CODE_PANEL_RESIZABLE_CONTENT_VERTICAL_PADDING)
+        + (line_height * visible_line_count as f32))
+        .max(px(CODE_PANEL_MIN_HEIGHT))
+        .min(px(CODE_PANEL_DEFAULT_MAX_HEIGHT));
 
     PromptBlockLayout {
-        height: content_top + text_height + px(CODE_PANEL_CONTENT_PADDING + CODE_PANEL_BORDER),
-        last_line_top: content_top + (line_height * line_count.saturating_sub(1) as f32),
+        height: content_top
+            + resizable_content_height
+            + px(CODE_PANEL_CONTENT_PADDING + CODE_PANEL_RESIZE_HANDLE_HEIGHT + CODE_PANEL_BORDER),
+        last_line_top: content_top + (line_height * visible_line_count.saturating_sub(1) as f32),
+        visual_line_tops: (0..visible_line_count)
+            .map(|line_index| content_top + (line_height * line_index as f32))
+            .collect(),
     }
+}
+
+fn no_wrap_code_line_count(source: &str) -> usize {
+    if source.is_empty() {
+        return 1;
+    }
+
+    let mut count = 0usize;
+    let mut line_start = 0usize;
+    loop {
+        let Some(newline_offset) = source[line_start..].find('\n') else {
+            count = count.saturating_add(1);
+            break;
+        };
+
+        count = count.saturating_add(1);
+        line_start += newline_offset + 1;
+
+        if line_start == source.len() {
+            count = count.saturating_add(1);
+            break;
+        }
+    }
+    count
 }
 
 fn fallback_lines(source: &str, role: InlineRenderRole) -> Vec<InlineRenderLine> {
@@ -393,45 +447,4 @@ fn fallback_lines(source: &str, role: InlineRenderRole) -> Vec<InlineRenderLine>
             }
         })
         .collect()
-}
-
-fn smart_wrapped_code_line_count(text: &str, columns: usize) -> usize {
-    if text.is_empty() {
-        return 1;
-    }
-
-    text.replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .split('\n')
-        .map(|line| wrapped_code_line_count(line, columns))
-        .sum::<usize>()
-        .max(1)
-}
-
-fn wrapped_code_line_count(line: &str, columns: usize) -> usize {
-    let columns = columns.max(1);
-    if line.is_empty() {
-        return 1;
-    }
-
-    let chars = line.chars().collect::<Vec<_>>();
-    let mut start = 0usize;
-    let mut count = 0usize;
-
-    while start < chars.len() {
-        count += 1;
-        let remaining = chars.len() - start;
-        if remaining <= columns {
-            break;
-        }
-
-        let window_end = start + columns;
-        let break_index = (start..window_end)
-            .rev()
-            .find(|&index| matches!(chars[index], ' ' | ',' | ';'))
-            .unwrap_or(window_end - 1);
-        start = break_index + 1;
-    }
-
-    count.max(1)
 }

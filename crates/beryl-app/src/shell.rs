@@ -478,6 +478,8 @@ mod transcript_image_menu_actions;
 mod transcript_image_preview;
 mod transcript_image_sources;
 mod transcript_live_rows;
+mod transcript_live_scroll;
+mod transcript_live_scroll_detection;
 #[allow(dead_code)]
 mod transcript_markdown;
 #[allow(dead_code)]
@@ -612,8 +614,7 @@ use tool_activity_nickname::{
     ToolActivityNicknameResolver,
 };
 use transcript_anchor::{
-    TranscriptSubmitAnchor, TranscriptSubmitAnchorSnapshot, release_forced_submit_anchor,
-    transcript_list_item_count,
+    TranscriptSubmitAnchor, TranscriptSubmitAnchorSnapshot, transcript_list_item_count,
 };
 use transcript_branch_worker::TranscriptBranchUpdate;
 use transcript_edit_commit_worker::TranscriptEditCommitUpdate;
@@ -623,6 +624,9 @@ use transcript_history::{
     TranscriptTurnDetailPinKind, TranscriptTurnDetailReleaseCounts, TranscriptTurnDetailRetention,
     TranscriptTurnDetailSchedule, TranscriptTurnDetailViewportOrder,
     TranscriptTurnDetailViewportPlan,
+};
+use transcript_live_scroll::{
+    TranscriptFinalAnchor, TranscriptLiveScrollEffectSnapshot, TranscriptLiveScrollState,
 };
 use transcript_presentation::{TranscriptActivityCaret, TranscriptPresentationState};
 use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
@@ -1425,7 +1429,7 @@ struct ConversationSurfaceState {
     tool_activity_panel_height: Pixels,
     status_line: StatusLineState,
     status_line_operations: StatusLineOperationState,
-    transcript_submit_anchor: Option<TranscriptSubmitAnchor>,
+    transcript_live_scroll: TranscriptLiveScrollState,
     transcript_user_scrolled: bool,
     transcript_history_window: TranscriptHistoryWindow,
     transcript_turn_detail_cache: TranscriptTurnDetailCache,
@@ -2060,7 +2064,7 @@ impl ConversationSurfaceState {
             tool_activity_panel_height: px(workspace_ui_state.tool_activity_panel_height_px()),
             status_line: StatusLineState::default(),
             status_line_operations: StatusLineOperationState::default(),
-            transcript_submit_anchor: None,
+            transcript_live_scroll: TranscriptLiveScrollState::inactive(),
             transcript_user_scrolled: false,
             transcript_history_window: TranscriptHistoryWindow::default(),
             transcript_turn_detail_cache: TranscriptTurnDetailCache::default(),
@@ -2661,10 +2665,13 @@ impl ConversationSurfaceState {
         self.transcript_list_state.clone()
     }
 
-    fn transcript_submit_anchor_snapshot(&self) -> Option<TranscriptSubmitAnchorSnapshot> {
-        self.transcript_submit_anchor
-            .as_ref()
-            .map(TranscriptSubmitAnchor::snapshot)
+    fn transcript_live_scroll_effect_snapshot(&self) -> Option<TranscriptLiveScrollEffectSnapshot> {
+        self.transcript_live_scroll.effect_snapshot()
+    }
+
+    fn transcript_live_scroll_preserves_anchor_offset(&self) -> bool {
+        self.transcript_live_scroll
+            .preserves_content_anchor_offset()
     }
 
     fn older_history_loading(&self) -> bool {
@@ -2925,13 +2932,38 @@ impl ConversationSurfaceState {
     }
 
     fn release_transcript_submit_anchor(&mut self) -> bool {
-        release_forced_submit_anchor(&mut self.transcript_submit_anchor)
+        self.transcript_live_scroll.detach_for_manual_scroll()
+    }
+
+    fn mark_prompt_reread_applied(&mut self, anchor: &TranscriptSubmitAnchorSnapshot) -> bool {
+        self.transcript_live_scroll
+            .mark_prompt_reread_applied(anchor)
+    }
+
+    fn mark_final_start_applied(
+        &mut self,
+        anchor: &TranscriptFinalAnchor,
+        applied_scroll_offset: Pixels,
+    ) -> bool {
+        self.transcript_live_scroll
+            .mark_final_start_applied(anchor, applied_scroll_offset)
     }
 
     fn shift_transcript_anchor(&mut self, amount: usize) {
-        if let Some(anchor) = self.transcript_submit_anchor.as_mut() {
-            anchor.shift_turn_index(amount);
-        }
+        self.transcript_live_scroll.shift_turn_index(amount);
+    }
+
+    fn transcript_submit_anchor_for_presentation_index(
+        &self,
+        presentation_index: usize,
+        fragment_index: usize,
+        user_input: String,
+    ) -> TranscriptSubmitAnchor {
+        let row_identity = self
+            .transcript_presentation
+            .row_identity(presentation_index)
+            .map(|identity| identity.as_str().to_string());
+        TranscriptSubmitAnchor::new(presentation_index, row_identity, fragment_index, user_input)
     }
 
     fn scroll_to_turn_id(&mut self, thread_id: &str, turn_id: &str) -> bool {
@@ -2992,7 +3024,7 @@ impl ConversationSurfaceState {
             tool_activity_panel_height: self.tool_activity_panel_height,
             status_line: self.status_line.clone(),
             status_line_operations: self.status_line_operations.clone(),
-            transcript_submit_anchor: self.transcript_submit_anchor.clone(),
+            transcript_live_scroll: self.transcript_live_scroll.clone(),
             transcript_user_scrolled: self.transcript_user_scrolled,
             transcript_history_window: self.transcript_history_window.clone(),
             transcript_turn_detail_cache: self.transcript_turn_detail_cache.clone(),
@@ -3360,7 +3392,7 @@ impl ConversationSurfaceState {
         self.hard_stop_targets.clear_all();
         self.status_line.clear_session_metadata();
         self.status_line.clear_pending_new_thread_defaults();
-        self.transcript_submit_anchor = None;
+        self.transcript_live_scroll.clear_inactive();
         self.transcript_user_scrolled = false;
         self.transcript_history_window = TranscriptHistoryWindow::default();
         self.transcript_turn_detail_cache.clear();
@@ -3461,7 +3493,7 @@ impl ConversationSurfaceState {
                 .log();
         }
         self.status_line.clear_session_metadata();
-        self.transcript_submit_anchor = None;
+        self.transcript_live_scroll.clear_for_tail_activation();
         self.transcript_user_scrolled = false;
         self.transcript_history_window = history_window;
         self.transcript_turn_detail_cache
@@ -3520,8 +3552,13 @@ impl ConversationSurfaceState {
                 self.transcript_presentation
                     .append_turn(turn_index, turn.clone())
             });
-        self.transcript_submit_anchor =
-            presentation_index.map(|index| TranscriptSubmitAnchor::new(index, 0, anchor_text));
+        if let Some(index) = presentation_index {
+            let anchor =
+                self.transcript_submit_anchor_for_presentation_index(index, 0, anchor_text);
+            self.transcript_live_scroll.start_prompt_reread(anchor);
+        } else {
+            self.transcript_live_scroll.clear_inactive();
+        }
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
         self.close_transcript_branch_menu();
@@ -3590,16 +3627,9 @@ impl ConversationSurfaceState {
         user_input: UserInputFragment,
     ) -> Option<SteeringInputFragment> {
         let before = self.transcript_presentation.len();
-        let anchor_text = user_input.text.clone();
         let steering_fragment =
             SteeringInputFragment::from_user_input_fragment(target.turn_index, &user_input);
         self.observe_composer_image_labels_in_thread_fragment(&target.thread_id, &user_input);
-        let fragment_index = self
-            .execution_details
-            .turns()
-            .get(target.turn_index)?
-            .user_input_fragments()
-            .len();
         self.execution_details
             .append_user_input_fragment(target.turn_index, user_input)?;
         let presentation_index = self
@@ -3614,9 +3644,7 @@ impl ConversationSurfaceState {
                             .append_turn(target.turn_index, turn.clone())
                     })
             });
-        self.transcript_submit_anchor = presentation_index
-            .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
-        self.transcript_user_scrolled = false;
+        self.transcript_live_scroll.preserve_for_steering();
         self.notices.clear_all();
         self.sync_live_transcript_rows(before, presentation_index);
         Some(steering_fragment)
@@ -3874,8 +3902,16 @@ impl ConversationSurfaceState {
                             .append_turn(turn_index, turn.clone())
                     })
             });
-        self.transcript_submit_anchor = presentation_index
-            .map(|index| TranscriptSubmitAnchor::new(index, fragment_index, anchor_text));
+        if let Some(index) = presentation_index {
+            let anchor = self.transcript_submit_anchor_for_presentation_index(
+                index,
+                fragment_index,
+                anchor_text,
+            );
+            self.transcript_live_scroll.start_prompt_reread(anchor);
+        } else {
+            self.transcript_live_scroll.clear_inactive();
+        }
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
         self.sync_live_transcript_rows(before, presentation_index);
@@ -4054,6 +4090,7 @@ impl ConversationSurfaceState {
                 self.transcript_presentation
                     .replace_turn(turn_index, turn.clone())
             });
+        self.reconcile_transcript_live_scroll_for_row(replaced_row_index);
         self.sync_live_transcript_rows(before, replaced_row_index);
         let suppresses_ordinary_end_turn_sound = lifecycle_yield
             .as_ref()
@@ -7505,6 +7542,35 @@ impl ShellView {
             .conversation_surface_mut()
             .is_some_and(ConversationSurfaceState::release_transcript_submit_anchor);
         if released {
+            self.notify_transcript_panel(cx);
+            cx.notify();
+        }
+    }
+
+    fn mark_prompt_reread_applied(
+        &mut self,
+        anchor: &TranscriptSubmitAnchorSnapshot,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = self
+            .conversation_surface_mut()
+            .is_some_and(|surface| surface.mark_prompt_reread_applied(anchor));
+        if changed {
+            self.notify_transcript_panel(cx);
+            cx.notify();
+        }
+    }
+
+    fn mark_final_start_applied(
+        &mut self,
+        anchor: &TranscriptFinalAnchor,
+        applied_scroll_offset: Pixels,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = self
+            .conversation_surface_mut()
+            .is_some_and(|surface| surface.mark_final_start_applied(anchor, applied_scroll_offset));
+        if changed {
             self.notify_transcript_panel(cx);
             cx.notify();
         }

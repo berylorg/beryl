@@ -27,7 +27,10 @@ impl ShellView {
                     .map(str::to_string),
                 transcript_width: ready.surface.transcript_width(),
                 transcript_list_state: ready.surface.transcript_list_state(),
-                submit_anchor: ready.surface.transcript_submit_anchor_snapshot(),
+                live_scroll: ready.surface.transcript_live_scroll_effect_snapshot(),
+                live_scroll_preserves_anchor_offset: ready
+                    .surface
+                    .transcript_live_scroll_preserves_anchor_offset(),
                 older_history_loading: ready.surface.older_history_loading(),
                 metrics: tracing::enabled!(tracing::Level::DEBUG)
                     .then(|| ready.surface.transcript_presentation().render_metrics()),
@@ -59,7 +62,10 @@ impl ShellView {
                         .map(str::to_string),
                     transcript_width: unavailable.surface.transcript_width(),
                     transcript_list_state: unavailable.surface.transcript_list_state(),
-                    submit_anchor: unavailable.surface.transcript_submit_anchor_snapshot(),
+                    live_scroll: unavailable.surface.transcript_live_scroll_effect_snapshot(),
+                    live_scroll_preserves_anchor_offset: unavailable
+                        .surface
+                        .transcript_live_scroll_preserves_anchor_offset(),
                     older_history_loading: unavailable.surface.older_history_loading(),
                     metrics: tracing::enabled!(tracing::Level::DEBUG).then(|| {
                         unavailable
@@ -97,7 +103,9 @@ impl ShellView {
                         .map(str::to_string),
                     transcript_width: surface.transcript_width(),
                     transcript_list_state: surface.transcript_list_state(),
-                    submit_anchor: surface.transcript_submit_anchor_snapshot(),
+                    live_scroll: surface.transcript_live_scroll_effect_snapshot(),
+                    live_scroll_preserves_anchor_offset: surface
+                        .transcript_live_scroll_preserves_anchor_offset(),
                     older_history_loading: surface.older_history_loading(),
                     metrics: tracing::enabled!(tracing::Level::DEBUG)
                         .then(|| surface.transcript_presentation().render_metrics()),

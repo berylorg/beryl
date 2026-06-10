@@ -53,7 +53,9 @@ use crate::diagnostic_dynamic_tools::{
 };
 use crate::shell::{
     ScrollbarRegion, ShellView,
-    execution_detail::{TranscriptRenderMetrics, TurnExecutionRecord},
+    execution_detail::{
+        ExecutionItem, TranscriptRenderMetrics, TurnExecutionRecord, TurnNarrativeEntry,
+    },
     image_preview_popup,
     syntax_highlighting::{SyntaxHighlightCache, SyntaxHighlightCacheStats},
     theme_candidates::ThemeCandidatePanelSnapshot,
@@ -64,12 +66,17 @@ use crate::shell::{
         TranscriptImagePreviewData, TranscriptImagePreviewUpdate,
         spawn_transcript_image_preview_worker,
     },
+    transcript_live_scroll::{
+        TranscriptFinalAnchor, TranscriptFinalReadAnchor, TranscriptLiveScrollEffectSnapshot,
+        TranscriptNarrativeAnchor,
+    },
     transcript_markdown::{
         TranscriptMarkdownCache, TranscriptMarkdownCacheKey, TranscriptMarkdownCacheStats,
     },
     transcript_media::{
         TranscriptMediaCache, TranscriptMediaCacheKey, TranscriptMediaCacheStats,
-        TranscriptMediaLayoutInput, TranscriptMediaSource, transcript_media_layout_metrics,
+        TranscriptMediaLayoutInput, TranscriptMediaSizingInput, TranscriptMediaSource,
+        transcript_media_layout_metrics, transcript_media_size,
     },
     transcript_presentation::TranscriptActivityCaret,
     transcript_presentation::{
@@ -92,7 +99,9 @@ use self::media_cache::TranscriptMediaRenderContext;
 use self::nested_scroll::TranscriptNestedScrollOwnership;
 use self::selection_context::TranscriptTextSelectionRenderState;
 use self::selection_highlight::wrapped_line_selection_highlight_bounds;
-use self::stream_projection::{TranscriptStreamProjection, TranscriptStreamProjectionContext};
+use self::stream_projection::{
+    TranscriptStreamProjection, TranscriptStreamProjectionContext, TranscriptStreamProjectionKey,
+};
 pub(crate) use self::theme::{
     TranscriptInlineCodeHost, TranscriptRoleStyle, TranscriptTextRole, TranscriptTheme,
 };
@@ -104,9 +113,10 @@ use self::{
     markdown_cache::TranscriptMarkdownRenderContext,
     text_blocks::{empty_state, older_history_loading_state, released_history_placeholder_state},
     turn_blocks::{render_turn_card, user_prompt_block_path},
+    turn_media_units::{TranscriptMarkdownRenderUnit, markdown_render_units},
 };
 use super::super::virtual_list::{
-    ListOffset, ListScrollEvent, ListScrollPosition, ListState, list,
+    ListContentAnchorResizePolicy, ListOffset, ListScrollEvent, ListScrollPosition, ListState, list,
 };
 use super::scrollbars::{
     ScrollDirection, ScrollbarInteraction, ScrollbarScrollState, ScrollbarVisibilityState,
@@ -502,7 +512,8 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub pending_thread_activation_label: Option<String>,
     pub transcript_width: Pixels,
     pub transcript_list_state: ListState,
-    pub submit_anchor: Option<TranscriptSubmitAnchorSnapshot>,
+    pub live_scroll: Option<TranscriptLiveScrollEffectSnapshot>,
+    pub live_scroll_preserves_anchor_offset: bool,
     pub older_history_loading: bool,
     pub metrics: Option<TranscriptRenderMetrics>,
     pub activity_caret: Option<TranscriptActivityCaret>,
@@ -2052,6 +2063,13 @@ impl Render for TranscriptPanel {
             .is_some_and(|surface| !surface.transcript_presentation().is_empty());
         let entity = cx.entity();
         let transcript_list_state = snapshot.transcript_list_state.clone();
+        transcript_list_state.set_content_anchor_resize_policy(
+            if snapshot.live_scroll_preserves_anchor_offset {
+                ListContentAnchorResizePolicy::PreserveAnchorOffset
+            } else {
+                ListContentAnchorResizePolicy::PreserveFollowingContent
+            },
+        );
         let media_promotion_state = TranscriptMediaPromotionState::new(self.promoted_media.clone());
         let image_menu_render_state = TranscriptImageMenuRenderState::new(
             shell.read(cx).conversation_surface().and_then(|surface| {
@@ -2225,78 +2243,20 @@ impl Render for TranscriptPanel {
             transcript_media_layout(snapshot.transcript_width, theme.as_ref(), window);
         let selection_order = Rc::new(Cell::new(0usize));
         let narrative_copy_block_count = Rc::new(Cell::new(0usize));
-        let trailing_scroll_allowance = snapshot
-            .submit_anchor
-            .as_ref()
-            .and_then(|anchor| {
-                let anchor_turn = shell.read(cx).conversation_surface().and_then(|surface| {
-                    surface
-                        .transcript_presentation()
-                        .turn_at(anchor.turn_index)
-                        .map(|row| row.turn)
-                });
-                anchor_turn.map(|turn| {
-                    let prompt_block_path = user_prompt_block_path(anchor.fragment_index);
-                    let prompt_key =
-                        turn_markdown_key(anchor.turn_index, turn.as_ref(), &prompt_block_path);
-                    let prompt_markdown_source = turn
-                        .user_input_fragments()
-                        .get(anchor.fragment_index)
-                        .map(|fragment| {
-                            markdown_source_with_image_marker_placeholders(
-                                fragment.text.as_str(),
-                                fragment.image_markers(),
-                            )
-                        })
-                        .unwrap_or_else(|| anchor.user_input.clone());
-                    let prompt_markdown =
-                        markdown_context.markdown_for(prompt_key, &prompt_markdown_source, cx);
-                    let preceding_markdown = turn
-                        .user_input_fragments()
-                        .iter()
-                        .take(anchor.fragment_index)
-                        .enumerate()
-                        .filter(|(_, fragment)| !fragment.text.is_empty())
-                        .map(|(fragment_index, fragment)| {
-                            let block_path = user_prompt_block_path(fragment_index);
-                            let key =
-                                turn_markdown_key(anchor.turn_index, turn.as_ref(), &block_path);
-                            let source = markdown_source_with_image_marker_placeholders(
-                                fragment.text.as_str(),
-                                fragment.image_markers(),
-                            );
-                            markdown_context.markdown_for(key, &source, cx)
-                        })
-                        .collect::<Vec<_>>();
-                    let preceding_plans = preceding_markdown
-                        .iter()
-                        .map(|markdown| markdown.render_plan())
-                        .collect::<Vec<_>>();
-                    let offset = transcript_anchor::prompt_last_line_top_offset(
-                        anchor,
-                        preceding_plans.as_slice(),
-                        prompt_markdown.render_plan(),
-                        snapshot.transcript_width,
-                        &theme.anchor_theme(),
-                        code_layout.transcript_bordered_panel_columns,
-                        window,
-                    );
-                    if anchor.force_viewport {
-                        transcript_list_state.scroll_to(ListOffset {
-                            item_ix: anchor.turn_index,
-                            offset_in_item: offset,
-                        });
-                    }
-                    let measured_content_below_anchor = transcript_list_state
-                        .measured_item_size(anchor.turn_index)
-                        .map(|size| (size.height - offset).max(px(0.0)));
-                    transcript_anchor::trailing_scroll_slack(
-                        transcript_panel_height,
-                        measured_content_below_anchor,
-                    )
-                })
-            })
-            .unwrap_or_else(|| px(0.0));
+        let trailing_scroll_allowance = apply_live_scroll_effect(
+            snapshot.live_scroll.as_ref(),
+            &shell,
+            &transcript_list_state,
+            &markdown_context,
+            &stream_projection_context,
+            snapshot.transcript_width,
+            transcript_panel_height,
+            theme.as_ref(),
+            code_layout,
+            media_layout,
+            window,
+            cx,
+        );
         transcript_list_state.set_virtual_trailing_scroll_allowance(trailing_scroll_allowance);
         transcript_list_state.set_scroll_handler({
             let shell = shell.clone();
@@ -2849,6 +2809,720 @@ impl Render for TranscriptPanel {
             ))
             .into_any_element()
     }
+}
+
+fn apply_live_scroll_effect(
+    effect: Option<&TranscriptLiveScrollEffectSnapshot>,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Pixels {
+    let Some(effect) = effect else {
+        return px(0.0);
+    };
+    match effect {
+        TranscriptLiveScrollEffectSnapshot::Prompt(anchor) => apply_prompt_scroll_effect(
+            anchor,
+            shell,
+            transcript_list_state,
+            markdown_context,
+            transcript_width,
+            transcript_panel_height,
+            theme,
+            code_layout,
+            window,
+            cx,
+        ),
+        TranscriptLiveScrollEffectSnapshot::CommentaryFollow(anchor) => {
+            apply_commentary_follow_effect(
+                anchor,
+                shell,
+                transcript_list_state,
+                markdown_context,
+                stream_projection_context,
+                transcript_width,
+                transcript_panel_height,
+                theme,
+                code_layout,
+                media_layout,
+                window,
+                cx,
+            );
+            px(0.0)
+        }
+        TranscriptLiveScrollEffectSnapshot::FinalStart(anchor) => apply_final_start_effect(
+            anchor,
+            shell,
+            transcript_list_state,
+            markdown_context,
+            stream_projection_context,
+            transcript_width,
+            transcript_panel_height,
+            theme,
+            code_layout,
+            media_layout,
+            window,
+            cx,
+        ),
+        TranscriptLiveScrollEffectSnapshot::FinalRead(anchor) => final_read_trailing_allowance(
+            anchor,
+            shell,
+            transcript_list_state,
+            markdown_context,
+            stream_projection_context,
+            transcript_width,
+            transcript_panel_height,
+            theme,
+            code_layout,
+            media_layout,
+            window,
+            cx,
+        ),
+        TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor) => final_start_trailing_allowance(
+            anchor,
+            shell,
+            transcript_list_state,
+            markdown_context,
+            stream_projection_context,
+            transcript_width,
+            transcript_panel_height,
+            theme,
+            code_layout,
+            media_layout,
+            window,
+            cx,
+        ),
+    }
+}
+
+fn presented_turn_for_anchor(
+    shell: &Entity<ShellView>,
+    preferred_index: usize,
+    row_identity: Option<&str>,
+    cx: &mut Context<TranscriptPanel>,
+) -> Option<(usize, Arc<TurnExecutionRecord>)> {
+    shell.read(cx).conversation_surface().and_then(|surface| {
+        let presentation = surface.transcript_presentation();
+        let index = row_identity
+            .and_then(|identity| presentation.row_index_for_identity(identity))
+            .unwrap_or(preferred_index);
+        presentation.turn_at(index).map(|row| (row.index, row.turn))
+    })
+}
+
+fn apply_prompt_scroll_effect(
+    anchor: &TranscriptSubmitAnchorSnapshot,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Pixels {
+    let Some((turn_index, turn)) =
+        presented_turn_for_anchor(shell, anchor.turn_index, anchor.row_identity.as_deref(), cx)
+    else {
+        return px(0.0);
+    };
+    let mut anchor = anchor.clone();
+    anchor.turn_index = turn_index;
+    let prompt_block_path = user_prompt_block_path(anchor.fragment_index);
+    let prompt_key = turn_markdown_key(turn_index, turn.as_ref(), &prompt_block_path);
+    let prompt_markdown_source = turn
+        .user_input_fragments()
+        .get(anchor.fragment_index)
+        .map(|fragment| {
+            markdown_source_with_image_marker_placeholders(
+                fragment.text.as_str(),
+                fragment.image_markers(),
+            )
+        })
+        .unwrap_or_else(|| anchor.user_input.clone());
+    let prompt_markdown = markdown_context.markdown_for(prompt_key, &prompt_markdown_source, cx);
+    let preceding_markdown = turn
+        .user_input_fragments()
+        .iter()
+        .take(anchor.fragment_index)
+        .enumerate()
+        .filter(|(_, fragment)| !fragment.text.is_empty())
+        .map(|(fragment_index, fragment)| {
+            let block_path = user_prompt_block_path(fragment_index);
+            let key = turn_markdown_key(turn_index, turn.as_ref(), &block_path);
+            let source = markdown_source_with_image_marker_placeholders(
+                fragment.text.as_str(),
+                fragment.image_markers(),
+            );
+            markdown_context.markdown_for(key, &source, cx)
+        })
+        .collect::<Vec<_>>();
+    let preceding_plans = preceding_markdown
+        .iter()
+        .map(|markdown| markdown.render_plan())
+        .collect::<Vec<_>>();
+    let measured_row_height = transcript_list_state
+        .measured_item_size(turn_index)
+        .map(|size| size.height);
+    let placement = transcript_anchor::prompt_viewport_placement(
+        &anchor,
+        preceding_plans.as_slice(),
+        prompt_markdown.render_plan(),
+        transcript_width,
+        transcript_panel_height,
+        measured_row_height,
+        &theme.anchor_theme(),
+        code_layout.transcript_bordered_panel_columns,
+        window,
+    );
+    if matches!(
+        anchor.viewport_action,
+        transcript_anchor::TranscriptSubmitViewportAction::PromptReread
+    ) {
+        transcript_list_state.scroll_to(ListOffset {
+            item_ix: turn_index,
+            offset_in_item: placement.scroll_offset,
+        });
+        let shell = shell.clone();
+        let applied_anchor = anchor.clone();
+        cx.defer(move |cx| {
+            shell.update(cx, |view, cx| {
+                view.mark_prompt_reread_applied(&applied_anchor, cx)
+            });
+        });
+    }
+    placement.virtual_runway
+}
+
+fn apply_commentary_follow_effect(
+    anchor: &TranscriptNarrativeAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) {
+    let Some((turn_index, turn)) = presented_turn_for_anchor(
+        shell,
+        anchor.turn.turn_index,
+        anchor.turn.row_identity.as_deref(),
+        cx,
+    ) else {
+        return;
+    };
+    let geometries = narrative_item_geometries_for_turn(
+        turn_index,
+        turn.as_ref(),
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    );
+    let Some(follow) = transcript_anchor::commentary_follow_geometry(
+        anchor.item_id.as_deref(),
+        geometries.as_slice(),
+        transcript_panel_height,
+    ) else {
+        return;
+    };
+    if commentary_follow_should_scroll(
+        transcript_list_state.scroll_position(),
+        turn_index,
+        follow.scroll_offset,
+    ) {
+        transcript_list_state.scroll_to(ListOffset {
+            item_ix: turn_index,
+            offset_in_item: follow.scroll_offset,
+        });
+    }
+}
+
+fn apply_final_start_effect(
+    anchor: &TranscriptFinalAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Pixels {
+    let Some((turn_index, turn)) = presented_turn_for_anchor(
+        shell,
+        anchor.turn.turn_index,
+        anchor.turn.row_identity.as_deref(),
+        cx,
+    ) else {
+        return px(0.0);
+    };
+    let geometries = narrative_item_geometries_for_turn(
+        turn_index,
+        turn.as_ref(),
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    );
+    let measured_row_height = transcript_list_state
+        .measured_item_size(turn_index)
+        .map(|size| size.height);
+    let Some(final_start) = transcript_anchor::final_answer_start_placement(
+        anchor.item_id.as_str(),
+        geometries.as_slice(),
+        transcript_panel_height,
+        measured_row_height,
+    ) else {
+        return px(0.0);
+    };
+    transcript_list_state.scroll_to(ListOffset {
+        item_ix: turn_index,
+        offset_in_item: final_start.scroll_offset,
+    });
+    let shell = shell.clone();
+    let applied_anchor = anchor.clone();
+    let applied_scroll_offset = final_start.scroll_offset;
+    cx.defer(move |cx| {
+        shell.update(cx, |view, cx| {
+            view.mark_final_start_applied(&applied_anchor, applied_scroll_offset, cx)
+        });
+    });
+    final_start.virtual_runway
+}
+
+fn final_read_trailing_allowance(
+    anchor: &TranscriptFinalReadAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Pixels {
+    let Some((turn_index, placement)) = final_start_trailing_placement(
+        &anchor.anchor,
+        shell,
+        transcript_list_state,
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        transcript_panel_height,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    ) else {
+        return px(0.0);
+    };
+    let target = ListOffset {
+        item_ix: turn_index,
+        offset_in_item: placement.scroll_offset,
+    };
+    let previous_target = ListOffset {
+        item_ix: turn_index,
+        offset_in_item: anchor.applied_scroll_offset,
+    };
+    if placement.scroll_offset != anchor.applied_scroll_offset
+        && transcript_list_state.scroll_position() == ListScrollPosition::Content(previous_target)
+    {
+        transcript_list_state.scroll_to(target);
+        let shell = shell.clone();
+        let applied_anchor = anchor.anchor.clone();
+        let applied_scroll_offset = placement.scroll_offset;
+        cx.defer(move |cx| {
+            shell.update(cx, |view, cx| {
+                view.mark_final_start_applied(&applied_anchor, applied_scroll_offset, cx)
+            });
+        });
+    }
+    placement.virtual_runway
+}
+
+fn final_start_trailing_allowance(
+    anchor: &TranscriptFinalAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Pixels {
+    final_start_trailing_placement(
+        anchor,
+        shell,
+        transcript_list_state,
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        transcript_panel_height,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    )
+    .map(|(_, placement)| placement.virtual_runway)
+    .unwrap_or(px(0.0))
+}
+
+fn final_start_trailing_placement(
+    anchor: &TranscriptFinalAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Option<(usize, transcript_anchor::TranscriptFinalStartPlacement)> {
+    let Some((turn_index, turn)) = presented_turn_for_anchor(
+        shell,
+        anchor.turn.turn_index,
+        anchor.turn.row_identity.as_deref(),
+        cx,
+    ) else {
+        return None;
+    };
+    let geometries = narrative_item_geometries_for_turn(
+        turn_index,
+        turn.as_ref(),
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    );
+    let measured_row_height = transcript_list_state
+        .measured_item_size(turn_index)
+        .map(|size| size.height);
+    let Some(placement) = transcript_anchor::final_answer_start_placement(
+        anchor.item_id.as_str(),
+        geometries.as_slice(),
+        transcript_panel_height,
+        measured_row_height,
+    ) else {
+        return None;
+    };
+    Some((turn_index, placement))
+}
+
+fn commentary_follow_should_scroll(
+    current_position: ListScrollPosition,
+    target_item_ix: usize,
+    target_offset: Pixels,
+) -> bool {
+    match current_position {
+        ListScrollPosition::Bottom => true,
+        ListScrollPosition::VirtualTail { .. } => false,
+        ListScrollPosition::Content(current) => {
+            current.item_ix < target_item_ix
+                || (current.item_ix == target_item_ix && target_offset > current.offset_in_item)
+        }
+    }
+}
+
+fn narrative_item_geometries_for_turn(
+    turn_index: usize,
+    turn: &TurnExecutionRecord,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Vec<transcript_anchor::TranscriptNarrativeItemGeometry> {
+    let mut blocks = Vec::new();
+    let mut pending_media_count = 0usize;
+    for entry in turn.narrative_entries() {
+        match entry {
+            TurnNarrativeEntry::UserInput { fragment_id } => {
+                let Some((fragment_index, fragment)) = turn.user_input_fragment_by_id(*fragment_id)
+                else {
+                    continue;
+                };
+                if fragment.text.is_empty() {
+                    continue;
+                }
+                let block_path = user_prompt_block_path(fragment_index);
+                if fragment.image_markers().is_empty() {
+                    let key = turn_markdown_key(turn_index, turn, &block_path);
+                    let markdown =
+                        markdown_context.markdown_for(key.clone(), fragment.text.as_str(), cx);
+                    for unit in markdown_render_units(&key, block_path.as_str(), markdown.as_ref())
+                    {
+                        match unit {
+                            TranscriptMarkdownRenderUnit::Markdown { key, source, .. } => {
+                                flush_pending_media_geometry(
+                                    &mut blocks,
+                                    &mut pending_media_count,
+                                    media_layout,
+                                );
+                                let markdown =
+                                    markdown_context.markdown_for(key, source.as_ref(), cx);
+                                blocks.push(
+                                    transcript_anchor::TranscriptNarrativeBlockPlan::UserPrompt {
+                                        plan: markdown.render_plan().clone(),
+                                    },
+                                );
+                            }
+                            TranscriptMarkdownRenderUnit::Media { .. } => {
+                                pending_media_count = pending_media_count.saturating_add(1);
+                            }
+                        }
+                    }
+                } else {
+                    flush_pending_media_geometry(
+                        &mut blocks,
+                        &mut pending_media_count,
+                        media_layout,
+                    );
+                    let key = turn_markdown_key(turn_index, turn, &block_path);
+                    let source = markdown_source_with_image_marker_placeholders(
+                        fragment.text.as_str(),
+                        fragment.image_markers(),
+                    );
+                    let markdown = markdown_context.markdown_for(key, &source, cx);
+                    blocks.push(
+                        transcript_anchor::TranscriptNarrativeBlockPlan::UserPrompt {
+                            plan: markdown.render_plan().clone(),
+                        },
+                    );
+                }
+            }
+            TurnNarrativeEntry::Item { item_id } => {
+                let Some(item) = turn.item_by_id(item_id) else {
+                    continue;
+                };
+                match item {
+                    ExecutionItem::AgentMessage(message) => {
+                        if message.text.is_empty() {
+                            continue;
+                        }
+                        let markdown_key = item_markdown_key(
+                            turn_index,
+                            turn,
+                            message.id.as_str(),
+                            "agent-message",
+                        );
+                        let source = stream_projection_context.visible_text(
+                            TranscriptStreamProjectionKey::new(markdown_key.as_str()),
+                            message.text.as_str(),
+                            item_blocks::live_item_complete(turn, message.complete),
+                            Instant::now(),
+                        );
+                        if source.is_empty() {
+                            continue;
+                        }
+                        let markdown = markdown_context.markdown_for(
+                            markdown_key.clone(),
+                            source.as_ref(),
+                            cx,
+                        );
+                        for unit in markdown_render_units(
+                            &markdown_key,
+                            format!("item:{}:agent-message", message.id).as_str(),
+                            markdown.as_ref(),
+                        ) {
+                            match unit {
+                                TranscriptMarkdownRenderUnit::Markdown { key, source, .. } => {
+                                    flush_pending_media_geometry(
+                                        &mut blocks,
+                                        &mut pending_media_count,
+                                        media_layout,
+                                    );
+                                    let markdown =
+                                        markdown_context.markdown_for(key, source.as_ref(), cx);
+                                    blocks.push(
+                                        transcript_anchor::TranscriptNarrativeBlockPlan::AssistantMarkdown {
+                                            item_id: message.id.clone(),
+                                            plan: markdown.render_plan().clone(),
+                                        },
+                                    );
+                                }
+                                TranscriptMarkdownRenderUnit::Media { .. } => {
+                                    pending_media_count = pending_media_count.saturating_add(1);
+                                }
+                            }
+                        }
+                    }
+                    ExecutionItem::Reasoning(reasoning) => {
+                        append_reasoning_geometry_blocks(
+                            turn_index,
+                            turn,
+                            reasoning.id.as_str(),
+                            "reasoning-summary",
+                            &reasoning.summary,
+                            reasoning.complete,
+                            markdown_context,
+                            stream_projection_context,
+                            &mut blocks,
+                            &mut pending_media_count,
+                            media_layout,
+                            cx,
+                        );
+                        append_reasoning_geometry_blocks(
+                            turn_index,
+                            turn,
+                            reasoning.id.as_str(),
+                            "reasoning-content",
+                            &reasoning.content,
+                            reasoning.complete,
+                            markdown_context,
+                            stream_projection_context,
+                            &mut blocks,
+                            &mut pending_media_count,
+                            media_layout,
+                            cx,
+                        );
+                    }
+                    ExecutionItem::GeneratedImage(_) => {
+                        pending_media_count = pending_media_count.saturating_add(1);
+                    }
+                    ExecutionItem::CommandExecution(_)
+                    | ExecutionItem::FileChange(_)
+                    | ExecutionItem::Generic(_) => {}
+                }
+            }
+        }
+    }
+    flush_pending_media_geometry(&mut blocks, &mut pending_media_count, media_layout);
+
+    transcript_anchor::narrative_item_geometries(
+        turn_index,
+        blocks.as_slice(),
+        transcript_width,
+        &theme.anchor_theme(),
+        code_layout.transcript_bordered_panel_columns,
+        window,
+    )
+}
+
+fn append_reasoning_geometry_blocks(
+    turn_index: usize,
+    turn: &TurnExecutionRecord,
+    item_id: &str,
+    slot: &str,
+    items: &[String],
+    complete: bool,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    blocks: &mut Vec<transcript_anchor::TranscriptNarrativeBlockPlan>,
+    pending_media_count: &mut usize,
+    media_layout: TranscriptMediaRenderLayout,
+    cx: &mut Context<TranscriptPanel>,
+) {
+    for (index, item) in items.iter().enumerate() {
+        if item.is_empty() {
+            continue;
+        }
+        let markdown_key = indexed_item_markdown_key(turn_index, turn, item_id, slot, index);
+        let source = stream_projection_context.visible_text(
+            TranscriptStreamProjectionKey::new(markdown_key.as_str()),
+            item.as_str(),
+            item_blocks::live_item_complete(turn, complete),
+            Instant::now(),
+        );
+        if source.is_empty() {
+            continue;
+        }
+        flush_pending_media_geometry(blocks, pending_media_count, media_layout);
+        let markdown = markdown_context.markdown_for(markdown_key, source.as_ref(), cx);
+        blocks.push(
+            transcript_anchor::TranscriptNarrativeBlockPlan::AssistantMarkdown {
+                item_id: format!("{item_id}:{slot}:{index}"),
+                plan: markdown.render_plan().clone(),
+            },
+        );
+    }
+}
+
+fn flush_pending_media_geometry(
+    blocks: &mut Vec<transcript_anchor::TranscriptNarrativeBlockPlan>,
+    pending_media_count: &mut usize,
+    media_layout: TranscriptMediaRenderLayout,
+) {
+    if *pending_media_count == 0 {
+        return;
+    }
+    let height = media_run_placeholder_height(*pending_media_count, media_layout);
+    blocks.push(transcript_anchor::TranscriptNarrativeBlockPlan::Anonymous { height });
+    *pending_media_count = 0;
+}
+
+fn media_run_placeholder_height(
+    item_count: usize,
+    media_layout: TranscriptMediaRenderLayout,
+) -> Pixels {
+    const MEDIA_TILE_GAP: f32 = 8.0;
+
+    let item_count = item_count.max(1);
+    let tile_size = transcript_media_size(TranscriptMediaSizingInput {
+        run_length: item_count,
+        padded_content_width: media_layout.padded_content_width,
+        conversation_m_advance: media_layout.conversation_m_advance,
+        natural_dimensions: None,
+        window_scale: media_layout.window_scale,
+    });
+    if item_count == 1 {
+        return tile_size.height;
+    }
+
+    let gap = px(MEDIA_TILE_GAP);
+    let available_width = f32::from(media_layout.padded_content_width.max(px(0.0)));
+    let tile_width = f32::from(tile_size.width.max(px(1.0)));
+    let gap_width = f32::from(gap);
+    let per_row = ((available_width + gap_width) / (tile_width + gap_width))
+        .floor()
+        .max(1.0) as usize;
+    let rows = item_count.div_ceil(per_row);
+
+    (tile_size.height * rows as f32) + (gap * rows.saturating_sub(1) as f32)
 }
 
 fn render_turn(

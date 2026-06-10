@@ -23,6 +23,7 @@ impl ListState {
             reset: false,
             scrollbar_drag_start_height: None,
             measuring_behavior: ListMeasuringBehavior::default(),
+            content_anchor_resize_policy: ListContentAnchorResizePolicy::default(),
         })));
         this.splice(0..0, item_count);
         this.0.borrow_mut().scroll_position = match alignment {
@@ -193,6 +194,10 @@ impl ListState {
         self.0
             .borrow_mut()
             .set_virtual_trailing_scroll_allowance(allowance);
+    }
+
+    pub fn set_content_anchor_resize_policy(&self, policy: ListContentAnchorResizePolicy) {
+        self.0.borrow_mut().content_anchor_resize_policy = policy;
     }
 
     /// Get trailing virtual scroll allowance in pixels.

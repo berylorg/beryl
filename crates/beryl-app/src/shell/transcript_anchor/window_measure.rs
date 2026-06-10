@@ -160,33 +160,6 @@ impl PromptTextMeasurer for WindowPromptMeasurer<'_, '_> {
         self.text_style_for_code_panel_role(&self.theme.code_panel_header)
             .line_height_in_pixels(self.window.rem_size())
     }
-
-    fn code_columns_for_width(&mut self, wrap_width: Pixels) -> usize {
-        let mut font = self.window.text_style().font();
-        font.family = self.theme.code_panel.font_family.clone().into();
-        font.weight = FontWeight(self.theme.code_panel.font_weight as f32);
-        let run = TextRun {
-            len: 1,
-            font,
-            color: self.window.text_style().color,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
-        let char_width = self
-            .window
-            .text_system()
-            .shape_line(
-                "0".into(),
-                px(self.theme.code_panel.font_size),
-                &[run],
-                None,
-            )
-            .width
-            .max(px(1.0));
-
-        ((wrap_width.max(px(1.0)) / char_width).floor() as usize).max(1)
-    }
 }
 
 fn block_font_size(base_size: f32, block_role: AnchorBlockRole) -> f32 {

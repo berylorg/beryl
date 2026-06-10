@@ -79,6 +79,7 @@ struct StateInner {
     scroll_handler: Option<Box<dyn FnMut(&ListScrollEvent, &mut Window, &mut App)>>,
     scrollbar_drag_start_height: Option<Pixels>,
     measuring_behavior: ListMeasuringBehavior,
+    content_anchor_resize_policy: ListContentAnchorResizePolicy,
 }
 
 /// Whether the list is scrolling from top to bottom or bottom to top.
@@ -124,6 +125,13 @@ pub enum ListSizingBehavior {
     /// The list should not calculate a fixed size.
     #[default]
     Auto,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ListContentAnchorResizePolicy {
+    #[default]
+    PreserveFollowingContent,
+    PreserveAnchorOffset,
 }
 
 /// The measuring behavior to apply during layout.
@@ -353,5 +361,21 @@ pub(crate) mod test_support {
             (),
         );
         inner.adjust_content_scroll_for_item_height_change(item_ix, old_height, new_height)
+    }
+
+    pub(crate) fn extend_virtual_trailing_height_for_preserved_anchor(
+        state: &ListState,
+        available_height: Pixels,
+        scroll_top: ListOffset,
+        rendered_height: Pixels,
+    ) -> Option<Pixels> {
+        state
+            .0
+            .borrow_mut()
+            .extend_virtual_trailing_height_for_preserved_anchor(
+                available_height,
+                &scroll_top,
+                rendered_height,
+            )
     }
 }

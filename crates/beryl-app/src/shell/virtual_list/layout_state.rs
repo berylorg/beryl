@@ -104,6 +104,7 @@ impl StateInner {
                     old_size,
                     element_size,
                     needs_measurement,
+                    self.content_anchor_resize_policy,
                 ) {
                     content_anchor_height_change = Some((item_ix, old_height, new_height));
                     if item_ix == scroll_top.item_ix {
@@ -132,6 +133,13 @@ impl StateInner {
             });
         }
         rendered_height += padding.bottom + virtual_trailing_height;
+        if let Some(extra_height) = self.extend_virtual_trailing_height_for_preserved_anchor(
+            available_height,
+            &scroll_top,
+            rendered_height,
+        ) {
+            rendered_height += extra_height;
+        }
 
         // Prepare to start walking upward from the item at the scroll top.
         cursor.seek(&Count(scroll_top.item_ix), Bias::Right);
@@ -200,6 +208,7 @@ impl StateInner {
                         old_size,
                         element_size,
                         true,
+                        self.content_anchor_resize_policy,
                     ) {
                         content_anchor_height_change = Some(change);
                     }
@@ -381,6 +390,12 @@ impl StateInner {
         old_height: Pixels,
         new_height: Pixels,
     ) -> Option<ListOffset> {
+        if matches!(
+            self.content_anchor_resize_policy,
+            ListContentAnchorResizePolicy::PreserveAnchorOffset
+        ) {
+            return None;
+        }
         let delta = new_height - old_height;
         if delta == px(0.0) {
             return None;
@@ -400,6 +415,33 @@ impl StateInner {
         self.scroll_position = ListScrollPosition::Content(normalized);
         Some(normalized)
     }
+
+    pub(super) fn extend_virtual_trailing_height_for_preserved_anchor(
+        &mut self,
+        available_height: Pixels,
+        scroll_top: &ListOffset,
+        rendered_height: Pixels,
+    ) -> Option<Pixels> {
+        if !matches!(
+            self.content_anchor_resize_policy,
+            ListContentAnchorResizePolicy::PreserveAnchorOffset
+        ) {
+            return None;
+        }
+        if !matches!(self.scroll_position(), ListScrollPosition::Content(_)) {
+            return None;
+        }
+
+        let visible_height = rendered_height - scroll_top.offset_in_item;
+        if visible_height >= available_height {
+            return None;
+        }
+
+        let extra_height = available_height - visible_height;
+        self.virtual_trailing_scroll_allowance =
+            self.virtual_trailing_scroll_allowance + extra_height;
+        Some(extra_height)
+    }
 }
 
 fn content_anchor_height_change_for(
@@ -408,7 +450,14 @@ fn content_anchor_height_change_for(
     old_size: Option<Size<Pixels>>,
     new_size: Size<Pixels>,
     preserve_following_content: bool,
+    resize_policy: ListContentAnchorResizePolicy,
 ) -> Option<(usize, Pixels, Pixels)> {
+    if matches!(
+        resize_policy,
+        ListContentAnchorResizePolicy::PreserveAnchorOffset
+    ) {
+        return None;
+    }
     if !preserve_following_content {
         return None;
     }

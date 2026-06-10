@@ -3,7 +3,10 @@
 mod virtual_list;
 
 use gpui::{point, px};
-use virtual_list::{ListAlignment, ListOffset, ListScrollPosition, ListState, test_support};
+use virtual_list::{
+    ListAlignment, ListContentAnchorResizePolicy, ListOffset, ListScrollPosition, ListState,
+    test_support,
+};
 
 #[test]
 fn virtual_allowance_extends_scrollbar_range_without_changing_item_count() {
@@ -280,6 +283,87 @@ fn current_item_height_growth_preserves_following_content_anchor() {
             offset_in_item: px(350.0),
         }
     );
+}
+
+#[test]
+fn current_item_height_growth_can_preserve_anchor_offset() {
+    let state = ListState::new(4, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(100.0), px(200.0), px(100.0), px(100.0)]);
+    test_support::set_viewport_height(&state, px(200.0));
+    state.scroll_to(ListOffset {
+        item_ix: 1,
+        offset_in_item: px(150.0),
+    });
+    state.set_content_anchor_resize_policy(ListContentAnchorResizePolicy::PreserveAnchorOffset);
+
+    let adjusted = test_support::apply_item_height_change_to_content_anchor(&state, 1, px(400.0));
+
+    assert_eq!(adjusted, None);
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 1,
+            offset_in_item: px(150.0),
+        })
+    );
+}
+
+#[test]
+fn preserved_content_anchor_extends_runway_when_viewport_grows() {
+    let state = ListState::new(2, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(500.0), px(80.0)]);
+    test_support::set_viewport_height(&state, px(200.0));
+    state.scroll_to(ListOffset {
+        item_ix: 1,
+        offset_in_item: px(0.0),
+    });
+    state.set_virtual_trailing_scroll_allowance(px(120.0));
+    state.set_content_anchor_resize_policy(ListContentAnchorResizePolicy::PreserveAnchorOffset);
+
+    let extra = test_support::extend_virtual_trailing_height_for_preserved_anchor(
+        &state,
+        px(320.0),
+        ListOffset {
+            item_ix: 1,
+            offset_in_item: px(0.0),
+        },
+        px(200.0),
+    );
+
+    assert_eq!(extra, Some(px(120.0)));
+    assert_eq!(state.virtual_trailing_scroll_allowance(), px(240.0));
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 1,
+            offset_in_item: px(0.0),
+        })
+    );
+}
+
+#[test]
+fn ordinary_content_anchor_does_not_extend_runway_when_viewport_grows() {
+    let state = ListState::new(2, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(500.0), px(80.0)]);
+    test_support::set_viewport_height(&state, px(200.0));
+    state.scroll_to(ListOffset {
+        item_ix: 1,
+        offset_in_item: px(0.0),
+    });
+    state.set_virtual_trailing_scroll_allowance(px(120.0));
+
+    let extra = test_support::extend_virtual_trailing_height_for_preserved_anchor(
+        &state,
+        px(320.0),
+        ListOffset {
+            item_ix: 1,
+            offset_in_item: px(0.0),
+        },
+        px(200.0),
+    );
+
+    assert_eq!(extra, None);
+    assert_eq!(state.virtual_trailing_scroll_allowance(), px(120.0));
 }
 
 #[test]
