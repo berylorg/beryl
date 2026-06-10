@@ -13,7 +13,7 @@ use crate::{
         BackendUnavailableState, BlockedState, COMPOSER_KEY_CONTEXT, ComposerImagePopupMode,
         ConversationSurfaceState, IdleWorkspaceState, LoadedWorkspaceState, ReadyState,
         ScrollbarRegion, ShellRenderFrame, ShellView, SurfaceNotice,
-        ThreadSelectorActivationTarget,
+        ThreadSelectorActivationTarget, composer_input_chrome,
         composer_measurement::ComposerInputMeasurementKey,
         image_preview_popup, layout,
         status_line::{self, StatusLineCellAction, StatusLineCellValueKind, StatusLineProjection},
@@ -2273,23 +2273,14 @@ fn render_composer_input_area(
     backend_controls_disabled: Option<&str>,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    div()
-        .absolute()
-        .top(px(layout::COMPOSER_OUTER_VERTICAL_PADDING / 2.0))
-        .bottom(px(layout::COMPOSER_OUTER_VERTICAL_PADDING / 2.0))
-        .left(px(layout::COMPOSER_OUTER_HORIZONTAL_PADDING / 2.0))
-        .right(px(layout::COMPOSER_OUTER_HORIZONTAL_PADDING / 2.0))
-        .min_h(px(0.0))
-        .flex()
-        .items_end()
-        .child(composer_input_scroll_region(
-            shell,
-            input_render_height,
-            text_top_padding,
-            conversation_input,
-            backend_controls_disabled,
-            cx,
-        ))
+    composer_input_chrome::composer_input_area(composer_input_scroll_region(
+        shell,
+        input_render_height,
+        text_top_padding,
+        conversation_input,
+        backend_controls_disabled,
+        cx,
+    ))
 }
 
 fn composer_input_scroll_region(
@@ -2303,32 +2294,26 @@ fn composer_input_scroll_region(
     let enabled = backend_controls_disabled.is_none();
     conversation_input.update(cx, |input, cx| input.set_enabled(enabled, cx));
     let focus_input = conversation_input.clone();
-    let mut region = div()
-        .relative()
-        .flex_1()
-        .min_w(px(0.0))
-        .h_full()
-        .min_h(px(0.0))
-        .px_3()
-        .pt(px(4.0))
-        .pb(px(8.0))
-        .rounded(px(layout::ROUNDED_WIDGET_CORNER_RADIUS))
-        .bg(if enabled {
-            shell.input_background()
-        } else {
-            shell.secondary_button_theme().disabled.background
-        })
-        .border_1()
-        .border_color(if enabled {
-            shell.input_border()
-        } else {
-            shell.secondary_button_theme().disabled.border
-        })
-        .text_color(if enabled {
-            shell.input_foreground()
-        } else {
-            shell.secondary_button_theme().disabled.foreground
-        });
+    let mut region = composer_input_chrome::composer_input_scroll_region(
+        input_render_height,
+        text_top_padding,
+        conversation_input,
+    )
+    .bg(if enabled {
+        shell.input_background()
+    } else {
+        shell.secondary_button_theme().disabled.background
+    })
+    .border_color(if enabled {
+        shell.input_border()
+    } else {
+        shell.secondary_button_theme().disabled.border
+    })
+    .text_color(if enabled {
+        shell.input_foreground()
+    } else {
+        shell.secondary_button_theme().disabled.foreground
+    });
     if enabled {
         region = region.cursor(CursorStyle::IBeam).on_mouse_down(
             MouseButton::Left,
@@ -2338,43 +2323,19 @@ fn composer_input_scroll_region(
             },
         );
     }
-    region
-        .child(
+    region.when(!enabled, |this| {
+        this.child(
             div()
+                .absolute()
+                .top_0()
+                .left_0()
                 .size_full()
-                .min_h(px(0.0))
-                .overflow_hidden()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .w_full()
-                        .min_w(px(0.0))
-                        .h(text_top_padding)
-                        .min_h(text_top_padding),
-                )
-                .child(
-                    div()
-                        .w_full()
-                        .min_w(px(0.0))
-                        .h(input_render_height)
-                        .min_h(input_render_height)
-                        .child(conversation_input.clone()),
-                ),
+                .bg(shell.role_background(
+                    BerylThemeRole::SurfaceRowDisabled,
+                    shell.secondary_button_theme().disabled.background,
+                )),
         )
-        .when(!enabled, |this| {
-            this.child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .bg(shell.role_background(
-                        BerylThemeRole::SurfaceRowDisabled,
-                        shell.secondary_button_theme().disabled.background,
-                    )),
-            )
-        })
+    })
 }
 
 fn render_loaded_workspace_composer(

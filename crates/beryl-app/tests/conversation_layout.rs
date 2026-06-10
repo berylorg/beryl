@@ -1,8 +1,12 @@
+#[path = "../src/shell/composer_input_chrome.rs"]
+mod composer_input_chrome;
 #[allow(dead_code)]
 #[path = "../src/shell/layout.rs"]
 mod layout;
 
+use gpui::prelude::*;
 use gpui::{Entity, Pixels, px};
+use gpui::{IntoElement, Render, Window, div};
 use gpui_text_input::{TextInput, TextInputAtom, TextInputGeometry};
 
 #[test]
@@ -29,13 +33,41 @@ fn composer_height_stops_at_half_the_os_window_height() {
 #[test]
 fn composer_text_input_width_reclaims_former_action_space() {
     let text_width = layout::composer_text_input_width(px(420.0));
+    let expected_width = px(420.0
+        - layout::COMPOSER_OUTER_HORIZONTAL_PADDING
+        - layout::COMPOSER_INPUT_HORIZONTAL_CHROME);
 
-    assert_eq!(
-        text_width,
-        px(420.0
-            - layout::COMPOSER_OUTER_HORIZONTAL_PADDING
-            - layout::COMPOSER_INPUT_HORIZONTAL_CHROME)
-    );
+    assert_eq!(text_width, expected_width);
+}
+
+#[gpui::test]
+fn composer_measurement_width_matches_rendered_text_input_bounds(cx: &mut gpui::TestAppContext) {
+    let column_width = px(420.0);
+    let input_height = px(26.0);
+    let text_top_padding = px(5.0);
+    let (view, cx) = cx.add_window_view(|_, cx| {
+        let input = cx.new(|cx| TextInput::multiline("probe", "Body", cx));
+
+        ComposerChromeProbe {
+            input,
+            column_width,
+            input_height,
+            text_top_padding,
+        }
+    });
+    let input = view.read_with(cx, |view, _| view.input.clone());
+
+    let rendered_size = input.read_with(cx, |input, _| {
+        input
+            .geometry()
+            .expect("input should have painted geometry")
+            .bounds
+            .size
+    });
+    let measured_width = layout::composer_text_input_width(column_width);
+
+    assert_eq!(rendered_size.width, measured_width);
+    assert_eq!(rendered_size.height, input_height);
 }
 
 #[gpui::test]
@@ -223,6 +255,29 @@ fn composer_measurement(
         layout::composer_input_measurement(main_region_height, px(760.0), &final_geometry);
 
     (final_geometry, measurement)
+}
+
+struct ComposerChromeProbe {
+    input: Entity<TextInput>,
+    column_width: Pixels,
+    input_height: Pixels,
+    text_top_padding: Pixels,
+}
+
+impl Render for ComposerChromeProbe {
+    fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+        div()
+            .relative()
+            .w(self.column_width)
+            .h(px(layout::DEFAULT_COMPOSER_HEIGHT))
+            .child(composer_input_chrome::composer_input_area(
+                composer_input_chrome::composer_input_scroll_region(
+                    self.input_height,
+                    self.text_top_padding,
+                    &self.input,
+                ),
+            ))
+    }
 }
 
 #[test]

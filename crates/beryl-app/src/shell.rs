@@ -402,6 +402,7 @@ mod composer_image_delivery;
 mod composer_image_label_scan;
 mod composer_image_label_sync;
 mod composer_image_labels;
+mod composer_input_chrome;
 mod composer_measurement;
 mod composer_submission;
 mod composer_submit;
