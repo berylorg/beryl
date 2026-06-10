@@ -276,6 +276,14 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     let render_body = rust_function_body(transcript_source, "fn render(&mut self");
     let live_effect_body = rust_function_body(transcript_source, "fn apply_live_scroll_effect");
     let prompt_effect_body = rust_function_body(transcript_source, "fn apply_prompt_scroll_effect");
+    let prompt_pending_commentary_body = rust_function_body(
+        transcript_source,
+        "fn apply_prompt_with_pending_commentary_effect",
+    );
+    let pending_commentary_body = rust_function_body(
+        transcript_source,
+        "fn apply_pending_commentary_follow_effect",
+    );
     let final_effect_body = rust_function_body(transcript_source, "fn apply_final_start_effect");
     let final_read_body = rust_function_body(transcript_source, "fn final_read_trailing_allowance");
     let final_runway_body =
@@ -353,6 +361,26 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
         "view.mark_prompt_reread_applied(&applied_anchor, cx)",
     );
     assert!(prompt_effect_body.contains("let applied_anchor = anchor.clone();"));
+    assert!(live_effect_body.contains(
+        "TranscriptLiveScrollEffectSnapshot::PromptWithPendingCommentary { prompt, commentary }"
+    ));
+    assert!(live_effect_body.contains("apply_prompt_with_pending_commentary_effect("));
+    assert_order(
+        prompt_pending_commentary_body,
+        "let prompt_runway = apply_prompt_scroll_effect(",
+        "if apply_pending_commentary_follow_effect(",
+    );
+    assert!(prompt_pending_commentary_body.contains("prompt_runway"));
+    assert!(pending_commentary_body.contains("commentary_follow_should_scroll("));
+    assert_order(
+        pending_commentary_body,
+        "commentary_follow_should_scroll(",
+        "transcript_list_state.scroll_to(ListOffset",
+    );
+    assert!(
+        pending_commentary_body
+            .contains("view.mark_commentary_follow_applied(&applied_anchor, cx)")
+    );
     assert_order(
         final_effect_body,
         "transcript_list_state.scroll_to(ListOffset",

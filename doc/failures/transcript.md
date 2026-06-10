@@ -44,3 +44,12 @@
 - Why it failed: once final-answer content exists, the strongest reading anchor is the final-answer start, not the prompt. Prompt-only runway forces the user back to a mixed prompt-plus-final view and prevents returning to the final-only reading position.
 - Course correction: detached manual state prefers bounded final-start runway after stable final-answer content exists, with prompt runway retained only as the pre-final fallback. The final-start runway is non-scrolling and must not reissue final anchoring or follow final growth.
 - Affected tests: keep live-scroll coverage for detached manual final runway, prompt fallback before final, same-turn final detection after detach, and existing-history reset behavior.
+
+## Commentary Arrival Collapsing Prompt Runway
+
+- Scope: live transcript prompt-reread behavior while assistant commentary starts streaming.
+- Invalid assumption: detecting the first commentary item could immediately replace prompt-reread state with commentary-follow state, because the follow scroll helper would avoid issuing a scroll when the commentary still fit.
+- Evidence: live testing showed the submitted prompt initially anchored at the top, then moved downward as soon as narrative commentary appeared.
+- Why it failed: even without an explicit `scroll_to`, replacing prompt-reread with commentary-follow removed the virtual runway that made the prompt-top position representable. The virtual list then clamped to real content and pulled older transcript geometry into view.
+- Course correction: commentary detection during prompt-reread records only a pending follow target. The render pass keeps prompt runway until measured commentary growth actually needs a lower scroll offset; only that overflow measurement promotes the state to commentary-follow.
+- Affected tests: keep live-scroll coverage for pending commentary, stale pending-commentary defers, final-start override, and source guards for the pending-commentary render path.

@@ -23,6 +23,7 @@ pub(crate) enum TranscriptLiveScrollPhase {
     PromptReread {
         anchor: TranscriptSubmitAnchor,
         applied: bool,
+        pending_commentary: Option<TranscriptNarrativeAnchor>,
     },
     CommentaryFollow {
         anchor: TranscriptNarrativeAnchor,
@@ -78,6 +79,10 @@ pub(crate) struct TranscriptFinalReadAnchor {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum TranscriptLiveScrollEffectSnapshot {
     Prompt(TranscriptSubmitAnchorSnapshot),
+    PromptWithPendingCommentary {
+        prompt: TranscriptSubmitAnchorSnapshot,
+        commentary: TranscriptNarrativeAnchor,
+    },
     CommentaryFollow(TranscriptNarrativeAnchor),
     FinalStart(TranscriptFinalAnchor),
     FinalRead(TranscriptFinalReadAnchor),
@@ -123,33 +128,50 @@ impl TranscriptLiveScrollState {
         self.phase = TranscriptLiveScrollPhase::PromptReread {
             anchor,
             applied: false,
+            pending_commentary: None,
         };
     }
 
     pub(crate) fn preserve_for_steering(&mut self) {
-        if let TranscriptLiveScrollPhase::CommentaryFollow { anchor } = &mut self.phase {
-            anchor.item_id = None;
+        match &mut self.phase {
+            TranscriptLiveScrollPhase::PromptReread {
+                pending_commentary: Some(anchor),
+                ..
+            }
+            | TranscriptLiveScrollPhase::CommentaryFollow { anchor } => {
+                anchor.item_id = None;
+            }
+            _ => {}
         }
     }
 
     pub(crate) fn prompt_submit_anchor_snapshot(&self) -> Option<TranscriptSubmitAnchorSnapshot> {
         match &self.phase {
-            TranscriptLiveScrollPhase::PromptReread { anchor, applied } => {
-                Some(anchor.snapshot(if *applied {
-                    TranscriptSubmitViewportAction::MaintainPromptRunway
-                } else {
-                    TranscriptSubmitViewportAction::PromptReread
-                }))
-            }
+            TranscriptLiveScrollPhase::PromptReread {
+                anchor, applied, ..
+            } => Some(anchor.snapshot(if *applied {
+                TranscriptSubmitViewportAction::MaintainPromptRunway
+            } else {
+                TranscriptSubmitViewportAction::PromptReread
+            })),
             _ => None,
         }
     }
 
     pub(crate) fn effect_snapshot(&self) -> Option<TranscriptLiveScrollEffectSnapshot> {
         match &self.phase {
-            TranscriptLiveScrollPhase::PromptReread { .. } => self
-                .prompt_submit_anchor_snapshot()
-                .map(TranscriptLiveScrollEffectSnapshot::Prompt),
+            TranscriptLiveScrollPhase::PromptReread {
+                pending_commentary, ..
+            } => self.prompt_submit_anchor_snapshot().map(|prompt| {
+                if let Some(commentary) = pending_commentary {
+                    TranscriptLiveScrollEffectSnapshot::PromptWithPendingCommentary {
+                        prompt,
+                        commentary: commentary.clone(),
+                    }
+                } else {
+                    TranscriptLiveScrollEffectSnapshot::Prompt(prompt)
+                }
+            }),
             TranscriptLiveScrollPhase::CommentaryFollow { anchor } => Some(
                 TranscriptLiveScrollEffectSnapshot::CommentaryFollow(anchor.clone()),
             ),
@@ -209,8 +231,15 @@ impl TranscriptLiveScrollState {
 
     pub(crate) fn shift_turn_index(&mut self, amount: usize) {
         match &mut self.phase {
-            TranscriptLiveScrollPhase::PromptReread { anchor, .. } => {
+            TranscriptLiveScrollPhase::PromptReread {
+                anchor,
+                pending_commentary,
+                ..
+            } => {
                 anchor.shift_turn_index(amount);
+                if let Some(anchor) = pending_commentary {
+                    anchor.turn.shift_turn_index(amount);
+                }
             }
             TranscriptLiveScrollPhase::CommentaryFollow { anchor } => {
                 anchor.turn.shift_turn_index(amount);
@@ -238,7 +267,7 @@ impl TranscriptLiveScrollState {
         &mut self,
         anchor: TranscriptNarrativeAnchor,
     ) -> bool {
-        match &self.phase {
+        match &mut self.phase {
             TranscriptLiveScrollPhase::DetachedManual { .. }
             | TranscriptLiveScrollPhase::FinalStart { .. }
             | TranscriptLiveScrollPhase::FinalRead { .. } => return false,
@@ -247,12 +276,41 @@ impl TranscriptLiveScrollState {
             {
                 return false;
             }
+            TranscriptLiveScrollPhase::PromptReread {
+                pending_commentary, ..
+            } if pending_commentary.as_ref() == Some(&anchor) => {
+                return false;
+            }
+            TranscriptLiveScrollPhase::PromptReread {
+                pending_commentary, ..
+            } => {
+                *pending_commentary = Some(anchor);
+                return true;
+            }
             TranscriptLiveScrollPhase::Inactive
             | TranscriptLiveScrollPhase::TailActivation
-            | TranscriptLiveScrollPhase::PromptReread { .. }
             | TranscriptLiveScrollPhase::CommentaryFollow { .. } => {}
         }
         self.phase = TranscriptLiveScrollPhase::CommentaryFollow { anchor };
+        true
+    }
+
+    pub(crate) fn mark_commentary_follow_applied(
+        &mut self,
+        expected_anchor: &TranscriptNarrativeAnchor,
+    ) -> bool {
+        let matches_expected = match &self.phase {
+            TranscriptLiveScrollPhase::PromptReread {
+                pending_commentary, ..
+            } => pending_commentary.as_ref() == Some(expected_anchor),
+            _ => false,
+        };
+        if !matches_expected {
+            return false;
+        }
+        self.phase = TranscriptLiveScrollPhase::CommentaryFollow {
+            anchor: expected_anchor.clone(),
+        };
         true
     }
 
@@ -283,7 +341,10 @@ impl TranscriptLiveScrollState {
         &mut self,
         expected_anchor: &TranscriptSubmitAnchorSnapshot,
     ) -> bool {
-        let TranscriptLiveScrollPhase::PromptReread { anchor, applied } = &mut self.phase else {
+        let TranscriptLiveScrollPhase::PromptReread {
+            anchor, applied, ..
+        } = &mut self.phase
+        else {
             return false;
         };
         if !prompt_anchor_matches_snapshot(anchor, expected_anchor) {

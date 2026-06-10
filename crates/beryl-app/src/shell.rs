@@ -627,6 +627,7 @@ use transcript_history::{
 };
 use transcript_live_scroll::{
     TranscriptFinalAnchor, TranscriptLiveScrollEffectSnapshot, TranscriptLiveScrollState,
+    TranscriptNarrativeAnchor,
 };
 use transcript_presentation::{TranscriptActivityCaret, TranscriptPresentationState};
 use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
@@ -2938,6 +2939,11 @@ impl ConversationSurfaceState {
     fn mark_prompt_reread_applied(&mut self, anchor: &TranscriptSubmitAnchorSnapshot) -> bool {
         self.transcript_live_scroll
             .mark_prompt_reread_applied(anchor)
+    }
+
+    fn mark_commentary_follow_applied(&mut self, anchor: &TranscriptNarrativeAnchor) -> bool {
+        self.transcript_live_scroll
+            .mark_commentary_follow_applied(anchor)
     }
 
     fn mark_final_start_applied(
@@ -7555,6 +7561,20 @@ impl ShellView {
         let changed = self
             .conversation_surface_mut()
             .is_some_and(|surface| surface.mark_prompt_reread_applied(anchor));
+        if changed {
+            self.notify_transcript_panel(cx);
+            cx.notify();
+        }
+    }
+
+    fn mark_commentary_follow_applied(
+        &mut self,
+        anchor: &TranscriptNarrativeAnchor,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = self
+            .conversation_surface_mut()
+            .is_some_and(|surface| surface.mark_commentary_follow_applied(anchor));
         if changed {
             self.notify_transcript_panel(cx);
             cx.notify();

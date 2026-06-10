@@ -2841,6 +2841,23 @@ fn apply_live_scroll_effect(
             window,
             cx,
         ),
+        TranscriptLiveScrollEffectSnapshot::PromptWithPendingCommentary { prompt, commentary } => {
+            apply_prompt_with_pending_commentary_effect(
+                prompt,
+                commentary,
+                shell,
+                transcript_list_state,
+                markdown_context,
+                stream_projection_context,
+                transcript_width,
+                transcript_panel_height,
+                theme,
+                code_layout,
+                media_layout,
+                window,
+                cx,
+            )
+        }
         TranscriptLiveScrollEffectSnapshot::CommentaryFollow(anchor) => {
             apply_commentary_follow_effect(
                 anchor,
@@ -3001,6 +3018,116 @@ fn apply_prompt_scroll_effect(
         });
     }
     placement.virtual_runway
+}
+
+fn apply_prompt_with_pending_commentary_effect(
+    prompt: &TranscriptSubmitAnchorSnapshot,
+    commentary: &TranscriptNarrativeAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> Pixels {
+    let prompt_runway = apply_prompt_scroll_effect(
+        prompt,
+        shell,
+        transcript_list_state,
+        markdown_context,
+        transcript_width,
+        transcript_panel_height,
+        theme,
+        code_layout,
+        window,
+        cx,
+    );
+    if apply_pending_commentary_follow_effect(
+        commentary,
+        shell,
+        transcript_list_state,
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        transcript_panel_height,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    ) {
+        px(0.0)
+    } else {
+        prompt_runway
+    }
+}
+
+fn apply_pending_commentary_follow_effect(
+    anchor: &TranscriptNarrativeAnchor,
+    shell: &Entity<ShellView>,
+    transcript_list_state: &ListState,
+    markdown_context: &TranscriptMarkdownRenderContext,
+    stream_projection_context: &TranscriptStreamProjectionContext,
+    transcript_width: Pixels,
+    transcript_panel_height: Pixels,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    media_layout: TranscriptMediaRenderLayout,
+    window: &mut Window,
+    cx: &mut Context<TranscriptPanel>,
+) -> bool {
+    let Some((turn_index, turn)) = presented_turn_for_anchor(
+        shell,
+        anchor.turn.turn_index,
+        anchor.turn.row_identity.as_deref(),
+        cx,
+    ) else {
+        return false;
+    };
+    let geometries = narrative_item_geometries_for_turn(
+        turn_index,
+        turn.as_ref(),
+        markdown_context,
+        stream_projection_context,
+        transcript_width,
+        theme,
+        code_layout,
+        media_layout,
+        window,
+        cx,
+    );
+    let Some(follow) = transcript_anchor::commentary_follow_geometry(
+        anchor.item_id.as_deref(),
+        geometries.as_slice(),
+        transcript_panel_height,
+    ) else {
+        return false;
+    };
+    if !commentary_follow_should_scroll(
+        transcript_list_state.scroll_position(),
+        turn_index,
+        follow.scroll_offset,
+    ) {
+        return false;
+    }
+
+    transcript_list_state.scroll_to(ListOffset {
+        item_ix: turn_index,
+        offset_in_item: follow.scroll_offset,
+    });
+    let shell = shell.clone();
+    let applied_anchor = anchor.clone();
+    cx.defer(move |cx| {
+        shell.update(cx, |view, cx| {
+            view.mark_commentary_follow_applied(&applied_anchor, cx)
+        });
+    });
+    true
 }
 
 fn apply_commentary_follow_effect(

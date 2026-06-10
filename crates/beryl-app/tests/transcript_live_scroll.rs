@@ -42,6 +42,13 @@ fn final_anchor(index: usize) -> TranscriptFinalAnchor {
     }
 }
 
+fn commentary_anchor(index: usize) -> TranscriptNarrativeAnchor {
+    TranscriptNarrativeAnchor {
+        turn: turn_anchor(index),
+        item_id: Some("commentary".to_string()),
+    }
+}
+
 #[test]
 fn new_user_turn_starts_prompt_reread_snapshot() {
     let mut state = TranscriptLiveScrollState::inactive();
@@ -137,10 +144,7 @@ fn steering_preserves_every_active_state_except_commentary_target() {
 #[test]
 fn steering_during_commentary_follow_keeps_phase_and_follows_latest_block() {
     let mut state = TranscriptLiveScrollState::inactive();
-    state.transition_to_commentary_follow(TranscriptNarrativeAnchor {
-        turn: turn_anchor(1),
-        item_id: Some("commentary".to_string()),
-    });
+    state.transition_to_commentary_follow(commentary_anchor(1));
 
     state.preserve_for_steering();
 
@@ -148,6 +152,103 @@ fn steering_during_commentary_follow_keeps_phase_and_follows_latest_block() {
         state.phase(),
         TranscriptLiveScrollPhase::CommentaryFollow { anchor }
             if anchor.turn.turn_index == 1 && anchor.item_id.is_none()
+    ));
+}
+
+#[test]
+fn commentary_after_prompt_preserves_prompt_runway_until_overflow_applies_follow() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.start_prompt_reread(prompt_anchor(1));
+    let prompt_snapshot = state.prompt_submit_anchor_snapshot().unwrap();
+    assert!(state.mark_prompt_reread_applied(&prompt_snapshot));
+
+    assert!(state.transition_to_commentary_follow(commentary_anchor(1)));
+    assert!(!state.transition_to_commentary_follow(commentary_anchor(1)));
+
+    assert!(state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.phase(),
+        TranscriptLiveScrollPhase::PromptReread { .. }
+    ));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::PromptWithPendingCommentary {
+            prompt,
+            commentary
+        }) if prompt.turn_index == 1
+            && prompt.viewport_action
+                == transcript_anchor::TranscriptSubmitViewportAction::MaintainPromptRunway
+            && commentary.turn.turn_index == 1
+            && commentary.item_id.as_deref() == Some("commentary")
+    ));
+}
+
+#[test]
+fn measured_commentary_overflow_promotes_prompt_to_commentary_follow() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.start_prompt_reread(prompt_anchor(1));
+    assert!(state.transition_to_commentary_follow(commentary_anchor(1)));
+
+    assert!(state.mark_commentary_follow_applied(&commentary_anchor(1)));
+
+    assert!(!state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::CommentaryFollow(anchor))
+            if anchor.turn.turn_index == 1 && anchor.item_id.as_deref() == Some("commentary")
+    ));
+}
+
+#[test]
+fn stale_commentary_follow_defer_does_not_apply_new_prompt_anchor() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.start_prompt_reread(prompt_anchor(1));
+    assert!(state.transition_to_commentary_follow(commentary_anchor(1)));
+    let stale_anchor = commentary_anchor(1);
+
+    state.start_prompt_reread(prompt_anchor(2));
+    assert!(state.transition_to_commentary_follow(commentary_anchor(2)));
+
+    assert!(!state.mark_commentary_follow_applied(&stale_anchor));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::PromptWithPendingCommentary {
+            prompt,
+            commentary
+        }) if prompt.turn_index == 2 && commentary.turn.turn_index == 2
+    ));
+}
+
+#[test]
+fn final_start_overrides_pending_commentary_without_bottom_follow() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.start_prompt_reread(prompt_anchor(1));
+    assert!(state.transition_to_commentary_follow(commentary_anchor(1)));
+
+    assert!(state.transition_to_final_start(final_anchor(1)));
+
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalStart(anchor))
+            if anchor.turn.turn_index == 1 && anchor.item_id == "final-answer"
+    ));
+    assert!(!state.mark_commentary_follow_applied(&commentary_anchor(1)));
+}
+
+#[test]
+fn steering_during_pending_commentary_keeps_prompt_phase_and_follows_latest_block_if_needed() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.start_prompt_reread(prompt_anchor(1));
+    assert!(state.transition_to_commentary_follow(commentary_anchor(1)));
+
+    state.preserve_for_steering();
+
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::PromptWithPendingCommentary {
+            commentary,
+            ..
+        }) if commentary.turn.turn_index == 1 && commentary.item_id.is_none()
     ));
 }
 
@@ -340,10 +441,7 @@ fn stale_final_start_defer_does_not_apply_new_anchor() {
 #[test]
 fn terminal_event_does_not_create_end_anchor() {
     let mut state = TranscriptLiveScrollState::inactive();
-    state.transition_to_commentary_follow(TranscriptNarrativeAnchor {
-        turn: turn_anchor(5),
-        item_id: Some("commentary".to_string()),
-    });
+    state.transition_to_commentary_follow(commentary_anchor(5));
     let expected = state.clone();
 
     assert!(!state.note_terminal_event());
