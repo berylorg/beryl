@@ -1,8 +1,24 @@
-use std::{fmt, ops::Range, time::Duration};
+use std::{
+    fmt,
+    ops::Range,
+    time::{Duration, Instant},
+};
 
 use beryl_backend::{
     ManagedBackendError, ManagedBackendSession, SortDirection, ThreadTurnsListOptions,
-    ThreadTurnsListResponse, TurnInfo,
+    ThreadTurnsListResponse, TurnInfo, TurnItemsView,
+};
+
+#[path = "transcript_history/detail_cache.rs"]
+mod detail_cache;
+
+#[allow(unused_imports)]
+pub(crate) use detail_cache::{
+    TranscriptTurnDetailApplyResult, TranscriptTurnDetailCache, TranscriptTurnDetailLoadStart,
+    TranscriptTurnDetailLoadTicket, TranscriptTurnDetailPageLocator, TranscriptTurnDetailPinKind,
+    TranscriptTurnDetailReleaseCounts, TranscriptTurnDetailRetainedCounts,
+    TranscriptTurnDetailRetention, TranscriptTurnDetailSchedule, TranscriptTurnDetailStatus,
+    TranscriptTurnDetailViewportOrder, TranscriptTurnDetailViewportPlan, TranscriptTurnSkeleton,
 };
 
 pub(crate) const THREAD_HISTORY_PAGE_LIMIT: u32 = 80;
@@ -108,6 +124,62 @@ impl TranscriptHistoryBackend for ManagedBackendSession {
         timeout: Duration,
     ) -> Result<ThreadTurnsListResponse, Self::Error> {
         ManagedBackendSession::list_thread_turns(self, thread_id, options, timeout)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TranscriptTurnDetailPageLoadError<E> {
+    Load {
+        source: E,
+        cas_micros: u64,
+    },
+    MissingTurn {
+        turn_id: String,
+        cursor: Option<String>,
+        limit: u32,
+        returned_turn_count: usize,
+        cas_micros: u64,
+        response_processing_micros: u64,
+    },
+    TurnNotFull {
+        turn_id: String,
+        items_view: TurnItemsView,
+        returned_turn_count: usize,
+        cas_micros: u64,
+        response_processing_micros: u64,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TranscriptTurnDetailPageLoad {
+    pub(crate) turns: Vec<TurnInfo>,
+    pub(crate) returned_turn_count: usize,
+    pub(crate) cas_micros: u64,
+    pub(crate) response_processing_micros: u64,
+}
+
+impl<E: fmt::Display> fmt::Display for TranscriptTurnDetailPageLoadError<E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Load { source, .. } => write!(formatter, "{source}"),
+            Self::MissingTurn {
+                turn_id,
+                cursor,
+                limit,
+                ..
+            } => write!(
+                formatter,
+                "history-page detail load did not include turn {turn_id} with cursor {cursor:?} and limit {limit}"
+            ),
+            Self::TurnNotFull {
+                turn_id,
+                items_view,
+                ..
+            } => write!(
+                formatter,
+                "history-page detail load returned turn {turn_id} with itemsView {items_view:?}"
+            ),
+        }
     }
 }
 
@@ -271,6 +343,14 @@ impl TranscriptHistoryWindow {
             cursor_bytes,
             metadata_bytes: turn_id_bytes.saturating_add(cursor_bytes),
         }
+    }
+
+    pub(crate) fn resident_turn_ids(&self) -> Vec<String> {
+        self.pages
+            .iter()
+            .filter(|page| page.resident)
+            .flat_map(|page| page.turn_ids.iter().cloned())
+            .collect()
     }
 
     #[allow(dead_code)]
@@ -439,7 +519,9 @@ impl TranscriptHistoryWindow {
 }
 
 pub(crate) fn initial_thread_history_page_options() -> ThreadTurnsListOptions {
-    ThreadTurnsListOptions::page(THREAD_HISTORY_PAGE_LIMIT).with_sort_direction(SortDirection::Desc)
+    ThreadTurnsListOptions::page(THREAD_HISTORY_PAGE_LIMIT)
+        .with_sort_direction(SortDirection::Desc)
+        .with_items_view(TurnItemsView::NotLoaded)
 }
 
 pub(crate) fn older_thread_history_page_options(
@@ -450,12 +532,33 @@ pub(crate) fn older_thread_history_page_options(
 
 pub(crate) fn thread_history_page_options(cursor: Option<&str>) -> ThreadTurnsListOptions {
     match cursor {
-        Some(cursor) => older_thread_history_page_options(cursor),
+        Some(cursor) => initial_thread_history_page_options().with_cursor(cursor),
         None => initial_thread_history_page_options(),
     }
 }
 
 pub(crate) fn loaded_page_from_desc_response(
+    response: ThreadTurnsListResponse,
+) -> LoadedTranscriptHistoryPage {
+    LoadedTranscriptHistoryPage {
+        turns: response
+            .data
+            .into_iter()
+            .map(normalize_history_skeleton_turn)
+            .rev()
+            .collect(),
+        older_cursor: response.next_cursor,
+        newer_cursor: response.backwards_cursor,
+    }
+}
+
+fn normalize_history_skeleton_turn(mut turn: TurnInfo) -> TurnInfo {
+    turn.items_view = TurnItemsView::NotLoaded;
+    turn.items.clear();
+    turn
+}
+
+fn loaded_full_page_from_desc_response(
     response: ThreadTurnsListResponse,
 ) -> LoadedTranscriptHistoryPage {
     LoadedTranscriptHistoryPage {
@@ -496,6 +599,103 @@ where
         .map(loaded_page_from_desc_response)
 }
 
+pub(crate) fn load_thread_turn_detail_from_history_page<B>(
+    backend: &mut B,
+    thread_id: &str,
+    turn_id: &str,
+    page_locator: &TranscriptTurnDetailPageLocator,
+    timeout: Duration,
+) -> Result<TranscriptTurnDetailPageLoad, TranscriptTurnDetailPageLoadError<B::Error>>
+where
+    B: TranscriptHistoryBackend,
+{
+    let mut options = ThreadTurnsListOptions::page(page_locator.limit())
+        .with_sort_direction(SortDirection::Desc)
+        .with_items_view(TurnItemsView::Full);
+    if let Some(cursor) = page_locator.cursor() {
+        options = options.with_cursor(cursor);
+    }
+
+    let cas_started = Instant::now();
+    let response = backend
+        .list_thread_turns(thread_id, &options, timeout)
+        .map_err(|source| TranscriptTurnDetailPageLoadError::Load {
+            source,
+            cas_micros: duration_micros(cas_started.elapsed()),
+        })?;
+    let cas_micros = duration_micros(cas_started.elapsed());
+    let response_processing_started = Instant::now();
+    let page = loaded_full_page_from_desc_response(response);
+    let returned_turn_count = page.turns.len();
+    let Some(turn) = page.turns.iter().find(|turn| turn.id == turn_id) else {
+        let response_processing_micros = duration_micros(response_processing_started.elapsed());
+        return Err(TranscriptTurnDetailPageLoadError::MissingTurn {
+            turn_id: turn_id.to_string(),
+            cursor: page_locator.cursor().map(str::to_string),
+            limit: page_locator.limit(),
+            returned_turn_count,
+            cas_micros,
+            response_processing_micros,
+        });
+    };
+
+    if turn.items_view != TurnItemsView::Full {
+        let response_processing_micros = duration_micros(response_processing_started.elapsed());
+        return Err(TranscriptTurnDetailPageLoadError::TurnNotFull {
+            turn_id: turn_id.to_string(),
+            items_view: turn.items_view,
+            returned_turn_count,
+            cas_micros,
+            response_processing_micros,
+        });
+    }
+
+    Ok(TranscriptTurnDetailPageLoad {
+        turns: page.turns,
+        returned_turn_count,
+        cas_micros,
+        response_processing_micros: duration_micros(response_processing_started.elapsed()),
+    })
+}
+
+impl<E> TranscriptTurnDetailPageLoadError<E> {
+    pub(crate) fn returned_turn_count(&self) -> usize {
+        match self {
+            Self::Load { .. } => 0,
+            Self::MissingTurn {
+                returned_turn_count,
+                ..
+            }
+            | Self::TurnNotFull {
+                returned_turn_count,
+                ..
+            } => *returned_turn_count,
+        }
+    }
+
+    pub(crate) fn cas_micros(&self) -> u64 {
+        match self {
+            Self::Load { cas_micros, .. }
+            | Self::MissingTurn { cas_micros, .. }
+            | Self::TurnNotFull { cas_micros, .. } => *cas_micros,
+        }
+    }
+
+    pub(crate) fn response_processing_micros(&self) -> u64 {
+        match self {
+            Self::Load { .. } => 0,
+            Self::MissingTurn {
+                response_processing_micros,
+                ..
+            }
+            | Self::TurnNotFull {
+                response_processing_micros,
+                ..
+            } => *response_processing_micros,
+        }
+    }
+}
+
 impl TranscriptHistoryPageRequest {
     pub(crate) fn cursor(&self) -> Option<&str> {
         match self {
@@ -527,4 +727,8 @@ fn page_distance_to_range(page: &Range<usize>, range: &Range<usize>) -> usize {
     } else {
         page.start.saturating_sub(range.end)
     }
+}
+
+fn duration_micros(duration: Duration) -> u64 {
+    duration.as_micros().min(u128::from(u64::MAX)) as u64
 }

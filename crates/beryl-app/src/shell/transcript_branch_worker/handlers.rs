@@ -396,6 +396,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.begin_thread_activation(label.clone());
         }
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.notify_transcript_panel(cx);
         let Some(persistence) = self.workspace_persistence_for_worker() else {

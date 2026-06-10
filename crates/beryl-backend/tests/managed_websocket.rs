@@ -8,8 +8,8 @@ use std::{
 
 use beryl_backend::{
     BackendLaunchSpec, BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendSession,
-    ThreadItem, ThreadListOptions, ThreadReadOptions, ThreadStatus, ThreadTurnsListOptions,
-    TurnStreamEvent,
+    REQUIRED_CODEX_APP_SERVER_VERSION, ThreadItem, ThreadListOptions, ThreadReadOptions,
+    ThreadStatus, ThreadTurnsListOptions, TurnStreamEvent,
 };
 use beryl_model::workspace::RuntimeMode;
 use serde_json::{Value, json};
@@ -717,7 +717,10 @@ fn initialize_response(request_id: u64) -> String {
         "jsonrpc": "2.0",
         "id": request_id,
         "result": {
-            "userAgent": "codex-cli 0.125.0",
+            "userAgent": format!(
+                "beryl/{} (Windows 10.0.26200; aarch64) WindowsTerminal (beryl; 0.1.0)",
+                REQUIRED_CODEX_APP_SERVER_VERSION
+            ),
             "codexHome": "C:/Users/example/.codex",
             "platformFamily": "windows",
             "platformOs": "windows"
@@ -772,11 +775,27 @@ fn assert_generated_image_item(
     expected_saved_path: Option<&str>,
     expected_revised_prompt: Option<&str>,
 ) {
+    assert_generated_image_item_with_result(
+        item,
+        expected_id,
+        expected_saved_path,
+        expected_revised_prompt,
+        None,
+    );
+}
+
+fn assert_generated_image_item_with_result(
+    item: &ThreadItem,
+    expected_id: &str,
+    expected_saved_path: Option<&str>,
+    expected_revised_prompt: Option<&str>,
+    expected_result: Option<&str>,
+) {
     let ThreadItem::ImageGeneration(item) = item else {
         panic!("expected imageGeneration item, got {}", item.item_type());
     };
     assert_eq!(item.id, expected_id);
-    assert_eq!(item.result, None);
+    assert_eq!(item.result.as_deref(), expected_result);
     assert_eq!(item.saved_path.as_deref(), expected_saved_path);
     assert_eq!(item.revised_prompt.as_deref(), expected_revised_prompt);
 }

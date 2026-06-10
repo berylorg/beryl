@@ -29,6 +29,7 @@ fn markdown_png_target_resolves_relative_to_thread_execution_target() {
     );
     assert!(lookup.outcome.is_pending());
     let completion = lookup.load_request.unwrap().load(&mut reader);
+    assert_eq!(completion.file_read_count(), 1);
 
     let result = cache.complete_load(completion);
     assert!(result.display_changed);
@@ -61,11 +62,9 @@ fn loaded_image_records_decoded_natural_dimensions() {
         host_workspace(),
         timeout(),
     );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
+    let completion = lookup.load_request.unwrap().load(&mut reader);
+    assert_eq!(completion.file_read_count(), 1);
+    assert!(cache.complete_load(completion).display_changed);
     let ready = cache.lookup(cache_key("wide"), source, host_workspace(), timeout());
     let image = ready.outcome.loaded().expect("wide PNG should load");
 
@@ -87,11 +86,9 @@ fn media_cache_stats_report_loaded_image_bytes_and_decoded_estimate() {
         host_workspace(),
         timeout(),
     );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
+    let completion = lookup.load_request.unwrap().load(&mut reader);
+    assert_eq!(completion.file_read_count(), 1);
+    assert!(cache.complete_load(completion).display_changed);
     let _ready = cache.lookup(cache_key("wide-stats"), source, host_workspace(), timeout());
 
     let stats = cache.stats();
@@ -312,11 +309,9 @@ fn native_generated_image_prefers_saved_path_over_inline_result() {
         host_workspace(),
         timeout(),
     );
-    assert!(
-        cache
-            .complete_load(lookup.load_request.unwrap().load(&mut reader))
-            .display_changed
-    );
+    let completion = lookup.load_request.unwrap().load(&mut reader);
+    assert_eq!(completion.file_read_count(), 0);
+    assert!(cache.complete_load(completion).display_changed);
     let ready = cache.lookup(cache_key("native"), source, host_workspace(), timeout());
 
     let image = ready
@@ -535,6 +530,170 @@ fn completed_native_generated_image_without_bytes_reports_unavailable() {
     assert_eq!(
         ready.outcome.fallback_text().as_deref(),
         Some("Vanished image (file unavailable)")
+    );
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
+fn incomplete_native_generated_image_with_saved_path_still_loads_source_backed_file() {
+    let temp = tempfile::tempdir().expect("temp dir should be created");
+    let saved_path = temp.path().join("generating.png");
+    let bytes = png_bytes_with_dimensions(4, 3, [0, 128, 255, 255]);
+    fs::write(&saved_path, &bytes).expect("saved image fixture should be written");
+    let path = saved_path.to_string_lossy().to_string();
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_generating",
+        Some("Generating saved cat".to_string()),
+        Some(Arc::new(
+            BASE64_STANDARD.encode(png_bytes_with_pixel([255, 0, 0, 255])),
+        )),
+        Some(path.to_string()),
+        false,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-generating-path"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let ready = cache.lookup(
+        cache_key("native-generating-path"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    let image = ready
+        .outcome
+        .loaded()
+        .expect("usable saved path should load while generation is incomplete");
+    assert_eq!(image.alt(), "Generating saved cat");
+    assert_eq!(image.retained_bytes(), None);
+    assert_eq!(image.source_backed_file_path(), Some(&saved_path));
+    assert_eq!(image.natural_dimensions().width(), 4);
+    assert_eq!(image.natural_dimensions().height(), 3);
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
+fn incomplete_native_generated_image_with_inline_result_still_loads_retained_bytes() {
+    let inline_bytes = png_bytes_with_pixel([64, 32, 16, 255]);
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_inline",
+        Some("Generating inline cat".to_string()),
+        Some(Arc::new(BASE64_STANDARD.encode(&inline_bytes))),
+        None,
+        false,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-generating-inline"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let ready = cache.lookup(
+        cache_key("native-generating-inline"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    let image = ready
+        .outcome
+        .loaded()
+        .expect("usable inline result should load while generation is incomplete");
+    assert_eq!(image.alt(), "Generating inline cat");
+    assert_eq!(image.bytes(), inline_bytes.as_slice());
+    assert_eq!(image.source_backed_file_path(), None);
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
+fn malformed_native_generated_image_inline_result_renders_unavailable() {
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_malformed",
+        Some("Malformed inline cat".to_string()),
+        Some(Arc::new("not base64?!".to_string())),
+        None,
+        true,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-inline-malformed"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let ready = cache.lookup(
+        cache_key("native-inline-malformed"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    assert_eq!(
+        ready.outcome.fallback_text().as_deref(),
+        Some("Malformed inline cat (file unavailable)")
+    );
+    assert!(reader.calls.is_empty());
+}
+
+#[test]
+fn non_png_native_generated_image_inline_result_renders_unsupported() {
+    let source = TranscriptMediaSource::native_image_generation(
+        "image_generation_not_png",
+        Some("Not PNG inline cat".to_string()),
+        Some(Arc::new(BASE64_STANDARD.encode(b"not a png"))),
+        None,
+        true,
+    );
+    let mut reader = FakeReader::default();
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("native-inline-not-png"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    let ready = cache.lookup(
+        cache_key("native-inline-not-png"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+
+    assert_eq!(
+        ready.outcome.fallback_text().as_deref(),
+        Some("Not PNG inline cat (render not supported)")
     );
     assert!(reader.calls.is_empty());
 }

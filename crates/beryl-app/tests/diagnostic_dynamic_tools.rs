@@ -21,7 +21,8 @@ use diagnostic_dynamic_tools::{
     READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
     SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
-    ThemeRoleNavigatorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
+    ThemeRoleNavigatorDiagnostic, TranscriptDetailLoadDiagnosticsLog, TranscriptDetailLoadEvent,
+    TranscriptDetailLoadSnapshot, TranscriptFrameMetric, TranscriptFrameMetricsLog,
     TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
     VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
     dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
@@ -84,6 +85,7 @@ fn media_event_log_is_a_metadata_only_bounded_ring() {
         event.key = Some(format!("key-{index}-{}", "x".repeat(700)));
         event.detail = Some("detail".repeat(200));
         event.compressed_bytes = Some(index);
+        event.file_read_count = Some(index);
         log.record(event);
     }
 
@@ -107,6 +109,7 @@ fn media_event_log_is_a_metadata_only_bounded_ring() {
             .iter()
             .all(|event| event.detail.as_ref().unwrap().len() <= 512)
     );
+    assert_eq!(snapshot.events.last().unwrap().file_read_count, Some(299));
 }
 
 #[test]
@@ -191,6 +194,102 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
             .find("assistant text")
             .is_none()
     );
+}
+
+#[test]
+fn transcript_detail_load_diagnostics_are_content_free_bounded_and_dispatchable() {
+    let mut log = TranscriptDetailLoadDiagnosticsLog::default();
+
+    for index in 0..140 {
+        let mut event = TranscriptDetailLoadEvent {
+            sequence: 0,
+            cursor_present: index % 2 == 0,
+            requested_limit: Some((index % 80 + 1) as u32),
+            returned_turn_count: 1,
+            applied_turn_count: 0,
+            skipped_stale_count: 0,
+            total_micros: index + 10,
+            cas_micros: index + 1,
+            response_processing_micros: 2,
+            image_source_resolution_micros: 3,
+            cache_application_micros: 4,
+            outcome: format!("applied-{}", "x".repeat(700)),
+        };
+        if index % 3 == 0 {
+            event.mark_applied(2);
+            event.skipped_stale_count = 1;
+        } else if index % 3 == 1 {
+            event.mark_stale(1);
+        } else {
+            event.mark_failed_stale(1);
+        }
+        log.record(event);
+    }
+
+    let snapshot = log.snapshot();
+
+    assert_eq!(snapshot.requests.len(), 128);
+    assert_eq!(snapshot.request_count, 128);
+    assert_eq!(snapshot.requests.first().unwrap().sequence, 13);
+    assert_eq!(snapshot.next_sequence, 141);
+    assert!(
+        snapshot
+            .requests
+            .iter()
+            .all(|event| event.outcome.len() <= 512)
+    );
+    assert_eq!(snapshot.aggregate.total_request_count, 128);
+    assert_eq!(snapshot.aggregate.returned_turn_count, 128);
+    assert!(snapshot.aggregate.applied_request_count > 0);
+    assert!(snapshot.aggregate.stale_request_count > 0);
+    assert!(snapshot.aggregate.applied_turn_count > snapshot.aggregate.applied_request_count);
+    assert!(snapshot.aggregate.skipped_stale_count > snapshot.aggregate.stale_request_count);
+    assert!(snapshot.aggregate.total_micros > snapshot.aggregate.cas_micros);
+
+    let mut skip_log = TranscriptDetailLoadDiagnosticsLog::default();
+    let mut skipped_before_cas = TranscriptDetailLoadEvent {
+        sequence: 0,
+        cursor_present: true,
+        requested_limit: Some(1),
+        returned_turn_count: 0,
+        applied_turn_count: 0,
+        skipped_stale_count: 0,
+        total_micros: 0,
+        cas_micros: 0,
+        response_processing_micros: 0,
+        image_source_resolution_micros: 0,
+        cache_application_micros: 0,
+        outcome: "loadedWorker".to_string(),
+    };
+    skipped_before_cas.mark_stale(1);
+    skip_log.record(skipped_before_cas);
+    let skip_snapshot = skip_log.snapshot();
+
+    assert_eq!(skip_snapshot.aggregate.stale_request_count, 1);
+    assert_eq!(skip_snapshot.aggregate.failed_request_count, 0);
+    assert_eq!(skip_snapshot.aggregate.skipped_stale_count, 1);
+    assert_eq!(skip_snapshot.aggregate.cas_micros, 0);
+
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
+        DiagnosticToolSnapshot {
+            transcript_detail_loads: snapshot,
+            ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
+        },
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(
+        payload["result"]["transcriptDetailLoads"]["requestCount"],
+        128
+    );
+    assert_eq!(
+        payload["result"]["transcriptDetailLoads"]["aggregate"]["totalRequestCount"],
+        128
+    );
+    assert!(!payload["result"].to_string().contains("C:\\Users"));
+    assert!(!payload["result"].to_string().contains("assistant text"));
 }
 
 #[test]
@@ -427,6 +526,7 @@ fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+            transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
@@ -491,6 +591,7 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+            transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
@@ -566,6 +667,7 @@ fn renderer_diagnostics_serialize_source_backed_image_sections() {
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+            transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
@@ -691,6 +793,78 @@ fn retained_state_summary_reports_source_backed_media_counters() {
 }
 
 #[test]
+fn retained_state_summary_reports_transcript_detail_cache_counters() {
+    let mut snapshot = diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0));
+    snapshot.retained_state.transcript_skeleton_turns = Some(100);
+    snapshot.retained_state.transcript_missing_detail_turns = Some(96);
+    snapshot.retained_state.transcript_loading_detail_turns = Some(1);
+    snapshot.retained_state.transcript_full_detail_turns = Some(2);
+    snapshot.retained_state.transcript_failed_detail_turns = Some(1);
+    snapshot.retained_state.transcript_pinned_detail_turns = Some(3);
+    snapshot.retained_state.transcript_retained_detail_items = Some(7);
+    snapshot.retained_state.transcript_detail_retention_turns = Some(9);
+    snapshot
+        .retained_state
+        .transcript_detail_last_requested_turns = Some(4);
+    snapshot
+        .retained_state
+        .transcript_detail_last_released_turns = Some(2);
+    snapshot.retained_state.transcript_detail_pending_requests = Some(5);
+
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
+        snapshot,
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptSkeletonTurns"],
+        100
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptMissingDetailTurns"],
+        96
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptLoadingDetailTurns"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptFullDetailTurns"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptFailedDetailTurns"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptPinnedDetailTurns"],
+        3
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptRetainedDetailItems"],
+        7
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptDetailRetentionTurns"],
+        9
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptDetailLastRequestedTurns"],
+        4
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptDetailLastReleasedTurns"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptDetailPendingRequests"],
+        5
+    );
+}
+
+#[test]
 fn retained_state_summary_rejects_caller_limits() {
     let response = dispatch_beryl_diagnostic_dynamic_tool_call(
         &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({ "limit": 1 })),
@@ -737,6 +911,7 @@ fn diagnostic_snapshot(
         visible_media,
         media_events,
         transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
+        transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
         settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
     }
 }

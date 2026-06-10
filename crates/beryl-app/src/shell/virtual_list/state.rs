@@ -225,6 +225,40 @@ impl ListState {
         }
     }
 
+    pub(super) fn scroll(
+        &self,
+        scroll_top: &ListOffset,
+        height: Pixels,
+        delta: Point<Pixels>,
+        current_view: EntityId,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let (event, mut handler) = {
+            let mut state = self.0.borrow_mut();
+            let event = state.scroll(scroll_top, height, delta);
+            let handler = event.as_ref().and_then(|_| state.scroll_handler.take());
+            (event, handler)
+        };
+
+        let Some(event) = event else {
+            return;
+        };
+
+        if let Some(handler) = handler.as_mut() {
+            handler(&event, window, cx);
+        }
+
+        if let Some(handler) = handler {
+            let mut state = self.0.borrow_mut();
+            if state.scroll_handler.is_none() {
+                state.scroll_handler = Some(handler);
+            }
+        }
+
+        cx.notify(current_view);
+    }
+
     /// Scroll the list to the given offset
     pub fn scroll_to(&self, mut scroll_top: ListOffset) {
         let state = &mut *self.0.borrow_mut();

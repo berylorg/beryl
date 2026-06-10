@@ -36,11 +36,16 @@ impl ConversationSurfaceState {
         let draft_seed = edit_mode.draft_seed().clone();
         self.transcript_edit_mode = Some(edit_mode);
         self.notices.clear_all();
+        self.sync_transcript_turn_detail_ui_pins();
         draft_seed
     }
 
     pub(crate) fn cancel_transcript_edit_mode(&mut self) -> bool {
-        cancel_transcript_edit_mode_slot(&mut self.transcript_edit_mode)
+        let changed = cancel_transcript_edit_mode_slot(&mut self.transcript_edit_mode);
+        if changed {
+            self.sync_transcript_turn_detail_ui_pins();
+        }
+        changed
     }
 
     pub(crate) fn transcript_edit_mode_start_allowed(&self, target: &TranscriptEditTarget) -> bool {
@@ -76,6 +81,7 @@ impl ConversationSurfaceState {
         }
 
         self.transcript_edit_mode = None;
+        self.sync_transcript_turn_detail_ui_pins();
         true
     }
 
@@ -134,6 +140,12 @@ impl ShellView {
                 "That transcript turn is no longer available for editing.",
             );
             cx.notify();
+            return;
+        }
+
+        if request.target().draft_seed().contains_images()
+            && !self.ensure_composer_image_paste_readiness(window, cx)
+        {
             return;
         }
 

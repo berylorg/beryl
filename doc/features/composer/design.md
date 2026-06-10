@@ -35,12 +35,18 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 
 - Pasting image clipboard content into the composer inserts an inline image marker at the caret or replaces the selected draft range.
 - Pasted images are stored as durable Beryl image assets under workspace-local state for backend submission, composer preview, accepted transcript markers, retries, and preview after restart.
-- Image labels are allocated from selected-thread or pending-new-thread monotonic label state as `A`, `B`, `C`, continuing spreadsheet-style when needed.
+- Image labels are correctness-critical model-visible data, because CAS image input records do not carry Beryl's GUI-owned label and Beryl sends labels as adjacent text.
+- Image labels are allocated from selected-thread or pending-new-thread monotonic high-water label state as `A`, `B`, `C`, continuing spreadsheet-style when needed.
 - Labels remain stable while the draft, accepted fragment, queued fragment, or retry state exists. Removing label `B` does not rename later labels or allow reuse in the same scope while surrounding text may refer to it.
+- Beryl must never allocate a label that overlaps a same-thread image label it has reliable evidence may have existed. When current history is uncertain, sparse or gapped labels are preferable to reuse; Beryl should only avoid gaps when exact validated history makes doing so safe.
 - Multiple markers may show the same label only when they reference the same pasted image payload.
 - The compact visual marker such as `[A]` is presentation. It is not submitted as literal user-authored text.
 - On submission, Beryl sends the original image once at the first ordered marker occurrence and inserts generated label text such as `Image A:` immediately before that image record. Later marker occurrences for the same image serialize as generated text references such as `[Image A]`.
-- Existing-thread image paste is unavailable until Beryl knows prior image labels well enough to allocate without colliding with older history.
+- Existing-thread image paste is unavailable until Beryl knows prior image labels well enough to allocate without colliding with older history. GUI-local caches may accelerate this check, but they are not authoritative unless validated against the current backend-owned thread history.
+- Thread histories are owned by CAS, not by Beryl. Other CAS clients can append to or mutate a thread, and Beryl must treat thread-label caches keyed only by thread id as stale until a backend history frontier check proves they are still safe.
+- When a backend thread is loaded or selected, Beryl should proactively validate or synchronize that thread's image-label cache in the background so image paste is usually ready before the user invokes it.
+- Image-label readiness gates only operations that create or move image markers into a label scope. Ordinary text input remains available while label synchronization is pending.
+- Beryl does not insert unresolved image-marker placeholders into the composer. An image marker must have its final label before it enters the draft, because unlabeled atoms would make submission, undo, copy/cut, edit mode, and scan-failure behavior correctness-critical.
 - Composer image marker atoms are indivisible draft positions for caret movement, selection, deletion, cut, paste, undo, and redo.
 - Removing one marker occurrence removes only that reference. The payload is dropped from the mutable draft after the final active occurrence is removed, unless it already belongs to an accepted or queued fragment.
 - Primary activation of an image marker opens a context menu with `View` and `Remove`.

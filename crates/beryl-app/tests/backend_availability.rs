@@ -35,9 +35,30 @@ fn backend_error_classification_keeps_incompatibility_target_scoped() {
             expected_platform_family: "windows",
             actual_platform_family: "unix".to_string(),
         });
+    let old_codex =
+        ManagedBackendError::Compatibility(CompatibilityError::AppServerVersionMismatch {
+            required_version: "0.137.0",
+            actual_version: "0.128.0".to_string(),
+            user_agent: "beryl/0.128.0 (Windows 10.0.26200; aarch64)".to_string(),
+        });
+    let missing_history_contract = ManagedBackendError::Compatibility(
+        CompatibilityError::ThreadTurnsListItemsViewUnsupported {
+            method: "thread/turns/list",
+            code: -32600,
+            message: "unknown field `itemsView`".to_string(),
+        },
+    );
 
     assert_eq!(
         BackendUnavailableKind::from_backend_error(&incompatible),
+        BackendUnavailableKind::Incompatible
+    );
+    assert_eq!(
+        BackendUnavailableKind::from_backend_error(&old_codex),
+        BackendUnavailableKind::Incompatible
+    );
+    assert_eq!(
+        BackendUnavailableKind::from_backend_error(&missing_history_contract),
         BackendUnavailableKind::Incompatible
     );
     assert_eq!(

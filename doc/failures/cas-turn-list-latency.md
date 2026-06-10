@@ -1,5 +1,9 @@
 # CAS Turn List Latency
 
+## Superseded Context
+
+This note records measurements from the older CAS 0.128.0 transcript-loading path. The current Beryl target contract is CAS 0.137 with `thread/turns/list itemsView`; see `doc/design.md` and `doc/app-server-contract.md` for current target authority.
+
 ## 2026-05-10: Large Generated-Image Thread First-Byte Stall
 
 Live measurements on the Happy Sunny Images thread showed that opening a thread with seven generated images remains slow in a Cargo release build even after Beryl removes inline image-result payloads from the final parsed response.
@@ -28,4 +32,25 @@ Future work should measure:
 - backend-side timing inside app-server/CAS before the first `thread/turns/list` response byte is written
 - UI activation timing from click/selection through pending state, sanitized response application, first transcript paint, media request start, image decode, and final image paint
 
-Likely product fixes involve a payload-light or paginated turn-history API that can list turns without inline generated-image payloads, or an app-server change that avoids assembling those payloads on activation. While Beryl remains on CAS 0.128.0 and must request the full turn list, Beryl can mitigate perceived delay with immediate pending UI and lazy media behavior, but it cannot remove the measured backend first-byte stall from that request path.
+Likely product fixes involve a payload-light or paginated turn-history API that can list turns without inline generated-image payloads, or an app-server change that avoids assembling those payloads on activation. In the measured CAS 0.128.0 path, Beryl could mitigate perceived delay with immediate pending UI and lazy media behavior, but it could not remove the measured backend first-byte stall from that request path.
+
+## CAS 0.137: Retention Windows Must Not Become Request Priority
+
+During the CAS 0.137 transcript-detail scheduler migration, live Phase 6 validation on the long `Codex Schema Migration` thread invalidated a plausible scheduler shape: using the visible row as request priority while also appending the retained overscan window to the request-priority list.
+
+Evidence:
+
+- A release diagnostic child opened the long thread at the tail after `City Image Generation`.
+- The tail became a single full latest row, but retained-state diagnostics showed the detail request ring climbing from 3 to more than 120 requests without user scrolling further.
+- Each request retained only a tiny window and released prior detail, so app memory stayed bounded, but CAS still did repeated `thread/turns/list itemsView = "full"` work for rows that were not useful to the current viewport.
+
+The invalid assumption was that bounded retention implies bounded request work. Retention is a memory policy; request priority is a latency policy. Promoting retained overscan into request priority can create a detail-load train even when retained full rows remain bounded.
+
+Course adjustment:
+
+- Keep request priority and retention as separate scheduler inputs.
+- Use priority-only scheduling for transcript viewport detail requests.
+- Retain visible-plus-overscan rows separately, but do not request retained overscan rows merely because they are retained.
+- Let explicit scroll anchors create the next request when the operator actually scrolls to unloaded history.
+
+The remaining CAS 0.137 cost is prefix-page detail loading. A jump to the oldest row in the same thread requested `limit = 63` and CAS returned 63 full turns, while Beryl applied and retained only one visible row. That preserves Beryl memory bounds but cannot avoid CAS response work until the app-server exposes a true per-turn detail API.

@@ -21,6 +21,34 @@
 //! ```
 //!
 //! ```no_run
+//! # use std::time::Duration;
+//! # use beryl_backend::{
+//! #     ManagedBackendSession, ThreadTurnsListOptions, TurnItemsView,
+//! # };
+//! # fn load_visible_turn_items(
+//! #     session: &mut ManagedBackendSession,
+//! #     thread_id: &str,
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
+//! let timeout = Duration::from_secs(30);
+//! let page_options = ThreadTurnsListOptions::page(80)
+//!     .with_items_view(TurnItemsView::NotLoaded);
+//! let page = session.list_thread_turns(thread_id, &page_options, timeout)?;
+//!
+//! if let Some(turn) = page.data.first() {
+//!     let detail_options = ThreadTurnsListOptions::page(1)
+//!         .with_items_view(TurnItemsView::Full);
+//!     let detail_page = session.list_thread_turns(thread_id, &detail_options, timeout)?;
+//!     let _items = detail_page
+//!         .data
+//!         .into_iter()
+//!         .find(|detail_turn| detail_turn.id == turn.id)
+//!         .map(|detail_turn| detail_turn.items);
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use beryl_backend::BackendLaunchSpec;
 //! use beryl_model::workspace::WorkspaceId;
@@ -80,8 +108,9 @@ pub use hard_stop::{
 pub use protocol::{
     BackendConfigDefaults, BackendEvent, CompatibilityError, CompatibilityProbe,
     CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse, InitializeResponse, JsonRpcError,
-    ModelInfo, ModelListOptions, ModelListResponse, ProtocolPhase, SortDirection,
-    ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey, ThreadSummary,
+    ModelInfo, ModelListOptions, ModelListResponse, ProtocolPhase,
+    REQUIRED_CODEX_APP_SERVER_VERSION, SortDirection, ThreadListOptions, ThreadListResponse,
+    ThreadLoadedListResponse, ThreadSortKey, ThreadSummary,
 };
 pub use server::{ManagedBackendClientConnector, ManagedBackendServer};
 pub use session::{
@@ -98,8 +127,9 @@ pub use thread_branch::{
     ThreadBranchCapabilityReport, ThreadForkOptions, ThreadForkResponse, ThreadRollbackResponse,
 };
 pub use thread_history::{
-    ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions,
-    ThreadTurnsListOptions, ThreadTurnsListResponse,
+    ThreadHistoryCapabilities, ThreadHistoryCapabilityProbe, ThreadHistoryCapabilityProbeResult,
+    ThreadHistoryCapabilityReport, ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse,
+    ThreadResumeOptions, ThreadTurnsListOptions, ThreadTurnsListResponse,
 };
 pub use turn::{
     AccountRateLimitsResponse, ActiveTurnNotSteerable, AgentMessageItem, ApprovalRequest,
@@ -108,7 +138,7 @@ pub use turn::{
     RateLimitSnapshot, RateLimitWindow, ReasoningItem, ThreadInfo, ThreadItem,
     ThreadSessionMetadata, ThreadSessionResponse, ThreadStartOptions, ThreadStatus,
     ThreadTokenUsage, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, TokenUsageBreakdown,
-    TurnError, TurnInfo, TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse,
-    TurnStreamEvent, UserInput, UserMessageItem, active_turn_not_steerable_error,
-    parse_approval_request, parse_turn_stream_event,
+    TurnError, TurnInfo, TurnItemsView, TurnStartOptions, TurnStartResponse, TurnStatus,
+    TurnSteerResponse, TurnStreamEvent, UserInput, UserMessageItem,
+    active_turn_not_steerable_error, parse_approval_request, parse_turn_stream_event,
 };

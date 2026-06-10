@@ -64,6 +64,15 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Backend conversation thread contents and execution event streams remain backend-owned.
 - Beryl may launch and manage app-server processes in V1, but backend process ownership, runtime-target availability, loopback WebSocket auth, capability probing, and recovery behavior are defined by the backend runtime recovery feature.
 
+## Codex App Server Version Invariant
+
+- Each Beryl version targets exactly one Codex App Server contract. This Beryl version is built for `codex-cli 0.137.0` / Codex App Server 0.137.0.
+- Beryl must not carry runtime branches that support older Codex App Server schemas or speculative future schemas. Compatibility checks validate that the configured app-server satisfies the required target contract; they do not choose among multiple implementation paths.
+- If a configured app-server does not satisfy the required target contract, Beryl must surface backend incompatibility and stop the affected backend-dependent behavior instead of silently falling back to an older schema.
+- For this target, Beryl validates the app-server version from the `initialize` response userAgent product token that CAS generates as `beryl/<app-server-version>`. Beryl's `clientInfo.version` is the GUI client version echoed later in that userAgent string and is not the CAS version.
+- Upgrading Beryl to a different Codex App Server version requires updating this invariant, the app-server contract notes, and affected feature docs or tests as one migration. The migration should replace the old single contract rather than layer a new contract beside it.
+- For transcript history in the current 0.137.0 target, Beryl's supported contract is `thread/turns/list` with `itemsView`. Beryl must not rely on `thread/turns/items/list` for this version, because local 0.137.0 advertises that method but returns runtime unsupported.
+
 ## Responsibility Split
 
 - The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, default-runtime selection, runtime-bound workspace-member registrations, semantic graph state, GUI-local thread refs, thread-title display precedence, automatic and user-initiated thread-title orchestration, derived member-thread inventory snapshots, GUI-local settings, installed themes, and GUI-local persistence.
@@ -80,6 +89,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Beryl must not silently switch a requested operation to another runtime target, workspace member, backend process, thread, turn, or stop target when the requested target cannot be used exactly.
 - Beryl must not start synthetic backend turns, send synthetic user input, or mutate backend history solely to refresh status chrome, apply model/reasoning choices, or decorate activity rows.
 - Beryl must not emulate missing backend fork, rollback, resume, or edit primitives by copying backend-owned transcript history into GUI-local state.
+- Beryl must not use stale GUI-local projections or caches of backend-owned conversation history to generate correctness-sensitive user input. When generated input depends on backend history, Beryl must validate against current backend state or block the operation.
 - Beryl must not terminate guessed OS pids, process names, working directories, or local process trees. Hard-stop behavior requires exact backend-exposed handles.
 - If `codex app-server` requests user approval during a Beryl-managed turn, V1 denies the request, prefers a denial response that interrupts when the protocol supports it, logs the full backend approval request payload for diagnostics, and avoids leaving the turn waiting indefinitely.
 - Turn execution stream inactivity is not itself backend failure. Request and probe timeouts apply to bounded JSON-RPC requests; active streams may remain quiet until terminal events, protocol error, transport disconnect, or backend process exit.

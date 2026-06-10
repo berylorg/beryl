@@ -241,7 +241,7 @@ impl ConversationSurfaceState {
     pub(super) fn begin_context_compaction(&mut self, thread_id: &str) {
         self.context_compaction_thread_id = Some(thread_id.to_string());
         self.status_line.begin_context_compaction(thread_id);
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         if self.selected_thread_id() == Some(thread_id) {
             self.selected_thread_status = Some(ThreadStatus::Active {
@@ -354,7 +354,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.thread_selector_mut().close();
             surface.graph_thread_link_menu_mut().close();
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             surface
                 .status_line_operations_mut()
                 .open(StatusLineOperationKind::ModelReasoning, event.position);
@@ -382,7 +382,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.thread_selector_mut().close();
             surface.graph_thread_link_menu_mut().close();
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             surface
                 .status_line_operations_mut()
                 .open(StatusLineOperationKind::Context, event.position);
@@ -414,7 +414,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.thread_selector_mut().close();
             surface.graph_thread_link_menu_mut().close();
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             surface
                 .status_line_operations_mut()
                 .open(StatusLineOperationKind::TurnOperations, event.position);

@@ -905,6 +905,7 @@ fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: prompts
@@ -922,6 +923,7 @@ fn mixed_operational_turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![
             ThreadItem::UserMessage(UserMessageItem {
                 id: format!("{id}_user"),
@@ -1004,6 +1006,7 @@ fn command_turn_with_status(
     TurnInfo {
         id: id.to_string(),
         status,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::CommandExecution(CommandExecutionItem {
             id: item_id.to_string(),
             command: command.to_string(),
@@ -1022,6 +1025,7 @@ fn empty_turn(id: &str, status: TurnStatus) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: Vec::new(),
         error: None,
     }

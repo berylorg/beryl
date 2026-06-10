@@ -478,6 +478,7 @@ fn completed_title_turn(title: &str) -> TurnStartResponse {
         turn: TurnInfo {
             id: "maintenance_turn".to_string(),
             status: TurnStatus::Completed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: vec![ThreadItem::AgentMessage(AgentMessageItem {
                 id: "message_1".to_string(),
                 text: title.to_string(),
@@ -493,6 +494,7 @@ fn in_progress_title_turn() -> TurnStartResponse {
         turn: TurnInfo {
             id: "maintenance_turn".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -504,6 +506,7 @@ fn failed_title_turn() -> TurnStartResponse {
         turn: TurnInfo {
             id: "maintenance_turn".to_string(),
             status: TurnStatus::Failed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },

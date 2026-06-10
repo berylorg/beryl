@@ -790,6 +790,16 @@ fn run_thread_activation_worker(
         .log();
 
     let activation_started = Instant::now();
+    if let Err(error) = session.probe_thread_history_capabilities(timeout) {
+        let _ = sender.send(ThreadActivationUpdate::Finished(
+            ThreadActivationOutcome::Failed {
+                message: format!(
+                    "Beryl could not verify the required transcript history contract: {error}"
+                ),
+            },
+        ));
+        return;
+    }
     match activate_existing_thread_direct(&mut session, &workspace, &thread_id, &label, timeout) {
         Ok(activation) => {
             let history_turn_count = activation.thread.turns.len();

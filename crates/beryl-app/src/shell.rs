@@ -68,8 +68,8 @@ use crate::diagnostic_child_target::{
 use crate::diagnostic_dynamic_tools::{
     DEFAULT_MEDIA_EVENT_LIMIT, DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT, DEFAULT_VISIBLE_MEDIA_LIMIT,
     MAX_MEDIA_EVENT_LIMIT, MAX_TRANSCRIPT_FRAME_METRIC_LIMIT, MAX_VISIBLE_MEDIA_LIMIT,
-    RuntimeTargetDiagnostic, bounded_diagnostic_string, diagnostic_duration_micros,
-    dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result,
+    RuntimeTargetDiagnostic, TranscriptDetailLoadDiagnosticsLog, bounded_diagnostic_string,
+    diagnostic_duration_micros, dispatch_beryl_diagnostic_dynamic_tool_call, media_events_result,
     transcript_frame_metrics_result, visible_media_result,
 };
 use crate::gui_control_dynamic_tools::{
@@ -400,6 +400,7 @@ mod composer_history;
 mod composer_image_assets;
 mod composer_image_delivery;
 mod composer_image_label_scan;
+mod composer_image_label_sync;
 mod composer_image_labels;
 mod composer_measurement;
 mod composer_submission;
@@ -453,6 +454,7 @@ mod thread_navigation_actions;
 mod thread_selection;
 mod thread_selector;
 mod thread_title;
+mod thread_turn_detail_worker;
 mod threaded_decision_archive;
 mod threaded_decision_branch;
 mod threaded_decision_progress;
@@ -474,6 +476,7 @@ mod transcript_history;
 mod transcript_image_menu_actions;
 mod transcript_image_preview;
 mod transcript_image_sources;
+mod transcript_live_rows;
 #[allow(dead_code)]
 mod transcript_markdown;
 #[allow(dead_code)]
@@ -490,6 +493,7 @@ mod transcript_scroll;
 mod transcript_selection;
 mod transcript_stream_invalidation;
 mod transcript_thread_links;
+mod transcript_turn_detail;
 mod turn_steering;
 mod turn_stop;
 mod turn_worker;
@@ -523,10 +527,7 @@ use composer_image_assets::{ComposerImageAssetUpdate, spawn_composer_image_asset
 use composer_image_delivery::{
     ComposerImageDeliveryUpdate, PreparedComposerDraft, spawn_composer_image_delivery_worker,
 };
-use composer_image_label_scan::{
-    ComposerImageLabelScanOutcome, ComposerImageLabelScanUpdate,
-    spawn_composer_image_label_scan_worker,
-};
+use composer_image_label_sync::{ComposerImageLabelScanTask, ComposerImageLabelValidationTask};
 use composer_image_labels::{ComposerImageLabelState, ComposerImagePasteReadiness};
 use composer_measurement::{ComposerInputMeasurementCache, ComposerInputMeasurementKey};
 use composer_submission::prepared_composer_draft_fragment;
@@ -595,6 +596,10 @@ use thread_title::{
     ThreadTitleCancellation, ThreadTitleResult, ThreadTitleTask, ThreadTitleTaskOutcome,
     TurnThreadTitleMode, spawn_thread_title_worker,
 };
+use thread_turn_detail_worker::{
+    TranscriptTurnDetailOutcome, TranscriptTurnDetailTask, TranscriptTurnDetailUpdate,
+    spawn_transcript_turn_detail_worker,
+};
 use threaded_decision_archive::{DecisionArchiveTask, QueuedDecisionArchiveJob};
 use threaded_decision_branch::{DecisionBranchStartTask, QueuedDecisionBranchJob};
 use threaded_decision_resolution::{
@@ -613,13 +618,15 @@ use transcript_branch_worker::TranscriptBranchUpdate;
 use transcript_edit_commit_worker::TranscriptEditCommitUpdate;
 use transcript_history::{
     LoadedTranscriptHistoryPage, TranscriptHistoryPageRequest, TranscriptHistoryWindow,
+    TranscriptTurnDetailApplyResult, TranscriptTurnDetailCache, TranscriptTurnDetailLoadTicket,
+    TranscriptTurnDetailPinKind, TranscriptTurnDetailReleaseCounts, TranscriptTurnDetailRetention,
+    TranscriptTurnDetailSchedule, TranscriptTurnDetailViewportOrder,
+    TranscriptTurnDetailViewportPlan,
 };
 use transcript_presentation::{TranscriptActivityCaret, TranscriptPresentationState};
-use transcript_scroll::{
-    LiveTranscriptRows, TranscriptTurnJumpDirection, sync_live_transcript_rows,
-    transcript_turn_jump_target,
-};
+use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
 use transcript_stream_invalidation::TranscriptStreamInvalidations;
+use transcript_turn_detail::TranscriptTurnDetailSchedulerDiagnostics;
 use turn_steering::{
     SteeringInputFragment, TurnSteeringOutcome, TurnSteeringUpdate, spawn_turn_steering_worker,
 };
@@ -877,7 +884,10 @@ pub(super) struct ShellView {
     pending_thread_navigation_activation: Option<PendingThreadNavigationActivation>,
     thread_navigation_histories: HashMap<BerylWorkspaceId, ThreadNavigationHistory>,
     thread_history_page_receiver: Option<Receiver<ThreadHistoryPageUpdate>>,
-    composer_image_label_scan_receiver: Option<Receiver<ComposerImageLabelScanUpdate>>,
+    transcript_turn_detail_task: Option<TranscriptTurnDetailTask>,
+    transcript_detail_load_diagnostics: TranscriptDetailLoadDiagnosticsLog,
+    composer_image_label_validation_receiver: Option<ComposerImageLabelValidationTask>,
+    composer_image_label_scan_receiver: Option<ComposerImageLabelScanTask>,
     composer_image_asset_receiver: Option<Receiver<ComposerImageAssetUpdate>>,
     turn_receiver: Option<Receiver<TurnWorkerUpdate>>,
     shell_tool_receiver: Option<Receiver<ShellDynamicToolRequest>>,
@@ -951,6 +961,7 @@ struct ThemeCandidateInstallTask {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PendingComposerImageAssetPaste {
     workspace_id: BerylWorkspaceId,
+    label_scope: ComposerClipboardLabelScope,
     display_text_snapshot: String,
     replacement_range: Range<usize>,
 }
@@ -1416,6 +1427,8 @@ struct ConversationSurfaceState {
     transcript_submit_anchor: Option<TranscriptSubmitAnchor>,
     transcript_user_scrolled: bool,
     transcript_history_window: TranscriptHistoryWindow,
+    transcript_turn_detail_cache: TranscriptTurnDetailCache,
+    transcript_turn_detail_scheduler_diagnostics: TranscriptTurnDetailSchedulerDiagnostics,
     transcript_reset_generation: u64,
     transcript_content_release_generation: u64,
     transcript_content_release_row_identities: Vec<String>,
@@ -2049,6 +2062,9 @@ impl ConversationSurfaceState {
             transcript_submit_anchor: None,
             transcript_user_scrolled: false,
             transcript_history_window: TranscriptHistoryWindow::default(),
+            transcript_turn_detail_cache: TranscriptTurnDetailCache::default(),
+            transcript_turn_detail_scheduler_diagnostics:
+                TranscriptTurnDetailSchedulerDiagnostics::default(),
             transcript_reset_generation: 0,
             transcript_content_release_generation: 0,
             transcript_content_release_row_identities: Vec::new(),
@@ -2171,91 +2187,6 @@ impl ConversationSurfaceState {
         }
     }
 
-    fn allocate_composer_image_label(&mut self) -> String {
-        let selected_thread_id = self.selected_thread_id().map(str::to_string);
-        self.composer_image_labels
-            .allocate(selected_thread_id.as_deref())
-    }
-
-    fn composer_image_paste_readiness(&self) -> ComposerImagePasteReadiness {
-        self.composer_image_labels
-            .paste_readiness(self.selected_thread_id())
-    }
-
-    fn selected_thread_needing_composer_image_label_scan(&self) -> Option<String> {
-        self.composer_image_labels
-            .selected_thread_needing_history_scan(self.selected_thread_id())
-    }
-
-    fn observe_composer_image_labels_in_fragment(&mut self, fragment: &UserInputFragment) {
-        let selected_thread_id = self.selected_thread_id().map(str::to_string);
-        self.composer_image_labels
-            .observe_backend_input(selected_thread_id.as_deref(), fragment.backend_input());
-    }
-
-    fn observe_composer_image_labels_in_thread_fragment(
-        &mut self,
-        thread_id: &str,
-        fragment: &UserInputFragment,
-    ) {
-        self.composer_image_labels
-            .observe_thread_backend_input(thread_id, fragment.backend_input());
-    }
-
-    fn bind_pending_new_thread_image_labels_to_thread(&mut self, thread_id: &str) {
-        self.composer_image_labels
-            .bind_pending_new_thread_to_thread(thread_id);
-        self.pending_new_thread_label_scope_bindings.insert(
-            self.pending_new_thread_label_scope_id,
-            thread_id.to_string(),
-        );
-        self.prune_pending_new_thread_label_scope_bindings();
-        self.composer_history.bind_pending_new_thread_to_thread(
-            self.pending_new_thread_label_scope_id,
-            thread_id.to_string(),
-        );
-    }
-
-    fn prune_pending_new_thread_label_scope_bindings(&mut self) {
-        if self.pending_new_thread_label_scope_bindings.len()
-            <= PENDING_NEW_THREAD_LABEL_SCOPE_BINDINGS_MAX
-        {
-            return;
-        }
-
-        let current_scope = self.pending_new_thread_label_scope_id;
-        let mut removable_scopes = self
-            .pending_new_thread_label_scope_bindings
-            .keys()
-            .copied()
-            .filter(|scope_id| *scope_id != current_scope)
-            .collect::<Vec<_>>();
-        removable_scopes.sort_unstable();
-        for scope_id in removable_scopes {
-            if self.pending_new_thread_label_scope_bindings.len()
-                <= PENDING_NEW_THREAD_LABEL_SCOPE_BINDINGS_MAX
-            {
-                break;
-            }
-            self.pending_new_thread_label_scope_bindings
-                .remove(&scope_id);
-        }
-    }
-
-    fn finish_composer_image_label_scan(
-        &mut self,
-        thread_id: &str,
-        observations: composer_image_labels::ComposerImageLabelObservations,
-    ) {
-        self.composer_image_labels
-            .finish_thread_history_scan(thread_id, observations);
-    }
-
-    fn fail_composer_image_label_scan(&mut self, thread_id: &str, message: impl Into<String>) {
-        self.composer_image_labels
-            .fail_thread_history_scan(thread_id, message);
-    }
-
     fn earliest_known_user_input_fragment_text(&self) -> Option<&str> {
         self.execution_details
             .turns()
@@ -2297,6 +2228,7 @@ impl ConversationSurfaceState {
 
     fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
         let transcript = self.execution_details.retained_counts();
+        let detail_cache = self.transcript_turn_detail_cache.retained_counts();
         let presentation = self.transcript_presentation.retained_counts();
         let history = self.transcript_history_window.retained_counts();
         let activity = self.tool_activity.retained_counts();
@@ -2351,6 +2283,25 @@ impl ConversationSurfaceState {
             ),
             loaded_transcript_turns: Some(transcript.turns),
             loaded_transcript_items: Some(transcript.items),
+            transcript_skeleton_turns: Some(detail_cache.skeleton_turns),
+            transcript_missing_detail_turns: Some(detail_cache.missing_detail_turns),
+            transcript_loading_detail_turns: Some(detail_cache.loading_detail_turns),
+            transcript_full_detail_turns: Some(detail_cache.full_detail_turns),
+            transcript_failed_detail_turns: Some(detail_cache.failed_detail_turns),
+            transcript_pinned_detail_turns: Some(detail_cache.pinned_turns),
+            transcript_retained_detail_items: Some(detail_cache.retained_item_count),
+            transcript_detail_retention_turns: Some(
+                self.transcript_turn_detail_scheduler_diagnostics
+                    .retention_turns,
+            ),
+            transcript_detail_last_requested_turns: Some(
+                self.transcript_turn_detail_scheduler_diagnostics
+                    .last_requested_turns,
+            ),
+            transcript_detail_last_released_turns: Some(
+                self.transcript_turn_detail_scheduler_diagnostics
+                    .last_released_turns,
+            ),
             loaded_transcript_text_bytes: Some(transcript.text_bytes),
             transcript_user_fragments: Some(transcript.user_fragments),
             transcript_user_fragment_text_bytes: Some(transcript.user_fragment_text_bytes),
@@ -2757,16 +2708,28 @@ impl ConversationSurfaceState {
             return 0;
         }
 
+        let history_page_cursor = request.cursor().map(str::to_string);
+
         match request {
             TranscriptHistoryPageRequest::Older { .. } => {
+                let skeleton_partial_turns = page
+                    .turns
+                    .iter()
+                    .any(|turn| turn.items_view != beryl_backend::TurnItemsView::Full);
+                self.transcript_turn_detail_cache
+                    .insert_skeletons_from_history_page(
+                        &page.turns,
+                        history_page_cursor.as_deref(),
+                    );
                 self.composer_image_labels
                     .observe_thread_turns(thread_id, &page.turns);
                 let prepended = self
                     .execution_details
-                    .prepend_thread_history_page_with_image_resolver(
+                    .prepend_thread_history_page_with_image_resolver_and_partial_mode(
                         thread_id,
                         page.turns.clone(),
                         image_resolver,
+                        skeleton_partial_turns,
                     );
                 self.transcript_history_window
                     .finish_loading_older_with_turn_ids(&page, prepended.turn_ids);
@@ -2783,6 +2746,15 @@ impl ConversationSurfaceState {
                 prepended.added_count
             }
             TranscriptHistoryPageRequest::Released { page_id, .. } => {
+                let skeleton_partial_turns = page
+                    .turns
+                    .iter()
+                    .any(|turn| turn.items_view != beryl_backend::TurnItemsView::Full);
+                self.transcript_turn_detail_cache
+                    .insert_skeletons_from_history_page(
+                        &page.turns,
+                        history_page_cursor.as_deref(),
+                    );
                 self.composer_image_labels
                     .observe_thread_turns(thread_id, &page.turns);
                 let Some(restored) = self
@@ -2793,12 +2765,13 @@ impl ConversationSurfaceState {
                 };
                 let replacements = self
                     .execution_details
-                    .restore_history_page_with_image_resolver(
+                    .restore_history_page_with_image_resolver_and_partial_mode(
                         thread_id,
                         restored.range.start,
                         &restored.turn_ids,
                         page.turns,
                         image_resolver,
+                        skeleton_partial_turns,
                     );
                 let restored_count = replacements.len();
                 for replacement in replacements {
@@ -2859,6 +2832,7 @@ impl ConversationSurfaceState {
                 self.note_transcript_content_release(released_row_identities);
             }
         }
+        self.prune_transcript_turn_detail_skeletons_for_current_history();
 
         true
     }
@@ -3020,6 +2994,9 @@ impl ConversationSurfaceState {
             transcript_submit_anchor: self.transcript_submit_anchor.clone(),
             transcript_user_scrolled: self.transcript_user_scrolled,
             transcript_history_window: self.transcript_history_window.clone(),
+            transcript_turn_detail_cache: self.transcript_turn_detail_cache.clone(),
+            transcript_turn_detail_scheduler_diagnostics: self
+                .transcript_turn_detail_scheduler_diagnostics,
             transcript_reset_generation: self.transcript_reset_generation,
             transcript_content_release_generation: self.transcript_content_release_generation,
             transcript_content_release_row_identities: self
@@ -3148,7 +3125,7 @@ impl ConversationSurfaceState {
         self.apply_known_thread_agent_labels();
         self.hydrate_token_usage_snapshots(workspace_state);
         self.pending_thread_activation = None;
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         self.finish_graph_mutation(graph, graph_revision, graph_warning);
         self.member_thread_inventory.prepare_for_backend_reopen();
@@ -3160,7 +3137,7 @@ impl ConversationSurfaceState {
     fn toggle_graph_overlay(&mut self) -> bool {
         self.graph_overlay_drag = None;
         self.graph_thread_link_menu.close();
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         let visible = self.graph_overlay.toggle_visibility();
         if visible {
             self.close_thread_selector();
@@ -3178,7 +3155,7 @@ impl ConversationSurfaceState {
             self.graph_overlay_drag = None;
             self.graph_overlay.close();
             self.graph_thread_link_menu.close();
-            self.transcript_branch_menu.close();
+            self.close_transcript_branch_menu();
             self.thread_column_selector_scroll
                 .reconcile(self.thread_selector.columns());
         } else {
@@ -3385,13 +3362,16 @@ impl ConversationSurfaceState {
         self.transcript_submit_anchor = None;
         self.transcript_user_scrolled = false;
         self.transcript_history_window = TranscriptHistoryWindow::default();
+        self.transcript_turn_detail_cache.clear();
+        self.transcript_turn_detail_scheduler_diagnostics =
+            TranscriptTurnDetailSchedulerDiagnostics::default();
         self.transcript_reset_generation = self.transcript_reset_generation.saturating_add(1);
         self.transcript_content_release_generation = 0;
         self.transcript_content_release_row_identities.clear();
         self.invalidated_stream_turns.clear();
         self.pending_thread_activation = None;
         self.context_compaction_thread_id = None;
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         self.composer_image_labels.reset_pending_new_thread();
         self.pending_new_thread_label_scope_id = self.next_pending_new_thread_label_scope_id;
@@ -3409,7 +3389,7 @@ impl ConversationSurfaceState {
             label: label.into(),
         });
         self.notices.clear_all();
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
     }
 
@@ -3436,12 +3416,22 @@ impl ConversationSurfaceState {
         self.upsert_selected_thread(thread.summary());
         self.selected_thread_status = Some(thread.status.clone());
         self.sync_thread_selector_active_thread();
+        let skeleton_partial_turns = thread
+            .turns
+            .iter()
+            .any(|turn| turn.items_view != beryl_backend::TurnItemsView::Full);
         self.composer_image_labels.observe_thread_history(thread);
-        self.composer_image_labels
-            .prepare_thread_history_scan(&thread.summary().id, history_window.has_older_pages());
+        self.composer_image_labels.prepare_thread_history_scan(
+            &thread.summary().id,
+            history_window.has_older_pages() || skeleton_partial_turns,
+        );
         let execution_detail_started = Instant::now();
         self.execution_details
-            .load_thread_history_with_image_resolver(thread, image_resolver);
+            .load_thread_history_with_image_resolver_and_partial_mode(
+                thread,
+                image_resolver,
+                skeleton_partial_turns,
+            );
         let execution_detail_elapsed = execution_detail_started.elapsed();
         self.hard_stop_targets.clear_all();
         let presentation_started = Instant::now();
@@ -3473,13 +3463,19 @@ impl ConversationSurfaceState {
         self.transcript_submit_anchor = None;
         self.transcript_user_scrolled = false;
         self.transcript_history_window = history_window;
+        self.transcript_turn_detail_cache
+            .reset_for_thread(thread_id.as_str());
+        self.transcript_turn_detail_scheduler_diagnostics =
+            TranscriptTurnDetailSchedulerDiagnostics::default();
+        self.transcript_turn_detail_cache
+            .insert_skeletons_from_history_page(&thread.turns, None);
         self.transcript_reset_generation = self.transcript_reset_generation.saturating_add(1);
         self.transcript_content_release_generation = 0;
         self.transcript_content_release_row_identities.clear();
         self.invalidated_stream_turns.clear();
         self.pending_thread_activation = None;
         self.context_compaction_thread_id = None;
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         self.pending_turn_input_queue = None;
         self.pending_active_turn_steering_queue = None;
@@ -3527,7 +3523,7 @@ impl ConversationSurfaceState {
             presentation_index.map(|index| TranscriptSubmitAnchor::new(index, 0, anchor_text));
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
-        self.transcript_branch_menu.close();
+        self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         if self.selected_thread_id().is_some() && thread_id.as_deref() == self.selected_thread_id()
         {
@@ -4121,6 +4117,12 @@ impl ConversationSurfaceState {
             .iter()
             .position(|known| known.id == thread.id)
         {
+            if self.selected_thread == Some(index) {
+                self.mark_selected_thread_image_labels_need_validation_if_updated(
+                    thread.id.as_str(),
+                    thread.updated_at,
+                );
+            }
             self.known_threads[index] = thread;
             self.selected_thread = Some(index);
             if previous_thread_id.as_deref() != self.selected_thread_id() {
@@ -4326,17 +4328,6 @@ impl ConversationSurfaceState {
     fn transcript_list_item_count(&self) -> usize {
         transcript_list_item_count(self.transcript_presentation.len())
     }
-
-    fn sync_live_transcript_rows(&mut self, previous_turn_count: usize) {
-        sync_live_transcript_rows(
-            &self.transcript_list_state,
-            LiveTranscriptRows {
-                previous_turn_count,
-                current_turn_count: self.transcript_presentation.len(),
-                preserve_user_scroll: self.transcript_user_scrolled,
-            },
-        );
-    }
 }
 
 impl ShellView {
@@ -4505,6 +4496,9 @@ impl ShellView {
             pending_thread_navigation_activation: None,
             thread_navigation_histories: HashMap::new(),
             thread_history_page_receiver: None,
+            transcript_turn_detail_task: None,
+            transcript_detail_load_diagnostics: TranscriptDetailLoadDiagnosticsLog::default(),
+            composer_image_label_validation_receiver: None,
             composer_image_label_scan_receiver: None,
             composer_image_asset_receiver: None,
             turn_receiver: None,
@@ -4841,6 +4835,8 @@ impl ShellView {
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
         self.thread_history_page_receiver = None;
+        self.transcript_turn_detail_task = None;
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.composer_image_asset_receiver = None;
         self.pending_composer_image_asset_paste = None;
@@ -4892,6 +4888,8 @@ impl ShellView {
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
         self.thread_history_page_receiver = None;
+        self.transcript_turn_detail_task = None;
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.turn_receiver = None;
         self.transcript_edit_replacement_turn = None;
@@ -5112,6 +5110,8 @@ impl ShellView {
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
         self.thread_history_page_receiver = None;
+        self.transcript_turn_detail_task = None;
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.turn_receiver = None;
         self.transcript_edit_replacement_turn = None;
@@ -5231,6 +5231,11 @@ impl ShellView {
             || self.member_thread_inventory_receiver.is_some()
             || self.thread_activation_receiver.is_some()
             || self.thread_history_page_receiver.is_some()
+            || self
+                .transcript_turn_detail_task
+                .as_ref()
+                .is_some_and(TranscriptTurnDetailTask::has_active_tickets)
+            || self.composer_image_label_validation_receiver.is_some()
             || self.composer_image_label_scan_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
             || self.turn_receiver.is_some()
@@ -5307,13 +5312,18 @@ impl ShellView {
                 || self.transcript_edit_commit_receiver.is_some()
                 || self.thread_activation_receiver.is_some()
                 || self.thread_history_page_receiver.is_some()
+                || self
+                    .transcript_turn_detail_task
+                    .as_ref()
+                    .is_some_and(TranscriptTurnDetailTask::has_active_tickets)
                 || self.turn_receiver.is_some()
                 || !self.turn_steering_receivers.is_empty()
                 || !self.thread_title_receivers.is_empty()
                 || !self.thread_title_update_receivers.is_empty()
                 || self.pending_lifecycle_phase_continue.is_some(),
             inventory_work: self.member_thread_inventory_receiver.is_some(),
-            image_work: self.composer_image_label_scan_receiver.is_some()
+            image_work: self.composer_image_label_validation_receiver.is_some()
+                || self.composer_image_label_scan_receiver.is_some()
                 || self.composer_image_asset_receiver.is_some()
                 || self.composer_image_delivery_receiver.is_some()
                 || self.pending_composer_image_asset_paste.is_some(),
@@ -5359,8 +5369,10 @@ impl ShellView {
         updated |= self.poll_member_thread_inventory_updates();
         updated |= self.poll_thread_activation_updates(window, cx);
         updated |= self.poll_thread_history_page_updates();
+        updated |= self.poll_transcript_turn_detail_updates(window, cx);
+        updated |= self.poll_composer_image_label_validation_updates(window, cx);
         updated |= self.poll_composer_image_label_scan_updates();
-        updated |= self.poll_composer_image_asset_updates(cx);
+        updated |= self.poll_composer_image_asset_updates(window, cx);
         updated |= self.poll_diagnostic_target_requests(window, cx);
         updated |= self.poll_shell_dynamic_tool_requests(window, cx);
         updated |= self.poll_turn_updates(window, cx);
@@ -5386,7 +5398,7 @@ impl ShellView {
         updated |= self.poll_workspace_persistence_pending_state();
         updated |= self.begin_member_thread_inventory_refresh_if_needed();
         updated |= self.begin_tool_activity_nickname_resolution_if_needed(window, cx);
-        updated |= self.begin_composer_image_label_scan_if_needed(window, cx);
+        updated |= self.begin_composer_image_label_sync_if_needed(window, cx);
 
         let should_poll_backend_liveness = matches!(self.state, ShellState::Ready(_))
             && self
@@ -5754,72 +5766,6 @@ impl ShellView {
         }
 
         updated
-    }
-
-    fn poll_composer_image_label_scan_updates(&mut self) -> bool {
-        let Some(receiver) = self.composer_image_label_scan_receiver.as_ref() else {
-            return false;
-        };
-
-        match receiver.try_recv() {
-            Ok(ComposerImageLabelScanUpdate::Finished(outcome)) => {
-                self.composer_image_label_scan_receiver = None;
-                self.finish_composer_image_label_scan_worker(outcome);
-                true
-            }
-            Err(TryRecvError::Empty) => false,
-            Err(TryRecvError::Disconnected) => {
-                self.composer_image_label_scan_receiver = None;
-                if let Some(surface) = self.conversation_surface_mut()
-                    && let Some(thread_id) = surface.selected_thread_id().map(str::to_string)
-                {
-                    surface.fail_composer_image_label_scan(
-                        &thread_id,
-                        "Beryl lost the background task that was scanning image labels.",
-                    );
-                    surface.set_notice(SurfaceNotice::new(
-                        "Image label scan failed",
-                        "Beryl lost the background task that was scanning this thread's earlier image labels.",
-                    ));
-                }
-                true
-            }
-        }
-    }
-
-    fn finish_composer_image_label_scan_worker(&mut self, outcome: ComposerImageLabelScanOutcome) {
-        match outcome {
-            ComposerImageLabelScanOutcome::Completed {
-                thread_id,
-                observations,
-            } => {
-                if let Some(surface) = self.conversation_surface_mut() {
-                    let selected = surface.selected_thread_id() == Some(thread_id.as_str());
-                    surface.finish_composer_image_label_scan(&thread_id, observations);
-                    if selected {
-                        surface.clear_notice_with_title("Image input unavailable");
-                    }
-                }
-            }
-            ComposerImageLabelScanOutcome::Failed { thread_id, message } => {
-                if let Some(surface) = self.conversation_surface_mut() {
-                    let selected = surface.selected_thread_id() == Some(thread_id.as_str());
-                    surface.fail_composer_image_label_scan(&thread_id, message.clone());
-                    if selected {
-                        surface.set_notice(SurfaceNotice::new(
-                            "Image label scan failed",
-                            message.clone(),
-                        ));
-                    }
-                }
-
-                self.block_if_backend_process_dead(
-                    "Managed backend disconnected during image label scanning",
-                    "The backend process for the selected workspace exited before Beryl could scan earlier image labels.",
-                    &message,
-                );
-            }
-        }
     }
 
     fn poll_turn_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -6525,7 +6471,11 @@ impl ShellView {
         }
     }
 
-    fn poll_composer_image_asset_updates(&mut self, cx: &mut Context<Self>) -> bool {
+    fn poll_composer_image_asset_updates(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(receiver) = self.composer_image_asset_receiver.as_ref() else {
             return false;
         };
@@ -6533,7 +6483,7 @@ impl ShellView {
         match receiver.try_recv() {
             Ok(ComposerImageAssetUpdate::Finished(result)) => {
                 self.composer_image_asset_receiver = None;
-                self.finish_composer_image_asset_paste(result, cx);
+                self.finish_composer_image_asset_paste(result, window, cx);
                 true
             }
             Err(TryRecvError::Empty) => false,
@@ -6544,6 +6494,7 @@ impl ShellView {
                         "Beryl lost the background task that was storing the pasted image."
                             .to_string(),
                     ),
+                    window,
                     cx,
                 );
                 true
@@ -7564,6 +7515,10 @@ impl ShellView {
     ) {
         self.note_transcript_scroll(event.is_scrolled, window, cx);
         self.begin_older_thread_history_page_if_needed(event, window, cx);
+        self.normalize_transcript_detail_placeholder_scroll_anchor();
+        if !self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx) {
+            self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);
+        }
     }
 
     fn begin_older_thread_history_page_if_needed(
@@ -7600,11 +7555,8 @@ impl ShellView {
                 ready.loaded_workspace.workspace.id().clone(),
                 ready.execution_target.runtime_mode().clone(),
             )),
-            ShellState::BackendUnavailable(unavailable) => Some((
-                unavailable.loaded_workspace.workspace.id().clone(),
-                connector.launch_spec().runtime_mode().clone(),
-            )),
-            ShellState::WorkspaceIdle(_)
+            ShellState::BackendUnavailable(_)
+            | ShellState::WorkspaceIdle(_)
             | ShellState::WorkspaceLoaded(_)
             | ShellState::Blocked(_)
             | ShellState::Discovering(_)
@@ -7635,46 +7587,6 @@ impl ShellView {
         ));
         self.schedule_poll_if_needed(window, cx);
         self.notify_transcript_panel(cx);
-    }
-
-    fn begin_composer_image_label_scan_if_needed(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if self.composer_image_label_scan_receiver.is_some()
-            || self.workspace_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
-        {
-            return false;
-        }
-
-        let Some(thread_id) = self
-            .conversation_surface()
-            .and_then(ConversationSurfaceState::selected_thread_needing_composer_image_label_scan)
-        else {
-            return false;
-        };
-
-        let Some(connector) = self.backend_client_connector() else {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.fail_composer_image_label_scan(
-                    &thread_id,
-                    "Beryl does not have an active managed backend for image-label scanning.",
-                );
-            }
-            return true;
-        };
-
-        self.composer_image_label_scan_receiver = Some(spawn_composer_image_label_scan_worker(
-            connector,
-            thread_id,
-            self.bootstrap.probe_timeout(),
-        ));
-        self.schedule_poll_if_needed(window, cx);
-        true
     }
 
     fn note_workspace_picker_scrollbar_motion(
@@ -10003,7 +9915,9 @@ impl ShellView {
             pending_visible_ms = elapsed_ms(activation_ui_started.elapsed()),
             "thread activation pending state set from selector"
         );
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
+        self.transcript_turn_detail_task = None;
         self.notify_transcript_panel(cx);
         let worker_spawn_started = Instant::now();
         let thread_id_for_log = thread_id.clone();
@@ -10177,7 +10091,9 @@ impl ShellView {
             pending_visible_ms = elapsed_ms(activation_ui_started.elapsed()),
             "thread activation pending state set from graph"
         );
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
+        self.transcript_turn_detail_task = None;
         self.notify_transcript_panel(cx);
         let Some(beryl_workspace_id) = self
             .loaded_workspace()
@@ -10846,6 +10762,8 @@ impl ShellView {
             surface.start_new_thread();
             updated = true;
         }
+        self.transcript_turn_detail_task = None;
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         if cleared_active_thread {
             self.persist_current_workspace_state(false);
@@ -10860,27 +10778,27 @@ impl ShellView {
     fn queue_turn_from_composer_action(
         &mut self,
         _: &SubmitComposer,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.conversation_input.read(cx).has_marked_text() {
             return;
         }
 
-        self.queue_turn_from_composer(cx);
+        self.queue_turn_from_composer(Some(window), cx);
     }
 
     fn queue_turn_from_composer_text_enter_action(
         &mut self,
         _: &SharedTextInputEnter,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.conversation_input.read(cx).has_marked_text() {
             return;
         }
 
-        self.queue_turn_from_composer(cx);
+        self.queue_turn_from_composer(Some(window), cx);
     }
 
     fn copy_composer_selection_action(
@@ -11079,6 +10997,12 @@ impl ShellView {
         else {
             return;
         };
+        let Some(label_scope) = self
+            .conversation_surface()
+            .map(ConversationSurfaceState::composer_clipboard_label_scope)
+        else {
+            return;
+        };
         let (display_text_snapshot, replacement_range) = {
             let input = self.conversation_input.read(cx);
             (input.text().to_string(), input.selection())
@@ -11086,6 +11010,7 @@ impl ShellView {
 
         self.pending_composer_image_asset_paste = Some(PendingComposerImageAssetPaste {
             workspace_id: workspace_id.clone(),
+            label_scope,
             display_text_snapshot,
             replacement_range,
         });
@@ -11111,6 +11036,7 @@ impl ShellView {
     fn finish_composer_image_asset_paste(
         &mut self,
         result: Result<ComposerDraftImageData, String>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(pending) = self.pending_composer_image_asset_paste.take() else {
@@ -11136,6 +11062,19 @@ impl ShellView {
             return;
         }
 
+        if !self.conversation_surface().is_some_and(|surface| {
+            surface.is_composer_clipboard_label_scope_current(&pending.label_scope)
+        }) {
+            self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Image input not inserted",
+                    "The conversation changed while Beryl stored the pasted image. Paste the image again to insert it into the current draft.",
+                ));
+            }
+            return;
+        }
+
         if self.conversation_input.read(cx).text() != pending.display_text_snapshot {
             self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
             if let Some(surface) = self.conversation_surface_mut() {
@@ -11148,12 +11087,23 @@ impl ShellView {
         }
 
         self.sync_composer_draft_from_input(cx);
-        let Some(label) = self
+        if !self.ensure_composer_image_paste_readiness(window, cx) {
+            self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
+            return;
+        }
+        let Some(label_result) = self
             .conversation_surface_mut()
-            .map(ConversationSurfaceState::allocate_composer_image_label)
+            .map(ConversationSurfaceState::try_allocate_composer_image_label)
         else {
             self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
             return;
+        };
+        let label = match label_result {
+            Ok(label) => label,
+            Err(_) => {
+                self.mark_image_asset_unreferenced(&pending.workspace_id, asset_id.as_deref());
+                return;
+            }
         };
         let insertion = match self.composer_draft.stage_image(label, data) {
             Ok(insertion) => insertion,
@@ -11275,10 +11225,8 @@ impl ShellView {
 
         let surface = self.conversation_surface_mut()?;
         for image in payload.images() {
-            mapping.insert(
-                image.label().to_string(),
-                surface.allocate_composer_image_label(),
-            );
+            let label = surface.try_allocate_composer_image_label().ok()?;
+            mapping.insert(image.label().to_string(), label);
         }
         Some(mapping)
     }
@@ -11294,6 +11242,17 @@ impl ShellView {
             .unwrap_or(ComposerImagePasteReadiness::Ready);
         match paste_readiness {
             ComposerImagePasteReadiness::Ready => true,
+            ComposerImagePasteReadiness::Validating => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Image input unavailable",
+                        "Beryl is still validating this thread's earlier image labels. Try again when validation finishes.",
+                    ));
+                }
+                self.begin_composer_image_label_sync_if_needed(window, cx);
+                cx.notify();
+                false
+            }
             ComposerImagePasteReadiness::Scanning => {
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.set_notice(SurfaceNotice::new(
@@ -11301,7 +11260,19 @@ impl ShellView {
                         "Beryl is still scanning this thread's earlier image labels. Try again when scanning finishes.",
                     ));
                 }
-                self.begin_composer_image_label_scan_if_needed(window, cx);
+                self.begin_composer_image_label_sync_if_needed(window, cx);
+                cx.notify();
+                false
+            }
+            ComposerImagePasteReadiness::Unavailable { message } => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Image input unavailable",
+                        format!(
+                            "Beryl could not validate this thread's earlier image labels: {message}"
+                        ),
+                    ));
+                }
                 cx.notify();
                 false
             }
@@ -11823,7 +11794,11 @@ impl ShellView {
         }
     }
 
-    fn queue_turn_from_composer(&mut self, cx: &mut Context<Self>) -> bool {
+    fn queue_turn_from_composer(
+        &mut self,
+        mut window: Option<&mut Window>,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
@@ -11842,6 +11817,20 @@ impl ShellView {
         let Some(accepted_draft) = self.composer_draft.accepted() else {
             return false;
         };
+        if accepted_draft.contains_images() {
+            if let Some(window) = window.as_deref_mut() {
+                if !self.ensure_composer_image_paste_readiness(window, cx) {
+                    return false;
+                }
+            } else if !matches!(
+                self.conversation_surface()
+                    .map(ConversationSurfaceState::composer_image_paste_readiness)
+                    .unwrap_or(ComposerImagePasteReadiness::Ready),
+                ComposerImagePasteReadiness::Ready
+            ) {
+                return false;
+            }
+        }
         if self.queue_transcript_edit_commit_from_composer(&accepted_draft, cx) {
             return true;
         }
@@ -13612,7 +13601,10 @@ impl ShellView {
                     request.params(),
                 )?;
                 let snapshot = self.diagnostic_tool_snapshot(window, cx);
-                Ok(json!({ "retainedState": snapshot.retained_state }))
+                Ok(json!({
+                    "retainedState": snapshot.retained_state,
+                    "transcriptDetailLoads": snapshot.transcript_detail_loads,
+                }))
             }
             DiagnosticChildCommand::ReadVisibleMedia => {
                 let arguments = parse_diagnostic_target_arguments::<DiagnosticTargetLimitArguments>(
@@ -14275,7 +14267,7 @@ impl ShellView {
             input.set_text(text.as_str(), cx);
             input.clear_edit_history();
         });
-        let accepted = self.queue_turn_from_composer(cx);
+        let accepted = self.queue_turn_from_composer(None, cx);
         let (status, message) = if accepted {
             ("accepted", None)
         } else {
@@ -14403,6 +14395,8 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.start_new_thread();
         }
+        self.transcript_turn_detail_task = None;
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         if cleared_active_thread {
             self.persist_current_workspace_state(false);
@@ -14625,7 +14619,6 @@ impl ShellView {
             ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
         }
     }
-
     fn apply_transcript_scroll_command(
         &mut self,
         command: ScrollTranscriptCommand,
@@ -14677,11 +14670,14 @@ impl ShellView {
                 surface.set_transcript_user_scrolled(!at_bottom);
             }
         }
+        self.normalize_transcript_detail_placeholder_scroll_anchor();
         self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
         self.notify_transcript_panel(cx);
+        if !self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx) {
+            self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);
+        }
         Ok(())
     }
-
     fn handle_close_popups_tool_result(&mut self, cx: &mut Context<Self>) -> ClosePopupsResult {
         let mut closed = Vec::new();
 
@@ -14730,7 +14726,7 @@ impl ShellView {
                 closed.push("graph_thread_link_menu".to_string());
             }
             if surface.transcript_branch_menu().is_open() {
-                surface.transcript_branch_menu_mut().close();
+                surface.close_transcript_branch_menu();
                 closed.push("transcript_branch_menu".to_string());
             }
             if surface.status_line_operations().is_open() {
@@ -14738,18 +14734,15 @@ impl ShellView {
                 closed.push("status_line_operations".to_string());
             }
         }
-
         if !closed.is_empty() {
             cx.notify();
         }
-
         ClosePopupsResult {
             closed_count: closed.len(),
             closed,
             ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
         }
     }
-
     fn backend_work_receiver_count(&self) -> usize {
         [
             self.discovery_receiver.is_some(),
@@ -14765,6 +14758,10 @@ impl ShellView {
             self.member_thread_inventory_receiver.is_some(),
             self.thread_activation_receiver.is_some(),
             self.thread_history_page_receiver.is_some(),
+            self.transcript_turn_detail_task
+                .as_ref()
+                .is_some_and(TranscriptTurnDetailTask::has_active_tickets),
+            self.composer_image_label_validation_receiver.is_some(),
             self.composer_image_label_scan_receiver.is_some(),
             self.composer_image_asset_receiver.is_some(),
             self.turn_receiver.is_some(),
@@ -14785,7 +14782,6 @@ impl ShellView {
         .saturating_add(self.thread_title_receivers.len())
         .saturating_add(self.thread_title_update_receivers.len())
     }
-
     fn backend_client_connection_estimate(&self) -> usize {
         [
             self.workspace_receiver.is_some(),
@@ -14794,6 +14790,11 @@ impl ShellView {
             self.member_thread_inventory_receiver.is_some(),
             self.thread_activation_receiver.is_some(),
             self.thread_history_page_receiver.is_some(),
+            self.transcript_turn_detail_task
+                .as_ref()
+                .is_some_and(TranscriptTurnDetailTask::has_active_tickets),
+            self.composer_image_label_validation_receiver.is_some(),
+            self.composer_image_label_scan_receiver.is_some(),
             self.turn_receiver.is_some(),
             self.status_operation_receiver.is_some(),
             self.account_rate_limits_receiver.is_some(),
@@ -14808,7 +14809,6 @@ impl ShellView {
         .saturating_add(self.thread_title_receivers.len())
         .saturating_add(self.thread_title_update_receivers.len())
     }
-
     pub(super) fn block_if_backend_process_dead(
         &mut self,
         title: &'static str,
@@ -14833,7 +14833,6 @@ impl ShellView {
         self.block_ready_surface(title, summary, detail);
         true
     }
-
     fn scrollbar_visibility_policy(
         &self,
         region: &ScrollbarRegion,

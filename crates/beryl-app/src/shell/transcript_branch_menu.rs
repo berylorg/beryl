@@ -15,8 +15,8 @@ use super::{
         spawn_foreground_transcript_branch_worker, spawn_transcript_branch_worker,
     },
     transcript_edit_menu_state::{
-        TranscriptEditMenuEntry, TranscriptEditMenuGate, TranscriptEditTarget,
-        transcript_edit_menu_entry,
+        TranscriptEditMenuEntry, TranscriptEditMenuGate, TranscriptEditRequest,
+        TranscriptEditTarget, transcript_edit_menu_entry,
     },
     transcript_image_menu_actions::{copy_transcript_image_to_clipboard, save_transcript_image_as},
 };
@@ -28,6 +28,51 @@ impl ConversationSurfaceState {
 
     pub(crate) fn transcript_branch_menu_mut(&mut self) -> &mut TranscriptBranchMenuState {
         &mut self.transcript_branch_menu
+    }
+
+    pub(crate) fn close_transcript_branch_menu(&mut self) -> bool {
+        let changed = self.transcript_branch_menu.close();
+        if changed {
+            self.sync_transcript_turn_detail_ui_pins();
+        }
+        changed
+    }
+
+    pub(crate) fn clear_transcript_branch_menu_image_target(&mut self) -> bool {
+        let changed = self.transcript_branch_menu.clear_image_target();
+        if changed {
+            self.sync_transcript_turn_detail_ui_pins();
+        }
+        changed
+    }
+
+    pub(crate) fn accept_transcript_branch_menu(
+        &mut self,
+        action: TranscriptBranchAction,
+    ) -> Option<TranscriptBranchRequest> {
+        self.transcript_branch_menu.accept(action)
+    }
+
+    pub(crate) fn accept_transcript_branch_menu_edit(&mut self) -> Option<TranscriptEditRequest> {
+        self.transcript_branch_menu.accept_edit()
+    }
+
+    pub(crate) fn accept_transcript_branch_menu_thread_title_update(
+        &mut self,
+    ) -> Option<TranscriptThreadTitleUpdateRequest> {
+        self.transcript_branch_menu.accept_thread_title_update()
+    }
+
+    pub(crate) fn accept_transcript_branch_menu_copy_image(
+        &mut self,
+    ) -> Option<TranscriptImageMenuTarget> {
+        self.transcript_branch_menu.accept_copy_image()
+    }
+
+    pub(crate) fn accept_transcript_branch_menu_save_image(
+        &mut self,
+    ) -> Option<TranscriptImageMenuTarget> {
+        self.transcript_branch_menu.accept_save_image()
     }
 
     pub(crate) fn transcript_branch_menu_open_allowed(
@@ -193,10 +238,17 @@ impl ConversationSurfaceState {
                 )
         });
         if branch_loaded || edit_loaded || title_update_loaded || has_image_target {
+            if changed {
+                self.sync_transcript_turn_detail_ui_pins();
+            }
             return changed;
         }
 
-        changed | self.transcript_branch_menu.close()
+        changed |= self.transcript_branch_menu.close();
+        if changed {
+            self.sync_transcript_turn_detail_ui_pins();
+        }
+        changed
     }
 }
 
@@ -351,6 +403,7 @@ impl ShellView {
                 image_target,
                 position,
             );
+        surface.sync_transcript_turn_detail_ui_pins();
         cx.stop_propagation();
         cx.notify();
         true
@@ -368,7 +421,7 @@ impl ShellView {
                 .should_dismiss_for_mouse_down(event.position)
         });
         if should_dismiss && let Some(surface) = self.conversation_surface_mut() {
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             cx.notify();
         }
     }
@@ -385,7 +438,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut()
             && surface.transcript_branch_menu().is_open()
         {
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             cx.notify();
             return true;
         }
@@ -404,7 +457,7 @@ impl ShellView {
 
     pub(crate) fn clear_stale_transcript_image_menu_target(&mut self, cx: &mut Context<Self>) {
         if let Some(surface) = self.conversation_surface_mut()
-            && surface.transcript_branch_menu_mut().clear_image_target()
+            && surface.clear_transcript_branch_menu_image_target()
         {
             cx.notify();
         }
@@ -440,11 +493,14 @@ impl ShellView {
         }
         let Some(request) = self
             .conversation_surface_mut()
-            .and_then(|surface| surface.transcript_branch_menu_mut().accept_edit())
+            .and_then(|surface| surface.accept_transcript_branch_menu_edit())
         else {
             return;
         };
         self.begin_transcript_edit_mode_from_request(request, window, cx);
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.sync_transcript_turn_detail_ui_pins();
+        }
     }
 
     pub(crate) fn update_thread_title_from_menu(
@@ -453,14 +509,16 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(request) = self.conversation_surface_mut().and_then(|surface| {
-            surface
-                .transcript_branch_menu_mut()
-                .accept_thread_title_update()
-        }) else {
+        let Some(request) = self
+            .conversation_surface_mut()
+            .and_then(|surface| surface.accept_transcript_branch_menu_thread_title_update())
+        else {
             return;
         };
         self.dispatch_transcript_thread_title_update_request(request, window, cx);
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.sync_transcript_turn_detail_ui_pins();
+        }
         cx.notify();
     }
 
@@ -477,10 +535,13 @@ impl ShellView {
 
         let Some(target) = self
             .conversation_surface_mut()
-            .and_then(|surface| surface.transcript_branch_menu_mut().accept_copy_image())
+            .and_then(|surface| surface.accept_transcript_branch_menu_copy_image())
         else {
             return;
         };
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.sync_transcript_turn_detail_ui_pins();
+        }
 
         copy_transcript_image_to_clipboard(
             target,
@@ -504,10 +565,13 @@ impl ShellView {
 
         let Some(target) = self
             .conversation_surface_mut()
-            .and_then(|surface| surface.transcript_branch_menu_mut().accept_save_image())
+            .and_then(|surface| surface.accept_transcript_branch_menu_save_image())
         else {
             return;
         };
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.sync_transcript_turn_detail_ui_pins();
+        }
 
         save_transcript_image_as(
             target,
@@ -541,11 +605,14 @@ impl ShellView {
     ) {
         let Some(request) = self
             .conversation_surface_mut()
-            .and_then(|surface| surface.transcript_branch_menu_mut().accept(action))
+            .and_then(|surface| surface.accept_transcript_branch_menu(action))
         else {
             return;
         };
         self.dispatch_transcript_branch_request(request, window, cx);
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.sync_transcript_turn_detail_ui_pins();
+        }
         cx.notify();
     }
 

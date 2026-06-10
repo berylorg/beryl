@@ -6,8 +6,8 @@ use beryl_backend::{
     ThreadItem, ThreadListResponse, ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions,
     ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus, ThreadTurnsListOptions,
     ThreadTurnsListResponse, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStartOptions,
-    TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
+    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnItemsView,
+    TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
     active_turn_not_steerable_error, parse_approval_request, parse_dynamic_tool_call_request,
     parse_turn_stream_event,
 };
@@ -2088,14 +2088,40 @@ fn thread_read_response_deserializes_thread_metadata() {
 fn thread_turns_list_options_serialize_page_controls() {
     let options = ThreadTurnsListOptions::page(50)
         .with_cursor("turn_cursor")
-        .with_sort_direction(SortDirection::Desc);
+        .with_sort_direction(SortDirection::Desc)
+        .with_items_view(TurnItemsView::NotLoaded);
 
     assert_eq!(
         serde_json::to_value(options).unwrap(),
         json!({
             "cursor": "turn_cursor",
             "limit": 50,
-            "sortDirection": "desc"
+            "sortDirection": "desc",
+            "itemsView": "notLoaded"
+        })
+    );
+
+    assert_eq!(
+        serde_json::to_value(ThreadTurnsListOptions::default()).unwrap(),
+        json!({})
+    );
+
+    assert_eq!(
+        serde_json::to_value(
+            ThreadTurnsListOptions::default().with_items_view(TurnItemsView::Summary)
+        )
+        .unwrap(),
+        json!({
+            "itemsView": "summary"
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(
+            ThreadTurnsListOptions::default().with_items_view(TurnItemsView::Full)
+        )
+        .unwrap(),
+        json!({
+            "itemsView": "full"
         })
     );
 }
@@ -2123,8 +2149,63 @@ fn thread_turns_list_response_deserializes_page_cursors() {
 
     assert_eq!(response.data.len(), 1);
     assert_eq!(response.data[0].id, "turn_2");
+    assert_eq!(response.data[0].items_view, TurnItemsView::Full);
     assert_eq!(response.next_cursor.as_deref(), Some("older_turns"));
     assert_eq!(response.backwards_cursor.as_deref(), Some("newer_turns"));
+}
+
+#[test]
+fn thread_turns_list_response_deserializes_items_view_states() {
+    let response: ThreadTurnsListResponse = serde_json::from_value(json!({
+        "data": [
+            {
+                "id": "turn_not_loaded",
+                "itemsView": "notLoaded",
+                "status": "completed"
+            },
+            {
+                "id": "turn_summary",
+                "itemsView": "summary",
+                "status": "completed",
+                "items": [
+                    {
+                        "id": "item_summary",
+                        "type": "agentMessage",
+                        "text": "summary"
+                    }
+                ]
+            },
+            {
+                "id": "turn_full",
+                "itemsView": "full",
+                "status": "completed",
+                "items": [
+                    {
+                        "id": "item_full",
+                        "type": "agentMessage",
+                        "text": "done"
+                    }
+                ]
+            }
+        ]
+    }))
+    .unwrap();
+
+    assert_eq!(response.data[0].items_view, TurnItemsView::NotLoaded);
+    assert!(response.data[0].items.is_empty());
+    assert_eq!(response.data[1].items_view, TurnItemsView::Summary);
+    assert_eq!(response.data[2].items_view, TurnItemsView::Full);
+
+    assert!(
+        serde_json::from_value::<ThreadTurnsListResponse>(json!({
+            "data": [{
+                "id": "turn_unknown",
+                "itemsView": "preview",
+                "status": "completed"
+            }]
+        }))
+        .is_err()
+    );
 }
 
 #[test]

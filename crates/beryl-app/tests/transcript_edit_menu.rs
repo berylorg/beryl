@@ -91,6 +91,7 @@ mod shell {
                     turn: TurnInfo {
                         id: turn_id.to_string(),
                         status: beryl_backend::TurnStatus::InProgress,
+                        items_view: beryl_backend::TurnItemsView::Full,
                         items: Vec::new(),
                         error: None,
                     },
@@ -647,6 +648,7 @@ fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: prompts
@@ -674,6 +676,7 @@ fn assistant_only_turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::AgentMessage(AgentMessageItem {
             id: format!("{id}_answer"),
             phase: Some(ProtocolPhase::FinalAnswer),
@@ -687,6 +690,7 @@ fn operational_only_turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::CommandExecution(CommandExecutionItem {
             id: format!("{id}_command"),
             command: "cargo metadata".to_string(),
@@ -705,6 +709,7 @@ fn local_image_turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: vec![UserInput::LocalImage {
@@ -719,6 +724,7 @@ fn labeled_local_image_turn(id: &str, label: &str, path: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: vec![
@@ -734,6 +740,7 @@ fn mixed_local_image_turn(id: &str, label: &str, path: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: vec![
@@ -751,6 +758,7 @@ fn multi_fragment_text_and_image_turn(id: &str, label: &str, path: &str) -> Turn
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![
             ThreadItem::UserMessage(UserMessageItem {
                 id: format!("{id}_user_1"),
@@ -777,6 +785,7 @@ fn mention_turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: vec![UserInput::Mention {

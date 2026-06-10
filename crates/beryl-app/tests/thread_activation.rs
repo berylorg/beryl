@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use beryl_backend::{
     AgentMessageItem, ImageGenerationItem, ProtocolPhase, ThreadItem, ThreadSessionResponse,
-    ThreadTurnsListOptions, ThreadTurnsListResponse, TurnInfo, TurnStatus,
+    ThreadTurnsListOptions, ThreadTurnsListResponse, TurnInfo, TurnItemsView, TurnStatus,
 };
 use beryl_model::workspace::WorkspaceId;
 use serde_json::json;
@@ -62,10 +62,15 @@ fn direct_activation_uses_metadata_resume_and_bounded_latest_turn_page() {
     assert!(activation.history_window.has_older_pages());
     assert_eq!(activation.thread.turns[0].id, "turn_2");
     assert_eq!(activation.thread.turns[1].id, "turn_3");
+    assert_eq!(
+        activation.thread.turns[0].items_view,
+        TurnItemsView::NotLoaded
+    );
+    assert!(activation.thread.turns[0].items.is_empty());
 }
 
 #[test]
-fn direct_activation_preserves_generated_image_saved_path_from_latest_page() {
+fn direct_activation_drops_generated_image_items_from_latest_skeleton_page() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
         thread_response("thread_a", r"C:\work\alpha"),
@@ -90,16 +95,49 @@ fn direct_activation_preserves_generated_image_saved_path_from_latest_page() {
 
     assert_eq!(activation.thread.turns[0].id, "turn_2");
     assert_eq!(activation.thread.turns[1].id, "turn_3");
-    let [ThreadItem::ImageGeneration(item)] = activation.thread.turns[1].items.as_slice() else {
-        panic!("expected generated-image item in activated history page");
-    };
-    assert_eq!(item.id, "image_3");
     assert_eq!(
-        item.saved_path.as_deref(),
-        Some(r"C:\work\alpha\generated-3.png")
+        activation.thread.turns[1].items_view,
+        TurnItemsView::NotLoaded
     );
-    assert!(item.result.is_none());
+    assert!(activation.thread.turns[1].items.is_empty());
     assert!(activation.history_window.has_older_pages());
+}
+
+#[test]
+fn direct_activation_requests_skeleton_latest_turn_page() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response("thread_a", r"C:\work\alpha"),
+        Ok(ThreadTurnsListResponse {
+            data: vec![turn_with_items_view("turn_3", TurnItemsView::NotLoaded)],
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: None,
+        }),
+    );
+
+    let activation = activate_existing_thread_direct(
+        &mut backend,
+        &execution_target,
+        "thread_a",
+        "Thread A",
+        Duration::from_secs(5),
+    )
+    .unwrap();
+
+    assert_eq!(backend.turn_calls.len(), 1);
+    assert_eq!(
+        backend.turn_calls[0].1,
+        initial_thread_history_page_options()
+    );
+    assert_eq!(
+        backend.turn_calls[0].1.items_view,
+        Some(TurnItemsView::NotLoaded)
+    );
+    assert_eq!(
+        activation.thread.turns[0].items_view,
+        TurnItemsView::NotLoaded
+    );
+    assert!(activation.thread.turns[0].items.is_empty());
 }
 
 #[test]
@@ -252,14 +290,23 @@ fn thread_response(thread_id: &str, cwd: &str) -> ThreadSessionResponse {
 }
 
 fn turn(id: &str) -> TurnInfo {
+    turn_with_items_view(id, TurnItemsView::Full)
+}
+
+fn turn_with_items_view(id: &str, items_view: TurnItemsView) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
-        items: vec![ThreadItem::AgentMessage(AgentMessageItem {
-            id: format!("{id}_message"),
-            phase: Some(ProtocolPhase::FinalAnswer),
-            text: format!("Answer for {id}"),
-        })],
+        items_view,
+        items: if items_view == TurnItemsView::Full {
+            vec![ThreadItem::AgentMessage(AgentMessageItem {
+                id: format!("{id}_message"),
+                phase: Some(ProtocolPhase::FinalAnswer),
+                text: format!("Answer for {id}"),
+            })]
+        } else {
+            Vec::new()
+        },
         error: None,
     }
 }
@@ -268,6 +315,7 @@ fn generated_image_turn(id: &str, image_id: &str, saved_path: &str) -> TurnInfo 
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: TurnItemsView::Full,
         items: vec![ThreadItem::ImageGeneration(ImageGenerationItem {
             id: image_id.to_string(),
             status: Some("completed".to_string()),

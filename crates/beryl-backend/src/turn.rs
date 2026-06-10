@@ -85,6 +85,8 @@ pub struct TurnInfo {
     pub id: String,
     pub status: TurnStatus,
     #[serde(default)]
+    pub items_view: TurnItemsView,
+    #[serde(default)]
     pub items: Vec<ThreadItem>,
     #[serde(default)]
     pub error: Option<TurnError>,
@@ -117,6 +119,14 @@ pub enum TurnStatus {
     Interrupted,
     Failed,
     InProgress,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TurnItemsView {
+    NotLoaded,
+    Summary,
+    Full,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -618,6 +628,12 @@ impl ThreadSessionResponse {
 impl TurnInfo {
     pub fn is_terminal(&self) -> bool {
         !matches!(self.status, TurnStatus::InProgress)
+    }
+}
+
+impl Default for TurnItemsView {
+    fn default() -> Self {
+        Self::Full
     }
 }
 

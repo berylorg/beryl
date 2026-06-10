@@ -122,6 +122,7 @@ mod shell {
                     turn: TurnInfo {
                         id: turn_id.to_string(),
                         status: beryl_backend::TurnStatus::InProgress,
+                        items_view: beryl_backend::TurnItemsView::Full,
                         items: Vec::new(),
                         error: None,
                     },
@@ -972,6 +973,7 @@ fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: prompts

@@ -21,3 +21,43 @@ Course adjustment: GPUI source-backed image request identity must absorb subpixe
 The Phase 11 preload implementation initially filtered to loaded source-backed file images inside `preload_media_item`, after `TranscriptMediaRenderContext::media_for` had already looked up each media item. That meant Markdown images or inline byte-backed generated-image fallbacks in the preload band could schedule backend file reads or retained-byte media-cache work even though overscan preload is meant to prepare only source-backed GPU resources.
 
 Course adjustment: preload runs now return before media lookup unless every item in the run is a native generated image with a non-empty `savedPath`. Visible rendering still uses the ordinary media-cache path for Markdown and byte-backed media, but overscan preloading cannot wake those loads solely because they are near the viewport.
+
+## Invalid Detail Scheduler Gate: Startup Capability Reports Are Not A Row State
+
+During the CAS 0.137 transcript-history migration, live testing on the `City Image Generation` thread showed Beryl rendering a visible `Loading transcript details...` skeleton row while retained-state diagnostics reported `transcriptMissingDetailTurns = 1`, `transcriptDetailRetentionTurns = 0`, `transcriptDetailLastRequestedTurns = 0`, and `transcriptDetailPendingRequests = 0`.
+
+The invalid assumption was that the transcript detail scheduler could be gated only on the backend capability report stored in the ready shell state. That report is not the same authority as the selected transcript row state. Once Beryl has a visible non-full turn, the UI must either request full details for that row or mark the row as failed; leaving the scheduler disabled produces a permanent loading placeholder.
+
+Evidence:
+
+- A diagnostic child using `target\debug\beryl.exe` and local `codex-cli 0.137.0` opened `City Image Generation` as thread `019e1e41-2c86-7e23-a28a-034bfa9032f2`.
+- `beryl_diagnostic.read_retained_state` showed one skeleton turn, one missing detail turn, and zero detail retention or pending requests.
+- Historical schema inspection with `codex app-server generate-json-schema --experimental --out <temp>` showed `thread/turns/list` defaults `itemsView` to `summary`, and `thread/turns/items/list` is the experimental per-turn detail method that Beryl later stopped using because local CAS 0.137 reports it as runtime unsupported.
+
+Course adjustment at the time: drive detail scheduling from the visible transcript range and actual cached skeleton/full row state.
+
+This was later superseded by the CAS 0.137 single-contract invariant. Beryl no longer uses the schema-exposed per-turn item-list method; non-full history skeleton rows produce bounded `thread/turns/list itemsView = "full"` requests for the page prefix that can contain the visible turn.
+
+## Schema-Exposed Item Detail Method Can Still Be Runtime-Unsupported
+
+CAS 0.137 schema inspection showed `thread/turns/items/list` in the experimental generated schema, but a live stdio probe against local `codex-cli 0.137.0` returned JSON-RPC `-32601` with message `thread/turns/items/list is not supported yet` for the `City Image Generation` thread and visible turn.
+
+The invalid assumption was that schema presence plus experimental initialization meant the per-turn item-list method was usable. In this build, `thread/turns/list` with `itemsView = "full"` succeeds for the same thread, but that loads full item payloads at page granularity rather than per visible turn.
+
+Course adjustment at the time: do not silently replace per-turn detail loading with full turn-page loading without operator approval. The operator approved an explicit CAS 0.137 workaround that retried unsupported per-turn detail requests through `thread/turns/list itemsView = "full"` with the skeleton page cursor and the smallest page prefix that can include the visible turn.
+
+This was later superseded by the root design invariant for the 0.137 migration: Beryl now hardcodes the supported CAS 0.137 transcript contract to `thread/turns/list` with `itemsView` and does not carry an item-list attempt or fallback branch. Beryl still depends on the streaming sanitizer to strip generated-image `result` bytes before typed retention and still releases full detail rows outside the visible-plus-overscan retention window.
+
+## Visible Transcript Rows Are Not Always History Skeletons
+
+During the superseded CAS 0.137 item-list attempt, submitting a new turn in the `Codex Schema Migration` thread opened a popup saying `thread/turns/items/list is not supported yet; the skeleton row did not record a full-page fallback cursor`.
+
+The invalid assumption was that every visible row requiring detail scheduling had been inserted into `TranscriptTurnDetailCache` as a history skeleton. Live rows created by `begin_turn` are visible transcript rows, but they are not history skeletons; their items arrive through stream state. The unsupported per-turn item-list method was later removed from Beryl's current CAS 0.137 contract.
+
+Evidence:
+
+- The operator reproduced the popup in a release build immediately after submitting a new user input.
+- A diagnostic child using the patched debug build submitted a copied-home smoke-test turn and retained-state diagnostics reported `transcriptDetailLastRequestedTurns = 0`, `transcriptDetailPendingRequests = 0`, and no popup.
+- `turn_detail_scheduler_ignores_required_turns_without_history_skeleton` covers the missing-skeleton case.
+
+Course adjustment: the history-detail scheduler should request details only for known skeleton entries whose `itemsView` is not full. Unknown live row ids are ignored by the history-detail path rather than being converted into cursorless history-page detail tickets.

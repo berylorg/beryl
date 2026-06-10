@@ -34,7 +34,7 @@ impl ShellView {
     ) {
         let changed = self.conversation_surface_mut().is_some_and(|surface| {
             let changed = surface.select_graph_node(column_index, &node_id);
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             surface.status_line_operations_mut().close();
             surface
                 .graph_thread_link_menu_mut()
@@ -67,7 +67,7 @@ impl ShellView {
                 return false;
             };
             let changed = surface.select_graph_node(column_index, &node_id);
-            surface.transcript_branch_menu_mut().close();
+            surface.close_transcript_branch_menu();
             surface.status_line_operations_mut().close();
             surface.graph_thread_link_menu_mut().open_thread_ref_rebind(
                 node_id,

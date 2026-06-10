@@ -312,3 +312,75 @@ fn current_item_height_change_preserves_bottom_and_virtual_tail_intent() {
         }
     );
 }
+
+#[test]
+fn scroll_handler_dispatch_runs_after_list_state_borrow_is_released() {
+    let state_source = include_str!("../src/shell/virtual_list/state.rs");
+    let scroll_state_source = include_str!("../src/shell/virtual_list/scroll_state.rs");
+    let element_source = include_str!("../src/shell/virtual_list/element.rs");
+
+    let list_state_scroll_body = rust_function_body(state_source, "pub(super) fn scroll(");
+    let state_inner_scroll_body = rust_function_body(scroll_state_source, "pub(super) fn scroll(");
+
+    assert!(element_source.contains("list_state.scroll("));
+    assert!(!element_source.contains("list_state.0.borrow_mut().scroll("));
+
+    assert!(list_state_scroll_body.contains("let (event, mut handler) = {"));
+    assert!(list_state_scroll_body.contains("let mut state = self.0.borrow_mut();"));
+    assert!(list_state_scroll_body.contains("state.scroll(scroll_top, height, delta)"));
+    assert!(list_state_scroll_body.contains("state.scroll_handler.take()"));
+    assert_order(
+        list_state_scroll_body,
+        "state.scroll_handler.take()",
+        "handler(&event",
+    );
+    assert_order(
+        list_state_scroll_body,
+        "let Some(event) = event else",
+        "handler(&event",
+    );
+
+    assert!(!state_inner_scroll_body.contains("scroll_handler"));
+    assert!(!state_inner_scroll_body.contains("window"));
+    assert!(!state_inner_scroll_body.contains("cx"));
+}
+
+fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
+    let signature_index = source
+        .find(function_signature)
+        .unwrap_or_else(|| panic!("missing function {function_signature}"));
+    let after_signature = &source[signature_index..];
+    let open_offset = after_signature
+        .find('{')
+        .unwrap_or_else(|| panic!("missing body for function {function_signature}"));
+    let body_start = signature_index + open_offset;
+    let mut depth = 0usize;
+
+    for (offset, character) in source[body_start..].char_indices() {
+        match character {
+            '{' => depth = depth.saturating_add(1),
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return &source[body_start..body_start + offset + character.len_utf8()];
+                }
+            }
+            _ => {}
+        }
+    }
+
+    panic!("unterminated body for function {function_signature}");
+}
+
+fn assert_order(source: &str, before: &str, after: &str) {
+    let before_index = source
+        .find(before)
+        .unwrap_or_else(|| panic!("missing {before:?}"));
+    let after_index = source
+        .find(after)
+        .unwrap_or_else(|| panic!("missing {after:?}"));
+    assert!(
+        before_index < after_index,
+        "expected {before:?} to appear before {after:?}"
+    );
+}

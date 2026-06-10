@@ -10,14 +10,16 @@ use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
     OpenWorkspaceFailure, OpenedWorkspace, RetryTarget, ShellState, ShellView, SurfaceNotice,
-    ThreadHistoryPageOutcome, TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
+    ThreadHistoryPageOutcome, TranscriptTurnDetailApplyResult, TranscriptTurnDetailOutcome,
+    TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
 };
 use crate::backend_failure::{
     json_rpc_error_detail, non_empty_user_text, source_chain_detail, truncate_user_detail,
 };
+use crate::diagnostic_dynamic_tools::diagnostic_duration_micros;
 use crate::member_thread_inventory::MemberThreadInventoryEvent;
 use crate::memory_diagnostics::MemoryMilestone;
-use tracing::debug;
+use tracing::{debug, warn};
 
 impl ShellView {
     pub(super) fn finish_workspace_open(
@@ -561,6 +563,78 @@ impl ShellView {
         }
     }
 
+    pub(super) fn finish_transcript_turn_detail_worker(
+        &mut self,
+        outcome: TranscriptTurnDetailOutcome,
+    ) {
+        match outcome {
+            TranscriptTurnDetailOutcome::Loaded {
+                ticket,
+                turns,
+                image_resolver,
+                mut diagnostics,
+            } => {
+                let application_started = Instant::now();
+                let apply_counts = self
+                    .conversation_surface_mut()
+                    .map(|surface| {
+                        surface.finish_loading_transcript_turn_details(
+                            &ticket,
+                            turns,
+                            &image_resolver,
+                        )
+                    })
+                    .unwrap_or_default();
+                diagnostics.cache_application_micros =
+                    diagnostic_duration_micros(application_started.elapsed());
+                diagnostics.total_micros = diagnostics
+                    .total_micros
+                    .saturating_add(diagnostics.cache_application_micros);
+                if apply_counts.applied > 0 {
+                    diagnostics.mark_applied(apply_counts.applied);
+                    diagnostics.skipped_stale_count = apply_counts.stale;
+                } else {
+                    diagnostics.mark_stale(apply_counts.stale.max(1));
+                }
+                self.transcript_detail_load_diagnostics.record(diagnostics);
+            }
+            TranscriptTurnDetailOutcome::Failed {
+                ticket,
+                message,
+                mut diagnostics,
+            } => {
+                let application_started = Instant::now();
+                let applied = self
+                    .conversation_surface_mut()
+                    .map(|surface| surface.fail_loading_transcript_turn_details(&ticket))
+                    .unwrap_or(TranscriptTurnDetailApplyResult::Stale);
+                diagnostics.cache_application_micros =
+                    diagnostic_duration_micros(application_started.elapsed());
+                diagnostics.total_micros = diagnostics
+                    .total_micros
+                    .saturating_add(diagnostics.cache_application_micros);
+                if applied == TranscriptTurnDetailApplyResult::Applied {
+                    diagnostics.mark_failed_applied();
+                    warn!(
+                        thread_id = ticket.thread_id(),
+                        turn_id = ticket.turn_id(),
+                        error = %message,
+                        "failed to load transcript turn details"
+                    );
+                } else {
+                    diagnostics.mark_failed_stale(1);
+                }
+                self.transcript_detail_load_diagnostics.record(diagnostics);
+
+                self.block_if_backend_process_dead(
+                    "Managed backend disconnected during turn detail loading",
+                    "The backend process for the selected workspace exited before Beryl could load visible transcript turn details.",
+                    &message,
+                );
+            }
+        }
+    }
+
     pub(super) fn handle_turn_worker_stopped(&mut self) -> Option<TurnCompletionSoundCandidate> {
         let message = "Beryl lost the background task that was streaming the active turn.";
         let foreground_branch_failed = self.foreground_transcript_branch.is_some();
@@ -727,6 +801,105 @@ pub(super) fn blocked_state_for_error(
     stage: beryl_backend::ManagedBackendStartupStage,
 ) -> BlockedState {
     match error {
+        beryl_backend::ManagedBackendError::Compatibility(
+            beryl_backend::CompatibilityError::AppServerVersionMissing { required_version },
+        ) => BlockedState {
+            attempt,
+            loaded_workspace: None,
+            target: RetryTarget::HostPath(String::new()),
+            intent: super::WorkspaceOpenIntent::None,
+            workspace_label: String::new(),
+            stage: Some(stage),
+            title: "Codex app-server version is missing",
+            summary: "The managed backend started, but its initialize response did not include the Codex App Server version Beryl requires.".to_string(),
+            detail: format!(
+                "This Beryl build requires exactly Codex App Server {required_version} under the 0.137 app-server contract."
+            ),
+            next_steps: vec![
+                format!("Run Beryl with Codex App Server {required_version}."),
+                "Verify that Beryl is launching codex app-server, not another command.".to_string(),
+                "Retry after correcting the backend launch environment.".to_string(),
+            ],
+            disconnect: false,
+            surface: None,
+        },
+        beryl_backend::ManagedBackendError::Compatibility(
+            beryl_backend::CompatibilityError::AppServerVersionUnrecognized {
+                required_version,
+                user_agent,
+            },
+        ) => BlockedState {
+            attempt,
+            loaded_workspace: None,
+            target: RetryTarget::HostPath(String::new()),
+            intent: super::WorkspaceOpenIntent::None,
+            workspace_label: String::new(),
+            stage: Some(stage),
+            title: "Codex app-server version is unsupported",
+            summary: "The managed backend started, but Beryl could not parse the Codex App Server version from its initialize response.".to_string(),
+            detail: format!(
+                "This Beryl build requires initialize userAgent to start with `beryl/<major.minor.patch>` and version exactly {required_version}. The backend reported {user_agent:?}."
+            ),
+            next_steps: vec![
+                format!("Run Beryl with Codex App Server {required_version}."),
+                "Verify that Beryl is launching codex app-server, not another command.".to_string(),
+                "Retry after correcting the backend launch environment.".to_string(),
+            ],
+            disconnect: false,
+            surface: None,
+        },
+        beryl_backend::ManagedBackendError::Compatibility(
+            beryl_backend::CompatibilityError::AppServerVersionMismatch {
+                required_version,
+                actual_version,
+                user_agent,
+            },
+        ) => BlockedState {
+            attempt,
+            loaded_workspace: None,
+            target: RetryTarget::HostPath(String::new()),
+            intent: super::WorkspaceOpenIntent::None,
+            workspace_label: String::new(),
+            stage: Some(stage),
+            title: "Codex app-server version is unsupported",
+            summary: "The managed backend started, but its Codex App Server version does not match the exact version this Beryl build requires.".to_string(),
+            detail: format!(
+                "This Beryl build requires exactly Codex App Server {required_version} under the 0.137 app-server contract. The backend reported version {actual_version} in userAgent {user_agent:?}."
+            ),
+            next_steps: vec![
+                format!("Run Beryl with Codex App Server {required_version}."),
+                "Verify that the selected runtime target is using the expected codex executable.".to_string(),
+                "Retry after correcting the backend launch environment.".to_string(),
+            ],
+            disconnect: false,
+            surface: None,
+        },
+        beryl_backend::ManagedBackendError::Compatibility(
+            beryl_backend::CompatibilityError::ThreadTurnsListItemsViewUnsupported {
+                method,
+                code,
+                message,
+            },
+        ) => BlockedState {
+            attempt,
+            loaded_workspace: None,
+            target: RetryTarget::HostPath(String::new()),
+            intent: super::WorkspaceOpenIntent::None,
+            workspace_label: String::new(),
+            stage: Some(stage),
+            title: "Codex app-server transcript history is unsupported",
+            summary: "The managed backend started, but it does not satisfy the transcript history contract this Beryl build requires.".to_string(),
+            detail: format!(
+                "This Beryl build requires `{method}` with `itemsView` under the 0.137 app-server contract. The backend rejected the probe with JSON-RPC code {code}: {message}."
+            ),
+            next_steps: vec![
+                "Run Beryl with Codex App Server 0.137.0.".to_string(),
+                "Verify that the selected runtime target is using the expected codex executable.".to_string(),
+                "Retry after correcting the backend launch environment.".to_string(),
+            ],
+            disconnect: false,
+            surface: None,
+        },
         beryl_backend::ManagedBackendError::Compatibility(
             beryl_backend::CompatibilityError::PlatformFamilyMismatch {
                 runtime_mode,
@@ -945,8 +1118,11 @@ pub(super) fn blocked_state_for_error(
                 &source,
             ),
             next_steps: vec![
-                "Check that Beryl is running against a compatible codex app-server version.".to_string(),
-                "Retry after updating or selecting a compatible backend.".to_string(),
+                format!(
+                    "Check that Beryl is running against Codex App Server {}.",
+                    beryl_backend::REQUIRED_CODEX_APP_SERVER_VERSION
+                ),
+                "Retry after selecting the exact supported backend.".to_string(),
                 "Close Beryl if you want to stop here.".to_string(),
             ],
             disconnect: false,
@@ -1007,7 +1183,10 @@ pub(super) fn blocked_state_for_error(
             detail: "Beryl could not match the backend output to the JSON-RPC protocol shape expected during startup.".to_string(),
             next_steps: vec![
                 "Check that Beryl is launching codex app-server, not another command.".to_string(),
-                "Retry after updating or selecting a compatible backend.".to_string(),
+                format!(
+                    "Retry after selecting Codex App Server {}.",
+                    beryl_backend::REQUIRED_CODEX_APP_SERVER_VERSION
+                ),
                 "Close Beryl if you want to stop here.".to_string(),
             ],
             disconnect: false,
@@ -1030,8 +1209,11 @@ pub(super) fn blocked_state_for_error(
                     &source,
                 ),
                 next_steps: vec![
-                    "Check that Beryl is running against a compatible codex app-server version.".to_string(),
-                    "Retry after updating or selecting a compatible backend.".to_string(),
+                    format!(
+                        "Check that Beryl is running against Codex App Server {}.",
+                        beryl_backend::REQUIRED_CODEX_APP_SERVER_VERSION
+                    ),
+                    "Retry after selecting the exact supported backend.".to_string(),
                     "Close Beryl if you want to stop here.".to_string(),
                 ],
                 disconnect: false,

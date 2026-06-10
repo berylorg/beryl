@@ -427,10 +427,16 @@ pub(crate) fn transcript_edit_menu_entry(
                 .contains_images()
                 .then(|| match gate.image_label_readiness {
                     ComposerImagePasteReadiness::Ready => None,
+                    ComposerImagePasteReadiness::Validating => {
+                        Some(TranscriptEditDisabledReason::ImageLabelScanIncomplete)
+                    }
                     ComposerImagePasteReadiness::Scanning => {
                         Some(TranscriptEditDisabledReason::ImageLabelScanIncomplete)
                     }
                     ComposerImagePasteReadiness::Failed { .. } => {
+                        Some(TranscriptEditDisabledReason::ImageLabelScanFailed)
+                    }
+                    ComposerImagePasteReadiness::Unavailable { .. } => {
                         Some(TranscriptEditDisabledReason::ImageLabelScanFailed)
                     }
                 })

@@ -201,6 +201,7 @@ fn turn_info(id: &str, status: TurnStatus, error: Option<TurnError>) -> TurnInfo
     TurnInfo {
         id: id.to_string(),
         status,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: Vec::new(),
         error,
     }

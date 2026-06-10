@@ -431,6 +431,7 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.begin_thread_activation(label.clone());
         }
+        self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.decision_resolution_parent_activation_record_id = Some(record.record_id().clone());
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(

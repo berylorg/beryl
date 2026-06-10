@@ -335,6 +335,16 @@ impl ShellView {
                 }) {
                     return;
                 }
+                let selected_thread_updated_at = self.conversation_surface().and_then(|surface| {
+                    let selected_thread_id = surface.selected_thread_id()?.to_string();
+                    let updated_at = snapshot
+                        .groups()
+                        .iter()
+                        .flat_map(|group| group.threads().iter())
+                        .find(|thread| thread.thread_id().as_str() == selected_thread_id.as_str())
+                        .map(|thread| thread.updated_at_millis())?;
+                    Some((selected_thread_id, updated_at))
+                });
 
                 let registered_threads = registered_threads
                     .into_iter()
@@ -361,6 +371,12 @@ impl ShellView {
                     self.persist_current_workspace_state(true);
                 }
                 if let Some(surface) = self.conversation_surface_mut() {
+                    if let Some((thread_id, updated_at)) = selected_thread_updated_at {
+                        surface.mark_selected_thread_image_labels_need_validation_if_updated(
+                            thread_id.as_str(),
+                            updated_at,
+                        );
+                    }
                     if surface
                         .member_thread_inventory_mut()
                         .finish_refresh_for_token(token, snapshot, &workspace_state)

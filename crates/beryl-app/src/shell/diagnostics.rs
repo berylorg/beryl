@@ -9,8 +9,9 @@ use crate::diagnostic_dynamic_tools::{
 use crate::memory_diagnostics::{self, RetainedStateSnapshot};
 
 use super::{
-    ComposerImagePopupMode, ConfiguredAppState, ConversationSurfaceState, ShellState, ShellView,
-    TextInputRetainedAggregate, runtime_target_diagnostic,
+    ComposerClipboardLabelScope, ComposerImagePopupMode, ConfiguredAppState,
+    ConversationSurfaceState, ShellState, ShellView, TextInputRetainedAggregate,
+    TranscriptTurnDetailTask, runtime_target_diagnostic,
 };
 
 impl ShellView {
@@ -27,6 +28,11 @@ impl ShellView {
         snapshot.backend_event_queue_estimate = Some(backend_client_connection_estimate);
         snapshot.backend_client_connection_estimate = Some(backend_client_connection_estimate);
         snapshot.turn_steering_receivers = Some(self.turn_steering_receivers.len());
+        snapshot.transcript_detail_pending_requests = Some(
+            self.transcript_turn_detail_task
+                .as_ref()
+                .map_or(0, TranscriptTurnDetailTask::active_ticket_count),
+        );
         snapshot.composer_draft_text_bytes = Some(composer_draft.display_text_bytes);
         snapshot.composer_draft_images = Some(composer_draft.image_count);
         snapshot.composer_draft_image_bytes = Some(composer_draft.image_bytes);
@@ -50,6 +56,12 @@ impl ShellView {
                         .workspace_id
                         .as_str()
                         .len()
+                        .saturating_add(match &pending.label_scope {
+                            ComposerClipboardLabelScope::PendingNewThread(_) => {
+                                std::mem::size_of::<u64>()
+                            }
+                            ComposerClipboardLabelScope::Thread(thread_id) => thread_id.len(),
+                        })
                         .saturating_add(pending.display_text_snapshot.len())
                 }),
         );
@@ -123,6 +135,7 @@ impl ShellView {
             visible_media,
             media_events: panel_snapshot.media_events,
             transcript_frame_metrics: panel_snapshot.transcript_frame_metrics,
+            transcript_detail_loads: self.transcript_detail_load_diagnostics.snapshot(),
             settings_window: self.settings_window_diagnostic_snapshot(cx),
         }
     }

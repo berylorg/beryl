@@ -129,6 +129,7 @@ fn turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: Vec::new(),
         error: None,
     }

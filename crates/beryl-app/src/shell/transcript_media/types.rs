@@ -85,6 +85,7 @@ pub(crate) struct TranscriptMediaLoadCompletion {
     pub(super) fingerprint: TranscriptMediaSourceFingerprint,
     pub(super) scope_generation: u64,
     pub(super) outcome: TranscriptMediaLoadOutcome,
+    pub(super) file_read_count: usize,
     pub(super) elapsed: Duration,
 }
 
@@ -337,13 +338,22 @@ impl TranscriptMediaLoadRequest {
         R: TranscriptMediaFileReader,
     {
         let started_at = Instant::now();
-        let outcome =
-            load_transcript_media(&self.source, &self.execution_target, reader, self.timeout);
+        let mut counting_reader = CountingTranscriptMediaFileReader {
+            inner: reader,
+            file_read_count: 0,
+        };
+        let outcome = load_transcript_media(
+            &self.source,
+            &self.execution_target,
+            &mut counting_reader,
+            self.timeout,
+        );
         TranscriptMediaLoadCompletion {
             key: self.key,
             fingerprint: self.fingerprint,
             scope_generation: self.scope_generation,
             outcome,
+            file_read_count: counting_reader.file_read_count,
             elapsed: started_at.elapsed(),
         }
     }
@@ -352,6 +362,27 @@ impl TranscriptMediaLoadRequest {
 impl TranscriptMediaLoadCompletion {
     pub(crate) fn loaded_image(&self) -> Option<&TranscriptMediaLoadedImage> {
         self.outcome.loaded()
+    }
+
+    pub(crate) fn file_read_count(&self) -> usize {
+        self.file_read_count
+    }
+}
+
+struct CountingTranscriptMediaFileReader<'a, R> {
+    inner: &'a mut R,
+    file_read_count: usize,
+}
+
+impl<R> TranscriptMediaFileReader for CountingTranscriptMediaFileReader<'_, R>
+where
+    R: TranscriptMediaFileReader,
+{
+    type Error = R::Error;
+
+    fn read_file_bytes(&mut self, path: &str, timeout: Duration) -> Result<Vec<u8>, Self::Error> {
+        self.file_read_count = self.file_read_count.saturating_add(1);
+        self.inner.read_file_bytes(path, timeout)
     }
 }
 

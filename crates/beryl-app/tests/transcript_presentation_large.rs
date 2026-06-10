@@ -342,6 +342,7 @@ fn prompt_turn(id: &str, prompt: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(UserMessageItem {
             id: format!("{id}_user"),
             content: vec![UserInput::Text {
@@ -356,6 +357,7 @@ fn agent_markdown_turn(id: &str, text: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::AgentMessage(AgentMessageItem {
             id: format!("{id}_agent"),
             text: text.to_string(),
@@ -369,6 +371,7 @@ fn generated_image_turn(id: &str, index: usize, has_result: bool) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::ImageGeneration(ImageGenerationItem {
             id: format!("{id}_generated_image"),
             status: Some(
@@ -427,6 +430,7 @@ fn command_only_turn(id: &str, item_id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::CommandExecution(CommandExecutionItem {
             id: item_id.to_string(),
             command: "cargo nextest".to_string(),
@@ -445,6 +449,7 @@ fn file_change_only_turn(id: &str, item_id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::FileChange(FileChangeItem {
             id: item_id.to_string(),
             status: PatchApplyStatus::Completed,
@@ -598,6 +603,7 @@ fn empty_turn(id: &str, status: TurnStatus) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: Vec::new(),
         error: None,
     }

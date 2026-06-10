@@ -23,6 +23,7 @@ fn execution_detail_tracks_streamed_items_and_identifies_terminal_answer() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -90,6 +91,7 @@ fn execution_detail_tracks_streamed_items_and_identifies_terminal_answer() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::Completed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -134,6 +136,7 @@ fn execution_detail_retained_counts_include_loaded_turn_payloads() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -174,6 +177,7 @@ fn execution_detail_keeps_failed_turn_without_fabricated_answer() {
         turn: TurnInfo {
             id: "turn_2".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -183,6 +187,7 @@ fn execution_detail_keeps_failed_turn_without_fabricated_answer() {
         turn: TurnInfo {
             id: "turn_2".to_string(),
             status: TurnStatus::Failed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: Some(beryl_backend::TurnError {
                 message: "command failed".to_string(),
@@ -210,6 +215,7 @@ fn execution_detail_bounds_operational_stream_payloads() {
         turn: TurnInfo {
             id: "turn_noisy".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -282,6 +288,7 @@ fn execution_detail_bounds_operational_stream_payloads() {
         turn: TurnInfo {
             id: "turn_noisy".to_string(),
             status: TurnStatus::Completed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -307,6 +314,7 @@ fn execution_detail_bounds_turn_error_detail() {
         turn: TurnInfo {
             id: "turn_failed".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -317,6 +325,7 @@ fn execution_detail_bounds_turn_error_detail() {
         turn: TurnInfo {
             id: "turn_failed".to_string(),
             status: TurnStatus::Failed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: Some(beryl_backend::TurnError {
                 message: "failed".to_string(),
@@ -365,6 +374,7 @@ fn pending_turn_fragments_are_visible_but_not_stream_active_until_drained() {
             turn: TurnInfo {
                 id: "turn_compact".to_string(),
                 status: TurnStatus::InProgress,
+                items_view: beryl_backend::TurnItemsView::Full,
                 items: Vec::new(),
                 error: None,
             },
@@ -395,6 +405,7 @@ fn active_turn_identity_is_unknown_until_turn_started_then_cleared_on_completion
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -410,6 +421,7 @@ fn active_turn_identity_is_unknown_until_turn_started_then_cleared_on_completion
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::Completed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -427,6 +439,7 @@ fn active_turn_steering_fragment_keeps_accepted_narrative_position() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -480,6 +493,7 @@ fn rejected_steering_fragment_can_be_removed_from_active_turn() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -570,6 +584,7 @@ fn execution_detail_ignores_events_from_non_active_turns() {
             turn: TurnInfo {
                 id: "parent_turn".to_string(),
                 status: TurnStatus::InProgress,
+                items_view: beryl_backend::TurnItemsView::Full,
                 items: Vec::new(),
                 error: None,
             },
@@ -594,6 +609,7 @@ fn execution_detail_ignores_events_from_non_active_turns() {
             turn: TurnInfo {
                 id: "child_turn".to_string(),
                 status: TurnStatus::Completed,
+                items_view: beryl_backend::TurnItemsView::Full,
                 items: Vec::new(),
                 error: None,
             },
@@ -622,6 +638,7 @@ fn execution_detail_ignores_events_from_non_active_turns() {
         turn: TurnInfo {
             id: "parent_turn".to_string(),
             status: TurnStatus::Completed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -1452,6 +1469,7 @@ fn execution_detail_projects_last_turn_state() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -1461,6 +1479,7 @@ fn execution_detail_projects_last_turn_state() {
         turn: TurnInfo {
             id: "turn_1".to_string(),
             status: TurnStatus::Completed,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -1659,6 +1678,7 @@ fn live_image_generation_without_saved_path_keeps_only_bounded_inline_result() {
         turn: TurnInfo {
             id: "turn_image".to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },

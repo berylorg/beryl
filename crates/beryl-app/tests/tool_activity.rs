@@ -1568,6 +1568,7 @@ fn turn_completed_with_status(
         turn: TurnInfo {
             id: turn_id.to_string(),
             status,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },

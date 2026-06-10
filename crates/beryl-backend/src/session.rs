@@ -25,12 +25,13 @@ use crate::{
     ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
     ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadBranchCapabilities,
     ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport,
-    ThreadForkOptions, ThreadForkResponse, ThreadListResponse, ThreadLoadedListResponse,
-    ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions,
-    ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions, ThreadSummary,
-    ThreadTurnsListOptions, ThreadTurnsListResponse, ThreadUnarchiveResponse,
-    ThreadUnsubscribeResponse, TurnStartOptions, TurnStartResponse, TurnSteerResponse,
-    TurnStreamEvent, UserInput,
+    ThreadForkOptions, ThreadForkResponse, ThreadHistoryCapabilities, ThreadHistoryCapabilityProbe,
+    ThreadHistoryCapabilityProbeResult, ThreadHistoryCapabilityReport, ThreadListResponse,
+    ThreadLoadedListResponse, ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse,
+    ThreadResumeOptions, ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions,
+    ThreadSummary, ThreadTurnsListOptions, ThreadTurnsListResponse, ThreadUnarchiveResponse,
+    ThreadUnsubscribeResponse, TurnItemsView, TurnStartOptions, TurnStartResponse,
+    TurnSteerResponse, TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
     managed_process::SupervisedBackendProcess,
@@ -38,7 +39,10 @@ use crate::{
     response_sanitizer::{response_sanitizer_kind, sanitize_json_rpc_message},
     thread_archive::{THREAD_ARCHIVE_CAPABILITY_PROBES, ThreadArchiveParams},
     thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
-    thread_history::{ThreadReadParams, ThreadResumeParams, ThreadTurnsListParams},
+    thread_history::{
+        THREAD_HISTORY_CAPABILITY_PROBES, ThreadReadParams, ThreadResumeParams,
+        ThreadTurnsListParams,
+    },
     turn::{
         ThreadStartParams, TurnStartParams, TurnSteerParams, parse_approval_request,
         parse_turn_stream_event,
@@ -129,6 +133,7 @@ pub struct ManagedBackendProbeReport {
     initialize: InitializeResponse,
     compatibility: CompatibilitySnapshot,
     method_successes: Vec<ProbeMethodSuccess>,
+    thread_history_capabilities: ThreadHistoryCapabilities,
     thread_archive_capabilities: ThreadArchiveCapabilities,
     thread_branch_capabilities: ThreadBranchCapabilities,
     config_defaults: BackendConfigDefaults,
@@ -916,6 +921,18 @@ impl ManagedBackendSession {
         Ok(HardStopCapabilityReport::new(results))
     }
 
+    pub fn probe_thread_history_capabilities(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<ThreadHistoryCapabilityReport, ManagedBackendError> {
+        let mut results = Vec::with_capacity(THREAD_HISTORY_CAPABILITY_PROBES.len());
+        for probe in THREAD_HISTORY_CAPABILITY_PROBES {
+            results.push(self.probe_thread_history_capability(*probe, timeout)?);
+        }
+
+        Ok(ThreadHistoryCapabilityReport::new(results))
+    }
+
     pub fn probe_thread_branch_capabilities(
         &mut self,
         timeout: Duration,
@@ -1201,6 +1218,9 @@ impl ManagedBackendSession {
             method_successes.push(ProbeMethodSuccess { probe: *probe });
         }
 
+        let thread_history_capabilities = self
+            .probe_thread_history_capabilities(timeout)?
+            .capabilities();
         let thread_branch_capabilities = self
             .probe_thread_branch_capabilities(timeout)?
             .capabilities();
@@ -1212,6 +1232,7 @@ impl ManagedBackendSession {
             initialize,
             compatibility,
             method_successes,
+            thread_history_capabilities,
             thread_archive_capabilities,
             thread_branch_capabilities,
             config_defaults,
@@ -1395,6 +1416,42 @@ impl ManagedBackendSession {
         }
 
         Ok(None)
+    }
+
+    fn probe_thread_history_capability(
+        &mut self,
+        probe: ThreadHistoryCapabilityProbe,
+        timeout: Duration,
+    ) -> Result<ThreadHistoryCapabilityProbeResult, ManagedBackendError> {
+        let params = match probe {
+            ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView => {
+                let options = ThreadTurnsListOptions::page(1)
+                    .with_sort_direction(SortDirection::Desc)
+                    .with_items_view(TurnItemsView::NotLoaded);
+                serde_json::to_value(ThreadTurnsListParams::new(PROBE_THREAD_ID, &options))
+            }
+        }
+        .map_err(|source| ManagedBackendError::SerializeRequest {
+            method: probe.method().to_string(),
+            source,
+        })?;
+
+        match self.request_json(probe.method(), &params, timeout)? {
+            JsonRpcRequestOutcome::Result(_) => Ok(
+                ThreadHistoryCapabilityProbeResult::for_supported_probe(probe),
+            ),
+            JsonRpcRequestOutcome::Error(error) if error.code == JSONRPC_METHOD_NOT_FOUND => {
+                Err(required_thread_history_contract_error(probe, error))
+            }
+            JsonRpcRequestOutcome::Error(error)
+                if thread_turns_list_items_view_rejected(&error) =>
+            {
+                Err(required_thread_history_contract_error(probe, error))
+            }
+            JsonRpcRequestOutcome::Error(_) => Ok(
+                ThreadHistoryCapabilityProbeResult::for_supported_probe(probe),
+            ),
+        }
     }
 
     fn probe_thread_branch_capability(
@@ -1909,6 +1966,39 @@ impl Drop for ManagedBackendSession {
     }
 }
 
+fn thread_turns_list_items_view_rejected(error: &JsonRpcError) -> bool {
+    let message = error.message.to_ascii_lowercase();
+    let references_items_view = message.contains("itemsview")
+        || message.contains("items_view")
+        || (message.contains("items") && message.contains("view"));
+    let rejects_field = [
+        "unknown",
+        "unrecognized",
+        "unsupported",
+        "not supported",
+        "invalid",
+        "unexpected",
+        "not allowed",
+        "not permitted",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle));
+
+    references_items_view && rejects_field
+}
+
+fn required_thread_history_contract_error(
+    probe: ThreadHistoryCapabilityProbe,
+    error: JsonRpcError,
+) -> ManagedBackendError {
+    CompatibilityError::ThreadTurnsListItemsViewUnsupported {
+        method: probe.method(),
+        code: error.code,
+        message: error.message,
+    }
+    .into()
+}
+
 impl ManagedBackendProbeReport {
     pub fn initialize(&self) -> &InitializeResponse {
         &self.initialize
@@ -1920,6 +2010,10 @@ impl ManagedBackendProbeReport {
 
     pub fn method_successes(&self) -> &[ProbeMethodSuccess] {
         &self.method_successes
+    }
+
+    pub fn thread_history_capabilities(&self) -> &ThreadHistoryCapabilities {
+        &self.thread_history_capabilities
     }
 
     pub fn thread_archive_capabilities(&self) -> &ThreadArchiveCapabilities {

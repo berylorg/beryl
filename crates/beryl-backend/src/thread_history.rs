@@ -1,6 +1,34 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{SortDirection, ThreadInfo, ThreadSessionMetadata, ThreadSummary, TurnInfo};
+use crate::{
+    JsonRpcError, SortDirection, ThreadInfo, ThreadSessionMetadata, ThreadSummary, TurnInfo,
+    TurnItemsView,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThreadHistoryCapabilityProbe {
+    ThreadTurnsListItemsView,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThreadHistoryCapabilityReport {
+    probe_results: Vec<ThreadHistoryCapabilityProbeResult>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThreadHistoryCapabilityProbeResult {
+    probe: ThreadHistoryCapabilityProbe,
+    supported: bool,
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ThreadHistoryCapabilities {
+    thread_turns_list_items_view: bool,
+}
+
+pub(crate) const THREAD_HISTORY_CAPABILITY_PROBES: &[ThreadHistoryCapabilityProbe] =
+    &[ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +70,8 @@ pub struct ThreadTurnsListOptions {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_direction: Option<SortDirection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items_view: Option<TurnItemsView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,6 +109,8 @@ pub(crate) struct ThreadTurnsListParams<'a> {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_direction: Option<SortDirection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items_view: Option<TurnItemsView>,
 }
 
 impl ThreadResumeOptions {
@@ -120,6 +152,72 @@ impl ThreadReadOptions {
     }
 }
 
+impl ThreadHistoryCapabilityProbe {
+    pub fn method(self) -> &'static str {
+        match self {
+            Self::ThreadTurnsListItemsView => "thread/turns/list",
+        }
+    }
+}
+
+impl ThreadHistoryCapabilityReport {
+    pub(crate) fn new(probe_results: Vec<ThreadHistoryCapabilityProbeResult>) -> Self {
+        Self { probe_results }
+    }
+
+    pub fn probe_results(&self) -> &[ThreadHistoryCapabilityProbeResult] {
+        &self.probe_results
+    }
+
+    pub fn capabilities(&self) -> ThreadHistoryCapabilities {
+        let mut capabilities = ThreadHistoryCapabilities::default();
+
+        for result in &self.probe_results {
+            match result.probe {
+                ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView => {
+                    capabilities.thread_turns_list_items_view = result.supported;
+                }
+            }
+        }
+
+        capabilities
+    }
+}
+
+impl ThreadHistoryCapabilityProbeResult {
+    pub(crate) fn for_supported_probe(probe: ThreadHistoryCapabilityProbe) -> Self {
+        Self {
+            probe,
+            supported: true,
+            error: None,
+        }
+    }
+
+    pub fn probe(&self) -> ThreadHistoryCapabilityProbe {
+        self.probe
+    }
+
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn error(&self) -> Option<&JsonRpcError> {
+        self.error.as_ref()
+    }
+}
+
+impl ThreadHistoryCapabilities {
+    pub fn new(thread_turns_list_items_view: bool) -> Self {
+        Self {
+            thread_turns_list_items_view,
+        }
+    }
+
+    pub fn thread_turns_list_items_view(&self) -> bool {
+        self.thread_turns_list_items_view
+    }
+}
+
 impl ThreadTurnsListOptions {
     pub fn page(limit: u32) -> Self {
         Self {
@@ -135,6 +233,11 @@ impl ThreadTurnsListOptions {
 
     pub fn with_sort_direction(mut self, direction: SortDirection) -> Self {
         self.sort_direction = Some(direction);
+        self
+    }
+
+    pub fn with_items_view(mut self, items_view: TurnItemsView) -> Self {
+        self.items_view = Some(items_view);
         self
     }
 }
@@ -164,6 +267,7 @@ impl<'a> ThreadTurnsListParams<'a> {
             cursor: options.cursor.clone(),
             limit: options.limit,
             sort_direction: options.sort_direction,
+            items_view: options.items_view,
         }
     }
 }

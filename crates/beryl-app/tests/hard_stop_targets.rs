@@ -334,6 +334,7 @@ fn turn_started(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
         turn: TurnInfo {
             id: turn_id.to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },

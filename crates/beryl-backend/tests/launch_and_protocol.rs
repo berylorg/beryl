@@ -13,11 +13,11 @@ use beryl_backend::{
     HardStopTargetOutcome, InitializeResponse, ManagedBackendAuthMaterial,
     ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession,
     ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
-    ModelListOptions, ModelListResponse, NonSteerableTurnKind, SortDirection,
-    ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
-    ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey,
-    ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput,
-    active_turn_not_steerable_error,
+    ModelListOptions, ModelListResponse, NonSteerableTurnKind, REQUIRED_CODEX_APP_SERVER_VERSION,
+    SortDirection, ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
+    ThreadHistoryCapabilityProbe, ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse,
+    ThreadSortKey, ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus, TurnStreamEvent,
+    UserInput, active_turn_not_steerable_error,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
@@ -1704,6 +1704,158 @@ fn websocket_hard_stop_capability_probe_reports_optional_method_support() {
 }
 
 #[test]
+fn websocket_thread_history_probe_validates_required_items_view_contract() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/turns/list"));
+        assert_eq!(
+            request["params"],
+            json!({
+                "threadId": "00000000-0000-0000-0000-000000000000",
+                "limit": 1,
+                "sortDirection": "desc",
+                "itemsView": "notLoaded"
+            })
+        );
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32600,
+                        "message": "no rollout found for thread id"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let report = client
+        .probe_thread_history_capabilities(Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(report.probe_results().len(), 1);
+    assert_eq!(
+        report.probe_results()[0].probe(),
+        ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView
+    );
+    assert!(report.probe_results()[0].supported());
+    assert!(report.capabilities().thread_turns_list_items_view());
+    server.join().unwrap();
+}
+
+#[test]
+fn websocket_thread_history_probe_rejects_missing_required_items_view_contract() {
+    for (code, message) in [
+        (-32601, "method not found"),
+        (-32600, "unknown field `itemsView`"),
+        (-32600, "unsupported parameter: items view is not allowed"),
+    ] {
+        let (endpoint, server) = spawn_fake_app_server("Bearer test-token", move |mut socket| {
+            expect_initialize(&mut socket, 1);
+            expect_initialized(&mut socket);
+
+            let request = read_json(&mut socket);
+            assert_eq!(request["id"], json!(2));
+            assert_eq!(request["method"], json!("thread/turns/list"));
+            socket
+                .send(Message::text(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "error": {
+                            "code": code,
+                            "message": message
+                        }
+                    })
+                    .to_string(),
+                ))
+                .unwrap();
+        });
+        let launch = websocket_test_launch(endpoint.clone());
+        let mut client = ManagedBackendSession::connect_websocket(
+            launch,
+            endpoint,
+            "Bearer test-token".to_string(),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let error = client
+            .probe_thread_history_capabilities(Duration::from_secs(2))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ManagedBackendError::Compatibility(
+                CompatibilityError::ThreadTurnsListItemsViewUnsupported {
+                    method: "thread/turns/list",
+                    code: actual_code,
+                    message: actual_message,
+                }
+            ) if actual_code == code && actual_message == message
+        ));
+        server.join().unwrap();
+    }
+}
+
+#[test]
+fn websocket_thread_history_probe_treats_unrelated_probe_errors_as_contract_support() {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/turns/list"));
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32600,
+                        "message": "no rollout found for thread id"
+                    }
+                })
+                .to_string(),
+            ))
+            .unwrap();
+    });
+    let launch = websocket_test_launch(endpoint.clone());
+    let mut client = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+
+    let report = client
+        .probe_thread_history_capabilities(Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(
+        report.probe_results()[0].probe(),
+        ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView
+    );
+    assert!(report.probe_results()[0].supported());
+    assert!(report.capabilities().thread_turns_list_items_view());
+    server.join().unwrap();
+}
+
+#[test]
 fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
@@ -2019,7 +2171,7 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
                     "jsonrpc": "2.0",
                     "id": 1,
                     "result": {
-                        "userAgent": "codex-cli 0.128.0",
+                        "userAgent": app_server_user_agent("0.137.0"),
                         "codexHome": "C:/Users/example/.codex",
                         "platformFamily": "windows",
                         "platformOs": "windows"
@@ -2255,7 +2407,7 @@ fn websocket_account_rate_limits_read_uses_null_params_and_deserializes_multi_bu
 #[test]
 fn compatibility_probe_responses_deserialize_from_observed_shapes() {
     let initialize: InitializeResponse = serde_json::from_value(json!({
-        "userAgent": "codex-cli 0.118.0",
+        "userAgent": app_server_user_agent("0.137.0"),
         "codexHome": "C:/Users/example/.codex",
         "platformFamily": "windows",
         "platformOs": "windows"
@@ -2527,7 +2679,7 @@ fn config_read_options_serialize_cwd_and_layer_controls() {
 #[test]
 fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
     let host_snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
-        user_agent: "codex-cli 0.118.0".to_string(),
+        user_agent: app_server_user_agent("0.137.0"),
         codex_home: "C:/Users/example/.codex".to_string(),
         platform_family: "windows".to_string(),
         platform_os: "windows".to_string(),
@@ -2587,7 +2739,7 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
     ));
 
     let wsl_snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
-        user_agent: "codex-cli 0.118.0".to_string(),
+        user_agent: app_server_user_agent("0.137.0"),
         codex_home: "/home/example/.codex".to_string(),
         platform_family: "unix".to_string(),
         platform_os: "linux".to_string(),
@@ -2599,6 +2751,81 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         }),
         Ok(())
     );
+}
+
+#[test]
+fn websocket_initialize_version_gate_accepts_exact_required_version_before_contract_probes() {
+    let user_agent = app_server_user_agent(REQUIRED_CODEX_APP_SERVER_VERSION);
+    if let Err(error) = run_websocket_initialize_version_gate(Some(user_agent), true) {
+        panic!("expected initialize userAgent to pass version gate: {error}");
+    }
+}
+
+#[test]
+fn websocket_initialize_rejects_missing_malformed_legacy_and_nonmatching_app_server_versions() {
+    let missing = run_websocket_initialize_version_gate(None, false);
+    assert!(matches!(
+        missing,
+        Err(ManagedBackendError::Compatibility(
+            CompatibilityError::AppServerVersionMissing {
+                required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+            }
+        ))
+    ));
+
+    let malformed = run_websocket_initialize_version_gate(
+        Some("beryl/0.137 (Windows 10.0.26200; aarch64)".to_string()),
+        false,
+    );
+    assert!(matches!(
+        malformed,
+        Err(ManagedBackendError::Compatibility(
+            CompatibilityError::AppServerVersionUnrecognized {
+                required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                user_agent,
+            }
+        )) if user_agent == "beryl/0.137 (Windows 10.0.26200; aarch64)"
+    ));
+
+    let legacy_shape =
+        run_websocket_initialize_version_gate(Some("codex-cli 0.137.0".to_string()), false);
+    assert!(matches!(
+        legacy_shape,
+        Err(ManagedBackendError::Compatibility(
+            CompatibilityError::AppServerVersionUnrecognized {
+                required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                user_agent,
+            }
+        )) if user_agent == "codex-cli 0.137.0"
+    ));
+
+    let older =
+        run_websocket_initialize_version_gate(Some(app_server_user_agent("0.128.0")), false);
+    assert!(matches!(
+        older,
+        Err(ManagedBackendError::Compatibility(
+            CompatibilityError::AppServerVersionMismatch {
+                required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                actual_version,
+                user_agent,
+            }
+        )) if actual_version == "0.128.0" && user_agent == app_server_user_agent("0.128.0")
+    ));
+
+    for version in ["0.138.0", "1.0.0"] {
+        let newer =
+            run_websocket_initialize_version_gate(Some(app_server_user_agent(version)), false);
+        assert!(matches!(
+            newer,
+            Err(ManagedBackendError::Compatibility(
+                CompatibilityError::AppServerVersionMismatch {
+                    required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                    actual_version,
+                    user_agent,
+                }
+            )) if actual_version == version && user_agent == app_server_user_agent(version)
+        ));
+    }
 }
 
 #[test]
@@ -2637,6 +2864,66 @@ fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpe
         endpoint,
         r"C:\tmp\beryl-token.txt",
     )
+}
+
+fn app_server_user_agent(version: &str) -> String {
+    format!("beryl/{version} (Windows 10.0.26200; aarch64) WindowsTerminal (beryl; 0.1.0)")
+}
+
+fn run_websocket_initialize_version_gate(
+    user_agent: Option<String>,
+    expect_initialized_notification: bool,
+) -> Result<(), ManagedBackendError> {
+    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", move |mut socket| {
+        let request = read_json(&mut socket);
+        assert_eq!(request["jsonrpc"], json!("2.0"));
+        assert_eq!(request["id"], json!(1));
+        assert_eq!(request["method"], json!("initialize"));
+        assert_eq!(request["params"]["clientInfo"]["name"], json!("beryl"));
+        assert_eq!(
+            request["params"]["capabilities"]["experimentalApi"],
+            json!(true)
+        );
+        assert_thread_started_not_opted_out(&request);
+
+        let mut result = json!({
+            "codexHome": "C:/Users/example/.codex",
+            "platformFamily": "windows",
+            "platformOs": "windows"
+        });
+        if let Some(user_agent) = user_agent {
+            result["userAgent"] = json!(user_agent);
+        }
+
+        socket
+            .send(Message::text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": result
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        if expect_initialized_notification {
+            expect_initialized(&mut socket);
+        }
+    });
+
+    let launch = websocket_test_launch(endpoint.clone());
+    let result = ManagedBackendSession::connect_websocket(
+        launch,
+        endpoint,
+        "Bearer test-token".to_string(),
+        Duration::from_secs(2),
+    );
+    let result = result.map(|mut client| {
+        client.shutdown().unwrap();
+    });
+
+    server.join().unwrap();
+    result
 }
 
 fn spawn_fake_app_server<F>(
@@ -2686,15 +2973,15 @@ fn expect_initialize(socket: &mut WebSocket<TcpStream>, request_id: u64) {
     socket
         .send(Message::text(
             json!({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {
-                    "userAgent": "codex-cli 0.125.0",
-                    "codexHome": "C:/Users/example/.codex",
-                    "platformFamily": "windows",
-                    "platformOs": "windows"
-                }
-            })
+                    "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "userAgent": app_server_user_agent(REQUIRED_CODEX_APP_SERVER_VERSION),
+                "codexHome": "C:/Users/example/.codex",
+                "platformFamily": "windows",
+                "platformOs": "windows"
+                    }
+                })
             .to_string(),
         ))
         .unwrap();

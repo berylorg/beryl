@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize, de};
 use serde_json::Value;
 use thiserror::Error;
 
+pub const REQUIRED_CODEX_APP_SERVER_VERSION: &str = "0.137.0";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProtocolPhase {
     #[serde(rename = "commentary")]
@@ -23,6 +25,7 @@ pub enum BackendEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeResponse {
+    #[serde(default)]
     pub user_agent: String,
     pub codex_home: String,
     pub platform_family: String,
@@ -81,6 +84,7 @@ const REQUIRED_COMPATIBILITY_PROBES: &[CompatibilityProbe] = &[
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompatibilitySnapshot {
+    user_agent: String,
     platform_family: String,
     platform_os: String,
     requires_method_probes: bool,
@@ -89,10 +93,15 @@ pub struct CompatibilitySnapshot {
 impl CompatibilitySnapshot {
     pub fn from_initialize_response(response: &InitializeResponse) -> Self {
         Self {
+            user_agent: response.user_agent.clone(),
             platform_family: response.platform_family.clone(),
             platform_os: response.platform_os.clone(),
             requires_method_probes: true,
         }
+    }
+
+    pub fn user_agent(&self) -> &str {
+        &self.user_agent
     }
 
     pub fn platform_family(&self) -> &str {
@@ -115,6 +124,8 @@ impl CompatibilitySnapshot {
         &self,
         runtime_mode: &RuntimeMode,
     ) -> Result<(), CompatibilityError> {
+        self.validate_required_app_server_version()?;
+
         let (expected_platform_family, expected_platform_os) = match runtime_mode {
             RuntimeMode::HostWindows => ("windows", "windows"),
             RuntimeMode::WslLinux { .. } => ("unix", "linux"),
@@ -138,10 +149,115 @@ impl CompatibilitySnapshot {
 
         Ok(())
     }
+
+    fn validate_required_app_server_version(&self) -> Result<(), CompatibilityError> {
+        let Some(actual_version) = parse_codex_app_server_user_agent(&self.user_agent) else {
+            if self.user_agent.trim().is_empty() {
+                return Err(CompatibilityError::AppServerVersionMissing {
+                    required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                });
+            }
+
+            return Err(CompatibilityError::AppServerVersionUnrecognized {
+                required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                user_agent: self.user_agent.clone(),
+            });
+        };
+        let required_version = CodexAppServerVersion::parse(REQUIRED_CODEX_APP_SERVER_VERSION)
+            .expect("required version is valid");
+
+        if actual_version != required_version {
+            return Err(CompatibilityError::AppServerVersionMismatch {
+                required_version: REQUIRED_CODEX_APP_SERVER_VERSION,
+                actual_version: actual_version.to_string(),
+                user_agent: self.user_agent.clone(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct CodexAppServerVersion {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+
+impl CodexAppServerVersion {
+    fn parse(value: &str) -> Option<Self> {
+        let mut parts = value.split('.');
+        let major = parse_version_component(parts.next()?)?;
+        let minor = parse_version_component(parts.next()?)?;
+        let patch = parse_version_component(parts.next()?)?;
+        if parts.next().is_some() {
+            return None;
+        }
+
+        Some(Self {
+            major,
+            minor,
+            patch,
+        })
+    }
+}
+
+impl std::fmt::Display for CodexAppServerVersion {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+fn parse_codex_app_server_user_agent(user_agent: &str) -> Option<CodexAppServerVersion> {
+    let product = user_agent.split_whitespace().next()?;
+    let (name, version) = product.split_once('/')?;
+    if name != "beryl" {
+        return None;
+    }
+    CodexAppServerVersion::parse(version)
+}
+
+fn parse_version_component(value: &str) -> Option<u16> {
+    if value.is_empty()
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+        || (value.len() > 1 && value.starts_with('0'))
+    {
+        return None;
+    }
+
+    value.parse().ok()
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum CompatibilityError {
+    #[error(
+        "backend initialize response did not include a Codex App Server version; required exactly {required_version}"
+    )]
+    AppServerVersionMissing { required_version: &'static str },
+    #[error(
+        "backend userAgent {user_agent:?} did not start with `beryl/<major.minor.patch>`; required exactly {required_version}"
+    )]
+    AppServerVersionUnrecognized {
+        required_version: &'static str,
+        user_agent: String,
+    },
+    #[error(
+        "backend Codex App Server version {actual_version} does not match required {required_version} from userAgent {user_agent:?}"
+    )]
+    AppServerVersionMismatch {
+        required_version: &'static str,
+        actual_version: String,
+        user_agent: String,
+    },
+    #[error(
+        "backend does not satisfy required transcript history contract: {method} with itemsView was rejected with JSON-RPC code {code}: {message}"
+    )]
+    ThreadTurnsListItemsViewUnsupported {
+        method: &'static str,
+        code: i64,
+        message: String,
+    },
     #[error(
         "runtime mode {runtime_mode} requires backend platform family {expected_platform_family}, got {actual_platform_family}"
     )]

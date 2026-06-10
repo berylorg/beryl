@@ -200,6 +200,7 @@ fn turn_with_compaction_item_then_idle_finishes() {
             turn: TurnInfo {
                 id: "turn_1".to_string(),
                 status: TurnStatus::Completed,
+                items_view: beryl_backend::TurnItemsView::Full,
                 items: vec![context_compaction_item()],
                 error: None,
             },

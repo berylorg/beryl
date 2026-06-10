@@ -2519,6 +2519,14 @@ impl Render for TranscriptPanel {
                                                     turn_count,
                                                     viewport_bounds.size.height * 0.5,
                                                 );
+                                                let detail_shell = shell.clone();
+                                                window.defer(cx, move |window, cx| {
+                                                    detail_shell.update(cx, |shell, cx| {
+                                                        shell.begin_transcript_turn_detail_loads_for_current_viewport(
+                                                            window, cx,
+                                                        );
+                                                    });
+                                                });
                                                 let preload_started = Instant::now();
                                                 view.preload_transcript_media_range(
                                                     preload_range,

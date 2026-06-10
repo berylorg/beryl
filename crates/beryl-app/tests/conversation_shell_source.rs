@@ -241,7 +241,7 @@ fn pending_thread_activation_preserves_visible_transcript_until_history_apply() 
 
     assert!(begin_activation_body.contains("self.pending_thread_activation = Some"));
     assert!(begin_activation_body.contains("self.notices.clear_all()"));
-    assert!(begin_activation_body.contains("self.transcript_branch_menu.close()"));
+    assert!(begin_activation_body.contains("self.close_transcript_branch_menu()"));
     assert!(begin_activation_body.contains("self.cancel_transcript_edit_mode()"));
     assert!(!begin_activation_body.contains("self.execution_details"));
     assert!(!begin_activation_body.contains("self.transcript_presentation"));
@@ -794,6 +794,346 @@ fn new_thread_control_state_uses_cached_workspace_target() {
 }
 
 #[test]
+fn transcript_prepaint_schedules_detail_loads_from_current_view() {
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+
+    assert!(transcript_source.contains("let detail_shell = shell.clone();"));
+    assert!(transcript_source.contains(
+        "window.defer(cx, move |window, cx| {\n                                                    detail_shell.update(cx, |shell, cx| {\n                                                        shell.begin_transcript_turn_detail_loads_for_current_viewport"
+    ) || transcript_source.contains(
+        "window.defer(cx, move |window, cx| {\r\n                                                    detail_shell.update(cx, |shell, cx| {\r\n                                                        shell.begin_transcript_turn_detail_loads_for_current_viewport"
+    ));
+    assert!(!transcript_source.contains("shell.begin_transcript_turn_detail_loads_for_viewport"));
+    assert!(!transcript_source.contains(
+        "shell.update(cx, |shell, cx| {\n                                                    shell\n                                                        .begin_transcript_turn_detail_loads_for_viewport"
+    ));
+    assert!(!transcript_source.contains(
+        "shell.update(cx, |shell, cx| {\r\n                                                    shell\r\n                                                        .begin_transcript_turn_detail_loads_for_viewport"
+    ));
+}
+
+#[test]
+fn transcript_scroll_schedules_detail_loads_without_waiting_for_prepaint() {
+    let shell_source = include_str!("../src/shell.rs");
+    let scroll_body = rust_function_body(shell_source, "fn apply_transcript_scroll_command");
+    let scroll_event_body = rust_function_body(shell_source, "fn note_transcript_scroll_event");
+
+    assert!(scroll_body.contains("self.notify_transcript_panel(cx);"));
+    assert!(scroll_body.contains("self.normalize_transcript_detail_placeholder_scroll_anchor();"));
+    assert!(
+        scroll_body
+            .contains("self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx)")
+    );
+    assert!(
+        scroll_event_body.contains("self.normalize_transcript_detail_placeholder_scroll_anchor();")
+    );
+    assert!(
+        scroll_body
+            .contains("self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);")
+    );
+    assert!(
+        scroll_event_body
+            .contains("self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx)")
+    );
+    assert!(
+        scroll_event_body
+            .contains("self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);")
+    );
+}
+
+#[test]
+fn transcript_detail_scheduler_uses_newest_visible_turn_first() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let order_body = rust_function_body(detail_source, "fn transcript_turn_detail_viewport_order");
+
+    assert!(order_body.contains("TranscriptTurnDetailViewportOrder::NewestFirst"));
+    assert!(!order_body.contains("TranscriptTurnDetailViewportOrder::OldestFirst"));
+}
+
+#[test]
+fn transcript_detail_tail_scheduling_targets_latest_row_before_broad_visible_range() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let viewport_body = rust_function_body(
+        detail_source,
+        "pub(super) fn begin_transcript_turn_detail_loads_for_current_viewport",
+    );
+    let latest_missing_body =
+        rust_function_body(detail_source, "fn latest_source_turn_missing_detail_range");
+
+    assert!(viewport_body.contains("ListScrollPosition::Bottom"));
+    assert!(viewport_body.contains("ListScrollPosition::VirtualTail"));
+    assert!(viewport_body.contains("latest_source_turn_missing_detail_range"));
+    assert!(viewport_body.contains("let visible_range = list_state.visible_range();"));
+    assert!(viewport_body.contains("let priority_range = match scroll_position"));
+    assert!(viewport_body.contains("unwrap_or_else(|| visible_range.clone())"));
+    assert!(viewport_body.contains("(priority_range, visible_range, order)"));
+    assert!(detail_source.contains("from_priority_and_retained"));
+    assert!(latest_missing_body.contains("TranscriptTurnDetailStatus::Missing"));
+}
+
+#[test]
+fn transcript_detail_apply_preserves_user_scrolled_loaded_row_anchor() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let apply_body = rust_function_body(
+        detail_source,
+        "pub(super) fn finish_loading_transcript_turn_details",
+    );
+
+    assert!(apply_body.contains("let visible_range_before_apply"));
+    assert!(apply_body.contains("let content_anchor_before_apply"));
+    assert!(apply_body.contains("let preserve_loaded_row_anchor"));
+    assert!(apply_body.contains("anchor.item_ix == row_index"));
+    assert!(apply_body.contains("self.transcript_list_state.scroll_to_position"));
+}
+
+#[test]
+fn transcript_detail_poll_does_not_reschedule_before_layout_feedback() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let poll_body = rust_function_body(
+        detail_source,
+        "pub(super) fn poll_transcript_turn_detail_updates",
+    );
+
+    assert!(!poll_body.contains("begin_transcript_turn_detail_loads_for_current_viewport"));
+    assert!(poll_body.contains("self.transcript_turn_detail_task = None;"));
+}
+
+#[test]
+fn composer_image_label_sync_schedules_validation_before_minimal_scan() {
+    let sync_source = include_str!("../src/shell/composer_image_label_sync.rs");
+    let scheduler_body = rust_function_body(
+        sync_source,
+        "pub(super) fn begin_composer_image_label_sync_if_needed",
+    );
+    let validation_finish_body = rust_function_body(
+        sync_source,
+        "fn finish_composer_image_label_validation_worker",
+    );
+    let scan_finish_body =
+        rust_function_body(sync_source, "fn finish_composer_image_label_scan_worker");
+
+    assert!(scheduler_body.contains("composer_image_label_validation_receiver.is_some()"));
+    assert!(scheduler_body.contains("TranscriptTurnDetailTask::has_active_tickets"));
+    assert!(
+        scheduler_body.contains(
+            "ConversationSurfaceState::selected_thread_needing_composer_image_label_sync"
+        )
+    );
+    assert!(scheduler_body.contains("ComposerImageLabelHistorySyncRequest::Validate"));
+    assert!(scheduler_body.contains("spawn_composer_image_label_validation_worker"));
+    assert!(scheduler_body.contains("ComposerImageLabelHistorySyncRequest::Scan"));
+    assert!(scheduler_body.contains("spawn_composer_image_label_scan_worker_for_plan"));
+    assert!(scheduler_body.contains("ComposerImageLabelScanPlan::FullCurrentHistory"));
+
+    assert!(validation_finish_body.contains("composer_image_label_task_matches_selected"));
+    assert!(
+        validation_finish_body.contains("ComposerImageLabelFrontierValidationOutcome::CacheValid")
+    );
+    assert!(
+        validation_finish_body.contains("ComposerImageLabelFrontierValidationOutcome::AppendOnly")
+    );
+    assert!(validation_finish_body.contains("ComposerImageLabelScanPlan::AppendOnlySuffix"));
+    assert!(
+        validation_finish_body
+            .contains("ComposerImageLabelFrontierValidationOutcome::UnknownMutation")
+    );
+    assert!(validation_finish_body.contains("ComposerImageLabelScanPlan::FullCurrentHistory"));
+    assert!(scan_finish_body.contains("composer_image_label_task_matches_selected"));
+}
+
+#[test]
+fn composer_image_label_sync_stays_below_visible_transcript_detail_priority() {
+    let shell_source = include_str!("../src/shell.rs");
+    let sync_source = include_str!("../src/shell/composer_image_label_sync.rs");
+    let poll_body = rust_function_body(shell_source, "fn poll(&mut self");
+    let scheduler_body = rust_function_body(
+        sync_source,
+        "pub(super) fn begin_composer_image_label_sync_if_needed",
+    );
+
+    assert_order(
+        poll_body,
+        "poll_transcript_turn_detail_updates",
+        "poll_composer_image_label_validation_updates",
+    );
+    assert_order(
+        poll_body,
+        "poll_composer_image_label_scan_updates",
+        "begin_composer_image_label_sync_if_needed",
+    );
+    assert!(scheduler_body.contains("self.thread_history_page_receiver.is_some()"));
+    assert!(scheduler_body.contains("TranscriptTurnDetailTask::has_active_tickets"));
+}
+
+#[test]
+fn composer_image_label_sync_treats_not_loaded_thread_history_as_unscanned() {
+    let shell_source = include_str!("../src/shell.rs");
+    let load_body = rust_function_body(shell_source, "fn load_thread_history_window");
+
+    assert!(load_body.contains("skeleton_partial_turns"));
+    assert!(load_body.contains("history_window.has_older_pages() || skeleton_partial_turns"));
+    assert!(!load_body.contains("history_window.has_older_pages() && !skeleton_partial_turns"));
+}
+
+#[test]
+fn composer_image_paste_completion_rechecks_scope_and_readiness_before_allocating_label() {
+    let shell_source = include_str!("../src/shell.rs");
+    let begin_body = rust_function_body(shell_source, "fn begin_composer_image_asset_paste");
+    let poll_body = rust_function_body(shell_source, "fn poll_composer_image_asset_updates");
+    let finish_body = rust_function_body(shell_source, "fn finish_composer_image_asset_paste");
+
+    assert!(begin_body.contains("composer_clipboard_label_scope"));
+    assert!(begin_body.contains("label_scope"));
+    assert!(poll_body.contains("finish_composer_image_asset_paste(result, window, cx)"));
+    assert!(finish_body.contains("is_composer_clipboard_label_scope_current"));
+    assert!(finish_body.contains("ensure_composer_image_paste_readiness(window, cx)"));
+    assert!(finish_body.contains("try_allocate_composer_image_label"));
+    assert_order(
+        finish_body,
+        "is_composer_clipboard_label_scope_current",
+        "ensure_composer_image_paste_readiness(window, cx)",
+    );
+    assert_order(
+        finish_body,
+        "ensure_composer_image_paste_readiness(window, cx)",
+        "try_allocate_composer_image_label",
+    );
+    assert_order(
+        finish_body,
+        "try_allocate_composer_image_label",
+        "stage_image",
+    );
+}
+
+#[test]
+fn composer_cross_scope_marker_paste_uses_guarded_label_allocation() {
+    let shell_source = include_str!("../src/shell.rs");
+    let paste_body =
+        rust_function_body(shell_source, "fn paste_resolved_composer_clipboard_payload");
+    let mapping_body =
+        rust_function_body(shell_source, "fn composer_clipboard_paste_label_mapping");
+
+    assert_order(
+        paste_body,
+        "ensure_composer_image_paste_readiness(window, cx)",
+        "composer_clipboard_paste_label_mapping",
+    );
+    assert!(mapping_body.contains("if same_scope"));
+    assert!(mapping_body.contains("try_allocate_composer_image_label"));
+    assert!(!mapping_body.contains("surface.allocate_composer_image_label()"));
+}
+
+#[test]
+fn image_draft_submit_and_edit_start_recheck_label_readiness_before_mutating() {
+    let shell_source = include_str!("../src/shell.rs");
+    let edit_mode_source = include_str!("../src/shell/transcript_edit_mode.rs");
+    let queue_body = rust_function_body(shell_source, "fn queue_turn_from_composer(");
+    let edit_start_body = rust_function_body(
+        edit_mode_source,
+        "pub(crate) fn begin_transcript_edit_mode_from_request",
+    );
+
+    assert_order(
+        queue_body,
+        "ensure_composer_image_paste_readiness(window, cx)",
+        "queue_transcript_edit_commit_from_composer",
+    );
+    assert_order(
+        queue_body,
+        "ensure_composer_image_paste_readiness(window, cx)",
+        "begin_composer_image_delivery",
+    );
+    assert!(edit_start_body.contains("request.target().draft_seed().contains_images()"));
+    assert_order(
+        edit_start_body,
+        "ensure_composer_image_paste_readiness(window, cx)",
+        "begin_transcript_edit_mode(request)",
+    );
+    assert_order(
+        edit_start_body,
+        "ensure_composer_image_paste_readiness(window, cx)",
+        "populate_composer_for_transcript_edit",
+    );
+}
+
+#[test]
+fn selected_thread_inventory_activity_change_invalidates_image_label_cache_for_validation() {
+    let inventory_source = include_str!("../src/shell/member_thread_inventory.rs");
+    let sync_source = include_str!("../src/shell/composer_image_label_sync.rs");
+    let refresh_body = rust_function_body(
+        inventory_source,
+        "fn finish_member_thread_inventory_refresh",
+    );
+    let invalidation_body = rust_function_body(
+        sync_source,
+        "pub(super) fn mark_selected_thread_image_labels_need_validation_if_updated",
+    );
+
+    assert!(refresh_body.contains("selected_thread_updated_at"));
+    assert!(refresh_body.contains("mark_selected_thread_image_labels_need_validation_if_updated"));
+    assert_order(
+        refresh_body,
+        "selected_thread_updated_at",
+        "finish_refresh_for_token",
+    );
+    assert!(invalidation_body.contains("thread.updated_at == updated_at"));
+    assert!(invalidation_body.contains("mark_thread_history_needs_validation"));
+}
+
+#[test]
+fn image_label_worker_completion_is_guarded_after_in_flight_invalidation() {
+    let sync_source = include_str!("../src/shell/composer_image_label_sync.rs");
+    let labels_source = include_str!("../src/shell/composer_image_labels.rs");
+    let invalidation_body = rust_function_body(
+        labels_source,
+        "pub(super) fn mark_thread_history_needs_validation",
+    );
+    let scan_finish_body = rust_function_body(
+        labels_source,
+        "pub(super) fn finish_in_flight_thread_history_scan_with_frontier",
+    );
+    let worker_finish_body =
+        rust_function_body(sync_source, "fn finish_composer_image_label_scan_worker");
+    let begin_after_validation_body = rust_function_body(
+        sync_source,
+        "    fn begin_composer_image_label_scan_after_validation",
+    );
+
+    assert!(invalidation_body.contains("ComposerImageLabelHistoryState::Validating { frontier }"));
+    assert!(invalidation_body.contains("ComposerImageLabelHistoryState::NeedsValidation"));
+    assert!(invalidation_body.contains("ComposerImageLabelHistoryState::Scanning { .. }"));
+    assert!(invalidation_body.contains("ComposerImageLabelHistoryState::NeedsScan"));
+    assert!(scan_finish_body.contains("ComposerImageLabelHistoryState::Scanning { .. }"));
+    assert!(worker_finish_body.contains("if surface.finish_composer_image_label_scan("));
+    assert_order(
+        worker_finish_body,
+        "if surface.finish_composer_image_label_scan(",
+        "surface.clear_notice_with_title",
+    );
+    assert!(worker_finish_body.contains("fail_in_flight_composer_image_label_scan"));
+    assert_order(
+        begin_after_validation_body,
+        "surface.begin_composer_image_label_scan_after_validation",
+        "backend_client_connector",
+    );
+}
+
+#[test]
+fn transcript_detail_scroll_anchor_normalizes_loading_placeholders_to_row_top() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let normalize_body = rust_function_body(
+        detail_source,
+        "pub(super) fn normalize_transcript_detail_placeholder_scroll_anchor",
+    );
+
+    assert!(normalize_body.contains("anchor.offset_in_item <= px(0.0)"));
+    assert!(normalize_body.contains("TranscriptTurnDetailStatus::Missing"));
+    assert!(normalize_body.contains("has_history_detail_loading_placeholder"));
+    assert!(normalize_body.contains("item_ix: anchor.item_ix"));
+    assert!(normalize_body.contains("offset_in_item: px(0.0)"));
+}
+
+#[test]
 fn backend_unavailable_commands_gate_before_mutating_drafts_or_threads() {
     let shell_source = include_str!("../src/shell.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
@@ -1171,8 +1511,10 @@ fn backend_unavailable_target_gates_are_target_scoped() {
     assert!(queue_steering_fallback_body.contains("ShellState::BackendUnavailable(unavailable)"));
     assert!(queue_steering_fallback_body.contains("registered_thread_execution_target"));
     assert!(context_compaction_queue_body.contains("ShellState::BackendUnavailable(unavailable)"));
-    assert!(older_history_page_body.contains("ShellState::BackendUnavailable(unavailable)"));
-    assert!(older_history_page_body.contains("connector.launch_spec().runtime_mode().clone()"));
+    assert!(older_history_page_body.contains("ShellState::Ready(ready)"));
+    assert!(older_history_page_body.contains("ShellState::BackendUnavailable(_)"));
+    assert!(!older_history_page_body.contains("ShellState::BackendUnavailable(unavailable)"));
+    assert!(!older_history_page_body.contains("connector.launch_spec().runtime_mode().clone()"));
     assert!(!older_history_page_body.contains("| ShellState::BackendUnavailable(_)"));
     assert!(status_operation_event_body.contains("ShellState::BackendUnavailable(unavailable)"));
     assert!(status_operation_event_body.contains("selected_thread_registered_execution_target"));
@@ -1723,6 +2065,89 @@ fn decision_branch_bootstrap_uses_visible_parent_context_source_content() {
     assert!(context_source.contains("parent_context_source: Option<&'a str>"));
     assert!(context_source.contains("Parent context source content:"));
     assert!(context_source.contains("bootstrap turn records context"));
+}
+
+#[test]
+fn transcript_detail_ui_pins_are_production_retention_only_hooks() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let cache_source = include_str!("../src/shell/transcript_history/detail_cache.rs");
+    let branch_menu_source = include_str!("../src/shell/transcript_branch_menu.rs");
+    let edit_mode_source = include_str!("../src/shell/transcript_edit_mode.rs");
+    let transcript_live_rows_source = include_str!("../src/shell/transcript_live_rows.rs");
+
+    let sync_body = rust_function_body(
+        detail_source,
+        "pub(super) fn sync_transcript_turn_detail_ui_pins",
+    );
+    assert!(sync_body.contains("TranscriptTurnDetailPinKind::ActiveContextMenu"));
+    assert!(sync_body.contains("TranscriptTurnDetailPinKind::EditTarget"));
+    assert!(sync_body.contains("TranscriptTurnDetailPinKind::MediaActionTarget"));
+    assert!(sync_body.contains("TranscriptTurnDetailPinKind::ActiveTurn"));
+    assert!(sync_body.contains("release_unpinned_transcript_turn_details_for_current_viewport"));
+    assert!(!sync_body.contains("schedule_viewport_full_details"));
+    assert!(!sync_body.contains("begin_loading"));
+
+    assert!(!cache_source.contains("ActiveSelection"));
+    assert!(!cache_source.contains("QuotePopup"));
+    assert!(!cache_source.contains("VisibleRange"));
+    assert!(!cache_source.contains("Overscan"));
+
+    let close_menu_body = rust_function_body(
+        branch_menu_source,
+        "pub(crate) fn close_transcript_branch_menu",
+    );
+    assert!(close_menu_body.contains("sync_transcript_turn_detail_ui_pins"));
+    let open_menu_body = rust_function_body(
+        branch_menu_source,
+        "pub(crate) fn open_transcript_branch_menu_for_row",
+    );
+    assert_order(
+        open_menu_body,
+        ".open_menu_with_title_update",
+        "sync_transcript_turn_detail_ui_pins",
+    );
+    let accept_branch_body = rust_function_body(
+        branch_menu_source,
+        "fn accept_transcript_branch_menu_action",
+    );
+    assert_order(
+        accept_branch_body,
+        "dispatch_transcript_branch_request",
+        "sync_transcript_turn_detail_ui_pins",
+    );
+    let accept_edit_body = rust_function_body(
+        branch_menu_source,
+        "pub(crate) fn edit_transcript_turn_from_menu",
+    );
+    assert_order(
+        accept_edit_body,
+        "begin_transcript_edit_mode_from_request",
+        "sync_transcript_turn_detail_ui_pins",
+    );
+
+    let begin_edit_body =
+        rust_function_body(edit_mode_source, "pub(crate) fn begin_transcript_edit_mode");
+    let cancel_edit_body = rust_function_body(
+        edit_mode_source,
+        "pub(crate) fn cancel_transcript_edit_mode",
+    );
+    let reconcile_edit_body = rust_function_body(
+        edit_mode_source,
+        "pub(crate) fn reconcile_transcript_edit_mode",
+    );
+    assert!(begin_edit_body.contains("sync_transcript_turn_detail_ui_pins"));
+    assert!(cancel_edit_body.contains("sync_transcript_turn_detail_ui_pins"));
+    assert!(reconcile_edit_body.contains("sync_transcript_turn_detail_ui_pins"));
+
+    let live_sync_body = rust_function_body(
+        transcript_live_rows_source,
+        "pub(super) fn sync_live_transcript_rows",
+    );
+    assert_order(
+        live_sync_body,
+        "sync_live_transcript_rows(",
+        "sync_transcript_turn_detail_ui_pins",
+    );
 }
 
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {

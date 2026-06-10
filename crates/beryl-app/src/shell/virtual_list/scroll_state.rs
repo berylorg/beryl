@@ -49,14 +49,11 @@ impl StateInner {
         scroll_top: &ListOffset,
         height: Pixels,
         delta: Point<Pixels>,
-        current_view: EntityId,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    ) -> Option<ListScrollEvent> {
         // Drop scroll events after a reset, since we can't calculate
         // the new logical scroll top without the item heights
         if self.reset {
-            return;
+            return None;
         }
 
         let padding = self.last_padding.unwrap_or_default();
@@ -65,21 +62,11 @@ impl StateInner {
             .min(self.effective_scroll_max(height, &padding));
         self.set_scroll_position_from_scroll_top(new_scroll_top, height, &padding);
 
-        if self.scroll_handler.is_some() {
-            let visible_range = self.current_visible_range();
-            let is_scrolled = self.is_scrolled(height, &padding);
-            self.scroll_handler.as_mut().unwrap()(
-                &ListScrollEvent {
-                    visible_range,
-                    count: self.items.summary().count,
-                    is_scrolled,
-                },
-                window,
-                cx,
-            );
-        }
-
-        cx.notify(current_view);
+        Some(ListScrollEvent {
+            visible_range: self.current_visible_range(),
+            count: self.items.summary().count,
+            is_scrolled: self.is_scrolled(height, &padding),
+        })
     }
 
     pub(super) fn logical_scroll_top(&self) -> ListOffset {

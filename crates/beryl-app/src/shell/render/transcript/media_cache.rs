@@ -208,6 +208,7 @@ fn schedule_media_load(
                         image.image_asset_key_hash(),
                     )
                 });
+                let file_read_count = completion.file_read_count();
                 let result = view.media_cache.borrow_mut().complete_load(completion);
                 let mut event = MediaDiagnosticEvent::new("transcript_media_load_completed");
                 event.outcome = Some(
@@ -221,6 +222,7 @@ fn schedule_media_load(
                     .to_string(),
                 );
                 event.row_identity = row_identity.clone();
+                event.file_read_count = Some(file_read_count);
                 if let Some((
                     format,
                     backing_kind,

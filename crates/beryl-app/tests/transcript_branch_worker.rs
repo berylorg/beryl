@@ -881,6 +881,7 @@ fn turn_start_response(id: &str) -> TurnStartResponse {
         turn: TurnInfo {
             id: id.to_string(),
             status: TurnStatus::InProgress,
+            items_view: beryl_backend::TurnItemsView::Full,
             items: Vec::new(),
             error: None,
         },
@@ -948,6 +949,7 @@ fn turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: Vec::new(),
         error: None,
     }
@@ -967,6 +969,7 @@ fn completed_bootstrap_turn(turn_id: &str, message: &str) -> TurnInfo {
     TurnInfo {
         id: turn_id.to_string(),
         status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(beryl_backend::UserMessageItem {
             id: "user_message".to_string(),
             content: vec![UserInput::Text {
