@@ -819,14 +819,12 @@ fn transcript_scroll_schedules_detail_loads_without_waiting_for_prepaint() {
     let scroll_event_body = rust_function_body(shell_source, "fn note_transcript_scroll_event");
 
     assert!(scroll_body.contains("self.notify_transcript_panel(cx);"));
-    assert!(scroll_body.contains("self.normalize_transcript_detail_placeholder_scroll_anchor();"));
+    assert!(!scroll_body.contains("normalize_transcript_detail_placeholder_scroll_anchor"));
     assert!(
         scroll_body
             .contains("self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx)")
     );
-    assert!(
-        scroll_event_body.contains("self.normalize_transcript_detail_placeholder_scroll_anchor();")
-    );
+    assert!(!scroll_event_body.contains("normalize_transcript_detail_placeholder_scroll_anchor"));
     assert!(
         scroll_body
             .contains("self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);")
@@ -868,7 +866,8 @@ fn transcript_detail_tail_scheduling_targets_latest_row_before_broad_visible_ran
     assert!(viewport_body.contains("unwrap_or_else(|| visible_range.clone())"));
     assert!(viewport_body.contains("(priority_range, visible_range, order)"));
     assert!(detail_source.contains("from_priority_and_retained"));
-    assert!(latest_missing_body.contains("TranscriptTurnDetailStatus::Missing"));
+    assert!(latest_missing_body.contains("is_missing_detail_requestable"));
+    assert!(!latest_missing_body.contains("TranscriptTurnDetailStatus::Missing"));
 }
 
 #[test]
@@ -1119,18 +1118,17 @@ fn image_label_worker_completion_is_guarded_after_in_flight_invalidation() {
 }
 
 #[test]
-fn transcript_detail_scroll_anchor_normalizes_loading_placeholders_to_row_top() {
+fn transcript_scroll_does_not_snap_history_detail_placeholders_to_row_top() {
+    let shell_source = include_str!("../src/shell.rs");
     let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
-    let normalize_body = rust_function_body(
-        detail_source,
-        "pub(super) fn normalize_transcript_detail_placeholder_scroll_anchor",
-    );
+    let scroll_body = rust_function_body(shell_source, "fn apply_transcript_scroll_command");
+    let scroll_event_body = rust_function_body(shell_source, "fn note_transcript_scroll_event");
 
-    assert!(normalize_body.contains("anchor.offset_in_item <= px(0.0)"));
-    assert!(normalize_body.contains("TranscriptTurnDetailStatus::Missing"));
-    assert!(normalize_body.contains("has_history_detail_loading_placeholder"));
-    assert!(normalize_body.contains("item_ix: anchor.item_ix"));
-    assert!(normalize_body.contains("offset_in_item: px(0.0)"));
+    assert!(!detail_source.contains("normalize_transcript_detail_placeholder_scroll_anchor"));
+    assert!(!scroll_body.contains("has_history_detail_loading_placeholder"));
+    assert!(!scroll_event_body.contains("has_history_detail_loading_placeholder"));
+    assert!(!scroll_body.contains("TranscriptTurnDetailStatus::Missing"));
+    assert!(!scroll_event_body.contains("TranscriptTurnDetailStatus::Missing"));
 }
 
 #[test]

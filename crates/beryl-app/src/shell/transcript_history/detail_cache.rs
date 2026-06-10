@@ -715,6 +715,10 @@ impl TranscriptTurnDetailCache {
             .unwrap_or(TranscriptTurnDetailStatus::Missing)
     }
 
+    pub(crate) fn is_missing_detail_requestable(&self, turn_id: &str) -> bool {
+        self.should_request_full_details(turn_id)
+    }
+
     pub(crate) fn full_item_count(&self, turn_id: &str) -> Option<usize> {
         match &self.entries.get(turn_id)?.state {
             TranscriptTurnDetailEntryState::Full { item_count } => Some(*item_count),

@@ -7515,7 +7515,6 @@ impl ShellView {
     ) {
         self.note_transcript_scroll(event.is_scrolled, window, cx);
         self.begin_older_thread_history_page_if_needed(event, window, cx);
-        self.normalize_transcript_detail_placeholder_scroll_anchor();
         if !self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx) {
             self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);
         }
@@ -14670,7 +14669,6 @@ impl ShellView {
                 surface.set_transcript_user_scrolled(!at_bottom);
             }
         }
-        self.normalize_transcript_detail_placeholder_scroll_anchor();
         self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
         self.notify_transcript_panel(cx);
         if !self.begin_transcript_turn_detail_loads_for_scroll_anchor(window, cx) {

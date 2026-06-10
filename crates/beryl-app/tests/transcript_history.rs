@@ -801,6 +801,57 @@ fn turn_detail_cache_tracks_skeleton_loading_full_and_failed_states() {
 }
 
 #[test]
+fn missing_detail_requestability_requires_non_full_history_skeleton() {
+    let mut cache = TranscriptTurnDetailCache::default();
+    cache.reset_for_thread("thread_a");
+
+    assert_eq!(
+        cache.status("live_turn"),
+        TranscriptTurnDetailStatus::Missing
+    );
+    assert!(!cache.is_missing_detail_requestable("live_turn"));
+
+    cache.insert_skeleton_from_turn(&turn_with_items_view("full_turn", TurnItemsView::Full));
+    assert_eq!(
+        cache.status("full_turn"),
+        TranscriptTurnDetailStatus::Missing
+    );
+    assert!(!cache.is_missing_detail_requestable("full_turn"));
+
+    cache.insert_skeleton_from_turn(&turn_with_items_view(
+        "partial_turn",
+        TurnItemsView::NotLoaded,
+    ));
+    assert_eq!(
+        cache.status("partial_turn"),
+        TranscriptTurnDetailStatus::Missing
+    );
+    assert!(cache.is_missing_detail_requestable("partial_turn"));
+
+    let ticket = cache
+        .begin_loading("thread_a", "partial_turn")
+        .unwrap()
+        .ticket()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        cache.status("partial_turn"),
+        TranscriptTurnDetailStatus::Loading
+    );
+    assert!(!cache.is_missing_detail_requestable("partial_turn"));
+
+    assert_eq!(
+        cache.finish_loading(&ticket, 1),
+        TranscriptTurnDetailApplyResult::Applied
+    );
+    assert_eq!(
+        cache.status("partial_turn"),
+        TranscriptTurnDetailStatus::Full
+    );
+    assert!(!cache.is_missing_detail_requestable("partial_turn"));
+}
+
+#[test]
 fn turn_detail_cache_release_preserves_visible_and_pinned_details() {
     let mut cache = TranscriptTurnDetailCache::default();
     cache.reset_for_thread("thread_a");

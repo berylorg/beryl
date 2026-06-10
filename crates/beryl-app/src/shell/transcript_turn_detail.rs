@@ -4,7 +4,6 @@ use tracing::warn;
 
 use crate::diagnostic_dynamic_tools::{TranscriptDetailLoadEvent, diagnostic_duration_micros};
 
-use super::transcript_history::TranscriptTurnDetailStatus;
 use super::*;
 
 const TRANSCRIPT_TURN_DETAIL_REQUEST_BATCH_LIMIT: usize = 1;
@@ -231,34 +230,9 @@ impl ConversationSurfaceState {
         let range = self.latest_source_turn_presentation_range()?;
         let row = self.transcript_presentation.turn_at(range.start)?;
         let turn_id = row.turn.turn_id.as_deref()?;
-        (self.transcript_turn_detail_cache.status(turn_id) == TranscriptTurnDetailStatus::Missing)
+        self.transcript_turn_detail_cache
+            .is_missing_detail_requestable(turn_id)
             .then_some(range)
-    }
-
-    pub(super) fn normalize_transcript_detail_placeholder_scroll_anchor(&mut self) -> bool {
-        let ListScrollPosition::Content(anchor) = self.transcript_list_state.scroll_position()
-        else {
-            return false;
-        };
-        if anchor.offset_in_item <= px(0.0) {
-            return false;
-        }
-        let Some(row) = self.transcript_presentation.turn_at(anchor.item_ix) else {
-            return false;
-        };
-        let missing_detail = row.turn.turn_id.as_deref().is_some_and(|turn_id| {
-            self.transcript_turn_detail_cache.status(turn_id) == TranscriptTurnDetailStatus::Missing
-        });
-        if !row.turn.has_history_detail_loading_placeholder() && !missing_detail {
-            return false;
-        }
-
-        self.transcript_list_state
-            .scroll_to_position(ListScrollPosition::Content(ListOffset {
-                item_ix: anchor.item_ix,
-                offset_in_item: px(0.0),
-            }));
-        true
     }
 
     pub(super) fn finish_loading_transcript_turn_details(
@@ -449,11 +423,6 @@ fn skipped_transcript_turn_detail_event(
 }
 
 impl ShellView {
-    pub(super) fn normalize_transcript_detail_placeholder_scroll_anchor(&mut self) -> bool {
-        self.conversation_surface_mut()
-            .is_some_and(|surface| surface.normalize_transcript_detail_placeholder_scroll_anchor())
-    }
-
     pub(super) fn begin_transcript_turn_detail_loads_for_current_viewport(
         &mut self,
         window: &mut Window,
