@@ -47,6 +47,20 @@ fn prompt_start_geometry_targets_fragment_block_top() {
 }
 
 #[test]
+fn assistant_narrative_width_uses_row_content_without_prompt_card_chrome() {
+    let transcript_width = px(640.0);
+
+    assert_eq!(
+        transcript_anchor::test_support::assistant_narrative_text_width(transcript_width),
+        px(616.0)
+    );
+    assert_eq!(
+        transcript_anchor::test_support::prompt_text_width(transcript_width),
+        px(590.0)
+    );
+}
+
+#[test]
 fn prompt_anchor_lines_match_transcript_newline_rendering() {
     assert_eq!(
         transcript_anchor::test_support::prompt_lines("alpha\nbeta\n\n gamma "),
@@ -397,17 +411,35 @@ fn trailing_slack_shrinks_as_content_below_anchor_grows() {
 }
 
 #[test]
+fn final_start_top_paint_guard_scales_from_line_height_with_minimum_floor() {
+    assert_eq!(
+        transcript_anchor::final_start_top_paint_guard(px(20.0)),
+        px(8.0)
+    );
+    assert_eq!(
+        transcript_anchor::final_start_top_paint_guard(px(80.0)),
+        px(20.0)
+    );
+    assert_eq!(
+        transcript_anchor::final_start_top_paint_guard(px(-12.0)),
+        px(8.0)
+    );
+}
+
+#[test]
 fn final_answer_start_geometry_targets_item_top() {
     let items = vec![
         transcript_anchor::TranscriptNarrativeItemGeometry::new(
             Some("commentary".to_string()),
             px(64.0),
             px(48.0),
+            px(20.0),
         ),
         transcript_anchor::TranscriptNarrativeItemGeometry::new(
             Some("final".to_string()),
             px(128.0),
             px(160.0),
+            px(20.0),
         ),
     ];
 
@@ -415,6 +447,7 @@ fn final_answer_start_geometry_targets_item_top() {
 
     assert_eq!(geometry.item_id, "final");
     assert_eq!(geometry.scroll_offset, px(128.0));
+    assert_eq!(geometry.first_line_height, px(20.0));
 }
 
 #[test]
@@ -424,11 +457,13 @@ fn final_answer_start_placement_adds_runway_while_final_content_is_short() {
             Some("commentary".to_string()),
             px(64.0),
             px(48.0),
+            px(20.0),
         ),
         transcript_anchor::TranscriptNarrativeItemGeometry::new(
             Some("final".to_string()),
             px(128.0),
             px(40.0),
+            px(20.0),
         ),
     ];
 
@@ -436,8 +471,34 @@ fn final_answer_start_placement_adds_runway_while_final_content_is_short() {
         transcript_anchor::final_answer_start_placement("final", &items, px(240.0), None).unwrap();
 
     assert_eq!(placement.item_id, "final");
-    assert_eq!(placement.scroll_offset, px(128.0));
-    assert_eq!(placement.virtual_runway, px(200.0));
+    assert_eq!(placement.scroll_offset, px(120.0));
+    assert_eq!(placement.virtual_runway, px(192.0));
+    assert_eq!(px(128.0) - placement.scroll_offset, px(8.0));
+    assert_eq!(
+        px(168.0) - placement.scroll_offset + placement.virtual_runway,
+        px(240.0)
+    );
+}
+
+#[test]
+fn final_answer_start_placement_scales_guard_with_final_line_height() {
+    let items = vec![transcript_anchor::TranscriptNarrativeItemGeometry::new(
+        Some("final".to_string()),
+        px(128.0),
+        px(80.0),
+        px(80.0),
+    )];
+
+    let placement =
+        transcript_anchor::final_answer_start_placement("final", &items, px(240.0), None).unwrap();
+
+    assert_eq!(placement.scroll_offset, px(108.0));
+    assert_eq!(placement.virtual_runway, px(140.0));
+    assert_eq!(px(128.0) - placement.scroll_offset, px(20.0));
+    assert_eq!(
+        px(208.0) - placement.scroll_offset + placement.virtual_runway,
+        px(240.0)
+    );
 }
 
 #[test]
@@ -446,6 +507,7 @@ fn final_answer_start_placement_drops_runway_after_content_fills_viewport() {
         Some("final".to_string()),
         px(128.0),
         px(40.0),
+        px(20.0),
     )];
 
     let placement = transcript_anchor::final_answer_start_placement(
@@ -456,7 +518,7 @@ fn final_answer_start_placement_drops_runway_after_content_fills_viewport() {
     )
     .unwrap();
 
-    assert_eq!(placement.scroll_offset, px(128.0));
+    assert_eq!(placement.scroll_offset, px(120.0));
     assert_eq!(placement.virtual_runway, px(0.0));
 }
 
@@ -466,6 +528,7 @@ fn commentary_follow_geometry_targets_item_bottom() {
         Some("commentary".to_string()),
         px(64.0),
         px(180.0),
+        px(20.0),
     )];
 
     let geometry =
@@ -480,13 +543,19 @@ fn commentary_follow_geometry_targets_item_bottom() {
 #[test]
 fn commentary_follow_without_item_targets_latest_rendered_block() {
     let items = vec![
-        transcript_anchor::TranscriptNarrativeItemGeometry::new(None, px(0.0), px(48.0)),
+        transcript_anchor::TranscriptNarrativeItemGeometry::new(None, px(0.0), px(48.0), px(20.0)),
         transcript_anchor::TranscriptNarrativeItemGeometry::new(
             Some("commentary".to_string()),
             px(64.0),
             px(24.0),
+            px(20.0),
         ),
-        transcript_anchor::TranscriptNarrativeItemGeometry::new(None, px(100.0), px(52.0)),
+        transcript_anchor::TranscriptNarrativeItemGeometry::new(
+            None,
+            px(100.0),
+            px(52.0),
+            px(20.0),
+        ),
     ];
 
     let geometry = transcript_anchor::commentary_follow_geometry(None, &items, px(80.0)).unwrap();

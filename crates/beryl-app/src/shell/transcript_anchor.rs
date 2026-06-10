@@ -14,6 +14,8 @@ const TURN_ROW_HORIZONTAL_PADDING: f32 = 24.0;
 const USER_PROMPT_BLOCK_BORDER: f32 = 1.0;
 const USER_PROMPT_BLOCK_PADDING: f32 = 12.0;
 const TRAILING_SLACK_PAINT_GUARD: f32 = 1.0;
+const FINAL_START_MIN_TOP_GUARD: f32 = 8.0;
+const FINAL_START_LINE_HEIGHT_GUARD_RATIO: f32 = 0.25;
 const USER_PROMPT_HORIZONTAL_CHROME: f32 = TURN_ROW_HORIZONTAL_PADDING
     + (USER_PROMPT_BLOCK_BORDER * 2.0)
     + (USER_PROMPT_BLOCK_PADDING * 2.0);
@@ -94,6 +96,22 @@ pub(crate) struct TranscriptNarrativeItemGeometry {
     pub(crate) item_id: Option<String>,
     pub(crate) top_offset: Pixels,
     pub(crate) height: Pixels,
+    pub(crate) first_line_height: Pixels,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TranscriptNarrativeTextRole {
+    AssistantFinal,
+    AssistantCommentary,
+    AssistantReasoning,
+}
+
+pub(crate) struct TranscriptNarrativeAnchorThemes<'a> {
+    pub(crate) prompt: &'a TranscriptAnchorTheme,
+    pub(crate) assistant_final: &'a TranscriptAnchorTheme,
+    pub(crate) assistant_commentary: &'a TranscriptAnchorTheme,
+    pub(crate) assistant_reasoning: &'a TranscriptAnchorTheme,
 }
 
 #[allow(dead_code)]
@@ -104,6 +122,7 @@ pub(crate) enum TranscriptNarrativeBlockPlan {
     AssistantMarkdown {
         item_id: String,
         plan: BlockRenderPlan,
+        role: TranscriptNarrativeTextRole,
     },
     Anonymous {
         height: Pixels,
@@ -123,6 +142,7 @@ pub(crate) struct TranscriptCommentaryFollowGeometry {
 pub(crate) struct TranscriptFinalStartGeometry {
     pub(crate) item_id: String,
     pub(crate) scroll_offset: Pixels,
+    pub(crate) first_line_height: Pixels,
 }
 
 #[allow(dead_code)]
@@ -301,7 +321,14 @@ pub(crate) fn final_answer_start_geometry(
     Some(TranscriptFinalStartGeometry {
         item_id: item_id.to_string(),
         scroll_offset: item.top_offset.max(px(0.0)),
+        first_line_height: item.first_line_height,
     })
+}
+
+#[allow(dead_code)]
+pub(crate) fn final_start_top_paint_guard(final_line_height: Pixels) -> Pixels {
+    (final_line_height.max(px(0.0)) * FINAL_START_LINE_HEIGHT_GUARD_RATIO)
+        .max(px(FINAL_START_MIN_TOP_GUARD))
 }
 
 #[allow(dead_code)]
@@ -312,6 +339,9 @@ pub(crate) fn final_answer_start_placement(
     measured_row_height: Option<Pixels>,
 ) -> Option<TranscriptFinalStartPlacement> {
     let geometry = final_answer_start_geometry(item_id, items)?;
+    let scroll_offset = (geometry.scroll_offset
+        - final_start_top_paint_guard(geometry.first_line_height))
+    .max(px(0.0));
     let rendered_bottom = items
         .iter()
         .map(TranscriptNarrativeItemGeometry::bottom_offset)
@@ -319,11 +349,11 @@ pub(crate) fn final_answer_start_placement(
     let estimated_row_height = measured_row_height
         .unwrap_or(rendered_bottom)
         .max(rendered_bottom);
-    let content_below_anchor = (estimated_row_height - geometry.scroll_offset).max(px(0.0));
+    let content_below_anchor = (estimated_row_height - scroll_offset).max(px(0.0));
 
     Some(TranscriptFinalStartPlacement {
         item_id: geometry.item_id,
-        scroll_offset: geometry.scroll_offset,
+        scroll_offset,
         virtual_runway: trailing_scroll_slack(viewport_height, Some(content_below_anchor)),
     })
 }
@@ -332,12 +362,12 @@ pub(crate) fn narrative_item_geometries(
     turn_index: usize,
     blocks: &[TranscriptNarrativeBlockPlan],
     transcript_width: Pixels,
-    theme: &TranscriptAnchorTheme,
+    themes: TranscriptNarrativeAnchorThemes<'_>,
     transcript_code_columns: usize,
     window: &mut Window,
 ) -> Vec<TranscriptNarrativeItemGeometry> {
     let prompt_width = prompt_text_width(transcript_width);
-    let mut measurer = WindowPromptMeasurer::new(theme, window);
+    let assistant_width = assistant_narrative_text_width(transcript_width);
     let mut cursor = prompt_fragment_start_offset(turn_index);
     let mut rendered_block_count = 0usize;
     let mut geometries = Vec::new();
@@ -346,29 +376,49 @@ pub(crate) fn narrative_item_geometries(
         if rendered_block_count > 0 {
             cursor += px(TURN_CARD_BLOCK_GAP);
         }
-        let (item_id, height) = match block {
+        let (item_id, height, first_line_height) = match block {
             TranscriptNarrativeBlockPlan::UserPrompt { plan } => {
+                let mut measurer = WindowPromptMeasurer::new(themes.prompt, window);
                 let layout = prompt_markdown_layout_from_plan(
                     plan,
                     prompt_width,
                     transcript_code_columns,
                     &mut measurer,
                 );
-                (None, prompt_block_outer_height(layout.height))
+                (
+                    None,
+                    prompt_block_outer_height(layout.height),
+                    layout.first_line_height,
+                )
             }
-            TranscriptNarrativeBlockPlan::AssistantMarkdown { item_id, plan } => {
+            TranscriptNarrativeBlockPlan::AssistantMarkdown {
+                item_id,
+                plan,
+                role,
+            } => {
+                let mut measurer = WindowPromptMeasurer::new(themes.theme_for(*role), window);
                 let layout = prompt_markdown_layout_from_plan(
                     plan,
-                    prompt_width,
+                    assistant_width,
                     transcript_code_columns,
                     &mut measurer,
                 );
-                (Some(item_id.clone()), layout.height)
+                (
+                    Some(item_id.clone()),
+                    layout.height,
+                    layout.first_line_height,
+                )
             }
-            TranscriptNarrativeBlockPlan::Anonymous { height } => (None, (*height).max(px(0.0))),
+            TranscriptNarrativeBlockPlan::Anonymous { height } => {
+                let height = (*height).max(px(0.0));
+                (None, height, height)
+            }
         };
         geometries.push(TranscriptNarrativeItemGeometry::new(
-            item_id, cursor, height,
+            item_id,
+            cursor,
+            height,
+            first_line_height,
         ));
         cursor += height;
         rendered_block_count = rendered_block_count.saturating_add(1);
@@ -409,16 +459,32 @@ impl TranscriptPromptFragmentGeometry {
 
 impl TranscriptNarrativeItemGeometry {
     #[allow(dead_code)]
-    pub(crate) fn new(item_id: Option<String>, top_offset: Pixels, height: Pixels) -> Self {
+    pub(crate) fn new(
+        item_id: Option<String>,
+        top_offset: Pixels,
+        height: Pixels,
+        first_line_height: Pixels,
+    ) -> Self {
         Self {
             item_id,
             top_offset,
             height,
+            first_line_height,
         }
     }
 
     fn bottom_offset(&self) -> Pixels {
         self.top_offset + self.height.max(px(0.0))
+    }
+}
+
+impl TranscriptNarrativeAnchorThemes<'_> {
+    fn theme_for(&self, role: TranscriptNarrativeTextRole) -> &TranscriptAnchorTheme {
+        match role {
+            TranscriptNarrativeTextRole::AssistantFinal => self.assistant_final,
+            TranscriptNarrativeTextRole::AssistantCommentary => self.assistant_commentary,
+            TranscriptNarrativeTextRole::AssistantReasoning => self.assistant_reasoning,
+        }
     }
 }
 
@@ -518,6 +584,10 @@ fn prompt_text_width(transcript_width: Pixels) -> Pixels {
     (transcript_width - px(USER_PROMPT_HORIZONTAL_CHROME)).max(px(1.0))
 }
 
+fn assistant_narrative_text_width(transcript_width: Pixels) -> Pixels {
+    (transcript_width - px(TURN_ROW_HORIZONTAL_PADDING)).max(px(1.0))
+}
+
 #[cfg(test)]
 fn prompt_last_line_top_offset_from_counts(
     turn_index: usize,
@@ -601,6 +671,14 @@ pub(crate) mod test_support {
 
     pub(crate) fn prompt_lines(text: &str) -> Vec<String> {
         super::prompt_lines(text)
+    }
+
+    pub(crate) fn prompt_text_width(transcript_width: Pixels) -> Pixels {
+        super::prompt_text_width(transcript_width)
+    }
+
+    pub(crate) fn assistant_narrative_text_width(transcript_width: Pixels) -> Pixels {
+        super::assistant_narrative_text_width(transcript_width)
     }
 
     pub(crate) fn prompt_last_line_top_offset_from_markdown_no_wrap(

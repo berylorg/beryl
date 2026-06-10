@@ -122,6 +122,32 @@ impl TranscriptLiveScrollState {
         self.last_final_anchor = None;
     }
 
+    pub(crate) fn set_passive_final_runway(&mut self, anchor: TranscriptFinalAnchor) {
+        self.phase = TranscriptLiveScrollPhase::TailActivation;
+        self.last_prompt_anchor = None;
+        self.last_final_anchor = Some(anchor);
+    }
+
+    pub(crate) fn refresh_loaded_history_final_runway(
+        &mut self,
+        anchor: TranscriptFinalAnchor,
+    ) -> bool {
+        let is_loaded_history_phase = matches!(
+            &self.phase,
+            TranscriptLiveScrollPhase::TailActivation
+                | TranscriptLiveScrollPhase::DetachedManual {
+                    previous_phase: TranscriptLiveScrollDetachedPhase::TailActivation,
+                    turn: None,
+                }
+        );
+        if !is_loaded_history_phase {
+            return false;
+        }
+        self.last_prompt_anchor = None;
+        self.last_final_anchor = Some(anchor);
+        true
+    }
+
     pub(crate) fn start_prompt_reread(&mut self, anchor: TranscriptSubmitAnchor) {
         self.last_prompt_anchor = Some(anchor.clone());
         self.last_final_anchor = None;
@@ -199,7 +225,11 @@ impl TranscriptLiveScrollState {
                     )
                 })
             }
-            TranscriptLiveScrollPhase::Inactive | TranscriptLiveScrollPhase::TailActivation => None,
+            TranscriptLiveScrollPhase::TailActivation => self
+                .last_final_anchor
+                .as_ref()
+                .map(|anchor| TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor.clone())),
+            TranscriptLiveScrollPhase::Inactive => None,
         }
     }
 
@@ -316,10 +346,21 @@ impl TranscriptLiveScrollState {
 
     pub(crate) fn transition_to_final_start(&mut self, anchor: TranscriptFinalAnchor) -> bool {
         match &self.phase {
+            TranscriptLiveScrollPhase::DetachedManual {
+                previous_phase: TranscriptLiveScrollDetachedPhase::TailActivation,
+                turn: None,
+            } => {
+                self.last_final_anchor = Some(anchor);
+                return false;
+            }
             TranscriptLiveScrollPhase::DetachedManual { turn, .. } => {
                 if detached_turn_matches(turn.as_ref(), &anchor.turn) {
                     self.last_final_anchor = Some(anchor);
                 }
+                return false;
+            }
+            TranscriptLiveScrollPhase::TailActivation => {
+                self.refresh_loaded_history_final_runway(anchor);
                 return false;
             }
             TranscriptLiveScrollPhase::FinalRead { .. } => return false,
@@ -327,7 +368,6 @@ impl TranscriptLiveScrollState {
                 return false;
             }
             TranscriptLiveScrollPhase::Inactive
-            | TranscriptLiveScrollPhase::TailActivation
             | TranscriptLiveScrollPhase::PromptReread { .. }
             | TranscriptLiveScrollPhase::CommentaryFollow { .. }
             | TranscriptLiveScrollPhase::FinalStart { .. } => {}

@@ -356,6 +356,143 @@ fn existing_thread_tail_activation_clears_manual_runway() {
 }
 
 #[test]
+fn loaded_history_final_runway_preserves_tail_activation_without_autoscroll() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.clear_for_tail_activation();
+
+    state.set_passive_final_runway(final_anchor(2));
+
+    assert!(!state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.phase(),
+        TranscriptLiveScrollPhase::TailActivation
+    ));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2
+                && anchor.turn.row_identity.as_deref() == Some("thread:main:turn:2")
+                && anchor.item_id == "final-answer"
+    ));
+
+    assert!(state.detach_for_manual_scroll());
+    assert!(state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2 && anchor.item_id == "final-answer"
+    ));
+}
+
+#[test]
+fn loaded_history_final_detection_refreshes_passive_runway_without_final_start() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.set_passive_final_runway(final_anchor(2));
+
+    assert!(!state.transition_to_final_start(final_anchor(2)));
+
+    assert!(!state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.phase(),
+        TranscriptLiveScrollPhase::TailActivation
+    ));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2 && anchor.item_id == "final-answer"
+    ));
+}
+
+#[test]
+fn tail_activation_late_final_records_passive_runway_without_autoscroll() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.clear_for_tail_activation();
+
+    assert!(!state.transition_to_final_start(final_anchor(2)));
+
+    assert!(!state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.phase(),
+        TranscriptLiveScrollPhase::TailActivation
+    ));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2 && anchor.item_id == "final-answer"
+    ));
+}
+
+#[test]
+fn loaded_history_detail_refresh_records_passive_runway_only_for_activation_scope() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.clear_for_tail_activation();
+
+    assert!(state.refresh_loaded_history_final_runway(final_anchor(2)));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2 && anchor.item_id == "final-answer"
+    ));
+
+    assert!(state.detach_for_manual_scroll());
+    assert!(state.refresh_loaded_history_final_runway(final_anchor(2)));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2 && anchor.item_id == "final-answer"
+    ));
+
+    state.start_prompt_reread(prompt_anchor(3));
+
+    assert!(!state.refresh_loaded_history_final_runway(final_anchor(2)));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::Prompt(snapshot))
+            if snapshot.turn_index == 3
+    ));
+}
+
+#[test]
+fn detached_tail_activation_late_final_records_passive_runway_without_autoscroll() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.clear_for_tail_activation();
+    assert!(state.detach_for_manual_scroll());
+
+    assert!(!state.transition_to_final_start(final_anchor(2)));
+
+    assert!(state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.phase(),
+        TranscriptLiveScrollPhase::DetachedManual {
+            previous_phase: TranscriptLiveScrollDetachedPhase::TailActivation,
+            turn: None,
+        }
+    ));
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor))
+            if anchor.turn.turn_index == 2 && anchor.item_id == "final-answer"
+    ));
+}
+
+#[test]
+fn new_user_turn_replaces_passive_loaded_history_runway() {
+    let mut state = TranscriptLiveScrollState::inactive();
+    state.set_passive_final_runway(final_anchor(2));
+
+    state.start_prompt_reread(prompt_anchor(3));
+
+    assert!(state.preserves_content_anchor_offset());
+    assert!(matches!(
+        state.effect_snapshot(),
+        Some(transcript_live_scroll::TranscriptLiveScrollEffectSnapshot::Prompt(snapshot))
+            if snapshot.turn_index == 3
+                && snapshot.viewport_action
+                    == transcript_anchor::TranscriptSubmitViewportAction::PromptReread
+    ));
+}
+
+#[test]
 fn late_commentary_does_not_move_final_read_backward() {
     let mut state = TranscriptLiveScrollState::inactive();
     assert!(state.transition_to_final_start(final_anchor(3)));

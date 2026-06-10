@@ -206,7 +206,7 @@ impl TranscriptTheme {
         }
     }
 
-    pub(crate) fn anchor_theme(&self) -> TranscriptAnchorTheme {
+    pub(crate) fn prompt_anchor_theme(&self) -> TranscriptAnchorTheme {
         TranscriptAnchorTheme {
             conversation: self.user_input_text.anchor_role(),
             heading: self.heading.anchor_role(),
@@ -215,6 +215,35 @@ impl TranscriptTheme {
             code: self
                 .inline_code_style(TranscriptInlineCodeHost::UserInput)
                 .anchor_role(),
+            code_panel: self.code_panel_body_text.anchor_role(),
+            code_panel_header: self.code_panel_header_text.anchor_role(),
+        }
+    }
+
+    pub(crate) fn text_anchor_theme(&self, role: TranscriptTextRole) -> TranscriptAnchorTheme {
+        let (conversation, code_host) = match role {
+            TranscriptTextRole::AssistantFinal => {
+                (&self.paragraph, TranscriptInlineCodeHost::AssistantFinal)
+            }
+            TranscriptTextRole::AssistantCommentary => (
+                &self.assistant_commentary,
+                TranscriptInlineCodeHost::AssistantCommentary,
+            ),
+            TranscriptTextRole::AssistantReasoning => (
+                &self.assistant_reasoning,
+                TranscriptInlineCodeHost::AssistantReasoning,
+            ),
+            TranscriptTextRole::UserInput => {
+                (&self.user_input_text, TranscriptInlineCodeHost::UserInput)
+            }
+        };
+
+        TranscriptAnchorTheme {
+            conversation: conversation.anchor_role(),
+            heading: self.heading.anchor_role(),
+            emphasis: self.emphasis.anchor_role(),
+            strong_emphasis: self.strong_emphasis.anchor_role(),
+            code: self.inline_code_style(code_host).anchor_role(),
             code_panel: self.code_panel_body_text.anchor_role(),
             code_panel_header: self.code_panel_header_text.anchor_role(),
         }

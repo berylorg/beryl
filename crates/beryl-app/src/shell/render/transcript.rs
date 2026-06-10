@@ -2997,7 +2997,7 @@ fn apply_prompt_scroll_effect(
         transcript_width,
         transcript_panel_height,
         measured_row_height,
-        &theme.anchor_theme(),
+        &theme.prompt_anchor_theme(),
         code_layout.transcript_bordered_panel_columns,
         window,
     );
@@ -3509,6 +3509,7 @@ fn narrative_item_geometries_for_turn(
                                         transcript_anchor::TranscriptNarrativeBlockPlan::AssistantMarkdown {
                                             item_id: message.id.clone(),
                                             plan: markdown.render_plan().clone(),
+                                            role: agent_message_narrative_anchor_role(message.phase),
                                         },
                                     );
                                 }
@@ -3560,14 +3561,40 @@ fn narrative_item_geometries_for_turn(
     }
     flush_pending_media_geometry(&mut blocks, &mut pending_media_count, media_layout);
 
+    let prompt_anchor_theme = theme.prompt_anchor_theme();
+    let assistant_final_anchor_theme = theme.text_anchor_theme(TranscriptTextRole::AssistantFinal);
+    let assistant_commentary_anchor_theme =
+        theme.text_anchor_theme(TranscriptTextRole::AssistantCommentary);
+    let assistant_reasoning_anchor_theme =
+        theme.text_anchor_theme(TranscriptTextRole::AssistantReasoning);
+    let anchor_themes = transcript_anchor::TranscriptNarrativeAnchorThemes {
+        prompt: &prompt_anchor_theme,
+        assistant_final: &assistant_final_anchor_theme,
+        assistant_commentary: &assistant_commentary_anchor_theme,
+        assistant_reasoning: &assistant_reasoning_anchor_theme,
+    };
+
     transcript_anchor::narrative_item_geometries(
         turn_index,
         blocks.as_slice(),
         transcript_width,
-        &theme.anchor_theme(),
+        anchor_themes,
         code_layout.transcript_bordered_panel_columns,
         window,
     )
+}
+
+fn agent_message_narrative_anchor_role(
+    phase: Option<beryl_backend::ProtocolPhase>,
+) -> transcript_anchor::TranscriptNarrativeTextRole {
+    match phase {
+        Some(beryl_backend::ProtocolPhase::Commentary) => {
+            transcript_anchor::TranscriptNarrativeTextRole::AssistantCommentary
+        }
+        Some(beryl_backend::ProtocolPhase::FinalAnswer) | None => {
+            transcript_anchor::TranscriptNarrativeTextRole::AssistantFinal
+        }
+    }
 }
 
 fn append_reasoning_geometry_blocks(
@@ -3604,6 +3631,7 @@ fn append_reasoning_geometry_blocks(
             transcript_anchor::TranscriptNarrativeBlockPlan::AssistantMarkdown {
                 item_id: format!("{item_id}:{slot}:{index}"),
                 plan: markdown.render_plan().clone(),
+                role: transcript_anchor::TranscriptNarrativeTextRole::AssistantReasoning,
             },
         );
     }

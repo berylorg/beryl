@@ -280,6 +280,7 @@ impl ConversationSurfaceState {
                             );
                         self.transcript_list_state
                             .invalidate_item_measurement(row_index);
+                        self.reconcile_loaded_history_final_runway_for_row(Some(row_index));
                         if preserve_loaded_row_anchor {
                             self.transcript_list_state.scroll_to_position(
                                 ListScrollPosition::Content(ListOffset {

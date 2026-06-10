@@ -53,3 +53,30 @@
 - Why it failed: even without an explicit `scroll_to`, replacing prompt-reread with commentary-follow removed the virtual runway that made the prompt-top position representable. The virtual list then clamped to real content and pulled older transcript geometry into view.
 - Course correction: commentary detection during prompt-reread records only a pending follow target. The render pass keeps prompt runway until measured commentary growth actually needs a lower scroll offset; only that overflow measurement promotes the state to commentary-follow.
 - Affected tests: keep live-scroll coverage for pending commentary, stale pending-commentary defers, final-start override, and source guards for the pending-commentary render path.
+
+## Raw Final-Start Top Clipping
+
+- Scope: live transcript final-answer anchoring and retained manual runway.
+- Invalid assumption: scrolling exactly to the semantic final-answer block top is always visually safe.
+- Evidence: live testing showed the first final-response line partially clipped at the top edge, and the manual scroll stop could land at the same clipped position. A one-pixel guard still clipped in the real renderer when passive runway was present after fresh-start history load. A fixed larger guard improved one font configuration but was not reliable across transcript font-size or theme changes.
+- Why it failed: a raw top-edge anchor, a purely mathematical one-pixel guard, or an arbitrary fixed visible guard leaves the placement coupled to one renderer/font configuration. The guard must come from the rendered final-answer text metrics so the protected top edge scales with the line that is being anchored.
+- Course correction: final-answer start placement derives its visible top-edge paint guard from the measured first rendered final-answer line height, with a small minimum floor, and includes that guarded offset in the virtual runway calculation. Automatic and manual final-start positions remain representable without clipping and without extra scroll range beyond the guarded stop.
+- Affected tests: keep final-start placement coverage for guarded scroll offset, line-height-scaled guard behavior, exact runway fill, virtual-tail max-stop coverage, and source guards for the metric-derived paint-guard rule.
+
+## Loaded History Lost Final Runway
+
+- Scope: selected-thread activation after restarting Beryl.
+- Invalid assumption: loaded history should never synthesize any trailing runway because live-turn runway belongs only to accepted new turns and active streaming.
+- Evidence: live testing on a freshly started Beryl instance showed the transcript could not scroll past the last line of the latest completed turn, making the final-answer-start-at-top reading position unreachable. Diagnostics showed the selected thread can first present the latest turn as a skeleton and only later apply full final-answer text through transcript-detail replacement.
+- Why it failed: retained trailing runway is also a manual reading affordance after restart, not only a live autoscroll artifact. Opening at the real history tail is correct, but the scroll range still needs passive final-answer slack when the latest loaded turn already has stable final content or gains it from full-detail replacement during selected-thread activation, including after an activation scroll event detached that tail phase.
+- Course correction: selected-thread activation may seed a passive final-answer runway for the latest loaded final answer. Latest-row detail replacement while still in tail activation or manual-detached state that came from tail activation may refresh passive runway, but it must not promote into live final-start autoscroll, follow final growth, or use deferred renderer callbacks.
+- Affected tests: keep live-scroll state coverage for passive loaded-history final runway, late final detection during tail activation, detached-tail late final detection, detail-refresh during selected-thread activation, and source guards that load history seeds passive runway before list reset and detail application refreshes it without scheduling scroll callbacks.
+
+## Assistant Geometry Reused Prompt Width
+
+- Scope: transcript anchor geometry for assistant narrative before final-answer anchoring.
+- Invalid assumption: assistant commentary, reasoning, and final-answer Markdown geometry could reuse the user prompt text width.
+- Evidence: completion review found that prompt width subtracts prompt-card border and padding, while assistant Markdown renders directly in the row narrative content. Wrapped pre-final assistant content could therefore be measured taller than it renders.
+- Why it failed: final-start offsets depend on the rendered height of all narrative blocks above the final answer. Using the narrower prompt-card width for assistant blocks can add phantom wrapped lines above the final answer, making final-start placement land too low or promoting commentary following before real overflow.
+- Course correction: anchor geometry now measures prompt Markdown at prompt-card content width, assistant Markdown at row narrative content width, and each role with its matching text metrics.
+- Affected tests: keep source guards and focused width coverage proving prompt and assistant narrative measurement widths stay distinct.

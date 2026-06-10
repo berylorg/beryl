@@ -19,6 +19,7 @@ use super::{
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PromptBlockLayout {
     pub(super) height: Pixels,
+    pub(super) first_line_height: Pixels,
     pub(super) last_line_top: Pixels,
     pub(super) visual_line_tops: Vec<Pixels>,
 }
@@ -27,6 +28,7 @@ impl PromptBlockLayout {
     fn empty_line(line_height: Pixels) -> Self {
         Self {
             height: line_height,
+            first_line_height: line_height,
             last_line_top: px(0.0),
             visual_line_tops: vec![px(0.0)],
         }
@@ -161,6 +163,7 @@ fn measure_block_sequence(
     }
 
     let mut cursor = px(0.0);
+    let mut first_line_height = None;
     let mut last_line_top = px(0.0);
     let mut visual_line_tops = Vec::new();
 
@@ -170,6 +173,9 @@ fn measure_block_sequence(
         }
 
         let block_layout = measure_block(block, width, transcript_code_columns, measurer);
+        if first_line_height.is_none() {
+            first_line_height = Some(block_layout.first_line_height);
+        }
         last_line_top = cursor + block_layout.last_line_top;
         visual_line_tops.extend(
             block_layout
@@ -182,6 +188,8 @@ fn measure_block_sequence(
 
     PromptBlockLayout {
         height: cursor,
+        first_line_height: first_line_height
+            .unwrap_or_else(|| measurer.block_line_height(AnchorBlockRole::Conversation)),
         last_line_top,
         visual_line_tops,
     }
@@ -206,6 +214,7 @@ fn measure_block(
             );
             PromptBlockLayout {
                 height: text_layout.height + px(MARKDOWN_HEADING_BOTTOM_PADDING),
+                first_line_height: text_layout.first_line_height,
                 last_line_top: text_layout.last_line_top,
                 visual_line_tops: text_layout.visual_line_tops,
             }
@@ -225,6 +234,7 @@ fn measure_block(
                 height: px(MARKDOWN_QUOTE_PADDING_VERTICAL)
                     + child_layout.height
                     + px(MARKDOWN_QUOTE_PADDING_VERTICAL),
+                first_line_height: child_layout.first_line_height,
                 last_line_top: px(MARKDOWN_QUOTE_PADDING_VERTICAL) + child_layout.last_line_top,
                 visual_line_tops: child_layout
                     .visual_line_tops
@@ -254,6 +264,7 @@ fn measure_block(
                 height: line_top
                     + px(MARKDOWN_THEMATIC_BREAK_HEIGHT)
                     + px(MARKDOWN_THEMATIC_BREAK_MARGIN_VERTICAL),
+                first_line_height: px(MARKDOWN_THEMATIC_BREAK_HEIGHT),
                 last_line_top: line_top,
                 visual_line_tops: vec![line_top],
             }
@@ -287,6 +298,7 @@ fn measure_inline_lines(
 
     PromptBlockLayout {
         height: cursor,
+        first_line_height: line_height,
         last_line_top,
         visual_line_tops,
     }
@@ -313,6 +325,7 @@ fn measure_list(
     let child_width = (width - list_item_body_offset(list, conversation_m_advance)).max(px(1.0));
     let marker_height = measurer.block_line_height(AnchorBlockRole::Conversation);
     let mut cursor = px(0.0);
+    let mut first_line_height = None;
     let mut last_line_top = px(0.0);
     let mut visual_line_tops = Vec::new();
 
@@ -328,6 +341,9 @@ fn measure_list(
             spacing,
             measurer,
         );
+        if first_line_height.is_none() {
+            first_line_height = Some(child_layout.first_line_height);
+        }
         last_line_top = cursor + child_layout.last_line_top;
         visual_line_tops.extend(
             child_layout
@@ -340,6 +356,7 @@ fn measure_list(
 
     PromptBlockLayout {
         height: cursor,
+        first_line_height: first_line_height.unwrap_or(marker_height),
         last_line_top,
         visual_line_tops,
     }
@@ -383,6 +400,7 @@ fn measure_code_block(
         height: content_top
             + resizable_content_height
             + px(CODE_PANEL_CONTENT_PADDING + CODE_PANEL_RESIZE_HANDLE_HEIGHT + CODE_PANEL_BORDER),
+        first_line_height: line_height,
         last_line_top: content_top + (line_height * visible_line_count.saturating_sub(1) as f32),
         visual_line_tops: (0..visible_line_count)
             .map(|line_index| content_top + (line_height * line_index as f32))

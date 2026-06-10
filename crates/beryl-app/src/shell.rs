@@ -3499,7 +3499,7 @@ impl ConversationSurfaceState {
                 .log();
         }
         self.status_line.clear_session_metadata();
-        self.transcript_live_scroll.clear_for_tail_activation();
+        self.reset_loaded_history_live_scroll();
         self.transcript_user_scrolled = false;
         self.transcript_history_window = history_window;
         self.transcript_turn_detail_cache

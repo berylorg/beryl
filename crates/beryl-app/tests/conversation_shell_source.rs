@@ -266,13 +266,19 @@ fn pending_thread_activation_preserves_visible_transcript_until_history_apply() 
 fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     let shell_source = include_str!("../src/shell.rs");
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let transcript_theme_source = include_str!("../src/shell/render/transcript/theme.rs");
     let item_blocks_source = include_str!("../src/shell/render/transcript/item_blocks.rs");
     let snapshot_source = include_str!("../src/shell/transcript_panel_snapshot.rs");
     let anchor_source = include_str!("../src/shell/transcript_anchor.rs");
     let live_scroll_source = include_str!("../src/shell/transcript_live_scroll.rs");
     let live_scroll_detection_source =
         include_str!("../src/shell/transcript_live_scroll_detection.rs");
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
     let load_history_body = rust_function_body(shell_source, "fn load_thread_history_window");
+    let detail_apply_body = rust_function_body(
+        detail_source,
+        "pub(super) fn finish_loading_transcript_turn_details",
+    );
     let render_body = rust_function_body(transcript_source, "fn render(&mut self");
     let live_effect_body = rust_function_body(transcript_source, "fn apply_live_scroll_effect");
     let prompt_effect_body = rust_function_body(transcript_source, "fn apply_prompt_scroll_effect");
@@ -290,6 +296,12 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
         rust_function_body(transcript_source, "fn final_start_trailing_allowance");
     let final_runway_placement_body =
         rust_function_body(transcript_source, "fn final_start_trailing_placement");
+    let narrative_geometry_body =
+        rust_function_body(anchor_source, "pub(crate) fn narrative_item_geometries");
+    let loaded_history_live_scroll_body = rust_function_body(
+        live_scroll_detection_source,
+        "pub(super) fn reset_loaded_history_live_scroll",
+    );
     let final_detection_body =
         rust_function_body(live_scroll_detection_source, "fn live_scroll_final_message");
     let markdown_style_body = rust_function_body(
@@ -309,7 +321,18 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
         assert!(!source.contains("TranscriptSubmitAnchor::passive"));
     }
     assert!(!anchor_source.contains("fn passive("));
-    assert!(load_history_body.contains("self.transcript_live_scroll.clear_for_tail_activation();"));
+    assert!(load_history_body.contains("self.reset_loaded_history_live_scroll();"));
+    assert!(loaded_history_live_scroll_body.contains("clear_for_tail_activation"));
+    assert!(loaded_history_live_scroll_body.contains("set_loaded_history_final_runway"));
+    assert!(
+        detail_apply_body
+            .contains("self.reconcile_loaded_history_final_runway_for_row(Some(row_index));")
+    );
+    assert!(live_scroll_source.contains("fn refresh_loaded_history_final_runway"));
+    assert!(
+        live_scroll_source
+            .contains("previous_phase: TranscriptLiveScrollDetachedPhase::TailActivation")
+    );
     assert!(!load_history_body.contains("self.transcript_submit_anchor = None;"));
     assert!(!load_history_body.contains("latest_user_prompt_anchor"));
     assert!(!load_history_body.contains("sync_live_transcript_rows"));
@@ -347,8 +370,13 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     );
     assert_order(
         load_history_body,
-        "self.transcript_live_scroll.clear_for_tail_activation();",
+        "self.reset_loaded_history_live_scroll();",
         ".reset(self.transcript_list_item_count())",
+    );
+    assert_order(
+        detail_apply_body,
+        "self.transcript_list_state\n                            .invalidate_item_measurement(row_index);",
+        "self.reconcile_loaded_history_final_runway_for_row(Some(row_index));",
     );
     assert_order(
         prompt_effect_body,
@@ -393,12 +421,51 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     );
     assert!(final_effect_body.contains("let applied_anchor = anchor.clone();"));
     assert!(final_effect_body.contains("let applied_scroll_offset = final_start.scroll_offset;"));
+    assert!(!anchor_source.contains("const FINAL_START_TOP_PAINT_GUARD"));
+    assert!(anchor_source.contains("const FINAL_START_MIN_TOP_GUARD: f32 = 8.0;"));
+    assert!(anchor_source.contains("const FINAL_START_LINE_HEIGHT_GUARD_RATIO: f32 = 0.25;"));
+    assert!(anchor_source.contains("fn final_start_top_paint_guard("));
+    assert!(anchor_source.contains("final_start_top_paint_guard(geometry.first_line_height)"));
+    assert!(anchor_source.contains("first_line_height: item.first_line_height"));
+    assert!(anchor_source.contains("let prompt_width = prompt_text_width(transcript_width);"));
+    assert!(
+        anchor_source
+            .contains("let assistant_width = assistant_narrative_text_width(transcript_width);")
+    );
+    assert!(narrative_geometry_body.contains(
+        "TranscriptNarrativeBlockPlan::UserPrompt { plan } => {\n                let mut measurer = WindowPromptMeasurer::new(themes.prompt, window);\n                let layout = prompt_markdown_layout_from_plan(\n                    plan,\n                    prompt_width,"
+    ));
+    assert!(narrative_geometry_body.contains(
+        "TranscriptNarrativeBlockPlan::AssistantMarkdown {\n                item_id,\n                plan,\n                role,\n            } => {\n                let mut measurer = WindowPromptMeasurer::new(themes.theme_for(*role), window);\n                let layout = prompt_markdown_layout_from_plan(\n                    plan,\n                    assistant_width,"
+    ));
+    assert!(transcript_source.contains("&theme.prompt_anchor_theme()"));
+    assert!(
+        transcript_source.contains("theme.text_anchor_theme(TranscriptTextRole::AssistantFinal)")
+    );
+    assert!(transcript_source.contains("agent_message_narrative_anchor_role(message.phase)"));
+    assert!(transcript_theme_source.contains("pub(crate) fn prompt_anchor_theme(&self)"));
+    assert!(
+        transcript_theme_source
+            .contains("pub(crate) fn text_anchor_theme(&self, role: TranscriptTextRole)")
+    );
+    assert!(transcript_theme_source.contains("TranscriptTextRole::AssistantFinal =>"));
+    assert!(
+        transcript_theme_source
+            .contains("&self.paragraph, TranscriptInlineCodeHost::AssistantFinal")
+    );
     assert!(final_read_body.contains("placement.scroll_offset != anchor.applied_scroll_offset"));
     assert!(final_read_body.contains(
         "transcript_list_state.scroll_position() == ListScrollPosition::Content(previous_target)"
     ));
     assert!(live_scroll_source.contains("last_final_anchor"));
+    assert!(live_scroll_source.contains("set_passive_final_runway"));
+    assert!(live_scroll_source.contains("refresh_loaded_history_final_runway"));
     assert!(live_scroll_source.contains("TranscriptLiveScrollEffectSnapshot::FinalRunway"));
+    assert!(live_scroll_detection_source.contains("fn set_loaded_history_final_runway"));
+    assert!(live_scroll_detection_source.contains("refresh_loaded_history_final_runway"));
+    assert!(
+        live_scroll_detection_source.contains("self.transcript_presentation.len().checked_sub(1)")
+    );
     assert!(live_effect_body.contains(
         "TranscriptLiveScrollEffectSnapshot::FinalRunway(anchor) => final_start_trailing_allowance("
     ));

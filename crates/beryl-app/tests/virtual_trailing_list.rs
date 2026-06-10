@@ -143,6 +143,64 @@ fn short_content_scroll_to_real_start_preserves_virtual_tail_intent() {
 }
 
 #[test]
+fn retained_final_runway_manual_scroll_reaches_guarded_anchor_offset() {
+    let state = ListState::new(1, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(168.0)]);
+    test_support::set_viewport_height(&state, px(240.0));
+    state.set_virtual_trailing_scroll_allowance(px(192.0));
+
+    state.scroll_by(px(500.0));
+
+    assert_eq!(state.max_offset_for_scrollbar().height, px(120.0));
+    assert_eq!(
+        state.logical_scroll_top(),
+        ListOffset {
+            item_ix: 0,
+            offset_in_item: px(120.0),
+        }
+    );
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::VirtualTail {
+            offset_from_content_end: px(120.0),
+        }
+    );
+    assert_eq!(
+        test_support::visible_virtual_trailing_height(&state),
+        px(192.0)
+    );
+}
+
+#[test]
+fn retained_final_runway_manual_scroll_reaches_scaled_guarded_anchor_offset() {
+    let state = ListState::new(1, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(208.0)]);
+    test_support::set_viewport_height(&state, px(240.0));
+    state.set_virtual_trailing_scroll_allowance(px(140.0));
+
+    state.scroll_by(px(500.0));
+
+    assert_eq!(state.max_offset_for_scrollbar().height, px(108.0));
+    assert_eq!(
+        state.logical_scroll_top(),
+        ListOffset {
+            item_ix: 0,
+            offset_in_item: px(108.0),
+        }
+    );
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::VirtualTail {
+            offset_from_content_end: px(108.0)
+        }
+    );
+    assert_eq!(
+        test_support::visible_virtual_trailing_height(&state),
+        px(140.0)
+    );
+}
+
+#[test]
 fn production_visible_range_uses_bottom_following_geometry() {
     let state = ListState::new(3, ListAlignment::Bottom, px(10.0));
     test_support::set_measured_item_heights(&state, &[px(20.0), px(20.0), px(20.0)]);
