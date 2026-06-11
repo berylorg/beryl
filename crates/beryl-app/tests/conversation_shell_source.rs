@@ -1027,6 +1027,34 @@ fn transcript_prepaint_reports_render_facts_without_residency_requests() {
 }
 
 #[test]
+fn transcript_media_render_consumes_displayed_media_without_scheduling_loads() {
+    let media_cache_source = include_str!("../src/shell/render/transcript/media_cache.rs");
+    let media_blocks_source = include_str!("../src/shell/render/transcript/media_blocks.rs");
+
+    let media_for_body = rust_function_body(media_cache_source, "pub(super) fn media_for");
+    let preload_media_for_body =
+        rust_function_body(media_cache_source, "pub(super) fn preload_media_for");
+    let lookup_media_body = rust_function_body(media_cache_source, "fn lookup_media");
+    let render_media_run_body =
+        rust_function_body(media_blocks_source, "pub(super) fn render_media_run");
+    let preload_media_run_body =
+        rust_function_body(media_blocks_source, "pub(super) fn preload_media_run");
+    let preload_media_item_body = rust_function_body(media_blocks_source, "fn preload_media_item");
+
+    assert!(render_media_run_body.contains("context.media_for"));
+    assert!(!render_media_run_body.contains("preload_media_for"));
+    assert!(media_for_body.contains("displayed_outcome"));
+    assert!(!media_for_body.contains("lookup_media("));
+    assert!(!media_for_body.contains("schedule_media_load"));
+
+    assert!(preload_media_for_body.contains("lookup_media"));
+    assert!(lookup_media_body.contains("schedule_media_load"));
+    assert!(preload_media_run_body.contains("context.preload_media_for"));
+    assert!(preload_media_run_body.contains("context.media_for"));
+    assert!(preload_media_item_body.contains("source_backed_image_request_status"));
+}
+
+#[test]
 fn transcript_scroll_routes_boundary_work_through_residency_controller() {
     let shell_source = include_str!("../src/shell.rs");
     let transcript_source = include_str!("../src/shell/render/transcript.rs");

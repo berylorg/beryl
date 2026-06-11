@@ -87,9 +87,23 @@ impl TranscriptMediaRenderContext {
         key: TranscriptMediaCacheKey,
         source: TranscriptMediaSource,
         execution_target: WorkspaceId,
-        cx: &mut App,
+        _cx: &mut App,
     ) -> Arc<TranscriptMediaLoadOutcome> {
-        self.lookup_media(key, source, execution_target, cx).outcome
+        let lookup_started = Instant::now();
+        let source_kind = transcript_media_source_kind(&source);
+        let outcome = self
+            .cache
+            .borrow_mut()
+            .displayed_outcome(&key, &source, &execution_target);
+        self.record_media_lookup_event(&key, &source, outcome.as_ref(), false);
+        debug!(
+            source = source_kind,
+            outcome = transcript_media_outcome_label(&outcome),
+            load_scheduled = false,
+            lookup_ms = elapsed_ms(lookup_started.elapsed()),
+            "looked up displayed transcript media"
+        );
+        outcome
     }
 
     pub(super) fn preload_media_for(
@@ -122,20 +136,7 @@ impl TranscriptMediaRenderContext {
             self.timeout,
         );
         let load_scheduled = lookup.load_request.is_some();
-        let mut event = MediaDiagnosticEvent::new("transcript_media_lookup");
-        event.key = Some(key.as_str().to_string());
-        event.row_identity = self.row_identity.clone();
-        event.source_kind = Some(transcript_media_source_kind(&source).to_string());
-        event.outcome = Some(transcript_media_outcome_label(&lookup.outcome).to_string());
-        if let Some(image) = lookup.outcome.loaded() {
-            event.backing_kind = Some(image.diagnostic_backing_kind().to_string());
-            event.image_id = image.image_id();
-            event.image_asset_key_hash = image.image_asset_key_hash();
-        }
-        if load_scheduled {
-            event.detail = Some("load_scheduled".to_string());
-        }
-        self.events.borrow_mut().record(event);
+        self.record_media_lookup_event(&key, &source, lookup.outcome.as_ref(), load_scheduled);
         debug!(
             source = source_kind,
             outcome = transcript_media_outcome_label(&lookup.outcome),
@@ -159,6 +160,29 @@ impl TranscriptMediaRenderContext {
             outcome: lookup.outcome,
             load_scheduled,
         }
+    }
+
+    fn record_media_lookup_event(
+        &self,
+        key: &TranscriptMediaCacheKey,
+        source: &TranscriptMediaSource,
+        outcome: &TranscriptMediaLoadOutcome,
+        load_scheduled: bool,
+    ) {
+        let mut event = MediaDiagnosticEvent::new("transcript_media_lookup");
+        event.key = Some(key.as_str().to_string());
+        event.row_identity = self.row_identity.clone();
+        event.source_kind = Some(transcript_media_source_kind(source).to_string());
+        event.outcome = Some(transcript_media_outcome_label(outcome).to_string());
+        if let Some(image) = outcome.loaded() {
+            event.backing_kind = Some(image.diagnostic_backing_kind().to_string());
+            event.image_id = image.image_id();
+            event.image_asset_key_hash = image.image_asset_key_hash();
+        }
+        if load_scheduled {
+            event.detail = Some("load_scheduled".to_string());
+        }
+        self.events.borrow_mut().record(event);
     }
 
     pub(super) fn panel(&self) -> Entity<TranscriptPanel> {

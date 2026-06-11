@@ -14,7 +14,7 @@ Readiness:
 
 Resumable milestone:
 
-- Begin Phase 7: Presentable Media Admission Gates.
+- Continue Phase 7 by introducing the explicit row or row-block presentability state, then gate selected-thread activation and scroll-boundary history extension before `ConversationSurfaceState::load_thread_history_window` and `ConversationSurfaceState::finish_loading_thread_history_page` publish rows.
 - Keep this file current after each phase.
 - When a phase is finished and later phases remain, stop according to the project continuation policy.
 
@@ -193,7 +193,7 @@ Verification:
 - Live diagnostic samples from the operator's long-thread scroll path, including frame metrics, retained state summary, renderer diagnostics, visible media, and memory diagnostics.
 - Completion review subagent findings addressed or planned before clearing this file.
 
-# Phase 7: Presentable Media Admission Gates (pending)
+# Phase 7: Presentable Media Admission Gates (wip)
 
 Hard task:
 
@@ -201,6 +201,8 @@ Move completed transcript-media readiness out of visible render/prepaint/deferre
 
 Implementation notes:
 
+- Completed implementation slice: exposed exact source-backed image request status from the local GPUI fork. Beryl render now consumes cache-displayed media without scheduling loads, while the preload path owns media load scheduling and source-backed readiness requests.
+- Next implementation slice: introduce explicit presentability state for planned row media and move selected-thread activation plus scroll-boundary history publication behind that state.
 - Introduce an explicit presentability state for transcript rows or row blocks. A row is presentable only after full-detail turn data, row presentation model, Markdown/media plans, and completed-media readiness are settled for its planned viewport presentation.
 - Split completed-media admission from speculative preload. Speculative preload may prepare future rows, but visible historical or completed rows must consume settled media descriptors and must not start or complete media readiness as part of ordinary frame construction.
 - For selected-thread activation and workspace restore, keep the prior coherent transcript or startup gate visible until the initial selected-thread viewport is presentable, including source-backed generated images at the planned layout size or terminal fallback states.

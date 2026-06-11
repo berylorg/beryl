@@ -3,7 +3,7 @@ use std::{ops::AddAssign, sync::Arc};
 use beryl_model::workspace::WorkspaceId;
 use gpui::{
     AnyElement, App, DevicePixels, ImageRenderSource, MouseButton, ObjectFit, Pixels, Rgba, Size,
-    Window, div, img, prelude::*, px, relative,
+    SourceBackedImageRequestStatus, Window, div, img, prelude::*, px, relative,
 };
 use std::time::Instant;
 
@@ -146,34 +146,35 @@ pub(super) fn preload_media_run(
         item_count: items.len(),
         ..TranscriptMediaRunPreloadStats::default()
     };
-    if items
-        .iter()
-        .any(|item| !item.source.is_source_backed_preload_candidate())
-    {
-        return stats;
-    }
-    if remaining_load_requests == 0 {
-        return stats;
-    }
 
     let mut resolved_items = Vec::new();
     for item in items {
-        if stats.scheduled_loads >= remaining_load_requests {
-            break;
-        }
-        let lookup = context.preload_media_for(
-            item.key.clone(),
-            item.source.clone(),
-            execution_target.clone(),
-            cx,
-        );
-        if lookup.load_scheduled {
+        let (outcome, load_scheduled) = if stats.scheduled_loads < remaining_load_requests {
+            let lookup = context.preload_media_for(
+                item.key.clone(),
+                item.source.clone(),
+                execution_target.clone(),
+                cx,
+            );
+            (lookup.outcome, lookup.load_scheduled)
+        } else {
+            (
+                context.media_for(
+                    item.key.clone(),
+                    item.source.clone(),
+                    execution_target.clone(),
+                    cx,
+                ),
+                false,
+            )
+        };
+        if load_scheduled {
             stats.scheduled_loads = stats.scheduled_loads.saturating_add(1);
         }
         resolved_items.push(ResolvedTranscriptMediaRenderItem {
             source: item.source.clone(),
             identity: item.identity.clone(),
-            outcome: lookup.outcome,
+            outcome,
         });
     }
     let promoted_index = promoted_media_index(&resolved_items, context.promotion().promoted());
@@ -271,9 +272,18 @@ fn preload_media_item(
 
     let source = ImageRenderSource::file(path.clone());
     let request = source.render_request(0, sizing.window_scale, requested_size);
-    window.preload_source_backed_image(source, request, cx);
-    stats.source_backed_preloads = 1;
-    stats.requested_upload_bytes = requested_upload_bytes;
+    match window.source_backed_image_request_status(request) {
+        SourceBackedImageRequestStatus::Missing
+        | SourceBackedImageRequestStatus::BudgetDeferred => {
+            window.preload_source_backed_image(source, request, cx);
+            stats.source_backed_preloads = 1;
+            stats.requested_upload_bytes = requested_upload_bytes;
+        }
+        SourceBackedImageRequestStatus::Loading
+        | SourceBackedImageRequestStatus::ReadyForUpload
+        | SourceBackedImageRequestStatus::Live
+        | SourceBackedImageRequestStatus::Failed => {}
+    }
     stats
 }
 

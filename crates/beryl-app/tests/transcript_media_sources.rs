@@ -13,6 +13,86 @@ use transcript_media::{
 };
 
 #[test]
+fn displayed_outcome_on_cache_miss_does_not_schedule_media_load() {
+    let mut cache = TranscriptMediaCache::new(8);
+    let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
+
+    let displayed = cache.displayed_outcome(&cache_key("cat"), &source, &host_workspace());
+
+    assert!(displayed.is_pending());
+    let stats = cache.stats();
+    assert_eq!(stats.scheduled_loads, 0);
+    assert_eq!(stats.entries, 0);
+    assert_eq!(stats.pending_entries, 0);
+}
+
+#[test]
+fn displayed_outcome_returns_loaded_media_without_markdown_revalidation() {
+    let path = r"c:\work\member\images\cat.png";
+    let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);
+    let mut reader = FakeReader::with_file(path, png_bytes());
+    let mut cache = TranscriptMediaCache::new_with_markdown_revalidate_after(8, Duration::ZERO);
+
+    let lookup = cache.lookup(
+        cache_key("cat"),
+        source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    assert_eq!(cache.stats().scheduled_loads, 1);
+
+    let displayed = cache.displayed_outcome(&cache_key("cat"), &source, &host_workspace());
+
+    assert!(displayed.loaded().is_some());
+    assert_eq!(cache.stats().scheduled_loads, 1);
+
+    let revalidate = cache.lookup(cache_key("cat"), source, host_workspace(), timeout());
+    assert!(revalidate.load_request.is_some());
+    assert_eq!(cache.stats().scheduled_loads, 2);
+}
+
+#[test]
+fn displayed_outcome_for_changed_source_returns_pending_without_invalidating_cache() {
+    let old_source = TranscriptMediaSource::markdown_image("old", "images/old.png", None);
+    let new_source = TranscriptMediaSource::markdown_image("new", "images/new.png", None);
+    let mut reader = FakeReader::default()
+        .with_file_added(r"c:\work\member\images\old.png", png_bytes())
+        .with_file_added(
+            r"c:\work\member\images\new.png",
+            png_bytes_with_pixel([1, 2, 3, 255]),
+        );
+    let mut cache = TranscriptMediaCache::new(8);
+
+    let lookup = cache.lookup(
+        cache_key("image"),
+        old_source.clone(),
+        host_workspace(),
+        timeout(),
+    );
+    assert!(
+        cache
+            .complete_load(lookup.load_request.unwrap().load(&mut reader))
+            .display_changed
+    );
+    assert_eq!(cache.stats().scheduled_loads, 1);
+
+    let displayed = cache.displayed_outcome(&cache_key("image"), &new_source, &host_workspace());
+
+    assert!(displayed.is_pending());
+    assert_eq!(cache.stats().scheduled_loads, 1);
+    assert_eq!(cache.stats().loaded_entries, 1);
+
+    let lookup = cache.lookup(cache_key("image"), new_source, host_workspace(), timeout());
+    assert!(lookup.load_request.is_some());
+    assert_eq!(cache.stats().scheduled_loads, 2);
+}
+
+#[test]
 fn markdown_png_target_resolves_relative_to_thread_execution_target() {
     let workspace = host_workspace();
     let source = TranscriptMediaSource::markdown_image("cat", "images/cat.png", None);

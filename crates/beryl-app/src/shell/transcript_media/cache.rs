@@ -301,6 +301,35 @@ impl TranscriptMediaCache {
         }
     }
 
+    pub(crate) fn displayed_outcome(
+        &mut self,
+        key: &TranscriptMediaCacheKey,
+        source: &TranscriptMediaSource,
+        execution_target: &WorkspaceId,
+    ) -> Arc<TranscriptMediaLoadOutcome> {
+        self.access_tick = self.access_tick.saturating_add(1);
+        self.stats.lookups = self.stats.lookups.saturating_add(1);
+
+        let fingerprint = TranscriptMediaSourceFingerprint::new(source, execution_target);
+        let Some(entry) = self.entries.get_mut(key) else {
+            self.stats.misses = self.stats.misses.saturating_add(1);
+            return Arc::new(TranscriptMediaLoadOutcome::Pending { alt: source.alt() });
+        };
+
+        entry.last_used = self.access_tick;
+        if entry.displayed_fingerprint == Some(fingerprint) {
+            if entry.in_flight.is_none() {
+                self.stats.ready_hits = self.stats.ready_hits.saturating_add(1);
+            } else {
+                self.stats.pending_hits = self.stats.pending_hits.saturating_add(1);
+            }
+            return entry.displayed.clone();
+        }
+
+        self.stats.pending_hits = self.stats.pending_hits.saturating_add(1);
+        Arc::new(TranscriptMediaLoadOutcome::Pending { alt: source.alt() })
+    }
+
     pub(crate) fn complete_load(
         &mut self,
         completion: TranscriptMediaLoadCompletion,
