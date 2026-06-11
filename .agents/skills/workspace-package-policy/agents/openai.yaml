@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Package Policy"
+  short_description: "Apply workspace boundaries and filesystem rules."
+  default_prompt: "Use this skill when working with workspace projects, subprojects, aggregating directories, .gitignore, ENV.md, package design docs, or large source files."

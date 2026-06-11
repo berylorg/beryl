@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementation Planning"
+  short_description: "Maintain root doc/plan.md phases."
+  default_prompt: "Use this skill before implementation work to create or update root doc/plan.md with required scope, phase, edge-case, blocker, and review rules."

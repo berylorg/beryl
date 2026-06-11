@@ -1,0 +1,4 @@
+interface:
+  display_name: "Failure Logging"
+  short_description: "Record invalidated approaches in doc/failures."
+  default_prompt: "Use this skill when implementation, design, dependency, migration, or live-test work invalidates an approach future agents should remember."

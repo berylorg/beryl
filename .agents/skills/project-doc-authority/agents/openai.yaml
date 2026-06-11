@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Doc Authority"
+  short_description: "Maintain design-doc authority and structure."
+  default_prompt: "Use this skill when creating doc/design.md files, placing feature/package/root design decisions, or resolving documentation authority conflicts."

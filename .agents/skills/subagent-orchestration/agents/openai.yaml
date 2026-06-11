@@ -1,0 +1,4 @@
+interface:
+  display_name: "Subagent Orchestration"
+  short_description: "Coordinate automatic broad-work delegation."
+  default_prompt: "Use this skill when broad exploration, dependency inspection, review, test triage, research, or parallel implementation should be delegated with clear task packets and ownership."

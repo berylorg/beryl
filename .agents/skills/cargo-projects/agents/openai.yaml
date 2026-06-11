@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cargo Projects"
+  short_description: "Apply strict Cargo workspace project rules."
+  default_prompt: "Use this skill when working in Rust Cargo workspaces, crates, Cargo.toml dependencies, lib.rs API docs, tests, nextest, or Cargo dependency investigation memory."

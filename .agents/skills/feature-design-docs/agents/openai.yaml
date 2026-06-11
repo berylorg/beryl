@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Design Docs"
+  short_description: "Create doc/features feature design docs."
+  default_prompt: "Use this skill when creating or updating doc/features/<feature>/design.md and supplemental feature UI, API, state, or architecture docs."
