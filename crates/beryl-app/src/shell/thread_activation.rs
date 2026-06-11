@@ -11,8 +11,8 @@ use crate::memory_diagnostics::MemoryMilestone;
 
 use super::thread_selection::thread_rebind_detail;
 use super::transcript_history::{
-    TranscriptHistoryBackend, TranscriptHistoryWindow, initial_thread_history_page_options,
-    loaded_page_from_desc_response,
+    TranscriptHistoryBackend, TranscriptHistoryWindow, initial_thread_resident_page_options,
+    loaded_full_page_from_desc_response, validate_resident_history_page,
 };
 
 #[derive(Debug)]
@@ -81,7 +81,7 @@ where
     let summary = thread.summary();
     validate_thread_execution_target(&summary, execution_target, label)?;
 
-    let page_options = initial_thread_history_page_options();
+    let page_options = initial_thread_resident_page_options();
     let history_read_started = Instant::now();
     let turns = backend
         .list_thread_turns(&summary.id, &page_options, timeout)
@@ -107,7 +107,7 @@ where
         "loaded initial existing-thread history page"
     );
     let history_apply_started = Instant::now();
-    let history_window = apply_initial_thread_history_page(&mut thread, turns);
+    let history_window = apply_initial_thread_resident_page(&mut thread, turns)?;
     MemoryMilestone::new("transcript_page_applied_worker")
         .runtime(execution_target.runtime_mode().display_name())
         .thread_id(thread_id)
@@ -158,13 +158,22 @@ fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
-pub(crate) fn apply_initial_thread_history_page(
+fn apply_initial_thread_resident_page(
     thread: &mut ThreadInfo,
     page: ThreadTurnsListResponse,
-) -> TranscriptHistoryWindow {
-    let page = loaded_page_from_desc_response(page);
+) -> Result<TranscriptHistoryWindow, ExistingThreadActivationError> {
+    let page = loaded_full_page_from_desc_response(page);
+    validate_initial_resident_page(&page)?;
     thread.turns = page.turns.clone();
-    TranscriptHistoryWindow::from_latest_page(&page)
+    Ok(TranscriptHistoryWindow::from_latest_page(&page))
+}
+
+fn validate_initial_resident_page(
+    page: &super::transcript_history::LoadedTranscriptHistoryPage,
+) -> Result<(), ExistingThreadActivationError> {
+    validate_resident_history_page(page).map_err(|error| ExistingThreadActivationError::Failed {
+        message: format!("Beryl could not prepare resident transcript history: {error}."),
+    })
 }
 
 pub(crate) fn validate_thread_execution_target(

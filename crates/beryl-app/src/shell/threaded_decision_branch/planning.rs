@@ -368,7 +368,7 @@ impl ShellView {
             .enumerate()
             .rev()
             .find(|(_, turn)| {
-                !turn.is_released_history_placeholder()
+                turn.has_resident_payload()
                     && turn.thread_id.as_deref() == Some(parent_thread_id.as_str())
                     && turn.turn_id.is_some()
                     && turn.status == TurnExecutionStatus::Completed

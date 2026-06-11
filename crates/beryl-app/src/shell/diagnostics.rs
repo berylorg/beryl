@@ -14,7 +14,7 @@ use crate::memory_diagnostics::{self, RetainedStateSnapshot};
 use super::{
     ComposerClipboardLabelScope, ComposerImagePopupMode, ConfiguredAppState,
     ConversationSurfaceState, ShellState, ShellView, TextInputRetainedAggregate,
-    TranscriptTurnDetailTask, runtime_target_diagnostic,
+    runtime_target_diagnostic,
 };
 
 pub(super) fn visible_transcript_rows(
@@ -31,7 +31,6 @@ pub(super) fn visible_transcript_rows(
                 source_turn_index: row.source_turn_index,
                 item_count: row.turn.item_count(),
                 text_chars: row.turn.text_char_count(),
-                released_history_placeholder: row.turn.is_released_history_placeholder(),
             });
         }
     }
@@ -53,11 +52,10 @@ impl ShellView {
         snapshot.backend_event_queue_estimate = Some(backend_client_connection_estimate);
         snapshot.backend_client_connection_estimate = Some(backend_client_connection_estimate);
         snapshot.turn_steering_receivers = Some(self.turn_steering_receivers.len());
-        snapshot.transcript_detail_pending_requests = Some(
-            self.transcript_turn_detail_task
-                .as_ref()
-                .map_or(0, TranscriptTurnDetailTask::active_ticket_count),
-        );
+        let pending_transcript_residency_requests =
+            usize::from(self.thread_history_page_receiver.is_some());
+        snapshot.transcript_residency_pending_requests =
+            Some(pending_transcript_residency_requests);
         snapshot.composer_draft_text_bytes = Some(composer_draft.display_text_bytes);
         snapshot.composer_draft_images = Some(composer_draft.image_count);
         snapshot.composer_draft_image_bytes = Some(composer_draft.image_bytes);
@@ -160,7 +158,6 @@ impl ShellView {
             visible_media,
             media_events: panel_snapshot.media_events,
             transcript_frame_metrics: panel_snapshot.transcript_frame_metrics,
-            transcript_detail_loads: self.transcript_detail_load_diagnostics.snapshot(),
             settings_window: self.settings_window_diagnostic_snapshot(cx),
         }
     }

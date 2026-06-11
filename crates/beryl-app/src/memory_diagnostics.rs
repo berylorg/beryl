@@ -27,17 +27,28 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) retained_payload_bytes_lower_bound: Option<usize>,
     pub(crate) loaded_transcript_turns: Option<usize>,
     pub(crate) loaded_transcript_items: Option<usize>,
-    pub(crate) transcript_skeleton_turns: Option<usize>,
-    pub(crate) transcript_missing_detail_turns: Option<usize>,
-    pub(crate) transcript_loading_detail_turns: Option<usize>,
-    pub(crate) transcript_full_detail_turns: Option<usize>,
-    pub(crate) transcript_failed_detail_turns: Option<usize>,
-    pub(crate) transcript_pinned_detail_turns: Option<usize>,
-    pub(crate) transcript_retained_detail_items: Option<usize>,
-    pub(crate) transcript_detail_retention_turns: Option<usize>,
-    pub(crate) transcript_detail_last_requested_turns: Option<usize>,
-    pub(crate) transcript_detail_last_released_turns: Option<usize>,
-    pub(crate) transcript_detail_pending_requests: Option<usize>,
+    pub(crate) transcript_residency_index_turns: Option<usize>,
+    pub(crate) transcript_residency_nonresident_turns: Option<usize>,
+    pub(crate) transcript_residency_resident_turns: Option<usize>,
+    pub(crate) transcript_residency_pinned_turns: Option<usize>,
+    pub(crate) transcript_residency_retained_items: Option<usize>,
+    pub(crate) transcript_residency_last_requested_turns: Option<usize>,
+    pub(crate) transcript_residency_last_released_turns: Option<usize>,
+    pub(crate) transcript_residency_pending_requests: Option<usize>,
+    pub(crate) transcript_residency_in_flight_requests: Option<usize>,
+    pub(crate) transcript_residency_resident_bytes: Option<usize>,
+    pub(crate) transcript_residency_index_metadata_bytes: Option<usize>,
+    pub(crate) transcript_residency_total_bytes_estimate: Option<usize>,
+    pub(crate) transcript_residency_policy_max_turns: Option<usize>,
+    pub(crate) transcript_residency_policy_max_bytes: Option<usize>,
+    pub(crate) transcript_residency_policy_max_in_flight_requests: Option<usize>,
+    pub(crate) transcript_residency_policy_leading_viewport_margins: Option<usize>,
+    pub(crate) transcript_residency_policy_trailing_viewport_margins: Option<usize>,
+    pub(crate) transcript_residency_policy_cold_release_hysteresis_viewports: Option<usize>,
+    pub(crate) transcript_residency_policy_max_resident_pages: Option<usize>,
+    pub(crate) transcript_residency_policy_max_released_pages: Option<usize>,
+    pub(crate) transcript_residency_policy_request_priority: Option<&'static str>,
+    pub(crate) transcript_residency_budget_reason: Option<&'static str>,
     pub(crate) loaded_transcript_text_bytes: Option<usize>,
     pub(crate) transcript_user_fragments: Option<usize>,
     pub(crate) transcript_user_fragment_text_bytes: Option<usize>,
@@ -45,7 +56,6 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) transcript_backend_input_bytes: Option<usize>,
     pub(crate) transcript_image_marker_bytes: Option<usize>,
     pub(crate) transcript_narrative_entries: Option<usize>,
-    pub(crate) released_transcript_placeholders: Option<usize>,
     pub(crate) active_turn_payload_bytes: Option<usize>,
     pub(crate) transcript_agent_text_bytes: Option<usize>,
     pub(crate) transcript_reasoning_summary_bytes: Option<usize>,
@@ -63,7 +73,6 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) presentation_text_bytes: Option<usize>,
     pub(crate) presentation_identity_bytes: Option<usize>,
     pub(crate) presentation_anchor_bytes: Option<usize>,
-    pub(crate) presentation_placeholder_rows: Option<usize>,
     pub(crate) presentation_range_rows: Option<usize>,
     pub(crate) history_pages: Option<usize>,
     pub(crate) history_resident_pages: Option<usize>,
@@ -280,27 +289,6 @@ impl MemoryMilestone {
             optional_usize(retained_state.retained_payload_bytes_lower_bound);
         let loaded_transcript_turns = optional_usize(retained_state.loaded_transcript_turns);
         let loaded_transcript_items = optional_usize(retained_state.loaded_transcript_items);
-        let transcript_skeleton_turns = optional_usize(retained_state.transcript_skeleton_turns);
-        let transcript_missing_detail_turns =
-            optional_usize(retained_state.transcript_missing_detail_turns);
-        let transcript_loading_detail_turns =
-            optional_usize(retained_state.transcript_loading_detail_turns);
-        let transcript_full_detail_turns =
-            optional_usize(retained_state.transcript_full_detail_turns);
-        let transcript_failed_detail_turns =
-            optional_usize(retained_state.transcript_failed_detail_turns);
-        let transcript_pinned_detail_turns =
-            optional_usize(retained_state.transcript_pinned_detail_turns);
-        let transcript_retained_detail_items =
-            optional_usize(retained_state.transcript_retained_detail_items);
-        let transcript_detail_retention_turns =
-            optional_usize(retained_state.transcript_detail_retention_turns);
-        let transcript_detail_last_requested_turns =
-            optional_usize(retained_state.transcript_detail_last_requested_turns);
-        let transcript_detail_last_released_turns =
-            optional_usize(retained_state.transcript_detail_last_released_turns);
-        let transcript_detail_pending_requests =
-            optional_usize(retained_state.transcript_detail_pending_requests);
         let loaded_transcript_text_bytes =
             optional_usize(retained_state.loaded_transcript_text_bytes);
         let transcript_user_fragments = optional_usize(retained_state.transcript_user_fragments);
@@ -308,8 +296,6 @@ impl MemoryMilestone {
             optional_usize(retained_state.transcript_backend_input_records);
         let transcript_narrative_entries =
             optional_usize(retained_state.transcript_narrative_entries);
-        let released_transcript_placeholders =
-            optional_usize(retained_state.released_transcript_placeholders);
         let presentation_rows = optional_usize(retained_state.presentation_rows);
         let presentation_items = optional_usize(retained_state.presentation_items);
         let presentation_text_bytes = optional_usize(retained_state.presentation_text_bytes);
@@ -407,22 +393,10 @@ impl MemoryMilestone {
                     retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
                     loaded_transcript_turns = %loaded_transcript_turns,
                     loaded_transcript_items = %loaded_transcript_items,
-                    transcript_skeleton_turns = %transcript_skeleton_turns,
-                    transcript_missing_detail_turns = %transcript_missing_detail_turns,
-                    transcript_loading_detail_turns = %transcript_loading_detail_turns,
-                    transcript_full_detail_turns = %transcript_full_detail_turns,
-                    transcript_failed_detail_turns = %transcript_failed_detail_turns,
-                    transcript_pinned_detail_turns = %transcript_pinned_detail_turns,
-                    transcript_retained_detail_items = %transcript_retained_detail_items,
-                    transcript_detail_retention_turns = %transcript_detail_retention_turns,
-                    transcript_detail_last_requested_turns = %transcript_detail_last_requested_turns,
-                    transcript_detail_last_released_turns = %transcript_detail_last_released_turns,
-                    transcript_detail_pending_requests = %transcript_detail_pending_requests,
                     loaded_transcript_text_bytes = %loaded_transcript_text_bytes,
                     transcript_user_fragments = %transcript_user_fragments,
                     transcript_backend_input_records = %transcript_backend_input_records,
                     transcript_narrative_entries = %transcript_narrative_entries,
-                    released_transcript_placeholders = %released_transcript_placeholders,
                     presentation_rows = %presentation_rows,
                     presentation_items = %presentation_items,
                     presentation_text_bytes = %presentation_text_bytes,
@@ -496,22 +470,10 @@ impl MemoryMilestone {
                     retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
                     loaded_transcript_turns = %loaded_transcript_turns,
                     loaded_transcript_items = %loaded_transcript_items,
-                    transcript_skeleton_turns = %transcript_skeleton_turns,
-                    transcript_missing_detail_turns = %transcript_missing_detail_turns,
-                    transcript_loading_detail_turns = %transcript_loading_detail_turns,
-                    transcript_full_detail_turns = %transcript_full_detail_turns,
-                    transcript_failed_detail_turns = %transcript_failed_detail_turns,
-                    transcript_pinned_detail_turns = %transcript_pinned_detail_turns,
-                    transcript_retained_detail_items = %transcript_retained_detail_items,
-                    transcript_detail_retention_turns = %transcript_detail_retention_turns,
-                    transcript_detail_last_requested_turns = %transcript_detail_last_requested_turns,
-                    transcript_detail_last_released_turns = %transcript_detail_last_released_turns,
-                    transcript_detail_pending_requests = %transcript_detail_pending_requests,
                     loaded_transcript_text_bytes = %loaded_transcript_text_bytes,
                     transcript_user_fragments = %transcript_user_fragments,
                     transcript_backend_input_records = %transcript_backend_input_records,
                     transcript_narrative_entries = %transcript_narrative_entries,
-                    released_transcript_placeholders = %released_transcript_placeholders,
                     presentation_rows = %presentation_rows,
                     presentation_items = %presentation_items,
                     presentation_text_bytes = %presentation_text_bytes,

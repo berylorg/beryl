@@ -35,6 +35,46 @@ fn bottom_following_stays_at_real_content_end_with_virtual_tail_available() {
 }
 
 #[test]
+fn clamped_scroll_delta_does_not_require_view_notification() {
+    let state = ListState::new(3, ListAlignment::Top, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(100.0), px(100.0), px(100.0)]);
+    test_support::set_viewport_height(&state, px(250.0));
+
+    let should_notify =
+        test_support::apply_scroll_delta_should_notify_view(&state, point(px(0.0), px(20.0)));
+
+    assert_eq!(should_notify, Some(false));
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.0),
+        })
+    );
+    assert_eq!(test_support::visible_range(&state), 0..3);
+}
+
+#[test]
+fn offset_only_scroll_delta_requires_view_notification() {
+    let state = ListState::new(3, ListAlignment::Top, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(100.0), px(100.0), px(100.0)]);
+    test_support::set_viewport_height(&state, px(250.0));
+
+    let should_notify =
+        test_support::apply_scroll_delta_should_notify_view(&state, point(px(0.0), px(-10.0)));
+
+    assert_eq!(should_notify, Some(true));
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 0,
+            offset_in_item: px(10.0),
+        })
+    );
+    assert_eq!(test_support::visible_range(&state), 0..3);
+}
+
+#[test]
 fn virtual_tail_position_clamps_to_current_allowance() {
     let state = ListState::new(3, ListAlignment::Bottom, px(10.0));
     test_support::set_measured_item_heights(&state, &[px(20.0), px(20.0), px(20.0)]);
@@ -510,10 +550,18 @@ fn scroll_handler_dispatch_runs_after_list_state_borrow_is_released() {
     assert!(element_source.contains("list_state.scroll("));
     assert!(!element_source.contains("list_state.0.borrow_mut().scroll("));
 
-    assert!(list_state_scroll_body.contains("let (event, mut handler) = {"));
+    assert!(list_state_scroll_body.contains("let (event, mut handler, should_notify_view) = {"));
     assert!(list_state_scroll_body.contains("let mut state = self.0.borrow_mut();"));
+    assert!(
+        list_state_scroll_body.contains("let previous_scroll_position = state.scroll_position();")
+    );
+    assert!(
+        list_state_scroll_body
+            .contains("let previous_visible_range = state.current_visible_range();")
+    );
     assert!(list_state_scroll_body.contains("state.scroll(scroll_top, height, delta)"));
     assert!(list_state_scroll_body.contains("state.scroll_handler.take()"));
+    assert!(list_state_scroll_body.contains("if should_notify_view {"));
     assert_order(
         list_state_scroll_body,
         "state.scroll_handler.take()",

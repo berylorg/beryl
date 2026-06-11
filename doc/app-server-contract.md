@@ -12,6 +12,9 @@ It is an implementation aid, not a design authority. `doc/design.md` remains aut
 - The current transcript-history contract is `thread/turns/list` with `itemsView`; `itemsView = "notLoaded"` is used only for non-rendered turn-index and cursor planning, while bounded `itemsView = "full"` page requests provide resident full-detail transcript data.
 - The current transcript-history implementation does not call `thread/turns/items/list`, even though local 0.137 schema generation exposes it, because the live method reports runtime unsupported.
 - `itemsView = "summary"` is not sufficient for generated-image history rendering because it does not expose native `imageGeneration.savedPath`.
+- The current 0.137 stable schema exposes read-only permission controls at thread, fork, and turn boundaries through `thread/start.sandbox`, `thread/fork.sandbox`, and `turn/start.sandboxPolicy`. These controls are the app-server permission contract; hidden developer instructions are not an enforcement boundary.
+- The current 0.137 thread schema exposes subagent hierarchy directly through nullable `Thread.parentThreadId`; `collabAgentToolCall.senderThreadId` and `receiverThreadIds` remain useful live activity edges but are not the only hierarchy source.
+- Some app-server process surfaces are explicitly outside the thread sandbox. Beryl must not treat an unsandboxed client request as safe merely because the selected conversation thread is read-only.
 
 ## Validation Basis
 
@@ -47,6 +50,7 @@ It is an implementation aid, not a design authority. `doc/design.md` remains aut
 - Empty persistent-thread durability probing was performed on May 21, 2026 against `codex-cli 0.128.0` over local app-server stdio using an isolated temporary `CODEX_HOME` and a disposable workspace directory.
 - Transcript-history migration probing was performed on June 8, 2026 against local `codex-cli 0.137.0` using stable and experimental generated schemas plus direct stdio probes with `capabilities.experimentalApi = true` on the existing `City Image Generation` thread.
 - Initialize userAgent probing was performed on June 9, 2026 against local `codex-cli 0.137.0`. When the client sent `clientInfo.name = "probeclient"` and `clientInfo.version = "9.8.7"`, app-server returned userAgent `probeclient/0.137.0 (...) WindowsTerminal (probeclient; 9.8.7)`, proving that the slash version in the first product token is the app-server version and the parenthesized client version is the client identity echoed back.
+- Subagent hierarchy and sandbox schema inspection was performed on June 11, 2026 against local `codex-cli 0.137.0` using `codex app-server generate-json-schema --out <temp-dir>` and `codex app-server generate-json-schema --experimental --out <temp-dir>`.
 
 ## Transport
 
@@ -81,6 +85,8 @@ It is an implementation aid, not a design authority. `doc/design.md` remains aut
 - `thread/list` returns persisted thread summaries with pagination state.
 - `thread/list` accepts optional `cwd`, `limit`, `cursor`, `sortKey`, and `sortDirection` parameters in the 0.125.0 schema.
 - Observed thread summaries include `cwd`, `updatedAt`, and optional `name`; Beryl's member-thread inventory depends on `cwd` for exact workspace-member grouping, `updatedAt` for descending per-member ordering, and `name` as a backend-provided user-facing title when present.
+- The generated 0.137 `Thread` schema includes optional top-level `parentThreadId`, described as present only when the thread is a subagent. This field is the direct app-server metadata edge for embedding subagent threads under their parent thread.
+- The generated 0.137 `Thread` schema also includes optional top-level `agentNickname` and `agentRole` for AgentControl-spawned subagents. `agentNickname` remains display metadata, while `parentThreadId` is the hierarchy metadata.
 - Persisted historical threads discovered via `thread/list` are commonly returned with `status.type = "notLoaded"`.
 - `thread/start` creates a new thread and returns thread metadata including runtime policy details such as model, nullable reasoning effort, sandbox, and approval policy.
 - In a May 21, 2026 `codex-cli 0.128.0` isolated stdio probe, `thread/start` with `ephemeral = false` and no subsequent `turn/start` returned a thread id with empty turns but did not create a persisted rollout discoverable by `thread/list`; after app-server restart, `thread/resume excludeTurns=true` for that id failed with JSON-RPC `-32600` and message `no rollout found for thread id ...`. Callers that need a durable user-facing thread must not treat empty `thread/start` success alone as a durable persisted conversation.
@@ -141,6 +147,21 @@ It is an implementation aid, not a design authority. `doc/design.md` remains aut
 - Observed and source-visible rollback errors include method-not-found for unsupported primitives, invalid request for `numTurns = 0`, invalid request for duplicate rollback on the same thread, invalid request when rollback is attempted while a turn is active, and internal errors for failed rollback execution.
 - Fork-specific branch errors include invalid request when fork cannot locate a rollout for the requested source id and internal errors for failed fork execution.
 - Rollback and replacement turn start are non-atomic in the observed protocol. If rollback succeeds and the following `turn/start` fails, the thread remains rolled back and the caller must preserve enough GUI state for retry or recovery.
+
+## Permissions, Sandbox, And Subagent Threads
+
+- The generated 0.137 stable `ThreadStartParams` schema exposes `sandbox` as `read-only`, `workspace-write`, or `danger-full-access`.
+- The generated 0.137 stable `ThreadForkParams` schema exposes the same `sandbox` field for the forked thread.
+- The generated 0.137 stable `TurnStartParams` schema exposes `sandboxPolicy` for this turn and subsequent turns. Its structured variants include `readOnly` with optional `networkAccess`, `workspaceWrite` with optional `writableRoots` and network flags, `externalSandbox`, and `dangerFullAccess`.
+- The generated 0.137 experimental `ThreadStartParams`, `ThreadForkParams`, `ThreadResumeParams`, `TurnStartParams`, and `ThreadSettingsUpdateParams` schemas additionally expose named `permissions` profile ids. These fields cannot be combined with the corresponding sandbox policy field on the same request.
+- `turn/start.sandboxPolicy` and experimental `thread/settings/update.sandboxPolicy` are subsequent-turn controls. Beryl must not assume that a policy change can demote a turn that is already running.
+- `approvalPolicy` and `approvalsReviewer` are separate from sandbox mode. A read-only or non-writer thread should still have approval routing behavior that prevents permission escalation from becoming an implicit write lease.
+- `collabAgentToolCall` includes `senderThreadId`, `receiverThreadIds`, `agentsStates`, status, and optional prompt/model/reasoning-effort metadata. The inspected 0.137 schema does not expose a sandbox or permissions override inside the collab tool-call item itself.
+- Because `collabAgentToolCall` does not carry a sandbox override, read-only enforcement for CAS-spawned subagents must be verified through inheritance, thread metadata, or another app-server settings path before Beryl relies on it for a write-mutex product policy.
+- `command/exec` is a standalone app-server command request that runs in the server sandbox and accepts the same structured `sandboxPolicy` shape as thread execution.
+- `thread/shellCommand` is explicitly described as running unsandboxed with full access rather than inheriting the thread sandbox policy. Beryl must not expose it as an operation available to read-only conversation threads without an independent GUI-side permission guard.
+- Experimental `process/spawn` is explicitly described as spawning a standalone process without a Codex sandbox on the app-server host. Beryl must treat it as outside thread read-only enforcement.
+- As with `thread/turns/items/list`, schema presence is not sufficient proof of usable runtime behavior. Any product rule that depends on read-only enforcement should have a live disposable probe that starts or switches a thread into read-only mode, attempts a write, and verifies both the request outcome and filesystem result.
 
 ## Turn Execution Stream
 

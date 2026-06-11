@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::{ops::AddAssign, sync::Arc};
 
 use beryl_model::workspace::WorkspaceId;
 use gpui::{
-    AnyElement, App, ImageRenderSource, MouseButton, ObjectFit, Pixels, Rgba, Window, div, img,
-    prelude::*, px, relative,
+    AnyElement, App, DevicePixels, ImageRenderSource, MouseButton, ObjectFit, Pixels, Rgba, Size,
+    Window, div, img, prelude::*, px, relative,
 };
 use std::time::Instant;
 
@@ -47,6 +47,27 @@ pub(super) struct TranscriptMediaTheme {
     pub(super) unavailable_foreground: Rgba,
     pub(super) border: Rgba,
     pub(super) caption_foreground: Rgba,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct TranscriptMediaRunPreloadStats {
+    pub(super) item_count: usize,
+    pub(super) scheduled_loads: usize,
+    pub(super) source_backed_preloads: usize,
+    pub(super) requested_upload_bytes: usize,
+}
+
+impl AddAssign for TranscriptMediaRunPreloadStats {
+    fn add_assign(&mut self, rhs: Self) {
+        self.item_count = self.item_count.saturating_add(rhs.item_count);
+        self.scheduled_loads = self.scheduled_loads.saturating_add(rhs.scheduled_loads);
+        self.source_backed_preloads = self
+            .source_backed_preloads
+            .saturating_add(rhs.source_backed_preloads);
+        self.requested_upload_bytes = self
+            .requested_upload_bytes
+            .saturating_add(rhs.requested_upload_bytes);
+    }
 }
 
 pub(super) fn render_media_run(
@@ -116,52 +137,85 @@ pub(super) fn preload_media_run(
     context: TranscriptMediaRenderContext,
     execution_target: &WorkspaceId,
     layout: TranscriptMediaRenderLayout,
+    remaining_load_requests: usize,
+    remaining_upload_bytes: usize,
     window: &mut Window,
     cx: &mut App,
-) {
+) -> TranscriptMediaRunPreloadStats {
+    let mut stats = TranscriptMediaRunPreloadStats {
+        item_count: items.len(),
+        ..TranscriptMediaRunPreloadStats::default()
+    };
     if items
         .iter()
         .any(|item| !item.source.is_source_backed_preload_candidate())
     {
-        return;
+        return stats;
+    }
+    if remaining_load_requests == 0 {
+        return stats;
     }
 
-    let resolved_items = items
-        .iter()
-        .map(|item| ResolvedTranscriptMediaRenderItem {
+    let mut resolved_items = Vec::new();
+    for item in items {
+        if stats.scheduled_loads >= remaining_load_requests {
+            break;
+        }
+        let lookup = context.preload_media_for(
+            item.key.clone(),
+            item.source.clone(),
+            execution_target.clone(),
+            cx,
+        );
+        if lookup.load_scheduled {
+            stats.scheduled_loads = stats.scheduled_loads.saturating_add(1);
+        }
+        resolved_items.push(ResolvedTranscriptMediaRenderItem {
             source: item.source.clone(),
             identity: item.identity.clone(),
-            outcome: context.media_for(
-                item.key.clone(),
-                item.source.clone(),
-                execution_target.clone(),
-                cx,
-            ),
-        })
-        .collect::<Vec<_>>();
+            outcome: lookup.outcome,
+        });
+    }
     let promoted_index = promoted_media_index(&resolved_items, context.promotion().promoted());
 
     if let Some(promoted_index) = promoted_index {
-        preload_promoted_media_run(&resolved_items, layout, promoted_index, context, window, cx);
-        return;
+        stats += preload_promoted_media_run(
+            &resolved_items,
+            layout,
+            promoted_index,
+            context,
+            remaining_upload_bytes,
+            window,
+            cx,
+        );
+        return stats;
     }
 
     if resolved_items
         .iter()
         .any(|item| item.outcome.fallback_text().is_some())
     {
-        preload_mixed_media_run(&resolved_items, layout, context, window, cx);
-        return;
+        stats += preload_mixed_media_run(
+            &resolved_items,
+            layout,
+            context,
+            remaining_upload_bytes,
+            window,
+            cx,
+        );
+        return stats;
     }
 
-    preload_media_tile_group(
+    stats += preload_media_tile_group(
         &resolved_items,
         layout,
         resolved_items.len(),
         context,
+        remaining_upload_bytes,
         window,
         cx,
     );
+    stats
 }
 
 #[derive(Clone)]
@@ -174,21 +228,23 @@ struct ResolvedTranscriptMediaRenderItem {
 fn preload_media_item(
     item: &ResolvedTranscriptMediaRenderItem,
     sizing: TranscriptMediaSizingInput,
+    remaining_upload_bytes: usize,
     context: &TranscriptMediaRenderContext,
     window: &mut Window,
     cx: &mut App,
-) {
+) -> TranscriptMediaRunPreloadStats {
+    let mut stats = TranscriptMediaRunPreloadStats::default();
     let outcome = item.outcome.as_ref();
     let TranscriptMediaSlotLayout::Media(TranscriptMediaSize { width, height }) =
         transcript_media_slot_layout(sizing, Some(outcome))
     else {
-        return;
+        return stats;
     };
     let Some(image) = outcome.loaded() else {
-        return;
+        return stats;
     };
     let Some(path) = image.source_backed_file_path() else {
-        return;
+        return stats;
     };
 
     context
@@ -206,12 +262,25 @@ fn preload_media_item(
         sizing.window_scale,
     );
     if requested_size.width.0 <= 0 || requested_size.height.0 <= 0 {
-        return;
+        return stats;
+    }
+    let requested_upload_bytes = source_backed_requested_upload_bytes(requested_size);
+    if requested_upload_bytes > remaining_upload_bytes {
+        return stats;
     }
 
     let source = ImageRenderSource::file(path.clone());
     let request = source.render_request(0, sizing.window_scale, requested_size);
     window.preload_source_backed_image(source, request, cx);
+    stats.source_backed_preloads = 1;
+    stats.requested_upload_bytes = requested_upload_bytes;
+    stats
+}
+
+fn source_backed_requested_upload_bytes(size: Size<DevicePixels>) -> usize {
+    let width = size.width.0.max(0) as usize;
+    let height = size.height.0.max(0) as usize;
+    width.saturating_mul(height).saturating_mul(4)
 }
 
 fn render_media_item(
@@ -369,20 +438,25 @@ fn preload_mixed_media_run(
     resolved_items: &[ResolvedTranscriptMediaRenderItem],
     layout: TranscriptMediaRenderLayout,
     context: TranscriptMediaRenderContext,
+    remaining_upload_bytes: usize,
     window: &mut Window,
     cx: &mut App,
-) {
+) -> TranscriptMediaRunPreloadStats {
+    let mut stats = TranscriptMediaRunPreloadStats::default();
     let mut media_start = None;
     let source_run_length = resolved_items.len();
 
     for (index, item) in resolved_items.iter().enumerate() {
         if item.outcome.fallback_text().is_some() {
             if let Some(start) = media_start.take() {
-                preload_media_tile_group(
+                let remaining_upload_bytes =
+                    remaining_upload_bytes.saturating_sub(stats.requested_upload_bytes);
+                stats += preload_media_tile_group(
                     &resolved_items[start..index],
                     layout,
                     source_run_length,
                     context.clone(),
+                    remaining_upload_bytes,
                     window,
                     cx,
                 );
@@ -393,15 +467,19 @@ fn preload_mixed_media_run(
     }
 
     if let Some(start) = media_start {
-        preload_media_tile_group(
+        let remaining_upload_bytes =
+            remaining_upload_bytes.saturating_sub(stats.requested_upload_bytes);
+        stats += preload_media_tile_group(
             &resolved_items[start..],
             layout,
             source_run_length,
             context,
+            remaining_upload_bytes,
             window,
             cx,
         );
     }
+    stats
 }
 
 fn promoted_media_index(
@@ -480,39 +558,49 @@ fn preload_promoted_media_run(
     layout: TranscriptMediaRenderLayout,
     promoted_index: usize,
     context: TranscriptMediaRenderContext,
+    remaining_upload_bytes: usize,
     window: &mut Window,
     cx: &mut App,
-) {
+) -> TranscriptMediaRunPreloadStats {
+    let mut stats = TranscriptMediaRunPreloadStats::default();
     if promoted_index > 0 {
-        preload_media_tile_group(
+        stats += preload_media_tile_group(
             &resolved_items[..promoted_index],
             layout,
             resolved_items.len(),
             context.clone(),
+            remaining_upload_bytes,
             window,
             cx,
         );
     }
 
-    preload_media_tile_group(
+    let remaining_upload_bytes =
+        remaining_upload_bytes.saturating_sub(stats.requested_upload_bytes);
+    stats += preload_media_tile_group(
         &resolved_items[promoted_index..promoted_index + 1],
         layout,
         1,
         context.clone(),
+        remaining_upload_bytes,
         window,
         cx,
     );
 
     if promoted_index + 1 < resolved_items.len() {
-        preload_media_tile_group(
+        let remaining_upload_bytes =
+            remaining_upload_bytes.saturating_sub(stats.requested_upload_bytes);
+        stats += preload_media_tile_group(
             &resolved_items[promoted_index + 1..],
             layout,
             resolved_items.len(),
             context,
+            remaining_upload_bytes,
             window,
             cx,
         );
     }
+    stats
 }
 
 fn render_media_tile_group(
@@ -576,11 +664,18 @@ fn preload_media_tile_group(
     layout: TranscriptMediaRenderLayout,
     sizing_run_length: usize,
     context: TranscriptMediaRenderContext,
+    remaining_upload_bytes: usize,
     window: &mut Window,
     cx: &mut App,
-) {
+) -> TranscriptMediaRunPreloadStats {
+    let mut stats = TranscriptMediaRunPreloadStats::default();
     for item in resolved_items {
-        preload_media_item(
+        let remaining_upload_bytes =
+            remaining_upload_bytes.saturating_sub(stats.requested_upload_bytes);
+        if remaining_upload_bytes == 0 {
+            break;
+        }
+        stats += preload_media_item(
             item,
             TranscriptMediaSizingInput {
                 run_length: sizing_run_length,
@@ -592,11 +687,13 @@ fn preload_media_tile_group(
                     .map(|image| image.natural_dimensions()),
                 window_scale: layout.window_scale,
             },
+            remaining_upload_bytes,
             &context,
             window,
             cx,
         );
     }
+    stats
 }
 
 fn media_selectable_line(

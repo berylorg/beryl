@@ -19,7 +19,9 @@ mod shell {
     #[path = "../../src/shell/virtual_list/mod.rs"]
     mod virtual_list;
 
-    use beryl_backend::{ThreadItem, TurnInfo};
+    use std::ops::Range;
+
+    use beryl_backend::TurnInfo;
     use gpui::{Pixels, px};
 
     use self::{
@@ -60,41 +62,34 @@ mod shell {
             }
         }
 
-        pub(super) fn with_detail_placeholder(mut self, placeholder_turn_id: &str) -> Self {
-            let replacement = self
-                .details
-                .release_history_turn_detail("thread_a", placeholder_turn_id)
-                .expect("placeholder replacement should be available");
-            self.presentation
-                .replace_turn(replacement.index, replacement.turn);
-            self
-        }
-
-        pub(super) fn release_detail(&mut self, turn_id: &str) -> TranscriptPresentationMutation {
-            let replacement = self
-                .details
-                .release_history_turn_detail("thread_a", turn_id)
-                .expect("detail release should be available");
-            self.presentation
-                .replace_turn(replacement.index, replacement.turn)
-        }
-
-        pub(super) fn apply_detail_items(
+        pub(super) fn release_range(
             &mut self,
-            turn_id: &str,
-            items: Vec<ThreadItem>,
-        ) -> TranscriptPresentationMutation {
-            let replacement = self
-                .details
-                .apply_history_turn_items(
-                    "thread_a",
-                    turn_id,
-                    items,
-                    &execution_detail::TranscriptImagePathResolver::default(),
-                )
-                .expect("detail apply should be available");
-            self.presentation
-                .replace_turn(replacement.index, replacement.turn)
+            range: Range<usize>,
+        ) -> Vec<TranscriptPresentationMutation> {
+            self.details
+                .release_history_range(range)
+                .into_iter()
+                .map(|replacement| {
+                    self.presentation
+                        .replace_turn(replacement.index, replacement.turn)
+                })
+                .collect()
+        }
+
+        pub(super) fn restore_history_page(
+            &mut self,
+            row_start: usize,
+            expected_turn_ids: &[String],
+            turns: Vec<TurnInfo>,
+        ) -> Vec<TranscriptPresentationMutation> {
+            self.details
+                .restore_history_page("thread_a", row_start, expected_turn_ids, turns)
+                .into_iter()
+                .map(|replacement| {
+                    self.presentation
+                        .replace_turn(replacement.index, replacement.turn)
+                })
+                .collect()
         }
 
         pub(super) fn presentation_len(&self) -> usize {
@@ -257,8 +252,8 @@ fn turn_view_snapshot_can_show_current_without_total_when_oldest_known_but_tail_
 }
 
 #[test]
-fn turn_view_current_uses_source_ownership_for_detail_placeholder_row() {
-    let harness = shell::TurnViewHarness::from_latest_page(
+fn turn_view_current_skips_released_nonresident_source_slots() {
+    let mut harness = shell::TurnViewHarness::from_latest_page(
         vec![
             prompt_turn("turn_3", "third"),
             prompt_turn("turn_4", "fourth"),
@@ -266,69 +261,70 @@ fn turn_view_current_uses_source_ownership_for_detail_placeholder_row() {
         ],
         None,
         None,
-    )
-    .with_detail_placeholder("turn_4");
+    );
+    assert_eq!(
+        harness.release_range(1..2),
+        vec![shell::TranscriptPresentationMutation::Removed { index: 1, count: 1 }]
+    );
     let list_state = shell::measured_list_state(
         harness.presentation_len(),
         shell::content_position(1),
         px(20.0),
-        &[px(20.0), px(20.0), px(20.0)],
+        &[px(20.0), px(20.0)],
     );
 
     assert_eq!(
         shell::snapshot_parts(harness.snapshot(&list_state)),
-        (Some(2), Some(3))
+        (Some(3), Some(3))
     );
 }
 
 #[test]
-fn turn_view_current_stays_on_same_source_after_detail_placeholder_replacement() {
+fn turn_view_current_preserves_source_after_full_page_restore() {
     let full_turn = prompt_turn("turn_2", "second");
-    let full_items = full_turn.items.clone();
     let mut harness = shell::TurnViewHarness::from_latest_page(
         vec![
             prompt_turn("turn_1", "first"),
-            full_turn,
+            full_turn.clone(),
             prompt_turn("turn_3", "third"),
         ],
         None,
         None,
     );
     assert_eq!(
-        harness.release_detail("turn_2"),
-        shell::TranscriptPresentationMutation::Replaced { index: 1 }
+        harness.release_range(1..2),
+        vec![shell::TranscriptPresentationMutation::Removed { index: 1, count: 1 }]
     );
     let list_state = shell::measured_list_state(
         harness.presentation_len(),
         shell::content_position(1),
         px(20.0),
-        &[px(20.0), px(20.0), px(20.0)],
+        &[px(20.0), px(20.0)],
     );
 
     assert_eq!(
         shell::snapshot_parts(harness.snapshot(&list_state)),
-        (Some(2), Some(3))
+        (Some(3), Some(3))
     );
     assert_eq!(
-        harness.apply_detail_items("turn_2", full_items),
-        shell::TranscriptPresentationMutation::Replaced { index: 1 }
+        harness.restore_history_page(1, &["turn_2".to_string()], vec![full_turn]),
+        vec![shell::TranscriptPresentationMutation::Inserted { index: 1, count: 1 }]
     );
-    list_state.invalidate_item_measurement(1);
+    list_state.splice(1..1, 1);
 
     assert_eq!(
         shell::snapshot_parts(harness.snapshot(&list_state)),
-        (Some(2), Some(3))
+        (Some(3), Some(3))
     );
 }
 
 #[test]
-fn turn_view_current_uses_reconciled_row_after_operational_detail_placeholder_removed() {
+fn turn_view_current_ignores_released_operational_source_slot() {
     let operational = command_only_turn("turn_2");
-    let full_items = operational.items.clone();
     let mut harness = shell::TurnViewHarness::from_latest_page(
         vec![
             prompt_turn("turn_1", "first"),
-            operational,
+            operational.clone(),
             prompt_turn("turn_3", "third"),
         ],
         None,
@@ -336,25 +332,24 @@ fn turn_view_current_uses_reconciled_row_after_operational_detail_placeholder_re
     );
     assert_eq!(harness.presentation_len(), 2);
     assert_eq!(
-        harness.release_detail("turn_2"),
-        shell::TranscriptPresentationMutation::Inserted { index: 1, count: 1 }
+        harness.release_range(1..2),
+        vec![shell::TranscriptPresentationMutation::Unchanged]
     );
     let list_state = shell::measured_list_state(
         harness.presentation_len(),
         shell::content_position(1),
         px(20.0),
-        &[px(20.0), px(20.0), px(20.0)],
+        &[px(20.0), px(20.0)],
     );
 
     assert_eq!(
         shell::snapshot_parts(harness.snapshot(&list_state)),
-        (Some(2), Some(3))
+        (Some(3), Some(3))
     );
     assert_eq!(
-        harness.apply_detail_items("turn_2", full_items),
-        shell::TranscriptPresentationMutation::Removed { index: 1, count: 1 }
+        harness.restore_history_page(1, &["turn_2".to_string()], vec![operational]),
+        vec![shell::TranscriptPresentationMutation::Unchanged]
     );
-    list_state.splice(1..2, 0);
 
     assert_eq!(list_state.item_count(), harness.presentation_len());
     assert_eq!(
@@ -364,39 +359,37 @@ fn turn_view_current_uses_reconciled_row_after_operational_detail_placeholder_re
 }
 
 #[test]
-fn turn_view_current_uses_reconciled_row_after_final_operational_placeholder_removed() {
+fn turn_view_current_ignores_released_final_operational_source_slot() {
     let operational = command_only_turn("turn_3");
-    let full_items = operational.items.clone();
     let mut harness = shell::TurnViewHarness::from_latest_page(
         vec![
             prompt_turn("turn_1", "first"),
             prompt_turn("turn_2", "second"),
-            operational,
+            operational.clone(),
         ],
         None,
         None,
     );
     assert_eq!(harness.presentation_len(), 2);
     assert_eq!(
-        harness.release_detail("turn_3"),
-        shell::TranscriptPresentationMutation::Inserted { index: 2, count: 1 }
+        harness.release_range(2..3),
+        vec![shell::TranscriptPresentationMutation::Unchanged]
     );
     let list_state = shell::measured_list_state(
         harness.presentation_len(),
-        shell::content_position(2),
+        shell::content_position(1),
         px(20.0),
-        &[px(20.0), px(20.0), px(20.0)],
+        &[px(20.0), px(20.0)],
     );
 
     assert_eq!(
         shell::snapshot_parts(harness.snapshot(&list_state)),
-        (Some(3), Some(3))
+        (Some(2), Some(3))
     );
     assert_eq!(
-        harness.apply_detail_items("turn_3", full_items),
-        shell::TranscriptPresentationMutation::Removed { index: 2, count: 1 }
+        harness.restore_history_page(2, &["turn_3".to_string()], vec![operational]),
+        vec![shell::TranscriptPresentationMutation::Unchanged]
     );
-    list_state.splice(2..3, 0);
 
     assert_eq!(list_state.item_count(), harness.presentation_len());
     assert_eq!(

@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use gpui::Pixels;
-
 use super::{
     ConversationSurfaceState, execution_detail::TurnExecutionRecord,
     transcript_presentation::TranscriptPresentationMutation,
@@ -48,21 +46,6 @@ impl ConversationSurfaceState {
         let mutation = self
             .transcript_presentation
             .replace_turn(source_turn_index, turn);
-        self.reconcile_transcript_presentation_mutation(mutation);
-        mutation
-    }
-
-    pub(super) fn replace_transcript_presentation_turn_with_placeholder(
-        &mut self,
-        source_turn_index: usize,
-        turn: Arc<TurnExecutionRecord>,
-        placeholder_height: Option<Pixels>,
-    ) -> TranscriptPresentationMutation {
-        let mutation = self.transcript_presentation.replace_turn_with_placeholder(
-            source_turn_index,
-            turn,
-            placeholder_height,
-        );
         self.reconcile_transcript_presentation_mutation(mutation);
         mutation
     }

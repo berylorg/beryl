@@ -33,7 +33,7 @@ impl ConversationSurfaceState {
     pub(crate) fn close_transcript_branch_menu(&mut self) -> bool {
         let changed = self.transcript_branch_menu.close();
         if changed {
-            self.sync_transcript_turn_detail_ui_pins();
+            self.sync_transcript_residency_ui_pins();
         }
         changed
     }
@@ -41,7 +41,7 @@ impl ConversationSurfaceState {
     pub(crate) fn clear_transcript_branch_menu_image_target(&mut self) -> bool {
         let changed = self.transcript_branch_menu.clear_image_target();
         if changed {
-            self.sync_transcript_turn_detail_ui_pins();
+            self.sync_transcript_residency_ui_pins();
         }
         changed
     }
@@ -239,14 +239,14 @@ impl ConversationSurfaceState {
         });
         if branch_loaded || edit_loaded || title_update_loaded || has_image_target {
             if changed {
-                self.sync_transcript_turn_detail_ui_pins();
+                self.sync_transcript_residency_ui_pins();
             }
             return changed;
         }
 
         changed |= self.transcript_branch_menu.close();
         if changed {
-            self.sync_transcript_turn_detail_ui_pins();
+            self.sync_transcript_residency_ui_pins();
         }
         changed
     }
@@ -403,7 +403,7 @@ impl ShellView {
                 image_target,
                 position,
             );
-        surface.sync_transcript_turn_detail_ui_pins();
+        surface.sync_transcript_residency_ui_pins();
         cx.stop_propagation();
         cx.notify();
         true
@@ -499,7 +499,7 @@ impl ShellView {
         };
         self.begin_transcript_edit_mode_from_request(request, window, cx);
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.sync_transcript_turn_detail_ui_pins();
+            surface.sync_transcript_residency_ui_pins();
         }
     }
 
@@ -517,7 +517,7 @@ impl ShellView {
         };
         self.dispatch_transcript_thread_title_update_request(request, window, cx);
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.sync_transcript_turn_detail_ui_pins();
+            surface.sync_transcript_residency_ui_pins();
         }
         cx.notify();
     }
@@ -540,7 +540,7 @@ impl ShellView {
             return;
         };
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.sync_transcript_turn_detail_ui_pins();
+            surface.sync_transcript_residency_ui_pins();
         }
 
         copy_transcript_image_to_clipboard(
@@ -570,7 +570,7 @@ impl ShellView {
             return;
         };
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.sync_transcript_turn_detail_ui_pins();
+            surface.sync_transcript_residency_ui_pins();
         }
 
         save_transcript_image_as(
@@ -611,7 +611,7 @@ impl ShellView {
         };
         self.dispatch_transcript_branch_request(request, window, cx);
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.sync_transcript_turn_detail_ui_pins();
+            surface.sync_transcript_residency_ui_pins();
         }
         cx.notify();
     }

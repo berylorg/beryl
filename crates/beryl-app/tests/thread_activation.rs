@@ -24,11 +24,11 @@ use shell::thread_activation::{
     ExistingThreadActivationBackend, ExistingThreadActivationError, activate_existing_thread_direct,
 };
 use shell::transcript_history::{
-    THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend, initial_thread_history_page_options,
+    THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend, initial_thread_resident_page_options,
 };
 
 #[test]
-fn direct_activation_uses_metadata_resume_and_bounded_latest_turn_page() {
+fn direct_activation_uses_metadata_resume_and_bounded_resident_turn_page() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
         thread_response("thread_a", r"C:\work\alpha"),
@@ -53,7 +53,7 @@ fn direct_activation_uses_metadata_resume_and_bounded_latest_turn_page() {
     assert_eq!(backend.turn_calls[0].0, "thread_a");
     assert_eq!(
         backend.turn_calls[0].1,
-        initial_thread_history_page_options()
+        initial_thread_resident_page_options()
     );
     assert_eq!(
         activation.session_metadata.model.as_deref(),
@@ -62,15 +62,19 @@ fn direct_activation_uses_metadata_resume_and_bounded_latest_turn_page() {
     assert!(activation.history_window.has_older_pages());
     assert_eq!(activation.thread.turns[0].id, "turn_2");
     assert_eq!(activation.thread.turns[1].id, "turn_3");
+    assert_eq!(activation.thread.turns[0].items_view, TurnItemsView::Full);
+    assert!(!activation.thread.turns[0].items.is_empty());
     assert_eq!(
-        activation.thread.turns[0].items_view,
-        TurnItemsView::NotLoaded
+        activation
+            .history_window
+            .residency_retained_counts()
+            .resident_turns,
+        2
     );
-    assert!(activation.thread.turns[0].items.is_empty());
 }
 
 #[test]
-fn direct_activation_drops_generated_image_items_from_latest_skeleton_page() {
+fn direct_activation_keeps_generated_image_items_in_resident_page() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
         thread_response("thread_a", r"C:\work\alpha"),
@@ -95,21 +99,21 @@ fn direct_activation_drops_generated_image_items_from_latest_skeleton_page() {
 
     assert_eq!(activation.thread.turns[0].id, "turn_2");
     assert_eq!(activation.thread.turns[1].id, "turn_3");
-    assert_eq!(
-        activation.thread.turns[1].items_view,
-        TurnItemsView::NotLoaded
-    );
-    assert!(activation.thread.turns[1].items.is_empty());
+    assert_eq!(activation.thread.turns[1].items_view, TurnItemsView::Full);
+    assert!(matches!(
+        activation.thread.turns[1].items.first(),
+        Some(ThreadItem::ImageGeneration(_))
+    ));
     assert!(activation.history_window.has_older_pages());
 }
 
 #[test]
-fn direct_activation_requests_skeleton_latest_turn_page() {
+fn direct_activation_requests_full_latest_turn_page() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
         thread_response("thread_a", r"C:\work\alpha"),
         Ok(ThreadTurnsListResponse {
-            data: vec![turn_with_items_view("turn_3", TurnItemsView::NotLoaded)],
+            data: vec![turn("turn_3")],
             next_cursor: Some("older".to_string()),
             backwards_cursor: None,
         }),
@@ -127,17 +131,52 @@ fn direct_activation_requests_skeleton_latest_turn_page() {
     assert_eq!(backend.turn_calls.len(), 1);
     assert_eq!(
         backend.turn_calls[0].1,
-        initial_thread_history_page_options()
+        initial_thread_resident_page_options()
     );
     assert_eq!(
         backend.turn_calls[0].1.items_view,
-        Some(TurnItemsView::NotLoaded)
+        Some(TurnItemsView::Full)
     );
+    assert_eq!(activation.thread.turns[0].items_view, TurnItemsView::Full);
+    assert!(!activation.thread.turns[0].items.is_empty());
+}
+
+#[test]
+fn direct_activation_rejects_non_full_resident_page_response() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response("thread_a", r"C:\work\alpha"),
+        Ok(ThreadTurnsListResponse {
+            data: vec![turn_with_items_view("turn_3", TurnItemsView::NotLoaded)],
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: None,
+        }),
+    );
+
+    let error = activate_existing_thread_direct(
+        &mut backend,
+        &execution_target,
+        "thread_a",
+        "Thread A",
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+
+    match error {
+        ExistingThreadActivationError::Failed { message } => {
+            assert!(message.contains("resident transcript history"));
+            assert!(message.contains("turn_3"));
+            assert!(message.contains("NotLoaded"));
+        }
+        ExistingThreadActivationError::RequiresRebind { detail } => {
+            panic!("expected resident page validation failure, got rebind: {detail}");
+        }
+    }
+    assert_eq!(backend.turn_calls.len(), 1);
     assert_eq!(
-        activation.thread.turns[0].items_view,
-        TurnItemsView::NotLoaded
+        backend.turn_calls[0].1.items_view,
+        Some(TurnItemsView::Full)
     );
-    assert!(activation.thread.turns[0].items.is_empty());
 }
 
 #[test]
@@ -205,8 +244,8 @@ fn direct_activation_fails_when_initial_history_page_cannot_load() {
 }
 
 #[test]
-fn initial_history_page_options_request_latest_bounded_page() {
-    let options = initial_thread_history_page_options();
+fn initial_resident_page_options_request_latest_bounded_full_page() {
+    let options = initial_thread_resident_page_options();
 
     assert_eq!(options.limit, Some(THREAD_HISTORY_PAGE_LIMIT));
     assert_eq!(
@@ -214,6 +253,7 @@ fn initial_history_page_options_request_latest_bounded_page() {
         Some(beryl_backend::SortDirection::Desc)
     );
     assert_eq!(options.cursor, None);
+    assert_eq!(options.items_view, Some(TurnItemsView::Full));
 }
 
 struct FakeActivationBackend {

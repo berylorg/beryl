@@ -77,7 +77,7 @@ pub(crate) enum TranscriptThreadTitleUpdateTargetResolution {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TranscriptThreadTitleUpdateDisabledReason {
     TranscriptSelectionActive,
-    ReleasedOrMissingRowTarget,
+    NonResidentRowTarget,
     SelectedThreadMismatch,
     SelectedThreadCompactionActive,
     PendingThreadActivation,
@@ -329,7 +329,7 @@ impl TranscriptBranchTarget {
 
     pub(crate) fn from_presented_row(row: &TranscriptPresentedRow) -> Option<Self> {
         let turn = row.turn.as_ref();
-        if turn.is_released_history_placeholder() {
+        if !turn.has_resident_payload() {
             return None;
         }
 
@@ -442,23 +442,23 @@ impl TranscriptThreadTitleUpdateTarget {
     ) -> Option<TranscriptThreadTitleUpdateTargetResolution> {
         let turn = row.turn.as_ref();
         let presented_identity = thread_title_update_identity_for_turn(turn, row.source_turn_index);
-        if turn.is_released_history_placeholder() {
+        if !turn.has_resident_payload() {
             return Some(TranscriptThreadTitleUpdateTargetResolution::Disabled {
                 identity: presented_identity,
-                reason: TranscriptThreadTitleUpdateDisabledReason::ReleasedOrMissingRowTarget,
+                reason: TranscriptThreadTitleUpdateDisabledReason::NonResidentRowTarget,
             });
         }
 
         let Some(source_thread_id) = turn.thread_id.clone() else {
             return Some(TranscriptThreadTitleUpdateTargetResolution::Disabled {
                 identity: presented_identity,
-                reason: TranscriptThreadTitleUpdateDisabledReason::ReleasedOrMissingRowTarget,
+                reason: TranscriptThreadTitleUpdateDisabledReason::NonResidentRowTarget,
             });
         };
         let Some(source_turn_id) = turn.turn_id.clone() else {
             return Some(TranscriptThreadTitleUpdateTargetResolution::Disabled {
                 identity: presented_identity,
-                reason: TranscriptThreadTitleUpdateDisabledReason::ReleasedOrMissingRowTarget,
+                reason: TranscriptThreadTitleUpdateDisabledReason::NonResidentRowTarget,
             });
         };
         let identity = TranscriptThreadTitleUpdateTargetIdentity {
@@ -543,8 +543,8 @@ impl TranscriptThreadTitleUpdateDisabledReason {
             Self::TranscriptSelectionActive => {
                 "Thread title update unavailable: transcript_selection_active is true"
             }
-            Self::ReleasedOrMissingRowTarget => {
-                "Thread title update unavailable: clicked row is not a loaded backend turn"
+            Self::NonResidentRowTarget => {
+                "Thread title update unavailable: clicked row is not a resident backend turn"
             }
             Self::SelectedThreadMismatch => {
                 "Thread title update unavailable: selected thread does not match the clicked turn"

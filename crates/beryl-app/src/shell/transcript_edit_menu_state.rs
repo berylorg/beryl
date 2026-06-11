@@ -55,14 +55,14 @@ pub(crate) enum TranscriptEditDisabledReason {
     ConflictingSelectedThreadWork,
     ComposerNotEmpty,
     CurrentTailUnknown,
-    PresentedHistoryPlaceholder,
+    PresentedTurnNotResident,
     SourceTurnNotLoaded,
-    SourceHistoryPlaceholder,
+    SourceTurnNotResident,
     MissingThreadId,
     MissingTurnId,
     PresentedSourceMismatch,
     MissingUserInput,
-    TrailingHistoryPlaceholder,
+    TrailingTurnNotResident,
     TrailingTurnIdMissing,
     RollbackCountOverflow,
     UnsupportedInput,
@@ -155,10 +155,10 @@ impl TranscriptEditTarget {
             });
         }
 
-        if presented_turn.is_released_history_placeholder() {
+        if !presented_turn.has_resident_payload() {
             return Some(TranscriptEditTargetResolution::Disabled {
                 identity: presented_identity,
-                reason: TranscriptEditDisabledReason::PresentedHistoryPlaceholder,
+                reason: TranscriptEditDisabledReason::PresentedTurnNotResident,
             });
         }
 
@@ -169,10 +169,10 @@ impl TranscriptEditTarget {
                 reason: TranscriptEditDisabledReason::SourceTurnNotLoaded,
             });
         };
-        if source_turn.is_released_history_placeholder() {
+        if !source_turn.has_resident_payload() {
             return Some(TranscriptEditTargetResolution::Disabled {
                 identity: presented_identity,
-                reason: TranscriptEditDisabledReason::SourceHistoryPlaceholder,
+                reason: TranscriptEditDisabledReason::SourceTurnNotResident,
             });
         }
 
@@ -319,15 +319,11 @@ impl TranscriptEditDisabledReason {
             Self::CurrentTailUnknown => {
                 "Edit unavailable: transcript_history_window.current_tail_known() is false"
             }
-            Self::PresentedHistoryPlaceholder => {
-                "Edit unavailable: clicked row is a released history placeholder"
-            }
+            Self::PresentedTurnNotResident => "Edit unavailable: clicked row is not resident",
             Self::SourceTurnNotLoaded => {
                 "Edit unavailable: source_turn_index is not loaded in execution_details"
             }
-            Self::SourceHistoryPlaceholder => {
-                "Edit unavailable: source turn is a released history placeholder"
-            }
+            Self::SourceTurnNotResident => "Edit unavailable: source turn is not resident",
             Self::MissingThreadId => "Edit unavailable: source turn has no backend thread id",
             Self::MissingTurnId => "Edit unavailable: source turn has no backend turn id",
             Self::PresentedSourceMismatch => {
@@ -336,8 +332,8 @@ impl TranscriptEditDisabledReason {
             Self::MissingUserInput => {
                 "Edit unavailable: source turn has no non-empty user input fragments"
             }
-            Self::TrailingHistoryPlaceholder => {
-                "Edit unavailable: rollback tail contains a released history placeholder"
+            Self::TrailingTurnNotResident => {
+                "Edit unavailable: rollback tail contains a nonresident turn"
             }
             Self::TrailingTurnIdMissing => {
                 "Edit unavailable: rollback tail contains a turn without backend turn id"
@@ -502,11 +498,8 @@ fn exact_tail_rollback_count(
     let tail = turns
         .get(source_turn_index..)
         .ok_or(TranscriptEditDisabledReason::SourceTurnNotLoaded)?;
-    if tail
-        .iter()
-        .any(|turn| turn.is_released_history_placeholder())
-    {
-        return Err(TranscriptEditDisabledReason::TrailingHistoryPlaceholder);
+    if tail.iter().any(|turn| !turn.has_resident_payload()) {
+        return Err(TranscriptEditDisabledReason::TrailingTurnNotResident);
     }
     if tail.iter().any(|turn| turn.turn_id.is_none()) {
         return Err(TranscriptEditDisabledReason::TrailingTurnIdMissing);

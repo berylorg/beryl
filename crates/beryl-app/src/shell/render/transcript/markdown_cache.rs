@@ -55,6 +55,9 @@ fn schedule_markdown_parse(
                     schedule_markdown_parse(cx.entity(), request, cx);
                 }
                 if result.display_changed {
+                    if let Some(key) = result.key.as_ref() {
+                        view.invalidate_transcript_row_measurement_for_markdown_key(key, cx);
+                    }
                     cx.notify();
                 }
             });

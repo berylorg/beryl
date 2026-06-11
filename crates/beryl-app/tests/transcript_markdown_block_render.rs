@@ -3,8 +3,9 @@ mod transcript_markdown;
 
 use transcript_markdown::{
     BlockRenderListKind, BlockRenderNode, InlineRenderLine, InlineRenderRole, MarkdownSourceSpan,
-    block_render_plan, block_render_plan_with_copy_source, markdown_code_panel_id,
-    markdown_code_panel_id_belongs_to_row, markdown_code_panel_ids, parse,
+    TranscriptCodePanelIdentity, block_render_plan, block_render_plan_with_copy_source,
+    markdown_code_panel_id, markdown_code_panel_id_belongs_to_row, markdown_code_panel_identity,
+    markdown_code_panel_ids, parse,
 };
 
 #[test]
@@ -175,6 +176,42 @@ fn markdown_code_panel_row_match_uses_encoded_row_identity_length() {
         &panel_id,
         "row:extra"
     ));
+}
+
+#[test]
+fn typed_markdown_code_panel_identity_round_trips_encoded_owner() {
+    let identity = markdown_code_panel_identity("row:with:colon", "item:answer", "b1.i0.b1");
+
+    assert_eq!(identity.row_identity(), "row:with:colon");
+    assert_eq!(identity.local_identity().block_path(), "item:answer");
+    assert_eq!(identity.local_identity().code_path(), "b1.i0.b1");
+    assert_eq!(
+        identity.to_string(),
+        markdown_code_panel_id("row:with:colon", "item:answer", "b1.i0.b1")
+    );
+    assert_eq!(
+        TranscriptCodePanelIdentity::parse(identity.as_str()),
+        Some(identity)
+    );
+}
+
+#[test]
+fn duplicate_code_blocks_within_one_row_have_distinct_local_identities() {
+    let first = markdown_code_panel_identity("row-a", "item:answer", "b0");
+    let second = markdown_code_panel_identity("row-a", "item:answer", "b1");
+
+    assert_ne!(first, second);
+    assert_eq!(first.row_identity(), second.row_identity());
+    assert_ne!(
+        first.local_identity().code_path(),
+        second.local_identity().code_path()
+    );
+}
+
+#[test]
+fn typed_markdown_code_panel_identity_rejects_malformed_owner_strings() {
+    assert!(TranscriptCodePanelIdentity::parse("transcript-code-panel:r3:row:b1:x").is_none());
+    assert!(TranscriptCodePanelIdentity::parse("other:r3:row:b1:x:c2:b0").is_none());
 }
 
 #[test]

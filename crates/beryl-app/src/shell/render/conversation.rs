@@ -3,7 +3,7 @@ use std::time::Instant;
 use gpui::{
     AnyElement, AnyView, App, Context, CursorStyle, DispatchPhase, Entity, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Window, anchored, canvas,
-    div, img, prelude::*, px, relative, rgba,
+    div, img, point, prelude::*, px, relative, rgba,
 };
 
 use crate::BerylThemeRole;
@@ -33,7 +33,10 @@ use super::graph_link_menu::{
     render_graph_thread_link_menu, render_graph_thread_link_menu_listeners,
 };
 use super::graph_overlay::{render_graph_overlay, render_graph_overlay_listeners};
-use super::scrollbars::{ScrollbarAxis, render_themed_div_scrollbar};
+use super::scrollbars::{
+    ScrollDirection, ScrollbarAxis, ScrollbarInteraction, ScrollbarScrollState,
+    render_interactive_vertical_scrollbar, render_themed_div_scrollbar,
+};
 use super::status_operation::{render_status_operation_listeners, render_status_operation_popup};
 use super::thread_selector::{render_thread_selector_listeners, render_thread_selector_overlay};
 use super::transcript::TranscriptPanel;
@@ -1853,7 +1856,7 @@ fn render_split_surface(
     let entity = cx.entity();
     let composer_height = composer_measurement.composer_height;
 
-    let left_panel = render_left_panel(transcript_panel).into_any_element();
+    let left_panel = render_left_panel(shell, surface, transcript_panel, cx).into_any_element();
     let composer = render_composer(
         shell,
         conversation_input,
@@ -1903,10 +1906,89 @@ fn render_split_surface(
         )
 }
 
-fn render_left_panel(transcript_panel: &Entity<TranscriptPanel>) -> impl IntoElement {
+fn render_left_panel(
+    shell: &ShellRenderFrame<'_>,
+    surface: &ConversationSurfaceState,
+    transcript_panel: &Entity<TranscriptPanel>,
+    cx: &mut Context<ShellView>,
+) -> impl IntoElement {
     let cached_root = div();
     let cached_style = cached_root.size_full().min_h(px(0.0)).style().clone();
-    AnyView::from(transcript_panel.clone()).cached(cached_style)
+    let transcript_list_state = surface.transcript_list_state();
+    let bounds = transcript_list_state.viewport_bounds();
+    let max_offset = transcript_list_state.max_offset_for_scrollbar();
+    let offset = transcript_list_state.scroll_px_offset_for_scrollbar();
+    let scrollbar_visibility = shell.scrollbar_visibility_policy(&ScrollbarRegion::Transcript, cx);
+    let shell_entity = cx.entity();
+    let scrollbar_owner_update = {
+        let transcript_list_state = transcript_list_state.clone();
+        move |window: &mut Window, cx: &mut gpui::App| {
+            shell_entity.update(cx, |view, cx| {
+                view.note_transcript_scrollbar_owner_update(&transcript_list_state, window, cx);
+            });
+        }
+    };
+    let scrollbar_interaction = ScrollbarInteraction::new(
+        {
+            let transcript_list_state = transcript_list_state.clone();
+            move || {
+                Some(ScrollbarScrollState {
+                    viewport_bounds: transcript_list_state.viewport_bounds(),
+                    max_offset: transcript_list_state.max_offset_for_scrollbar(),
+                    scroll_offset: {
+                        let offset = transcript_list_state.scroll_px_offset_for_scrollbar();
+                        point(px(0.0), -offset.y)
+                    },
+                })
+            }
+        },
+        {
+            let transcript_list_state = transcript_list_state.clone();
+            move |scroll_offset| {
+                transcript_list_state.set_offset_from_scrollbar(point(px(0.0), -scroll_offset));
+            }
+        },
+        {
+            let transcript_list_state = transcript_list_state.clone();
+            move |direction, distance| {
+                let distance = match direction {
+                    ScrollDirection::Backward => -distance,
+                    ScrollDirection::Forward => distance,
+                };
+                transcript_list_state.scroll_by(distance);
+            }
+        },
+        {
+            let transcript_list_state = transcript_list_state.clone();
+            move || {
+                transcript_list_state.scrollbar_drag_started();
+            }
+        },
+        {
+            let transcript_list_state = transcript_list_state;
+            move || {
+                transcript_list_state.scrollbar_drag_ended();
+            }
+        },
+        scrollbar_owner_update,
+    );
+
+    let mut panel = div()
+        .relative()
+        .size_full()
+        .min_h(px(0.0))
+        .child(AnyView::from(transcript_panel.clone()).cached(cached_style));
+    if let Some(scrollbar) = render_interactive_vertical_scrollbar(
+        "transcript-scrollbar",
+        bounds.size.height,
+        max_offset.height,
+        -offset.y,
+        scrollbar_visibility,
+        scrollbar_interaction,
+    ) {
+        panel = panel.child(scrollbar);
+    }
+    panel
 }
 
 fn render_tool_activity_panel(

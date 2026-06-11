@@ -32,9 +32,9 @@ fn code_panel_actions_and_syntax_use_displayed_source_revision() {
         block_source.contains("let display_source_revision = display_projection.source_revision;")
     );
     assert!(block_source.contains("let display_revision = display_source_revision.as_ref();"));
-    assert!(
-        block_source.contains("code_panel_controls.header(panel_id.as_str(), display_revision)")
-    );
+    assert!(block_source.contains("code_panel_controls.header(&panel_id, display_revision)"));
+    assert!(block_source.contains("code_panel_controls.display_projection(&panel_id"));
+    assert!(block_source.contains("code_panel_controls.syntax_highlight(\n            &panel_id,"));
     assert!(block_source.contains("revision.display_source()"));
     assert!(block_source.contains("revision.syntax_label()"));
     assert!(block_source.contains("display_projection_input"));

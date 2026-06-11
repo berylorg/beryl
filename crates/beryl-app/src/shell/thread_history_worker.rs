@@ -10,7 +10,8 @@ use beryl_model::workspace::{BerylWorkspaceId, RuntimeMode};
 use super::{
     execution_detail::TranscriptImagePathResolver,
     transcript_history::{
-        LoadedTranscriptHistoryPage, TranscriptHistoryPageRequest, load_thread_history_page,
+        LoadedTranscriptHistoryPage, TranscriptHistoryPageRequest,
+        load_thread_resident_history_page,
     },
     transcript_image_sources::transcript_image_path_resolver_for_turns,
 };
@@ -33,7 +34,7 @@ pub(super) enum ThreadHistoryPageOutcome {
     },
 }
 
-pub(super) fn spawn_older_thread_history_page_worker(
+pub(super) fn spawn_thread_residency_page_worker(
     persistence: BerylWorkspacePersistence,
     connector: ManagedBackendClientConnector,
     workspace_id: BerylWorkspaceId,
@@ -81,31 +82,35 @@ fn run_thread_history_page_worker(
         }
     };
 
-    let outcome =
-        match load_thread_history_page(&mut session, &thread_id, request.cursor(), timeout) {
-            Ok(page) => {
-                let image_resolver = match transcript_image_path_resolver_for_turns(
-                    &persistence,
-                    &workspace_id,
-                    &runtime_mode,
-                    &page.turns,
-                    &mut session,
-                    timeout,
-                ) {
-                    Ok(resolver) => resolver,
-                    Err(_) => TranscriptImagePathResolver::default(),
-                };
-                ThreadHistoryPageOutcome::Loaded {
-                    thread_id,
-                    request,
-                    page,
-                    image_resolver,
-                }
-            }
-            Err(error) => ThreadHistoryPageOutcome::Failed {
+    let outcome = match load_thread_resident_history_page(
+        &mut session,
+        &thread_id,
+        request.cursor(),
+        timeout,
+    ) {
+        Ok(page) => {
+            let image_resolver = match transcript_image_path_resolver_for_turns(
+                &persistence,
+                &workspace_id,
+                &runtime_mode,
+                &page.turns,
+                &mut session,
+                timeout,
+            ) {
+                Ok(resolver) => resolver,
+                Err(_) => TranscriptImagePathResolver::default(),
+            };
+            ThreadHistoryPageOutcome::Loaded {
                 thread_id,
-                message: format!("Beryl could not load thread history: {error}"),
-            },
-        };
+                request,
+                page,
+                image_resolver,
+            }
+        }
+        Err(error) => ThreadHistoryPageOutcome::Failed {
+            thread_id,
+            message: format!("Beryl could not load thread history: {error}"),
+        },
+    };
     let _ = sender.send(ThreadHistoryPageUpdate::Finished(outcome));
 }

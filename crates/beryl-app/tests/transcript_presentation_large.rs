@@ -67,18 +67,13 @@ mod shell {
         pub(super) fn release_range_with_heights(
             &mut self,
             range: Range<usize>,
-            heights: &[Pixels],
+            _heights: &[Pixels],
         ) -> usize {
-            let start = range.start;
             let replacements = self.details.release_history_range(range);
             let count = replacements.len();
             for replacement in replacements {
-                let height = heights.get(replacement.index - start).copied();
-                self.presentation.replace_turn_with_placeholder(
-                    replacement.index,
-                    replacement.turn,
-                    height,
-                );
+                self.presentation
+                    .replace_turn(replacement.index, replacement.turn);
             }
             count
         }
@@ -106,8 +101,8 @@ use shell::{
 fn large_synthetic_transcript_frame_prep_is_bounded_across_measured_ranges() {
     let mut harness = PresentationHarness::new();
     harness.replace_history("thread_a", large_mixed_transcript(5_000));
-    harness.release_range_with_heights(0..320, &vec![px(72.0); 320]);
-    harness.release_range_with_heights(3_000..3_240, &vec![px(96.0); 240]);
+    let released_top = harness.release_range_with_heights(0..320, &vec![px(72.0); 320]);
+    let released_middle = harness.release_range_with_heights(3_000..3_240, &vec![px(96.0); 240]);
     let file_change_index = append_live_file_change_output_turn(&mut harness);
     let turn_count = harness.turn_count();
     let row_heights = vec![px(24.0); turn_count];
@@ -198,7 +193,9 @@ fn large_synthetic_transcript_frame_prep_is_bounded_across_measured_ranges() {
     assert!(middle_state.active_nested_code_panel_ids.is_empty());
 
     let file_change_state = harness.panel_state_for_range(file_change_index..file_change_index + 1);
-    assert_eq!(turn_count, 5_001);
+    assert_eq!(released_top, 320);
+    assert_eq!(released_middle, 240);
+    assert_eq!(turn_count, 5_001 - released_top - released_middle);
     assert_eq!(file_change_state.inspected_row_count, 1);
     assert!(file_change_state.active_nested_code_panel_ids.is_empty());
 }

@@ -15,23 +15,6 @@ impl ConversationSurfaceState {
         self.set_loaded_history_final_runway();
     }
 
-    pub(super) fn reconcile_loaded_history_final_runway_for_row(
-        &mut self,
-        presentation_index: Option<usize>,
-    ) -> bool {
-        let Some(index) = presentation_index else {
-            return false;
-        };
-        if Some(index) != self.transcript_presentation.len().checked_sub(1) {
-            return false;
-        }
-        let Some(anchor) = self.final_runway_anchor_for_presentation_index(index) else {
-            return false;
-        };
-        self.transcript_live_scroll
-            .refresh_loaded_history_final_runway(anchor)
-    }
-
     fn set_loaded_history_final_runway(&mut self) -> bool {
         let Some(index) = self.transcript_presentation.len().checked_sub(1) else {
             return false;

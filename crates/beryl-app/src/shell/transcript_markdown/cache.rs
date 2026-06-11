@@ -260,6 +260,7 @@ pub(crate) struct TranscriptMarkdownParseCompletion {
 #[derive(Debug, Default)]
 pub(crate) struct TranscriptMarkdownParseCompletionResult {
     pub(crate) display_changed: bool,
+    pub(crate) key: Option<TranscriptMarkdownCacheKey>,
     pub(crate) follow_up_request: Option<TranscriptMarkdownParseRequest>,
     pub(crate) stale: bool,
 }
@@ -466,6 +467,7 @@ impl TranscriptMarkdownCache {
         completion: TranscriptMarkdownParseCompletion,
     ) -> TranscriptMarkdownParseCompletionResult {
         let mut result = TranscriptMarkdownParseCompletionResult::default();
+        result.key = Some(completion.key.clone());
 
         if completion.scope_generation != self.scope_generation {
             self.stats.stale_completions = self.stats.stale_completions.saturating_add(1);

@@ -624,19 +624,19 @@ fn render_code_block(
 
     let panel_id = code_panel_controls.panel_id_for(structural_path);
     let code_panel_started = Instant::now();
-    let wrap_mode = code_panel_controls.wrap_mode(panel_id.as_str(), code_layout);
+    let wrap_mode = code_panel_controls.wrap_mode(&panel_id, code_layout);
     let source_revision = code_panel_source_revision(code);
     let display_projection =
-        code_panel_controls.display_projection(panel_id.as_str(), source_revision, wrap_mode, cx);
+        code_panel_controls.display_projection(&panel_id, source_revision, wrap_mode, cx);
     let display_projection_input = display_projection.input;
     let display_source_revision = display_projection.source_revision;
     let display_revision = display_source_revision.as_ref();
-    let header = code_panel_controls.header(panel_id.as_str(), display_revision);
-    let scroll_chrome = code_panel_controls.scroll_chrome(panel_id.as_str());
-    let resize = code_panel_controls.resize(panel_id.as_str(), code_layout);
+    let header = code_panel_controls.header(&panel_id, display_revision);
+    let scroll_chrome = code_panel_controls.scroll_chrome(&panel_id);
+    let resize = code_panel_controls.resize(&panel_id, code_layout);
     let syntax_highlight = display_revision.map(|revision| {
         code_panel_controls.syntax_highlight(
-            panel_id.as_str(),
+            &panel_id,
             revision.display_source(),
             revision.syntax_label(),
             cx,
@@ -658,7 +658,7 @@ fn render_code_block(
 
     let element = labeled_code_block(
         "",
-        Some(panel_id),
+        Some(panel_id.to_string()),
         display_language,
         display_source,
         wrap_mode,

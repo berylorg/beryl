@@ -106,3 +106,17 @@
 - Keep code-panel selection enabled, but sort hit geometries by vertical position after each registration frame.
 - On pointer movement, narrow hit testing to the vertical candidate range before consulting text layout offsets.
 - Preserve selection ordering separately in `VisibleTranscriptTextFrame`, so copied text and quote harvesting still follow transcript order rather than geometry index order.
+
+## Generated-image diagnostic child freeze
+
+- Phase 6 attempted a live generated-image verification with a debug diagnostic child launched from `target\debug\beryl.exe` against an isolated copied Beryl home.
+- The child selected the `City Image Generation` thread and diagnostics showed ten visible source-backed generated images.
+- A same-setup reproduction on June 11, 2026 confirmed Windows became barely responsive until the diagnostic child was closed. Task Manager data stopped updating, desktop responsiveness degraded, and audio playback struggled.
+- The sampled frame metrics included repeated generated-image frames with very large media-preload timing, including hundreds of milliseconds and an approximately 1.4 second single-frame sample, while renderer diagnostics showed active source-backed image decode/upload/live state.
+- The invalid assumption was that the existing generated-image fixture could be used as an ordinary bounded Phase 6 live diagnostic workload in a debug child.
+
+## Generated-image diagnostic child course adjustment
+
+- Do not repeat generated-image live verification through an unconstrained debug diagnostic child.
+- Before retrying, add or use stricter guardrails: prefer a release child, avoid parallel diagnostic reads while image preload is active, stop after a small bounded sample, and abort on the first sustained media-preload spike or shell-response timeout.
+- Treat generated-image Phase 6 verification as unresolved until the media-preload/render loop is investigated without risking operator-machine responsiveness.

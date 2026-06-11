@@ -10,16 +10,14 @@ use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
     OpenWorkspaceFailure, OpenedWorkspace, RetryTarget, ShellState, ShellView, SurfaceNotice,
-    ThreadHistoryPageOutcome, TranscriptTurnDetailApplyResult, TranscriptTurnDetailOutcome,
-    TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
+    ThreadHistoryPageOutcome, TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
 };
 use crate::backend_failure::{
     json_rpc_error_detail, non_empty_user_text, source_chain_detail, truncate_user_detail,
 };
-use crate::diagnostic_dynamic_tools::diagnostic_duration_micros;
 use crate::member_thread_inventory::MemberThreadInventoryEvent;
 use crate::memory_diagnostics::MemoryMilestone;
-use tracing::{debug, warn};
+use tracing::debug;
 
 impl ShellView {
     pub(super) fn finish_workspace_open(
@@ -544,91 +542,21 @@ impl ShellView {
                 }
             }
             ThreadHistoryPageOutcome::Failed { thread_id, message } => {
-                if let Some(surface) = self.conversation_surface_mut()
-                    && surface.selected_thread_id() == Some(thread_id.as_str())
-                {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    let selected_thread_matches =
+                        surface.selected_thread_id() == Some(thread_id.as_str());
                     surface.finish_loading_older_history_failure();
-                    surface.set_notice(SurfaceNotice::new(
-                        "Thread history load failed",
-                        message.clone(),
-                    ));
+                    if selected_thread_matches {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Thread history load failed",
+                            message.clone(),
+                        ));
+                    }
                 }
 
                 self.block_if_backend_process_dead(
                     "Managed backend disconnected during thread history loading",
                     "The backend process for the selected workspace exited before Beryl could load older thread history.",
-                    &message,
-                );
-            }
-        }
-    }
-
-    pub(super) fn finish_transcript_turn_detail_worker(
-        &mut self,
-        outcome: TranscriptTurnDetailOutcome,
-    ) {
-        match outcome {
-            TranscriptTurnDetailOutcome::Loaded {
-                ticket,
-                turns,
-                image_resolver,
-                mut diagnostics,
-            } => {
-                let application_started = Instant::now();
-                let apply_counts = self
-                    .conversation_surface_mut()
-                    .map(|surface| {
-                        surface.finish_loading_transcript_turn_details(
-                            &ticket,
-                            turns,
-                            &image_resolver,
-                        )
-                    })
-                    .unwrap_or_default();
-                diagnostics.cache_application_micros =
-                    diagnostic_duration_micros(application_started.elapsed());
-                diagnostics.total_micros = diagnostics
-                    .total_micros
-                    .saturating_add(diagnostics.cache_application_micros);
-                if apply_counts.applied > 0 {
-                    diagnostics.mark_applied(apply_counts.applied);
-                    diagnostics.skipped_stale_count = apply_counts.stale;
-                } else {
-                    diagnostics.mark_stale(apply_counts.stale.max(1));
-                }
-                self.transcript_detail_load_diagnostics.record(diagnostics);
-            }
-            TranscriptTurnDetailOutcome::Failed {
-                ticket,
-                message,
-                mut diagnostics,
-            } => {
-                let application_started = Instant::now();
-                let applied = self
-                    .conversation_surface_mut()
-                    .map(|surface| surface.fail_loading_transcript_turn_details(&ticket))
-                    .unwrap_or(TranscriptTurnDetailApplyResult::Stale);
-                diagnostics.cache_application_micros =
-                    diagnostic_duration_micros(application_started.elapsed());
-                diagnostics.total_micros = diagnostics
-                    .total_micros
-                    .saturating_add(diagnostics.cache_application_micros);
-                if applied == TranscriptTurnDetailApplyResult::Applied {
-                    diagnostics.mark_failed_applied();
-                    warn!(
-                        thread_id = ticket.thread_id(),
-                        turn_id = ticket.turn_id(),
-                        error = %message,
-                        "failed to load transcript turn details"
-                    );
-                } else {
-                    diagnostics.mark_failed_stale(1);
-                }
-                self.transcript_detail_load_diagnostics.record(diagnostics);
-
-                self.block_if_backend_process_dead(
-                    "Managed backend disconnected during turn detail loading",
-                    "The backend process for the selected workspace exited before Beryl could load visible transcript turn details.",
                     &message,
                 );
             }

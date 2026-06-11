@@ -31,7 +31,6 @@ pub(crate) const MAX_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
 const MAX_RENDERER_DIAGNOSTIC_WINDOWS: usize = 16;
 const MEDIA_EVENT_RING_CAPACITY: usize = 256;
 const TRANSCRIPT_FRAME_METRIC_RING_CAPACITY: usize = 128;
-const TRANSCRIPT_DETAIL_LOAD_RING_CAPACITY: usize = 128;
 const MAX_DIAGNOSTIC_STRING_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Serialize)]
@@ -44,7 +43,6 @@ pub(crate) struct DiagnosticToolSnapshot {
     pub visible_media: VisibleMediaSnapshot,
     pub media_events: MediaEventSnapshot,
     pub transcript_frame_metrics: TranscriptFrameMetricsSnapshot,
-    pub transcript_detail_loads: TranscriptDetailLoadSnapshot,
     pub settings_window: SettingsWindowDiagnosticSnapshot,
 }
 
@@ -315,54 +313,6 @@ pub(crate) struct TranscriptFrameMetricsSnapshot {
     pub next_sequence: u64,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TranscriptDetailLoadSnapshot {
-    pub requests: Vec<TranscriptDetailLoadEvent>,
-    pub request_count: usize,
-    pub truncated: bool,
-    pub next_sequence: u64,
-    pub aggregate: TranscriptDetailLoadAggregate,
-}
-
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TranscriptDetailLoadAggregate {
-    pub total_request_count: usize,
-    pub applied_request_count: usize,
-    pub stale_request_count: usize,
-    pub failed_request_count: usize,
-    pub returned_turn_count: usize,
-    pub applied_turn_count: usize,
-    pub skipped_stale_count: usize,
-    pub total_micros: u64,
-    pub cas_micros: u64,
-    pub response_processing_micros: u64,
-    pub image_source_resolution_micros: u64,
-    pub cache_application_micros: u64,
-    pub last_total_micros: u64,
-    pub last_cas_micros: u64,
-    pub last_image_source_resolution_micros: u64,
-    pub last_cache_application_micros: u64,
-}
-
-#[derive(Clone, Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TranscriptDetailLoadEvent {
-    pub sequence: u64,
-    pub cursor_present: bool,
-    pub requested_limit: Option<u32>,
-    pub returned_turn_count: usize,
-    pub applied_turn_count: usize,
-    pub skipped_stale_count: usize,
-    pub total_micros: u64,
-    pub cas_micros: u64,
-    pub response_processing_micros: u64,
-    pub image_source_resolution_micros: u64,
-    pub cache_application_micros: u64,
-    pub outcome: String,
-}
-
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SettingsWindowDiagnosticSnapshot {
@@ -454,7 +404,13 @@ pub(crate) struct TranscriptFrameMetric {
     pub presentation_range_len: usize,
     pub visible_row_count: usize,
     pub panel_state_inspected_row_count: usize,
+    pub residency_resident_turn_count: usize,
+    pub residency_retained_bytes: usize,
+    pub residency_in_flight_requests: usize,
+    pub residency_budget_reason: Option<String>,
     pub frame_micros: u64,
+    pub snapshot_micros: u64,
+    pub render_state_pruning_micros: u64,
     pub style_snapshot_micros: u64,
     pub composer_measurement_micros: u64,
     pub row_build_total_micros: u64,
@@ -480,13 +436,6 @@ pub(crate) struct TranscriptFrameMetric {
 pub(crate) struct TranscriptFrameMetricsLog {
     next_sequence: u64,
     frames: VecDeque<TranscriptFrameMetric>,
-    capacity: usize,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct TranscriptDetailLoadDiagnosticsLog {
-    next_sequence: u64,
-    requests: VecDeque<TranscriptDetailLoadEvent>,
     capacity: usize,
 }
 
@@ -606,16 +555,6 @@ impl Default for TranscriptFrameMetricsLog {
     }
 }
 
-impl Default for TranscriptDetailLoadDiagnosticsLog {
-    fn default() -> Self {
-        Self {
-            next_sequence: 1,
-            requests: VecDeque::with_capacity(TRANSCRIPT_DETAIL_LOAD_RING_CAPACITY),
-            capacity: TRANSCRIPT_DETAIL_LOAD_RING_CAPACITY,
-        }
-    }
-}
-
 impl MediaDiagnosticLog {
     pub fn record(&mut self, mut event: MediaDiagnosticEvent) {
         event.sequence = self.next_sequence;
@@ -658,29 +597,6 @@ impl TranscriptFrameMetricsLog {
     }
 }
 
-impl TranscriptDetailLoadDiagnosticsLog {
-    pub(crate) fn record(&mut self, mut request: TranscriptDetailLoadEvent) {
-        request.sequence = self.next_sequence;
-        self.next_sequence = self.next_sequence.saturating_add(1);
-        request.truncate_strings();
-        if self.requests.len() >= self.capacity {
-            self.requests.pop_front();
-        }
-        self.requests.push_back(request);
-    }
-
-    pub(crate) fn snapshot(&self) -> TranscriptDetailLoadSnapshot {
-        let requests = self.requests.iter().cloned().collect::<Vec<_>>();
-        TranscriptDetailLoadSnapshot {
-            aggregate: TranscriptDetailLoadAggregate::from_requests(&requests),
-            request_count: requests.len(),
-            requests,
-            truncated: false,
-            next_sequence: self.next_sequence,
-        }
-    }
-}
-
 impl VisibleMediaItemDiagnostic {
     fn truncated(mut self) -> Self {
         self.row_identity = self.row_identity.map(truncate_diagnostic_string);
@@ -707,83 +623,12 @@ impl TranscriptFrameMetric {
             .slowest_row_prepaint_identity
             .take()
             .map(truncate_diagnostic_string);
+        self.residency_budget_reason = self
+            .residency_budget_reason
+            .take()
+            .map(truncate_diagnostic_string);
         self.dominant_cost_category =
             truncate_diagnostic_string(std::mem::take(&mut self.dominant_cost_category));
-    }
-}
-
-impl TranscriptDetailLoadEvent {
-    pub(crate) fn mark_applied(&mut self, applied_turn_count: usize) {
-        self.applied_turn_count = applied_turn_count;
-        self.outcome = "applied".to_string();
-    }
-
-    pub(crate) fn mark_stale(&mut self, skipped_stale_count: usize) {
-        self.skipped_stale_count = skipped_stale_count;
-        self.outcome = "stale".to_string();
-    }
-
-    pub(crate) fn mark_failed_applied(&mut self) {
-        self.outcome = "failedApplied".to_string();
-    }
-
-    pub(crate) fn mark_failed_stale(&mut self, skipped_stale_count: usize) {
-        self.skipped_stale_count = skipped_stale_count;
-        self.outcome = "failedStale".to_string();
-    }
-
-    fn truncate_strings(&mut self) {
-        self.outcome = truncate_diagnostic_string(std::mem::take(&mut self.outcome));
-    }
-}
-
-impl TranscriptDetailLoadAggregate {
-    fn from_requests(requests: &[TranscriptDetailLoadEvent]) -> Self {
-        let mut aggregate = Self {
-            total_request_count: requests.len(),
-            ..Self::default()
-        };
-        for request in requests {
-            match request.outcome.as_str() {
-                "applied" => {
-                    aggregate.applied_request_count =
-                        aggregate.applied_request_count.saturating_add(1);
-                }
-                "stale" | "failedStale" => {
-                    aggregate.stale_request_count = aggregate.stale_request_count.saturating_add(1);
-                }
-                "failedApplied" => {
-                    aggregate.failed_request_count =
-                        aggregate.failed_request_count.saturating_add(1);
-                }
-                _ => {}
-            }
-            aggregate.returned_turn_count = aggregate
-                .returned_turn_count
-                .saturating_add(request.returned_turn_count);
-            aggregate.applied_turn_count = aggregate
-                .applied_turn_count
-                .saturating_add(request.applied_turn_count);
-            aggregate.skipped_stale_count = aggregate
-                .skipped_stale_count
-                .saturating_add(request.skipped_stale_count);
-            aggregate.total_micros = aggregate.total_micros.saturating_add(request.total_micros);
-            aggregate.cas_micros = aggregate.cas_micros.saturating_add(request.cas_micros);
-            aggregate.response_processing_micros = aggregate
-                .response_processing_micros
-                .saturating_add(request.response_processing_micros);
-            aggregate.image_source_resolution_micros = aggregate
-                .image_source_resolution_micros
-                .saturating_add(request.image_source_resolution_micros);
-            aggregate.cache_application_micros = aggregate
-                .cache_application_micros
-                .saturating_add(request.cache_application_micros);
-            aggregate.last_total_micros = request.total_micros;
-            aggregate.last_cas_micros = request.cas_micros;
-            aggregate.last_image_source_resolution_micros = request.image_source_resolution_micros;
-            aggregate.last_cache_application_micros = request.cache_application_micros;
-        }
-        aggregate
     }
 }
 
@@ -1002,6 +847,19 @@ pub(crate) fn dispatch_beryl_diagnostic_dynamic_tool_call(
     }
 }
 
+pub(crate) fn dispatch_beryl_transcript_frame_metrics_dynamic_tool_call(
+    request: &DynamicToolCallRequest,
+    snapshot: TranscriptFrameMetricsSnapshot,
+) -> DynamicToolCallResponse {
+    match transcript_frame_metrics_tool_result(request, snapshot) {
+        Ok(value) => DynamicToolCallResponse::success_text(compact_json(json!({
+            "ok": true,
+            "result": value,
+        }))),
+        Err(error) => diagnostic_failure_response(request, error.kind(), error.to_string()),
+    }
+}
+
 pub fn diagnostic_bridge_unavailable_response(
     request: &DynamicToolCallRequest,
     message: impl Into<String>,
@@ -1039,7 +897,6 @@ fn diagnostic_tool_result(
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok(json!({
                 "retainedState": snapshot.retained_state,
-                "transcriptDetailLoads": snapshot.transcript_detail_loads,
             }))
         }
         READ_VISIBLE_MEDIA_TOOL => {
@@ -1071,6 +928,29 @@ fn diagnostic_tool_result(
         READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok(json!(snapshot.settings_window))
+        }
+        other => Err(DynamicDiagnosticToolError::UnsupportedTool {
+            tool: other.to_string(),
+        }),
+    }
+}
+
+fn transcript_frame_metrics_tool_result(
+    request: &DynamicToolCallRequest,
+    snapshot: TranscriptFrameMetricsSnapshot,
+) -> Result<Value, DynamicDiagnosticToolError> {
+    validate_namespace(request)?;
+    match request.tool() {
+        READ_TRANSCRIPT_FRAME_METRICS_TOOL => {
+            let arguments = parse_arguments::<MediaEventsArguments>(request.arguments())?;
+            Ok(json!(transcript_frame_metrics_result(
+                snapshot,
+                arguments.after_sequence,
+                arguments.limit_or_default(
+                    DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                    MAX_TRANSCRIPT_FRAME_METRIC_LIMIT,
+                ),
+            )))
         }
         other => Err(DynamicDiagnosticToolError::UnsupportedTool {
             tool: other.to_string(),

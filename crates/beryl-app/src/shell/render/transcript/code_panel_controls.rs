@@ -11,7 +11,7 @@ use gpui::{App, AsyncApp, ClipboardItem, Entity, FontWeight, Pixels, ScrollHandl
 use crate::shell::{
     syntax_highlighting::{SyntaxHighlight, SyntaxHighlightCache, SyntaxHighlightRequest},
     theme_candidates::{self, ThemeCandidateFeedbackKind, ThemeCandidatePanelSnapshot},
-    transcript_markdown::markdown_code_panel_id,
+    transcript_markdown::{TranscriptCodePanelIdentity, markdown_code_panel_identity},
 };
 
 use super::super::code_panel_syntax::resolve_code_panel_syntax_highlight;
@@ -33,15 +33,15 @@ use super::{
 #[derive(Clone)]
 pub(super) struct TranscriptCodePanelState {
     entity: Entity<TranscriptPanel>,
-    soft_wrapped_panel_keys: Arc<HashSet<String>>,
-    resized_panel_heights: Arc<HashMap<String, Pixels>>,
-    scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-    scrollbar_visibility: Arc<HashMap<String, ScrollbarVisibilityState>>,
-    selected_nested_code_panel_id: Arc<Option<String>>,
+    soft_wrapped_panel_keys: Arc<HashSet<TranscriptCodePanelIdentity>>,
+    resized_panel_heights: Arc<HashMap<TranscriptCodePanelIdentity, Pixels>>,
+    scroll_handles: Rc<RefCell<HashMap<TranscriptCodePanelIdentity, ScrollHandle>>>,
+    scrollbar_visibility: Arc<HashMap<TranscriptCodePanelIdentity, ScrollbarVisibilityState>>,
+    selected_nested_code_panel_id: Arc<Option<TranscriptCodePanelIdentity>>,
     theme_candidates: Arc<ThemeCandidatePanelSnapshot>,
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
-    rendered_panel_ids: Rc<RefCell<HashSet<String>>>,
+    rendered_panel_ids: Rc<RefCell<HashSet<TranscriptCodePanelIdentity>>>,
     selection_render: Option<TranscriptTextSelectionRenderState>,
     button_font_weight: FontWeight,
     profiler: Option<Rc<TranscriptFrameProfile>>,
@@ -62,15 +62,15 @@ pub(super) struct TranscriptCodePanelProjection {
 impl TranscriptCodePanelState {
     pub(super) fn new(
         entity: Entity<TranscriptPanel>,
-        soft_wrapped_panel_keys: Arc<HashSet<String>>,
-        resized_panel_heights: Arc<HashMap<String, Pixels>>,
-        scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-        scrollbar_visibility: Arc<HashMap<String, ScrollbarVisibilityState>>,
-        selected_nested_code_panel_id: Arc<Option<String>>,
+        soft_wrapped_panel_keys: Arc<HashSet<TranscriptCodePanelIdentity>>,
+        resized_panel_heights: Arc<HashMap<TranscriptCodePanelIdentity, Pixels>>,
+        scroll_handles: Rc<RefCell<HashMap<TranscriptCodePanelIdentity, ScrollHandle>>>,
+        scrollbar_visibility: Arc<HashMap<TranscriptCodePanelIdentity, ScrollbarVisibilityState>>,
+        selected_nested_code_panel_id: Arc<Option<TranscriptCodePanelIdentity>>,
         theme_candidates: Arc<ThemeCandidatePanelSnapshot>,
         syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
         display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
-        rendered_panel_ids: Rc<RefCell<HashSet<String>>>,
+        rendered_panel_ids: Rc<RefCell<HashSet<TranscriptCodePanelIdentity>>>,
         selection_render: Option<TranscriptTextSelectionRenderState>,
         button_font_weight: FontWeight,
         profiler: Option<Rc<TranscriptFrameProfile>>,
@@ -114,8 +114,8 @@ impl TranscriptCodePanelState {
 }
 
 impl TranscriptCodePanelControls {
-    pub(super) fn panel_id_for(&self, code_path: &str) -> String {
-        let panel_id = markdown_code_panel_id(
+    pub(super) fn panel_id_for(&self, code_path: &str) -> TranscriptCodePanelIdentity {
+        let panel_id = markdown_code_panel_identity(
             self.row_identity.as_str(),
             self.block_path.as_str(),
             code_path,
@@ -129,7 +129,7 @@ impl TranscriptCodePanelControls {
 
     pub(super) fn wrap_mode(
         &self,
-        panel_id: &str,
+        panel_id: &TranscriptCodePanelIdentity,
         code_layout: TranscriptCodeLayout,
     ) -> CodePanelWrapMode {
         if self.state.soft_wrapped_panel_keys.contains(panel_id) {
@@ -143,7 +143,7 @@ impl TranscriptCodePanelControls {
 
     pub(super) fn header(
         &self,
-        panel_id: &str,
+        panel_id: &TranscriptCodePanelIdentity,
         source_revision: Option<&CodePanelSourceRevision>,
     ) -> CodePanelHeader {
         let syntax_label = source_revision.and_then(CodePanelSourceRevision::syntax_label);
@@ -172,7 +172,7 @@ impl TranscriptCodePanelControls {
 
     pub(super) fn syntax_highlight(
         &self,
-        panel_id: &str,
+        panel_id: &TranscriptCodePanelIdentity,
         source: &str,
         syntax_label: Option<&str>,
         cx: &mut App,
@@ -180,7 +180,7 @@ impl TranscriptCodePanelControls {
         let entity = self.state.entity.clone();
         resolve_code_panel_syntax_highlight(
             &self.state.syntax_highlight_cache,
-            panel_id,
+            panel_id.as_str(),
             source,
             syntax_label,
             |request| schedule_syntax_highlight(entity, request, cx),
@@ -189,13 +189,13 @@ impl TranscriptCodePanelControls {
 
     pub(super) fn display_projection(
         &self,
-        panel_id: &str,
+        panel_id: &TranscriptCodePanelIdentity,
         source_revision: CodePanelSourceRevision,
         wrap_mode: CodePanelWrapMode,
         cx: &mut App,
     ) -> TranscriptCodePanelProjection {
         let lookup = self.state.display_projection_cache.borrow_mut().lookup(
-            panel_id,
+            panel_id.as_str(),
             source_revision,
             wrap_mode,
         );
@@ -227,12 +227,15 @@ impl TranscriptCodePanelControls {
         }
     }
 
-    pub(super) fn scroll_chrome(&self, panel_id: &str) -> CodePanelScrollChrome {
+    pub(super) fn scroll_chrome(
+        &self,
+        panel_id: &TranscriptCodePanelIdentity,
+    ) -> CodePanelScrollChrome {
         let handle = self.scroll_handle(panel_id);
-        let panel_key = panel_id.to_string();
-        let activity_panel_key = panel_key.clone();
+        let panel_identity = panel_id.clone();
+        let activity_panel_identity = panel_identity.clone();
         let activity_entity = self.state.entity.clone();
-        let select_panel_key = panel_key.clone();
+        let select_panel_identity = panel_identity.clone();
         let select_entity = self.state.entity.clone();
 
         CodePanelScrollChrome {
@@ -248,12 +251,12 @@ impl TranscriptCodePanelControls {
                 )),
             on_activity: Some(Arc::new(move |cx: &mut App| {
                 activity_entity.update(cx, |view, cx| {
-                    view.note_code_panel_scrollbar_activity(activity_panel_key.clone(), cx);
+                    view.note_code_panel_scrollbar_activity(activity_panel_identity.clone(), cx);
                 });
             })),
             on_select: Some(Arc::new(move |cx: &mut App| {
                 select_entity.update(cx, |view, cx| {
-                    view.select_nested_code_panel(select_panel_key.clone(), cx);
+                    view.select_nested_code_panel(select_panel_identity.clone(), cx);
                 });
             })),
             vertical_wheel_ownership: self.vertical_wheel_ownership(panel_id),
@@ -262,10 +265,10 @@ impl TranscriptCodePanelControls {
 
     pub(super) fn resize(
         &self,
-        panel_id: &str,
+        panel_id: &TranscriptCodePanelIdentity,
         code_layout: TranscriptCodeLayout,
     ) -> CodePanelResize {
-        let panel_key = panel_id.to_string();
+        let panel_identity = panel_id.clone();
         let entity = self.state.entity.clone();
         CodePanelResize {
             current_height: self.state.resized_panel_heights.get(panel_id).copied(),
@@ -274,7 +277,7 @@ impl TranscriptCodePanelControls {
             on_resize_start: Arc::new(move |panel_top, current_height, event, cx| {
                 entity.update(cx, |view, cx| {
                     view.begin_code_panel_resize(
-                        panel_key.clone(),
+                        panel_identity.clone(),
                         panel_top,
                         current_height,
                         event,
@@ -285,8 +288,8 @@ impl TranscriptCodePanelControls {
         }
     }
 
-    fn soft_wrap_action(&self, panel_id: &str) -> CodePanelHeaderAction {
-        let panel_key = panel_id.to_string();
+    fn soft_wrap_action(&self, panel_id: &TranscriptCodePanelIdentity) -> CodePanelHeaderAction {
+        let panel_identity = panel_id.clone();
         let entity = self.state.entity.clone();
         CodePanelHeaderAction {
             key: "soft-wrap".to_string(),
@@ -294,7 +297,7 @@ impl TranscriptCodePanelControls {
             active: self.state.soft_wrapped_panel_keys.contains(panel_id),
             on_click: Arc::new(move |_, cx: &mut App| {
                 entity.update(cx, |view, cx| {
-                    view.toggle_code_panel_soft_wrap(panel_key.clone(), cx);
+                    view.toggle_code_panel_soft_wrap(panel_identity.clone(), cx);
                 });
             }),
         }
@@ -311,12 +314,16 @@ impl TranscriptCodePanelControls {
         }
     }
 
-    fn theme_candidate_actions(&self, panel_id: &str, source: &str) -> Vec<CodePanelHeaderAction> {
+    fn theme_candidate_actions(
+        &self,
+        panel_id: &TranscriptCodePanelIdentity,
+        source: &str,
+    ) -> Vec<CodePanelHeaderAction> {
         let preview_active = self
             .state
             .theme_candidates
             .active_preview_panel_id()
-            .is_some_and(|active| active == panel_id);
+            .is_some_and(|active| active == panel_id.as_str());
         let panel_key = panel_id.to_string();
         let preview_source = source.to_string();
         let entity = self.state.entity.clone();
@@ -367,8 +374,11 @@ impl TranscriptCodePanelControls {
         ]
     }
 
-    fn theme_candidate_header_title(&self, panel_id: &str) -> Option<String> {
-        let feedback = self.state.theme_candidates.feedback(panel_id)?;
+    fn theme_candidate_header_title(
+        &self,
+        panel_id: &TranscriptCodePanelIdentity,
+    ) -> Option<String> {
+        let feedback = self.state.theme_candidates.feedback(panel_id.as_str())?;
         let prefix = match feedback.kind() {
             ThemeCandidateFeedbackKind::Info => "beryl-theme",
             ThemeCandidateFeedbackKind::Success => "beryl-theme",
@@ -377,17 +387,20 @@ impl TranscriptCodePanelControls {
         Some(format!("{prefix}: {}", feedback.message()))
     }
 
-    fn scroll_handle(&self, panel_id: &str) -> ScrollHandle {
+    fn scroll_handle(&self, panel_id: &TranscriptCodePanelIdentity) -> ScrollHandle {
         self.state
             .scroll_handles
             .borrow_mut()
-            .entry(panel_id.to_string())
+            .entry(panel_id.clone())
             .or_insert_with(ScrollHandle::new)
             .clone()
     }
 
-    fn vertical_wheel_ownership(&self, panel_id: &str) -> CodePanelVerticalWheelOwnership {
-        if self.state.selected_nested_code_panel_id.as_ref().as_deref() == Some(panel_id) {
+    fn vertical_wheel_ownership(
+        &self,
+        panel_id: &TranscriptCodePanelIdentity,
+    ) -> CodePanelVerticalWheelOwnership {
+        if self.state.selected_nested_code_panel_id.as_ref().as_ref() == Some(panel_id) {
             CodePanelVerticalWheelOwnership::Panel
         } else {
             CodePanelVerticalWheelOwnership::Parent

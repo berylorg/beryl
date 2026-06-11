@@ -9,10 +9,6 @@ use super::execution_detail::{
 pub(super) fn project_parent_narrative_turn(
     turn: &TurnExecutionRecord,
 ) -> Option<TurnExecutionRecord> {
-    if turn.released_history_placeholder {
-        return Some(turn.clone());
-    }
-
     let items = turn
         .items
         .iter()

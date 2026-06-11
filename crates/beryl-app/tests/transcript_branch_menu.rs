@@ -73,11 +73,8 @@ mod shell {
             let replacements = self.details.release_history_range(range);
             let count = replacements.len();
             for replacement in replacements {
-                self.presentation.replace_turn_with_placeholder(
-                    replacement.index,
-                    replacement.turn,
-                    None,
-                );
+                self.presentation
+                    .replace_turn(replacement.index, replacement.turn);
             }
             count
         }
@@ -154,6 +151,10 @@ mod shell {
             self.presentation
                 .turn_at(index)
                 .and_then(|row| TranscriptThreadTitleUpdateTarget::resolve_from_presented_row(&row))
+        }
+
+        pub(super) fn presentation_len(&self) -> usize {
+            self.presentation.len()
         }
     }
 }
@@ -303,22 +304,15 @@ fn thread_title_update_target_reports_released_row_as_disabled_reason() {
     );
 
     assert_eq!(harness.release_range(0..1), 1);
-    assert!(harness.title_target_at(0).is_none());
+    assert_eq!(harness.presentation_len(), 1);
 
-    let resolution = harness
-        .title_target_resolution_at(0)
-        .expect("released row should still produce a disabled title-update entry");
-    assert_eq!(
-        resolution,
-        TranscriptThreadTitleUpdateTargetResolution::Disabled {
-            identity: Some(
-                TranscriptThreadTitleUpdateTarget::for_test("thread_a", "turn_1", 0, Vec::new())
-                    .target_identity()
-                    .clone()
-            ),
-            reason: TranscriptThreadTitleUpdateDisabledReason::ReleasedOrMissingRowTarget,
-        }
-    );
+    let target = harness
+        .title_target_at(0)
+        .expect("remaining row should still support title updates");
+    assert_eq!(target.source_thread_id(), "thread_a");
+    assert_eq!(target.source_turn_id(), "turn_2");
+    assert_eq!(target.source_turn_index(), 1);
+    assert_eq!(target.title_seed_fragments(), &["Prompt 2".to_string()]);
 }
 
 #[test]

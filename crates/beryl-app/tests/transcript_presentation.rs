@@ -20,10 +20,11 @@ mod shell {
 
     use std::ops::Range;
 
-    use beryl_backend::{ThreadItem, TurnInfo, TurnStreamEvent};
-    use gpui::Pixels;
+    use beryl_backend::{TurnInfo, TurnStreamEvent};
+    use gpui::{Pixels, px};
 
     pub(super) use transcript_presentation::TranscriptPresentationMutation;
+    pub(super) use transcript_presentation::TranscriptRowMeasurementDisplayState;
 
     pub(super) struct PresentationHarness {
         details: execution_detail::ExecutionDetailState,
@@ -77,51 +78,32 @@ mod shell {
         pub(super) fn release_range_with_heights(
             &mut self,
             range: Range<usize>,
-            heights: &[Pixels],
+            _heights: &[Pixels],
         ) -> usize {
-            let start = range.start;
             let replacements = self.details.release_history_range(range);
             let count = replacements.len();
             for replacement in replacements {
-                let height = heights.get(replacement.index - start).copied();
-                self.presentation.replace_turn_with_placeholder(
-                    replacement.index,
-                    replacement.turn,
-                    height,
-                );
+                self.presentation
+                    .replace_turn(replacement.index, replacement.turn);
             }
             count
         }
 
-        pub(super) fn release_detail(
+        pub(super) fn restore_history_page(
             &mut self,
             thread_id: &str,
-            turn_id: &str,
-        ) -> TranscriptPresentationMutation {
-            let Some(replacement) = self.details.release_history_turn_detail(thread_id, turn_id)
-            else {
-                return TranscriptPresentationMutation::Unchanged;
-            };
-            self.presentation
-                .replace_turn(replacement.index, replacement.turn)
-        }
-
-        pub(super) fn apply_detail_items(
-            &mut self,
-            thread_id: &str,
-            turn_id: &str,
-            items: Vec<ThreadItem>,
-        ) -> TranscriptPresentationMutation {
-            let Some(replacement) = self.details.apply_history_turn_items(
-                thread_id,
-                turn_id,
-                items,
-                &execution_detail::TranscriptImagePathResolver::default(),
-            ) else {
-                return TranscriptPresentationMutation::Unchanged;
-            };
-            self.presentation
-                .replace_turn(replacement.index, replacement.turn)
+            row_start: usize,
+            expected_turn_ids: &[String],
+            turns: Vec<TurnInfo>,
+        ) -> Vec<TranscriptPresentationMutation> {
+            self.details
+                .restore_history_page(thread_id, row_start, expected_turn_ids, turns)
+                .into_iter()
+                .map(|replacement| {
+                    self.presentation
+                        .replace_turn(replacement.index, replacement.turn)
+                })
+                .collect()
         }
 
         pub(super) fn row_identity(&self, index: usize) -> String {
@@ -142,18 +124,6 @@ mod shell {
                 .and_then(|row| row.turn.turn_id.clone())
         }
 
-        pub(super) fn placeholder_height_at(&self, index: usize) -> Option<Pixels> {
-            self.presentation
-                .turn_at(index)
-                .and_then(|row| row.placeholder_height)
-        }
-
-        pub(super) fn is_placeholder_at(&self, index: usize) -> bool {
-            self.presentation
-                .turn_at(index)
-                .is_some_and(|row| row.turn.is_released_history_placeholder())
-        }
-
         pub(super) fn window_turn_ids(&self, range: Range<usize>) -> Vec<String> {
             self.presentation
                 .window_for_range(range)
@@ -169,6 +139,65 @@ mod shell {
 
         pub(super) fn source_turn_index_at(&self, index: usize) -> Option<usize> {
             self.presentation.source_turn_index_at(index)
+        }
+
+        pub(super) fn row_model_source_turn_index_at(&self, index: usize) -> Option<usize> {
+            self.presentation
+                .turn_at(index)
+                .map(|row| row.model.source_turn_identity().source_turn_index)
+        }
+
+        pub(super) fn row_model_revision_at(&self, index: usize) -> Option<String> {
+            self.presentation
+                .turn_at(index)
+                .map(|row| format!("{:?}", row.model.revision()))
+        }
+
+        pub(super) fn row_model_units_at(&self, index: usize) -> Vec<String> {
+            self.presentation
+                .turn_at(index)
+                .map(|row| {
+                    row.model
+                        .narrative_units()
+                        .iter()
+                        .map(|unit| match unit {
+                            transcript_presentation::TranscriptRowNarrativeUnit::UserInput {
+                                fragment_index,
+                                ..
+                            } => format!("user:{fragment_index}"),
+                            transcript_presentation::TranscriptRowNarrativeUnit::Item {
+                                item_id,
+                                item_index,
+                            } => format!("item:{item_index}:{item_id}"),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+
+        pub(super) fn first_markdown_key_at(&self, index: usize) -> Option<String> {
+            self.presentation.turn_at(index).and_then(|row| {
+                row.model
+                    .markdown_sources()
+                    .first()
+                    .map(|source| source.key.clone())
+            })
+        }
+
+        pub(super) fn row_index_for_markdown_key(&self, key: &str) -> Option<usize> {
+            self.presentation.row_index_for_markdown_key(key)
+        }
+
+        pub(super) fn measurement_key_at(
+            &self,
+            index: usize,
+            width: f32,
+            theme_revision: u64,
+            display_state: TranscriptRowMeasurementDisplayState,
+        ) -> Option<String> {
+            self.presentation
+                .measurement_key_for_row(index, px(width), theme_revision, display_state)
+                .map(|key| format!("{key:?}"))
         }
 
         pub(super) fn visible_item_kinds_at(&self, index: usize) -> Vec<String> {
@@ -322,7 +351,9 @@ mod shell {
     }
 }
 
-use shell::{PresentationHarness, TranscriptPresentationMutation};
+use shell::{
+    PresentationHarness, TranscriptPresentationMutation, TranscriptRowMeasurementDisplayState,
+};
 
 #[test]
 fn row_identity_survives_older_history_prepend() {
@@ -383,6 +414,40 @@ fn row_identity_lookup_tracks_index_after_older_history_prepend() {
 }
 
 #[test]
+fn row_model_source_identity_updates_on_prepend_without_changing_stable_backend_revision() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            prompt_turn("turn_3", "Prompt 3"),
+            prompt_turn("turn_4", "Prompt 4"),
+        ],
+    );
+    let turn_3_identity = harness.row_identity(0);
+    let turn_3_revision = harness.row_model_revision_at(0).unwrap();
+
+    harness.prepend_history(
+        "thread_a",
+        vec![
+            prompt_turn("turn_1", "Prompt 1"),
+            prompt_turn("turn_2", "Prompt 2"),
+        ],
+    );
+
+    let turn_3_index = harness.row_index_for_identity(&turn_3_identity).unwrap();
+    assert_eq!(turn_3_index, 2);
+    assert_eq!(harness.source_turn_index_at(turn_3_index), Some(2));
+    assert_eq!(
+        harness.row_model_source_turn_index_at(turn_3_index),
+        Some(2)
+    );
+    assert_eq!(
+        harness.row_model_revision_at(turn_3_index).unwrap(),
+        turn_3_revision
+    );
+}
+
+#[test]
 fn latest_user_prompt_anchor_shifts_on_prepend_and_moves_on_append() {
     let mut harness = PresentationHarness::new();
     harness.replace_history(
@@ -414,6 +479,52 @@ fn latest_user_prompt_anchor_shifts_on_prepend_and_moves_on_append() {
     assert_eq!(
         harness.latest_user_prompt_anchor(),
         Some((4, 0, "Live prompt".to_string()))
+    );
+}
+
+#[test]
+fn row_model_preserves_steering_fragment_narrative_order() {
+    let mut harness = PresentationHarness::new();
+    let live_index = harness.begin_live_turn("Initial prompt");
+
+    harness
+        .apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_a".to_string(),
+            turn: empty_turn("turn_live", TurnStatus::InProgress),
+        })
+        .unwrap();
+    harness
+        .apply_stream_event(TurnStreamEvent::ItemCompleted {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_live".to_string(),
+            item: ThreadItem::AgentMessage(AgentMessageItem {
+                id: "assistant_before".to_string(),
+                phase: Some(ProtocolPhase::Commentary),
+                text: "Already visible assistant output.".to_string(),
+            }),
+        })
+        .unwrap();
+    harness.append_live_user_fragment(live_index, "Steered follow-up");
+    harness
+        .apply_stream_event(TurnStreamEvent::ItemCompleted {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_live".to_string(),
+            item: ThreadItem::AgentMessage(AgentMessageItem {
+                id: "assistant_after".to_string(),
+                phase: Some(ProtocolPhase::FinalAnswer),
+                text: "Assistant after steering.".to_string(),
+            }),
+        })
+        .unwrap();
+
+    assert_eq!(
+        harness.row_model_units_at(live_index),
+        vec![
+            "user:0",
+            "item:0:assistant_before",
+            "user:1",
+            "item:1:assistant_after",
+        ]
     );
 }
 
@@ -504,6 +615,97 @@ fn transcript_presentation_retained_counts_match_projected_rows() {
 }
 
 #[test]
+fn row_model_indexes_markdown_keys_to_the_owning_row() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            prompt_turn("turn_1", "Prompt 1"),
+            agent_markdown_turn("turn_2", "Assistant **markdown**"),
+        ],
+    );
+
+    let prompt_key = harness.first_markdown_key_at(0).unwrap();
+    let assistant_key = harness.first_markdown_key_at(1).unwrap();
+
+    assert_eq!(harness.row_index_for_markdown_key(&prompt_key), Some(0));
+    assert_eq!(harness.row_index_for_markdown_key(&assistant_key), Some(1));
+    assert_eq!(harness.row_index_for_markdown_key("missing:key"), None);
+}
+
+#[test]
+fn row_measurement_key_tracks_revision_width_theme_and_display_state() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history("thread_a", vec![prompt_turn("turn_1", "Prompt 1")]);
+    let base_display = TranscriptRowMeasurementDisplayState {
+        is_first_row: true,
+        show_activity_caret: false,
+        promoted_media_key: None,
+        code_panel_state_digest: 0,
+    };
+    let base = harness
+        .measurement_key_at(0, 640.0, 1, base_display.clone())
+        .unwrap();
+
+    assert_ne!(
+        harness
+            .measurement_key_at(0, 720.0, 1, base_display.clone())
+            .unwrap(),
+        base
+    );
+    assert_ne!(
+        harness
+            .measurement_key_at(0, 640.0, 2, base_display.clone())
+            .unwrap(),
+        base
+    );
+    assert_ne!(
+        harness
+            .measurement_key_at(
+                0,
+                640.0,
+                1,
+                TranscriptRowMeasurementDisplayState {
+                    show_activity_caret: true,
+                    ..base_display
+                },
+            )
+            .unwrap(),
+        base
+    );
+}
+
+#[test]
+fn row_model_revision_changes_when_live_text_changes() {
+    let mut harness = PresentationHarness::new();
+    let live_index = harness.begin_live_turn("Initial prompt");
+    let prompt_revision = harness.row_model_revision_at(live_index).unwrap();
+
+    harness
+        .apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_a".to_string(),
+            turn: empty_turn("turn_live", TurnStatus::InProgress),
+        })
+        .unwrap();
+    harness
+        .apply_stream_event(TurnStreamEvent::ItemCompleted {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_live".to_string(),
+            item: ThreadItem::AgentMessage(AgentMessageItem {
+                id: "answer_live".to_string(),
+                phase: Some(ProtocolPhase::FinalAnswer),
+                text: "Assistant response.".to_string(),
+            }),
+        })
+        .unwrap();
+
+    assert_ne!(
+        harness.row_model_revision_at(live_index).unwrap(),
+        prompt_revision
+    );
+}
+
+#[test]
 fn transcript_render_metrics_remain_correct_after_cached_mutations() {
     let mut harness = PresentationHarness::new();
     let mixed_text = "Explain the workspace".len()
@@ -554,8 +756,8 @@ fn transcript_render_metrics_remain_correct_after_cached_mutations() {
 
     assert_eq!(harness.release_range_with_heights(0..1, &[px(40.0)]), 1);
     expected_text -= earlier_prompt.len();
-    assert_eq!(harness.render_metrics(), (3, 4, expected_text));
-    assert_eq!(harness.retained_counts(), (3, 4, expected_text));
+    assert_eq!(harness.render_metrics(), (2, 4, expected_text));
+    assert_eq!(harness.retained_counts(), (2, 4, expected_text));
 }
 
 #[test]
@@ -818,32 +1020,21 @@ fn operational_only_history_turns_do_not_create_presentation_rows() {
 }
 
 #[test]
-fn operational_detail_placeholder_insert_and_full_detail_remove_are_explicit_mutations() {
+fn operational_detail_release_does_not_create_transcript_rows() {
     let mut harness = PresentationHarness::new();
     let operational = command_turn("turn_cmd", "command_a", "cargo nextest", "ok");
-    let full_items = operational.items.clone();
-    harness.replace_history("thread_a", vec![operational]);
+    harness.replace_history("thread_a", vec![operational.clone()]);
 
     assert_eq!(harness.presentation_len(), 0);
 
-    assert_eq!(
-        harness.release_detail("thread_a", "turn_cmd"),
-        TranscriptPresentationMutation::Inserted { index: 0, count: 1 }
-    );
-    assert_eq!(harness.presentation_len(), 1);
-    assert_eq!(harness.source_turn_index_at(0), Some(0));
-
-    assert_eq!(
-        harness.apply_detail_items("thread_a", "turn_cmd", full_items.clone()),
-        TranscriptPresentationMutation::Removed { index: 0, count: 1 }
-    );
+    assert_eq!(harness.release_range_with_heights(0..1, &[px(120.0)]), 1);
     assert_eq!(harness.presentation_len(), 0);
 
     assert_eq!(
-        harness.release_detail("thread_a", "turn_cmd"),
-        TranscriptPresentationMutation::Inserted { index: 0, count: 1 }
+        harness.restore_history_page("thread_a", 0, &["turn_cmd".to_string()], vec![operational],),
+        vec![TranscriptPresentationMutation::Unchanged]
     );
-    assert_eq!(harness.presentation_len(), 1);
+    assert_eq!(harness.presentation_len(), 0);
 }
 
 #[test]
@@ -863,16 +1054,12 @@ fn hidden_operational_turns_do_not_allocate_ephemeral_row_identity() {
 }
 
 #[test]
-fn released_history_rows_keep_identity_and_placeholder_geometry() {
+fn released_history_rows_are_removed_and_restored_by_full_pages() {
     let mut harness = PresentationHarness::new();
-    harness.replace_history(
-        "thread_a",
-        vec![
-            prompt_turn("turn_1", "Prompt 1"),
-            prompt_turn("turn_2", "Prompt 2"),
-            prompt_turn("turn_3", "Prompt 3"),
-        ],
-    );
+    let turn_1 = prompt_turn("turn_1", "Prompt 1");
+    let turn_2 = prompt_turn("turn_2", "Prompt 2");
+    let turn_3 = prompt_turn("turn_3", "Prompt 3");
+    harness.replace_history("thread_a", vec![turn_1.clone(), turn_2.clone(), turn_3]);
     let turn_1_identity = harness.row_identity(0);
     let turn_2_identity = harness.row_identity(1);
     let turn_3_identity = harness.row_identity(2);
@@ -882,15 +1069,30 @@ fn released_history_rows_keep_identity_and_placeholder_geometry() {
         2
     );
 
+    assert_eq!(harness.presentation_len(), 1);
+    assert_eq!(harness.row_identity(0), turn_3_identity);
+    assert_eq!(harness.turn_id_at(0).as_deref(), Some("turn_3"));
+    assert_eq!(
+        harness.latest_user_prompt_anchor(),
+        Some((0, 0, "Prompt 3".to_string()))
+    );
+
+    assert_eq!(
+        harness.restore_history_page(
+            "thread_a",
+            0,
+            &["turn_1".to_string(), "turn_2".to_string()],
+            vec![turn_1, turn_2],
+        ),
+        vec![
+            TranscriptPresentationMutation::Inserted { index: 0, count: 1 },
+            TranscriptPresentationMutation::Inserted { index: 1, count: 1 },
+        ]
+    );
+    assert_eq!(harness.presentation_len(), 3);
     assert_eq!(harness.row_identity(0), turn_1_identity);
     assert_eq!(harness.row_identity(1), turn_2_identity);
     assert_eq!(harness.row_identity(2), turn_3_identity);
-    assert!(harness.is_placeholder_at(0));
-    assert!(harness.is_placeholder_at(1));
-    assert!(!harness.is_placeholder_at(2));
-    assert_eq!(harness.turn_id_at(0).as_deref(), Some("turn_1"));
-    assert_eq!(harness.placeholder_height_at(0), Some(px(120.0)));
-    assert_eq!(harness.placeholder_height_at(1), Some(px(160.0)));
     assert_eq!(
         harness.latest_user_prompt_anchor(),
         Some((2, 0, "Prompt 3".to_string()))
@@ -898,23 +1100,18 @@ fn released_history_rows_keep_identity_and_placeholder_geometry() {
 }
 
 #[test]
-fn narrative_detail_placeholder_and_full_detail_replace_same_row() {
+fn narrative_detail_release_removes_row_and_full_page_restore_reinserts() {
     let mut harness = PresentationHarness::new();
     let prompt = prompt_turn("turn_1", "Prompt 1");
-    let full_items = prompt.items.clone();
-    harness.replace_history("thread_a", vec![prompt]);
+    harness.replace_history("thread_a", vec![prompt.clone()]);
     let identity = harness.row_identity(0);
 
-    assert_eq!(
-        harness.release_detail("thread_a", "turn_1"),
-        TranscriptPresentationMutation::Replaced { index: 0 }
-    );
-    assert_eq!(harness.presentation_len(), 1);
-    assert_eq!(harness.row_identity(0), identity);
+    assert_eq!(harness.release_range_with_heights(0..1, &[px(120.0)]), 1);
+    assert_eq!(harness.presentation_len(), 0);
 
     assert_eq!(
-        harness.apply_detail_items("thread_a", "turn_1", full_items),
-        TranscriptPresentationMutation::Replaced { index: 0 }
+        harness.restore_history_page("thread_a", 0, &["turn_1".to_string()], vec![prompt],),
+        vec![TranscriptPresentationMutation::Inserted { index: 0, count: 1 }]
     );
     assert_eq!(harness.presentation_len(), 1);
     assert_eq!(harness.row_identity(0), identity);
@@ -988,6 +1185,20 @@ fn panel_state_for_range_is_bounded_to_requested_rows() {
 
 fn prompt_turn(id: &str, prompt: &str) -> TurnInfo {
     prompt_turn_with_fragments(id, &[prompt])
+}
+
+fn agent_markdown_turn(id: &str, text: &str) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
+        items: vec![ThreadItem::AgentMessage(AgentMessageItem {
+            id: format!("{id}_agent"),
+            phase: Some(ProtocolPhase::FinalAnswer),
+            text: text.to_string(),
+        })],
+        error: None,
+    }
 }
 
 fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {

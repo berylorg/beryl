@@ -21,8 +21,7 @@ use diagnostic_dynamic_tools::{
     READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
     SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
-    ThemeRoleNavigatorDiagnostic, TranscriptDetailLoadDiagnosticsLog, TranscriptDetailLoadEvent,
-    TranscriptDetailLoadSnapshot, TranscriptFrameMetric, TranscriptFrameMetricsLog,
+    ThemeRoleNavigatorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
     TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
     VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
     dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
@@ -128,7 +127,13 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
             presentation_range_len: 4,
             visible_row_count: 2,
             panel_state_inspected_row_count: 4,
+            residency_resident_turn_count: 6,
+            residency_retained_bytes: 2048,
+            residency_in_flight_requests: 1,
+            residency_budget_reason: Some("resident_byte_limit".to_string()),
             frame_micros: index,
+            snapshot_micros: 11,
+            render_state_pruning_micros: 12,
             style_snapshot_micros: 1,
             composer_measurement_micros: 2,
             row_build_total_micros: 3,
@@ -186,6 +191,19 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
     assert!(response.success);
     assert_eq!(payload["result"]["frames"].as_array().unwrap().len(), 2);
     assert_eq!(payload["result"]["frames"][0]["sequence"], 21);
+    assert_eq!(
+        payload["result"]["frames"][0]["residencyResidentTurnCount"],
+        6
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["residencyBudgetReason"],
+        "resident_byte_limit"
+    );
+    assert_eq!(payload["result"]["frames"][0]["snapshotMicros"], 11);
+    assert_eq!(
+        payload["result"]["frames"][0]["renderStatePruningMicros"],
+        12
+    );
     assert_eq!(payload["result"]["frameCount"], 2);
     assert_eq!(payload["result"]["truncated"], true);
     assert!(
@@ -194,102 +212,6 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
             .find("assistant text")
             .is_none()
     );
-}
-
-#[test]
-fn transcript_detail_load_diagnostics_are_content_free_bounded_and_dispatchable() {
-    let mut log = TranscriptDetailLoadDiagnosticsLog::default();
-
-    for index in 0..140 {
-        let mut event = TranscriptDetailLoadEvent {
-            sequence: 0,
-            cursor_present: index % 2 == 0,
-            requested_limit: Some((index % 80 + 1) as u32),
-            returned_turn_count: 1,
-            applied_turn_count: 0,
-            skipped_stale_count: 0,
-            total_micros: index + 10,
-            cas_micros: index + 1,
-            response_processing_micros: 2,
-            image_source_resolution_micros: 3,
-            cache_application_micros: 4,
-            outcome: format!("applied-{}", "x".repeat(700)),
-        };
-        if index % 3 == 0 {
-            event.mark_applied(2);
-            event.skipped_stale_count = 1;
-        } else if index % 3 == 1 {
-            event.mark_stale(1);
-        } else {
-            event.mark_failed_stale(1);
-        }
-        log.record(event);
-    }
-
-    let snapshot = log.snapshot();
-
-    assert_eq!(snapshot.requests.len(), 128);
-    assert_eq!(snapshot.request_count, 128);
-    assert_eq!(snapshot.requests.first().unwrap().sequence, 13);
-    assert_eq!(snapshot.next_sequence, 141);
-    assert!(
-        snapshot
-            .requests
-            .iter()
-            .all(|event| event.outcome.len() <= 512)
-    );
-    assert_eq!(snapshot.aggregate.total_request_count, 128);
-    assert_eq!(snapshot.aggregate.returned_turn_count, 128);
-    assert!(snapshot.aggregate.applied_request_count > 0);
-    assert!(snapshot.aggregate.stale_request_count > 0);
-    assert!(snapshot.aggregate.applied_turn_count > snapshot.aggregate.applied_request_count);
-    assert!(snapshot.aggregate.skipped_stale_count > snapshot.aggregate.stale_request_count);
-    assert!(snapshot.aggregate.total_micros > snapshot.aggregate.cas_micros);
-
-    let mut skip_log = TranscriptDetailLoadDiagnosticsLog::default();
-    let mut skipped_before_cas = TranscriptDetailLoadEvent {
-        sequence: 0,
-        cursor_present: true,
-        requested_limit: Some(1),
-        returned_turn_count: 0,
-        applied_turn_count: 0,
-        skipped_stale_count: 0,
-        total_micros: 0,
-        cas_micros: 0,
-        response_processing_micros: 0,
-        image_source_resolution_micros: 0,
-        cache_application_micros: 0,
-        outcome: "loadedWorker".to_string(),
-    };
-    skipped_before_cas.mark_stale(1);
-    skip_log.record(skipped_before_cas);
-    let skip_snapshot = skip_log.snapshot();
-
-    assert_eq!(skip_snapshot.aggregate.stale_request_count, 1);
-    assert_eq!(skip_snapshot.aggregate.failed_request_count, 0);
-    assert_eq!(skip_snapshot.aggregate.skipped_stale_count, 1);
-    assert_eq!(skip_snapshot.aggregate.cas_micros, 0);
-
-    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
-        &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
-        DiagnosticToolSnapshot {
-            transcript_detail_loads: snapshot,
-            ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
-        },
-    );
-    let payload = response_json(&response);
-
-    assert!(response.success);
-    assert_eq!(
-        payload["result"]["transcriptDetailLoads"]["requestCount"],
-        128
-    );
-    assert_eq!(
-        payload["result"]["transcriptDetailLoads"]["aggregate"]["totalRequestCount"],
-        128
-    );
-    assert!(!payload["result"].to_string().contains("C:\\Users"));
-    assert!(!payload["result"].to_string().contains("assistant text"));
 }
 
 #[test]
@@ -526,7 +448,6 @@ fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
-            transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
@@ -591,7 +512,6 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
-            transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
@@ -667,7 +587,6 @@ fn renderer_diagnostics_serialize_source_backed_image_sections() {
             visible_media: VisibleMediaSnapshot::default(),
             media_events: event_snapshot(0),
             transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
-            transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
             settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
         },
     );
@@ -793,23 +712,62 @@ fn retained_state_summary_reports_source_backed_media_counters() {
 }
 
 #[test]
-fn retained_state_summary_reports_transcript_detail_cache_counters() {
+fn retained_state_summary_reports_transcript_residency_counters() {
     let mut snapshot = diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0));
-    snapshot.retained_state.transcript_skeleton_turns = Some(100);
-    snapshot.retained_state.transcript_missing_detail_turns = Some(96);
-    snapshot.retained_state.transcript_loading_detail_turns = Some(1);
-    snapshot.retained_state.transcript_full_detail_turns = Some(2);
-    snapshot.retained_state.transcript_failed_detail_turns = Some(1);
-    snapshot.retained_state.transcript_pinned_detail_turns = Some(3);
-    snapshot.retained_state.transcript_retained_detail_items = Some(7);
-    snapshot.retained_state.transcript_detail_retention_turns = Some(9);
+    snapshot.retained_state.transcript_residency_index_turns = Some(100);
     snapshot
         .retained_state
-        .transcript_detail_last_requested_turns = Some(4);
+        .transcript_residency_nonresident_turns = Some(96);
+    snapshot.retained_state.transcript_residency_resident_turns = Some(2);
+    snapshot.retained_state.transcript_residency_pinned_turns = Some(3);
+    snapshot.retained_state.transcript_residency_retained_items = Some(7);
     snapshot
         .retained_state
-        .transcript_detail_last_released_turns = Some(2);
-    snapshot.retained_state.transcript_detail_pending_requests = Some(5);
+        .transcript_residency_last_requested_turns = Some(4);
+    snapshot
+        .retained_state
+        .transcript_residency_last_released_turns = Some(2);
+    snapshot
+        .retained_state
+        .transcript_residency_pending_requests = Some(5);
+    snapshot
+        .retained_state
+        .transcript_residency_in_flight_requests = Some(1);
+    snapshot.retained_state.transcript_residency_resident_bytes = Some(2048);
+    snapshot
+        .retained_state
+        .transcript_residency_index_metadata_bytes = Some(512);
+    snapshot
+        .retained_state
+        .transcript_residency_total_bytes_estimate = Some(2560);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_max_turns = Some(320);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_max_bytes = Some(100 * 1024 * 1024);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_max_in_flight_requests = Some(1);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_leading_viewport_margins = Some(1);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_trailing_viewport_margins = Some(1);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_cold_release_hysteresis_viewports = Some(1);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_max_resident_pages = Some(4);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_max_released_pages = Some(32);
+    snapshot
+        .retained_state
+        .transcript_residency_policy_request_priority = Some("provided_order");
+    snapshot.retained_state.transcript_residency_budget_reason = Some("resident_byte_limit");
 
     let response = dispatch_beryl_diagnostic_dynamic_tool_call(
         &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
@@ -819,48 +777,68 @@ fn retained_state_summary_reports_transcript_detail_cache_counters() {
 
     assert!(response.success);
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptSkeletonTurns"],
+        payload["result"]["retainedState"]["transcriptResidencyIndexTurns"],
         100
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptMissingDetailTurns"],
+        payload["result"]["retainedState"]["transcriptResidencyNonresidentTurns"],
         96
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptLoadingDetailTurns"],
-        1
-    );
-    assert_eq!(
-        payload["result"]["retainedState"]["transcriptFullDetailTurns"],
+        payload["result"]["retainedState"]["transcriptResidencyResidentTurns"],
         2
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptFailedDetailTurns"],
-        1
-    );
-    assert_eq!(
-        payload["result"]["retainedState"]["transcriptPinnedDetailTurns"],
+        payload["result"]["retainedState"]["transcriptResidencyPinnedTurns"],
         3
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptRetainedDetailItems"],
+        payload["result"]["retainedState"]["transcriptResidencyRetainedItems"],
         7
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptDetailRetentionTurns"],
-        9
-    );
-    assert_eq!(
-        payload["result"]["retainedState"]["transcriptDetailLastRequestedTurns"],
+        payload["result"]["retainedState"]["transcriptResidencyLastRequestedTurns"],
         4
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptDetailLastReleasedTurns"],
+        payload["result"]["retainedState"]["transcriptResidencyLastReleasedTurns"],
         2
     );
     assert_eq!(
-        payload["result"]["retainedState"]["transcriptDetailPendingRequests"],
+        payload["result"]["retainedState"]["transcriptResidencyPendingRequests"],
         5
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyInFlightRequests"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyResidentBytes"],
+        2048
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyIndexMetadataBytes"],
+        512
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyTotalBytesEstimate"],
+        2560
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyPolicyMaxTurns"],
+        320
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyPolicyMaxInFlightRequests"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyPolicyRequestPriority"],
+        "provided_order"
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyBudgetReason"],
+        "resident_byte_limit"
     );
 }
 
@@ -911,7 +889,6 @@ fn diagnostic_snapshot(
         visible_media,
         media_events,
         transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
-        transcript_detail_loads: TranscriptDetailLoadSnapshot::default(),
         settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
     }
 }

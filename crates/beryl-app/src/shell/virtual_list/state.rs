@@ -247,11 +247,19 @@ impl ListState {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let (event, mut handler) = {
+        let (event, mut handler, should_notify_view) = {
             let mut state = self.0.borrow_mut();
+            let previous_scroll_position = state.scroll_position();
+            let previous_visible_range = state.current_visible_range();
+            let previous_count = state.items.summary().count;
             let event = state.scroll(scroll_top, height, delta);
             let handler = event.as_ref().and_then(|_| state.scroll_handler.take());
-            (event, handler)
+            let should_notify_view = event.as_ref().is_some_and(|event| {
+                previous_scroll_position != state.scroll_position()
+                    || previous_visible_range != event.visible_range
+                    || previous_count != event.count
+            });
+            (event, handler, should_notify_view)
         };
 
         let Some(event) = event else {
@@ -269,7 +277,9 @@ impl ListState {
             }
         }
 
-        cx.notify(current_view);
+        if should_notify_view {
+            cx.notify(current_view);
+        }
     }
 
     /// Scroll the list to the given offset

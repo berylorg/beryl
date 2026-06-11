@@ -11,8 +11,12 @@ const SHELL_TRANSCRIPT_PANEL_SNAPSHOT_SOURCE: &str =
 const TRANSCRIPT_SOURCE: &str = include_str!("../src/shell/render/transcript.rs");
 const TRANSCRIPT_PRESENTATION_SOURCE: &str =
     include_str!("../src/shell/transcript_presentation.rs");
+const TRANSCRIPT_HISTORY_RESIDENCY_SOURCE: &str =
+    include_str!("../src/shell/transcript_history/residency.rs");
 const TRANSCRIPT_CODE_PANEL_CONTROLS_SOURCE: &str =
     include_str!("../src/shell/render/transcript/code_panel_controls.rs");
+const TRANSCRIPT_NESTED_SCROLL_SOURCE: &str =
+    include_str!("../src/shell/render/transcript/nested_scroll.rs");
 const TRANSCRIPT_STREAM_PROJECTION_SOURCE: &str =
     include_str!("../src/shell/render/transcript/stream_projection.rs");
 const TRANSCRIPT_THEME_SOURCE: &str = include_str!("../src/shell/render/transcript/theme.rs");
@@ -24,6 +28,18 @@ const TRANSCRIPT_TEXT_BLOCKS_SOURCE: &str =
     include_str!("../src/shell/render/transcript/text_blocks.rs");
 const TRANSCRIPT_MEDIA_BLOCKS_SOURCE: &str =
     include_str!("../src/shell/render/transcript/media_blocks.rs");
+const TRANSCRIPT_MEDIA_PRELOAD_SOURCE: &str =
+    include_str!("../src/shell/render/transcript/media_preload.rs");
+const TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE: &str =
+    include_str!("../src/shell/render/transcript/media_preload/coordinator_state.rs");
+const TRANSCRIPT_ROW_MODEL_SOURCE: &str =
+    include_str!("../src/shell/transcript_presentation/row_model.rs");
+const TRANSCRIPT_TURN_BLOCKS_SOURCE: &str =
+    include_str!("../src/shell/render/transcript/turn_blocks.rs");
+const TRANSCRIPT_MARKDOWN_RENDER_CACHE_SOURCE: &str =
+    include_str!("../src/shell/render/transcript/markdown_cache.rs");
+const TRANSCRIPT_MARKDOWN_CODE_PANELS_SOURCE: &str =
+    include_str!("../src/shell/transcript_markdown/code_panels.rs");
 const TRANSCRIPT_TURN_MEDIA_UNITS_SOURCE: &str =
     include_str!("../src/shell/render/transcript/turn_media_units.rs");
 const DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE: &str = include_str!("../src/diagnostic_dynamic_tools.rs");
@@ -212,10 +228,8 @@ fn phase14_transcript_theme_precomputes_inline_code_styles() {
 
 #[test]
 fn phase13_transcript_render_avoids_redundant_hot_path_work() {
-    let profile_new_body = rust_function_body(
-        TRANSCRIPT_SOURCE,
-        "fn new(\n        metrics: Option<TranscriptRenderMetrics>",
-    );
+    let profile_new_body =
+        rust_function_body(TRANSCRIPT_SOURCE, "fn new(\n        started_at: Instant,");
     let markdown_units_body = rust_function_body(
         TRANSCRIPT_TURN_MEDIA_UNITS_SOURCE,
         "fn markdown_render_units",
@@ -252,6 +266,155 @@ fn phase13_transcript_render_avoids_redundant_hot_path_work() {
 }
 
 #[test]
+fn phase2_transcript_media_preload_uses_budgeted_coordinator() {
+    let report_body = rust_function_body(
+        TRANSCRIPT_SOURCE,
+        "fn report_transcript_media_preload_facts",
+    );
+    let drain_body = rust_function_body(
+        TRANSCRIPT_SOURCE,
+        "fn drain_transcript_media_preload_coordinator",
+    );
+    let coordinator_drain_body = rust_function_body(
+        TRANSCRIPT_MEDIA_PRELOAD_SOURCE,
+        "pub(super) fn drain_pending",
+    );
+    let stale_check = coordinator_drain_body
+        .find("if !row_is_current")
+        .expect("drain should reject stale rows before media work");
+    let media_work = coordinator_drain_body
+        .find("preload_turn_media_runs")
+        .expect("drain should invoke coordinator media work");
+
+    assert!(TRANSCRIPT_SOURCE.contains("media_preload: TranscriptMediaPreloadCoordinator"));
+    assert!(TRANSCRIPT_SOURCE.contains("TranscriptMediaPreloadRequest {"));
+    assert!(TRANSCRIPT_SOURCE.contains("view.report_transcript_media_preload_facts(request);"));
+    assert!(TRANSCRIPT_SOURCE.contains("window.defer(cx, move |window, cx|"));
+    assert!(TRANSCRIPT_SOURCE.contains("view.drain_transcript_media_preload_coordinator"));
+    assert!(!TRANSCRIPT_SOURCE.contains("fn preload_transcript_media_range"));
+    assert!(!TRANSCRIPT_SOURCE.contains("media_preload::preload_turn_media_runs"));
+    assert!(!TRANSCRIPT_SOURCE.contains("markdown_media_run_segments"));
+    assert!(!report_body.contains("markdown_for"));
+    assert!(!report_body.contains("media_for"));
+    assert!(report_body.contains("begin_preload_frame"));
+    assert!(report_body.contains("request_preload"));
+    assert!(drain_body.contains("pending_preload_range"));
+    assert!(drain_body.contains("row.identity.as_str().to_string()"));
+    assert!(
+        coordinator_drain_body.contains("stats.rows_stale = stats.rows_stale.saturating_add(1);")
+    );
+    assert!(stale_check < media_work);
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("mod coordinator_state;"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("TranscriptMediaPreloadCoordinator"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("TranscriptMediaPreloadBudget"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("request_preload"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("drain_pending"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("can_coalesce"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("superseded_requests"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("pending_preload_range"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("media_run_segments"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("budget.admit_markdown_source"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("remaining_load_requests"));
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_SOURCE.contains("remaining_upload_bytes"));
+    assert!(
+        TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE
+            .contains("TranscriptMediaPreloadDrainBudget")
+    );
+    assert!(
+        TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE.contains("preload_requests_can_coalesce")
+    );
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE.contains("ranges_overlap_or_touch"));
+    assert!(
+        TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE
+            .contains("impl TranscriptMediaRunSegmentCacheKey")
+    );
+    assert!(
+        TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE
+            .contains("TranscriptMarkdownSourceRevision::new")
+    );
+    assert!(TRANSCRIPT_MEDIA_PRELOAD_COORDINATOR_STATE_SOURCE.contains("note_media_run"));
+    assert!(TRANSCRIPT_MEDIA_BLOCKS_SOURCE.contains("remaining_load_requests"));
+    assert!(TRANSCRIPT_MEDIA_BLOCKS_SOURCE.contains("remaining_upload_bytes"));
+    assert!(TRANSCRIPT_MEDIA_BLOCKS_SOURCE.contains("preload_media_for"));
+}
+
+#[test]
+fn phase3_transcript_rows_use_presentation_models_and_measurement_keys() {
+    let render_card_body = rust_function_body(
+        TRANSCRIPT_TURN_BLOCKS_SOURCE,
+        "pub(super) fn render_turn_card",
+    );
+    let measurement_reconcile_body = rust_function_body(
+        TRANSCRIPT_SOURCE,
+        "fn reconcile_transcript_row_measurement_keys",
+    );
+    let markdown_completion_body = rust_function_body(
+        TRANSCRIPT_MARKDOWN_RENDER_CACHE_SOURCE,
+        "fn schedule_markdown_parse",
+    );
+    let preload_body = rust_function_body(
+        TRANSCRIPT_MEDIA_PRELOAD_SOURCE,
+        "fn preload_turn_media_runs",
+    );
+
+    assert!(TRANSCRIPT_PRESENTATION_SOURCE.contains("mod row_model;"));
+    assert!(TRANSCRIPT_PRESENTATION_SOURCE.contains("model: Arc<TranscriptRowPresentationModel>"));
+    assert!(TRANSCRIPT_PRESENTATION_SOURCE.contains("markdown_key_row_identities"));
+    assert!(TRANSCRIPT_PRESENTATION_SOURCE.contains("row_index_for_markdown_key"));
+    assert!(TRANSCRIPT_ROW_MODEL_SOURCE.contains("TranscriptRowPresentationModel"));
+    assert!(TRANSCRIPT_ROW_MODEL_SOURCE.contains("TranscriptRowMeasurementKey"));
+    assert!(TRANSCRIPT_ROW_MODEL_SOURCE.contains("TranscriptRowNarrativeUnit"));
+    assert!(render_card_body.contains("row_model.narrative_units()"));
+    assert!(!render_card_body.contains("turn.narrative_entries()"));
+    assert!(preload_body.contains("row_model.narrative_units()"));
+    assert!(!preload_body.contains("turn.narrative_entries()"));
+    assert!(TRANSCRIPT_SOURCE.contains("row_measurement_keys: HashMap"));
+    assert!(measurement_reconcile_body.contains("measurement_key_for_row"));
+    assert!(measurement_reconcile_body.contains("theme_revision"));
+    assert!(measurement_reconcile_body.contains("transcript_width"));
+    assert!(TRANSCRIPT_SOURCE.contains("row_code_panel_state_digest"));
+    assert!(TRANSCRIPT_SOURCE.contains("promoted_media_key"));
+    assert!(
+        markdown_completion_body.contains("invalidate_transcript_row_measurement_for_markdown_key")
+    );
+}
+
+#[test]
+fn phase4_transcript_code_panel_state_is_typed_and_row_scoped() {
+    assert!(TRANSCRIPT_MARKDOWN_CODE_PANELS_SOURCE.contains("TranscriptCodePanelIdentity"));
+    assert!(TRANSCRIPT_MARKDOWN_CODE_PANELS_SOURCE.contains("TranscriptCodePanelLocalIdentity"));
+    assert!(TRANSCRIPT_MARKDOWN_CODE_PANELS_SOURCE.contains("pub(crate) fn parse(panel_id: &str)"));
+    assert!(TRANSCRIPT_SOURCE.contains("HashSet<TranscriptCodePanelIdentity>"));
+    assert!(TRANSCRIPT_SOURCE.contains("HashMap<TranscriptCodePanelIdentity, Pixels>"));
+    assert!(TRANSCRIPT_SOURCE.contains("HashMap<TranscriptCodePanelIdentity, ScrollHandle>"));
+    assert!(
+        TRANSCRIPT_SOURCE
+            .contains("HashMap<TranscriptCodePanelIdentity, ScrollbarVisibilityState>")
+    );
+    assert!(TRANSCRIPT_SOURCE.contains("code_panel_owner_ids_by_row"));
+    assert!(TRANSCRIPT_SOURCE.contains("record_rendered_code_panel_owners"));
+    assert!(TRANSCRIPT_SOURCE.contains("code_panel_owner_ids_for_rows"));
+    assert!(TRANSCRIPT_SOURCE.contains("row_identities.contains(panel_identity.row_identity())"));
+    assert!(TRANSCRIPT_SOURCE.contains("owner_ids.contains(owner_id)"));
+    assert!(!TRANSCRIPT_SOURCE.contains("panel_id_belongs_to_any_row"));
+    assert!(!TRANSCRIPT_SOURCE.contains("markdown_code_panel_id_belongs_to_row"));
+    assert!(
+        TRANSCRIPT_CODE_PANEL_CONTROLS_SOURCE
+            .contains("panel_id_for(&self, code_path: &str) -> TranscriptCodePanelIdentity")
+    );
+    assert!(
+        TRANSCRIPT_CODE_PANEL_CONTROLS_SOURCE
+            .contains("rendered_panel_ids: Rc<RefCell<HashSet<TranscriptCodePanelIdentity>>>")
+    );
+    assert!(TRANSCRIPT_CODE_PANEL_CONTROLS_SOURCE.contains("panel_id.as_str()"));
+    assert!(
+        TRANSCRIPT_NESTED_SCROLL_SOURCE
+            .contains("selected_panel_identity: Option<TranscriptCodePanelIdentity>")
+    );
+    assert!(TRANSCRIPT_NESTED_SCROLL_SOURCE.contains("retain_visible_panel_identities"));
+}
+
+#[test]
 fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
     let transcript_panel_snapshot_body = rust_function_body(
         SHELL_TRANSCRIPT_PANEL_SNAPSHOT_SOURCE,
@@ -261,8 +424,16 @@ fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
         TRANSCRIPT_PRESENTATION_SOURCE,
         "pub(crate) fn render_metrics(&self)",
     );
+    let residency_counts_body = rust_function_body(
+        TRANSCRIPT_HISTORY_RESIDENCY_SOURCE,
+        "pub(crate) fn retained_counts(&self)",
+    );
+    let residency_frame_body =
+        rust_function_body(SHELL_SOURCE, "fn transcript_residency_frame_diagnostic");
 
     assert!(TRANSCRIPT_SOURCE.contains("frame_metrics: Rc<RefCell<TranscriptFrameMetricsLog>>"));
+    assert!(TRANSCRIPT_SOURCE.contains("let frame_started_at = Instant::now();"));
+    assert!(TRANSCRIPT_SOURCE.contains("let snapshot_started_at = Instant::now();"));
     assert!(TRANSCRIPT_SOURCE.contains("TranscriptFrameProfile::new("));
     assert!(TRANSCRIPT_SOURCE.contains("view.frame_metrics"));
     assert!(TRANSCRIPT_SOURCE.contains(".record(profiler.finish_metric())"));
@@ -271,8 +442,11 @@ fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
     assert!(TRANSCRIPT_SOURCE.contains("visible_range: Some(range_diagnostic"));
     assert!(TRANSCRIPT_SOURCE.contains("dominant_cost_category"));
     assert!(TRANSCRIPT_SOURCE.contains("observe_media_preload"));
+    assert!(TRANSCRIPT_SOURCE.contains("snapshot_micros"));
+    assert!(TRANSCRIPT_SOURCE.contains("render_state_pruning_micros"));
     assert!(TRANSCRIPT_SOURCE.contains("style_snapshot_micros"));
     assert!(TRANSCRIPT_SOURCE.contains("composer_measurement_micros"));
+    assert!(TRANSCRIPT_SOURCE.contains("render_state_pruning"));
     assert!(TRANSCRIPT_CODE_PANEL_CONTROLS_SOURCE.contains("observe_code_panel_render"));
     assert!(TRANSCRIPT_CODE_PANEL_CONTROLS_SOURCE.contains("observe_inline_text_construction"));
     assert!(TRANSCRIPT_BLOCK_MARKDOWN_SOURCE.contains("Instant::now()"));
@@ -280,7 +454,13 @@ fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
     assert!(TRANSCRIPT_MEDIA_BLOCKS_SOURCE.contains("observe_media_run_render"));
     assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("TranscriptFrameMetricsLog"));
     assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("READ_TRANSCRIPT_FRAME_METRICS_TOOL"));
+    assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("snapshot_micros"));
+    assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("render_state_pruning_micros"));
     assert!(!DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("transcript_text"));
+    assert!(
+        SHELL_SOURCE.contains("dispatch_beryl_transcript_frame_metrics_dynamic_tool_call"),
+        "frame-metrics diagnostics should avoid full retained-state snapshots"
+    );
     assert!(
         TRANSCRIPT_PRESENTATION_SOURCE.contains("render_metrics: TranscriptRenderMetrics"),
         "presentation state should own cached aggregate frame metrics"
@@ -305,6 +485,19 @@ fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
             .count(),
         3,
         "render snapshots may read O(1) cached transcript metrics for each shell state"
+    );
+    assert!(residency_counts_body.contains("self.stats."));
+    assert!(
+        !residency_counts_body.contains(".values()"),
+        "residency retained counts must copy maintained stats rather than scanning entries"
+    );
+    assert!(
+        !residency_frame_body.contains(".retained_counts()"),
+        "frame residency diagnostics must not scan retained history/page state"
+    );
+    assert!(
+        !transcript_panel_snapshot_body.contains("retained_state_snapshot"),
+        "transcript snapshot construction must not run retained-state diagnostics"
     );
 }
 

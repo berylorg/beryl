@@ -26,6 +26,8 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     collections::HashSet,
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
     ops::Range,
     rc::Rc,
     sync::Arc,
@@ -96,6 +98,7 @@ use self::inline_markdown::{
 };
 use self::media_blocks::{TranscriptMediaRenderLayout, TranscriptMediaTheme};
 use self::media_cache::TranscriptMediaRenderContext;
+use self::media_preload::{TranscriptMediaPreloadCoordinator, TranscriptMediaPreloadRequest};
 use self::nested_scroll::TranscriptNestedScrollOwnership;
 use self::selection_context::TranscriptTextSelectionRenderState;
 use self::selection_highlight::wrapped_line_selection_highlight_bounds;
@@ -111,24 +114,25 @@ use self::{
         platform_caret_blink_interval,
     },
     markdown_cache::TranscriptMarkdownRenderContext,
-    text_blocks::{empty_state, older_history_loading_state, released_history_placeholder_state},
+    text_blocks::empty_state,
     turn_blocks::{render_turn_card, user_prompt_block_path},
     turn_media_units::{TranscriptMarkdownRenderUnit, markdown_render_units},
 };
 use super::super::virtual_list::{
-    ListContentAnchorResizePolicy, ListOffset, ListScrollEvent, ListScrollPosition, ListState, list,
+    ListContentAnchorResizePolicy, ListOffset, ListScrollPosition, ListState, list,
 };
-use super::scrollbars::{
-    ScrollDirection, ScrollbarInteraction, ScrollbarScrollState, ScrollbarVisibilityState,
-    ScrollbarVisibilityUpdateCallback, render_interactive_vertical_scrollbar,
-};
+use super::scrollbars::{ScrollbarVisibilityState, ScrollbarVisibilityUpdateCallback};
 use super::{
     code_panel,
     code_panel_projection_cache::{CodePanelProjectionCache, CodePanelProjectionCacheStats},
     common::panel_shell_with_style,
 };
 use crate::memory_diagnostics::{self, MemoryMilestone, RetainedStateSnapshot};
-use crate::shell::transcript_markdown::markdown_code_panel_id_belongs_to_row;
+use crate::shell::transcript_markdown::TranscriptCodePanelIdentity;
+use crate::shell::transcript_presentation::{
+    TranscriptRowMeasurementDisplayState, TranscriptRowMeasurementKey,
+    TranscriptRowPresentationModel,
+};
 
 const SLOW_TRANSCRIPT_FRAME_THRESHOLD: Duration = Duration::from_millis(8);
 const SLOW_TRANSCRIPT_TURN_BUILD_THRESHOLD: Duration = Duration::from_millis(1);
@@ -197,19 +201,22 @@ impl TranscriptCodeLayout {
 pub(crate) struct TranscriptPanel {
     shell: Entity<ShellView>,
     focus_handle: FocusHandle,
-    soft_wrapped_panel_keys: HashSet<String>,
-    resized_panel_heights: HashMap<String, Pixels>,
+    soft_wrapped_panel_keys: HashSet<TranscriptCodePanelIdentity>,
+    resized_panel_heights: HashMap<TranscriptCodePanelIdentity, Pixels>,
     markdown_cache: Rc<RefCell<TranscriptMarkdownCache>>,
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     code_panel_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     media_cache: Rc<RefCell<TranscriptMediaCache>>,
+    media_preload: TranscriptMediaPreloadCoordinator,
+    row_measurement_keys: HashMap<String, TranscriptRowMeasurementKey>,
     media_events: Rc<RefCell<MediaDiagnosticLog>>,
     visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     frame_metrics: Rc<RefCell<TranscriptFrameMetricsLog>>,
     markdown_cache_scope: Option<TranscriptMarkdownCacheScope>,
     stream_projection: Rc<RefCell<TranscriptStreamProjection>>,
-    code_panel_scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-    code_panel_scrollbar_visibility: HashMap<String, ScrollbarVisibilityState>,
+    code_panel_scroll_handles: Rc<RefCell<HashMap<TranscriptCodePanelIdentity, ScrollHandle>>>,
+    code_panel_scrollbar_visibility: HashMap<TranscriptCodePanelIdentity, ScrollbarVisibilityState>,
+    code_panel_owner_ids_by_row: HashMap<String, HashSet<String>>,
     nested_scroll_ownership: TranscriptNestedScrollOwnership,
     nested_code_panel_selected_during_mouse_down: bool,
     code_panel_resize_drag: Option<CodePanelResizeDragState>,
@@ -464,7 +471,7 @@ struct TranscriptMarkdownCacheScope {
 
 #[derive(Clone)]
 struct CodePanelResizeDragState {
-    panel_key: String,
+    panel_identity: TranscriptCodePanelIdentity,
     panel_top: Pixels,
     pointer_offset: Pixels,
 }
@@ -515,6 +522,10 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub live_scroll: Option<TranscriptLiveScrollEffectSnapshot>,
     pub live_scroll_preserves_anchor_offset: bool,
     pub older_history_loading: bool,
+    pub residency_resident_turn_count: usize,
+    pub residency_retained_bytes: usize,
+    pub residency_in_flight_requests: usize,
+    pub residency_budget_reason: Option<String>,
     pub metrics: Option<TranscriptRenderMetrics>,
     pub activity_caret: Option<TranscriptActivityCaret>,
     pub transcript_edit_mode: Option<TranscriptEditModeSnapshot>,
@@ -542,6 +553,8 @@ impl TranscriptPanel {
             syntax_highlight_cache: Rc::new(RefCell::new(SyntaxHighlightCache::default())),
             code_panel_projection_cache: Rc::new(RefCell::new(CodePanelProjectionCache::default())),
             media_cache: Rc::new(RefCell::new(TranscriptMediaCache::default())),
+            media_preload: TranscriptMediaPreloadCoordinator::default(),
+            row_measurement_keys: HashMap::new(),
             media_events: Rc::new(RefCell::new(MediaDiagnosticLog::default())),
             visible_media: Rc::new(RefCell::new(VisibleMediaDiagnostics::default())),
             frame_metrics: Rc::new(RefCell::new(TranscriptFrameMetricsLog::default())),
@@ -549,6 +562,7 @@ impl TranscriptPanel {
             stream_projection: Rc::new(RefCell::new(TranscriptStreamProjection::default())),
             code_panel_scroll_handles: Rc::new(RefCell::new(HashMap::new())),
             code_panel_scrollbar_visibility: HashMap::new(),
+            code_panel_owner_ids_by_row: HashMap::new(),
             nested_scroll_ownership: TranscriptNestedScrollOwnership::default(),
             nested_code_panel_selected_during_mouse_down: false,
             code_panel_resize_drag: None,
@@ -592,6 +606,10 @@ impl TranscriptPanel {
         }
     }
 
+    pub(crate) fn frame_metrics_snapshot(&self) -> TranscriptFrameMetricsSnapshot {
+        self.frame_metrics.borrow().snapshot()
+    }
+
     fn transcript_preview_diagnostic(&self) -> Option<PreviewStateDiagnostic> {
         let popup = self.image_preview_popup.as_ref()?;
         let (state, compressed_bytes) = match &popup.status {
@@ -605,9 +623,13 @@ impl TranscriptPanel {
         })
     }
 
-    fn toggle_code_panel_soft_wrap(&mut self, panel_key: String, cx: &mut Context<Self>) {
-        if !self.soft_wrapped_panel_keys.insert(panel_key.clone()) {
-            self.soft_wrapped_panel_keys.remove(&panel_key);
+    fn toggle_code_panel_soft_wrap(
+        &mut self,
+        panel_identity: TranscriptCodePanelIdentity,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.soft_wrapped_panel_keys.insert(panel_identity.clone()) {
+            self.soft_wrapped_panel_keys.remove(&panel_identity);
         }
         cx.notify();
     }
@@ -654,13 +676,13 @@ impl TranscriptPanel {
         });
     }
 
-    fn code_panel_height(&self, panel_key: &str) -> Option<Pixels> {
-        self.resized_panel_heights.get(panel_key).copied()
+    fn code_panel_height(&self, panel_identity: &TranscriptCodePanelIdentity) -> Option<Pixels> {
+        self.resized_panel_heights.get(panel_identity).copied()
     }
 
     fn begin_code_panel_resize(
         &mut self,
-        panel_key: String,
+        panel_identity: TranscriptCodePanelIdentity,
         panel_top: Pixels,
         current_height: Pixels,
         event: &MouseDownEvent,
@@ -668,10 +690,10 @@ impl TranscriptPanel {
     ) {
         let handle_top = panel_top + current_height;
         self.resized_panel_heights
-            .entry(panel_key.clone())
+            .entry(panel_identity.clone())
             .or_insert(current_height);
         self.code_panel_resize_drag = Some(CodePanelResizeDragState {
-            panel_key,
+            panel_identity,
             panel_top,
             pointer_offset: event.position.y - handle_top,
         });
@@ -690,12 +712,12 @@ impl TranscriptPanel {
             px(TRANSCRIPT_CODE_PANEL_MIN_HEIGHT),
             Some(self.code_panel_max_height()),
         );
-        if self.code_panel_height(drag.panel_key.as_str()) == Some(clamped_height) {
+        if self.code_panel_height(&drag.panel_identity) == Some(clamped_height) {
             return;
         }
 
         self.resized_panel_heights
-            .insert(drag.panel_key.clone(), clamped_height);
+            .insert(drag.panel_identity.clone(), clamped_height);
         cx.notify();
     }
 
@@ -708,9 +730,13 @@ impl TranscriptPanel {
         cx.notify();
     }
 
-    pub(super) fn select_nested_code_panel(&mut self, panel_key: String, cx: &mut Context<Self>) {
+    pub(super) fn select_nested_code_panel(
+        &mut self,
+        panel_identity: TranscriptCodePanelIdentity,
+        cx: &mut Context<Self>,
+    ) {
         self.nested_code_panel_selected_during_mouse_down = true;
-        if self.nested_scroll_ownership.select_panel(panel_key) {
+        if self.nested_scroll_ownership.select_panel(panel_identity) {
             cx.notify();
         }
     }
@@ -800,48 +826,43 @@ impl TranscriptPanel {
         }
     }
 
-    fn preload_transcript_media_range(
+    fn report_transcript_media_preload_facts(&mut self, request: TranscriptMediaPreloadRequest) {
+        self.visible_media
+            .borrow_mut()
+            .begin_preload_frame(request.preload_range.clone());
+        self.media_preload.request_preload(request);
+    }
+
+    fn drain_transcript_media_preload_coordinator(
         &mut self,
-        preload_range: std::ops::Range<usize>,
-        workspace: &WorkspaceId,
         media_context: TranscriptMediaRenderContext,
         markdown_context: TranscriptMarkdownRenderContext,
         stream_projection_context: TranscriptStreamProjectionContext,
-        media_layout: TranscriptMediaRenderLayout,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.visible_media
-            .borrow_mut()
-            .begin_preload_frame(preload_range.clone());
-        let rows = self
+        let current_rows = self
             .shell
             .read(cx)
             .conversation_surface()
             .map(|surface| {
-                preload_range
+                self.media_preload
+                    .pending_preload_range()
+                    .unwrap_or(0..0)
                     .clone()
                     .filter_map(|index| surface.transcript_presentation().turn_at(index))
-                    .collect::<Vec<_>>()
+                    .map(|row| (row.index, row.identity.as_str().to_string()))
+                    .collect::<HashSet<_>>()
             })
             .unwrap_or_default();
-
-        for row in rows {
-            let row_identity = row.identity.as_str().to_string();
-            let media_context = media_context.clone().for_row(row_identity.clone());
-            media_preload::preload_turn_media_runs(
-                row.index,
-                workspace,
-                row.turn,
-                row_identity.as_str(),
-                markdown_context.clone(),
-                media_context,
-                stream_projection_context.clone(),
-                media_layout,
-                window,
-                cx,
-            );
-        }
+        self.media_preload.drain_pending(
+            |index, identity| current_rows.contains(&(index, identity.to_string())),
+            media_context,
+            markdown_context,
+            stream_projection_context,
+            window,
+            cx,
+        );
     }
 
     fn clear_text_selection(&mut self, cx: &mut Context<Self>) {
@@ -1145,6 +1166,142 @@ impl TranscriptPanel {
             return;
         };
         list_state.invalidate_item_measurement(row_index);
+    }
+
+    pub(super) fn invalidate_transcript_row_measurement_for_markdown_key(
+        &self,
+        markdown_key: &TranscriptMarkdownCacheKey,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((list_state, row_index)) =
+            self.shell
+                .read(cx)
+                .conversation_surface()
+                .and_then(|surface| {
+                    surface
+                        .transcript_presentation()
+                        .row_index_for_markdown_key(markdown_key.as_str())
+                        .map(|row_index| (surface.transcript_list_state(), row_index))
+                })
+        else {
+            return;
+        };
+        list_state.invalidate_item_measurement(row_index);
+    }
+
+    fn reconcile_transcript_row_measurement_keys(
+        &mut self,
+        presentation_range: Range<usize>,
+        list_state: &ListState,
+        transcript_width: Pixels,
+        theme_revision: u64,
+        activity_caret: Option<&TranscriptActivityCaret>,
+        cx: &mut Context<Self>,
+    ) {
+        let rows = self.shell.read(cx).conversation_surface().map(|surface| {
+            let presentation = surface.transcript_presentation();
+            presentation_range
+                .filter_map(|row_index| {
+                    presentation
+                        .turn_at(row_index)
+                        .map(|row| (row_index, row.identity.clone()))
+                })
+                .collect::<Vec<_>>()
+        });
+        let Some(rows) = rows else {
+            self.row_measurement_keys.clear();
+            return;
+        };
+
+        let row_requests = rows
+            .into_iter()
+            .map(|(row_index, row_identity)| {
+                let show_activity_caret = activity_caret.is_some_and(|caret| {
+                    caret.row_index == row_index
+                        && caret.row_identity.as_str() == row_identity.as_str()
+                });
+                let display_state = self.row_measurement_display_state(
+                    row_index,
+                    row_identity.as_str(),
+                    show_activity_caret,
+                );
+                (row_index, display_state)
+            })
+            .collect::<Vec<_>>();
+
+        let keyed_rows = self.shell.read(cx).conversation_surface().map(|surface| {
+            let presentation = surface.transcript_presentation();
+            row_requests
+                .into_iter()
+                .filter_map(|(row_index, display_state)| {
+                    let key = presentation.measurement_key_for_row(
+                        row_index,
+                        transcript_width,
+                        theme_revision,
+                        display_state,
+                    )?;
+                    let row_identity_string = key.row_identity.as_str().to_string();
+                    Some((row_index, row_identity_string, key))
+                })
+                .collect::<Vec<_>>()
+        });
+        let Some(keyed_rows) = keyed_rows else {
+            self.row_measurement_keys.clear();
+            return;
+        };
+
+        let mut active_row_identities = HashSet::new();
+        for (row_index, row_identity_string, key) in keyed_rows {
+            active_row_identities.insert(row_identity_string.clone());
+            if self.row_measurement_keys.get(&row_identity_string) == Some(&key) {
+                continue;
+            }
+            list_state.invalidate_item_measurement(row_index);
+            self.row_measurement_keys.insert(row_identity_string, key);
+        }
+
+        self.row_measurement_keys
+            .retain(|row_identity, _| active_row_identities.contains(row_identity));
+    }
+
+    fn row_measurement_display_state(
+        &self,
+        row_index: usize,
+        row_identity: &str,
+        show_activity_caret: bool,
+    ) -> TranscriptRowMeasurementDisplayState {
+        TranscriptRowMeasurementDisplayState {
+            is_first_row: row_index == 0,
+            show_activity_caret,
+            promoted_media_key: self
+                .promoted_media
+                .as_ref()
+                .filter(|identity| identity.row_identity() == row_identity)
+                .map(|identity| identity.key().as_str().to_string()),
+            code_panel_state_digest: self.row_code_panel_state_digest(row_identity),
+        }
+    }
+
+    fn row_code_panel_state_digest(&self, row_identity: &str) -> u64 {
+        let mut soft_wrap_keys = self
+            .soft_wrapped_panel_keys
+            .iter()
+            .filter(|panel_identity| panel_identity.row_identity() == row_identity)
+            .collect::<Vec<_>>();
+        soft_wrap_keys.sort_unstable();
+
+        let mut resized_panel_heights = self
+            .resized_panel_heights
+            .iter()
+            .filter(|(panel_identity, _)| panel_identity.row_identity() == row_identity)
+            .map(|(panel_identity, height)| (panel_identity, f32::from(*height).to_bits()))
+            .collect::<Vec<_>>();
+        resized_panel_heights.sort_unstable_by_key(|(panel_identity, _)| *panel_identity);
+
+        let mut hasher = DefaultHasher::new();
+        soft_wrap_keys.hash(&mut hasher);
+        resized_panel_heights.hash(&mut hasher);
+        hasher.finish()
     }
 
     fn record_image_preview_popup_bounds(&mut self, bounds: Option<Bounds<Pixels>>) {
@@ -1556,29 +1713,30 @@ impl TranscriptPanel {
 
     fn retain_nested_code_panel_selection<'a>(
         &mut self,
-        visible_panel_ids: impl IntoIterator<Item = &'a str>,
+        visible_panel_identities: impl IntoIterator<Item = &'a TranscriptCodePanelIdentity>,
     ) {
         self.nested_scroll_ownership
-            .retain_visible_panel_ids(visible_panel_ids);
+            .retain_visible_panel_identities(visible_panel_identities);
     }
 
     fn retain_nested_code_panel_selection_for_rows(&mut self, row_identities: &HashSet<String>) {
-        let selected_panel_id = self
+        let selected_panel_identity = self
             .nested_scroll_ownership
-            .selected_panel_id()
-            .map(str::to_string);
-        let selected_panel_id = selected_panel_id
-            .as_deref()
-            .filter(|panel_id| panel_id_belongs_to_any_row(panel_id, row_identities));
-        self.retain_nested_code_panel_selection(selected_panel_id);
+            .selected_panel_identity()
+            .filter(|panel_identity| row_identities.contains(panel_identity.row_identity()))
+            .cloned();
+        self.retain_nested_code_panel_selection(selected_panel_identity.as_ref());
     }
 
-    fn retain_visible_code_panel_scroll_state(&mut self, visible_panel_ids: &HashSet<String>) {
+    fn retain_visible_code_panel_scroll_state(
+        &mut self,
+        visible_panel_identities: &HashSet<TranscriptCodePanelIdentity>,
+    ) {
         self.code_panel_scroll_handles
             .borrow_mut()
-            .retain(|panel_id, _| visible_panel_ids.contains(panel_id));
+            .retain(|panel_identity, _| visible_panel_identities.contains(panel_identity));
         self.code_panel_scrollbar_visibility
-            .retain(|panel_id, _| visible_panel_ids.contains(panel_id));
+            .retain(|panel_identity, _| visible_panel_identities.contains(panel_identity));
     }
 
     fn retain_visible_code_panel_scroll_state_for_rows(
@@ -1587,26 +1745,29 @@ impl TranscriptPanel {
     ) {
         self.code_panel_scroll_handles
             .borrow_mut()
-            .retain(|panel_id, _| panel_id_belongs_to_any_row(panel_id, row_identities));
+            .retain(|panel_identity, _| row_identities.contains(panel_identity.row_identity()));
         self.code_panel_scrollbar_visibility
-            .retain(|panel_id, _| panel_id_belongs_to_any_row(panel_id, row_identities));
+            .retain(|panel_identity, _| row_identities.contains(panel_identity.row_identity()));
     }
 
-    fn retain_visible_syntax_highlight_cache(&mut self, visible_panel_ids: &HashSet<String>) {
+    fn retain_visible_syntax_highlight_cache(&mut self, visible_owner_ids: &HashSet<String>) {
         self.syntax_highlight_cache
             .borrow_mut()
-            .retain_owners(visible_panel_ids);
+            .retain_owners(visible_owner_ids);
     }
 
-    fn retain_visible_code_panel_projection_cache(&mut self, visible_panel_ids: &HashSet<String>) {
+    fn retain_visible_code_panel_projection_cache(&mut self, visible_owner_ids: &HashSet<String>) {
         self.code_panel_projection_cache
             .borrow_mut()
-            .retain_owners(visible_panel_ids);
+            .retain_owners(visible_owner_ids);
     }
 
     fn clear_code_panel_interaction_state(&mut self) {
         self.soft_wrapped_panel_keys.clear();
         self.resized_panel_heights.clear();
+        self.code_panel_scroll_handles.borrow_mut().clear();
+        self.code_panel_scrollbar_visibility.clear();
+        self.code_panel_owner_ids_by_row.clear();
         self.code_panel_resize_drag = None;
     }
 
@@ -1616,64 +1777,67 @@ impl TranscriptPanel {
     ) -> bool {
         let previous_soft_wrap_count = self.soft_wrapped_panel_keys.len();
         let previous_height_count = self.resized_panel_heights.len();
-        self.soft_wrapped_panel_keys.retain(|panel_id| {
-            !row_identities
-                .iter()
-                .any(|row_identity| markdown_code_panel_id_belongs_to_row(panel_id, row_identity))
-        });
-        self.resized_panel_heights.retain(|panel_id, _| {
-            !row_identities
-                .iter()
-                .any(|row_identity| markdown_code_panel_id_belongs_to_row(panel_id, row_identity))
-        });
-        if self.code_panel_resize_drag.as_ref().is_some_and(|drag| {
-            row_identities.iter().any(|row_identity| {
-                markdown_code_panel_id_belongs_to_row(&drag.panel_key, row_identity)
-            })
-        }) {
+        let previous_scroll_handle_count = self.code_panel_scroll_handles.borrow().len();
+        let previous_scrollbar_visibility_count = self.code_panel_scrollbar_visibility.len();
+        self.soft_wrapped_panel_keys
+            .retain(|panel_identity| !row_identities.contains(panel_identity.row_identity()));
+        self.resized_panel_heights
+            .retain(|panel_identity, _| !row_identities.contains(panel_identity.row_identity()));
+        self.code_panel_scroll_handles
+            .borrow_mut()
+            .retain(|panel_identity, _| !row_identities.contains(panel_identity.row_identity()));
+        self.code_panel_scrollbar_visibility
+            .retain(|panel_identity, _| !row_identities.contains(panel_identity.row_identity()));
+        if self
+            .code_panel_resize_drag
+            .as_ref()
+            .is_some_and(|drag| row_identities.contains(drag.panel_identity.row_identity()))
+        {
             self.code_panel_resize_drag = None;
+        }
+        for row_identity in row_identities {
+            self.code_panel_owner_ids_by_row.remove(row_identity);
         }
         previous_soft_wrap_count != self.soft_wrapped_panel_keys.len()
             || previous_height_count != self.resized_panel_heights.len()
+            || previous_scroll_handle_count != self.code_panel_scroll_handles.borrow().len()
+            || previous_scrollbar_visibility_count != self.code_panel_scrollbar_visibility.len()
     }
 
     fn clear_syntax_highlight_cache_for_released_rows(&mut self, row_identities: &HashSet<String>) {
+        let owner_ids = self.code_panel_owner_ids_for_rows(row_identities);
         self.syntax_highlight_cache
             .borrow_mut()
-            .release_owners_matching(|panel_id| {
-                row_identities.iter().any(|row_identity| {
-                    markdown_code_panel_id_belongs_to_row(panel_id, row_identity)
-                })
-            });
+            .release_owners_matching(|owner_id| owner_ids.contains(owner_id));
     }
 
     fn clear_code_panel_projection_cache_for_released_rows(
         &mut self,
         row_identities: &HashSet<String>,
     ) {
+        let owner_ids = self.code_panel_owner_ids_for_rows(row_identities);
         self.code_panel_projection_cache
             .borrow_mut()
-            .release_owners_matching(|panel_id| {
-                row_identities.iter().any(|row_identity| {
-                    markdown_code_panel_id_belongs_to_row(panel_id, row_identity)
-                })
-            });
+            .release_owners_matching(|owner_id| owner_ids.contains(owner_id));
     }
 
-    fn prune_code_panel_interaction_state(&mut self, protected_panel_ids: &HashSet<String>) {
+    fn prune_code_panel_interaction_state(
+        &mut self,
+        protected_panel_identities: &HashSet<TranscriptCodePanelIdentity>,
+    ) {
         let mut retained_panel_ids = self
             .soft_wrapped_panel_keys
             .iter()
             .chain(self.resized_panel_heights.keys())
             .cloned()
-            .collect::<HashSet<_>>();
+            .collect::<HashSet<TranscriptCodePanelIdentity>>();
         if retained_panel_ids.len() <= CODE_PANEL_INTERACTION_STATE_MAX_ENTRIES {
             return;
         }
 
         let mut removable_panel_ids = retained_panel_ids
             .iter()
-            .filter(|panel_id| !protected_panel_ids.contains(*panel_id))
+            .filter(|panel_id| !protected_panel_identities.contains(*panel_id))
             .cloned()
             .collect::<Vec<_>>();
         removable_panel_ids.sort();
@@ -1704,21 +1868,49 @@ impl TranscriptPanel {
         }
     }
 
-    fn retain_rendered_code_panel_state(&mut self, rendered_panel_ids: &HashSet<String>) {
-        self.retain_nested_code_panel_selection(rendered_panel_ids.iter().map(String::as_str));
-        self.retain_visible_code_panel_scroll_state(rendered_panel_ids);
-        self.retain_visible_syntax_highlight_cache(rendered_panel_ids);
-        self.retain_visible_code_panel_projection_cache(rendered_panel_ids);
-        self.prune_code_panel_interaction_state(rendered_panel_ids);
+    fn retain_rendered_code_panel_state(
+        &mut self,
+        rendered_panel_identities: &HashSet<TranscriptCodePanelIdentity>,
+    ) {
+        self.record_rendered_code_panel_owners(rendered_panel_identities);
+        let rendered_owner_ids = rendered_panel_identities
+            .iter()
+            .map(|panel_identity| panel_identity.as_str().to_string())
+            .collect::<HashSet<_>>();
+        self.retain_nested_code_panel_selection(rendered_panel_identities.iter());
+        self.retain_visible_code_panel_scroll_state(rendered_panel_identities);
+        self.retain_visible_syntax_highlight_cache(&rendered_owner_ids);
+        self.retain_visible_code_panel_projection_cache(&rendered_owner_ids);
+        self.prune_code_panel_interaction_state(rendered_panel_identities);
+    }
+
+    fn record_rendered_code_panel_owners(
+        &mut self,
+        rendered_panel_identities: &HashSet<TranscriptCodePanelIdentity>,
+    ) {
+        for panel_identity in rendered_panel_identities {
+            self.code_panel_owner_ids_by_row
+                .entry(panel_identity.row_identity().to_string())
+                .or_default()
+                .insert(panel_identity.as_str().to_string());
+        }
+    }
+
+    fn code_panel_owner_ids_for_rows(&self, row_identities: &HashSet<String>) -> HashSet<String> {
+        row_identities
+            .iter()
+            .filter_map(|row_identity| self.code_panel_owner_ids_by_row.get(row_identity))
+            .flat_map(|owner_ids| owner_ids.iter().cloned())
+            .collect()
     }
 
     fn scoped_soft_wrapped_panel_keys_for_rows(
         &self,
         row_identities: &HashSet<String>,
-    ) -> HashSet<String> {
+    ) -> HashSet<TranscriptCodePanelIdentity> {
         self.soft_wrapped_panel_keys
             .iter()
-            .filter(|panel_id| panel_id_belongs_to_any_row(panel_id, row_identities))
+            .filter(|panel_identity| row_identities.contains(panel_identity.row_identity()))
             .cloned()
             .collect()
     }
@@ -1726,22 +1918,22 @@ impl TranscriptPanel {
     fn scoped_resized_panel_heights_for_rows(
         &self,
         row_identities: &HashSet<String>,
-    ) -> HashMap<String, Pixels> {
+    ) -> HashMap<TranscriptCodePanelIdentity, Pixels> {
         self.resized_panel_heights
             .iter()
-            .filter(|(panel_id, _)| panel_id_belongs_to_any_row(panel_id, row_identities))
-            .map(|(panel_id, height)| (panel_id.clone(), *height))
+            .filter(|(panel_identity, _)| row_identities.contains(panel_identity.row_identity()))
+            .map(|(panel_identity, height)| (panel_identity.clone(), *height))
             .collect()
     }
 
     fn scoped_code_panel_scrollbar_visibility_for_rows(
         &mut self,
         row_identities: &HashSet<String>,
-    ) -> HashMap<String, ScrollbarVisibilityState> {
+    ) -> HashMap<TranscriptCodePanelIdentity, ScrollbarVisibilityState> {
         self.code_panel_scrollbar_visibility
             .iter()
-            .filter(|(panel_id, _)| panel_id_belongs_to_any_row(panel_id, row_identities))
-            .map(|(panel_id, state)| (panel_id.clone(), state.clone()))
+            .filter(|(panel_identity, _)| row_identities.contains(panel_identity.row_identity()))
+            .map(|(panel_identity, state)| (panel_identity.clone(), state.clone()))
             .collect()
     }
 
@@ -1775,6 +1967,8 @@ impl TranscriptPanel {
         self.syntax_highlight_cache.borrow_mut().clear();
         self.code_panel_projection_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
+        self.media_preload.clear();
+        self.row_measurement_keys.clear();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
         self.clear_code_panel_interaction_state();
@@ -1824,6 +2018,8 @@ impl TranscriptPanel {
         self.syntax_highlight_cache.borrow_mut().clear();
         self.code_panel_projection_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
+        self.media_preload.clear();
+        self.row_measurement_keys.clear();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
         self.clear_code_panel_interaction_state();
@@ -1860,6 +2056,10 @@ impl TranscriptPanel {
         release_event.detail = Some(generation.to_string());
         self.media_events.borrow_mut().record(release_event);
         let evicted_images = self.media_cache.borrow_mut().clear();
+        self.media_preload.clear();
+        for row_identity in row_identities {
+            self.row_measurement_keys.remove(row_identity);
+        }
         self.release_evicted_media_images(evicted_images, cx);
         self.visible_media.borrow_mut().clear();
         self.validated_image_menu_target = None;
@@ -1925,10 +2125,14 @@ impl TranscriptPanel {
         self.schedule_activity_caret_blink(cx);
     }
 
-    fn note_code_panel_scrollbar_activity(&mut self, panel_key: String, cx: &mut Context<Self>) {
+    fn note_code_panel_scrollbar_activity(
+        &mut self,
+        panel_identity: TranscriptCodePanelIdentity,
+        cx: &mut Context<Self>,
+    ) {
         if self
             .nested_scroll_ownership
-            .record_scrollbar_activity(panel_key.as_str())
+            .record_scrollbar_activity(&panel_identity)
         {
             cx.notify();
         }
@@ -1936,13 +2140,13 @@ impl TranscriptPanel {
 
     fn record_code_panel_scrollbar_visibility(
         &mut self,
-        panel_key: String,
+        panel_identity: TranscriptCodePanelIdentity,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let state = self
             .code_panel_scrollbar_visibility
-            .entry(panel_key)
+            .entry(panel_identity)
             .or_default()
             .clone();
         let on_update = Self::code_panel_scrollbar_update_callback(cx.entity());
@@ -1965,17 +2169,17 @@ impl TranscriptPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(panel_key) = self
+        let Some(panel_identity) = self
             .nested_scroll_ownership
-            .selected_panel_id()
-            .map(str::to_owned)
+            .selected_panel_identity()
+            .cloned()
         else {
             return false;
         };
         let Some(handle) = self
             .code_panel_scroll_handles
             .borrow()
-            .get(panel_key.as_str())
+            .get(&panel_identity)
             .cloned()
         else {
             return false;
@@ -1990,8 +2194,8 @@ impl TranscriptPanel {
             event.delta.pixel_delta(window.line_height()),
         );
         handle.set_offset(next_offset);
-        self.record_code_panel_scrollbar_visibility(panel_key.clone(), window, cx);
-        self.note_code_panel_scrollbar_activity(panel_key, cx);
+        self.record_code_panel_scrollbar_visibility(panel_identity.clone(), window, cx);
+        self.note_code_panel_scrollbar_activity(panel_identity, cx);
         true
     }
 
@@ -2010,14 +2214,19 @@ impl TranscriptPanel {
 
 impl Render for TranscriptPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let frame_started_at = Instant::now();
         self.poll_image_preview_update(window, cx);
-        let Some(snapshot) = self.shell.read(cx).transcript_panel_snapshot() else {
+        let snapshot_started_at = Instant::now();
+        let snapshot = self.shell.read(cx).transcript_panel_snapshot();
+        let snapshot_micros = diagnostic_duration_micros(snapshot_started_at.elapsed());
+        let Some(snapshot) = snapshot else {
             self.current_workspace_id = None;
             self.visible_media.borrow_mut().clear();
             self.media_events
                 .borrow_mut()
                 .record(MediaDiagnosticEvent::new("transcript_panel_cleared"));
             let evicted_images = self.media_cache.borrow_mut().clear();
+            self.media_preload.clear();
             self.release_evicted_media_images(evicted_images, cx);
             self.nested_scroll_ownership.clear_to_transcript();
             self.nested_code_panel_selected_during_mouse_down = false;
@@ -2041,6 +2250,7 @@ impl Render for TranscriptPanel {
             return panel_shell_with_style(&style, div().size_full().min_h(px(0.0)))
                 .into_any_element();
         };
+        let render_state_pruning_started_at = Instant::now();
         self.current_workspace_id = snapshot.workspace_id.clone();
         self.sync_markdown_cache_scope(
             snapshot.workspace.clone(),
@@ -2055,6 +2265,8 @@ impl Render for TranscriptPanel {
             cx,
         );
         self.begin_text_span_frame();
+        let render_state_pruning_micros =
+            diagnostic_duration_micros(render_state_pruning_started_at.elapsed());
 
         let shell = self.shell.clone();
         let has_turns = shell
@@ -2215,8 +2427,8 @@ impl Render for TranscriptPanel {
         self.retain_visible_code_panel_scroll_state_for_rows(&visible_row_identities);
         let selected_nested_code_panel_id = Arc::new(
             self.nested_scroll_ownership
-                .selected_panel_id()
-                .map(str::to_string),
+                .selected_panel_identity()
+                .cloned(),
         );
         let soft_wrapped_panel_keys =
             Arc::new(self.scoped_soft_wrapped_panel_keys_for_rows(&visible_row_identities));
@@ -2225,7 +2437,8 @@ impl Render for TranscriptPanel {
         let code_panel_scroll_handles = self.code_panel_scroll_handles.clone();
         let code_panel_scrollbar_visibility =
             Arc::new(self.scoped_code_panel_scrollbar_visibility_for_rows(&visible_row_identities));
-        let rendered_nested_code_panel_ids = Rc::new(RefCell::new(HashSet::new()));
+        let rendered_nested_code_panel_ids =
+            Rc::new(RefCell::new(HashSet::<TranscriptCodePanelIdentity>::new()));
         let theme_candidates = Arc::new(snapshot.theme_candidates.clone());
         let syntax_highlight_cache = self.syntax_highlight_cache.clone();
         let code_panel_projection_cache = self.code_panel_projection_cache.clone();
@@ -2268,20 +2481,26 @@ impl Render for TranscriptPanel {
             }
         });
         let profiler = Some(TranscriptFrameProfile::new(
+            frame_started_at,
             snapshot.metrics,
             snapshot.selected_thread_id.clone(),
             presentation_range.clone(),
             transcript_list_state.visible_range(),
             presentation_range_len,
             panel_state_inspected_row_count,
+            snapshot.residency_resident_turn_count,
+            snapshot.residency_retained_bytes,
+            snapshot.residency_in_flight_requests,
+            snapshot.residency_budget_reason.clone(),
             turn_count,
             snapshot.style_snapshot_micros,
             snapshot.composer_measurement_micros,
+            snapshot_micros,
+            render_state_pruning_micros,
             tracing::enabled!(Level::DEBUG).then(|| self.markdown_cache.borrow().stats()),
         ));
         let media_context = media_context.with_profiler(profiler.clone());
         let workspace = snapshot.workspace.clone();
-        let older_history_loading = snapshot.older_history_loading;
         let activity_caret = snapshot.activity_caret.clone();
         let transcript_edit_mode = snapshot.transcript_edit_mode.clone();
         self.sync_activity_caret_blink(
@@ -2290,11 +2509,14 @@ impl Render for TranscriptPanel {
             cx,
         );
         let activity_caret_opacity = self.activity_caret_blink.opacity();
-        let scrollbar_visibility = self.shell.read(cx).scrollbar_visibility_policy_for_entity(
-            &ScrollbarRegion::Transcript,
-            self.shell.clone(),
+        self.reconcile_transcript_row_measurement_keys(
+            presentation_range.clone(),
+            &transcript_list_state,
+            snapshot.transcript_width,
+            theme.revision(),
+            activity_caret.as_ref(),
+            cx,
         );
-
         div()
             .relative()
             .size_full()
@@ -2383,15 +2605,6 @@ impl Render for TranscriptPanel {
                                     )),
                             )
                         })
-                        .when(has_turns && older_history_loading, |this| {
-                            this.child(
-                                div()
-                                    .px_3()
-                                    .pt_3()
-                                    .pb_2()
-                                    .child(older_history_loading_state(theme.as_ref())),
-                            )
-                        })
                         .when(has_turns, |this| {
                             this.child({
                                 let row_entity = entity.clone();
@@ -2462,6 +2675,8 @@ impl Render for TranscriptPanel {
                                         let image_menu_render_state =
                                             image_menu_render_state.clone();
                                         let transcript_list_state = transcript_list_state.clone();
+                                        let preload_selected_thread_id =
+                                            snapshot.selected_thread_id.clone();
                                         let preload_workspace = workspace.clone();
                                         let preload_media_context = media_context.clone();
                                         let preload_markdown_context = markdown_context.clone();
@@ -2473,37 +2688,39 @@ impl Render for TranscriptPanel {
                                         move |_, window, cx| {
                                             let viewport_bounds =
                                                 transcript_list_state.viewport_bounds();
+                                            let preload_range = transcript_frame_preload_range(
+                                                &transcript_list_state,
+                                                turn_count,
+                                                viewport_bounds.size.height * 0.5,
+                                            );
+                                            let visible_range = transcript_list_state.visible_range();
+                                            let rows = shell
+                                                .read(cx)
+                                                .conversation_surface()
+                                                .map(|surface| {
+                                                    preload_range
+                                                        .clone()
+                                                        .filter_map(|index| {
+                                                            surface
+                                                                .transcript_presentation()
+                                                                .turn_at(index)
+                                                        })
+                                                        .collect::<Vec<_>>()
+                                                })
+                                                .unwrap_or_default();
+                                            let request = TranscriptMediaPreloadRequest {
+                                                selected_thread_id: preload_selected_thread_id
+                                                    .clone(),
+                                                workspace: preload_workspace.clone(),
+                                                visible_range,
+                                                preload_range,
+                                                viewport_height: viewport_bounds.size.height,
+                                                rows,
+                                                media_layout: preload_media_layout,
+                                            };
                                             entity.update(cx, |view, cx| {
                                                 view.finish_text_span_frame(viewport_bounds, cx);
-                                                let preload_range = transcript_frame_preload_range(
-                                                    &transcript_list_state,
-                                                    turn_count,
-                                                    viewport_bounds.size.height * 0.5,
-                                                );
-                                                let detail_shell = shell.clone();
-                                                window.defer(cx, move |window, cx| {
-                                                    detail_shell.update(cx, |shell, cx| {
-                                                        shell.begin_transcript_turn_detail_loads_for_current_viewport(
-                                                            window, cx,
-                                                        );
-                                                    });
-                                                });
-                                                let preload_started = Instant::now();
-                                                view.preload_transcript_media_range(
-                                                    preload_range,
-                                                    &preload_workspace,
-                                                    preload_media_context.clone(),
-                                                    preload_markdown_context.clone(),
-                                                    preload_stream_projection_context.clone(),
-                                                    preload_media_layout,
-                                                    window,
-                                                    cx,
-                                                );
-                                                if let Some(profiler) = profiler.as_ref() {
-                                                    profiler.observe_media_preload(
-                                                        preload_started.elapsed(),
-                                                    );
-                                                }
+                                                view.report_transcript_media_preload_facts(request);
                                                 let rendered_code_panel_ids =
                                                     prepaint_rendered_code_panel_ids
                                                         .borrow()
@@ -2530,18 +2747,44 @@ impl Render for TranscriptPanel {
                                                         cx.notify();
                                                     }
                                                 }
-                                                if let Some(profiler) = profiler.as_ref() {
-                                                    if tracing::enabled!(Level::DEBUG)
-                                                        && profiler.should_log_slow()
+                                            });
+                                            let preload_entity = entity.clone();
+                                            let preload_profiler = profiler.clone();
+                                            let preload_media_context =
+                                                preload_media_context.clone();
+                                            let preload_markdown_context =
+                                                preload_markdown_context.clone();
+                                            let preload_stream_projection_context =
+                                                preload_stream_projection_context.clone();
+                                            window.defer(cx, move |window, cx| {
+                                                let preload_started = Instant::now();
+                                                preload_entity.update(cx, |view, cx| {
+                                                    view.drain_transcript_media_preload_coordinator(
+                                                        preload_media_context,
+                                                        preload_markdown_context,
+                                                        preload_stream_projection_context,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                    if let Some(profiler) = preload_profiler.as_ref()
                                                     {
-                                                        profiler.log_if_slow(
-                                                            view.markdown_cache.borrow().stats(),
+                                                        profiler.observe_media_preload(
+                                                            preload_started.elapsed(),
                                                         );
+                                                        if tracing::enabled!(Level::DEBUG)
+                                                            && profiler.should_log_slow()
+                                                        {
+                                                            profiler.log_if_slow(
+                                                                view.markdown_cache
+                                                                    .borrow()
+                                                                    .stats(),
+                                                            );
+                                                        }
+                                                        view.frame_metrics
+                                                            .borrow_mut()
+                                                            .record(profiler.finish_metric());
                                                     }
-                                                    view.frame_metrics
-                                                        .borrow_mut()
-                                                        .record(profiler.finish_metric());
-                                                }
+                                                });
                                             });
                                             if image_menu_render_state.target_not_rendered_loaded()
                                             {
@@ -2579,8 +2822,6 @@ impl Render for TranscriptPanel {
                                             let turn_item_count = row
                                                 .as_ref()
                                                 .map_or(0, |row| row.turn.item_count());
-                                            let placeholder_height =
-                                                row.as_ref().and_then(|row| row.placeholder_height);
                                             let row_identity_for_profile =
                                                 row.as_ref().map(|row| row.identity.as_str().to_string());
                                             let workspace = workspace.clone();
@@ -2645,7 +2886,7 @@ impl Render for TranscriptPanel {
                                                         &workspace,
                                                         theme,
                                                         row.turn,
-                                                        placeholder_height,
+                                                        row.model,
                                                         row_entity.clone(),
                                                         row_identity,
                                                         markdown_context,
@@ -2690,8 +2931,6 @@ impl Render for TranscriptPanel {
                                         .size_full()
                                     });
                                 let bounds = transcript_list_state.viewport_bounds();
-                                let max_offset = transcript_list_state.max_offset_for_scrollbar();
-                                let offset = transcript_list_state.scroll_px_offset_for_scrollbar();
                                 if let Some(quote_popup) =
                                     self.render_quote_popup(bounds, entity.clone(), theme.as_ref())
                                 {
@@ -2701,85 +2940,6 @@ impl Render for TranscriptPanel {
                                     self.render_image_preview_popup(entity.clone(), theme.as_ref())
                                 {
                                     scroll_region = scroll_region.child(image_popup);
-                                }
-                                let scrollbar_owner_update = {
-                                    let shell = shell.clone();
-                                    let transcript_list_state = transcript_list_state.clone();
-                                    move |window: &mut Window, cx: &mut App| {
-                                        let is_scrolled = !matches!(
-                                            transcript_list_state.scroll_position(),
-                                            ListScrollPosition::Bottom
-                                        );
-                                        let event = ListScrollEvent {
-                                            visible_range: transcript_list_state.visible_range(),
-                                            count: transcript_list_state.item_count(),
-                                            is_scrolled,
-                                        };
-                                        shell.update(cx, |view, cx| {
-                                            view.release_transcript_submit_anchor(cx);
-                                            view.note_transcript_scroll_event(&event, window, cx);
-                                        });
-                                    }
-                                };
-                                let scrollbar_interaction = ScrollbarInteraction::new(
-                                    {
-                                        let transcript_list_state = transcript_list_state.clone();
-                                        move || {
-                                            Some(ScrollbarScrollState {
-                                                viewport_bounds: transcript_list_state
-                                                    .viewport_bounds(),
-                                                max_offset: transcript_list_state
-                                                    .max_offset_for_scrollbar(),
-                                                scroll_offset: {
-                                                    let offset = transcript_list_state
-                                                        .scroll_px_offset_for_scrollbar();
-                                                    point(px(0.0), -offset.y)
-                                                },
-                                            })
-                                        }
-                                    },
-                                    {
-                                        let transcript_list_state = transcript_list_state.clone();
-                                        move |scroll_offset| {
-                                            transcript_list_state.set_offset_from_scrollbar(point(
-                                                px(0.0),
-                                                -scroll_offset,
-                                            ));
-                                        }
-                                    },
-                                    {
-                                        let transcript_list_state = transcript_list_state.clone();
-                                        move |direction, distance| {
-                                            let distance = match direction {
-                                                ScrollDirection::Backward => -distance,
-                                                ScrollDirection::Forward => distance,
-                                            };
-                                            transcript_list_state.scroll_by(distance);
-                                        }
-                                    },
-                                    {
-                                        let transcript_list_state = transcript_list_state.clone();
-                                        move || {
-                                            transcript_list_state.scrollbar_drag_started();
-                                        }
-                                    },
-                                    {
-                                        let transcript_list_state = transcript_list_state.clone();
-                                        move || {
-                                            transcript_list_state.scrollbar_drag_ended();
-                                        }
-                                    },
-                                    scrollbar_owner_update,
-                                );
-                                if let Some(scrollbar) = render_interactive_vertical_scrollbar(
-                                    "transcript-scrollbar",
-                                    bounds.size.height,
-                                    max_offset.height,
-                                    -offset.y,
-                                    scrollbar_visibility.clone(),
-                                    scrollbar_interaction,
-                                ) {
-                                    scroll_region = scroll_region.child(scrollbar);
                                 }
                                 if selected_nested_code_panel_id.is_some() {
                                     scroll_region = scroll_region.child(
@@ -3686,21 +3846,23 @@ fn render_turn(
     workspace: &WorkspaceId,
     theme: Arc<TranscriptTheme>,
     turn: Arc<TurnExecutionRecord>,
-    placeholder_height: Option<Pixels>,
+    row_model: Arc<TranscriptRowPresentationModel>,
     entity: Entity<TranscriptPanel>,
     row_identity: String,
     markdown_context: TranscriptMarkdownRenderContext,
     media_context: TranscriptMediaRenderContext,
     stream_projection_context: TranscriptStreamProjectionContext,
-    soft_wrapped_panel_keys: Arc<HashSet<String>>,
-    resized_panel_heights: Arc<HashMap<String, Pixels>>,
-    code_panel_scroll_handles: Rc<RefCell<HashMap<String, ScrollHandle>>>,
-    code_panel_scrollbar_visibility: Arc<HashMap<String, ScrollbarVisibilityState>>,
-    selected_nested_code_panel_id: Arc<Option<String>>,
+    soft_wrapped_panel_keys: Arc<HashSet<TranscriptCodePanelIdentity>>,
+    resized_panel_heights: Arc<HashMap<TranscriptCodePanelIdentity, Pixels>>,
+    code_panel_scroll_handles: Rc<RefCell<HashMap<TranscriptCodePanelIdentity, ScrollHandle>>>,
+    code_panel_scrollbar_visibility: Arc<
+        HashMap<TranscriptCodePanelIdentity, ScrollbarVisibilityState>,
+    >,
+    selected_nested_code_panel_id: Arc<Option<TranscriptCodePanelIdentity>>,
     theme_candidates: Arc<ThemeCandidatePanelSnapshot>,
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     code_panel_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
-    rendered_code_panel_ids: Rc<RefCell<HashSet<String>>>,
+    rendered_code_panel_ids: Rc<RefCell<HashSet<TranscriptCodePanelIdentity>>>,
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     selection_order: Rc<Cell<usize>>,
@@ -3718,26 +3880,6 @@ fn render_turn(
         .pb_3()
         .when(dimmed_for_edit, |this| this.opacity(0.48))
         .when(index == 0, |this| this.pt_4());
-
-    if turn.is_released_history_placeholder() {
-        let height = placeholder_height.unwrap_or_else(|| px(96.0)).max(px(64.0));
-        return row
-            .on_mouse_down(MouseButton::Right, {
-                let entity = entity.clone();
-                move |event, window, cx| {
-                    let handled = entity.update(cx, |view, cx| {
-                        view.handle_transcript_turn_context_mouse_down(index, event, window, cx)
-                    });
-                    if handled {
-                        cx.stop_propagation();
-                    }
-                }
-            })
-            .h(height)
-            .overflow_hidden()
-            .child(released_history_placeholder_state(theme.as_ref()))
-            .into_any_element();
-    }
 
     row.on_mouse_down(MouseButton::Right, {
         let entity = entity.clone();
@@ -3784,6 +3926,7 @@ fn render_turn(
         markdown_context,
         media_context,
         stream_projection_context,
+        row_model,
         code_layout,
         media_layout,
         row_identity.as_str(),
@@ -3907,12 +4050,6 @@ fn turn_identity(turn_index: usize, turn: &TurnExecutionRecord) -> String {
     }
 }
 
-fn panel_id_belongs_to_any_row(panel_id: &str, row_identities: &HashSet<String>) -> bool {
-    row_identities
-        .iter()
-        .any(|row_identity| markdown_code_panel_id_belongs_to_row(panel_id, row_identity))
-}
-
 struct TranscriptFrameProfile {
     started_at: Instant,
     total_turns: usize,
@@ -3923,8 +4060,14 @@ struct TranscriptFrameProfile {
     visible_range: Range<usize>,
     presentation_range_len: usize,
     panel_state_inspected_row_count: usize,
+    residency_resident_turn_count: usize,
+    residency_retained_bytes: usize,
+    residency_in_flight_requests: usize,
+    residency_budget_reason: Option<String>,
     style_snapshot_micros: u64,
     composer_measurement_micros: u64,
+    snapshot_micros: u64,
+    render_state_pruning_micros: u64,
     markdown_cache_start: Option<TranscriptMarkdownCacheStats>,
     rendered_turn_count: Cell<usize>,
     largest_visible_turn_text_chars: Cell<usize>,
@@ -3947,15 +4090,22 @@ struct TranscriptFrameProfile {
 
 impl TranscriptFrameProfile {
     fn new(
+        started_at: Instant,
         metrics: Option<TranscriptRenderMetrics>,
         selected_thread_id: Option<String>,
         presentation_range: Range<usize>,
         visible_range: Range<usize>,
         presentation_range_len: usize,
         panel_state_inspected_row_count: usize,
+        residency_resident_turn_count: usize,
+        residency_retained_bytes: usize,
+        residency_in_flight_requests: usize,
+        residency_budget_reason: Option<String>,
         total_turns: usize,
         style_snapshot_micros: u64,
         composer_measurement_micros: u64,
+        snapshot_micros: u64,
+        render_state_pruning_micros: u64,
         markdown_cache_start: Option<TranscriptMarkdownCacheStats>,
     ) -> Rc<Self> {
         let (total_item_count, total_text_chars) = metrics
@@ -3967,7 +4117,7 @@ impl TranscriptFrameProfile {
             })
             .unwrap_or((None, None));
         Rc::new(Self {
-            started_at: Instant::now(),
+            started_at,
             total_turns,
             total_item_count,
             total_text_chars,
@@ -3976,8 +4126,14 @@ impl TranscriptFrameProfile {
             visible_range,
             presentation_range_len,
             panel_state_inspected_row_count,
+            residency_resident_turn_count,
+            residency_retained_bytes,
+            residency_in_flight_requests,
+            residency_budget_reason,
             style_snapshot_micros,
             composer_measurement_micros,
+            snapshot_micros,
+            render_state_pruning_micros,
             markdown_cache_start,
             rendered_turn_count: Cell::new(0),
             largest_visible_turn_text_chars: Cell::new(0),
@@ -4082,7 +4238,13 @@ impl TranscriptFrameProfile {
             presentation_range_len: self.presentation_range_len,
             visible_row_count: self.rendered_turn_count.get(),
             panel_state_inspected_row_count: self.panel_state_inspected_row_count,
+            residency_resident_turn_count: self.residency_resident_turn_count,
+            residency_retained_bytes: self.residency_retained_bytes,
+            residency_in_flight_requests: self.residency_in_flight_requests,
+            residency_budget_reason: self.residency_budget_reason.clone(),
             frame_micros: diagnostic_duration_micros(frame_elapsed),
+            snapshot_micros: self.snapshot_micros,
+            render_state_pruning_micros: self.render_state_pruning_micros,
             style_snapshot_micros: self.style_snapshot_micros,
             composer_measurement_micros: self.composer_measurement_micros,
             row_build_total_micros: diagnostic_duration_micros(self.total_turn_build.get()),
@@ -4143,6 +4305,8 @@ impl TranscriptFrameProfile {
                 .get()
                 .unwrap_or_default(),
             frame_ms = frame_elapsed.as_secs_f64() * 1000.0,
+            snapshot_ms = self.snapshot_micros as f64 / 1000.0,
+            render_state_pruning_ms = self.render_state_pruning_micros as f64 / 1000.0,
             style_snapshot_ms = self.style_snapshot_micros as f64 / 1000.0,
             composer_measurement_ms = self.composer_measurement_micros as f64 / 1000.0,
             turn_build_total_ms = self.total_turn_build.get().as_secs_f64() * 1000.0,
@@ -4177,6 +4341,8 @@ impl TranscriptFrameProfile {
 
     fn dominant_cost_category(&self) -> String {
         [
+            ("snapshot", self.snapshot_micros),
+            ("render_state_pruning", self.render_state_pruning_micros),
             ("style_snapshot", self.style_snapshot_micros),
             ("composer_measurement", self.composer_measurement_micros),
             (

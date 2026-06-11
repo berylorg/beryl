@@ -2,11 +2,124 @@ use super::{BlockRenderList, BlockRenderNode, BlockRenderPlan};
 
 const PANEL_ID_PREFIX: &str = "transcript-code-panel";
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct TranscriptCodePanelLocalIdentity {
+    block_path: String,
+    code_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct TranscriptCodePanelIdentity {
+    row_identity: String,
+    local_identity: TranscriptCodePanelLocalIdentity,
+    encoded: String,
+}
+
+impl TranscriptCodePanelLocalIdentity {
+    pub(crate) fn new(block_path: impl Into<String>, code_path: impl Into<String>) -> Self {
+        Self {
+            block_path: block_path.into(),
+            code_path: code_path.into(),
+        }
+    }
+
+    pub(crate) fn block_path(&self) -> &str {
+        self.block_path.as_str()
+    }
+
+    pub(crate) fn code_path(&self) -> &str {
+        self.code_path.as_str()
+    }
+}
+
+impl TranscriptCodePanelIdentity {
+    pub(crate) fn new(
+        row_identity: impl Into<String>,
+        block_path: impl Into<String>,
+        code_path: impl Into<String>,
+    ) -> Self {
+        Self::from_local_identity(
+            row_identity,
+            TranscriptCodePanelLocalIdentity::new(block_path, code_path),
+        )
+    }
+
+    pub(crate) fn from_local_identity(
+        row_identity: impl Into<String>,
+        local_identity: TranscriptCodePanelLocalIdentity,
+    ) -> Self {
+        let row_identity = row_identity.into();
+        let encoded = encode_panel_id(
+            row_identity.as_str(),
+            local_identity.block_path(),
+            local_identity.code_path(),
+        );
+        Self {
+            row_identity,
+            local_identity,
+            encoded,
+        }
+    }
+
+    pub(crate) fn parse(panel_id: &str) -> Option<Self> {
+        let mut remainder = panel_id.strip_prefix(PANEL_ID_PREFIX)?.strip_prefix(":r")?;
+        let row_len_end = remainder.find(':')?;
+        let row_len = remainder[..row_len_end].parse::<usize>().ok()?;
+        remainder = &remainder[row_len_end + 1..];
+        let row_identity = take_len_prefixed_segment(&mut remainder, row_len)?;
+        remainder = remainder.strip_prefix(":b")?;
+        let block_len_end = remainder.find(':')?;
+        let block_len = remainder[..block_len_end].parse::<usize>().ok()?;
+        remainder = &remainder[block_len_end + 1..];
+        let block_path = take_len_prefixed_segment(&mut remainder, block_len)?;
+        remainder = remainder.strip_prefix(":c")?;
+        let code_len_end = remainder.find(':')?;
+        let code_len = remainder[..code_len_end].parse::<usize>().ok()?;
+        remainder = &remainder[code_len_end + 1..];
+        let code_path = take_len_prefixed_segment(&mut remainder, code_len)?;
+        if !remainder.is_empty() {
+            return None;
+        }
+
+        Some(Self::new(row_identity, block_path, code_path))
+    }
+
+    pub(crate) fn row_identity(&self) -> &str {
+        self.row_identity.as_str()
+    }
+
+    pub(crate) fn local_identity(&self) -> &TranscriptCodePanelLocalIdentity {
+        &self.local_identity
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        self.encoded.as_str()
+    }
+}
+
+impl std::fmt::Display for TranscriptCodePanelIdentity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 pub(crate) fn markdown_code_panel_id(
     row_identity: &str,
     block_path: &str,
     code_path: &str,
 ) -> String {
+    markdown_code_panel_identity(row_identity, block_path, code_path).to_string()
+}
+
+pub(crate) fn markdown_code_panel_identity(
+    row_identity: &str,
+    block_path: &str,
+    code_path: &str,
+) -> TranscriptCodePanelIdentity {
+    TranscriptCodePanelIdentity::new(row_identity, block_path, code_path)
+}
+
+fn encode_panel_id(row_identity: &str, block_path: &str, code_path: &str) -> String {
     format!(
         "{PANEL_ID_PREFIX}:r{}:{row_identity}:b{}:{block_path}:c{}:{code_path}",
         row_identity.len(),
@@ -16,13 +129,8 @@ pub(crate) fn markdown_code_panel_id(
 }
 
 pub(crate) fn markdown_code_panel_id_belongs_to_row(panel_id: &str, row_identity: &str) -> bool {
-    let row_prefix = format!("{PANEL_ID_PREFIX}:r{}:", row_identity.len());
-    let Some(after_prefix) = panel_id.strip_prefix(row_prefix.as_str()) else {
-        return false;
-    };
-    after_prefix
-        .strip_prefix(row_identity)
-        .is_some_and(|suffix| suffix.starts_with(":b"))
+    TranscriptCodePanelIdentity::parse(panel_id)
+        .is_some_and(|identity| identity.row_identity() == row_identity)
 }
 
 pub(crate) fn markdown_code_panel_ids(
@@ -115,4 +223,13 @@ fn child_path(parent: &str, child: impl AsRef<str>) -> String {
     } else {
         format!("{parent}.{}", child.as_ref())
     }
+}
+
+fn take_len_prefixed_segment(remainder: &mut &str, len: usize) -> Option<String> {
+    if len > remainder.len() || !remainder.is_char_boundary(len) {
+        return None;
+    }
+    let value = remainder[..len].to_string();
+    *remainder = &remainder[len..];
+    Some(value)
 }

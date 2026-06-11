@@ -25,7 +25,7 @@ pub(super) fn title_seed_for_turn_or_node(
 }
 
 pub(super) fn parent_context_source_for_turn(turn: &TurnExecutionRecord) -> Option<String> {
-    if turn.is_released_history_placeholder() {
+    if !turn.has_resident_payload() {
         return None;
     }
 

@@ -122,7 +122,6 @@ pub(crate) struct VisibleTranscriptRowDiagnostic {
     pub source_turn_index: usize,
     pub item_count: usize,
     pub text_chars: usize,
-    pub released_history_placeholder: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

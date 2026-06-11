@@ -17,6 +17,7 @@ Support bounded operator debugging, live testing, and resource investigation thr
 - Diagnostic output must be bounded by deterministic item and byte caps. Large strings, paths, labels, error text, media keys, event details, and lists are truncated or omitted rather than returned without limit.
 - Diagnostics must not retain image bytes, decoded pixel buffers, GPUI image handles, process handles, backend responses, or transcript payloads solely to make later diagnostics more detailed.
 - Recent diagnostic event logs are metadata-only bounded rings.
+- Diagnostics emitted or sampled from ordinary render, prepaint, scroll, and scrollbar paths must consume already-maintained bounded counters or frame-local facts. Expensive retained-state scans belong only to explicit diagnostic tool requests and must not be hidden inside UI frame construction.
 - Process and memory diagnostics may expose platform counters. Windows builds should expose GUI process id, known child backend process ids, Private Bytes, Working Set, commit-related counters when available, handle count, and thread count. Unsupported counters are reported unavailable rather than guessed.
 - Visible-media diagnostics report only currently retained or visible GUI projection state. They must not load history pages, read files, decode images, or create GPUI assets just to answer.
 
@@ -38,6 +39,7 @@ Support bounded operator debugging, live testing, and resource investigation thr
 - Diagnostic child controls are supervisor dynamic tools for testing an isolated child Beryl instance. They are not visible end-user controls in the ordinary workspace screen.
 - Child control may switch workspaces or threads, list workspace threads from bounded child-owned inventory state, select a pending new-thread draft, submit bounded text through the child composer, request soft or hard stop for the child's exact selected active turn, scroll transcript, close transient popups, and wait for bounded UI or turn-state predicates.
 - Child commands must drive the same internal application command paths and state transitions as corresponding visible UI interactions or retained UI projections.
+- Child commands that activate image-heavy or history-heavy transcript states exercise real child UI work and must honor the transcript feature's residency and presentable-media admission gates. They must not use diagnostic shortcuts that publish unloaded, media-pending, or otherwise non-presentable transcript rows.
 - Child commands reject ambiguous, stale, missing, or unavailable targets and report timeout or partial state instead of blocking indefinitely.
 - A child command must not fall back to another workspace, thread, runtime target, turn, stop target, or input path when the requested target cannot be used exactly.
 - Child composer submission may synthesize user-authored transcript input only for the isolated child and only through ordinary validation, draft acceptance, transcript insertion, new-thread creation, active-turn steering, compaction queueing, and rejection behavior.

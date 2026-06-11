@@ -38,6 +38,11 @@ pub(super) struct TranscriptMediaRenderContext {
     profiler: Option<Rc<TranscriptFrameProfile>>,
 }
 
+pub(super) struct TranscriptMediaLookupResult {
+    pub(super) outcome: Arc<TranscriptMediaLoadOutcome>,
+    pub(super) load_scheduled: bool,
+}
+
 impl TranscriptMediaRenderContext {
     pub(super) fn new(
         cache: Rc<RefCell<TranscriptMediaCache>>,
@@ -84,6 +89,30 @@ impl TranscriptMediaRenderContext {
         execution_target: WorkspaceId,
         cx: &mut App,
     ) -> Arc<TranscriptMediaLoadOutcome> {
+        self.lookup_media(key, source, execution_target, cx).outcome
+    }
+
+    pub(super) fn preload_media_for(
+        &self,
+        key: TranscriptMediaCacheKey,
+        source: TranscriptMediaSource,
+        execution_target: WorkspaceId,
+        cx: &mut App,
+    ) -> TranscriptMediaLookupResult {
+        self.lookup_media(key, source, execution_target, cx)
+    }
+
+    pub(super) fn pending_media_load_count(&self) -> usize {
+        self.cache.borrow().stats().pending_entries
+    }
+
+    fn lookup_media(
+        &self,
+        key: TranscriptMediaCacheKey,
+        source: TranscriptMediaSource,
+        execution_target: WorkspaceId,
+        cx: &mut App,
+    ) -> TranscriptMediaLookupResult {
         let lookup_started = Instant::now();
         let source_kind = transcript_media_source_kind(&source);
         let lookup = self.cache.borrow_mut().lookup(
@@ -126,7 +155,10 @@ impl TranscriptMediaRenderContext {
             );
         }
         release_evicted_media_images(lookup.evicted_images, self.events.clone(), cx);
-        lookup.outcome
+        TranscriptMediaLookupResult {
+            outcome: lookup.outcome,
+            load_scheduled,
+        }
     }
 
     pub(super) fn panel(&self) -> Entity<TranscriptPanel> {

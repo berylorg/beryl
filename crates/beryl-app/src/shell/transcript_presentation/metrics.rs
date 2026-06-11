@@ -1,4 +1,4 @@
-use super::super::execution_detail::TurnExecutionRecord;
+use super::row_model::TranscriptRowPresentationModel;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct TranscriptPresentationRowMetrics {
@@ -7,10 +7,10 @@ pub(super) struct TranscriptPresentationRowMetrics {
 }
 
 impl TranscriptPresentationRowMetrics {
-    pub(super) fn from_turn(turn: &TurnExecutionRecord) -> Self {
+    pub(super) fn from_model(model: &TranscriptRowPresentationModel) -> Self {
         Self {
-            item_count: turn.item_count(),
-            text_chars: turn.text_char_count(),
+            item_count: model.item_count(),
+            text_chars: model.text_chars(),
         }
     }
 }

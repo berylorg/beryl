@@ -103,11 +103,8 @@ mod shell {
 
         pub(super) fn release_range(&mut self, range: Range<usize>) {
             for replacement in self.details.release_history_range(range) {
-                self.presentation.replace_turn_with_placeholder(
-                    replacement.index,
-                    replacement.turn,
-                    None,
-                );
+                self.presentation
+                    .replace_turn(replacement.index, replacement.turn);
             }
         }
 
@@ -241,11 +238,14 @@ fn edit_target_rejects_placeholders_operational_rows_and_missing_user_input() {
         ],
     );
     harness.release_range(0..1);
-    assert!(harness.target_at(0, true).is_none());
-    assert_eq!(
-        disabled_reason_at(&harness, 0),
-        Some(TranscriptEditDisabledReason::PresentedHistoryPlaceholder)
-    );
+    assert_eq!(harness.presentation_len(), 1);
+    let remaining = harness
+        .target_at(0, true)
+        .expect("remaining row should still be editable");
+    assert_eq!(remaining.source_thread_id(), "thread_a");
+    assert_eq!(remaining.source_turn_id(), "turn_2");
+    assert_eq!(remaining.source_turn_index(), 1);
+    assert_eq!(remaining.rollback_turn_count(), 1);
 
     harness.replace_history("thread_a", vec![operational_only_turn("turn_op")]);
     assert_eq!(harness.presentation_len(), 0);

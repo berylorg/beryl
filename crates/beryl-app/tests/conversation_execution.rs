@@ -128,7 +128,7 @@ fn execution_detail_tracks_streamed_items_and_identifies_terminal_answer() {
 }
 
 #[test]
-fn execution_detail_retained_counts_include_loaded_turn_payloads() {
+fn execution_residency_retained_counts_include_loaded_turn_payloads() {
     let mut state = ExecutionDetailState::default();
     state.begin_turn("Inspect".to_string());
     state.apply_stream_event(TurnStreamEvent::TurnStarted {
@@ -654,7 +654,7 @@ fn execution_detail_ignores_events_from_non_active_turns() {
 }
 
 #[test]
-fn execution_detail_loads_selected_thread_history() {
+fn execution_state_loads_selected_thread_history() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",
         "approvalsReviewer": "user",
@@ -1410,7 +1410,7 @@ fn restored_history_page_uses_image_resolver_for_markers() {
     state.load_thread_history(&response.thread);
     let replacements = state.release_history_range(0..1);
     assert_eq!(replacements.len(), 1);
-    assert!(state.turns()[0].is_released_history_placeholder());
+    assert!(!state.turns()[0].has_resident_payload());
 
     let replacements = state.restore_history_page_with_image_resolver(
         "thread_1",

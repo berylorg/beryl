@@ -1,33 +1,22 @@
-use std::{
-    fmt,
-    ops::Range,
-    time::{Duration, Instant},
-};
+use std::{fmt, ops::Range, time::Duration};
 
 use beryl_backend::{
     ManagedBackendError, ManagedBackendSession, SortDirection, ThreadTurnsListOptions,
     ThreadTurnsListResponse, TurnInfo, TurnItemsView,
 };
 
-#[path = "transcript_history/detail_cache.rs"]
-mod detail_cache;
+#[path = "transcript_history/residency.rs"]
+mod residency;
 
 #[allow(unused_imports)]
-pub(crate) use detail_cache::{
-    TranscriptTurnDetailApplyResult, TranscriptTurnDetailCache, TranscriptTurnDetailLoadStart,
-    TranscriptTurnDetailLoadTicket, TranscriptTurnDetailPageLocator, TranscriptTurnDetailPinKind,
-    TranscriptTurnDetailReleaseCounts, TranscriptTurnDetailRetainedCounts,
-    TranscriptTurnDetailRetention, TranscriptTurnDetailSchedule, TranscriptTurnDetailStatus,
-    TranscriptTurnDetailViewportOrder, TranscriptTurnDetailViewportPlan, TranscriptTurnSkeleton,
+pub(crate) use residency::{
+    TranscriptResidencyBudgetReason, TranscriptResidencyPinKind, TranscriptResidencyPolicy,
+    TranscriptResidencyReleaseCounts, TranscriptResidencyRequestPriority,
+    TranscriptResidencyRetainedCounts, TranscriptResidencyRetention, TranscriptResidencyState,
+    TranscriptTurnIndexRecord,
 };
 
 pub(crate) const THREAD_HISTORY_PAGE_LIMIT: u32 = 80;
-pub(crate) const TRANSCRIPT_HISTORY_MAX_RESIDENT_PAGES: usize = 4;
-pub(crate) const TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES: usize = 32;
-#[allow(dead_code)]
-const OLDER_HISTORY_VISIBLE_ROW_THRESHOLD: usize = 2;
-const MISSING_HISTORY_VISIBLE_ROW_THRESHOLD: usize = 8;
-const HISTORY_CACHE_KEEP_MARGIN_ROWS: usize = THREAD_HISTORY_PAGE_LIMIT as usize;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TranscriptHistoryWindow {
@@ -35,6 +24,7 @@ pub(crate) struct TranscriptHistoryWindow {
     newer_cursor: Option<String>,
     loading_page: Option<LoadingTranscriptHistoryPage>,
     pages: Vec<TranscriptHistoryPageState>,
+    residency: TranscriptResidencyState,
     next_page_id: u64,
 }
 
@@ -43,6 +33,18 @@ pub(crate) struct LoadedTranscriptHistoryPage {
     pub turns: Vec<TurnInfo>,
     pub older_cursor: Option<String>,
     pub newer_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TranscriptResidentPageValidationError {
+    turn_id: String,
+    items_view: TurnItemsView,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TranscriptResidentHistoryPageError<E> {
+    Backend(E),
+    Incomplete(TranscriptResidentPageValidationError),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -82,6 +84,13 @@ pub(crate) struct TranscriptHistoryRetainedCounts {
     pub(crate) turn_id_bytes: usize,
     pub(crate) cursor_bytes: usize,
     pub(crate) metadata_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TranscriptHistoryBoundaryState {
+    pub(crate) can_request_older: bool,
+    pub(crate) released_page_near: bool,
+    pub(crate) loading_page: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -127,58 +136,24 @@ impl TranscriptHistoryBackend for ManagedBackendSession {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TranscriptTurnDetailPageLoadError<E> {
-    Load {
-        source: E,
-        cas_micros: u64,
-    },
-    MissingTurn {
-        turn_id: String,
-        cursor: Option<String>,
-        limit: u32,
-        returned_turn_count: usize,
-        cas_micros: u64,
-        response_processing_micros: u64,
-    },
-    TurnNotFull {
-        turn_id: String,
-        items_view: TurnItemsView,
-        returned_turn_count: usize,
-        cas_micros: u64,
-        response_processing_micros: u64,
-    },
+impl fmt::Display for TranscriptResidentPageValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "full history request returned turn {} with itemsView {:?}",
+            self.turn_id, self.items_view
+        )
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TranscriptTurnDetailPageLoad {
-    pub(crate) turns: Vec<TurnInfo>,
-    pub(crate) returned_turn_count: usize,
-    pub(crate) cas_micros: u64,
-    pub(crate) response_processing_micros: u64,
-}
-
-impl<E: fmt::Display> fmt::Display for TranscriptTurnDetailPageLoadError<E> {
+impl<E> fmt::Display for TranscriptResidentHistoryPageError<E>
+where
+    E: fmt::Display,
+{
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Load { source, .. } => write!(formatter, "{source}"),
-            Self::MissingTurn {
-                turn_id,
-                cursor,
-                limit,
-                ..
-            } => write!(
-                formatter,
-                "history-page detail load did not include turn {turn_id} with cursor {cursor:?} and limit {limit}"
-            ),
-            Self::TurnNotFull {
-                turn_id,
-                items_view,
-                ..
-            } => write!(
-                formatter,
-                "history-page detail load returned turn {turn_id} with itemsView {items_view:?}"
-            ),
+            Self::Backend(error) => write!(formatter, "{error}"),
+            Self::Incomplete(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -190,6 +165,7 @@ impl TranscriptHistoryWindow {
             newer_cursor: page.newer_cursor.clone(),
             loading_page: None,
             pages: Vec::new(),
+            residency: TranscriptResidencyState::default(),
             next_page_id: 0,
         };
         let turn_ids = page
@@ -201,6 +177,80 @@ impl TranscriptHistoryWindow {
         window
     }
 
+    pub(crate) fn from_turns(turns: &[TurnInfo]) -> Self {
+        if turns.is_empty() {
+            return Self::default();
+        }
+        Self::from_latest_page(&LoadedTranscriptHistoryPage {
+            turns: turns.to_vec(),
+            older_cursor: None,
+            newer_cursor: None,
+        })
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.pages.is_empty()
+            && self.older_cursor.is_none()
+            && self.newer_cursor.is_none()
+            && self.loading_page.is_none()
+    }
+
+    pub(crate) fn reset_residency_for_thread(&mut self, thread_id: impl Into<String>) {
+        self.residency.reset_for_thread(thread_id);
+    }
+
+    pub(crate) fn bind_residency_to_thread(&mut self, thread_id: impl Into<String>) {
+        self.residency.bind_thread(thread_id);
+    }
+
+    pub(crate) fn clear_residency(&mut self) {
+        self.residency.clear();
+    }
+
+    pub(crate) fn set_residency_policy(&mut self, policy: TranscriptResidencyPolicy) {
+        self.residency.set_policy(policy);
+    }
+
+    pub(crate) fn residency_retained_counts(&self) -> TranscriptResidencyRetainedCounts {
+        self.residency.retained_counts()
+    }
+
+    pub(crate) fn replace_residency_pins<I, S>(
+        &mut self,
+        kind: TranscriptResidencyPinKind,
+        turn_ids: I,
+    ) where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.residency.replace_pins(kind, turn_ids);
+    }
+
+    pub(crate) fn pin_resident_turn(&mut self, turn_id: &str, kind: TranscriptResidencyPinKind) {
+        self.residency.pin_turn(turn_id, kind);
+    }
+
+    pub(crate) fn unpin_resident_turn(&mut self, turn_id: &str, kind: TranscriptResidencyPinKind) {
+        self.residency.unpin_turn(turn_id, kind);
+    }
+
+    pub(crate) fn release_unretained_resident_turns(
+        &mut self,
+        retention: &TranscriptResidencyRetention,
+    ) -> TranscriptResidencyReleaseCounts {
+        self.residency.release_unretained_resident_turns(retention)
+    }
+
+    pub(crate) fn retention_range_for_visible_range(
+        &self,
+        visible_range: Range<usize>,
+        turn_count: usize,
+    ) -> Range<usize> {
+        self.residency
+            .policy()
+            .retention_range_for_visible_range(visible_range, turn_count)
+    }
+
     pub(crate) fn begin_loading_older(&mut self) -> Option<String> {
         if self.loading_page.is_some() {
             return None;
@@ -209,6 +259,7 @@ impl TranscriptHistoryWindow {
         self.loading_page = Some(LoadingTranscriptHistoryPage::Older {
             cursor: cursor.clone(),
         });
+        self.residency.set_in_flight_requests(1);
         Some(cursor)
     }
 
@@ -224,11 +275,17 @@ impl TranscriptHistoryWindow {
             let page_id = page.id;
             let cursor = page.load_cursor.clone();
             self.loading_page = Some(LoadingTranscriptHistoryPage::Released { page_id });
+            self.residency.set_in_flight_requests(1);
             return Some(TranscriptHistoryPageRequest::Released { page_id, cursor });
         }
 
-        self.begin_loading_older()
-            .map(|cursor| TranscriptHistoryPageRequest::Older { cursor })
+        if self.should_request_older(visible_range) {
+            return self
+                .begin_loading_older()
+                .map(|cursor| TranscriptHistoryPageRequest::Older { cursor });
+        }
+
+        None
     }
 
     #[allow(dead_code)]
@@ -268,12 +325,17 @@ impl TranscriptHistoryWindow {
             self.newer_cursor = page.newer_cursor.clone();
         }
         self.loading_page = None;
+        self.residency.set_in_flight_requests(0);
 
         if added_turn_count > 0 {
             for page in &mut self.pages {
                 page.start += added_turn_count;
             }
+            self.residency.shift_source_positions(added_turn_count);
             let id = self.allocate_page_id();
+            let resident = page_has_full_turns(page);
+            self.residency
+                .index_history_page(&page.turns, load_cursor.as_deref(), 0);
             self.pages.insert(
                 0,
                 TranscriptHistoryPageState {
@@ -284,7 +346,7 @@ impl TranscriptHistoryWindow {
                     load_cursor,
                     older_cursor: page.older_cursor.clone(),
                     newer_cursor: page.newer_cursor.clone(),
-                    resident: true,
+                    resident,
                     pinned: false,
                 },
             );
@@ -293,6 +355,7 @@ impl TranscriptHistoryWindow {
 
     pub(crate) fn fail_loading_older(&mut self) {
         self.loading_page = None;
+        self.residency.set_in_flight_requests(0);
     }
 
     pub(crate) fn is_loading_older(&self) -> bool {
@@ -346,11 +409,7 @@ impl TranscriptHistoryWindow {
     }
 
     pub(crate) fn resident_turn_ids(&self) -> Vec<String> {
-        self.pages
-            .iter()
-            .filter(|page| page.resident)
-            .flat_map(|page| page.turn_ids.iter().cloned())
-            .collect()
+        self.residency.resident_turn_ids()
     }
 
     #[allow(dead_code)]
@@ -372,7 +431,7 @@ impl TranscriptHistoryWindow {
 
         self.pages
             .last()
-            .map(|page| page.resident && page.newer_cursor.is_none())
+            .map(|page| page.newer_cursor.is_none())
             .unwrap_or_else(|| self.newer_cursor.is_none())
     }
 
@@ -380,11 +439,25 @@ impl TranscriptHistoryWindow {
         self.oldest_source_position_known() && self.current_tail_known()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn should_request_older(&self, visible_range: &Range<usize>) -> bool {
         self.has_older_pages()
             && self.loading_page.is_none()
-            && visible_range.start <= OLDER_HISTORY_VISIBLE_ROW_THRESHOLD
+            && visible_range.start
+                <= self
+                    .residency
+                    .policy()
+                    .older_request_boundary_rows(visible_range)
+    }
+
+    pub(crate) fn boundary_state_for_visible_range(
+        &self,
+        visible_range: &Range<usize>,
+    ) -> TranscriptHistoryBoundaryState {
+        TranscriptHistoryBoundaryState {
+            can_request_older: self.should_request_older(visible_range),
+            released_page_near: self.released_page_near(visible_range).is_some(),
+            loading_page: self.loading_page.is_some(),
+        }
     }
 
     pub(crate) fn finish_loading_released_page(
@@ -393,10 +466,16 @@ impl TranscriptHistoryWindow {
         page: &LoadedTranscriptHistoryPage,
     ) -> Option<RestoredTranscriptHistoryPage> {
         self.loading_page = None;
+        self.residency.set_in_flight_requests(0);
         let page_state = self.pages.iter_mut().find(|page| page.id == page_id)?;
-        page_state.resident = true;
+        page_state.resident = page_has_full_turns(page);
         page_state.older_cursor = page.older_cursor.clone();
         page_state.newer_cursor = page.newer_cursor.clone();
+        self.residency.index_history_page(
+            &page.turns,
+            page_state.load_cursor.as_deref(),
+            page_state.start,
+        );
         Some(RestoredTranscriptHistoryPage {
             range: page_state.range(),
             turn_ids: page_state.turn_ids.clone(),
@@ -407,7 +486,10 @@ impl TranscriptHistoryWindow {
         &mut self,
         visible_range: &Range<usize>,
     ) -> Vec<TranscriptHistoryPageRelease> {
-        self.release_cold_pages_with_limit(visible_range, TRANSCRIPT_HISTORY_MAX_RESIDENT_PAGES)
+        self.release_cold_pages_with_limit(
+            visible_range,
+            self.residency.policy().max_resident_pages(),
+        )
     }
 
     pub(crate) fn release_cold_pages_with_limit(
@@ -420,7 +502,12 @@ impl TranscriptHistoryWindow {
             return Vec::new();
         }
 
-        let keep_range = expand_range(visible_range, HISTORY_CACHE_KEEP_MARGIN_ROWS);
+        let keep_range = expand_range(
+            visible_range,
+            self.residency
+                .policy()
+                .cold_release_margin_rows(visible_range),
+        );
         let loading_page_id = match self.loading_page {
             Some(LoadingTranscriptHistoryPage::Released { page_id }) => Some(page_id),
             _ => None,
@@ -456,6 +543,8 @@ impl TranscriptHistoryWindow {
             });
         }
 
+        let retention = self.resident_page_turn_retention();
+        self.residency.release_unretained_resident_turns(&retention);
         self.prune_released_page_metadata(visible_range);
         releases
     }
@@ -476,6 +565,8 @@ impl TranscriptHistoryWindow {
         }
 
         let id = self.allocate_page_id();
+        let resident = page_has_full_turns(page);
+        self.residency.index_history_page(&page.turns, None, 0);
         self.pages.push(TranscriptHistoryPageState {
             id,
             start: 0,
@@ -484,7 +575,7 @@ impl TranscriptHistoryWindow {
             load_cursor: None,
             older_cursor: page.older_cursor.clone(),
             newer_cursor: page.newer_cursor.clone(),
-            resident: true,
+            resident,
             pinned: true,
         });
     }
@@ -493,7 +584,10 @@ impl TranscriptHistoryWindow {
         &self,
         visible_range: &Range<usize>,
     ) -> Option<&TranscriptHistoryPageState> {
-        let request_range = expand_range(visible_range, MISSING_HISTORY_VISIBLE_ROW_THRESHOLD);
+        let request_range = expand_range(
+            visible_range,
+            self.residency.policy().restore_margin_rows(visible_range),
+        );
         self.pages
             .iter()
             .filter(|page| !page.resident && ranges_intersect(&page.range(), &request_range))
@@ -512,7 +606,7 @@ impl TranscriptHistoryWindow {
             _ => None,
         };
         while self.pages.iter().filter(|page| !page.resident).count()
-            > TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES
+            > self.residency.policy().max_released_pages()
         {
             let Some(index) = self
                 .pages
@@ -527,12 +621,28 @@ impl TranscriptHistoryWindow {
             self.pages.remove(index);
         }
     }
+
+    fn resident_page_turn_retention(&self) -> TranscriptResidencyRetention {
+        let mut retention = TranscriptResidencyRetention::new();
+        for page in &self.pages {
+            if page.resident || page.pinned {
+                retention.include_turn_ids(&page.turn_ids);
+            }
+        }
+        retention
+    }
 }
 
 pub(crate) fn initial_thread_history_page_options() -> ThreadTurnsListOptions {
     ThreadTurnsListOptions::page(THREAD_HISTORY_PAGE_LIMIT)
         .with_sort_direction(SortDirection::Desc)
         .with_items_view(TurnItemsView::NotLoaded)
+}
+
+pub(crate) fn initial_thread_resident_page_options() -> ThreadTurnsListOptions {
+    ThreadTurnsListOptions::page(THREAD_HISTORY_PAGE_LIMIT)
+        .with_sort_direction(SortDirection::Desc)
+        .with_items_view(TurnItemsView::Full)
 }
 
 pub(crate) fn older_thread_history_page_options(
@@ -548,6 +658,13 @@ pub(crate) fn thread_history_page_options(cursor: Option<&str>) -> ThreadTurnsLi
     }
 }
 
+pub(crate) fn thread_resident_history_page_options(cursor: Option<&str>) -> ThreadTurnsListOptions {
+    match cursor {
+        Some(cursor) => initial_thread_resident_page_options().with_cursor(cursor),
+        None => initial_thread_resident_page_options(),
+    }
+}
+
 pub(crate) fn loaded_page_from_desc_response(
     response: ThreadTurnsListResponse,
 ) -> LoadedTranscriptHistoryPage {
@@ -555,7 +672,7 @@ pub(crate) fn loaded_page_from_desc_response(
         turns: response
             .data
             .into_iter()
-            .map(normalize_history_skeleton_turn)
+            .map(normalize_index_only_history_turn)
             .rev()
             .collect(),
         older_cursor: response.next_cursor,
@@ -563,13 +680,13 @@ pub(crate) fn loaded_page_from_desc_response(
     }
 }
 
-fn normalize_history_skeleton_turn(mut turn: TurnInfo) -> TurnInfo {
+fn normalize_index_only_history_turn(mut turn: TurnInfo) -> TurnInfo {
     turn.items_view = TurnItemsView::NotLoaded;
     turn.items.clear();
     turn
 }
 
-fn loaded_full_page_from_desc_response(
+pub(crate) fn loaded_full_page_from_desc_response(
     response: ThreadTurnsListResponse,
 ) -> LoadedTranscriptHistoryPage {
     LoadedTranscriptHistoryPage {
@@ -577,6 +694,23 @@ fn loaded_full_page_from_desc_response(
         older_cursor: response.next_cursor,
         newer_cursor: response.backwards_cursor,
     }
+}
+
+pub(crate) fn validate_resident_history_page(
+    page: &LoadedTranscriptHistoryPage,
+) -> Result<(), TranscriptResidentPageValidationError> {
+    let Some(turn) = page
+        .turns
+        .iter()
+        .find(|turn| turn.items_view != TurnItemsView::Full)
+    else {
+        return Ok(());
+    };
+
+    Err(TranscriptResidentPageValidationError {
+        turn_id: turn.id.clone(),
+        items_view: turn.items_view,
+    })
 }
 
 #[allow(dead_code)]
@@ -610,101 +744,23 @@ where
         .map(loaded_page_from_desc_response)
 }
 
-pub(crate) fn load_thread_turn_detail_from_history_page<B>(
+pub(crate) fn load_thread_resident_history_page<B>(
     backend: &mut B,
     thread_id: &str,
-    turn_id: &str,
-    page_locator: &TranscriptTurnDetailPageLocator,
+    cursor: Option<&str>,
     timeout: Duration,
-) -> Result<TranscriptTurnDetailPageLoad, TranscriptTurnDetailPageLoadError<B::Error>>
+) -> Result<LoadedTranscriptHistoryPage, TranscriptResidentHistoryPageError<B::Error>>
 where
     B: TranscriptHistoryBackend,
 {
-    let mut options = ThreadTurnsListOptions::page(page_locator.limit())
-        .with_sort_direction(SortDirection::Desc)
-        .with_items_view(TurnItemsView::Full);
-    if let Some(cursor) = page_locator.cursor() {
-        options = options.with_cursor(cursor);
-    }
-
-    let cas_started = Instant::now();
-    let response = backend
+    let options = thread_resident_history_page_options(cursor);
+    let page = backend
         .list_thread_turns(thread_id, &options, timeout)
-        .map_err(|source| TranscriptTurnDetailPageLoadError::Load {
-            source,
-            cas_micros: duration_micros(cas_started.elapsed()),
-        })?;
-    let cas_micros = duration_micros(cas_started.elapsed());
-    let response_processing_started = Instant::now();
-    let page = loaded_full_page_from_desc_response(response);
-    let returned_turn_count = page.turns.len();
-    let Some(turn) = page.turns.iter().find(|turn| turn.id == turn_id) else {
-        let response_processing_micros = duration_micros(response_processing_started.elapsed());
-        return Err(TranscriptTurnDetailPageLoadError::MissingTurn {
-            turn_id: turn_id.to_string(),
-            cursor: page_locator.cursor().map(str::to_string),
-            limit: page_locator.limit(),
-            returned_turn_count,
-            cas_micros,
-            response_processing_micros,
-        });
-    };
-
-    if turn.items_view != TurnItemsView::Full {
-        let response_processing_micros = duration_micros(response_processing_started.elapsed());
-        return Err(TranscriptTurnDetailPageLoadError::TurnNotFull {
-            turn_id: turn_id.to_string(),
-            items_view: turn.items_view,
-            returned_turn_count,
-            cas_micros,
-            response_processing_micros,
-        });
-    }
-
-    Ok(TranscriptTurnDetailPageLoad {
-        turns: page.turns,
-        returned_turn_count,
-        cas_micros,
-        response_processing_micros: duration_micros(response_processing_started.elapsed()),
-    })
-}
-
-impl<E> TranscriptTurnDetailPageLoadError<E> {
-    pub(crate) fn returned_turn_count(&self) -> usize {
-        match self {
-            Self::Load { .. } => 0,
-            Self::MissingTurn {
-                returned_turn_count,
-                ..
-            }
-            | Self::TurnNotFull {
-                returned_turn_count,
-                ..
-            } => *returned_turn_count,
-        }
-    }
-
-    pub(crate) fn cas_micros(&self) -> u64 {
-        match self {
-            Self::Load { cas_micros, .. }
-            | Self::MissingTurn { cas_micros, .. }
-            | Self::TurnNotFull { cas_micros, .. } => *cas_micros,
-        }
-    }
-
-    pub(crate) fn response_processing_micros(&self) -> u64 {
-        match self {
-            Self::Load { .. } => 0,
-            Self::MissingTurn {
-                response_processing_micros,
-                ..
-            }
-            | Self::TurnNotFull {
-                response_processing_micros,
-                ..
-            } => *response_processing_micros,
-        }
-    }
+        .map_err(TranscriptResidentHistoryPageError::Backend)
+        .map(loaded_full_page_from_desc_response)?;
+    validate_resident_history_page(&page)
+        .map_err(TranscriptResidentHistoryPageError::Incomplete)?;
+    Ok(page)
 }
 
 impl TranscriptHistoryPageRequest {
@@ -740,6 +796,10 @@ fn page_distance_to_range(page: &Range<usize>, range: &Range<usize>) -> usize {
     }
 }
 
-fn duration_micros(duration: Duration) -> u64 {
-    duration.as_micros().min(u128::from(u64::MAX)) as u64
+fn page_has_full_turns(page: &LoadedTranscriptHistoryPage) -> bool {
+    !page.turns.is_empty()
+        && page
+            .turns
+            .iter()
+            .all(|turn| turn.items_view == TurnItemsView::Full)
 }

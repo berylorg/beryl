@@ -18,7 +18,6 @@ use super::{
         ComposerImageLabelObservations, ComposerImagePasteReadiness,
     },
     execution_detail::UserInputFragment,
-    thread_turn_detail_worker::TranscriptTurnDetailTask,
 };
 
 pub(super) struct ComposerImageLabelScanTask {
@@ -499,10 +498,6 @@ impl ShellView {
             || self.thread_history_page_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
-            || self
-                .transcript_turn_detail_task
-                .as_ref()
-                .is_some_and(TranscriptTurnDetailTask::has_active_tickets)
         {
             return false;
         }

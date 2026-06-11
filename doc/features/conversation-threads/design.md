@@ -71,7 +71,7 @@ Let users create, resume, branch, edit, title, navigate between, and select back
 - Opening the selector preselects the active thread row when it appears in the latest snapshot.
 - Single-click selects rows and may open child columns. Double-clicking a thread row or pressing `Enter` activates that exact thread. `Escape` closes without changing selection.
 - After activation is accepted, the selector closes without changing the active title selector to a transient pending label. The active title selector, breadcrumbs, and transcript region keep rendering the previous coherent selected-thread state until the new selected thread's resident history is prepared and applied.
-- Successful selected-thread activation applies the active title selector, breadcrumbs, transcript rows, and the transcript's initial viewport state together. The activation path must not rely on renderer/prepaint/deferred work to revise transcript scroll position after the newly activated thread first becomes visible.
+- Successful selected-thread activation applies the active title selector, breadcrumbs, transcript rows, and the transcript's initial viewport state together. The activation path must not rely on deferred renderer callbacks to revise transcript scroll position after the newly activated thread first becomes visible.
 - Snapshot reconciliation preserves closed selector state and next-open projections by member and thread identity, pruning invalid fork columns without substituting another selected thread.
 
 ## Thread History Navigation

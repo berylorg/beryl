@@ -9,7 +9,7 @@ use std::{
 use beryl_backend::{
     AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, FileChangeItem,
     ImageGenerationItem, PatchApplyStatus, ProtocolPhase, ThreadInfo, ThreadItem, TurnError,
-    TurnInfo, TurnItemsView, TurnStatus, TurnStreamEvent, UserInput, UserMessageItem,
+    TurnInfo, TurnStatus, TurnStreamEvent, UserInput, UserMessageItem,
 };
 use tracing::debug;
 
@@ -35,9 +35,6 @@ pub(crate) const MAX_REASONING_SUMMARY_BYTES: usize = 512 * 1024;
 pub(crate) const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_FILE_CHANGE_OUTPUT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_ERROR_MESSAGE_BYTES: usize = 128 * 1024;
-const HISTORY_DETAIL_PLACEHOLDER_ITEM_ID: &str = "__beryl_history_detail_placeholder__";
-const HISTORY_DETAIL_LOADING_TEXT: &str = "Loading transcript details...";
-const HISTORY_DETAIL_FAILED_TEXT: &str = "Transcript details could not be loaded.";
 
 #[derive(Clone, Default)]
 pub(super) struct ExecutionDetailState {
@@ -52,7 +49,6 @@ pub(super) struct TurnExecutionRecord {
     pub thread_id: Option<String>,
     pub turn_id: Option<String>,
     pub status: TurnExecutionStatus,
-    pub released_history_placeholder: bool,
     suppress_user_input_echoes: bool,
     pub awaiting_user_input: bool,
     pub terminal_assistant_item_id: Option<String>,
@@ -201,7 +197,6 @@ pub(super) struct ExecutionDetailRetainedCounts {
     pub(super) backend_input_bytes: usize,
     pub(super) image_marker_bytes: usize,
     pub(super) narrative_entries: usize,
-    pub(super) released_placeholders: usize,
     pub(super) generated_image_items: usize,
     pub(super) active_turn_payload_bytes: usize,
     pub(super) agent_text_bytes: usize,
@@ -303,7 +298,6 @@ impl ExecutionDetailState {
             thread_id,
             turn_id: None,
             status,
-            released_history_placeholder: false,
             suppress_user_input_echoes: true,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,
@@ -371,12 +365,6 @@ impl ExecutionDetailState {
         &self.turns
     }
 
-    fn find_history_turn_index(&self, thread_id: &str, turn_id: &str) -> Option<usize> {
-        self.turns.iter().position(|turn| {
-            turn.thread_id.as_deref() == Some(thread_id) && turn.turn_id.as_deref() == Some(turn_id)
-        })
-    }
-
     pub fn retained_counts(&self) -> ExecutionDetailRetainedCounts {
         self.turns.iter().fold(
             ExecutionDetailRetainedCounts {
@@ -398,9 +386,6 @@ impl ExecutionDetailState {
                 counts.narrative_entries = counts
                     .narrative_entries
                     .saturating_add(turn.narrative_entries.len());
-                counts.released_placeholders = counts
-                    .released_placeholders
-                    .saturating_add(usize::from(turn.released_history_placeholder));
                 counts.generated_image_items = counts.generated_image_items.saturating_add(
                     turn.items
                         .iter()
@@ -559,7 +544,7 @@ impl ExecutionDetailState {
         &mut self,
         thread: &ThreadInfo,
         image_resolver: &TranscriptImagePathResolver,
-        skeleton_partial_turns: bool,
+        partial_turns_may_be_incomplete: bool,
     ) {
         let load_started = Instant::now();
         let history_stats = history_generated_image_projection_stats(&thread.turns);
@@ -574,7 +559,7 @@ impl ExecutionDetailState {
                     &thread_id,
                     turn,
                     image_resolver,
-                    skeleton_partial_turns,
+                    partial_turns_may_be_incomplete,
                 ))
             })
             .collect();
@@ -634,7 +619,7 @@ impl ExecutionDetailState {
         thread_id: &str,
         turns: Vec<TurnInfo>,
         image_resolver: &TranscriptImagePathResolver,
-        skeleton_partial_turns: bool,
+        partial_turns_may_be_incomplete: bool,
     ) -> PrependedHistoryPage {
         if turns.is_empty() {
             return PrependedHistoryPage {
@@ -659,7 +644,7 @@ impl ExecutionDetailState {
                     thread_id,
                     turn,
                     image_resolver,
-                    skeleton_partial_turns,
+                    partial_turns_may_be_incomplete,
                 ))
             })
             .collect::<Vec<_>>();
@@ -707,16 +692,16 @@ impl ExecutionDetailState {
                 continue;
             }
 
-            let Some(placeholder) =
-                TurnExecutionRecord::released_history_placeholder_from(self.turns[index].as_ref())
+            let Some(released) =
+                TurnExecutionRecord::released_history_slot_from(self.turns[index].as_ref())
             else {
                 continue;
             };
-            let placeholder = Arc::new(placeholder);
-            self.turns[index] = placeholder.clone();
+            let released = Arc::new(released);
+            self.turns[index] = released.clone();
             replacements.push(HistoryTurnReplacement {
                 index,
-                turn: placeholder,
+                turn: released,
             });
         }
 
@@ -765,7 +750,7 @@ impl ExecutionDetailState {
         expected_turn_ids: &[String],
         turns: Vec<TurnInfo>,
         image_resolver: &TranscriptImagePathResolver,
-        skeleton_partial_turns: bool,
+        partial_turns_may_be_incomplete: bool,
     ) -> Vec<HistoryTurnReplacement> {
         let mut turns_by_id = turns
             .into_iter()
@@ -789,7 +774,7 @@ impl ExecutionDetailState {
                 thread_id,
                 &turn,
                 image_resolver,
-                skeleton_partial_turns,
+                partial_turns_may_be_incomplete,
             ));
             self.turns[index] = restored.clone();
             replacements.push(HistoryTurnReplacement {
@@ -799,80 +784,6 @@ impl ExecutionDetailState {
         }
 
         replacements
-    }
-
-    pub fn apply_history_turn_items(
-        &mut self,
-        thread_id: &str,
-        turn_id: &str,
-        items: Vec<ThreadItem>,
-        image_resolver: &TranscriptImagePathResolver,
-    ) -> Option<HistoryTurnReplacement> {
-        let index = self.find_history_turn_index(thread_id, turn_id)?;
-        if self.turns[index].released_history_placeholder {
-            return None;
-        }
-
-        let status = self.turns[index].status;
-        let error_message = self.turns[index].error_message.clone();
-        let mut applied = TurnExecutionRecord::from_history_turn_items(
-            thread_id,
-            turn_id,
-            status,
-            items,
-            image_resolver,
-        );
-        applied.error_message = error_message;
-        let applied = Arc::new(applied);
-        self.turns[index] = applied.clone();
-        Some(HistoryTurnReplacement {
-            index,
-            turn: applied,
-        })
-    }
-
-    pub fn fail_history_turn_detail(
-        &mut self,
-        thread_id: &str,
-        turn_id: &str,
-    ) -> Option<HistoryTurnReplacement> {
-        let index = self.find_history_turn_index(thread_id, turn_id)?;
-        if self.turns[index].released_history_placeholder {
-            return None;
-        }
-
-        let failed = Arc::new(TurnExecutionRecord::history_detail_placeholder_from(
-            self.turns[index].as_ref(),
-            HISTORY_DETAIL_FAILED_TEXT,
-        )?);
-        self.turns[index] = failed.clone();
-        Some(HistoryTurnReplacement {
-            index,
-            turn: failed,
-        })
-    }
-
-    pub fn release_history_turn_detail(
-        &mut self,
-        thread_id: &str,
-        turn_id: &str,
-    ) -> Option<HistoryTurnReplacement> {
-        let index = self.find_history_turn_index(thread_id, turn_id)?;
-        if self.turns[index].released_history_placeholder
-            || self.turns[index].has_history_detail_loading_placeholder()
-        {
-            return None;
-        }
-
-        let released = Arc::new(TurnExecutionRecord::history_detail_placeholder_from(
-            self.turns[index].as_ref(),
-            HISTORY_DETAIL_LOADING_TEXT,
-        )?);
-        self.turns[index] = released.clone();
-        Some(HistoryTurnReplacement {
-            index,
-            turn: released,
-        })
     }
 
     pub fn finish_turn_failure(&mut self, message: impl Into<String>) -> Option<usize> {
@@ -1205,18 +1116,11 @@ impl UserInputFragment {
 }
 
 impl TurnExecutionRecord {
-    pub fn is_released_history_placeholder(&self) -> bool {
-        self.released_history_placeholder
-    }
-
-    pub fn has_history_detail_loading_placeholder(&self) -> bool {
-        self.items.iter().any(|item| match item {
-            ExecutionItem::AgentMessage(message) => {
-                message.id == HISTORY_DETAIL_PLACEHOLDER_ITEM_ID
-                    && message.text == HISTORY_DETAIL_LOADING_TEXT
-            }
-            _ => false,
-        })
+    pub fn has_resident_payload(&self) -> bool {
+        !self.user_input_fragments.is_empty()
+            || !self.narrative_entries.is_empty()
+            || !self.items.is_empty()
+            || self.error_message.is_some()
     }
 
     pub fn user_input_fragments(&self) -> &[UserInputFragment] {
@@ -1275,25 +1179,10 @@ impl TurnExecutionRecord {
     }
 
     pub fn item_count(&self) -> usize {
-        if self.released_history_placeholder {
-            0
-        } else {
-            self.items.len()
-        }
+        self.items.len()
     }
 
     fn retained_payload_counts(&self) -> TurnPayloadRetainedCounts {
-        if self.released_history_placeholder {
-            return TurnPayloadRetainedCounts {
-                identity_bytes: self
-                    .thread_id
-                    .as_ref()
-                    .map_or(0, String::len)
-                    .saturating_add(self.turn_id.as_ref().map_or(0, String::len)),
-                ..TurnPayloadRetainedCounts::default()
-            };
-        }
-
         let mut counts = TurnPayloadRetainedCounts {
             identity_bytes: self
                 .thread_id
@@ -1333,10 +1222,6 @@ impl TurnExecutionRecord {
     }
 
     fn render_metrics(&self) -> TurnRenderMetrics {
-        if self.released_history_placeholder {
-            return TurnRenderMetrics::default();
-        }
-
         let mut text_chars = self
             .user_input_fragments
             .iter()
@@ -1387,19 +1272,14 @@ impl TurnExecutionRecord {
         thread_id: &str,
         turn: &TurnInfo,
         image_resolver: &TranscriptImagePathResolver,
-        skeleton_partial_turns: bool,
+        _partial_turns_may_be_incomplete: bool,
     ) -> Self {
-        if skeleton_partial_turns && turn.items_view != TurnItemsView::Full {
-            return Self::from_history_turn_skeleton(thread_id, turn, HISTORY_DETAIL_LOADING_TEXT);
-        }
-
         let mut record = Self {
             user_input_fragments: Vec::new(),
             narrative_entries: Vec::new(),
             thread_id: Some(thread_id.to_string()),
             turn_id: Some(turn.id.clone()),
             status: execution_status_from_turn(turn),
-            released_history_placeholder: false,
             suppress_user_input_echoes: false,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,
@@ -1421,118 +1301,22 @@ impl TurnExecutionRecord {
         record
     }
 
-    fn from_history_turn_items(
-        thread_id: &str,
-        turn_id: &str,
-        status: TurnExecutionStatus,
-        items: Vec<ThreadItem>,
-        image_resolver: &TranscriptImagePathResolver,
-    ) -> Self {
-        let mut record = Self {
-            user_input_fragments: Vec::new(),
-            narrative_entries: Vec::new(),
-            thread_id: Some(thread_id.to_string()),
-            turn_id: Some(turn_id.to_string()),
-            status,
-            released_history_placeholder: false,
-            suppress_user_input_echoes: false,
-            awaiting_user_input: false,
-            terminal_assistant_item_id: None,
-            error_message: None,
-            items: Vec::new(),
-        };
-
-        for item in items {
-            record.upsert_history_item(item, image_resolver);
-        }
-
-        record.terminal_assistant_item_id = resolve_terminal_assistant_item(&record);
-        record
-    }
-
-    fn from_history_turn_skeleton(
-        thread_id: &str,
-        turn: &TurnInfo,
-        placeholder_text: &str,
-    ) -> Self {
-        let mut record = Self {
-            user_input_fragments: Vec::new(),
-            narrative_entries: Vec::new(),
-            thread_id: Some(thread_id.to_string()),
-            turn_id: Some(turn.id.clone()),
-            status: execution_status_from_turn(turn),
-            released_history_placeholder: false,
-            suppress_user_input_echoes: false,
-            awaiting_user_input: false,
-            terminal_assistant_item_id: None,
-            error_message: turn.error.as_ref().map(|error| {
-                bounded_text(
-                    backend_turn_error_detail(Some(error)),
-                    MAX_ERROR_MESSAGE_BYTES,
-                    "turn error detail",
-                )
-            }),
-            items: Vec::new(),
-        };
-        record.set_history_detail_placeholder(placeholder_text);
-        record
-    }
-
-    fn released_history_placeholder_from(turn: &TurnExecutionRecord) -> Option<Self> {
-        if turn.released_history_placeholder {
+    fn released_history_slot_from(turn: &TurnExecutionRecord) -> Option<Self> {
+        if !turn.has_resident_payload() {
             return None;
         }
-
         Some(Self {
             user_input_fragments: Vec::new(),
             narrative_entries: Vec::new(),
             thread_id: Some(turn.thread_id.clone()?),
             turn_id: Some(turn.turn_id.clone()?),
             status: turn.status,
-            released_history_placeholder: true,
             suppress_user_input_echoes: false,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,
             error_message: None,
             items: Vec::new(),
         })
-    }
-
-    fn history_detail_placeholder_from(turn: &TurnExecutionRecord, text: &str) -> Option<Self> {
-        if turn.released_history_placeholder {
-            return None;
-        }
-
-        let mut placeholder = Self {
-            user_input_fragments: Vec::new(),
-            narrative_entries: Vec::new(),
-            thread_id: Some(turn.thread_id.clone()?),
-            turn_id: Some(turn.turn_id.clone()?),
-            status: turn.status,
-            released_history_placeholder: false,
-            suppress_user_input_echoes: false,
-            awaiting_user_input: turn.awaiting_user_input,
-            terminal_assistant_item_id: None,
-            error_message: turn.error_message.clone(),
-            items: Vec::new(),
-        };
-        placeholder.set_history_detail_placeholder(text);
-        Some(placeholder)
-    }
-
-    fn set_history_detail_placeholder(&mut self, text: &str) {
-        let item_id = HISTORY_DETAIL_PLACEHOLDER_ITEM_ID.to_string();
-        self.narrative_entries.push(TurnNarrativeEntry::Item {
-            item_id: item_id.clone(),
-        });
-        self.items
-            .push(ExecutionItem::AgentMessage(AgentMessageDetail {
-                id: item_id.clone(),
-                phase: Some(ProtocolPhase::Commentary),
-                text: text.to_string(),
-                complete: true,
-            }));
-        self.terminal_assistant_item_id = Some(item_id);
     }
 
     fn ensure_agent_message(&mut self, item_id: String) -> &mut AgentMessageDetail {

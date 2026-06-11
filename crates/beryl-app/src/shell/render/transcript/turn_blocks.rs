@@ -13,7 +13,10 @@ use super::{
     turn_item_media_units::render_item_units, turn_media_units::flush_media_run,
     turn_user_media_units::render_user_prompt_units,
 };
-use crate::shell::execution_detail::{TurnExecutionRecord, TurnNarrativeEntry};
+use crate::shell::execution_detail::TurnExecutionRecord;
+use crate::shell::transcript_presentation::{
+    TranscriptRowNarrativeUnit, TranscriptRowPresentationModel,
+};
 
 pub(super) fn render_turn_card(
     turn_index: usize,
@@ -24,6 +27,7 @@ pub(super) fn render_turn_card(
     markdown_context: TranscriptMarkdownRenderContext,
     media_context: TranscriptMediaRenderContext,
     stream_projection_context: TranscriptStreamProjectionContext,
+    row_model: Arc<TranscriptRowPresentationModel>,
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
@@ -35,18 +39,28 @@ pub(super) fn render_turn_card(
 ) -> impl IntoElement {
     let mut narrative_blocks = Vec::new();
     let mut pending_media = Vec::new();
-    for entry in turn.narrative_entries() {
-        match entry {
-            TurnNarrativeEntry::UserInput { fragment_id } => {
-                let Some((fragment_index, fragment)) = turn.user_input_fragment_by_id(*fragment_id)
-                else {
+    for unit in row_model.narrative_units() {
+        match unit {
+            TranscriptRowNarrativeUnit::UserInput {
+                fragment_id,
+                fragment_index,
+            } => {
+                let fragment = turn
+                    .user_input_fragments()
+                    .get(*fragment_index)
+                    .filter(|fragment| fragment.id == *fragment_id)
+                    .or_else(|| {
+                        turn.user_input_fragment_by_id(*fragment_id)
+                            .map(|(_, fragment)| fragment)
+                    });
+                let Some(fragment) = fragment else {
                     continue;
                 };
                 render_user_prompt_units(
                     turn_index,
                     workspace,
                     turn.as_ref(),
-                    fragment_index,
+                    *fragment_index,
                     fragment,
                     theme.as_ref(),
                     code_panel_state.clone(),
@@ -62,8 +76,16 @@ pub(super) fn render_turn_card(
                     cx,
                 );
             }
-            TurnNarrativeEntry::Item { item_id } => {
-                let Some(item) = turn.item_by_id(item_id) else {
+            TranscriptRowNarrativeUnit::Item {
+                item_id,
+                item_index,
+            } => {
+                let item = turn
+                    .items
+                    .get(*item_index)
+                    .filter(|item| item.id() == item_id)
+                    .or_else(|| turn.item_by_id(item_id));
+                let Some(item) = item else {
                     continue;
                 };
                 render_item_units(

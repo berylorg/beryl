@@ -318,6 +318,24 @@ pub(crate) mod test_support {
         inner.visible_virtual_trailing_height(bounds.size.height, &padding, &scroll_top)
     }
 
+    pub(crate) fn apply_scroll_delta_should_notify_view(
+        state: &ListState,
+        delta: Point<Pixels>,
+    ) -> Option<bool> {
+        let mut inner = state.0.borrow_mut();
+        let bounds = inner.last_layout_bounds?;
+        let scroll_top = inner.logical_scroll_top();
+        let previous_scroll_position = inner.scroll_position();
+        let previous_visible_range = inner.current_visible_range();
+        let previous_count = inner.items.summary().count;
+        let event = inner.scroll(&scroll_top, bounds.size.height, delta)?;
+        Some(
+            previous_scroll_position != inner.scroll_position()
+                || previous_visible_range != event.visible_range
+                || previous_count != event.count,
+        )
+    }
+
     pub(crate) fn invalidate_item_measurement(state: &ListState, ix: usize) {
         state.invalidate_item_measurement(ix);
     }
