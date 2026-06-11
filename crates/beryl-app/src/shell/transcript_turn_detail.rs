@@ -243,7 +243,6 @@ impl ConversationSurfaceState {
     ) -> TranscriptTurnDetailApplyCounts {
         let mut counts = TranscriptTurnDetailApplyCounts::default();
         let mut returned_turn_ids = BTreeSet::new();
-        let visible_range_before_apply = self.transcript_list_state.visible_range();
         let content_anchor_before_apply = match self.transcript_list_state.scroll_position() {
             ListScrollPosition::Content(anchor) => Some(anchor),
             ListScrollPosition::Bottom | ListScrollPosition::VirtualTail { .. } => None,
@@ -266,27 +265,28 @@ impl ConversationSurfaceState {
                         &turn_id,
                         items,
                         image_resolver,
-                    ) && let Some(row_index) = self
-                        .transcript_presentation
-                        .replace_turn(replacement.index, replacement.turn)
-                    {
+                    ) {
+                        let mutation = self.replace_transcript_presentation_turn(
+                            replacement.index,
+                            replacement.turn,
+                        );
+                        let Some(row_index) = mutation.replaced_row_index() else {
+                            continue;
+                        };
                         let preserve_loaded_row_anchor = self.transcript_user_scrolled
-                            && (visible_range_before_apply.contains(&row_index)
-                                || content_anchor_before_apply
-                                    .is_some_and(|anchor| anchor.item_ix == row_index))
+                            && content_anchor_before_apply
+                                .is_some_and(|anchor| anchor.item_ix == row_index)
                             && matches!(
                                 self.transcript_list_state.scroll_position(),
                                 ListScrollPosition::Content(_)
                             );
-                        self.transcript_list_state
-                            .invalidate_item_measurement(row_index);
                         self.reconcile_loaded_history_final_runway_for_row(Some(row_index));
                         if preserve_loaded_row_anchor {
                             self.transcript_list_state.scroll_to_position(
-                                ListScrollPosition::Content(ListOffset {
-                                    item_ix: row_index,
-                                    offset_in_item: px(0.0),
-                                }),
+                                ListScrollPosition::Content(
+                                    content_anchor_before_apply
+                                        .expect("checked anchor row before preserving detail load"),
+                                ),
                             );
                         }
                     }
@@ -321,12 +321,8 @@ impl ConversationSurfaceState {
             if let Some(replacement) = self
                 .execution_details
                 .fail_history_turn_detail(ticket.thread_id(), turn_id)
-                && let Some(row_index) = self
-                    .transcript_presentation
-                    .replace_turn(replacement.index, replacement.turn)
             {
-                self.transcript_list_state
-                    .invalidate_item_measurement(row_index);
+                self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
             }
         }
         if failed_turn_ids.is_empty() {
@@ -345,12 +341,8 @@ impl ConversationSurfaceState {
             if let Some(replacement) = self
                 .execution_details
                 .release_history_turn_detail(thread_id, turn_id)
-                && let Some(row_index) = self
-                    .transcript_presentation
-                    .replace_turn(replacement.index, replacement.turn)
             {
-                self.transcript_list_state
-                    .invalidate_item_measurement(row_index);
+                self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
             }
         }
     }
@@ -473,6 +465,7 @@ impl ShellView {
                 let ListScrollPosition::Content(anchor) = list_state.scroll_position() else {
                     return None;
                 };
+                let visible_range = list_state.visible_range();
                 if anchor.item_ix >= turn_count {
                     return None;
                 }
@@ -480,7 +473,7 @@ impl ShellView {
                 let anchor_range = anchor.item_ix..end;
                 Some((
                     anchor_range.clone(),
-                    anchor_range,
+                    visible_range,
                     TranscriptTurnDetailViewportOrder::NewestFirst,
                 ))
             })

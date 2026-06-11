@@ -166,6 +166,22 @@ impl StateInner {
             .min(self.virtual_trailing_scroll_allowance)
     }
 
+    pub(super) fn viewport_ends_in_virtual_trailing_space(&self) -> bool {
+        if matches!(
+            self.scroll_position(),
+            ListScrollPosition::VirtualTail { .. }
+        ) {
+            return true;
+        }
+
+        let Some(bounds) = self.last_layout_bounds else {
+            return false;
+        };
+        let padding = self.last_padding.unwrap_or_default();
+        let scroll_top = self.logical_scroll_top();
+        self.visible_virtual_trailing_height(bounds.size.height, &padding, &scroll_top) > px(0.0)
+    }
+
     pub(super) fn scroll_top_for_position(
         &self,
         height: Pixels,

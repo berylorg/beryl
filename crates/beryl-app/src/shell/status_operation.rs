@@ -400,13 +400,8 @@ impl ShellView {
     ) {
         let available = self
             .conversation_surface()
-            .map(|surface| {
-                surface
-                    .status_line_projection()
-                    .cancellable_active_turn
-                    .is_some()
-            })
-            .unwrap_or(false);
+            .and_then(ConversationSurfaceState::status_line_turn_operation_target)
+            .is_some();
         if !self.status_line_turn_operations_interactive(available) {
             return;
         }
@@ -637,7 +632,7 @@ impl ShellView {
 
         let target = self
             .conversation_surface()
-            .and_then(|surface| surface.status_line_projection().cancellable_active_turn);
+            .and_then(ConversationSurfaceState::status_line_turn_operation_target);
         if !self.status_line_turn_operations_interactive(target.is_some()) {
             return Err((
                 "turn_stop_unavailable",
@@ -770,7 +765,7 @@ impl ShellView {
 
         let selected_targets = self
             .conversation_surface()
-            .and_then(|surface| surface.status_line_projection().hard_stop_targets);
+            .and_then(ConversationSurfaceState::status_line_turn_hard_stop_targets);
         let hard_stop_available = selected_targets
             .as_ref()
             .is_some_and(|targets| !targets.targets.is_empty());
@@ -898,8 +893,7 @@ impl ShellView {
     ) -> bool {
         let current_target = self.conversation_surface().and_then(|surface| {
             surface
-                .status_line_projection()
-                .hard_stop_targets
+                .status_line_turn_hard_stop_targets()
                 .map(|targets| targets.selected_turn)
         });
         let now = Instant::now();
@@ -1232,7 +1226,7 @@ impl ShellView {
 
         let selected_targets = self
             .conversation_surface()
-            .and_then(|surface| surface.status_line_projection().hard_stop_targets)
+            .and_then(ConversationSurfaceState::status_line_turn_hard_stop_targets)
             .filter(|targets| targets.selected_turn == target && !targets.targets.is_empty());
         let Some(selected_targets) = selected_targets else {
             return false;
@@ -1280,7 +1274,7 @@ impl ShellView {
 
         let selected_targets = self
             .conversation_surface()
-            .and_then(|surface| surface.status_line_projection().hard_stop_targets)
+            .and_then(ConversationSurfaceState::status_line_turn_hard_stop_targets)
             .filter(|targets| !targets.targets.is_empty());
         let Some(selected_targets) = selected_targets else {
             return Err((

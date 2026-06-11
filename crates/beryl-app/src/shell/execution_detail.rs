@@ -511,6 +511,13 @@ impl ExecutionDetailState {
         })
     }
 
+    pub fn backend_turn_count_for_thread(&self, thread_id: &str) -> usize {
+        self.turns
+            .iter()
+            .filter(|turn| turn.thread_id.as_deref() == Some(thread_id) && turn.turn_id.is_some())
+            .count()
+    }
+
     pub fn last_turn_state(&self) -> LastTurnState {
         if self.working_turn_index().is_some() {
             return LastTurnState::Working;

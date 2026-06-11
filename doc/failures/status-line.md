@@ -23,3 +23,11 @@ During May 5, 2026 live testing, the Context status cell showed only `Weekly`, o
 The invalid approach was merging every `account/rateLimits/read` snapshot into one daily/weekly pair and recognizing only the 1440-minute daily window. Current app-server responses can include multiple `rateLimitsByLimitId` buckets, including a general `codex` bucket and a model-specific Spark bucket, and the short-window bucket can be 300 minutes rather than 1440.
 
 The course adjustment is to preserve `limitId` and `limitName`, select the bucket matching the active status model with `codex` as the non-Spark fallback, and render the exact short-window label such as `5h` when that is the window app-server reports.
+
+## Turn View Must Use Source Ownership, Not Row Renderability
+
+During June 10, 2026 live testing, the Turn cell's `View` segment flickered between a known current turn such as `8/10` and an unknown current turn such as `-/10` while scrolling through historical transcript rows that were loading or restoring details.
+
+The invalid approach was deriving the viewport-bottom current turn through rendered text or row renderability. Source turn ownership belongs to transcript-owned residency and index metadata, not to whether a row's full content is currently renderable. Treating temporarily unavailable historical data as unmapped status rows made passive chrome oscillate as scroll/detail retention changed.
+
+The course adjustment is for Turn View to read transcript-owned turn ownership for the viewport-bottom resident row and map that source index through exact selected-thread turn numbering when exact numbering is known. Status chrome must not require extra transcript details to be loaded, must not scan rendered text, must not expose synthetic placeholder rows, and must not start detail loads to recover a current-turn value.

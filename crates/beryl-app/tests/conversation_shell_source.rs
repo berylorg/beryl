@@ -375,7 +375,12 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     );
     assert_order(
         detail_apply_body,
-        "self.transcript_list_state\n                            .invalidate_item_measurement(row_index);",
+        "self.replace_transcript_presentation_turn(",
+        "let Some(row_index) = mutation.replaced_row_index()",
+    );
+    assert_order(
+        detail_apply_body,
+        "let Some(row_index) = mutation.replaced_row_index()",
         "self.reconcile_loaded_history_final_runway_for_row(Some(row_index));",
     );
     assert_order(
@@ -996,8 +1001,10 @@ fn transcript_prepaint_schedules_detail_loads_from_current_view() {
 #[test]
 fn transcript_scroll_schedules_detail_loads_without_waiting_for_prepaint() {
     let shell_source = include_str!("../src/shell.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
     let scroll_body = rust_function_body(shell_source, "fn apply_transcript_scroll_command");
     let scroll_event_body = rust_function_body(shell_source, "fn note_transcript_scroll_event");
+    let surface_scroll_body = rust_function_body(shell_source, "fn set_transcript_user_scrolled");
 
     assert!(scroll_body.contains("self.notify_transcript_panel(cx);"));
     assert!(!scroll_body.contains("normalize_transcript_detail_placeholder_scroll_anchor"));
@@ -1022,6 +1029,14 @@ fn transcript_scroll_schedules_detail_loads_without_waiting_for_prepaint() {
         scroll_event_body
             .contains("self.begin_transcript_turn_detail_loads_for_current_viewport(window, cx);")
     );
+    assert!(surface_scroll_body.contains("if is_scrolled {"));
+    assert!(surface_scroll_body.contains("self.release_transcript_submit_anchor()"));
+    assert!(transcript_source.contains(".on_scroll_wheel({"));
+    assert!(transcript_source.contains(
+        "view.release_transcript_submit_anchor(cx);\n                                                view.note_scrollbar_activity("
+    ) || transcript_source.contains(
+        "view.release_transcript_submit_anchor(cx);\r\n                                                view.note_scrollbar_activity("
+    ));
 }
 
 #[test]
@@ -1056,6 +1071,21 @@ fn transcript_detail_tail_scheduling_targets_latest_row_before_broad_visible_ran
 }
 
 #[test]
+fn transcript_detail_scroll_anchor_priority_retains_visible_viewport() {
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let anchor_body = rust_function_body(
+        detail_source,
+        "pub(super) fn begin_transcript_turn_detail_loads_for_scroll_anchor",
+    );
+
+    assert!(anchor_body.contains("let visible_range = list_state.visible_range();"));
+    assert!(anchor_body.contains("anchor_range.clone()"));
+    assert!(anchor_body.contains("visible_range"));
+    assert!(anchor_body.contains("anchor_range.clone(),"));
+    assert!(anchor_body.contains("visible_range,"));
+}
+
+#[test]
 fn transcript_detail_apply_preserves_user_scrolled_loaded_row_anchor() {
     let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
     let apply_body = rust_function_body(
@@ -1063,11 +1093,12 @@ fn transcript_detail_apply_preserves_user_scrolled_loaded_row_anchor() {
         "pub(super) fn finish_loading_transcript_turn_details",
     );
 
-    assert!(apply_body.contains("let visible_range_before_apply"));
     assert!(apply_body.contains("let content_anchor_before_apply"));
     assert!(apply_body.contains("let preserve_loaded_row_anchor"));
     assert!(apply_body.contains("anchor.item_ix == row_index"));
     assert!(apply_body.contains("self.transcript_list_state.scroll_to_position"));
+    assert!(!apply_body.contains("visible_range_before_apply.contains(&row_index)"));
+    assert!(apply_body.contains("ListScrollPosition::Content(anchor)"));
 }
 
 #[test]
@@ -1343,6 +1374,132 @@ fn transcript_scroll_does_not_snap_history_detail_placeholders_to_row_top() {
     assert!(!scroll_event_body.contains("has_history_detail_loading_placeholder"));
     assert!(!scroll_body.contains("TranscriptTurnDetailStatus::Missing"));
     assert!(!scroll_event_body.contains("TranscriptTurnDetailStatus::Missing"));
+}
+
+#[test]
+fn status_line_turn_view_projection_stays_render_path_free() {
+    let shell_source = include_str!("../src/shell.rs");
+    let render_source = include_str!("../src/shell/render/conversation.rs");
+    let status_operation_source = include_str!("../src/shell/status_operation.rs");
+    let status_operation_render_source = include_str!("../src/shell/render/status_operation.rs");
+    let turn_view_status_source = include_str!("../src/shell/turn_view_status.rs");
+    let turn_view_source = include_str!("../src/shell/turn_view.rs");
+    let status_projection_body =
+        rust_function_body(turn_view_status_source, "fn status_line_projection(");
+    let status_turn_view_body =
+        rust_function_body(turn_view_status_source, "fn status_line_turn_view(");
+    let turn_operation_target_body = rust_function_body(
+        turn_view_status_source,
+        "fn status_line_turn_operation_target(",
+    );
+    let hard_stop_targets_body = rust_function_body(
+        turn_view_status_source,
+        "fn status_line_hard_stop_targets_for(",
+    );
+    let render_status_line_body = rust_function_body(render_source, "fn render_status_line(");
+    let render_turn_operations_menu_body = rust_function_body(
+        status_operation_render_source,
+        "fn render_turn_operations_menu(",
+    );
+    let turn_ui_state_body = rust_function_body(shell_source, "fn turn_ui_state(");
+    let ui_state_snapshot_body = rust_function_body(shell_source, "fn ui_state_snapshot(");
+
+    assert!(status_projection_body.contains(".with_turn_view(self.status_line_turn_view())"));
+    assert!(status_projection_body.contains("self.status_line_turn_operation_target()"));
+    assert!(status_projection_body.contains("self.status_line_hard_stop_targets_for("));
+    assert!(status_turn_view_body.contains("self.transcript_turn_numbering_snapshot()"));
+    assert!(status_turn_view_body.contains("StatusLineTurnView::new("));
+    assert!(turn_ui_state_body.contains("turn_view_ui_state(projection.turn_view)"));
+    assert!(render_status_line_body.contains("status_line::status_line_cell_specs("));
+    assert!(render_status_line_body.contains("status.cancellable_active_turn.is_some()"));
+    assert!(render_turn_operations_menu_body.contains("status_line_turn_operation_target()"));
+    assert!(render_turn_operations_menu_body.contains("status_line_hard_stop_targets_for("));
+    assert!(!render_turn_operations_menu_body.contains("status_line_projection()"));
+
+    for body in [
+        status_projection_body,
+        status_turn_view_body,
+        turn_operation_target_body,
+        hard_stop_targets_body,
+        render_status_line_body,
+        render_turn_operations_menu_body,
+        turn_ui_state_body,
+        ui_state_snapshot_body,
+    ] {
+        assert!(!body.contains("backend_client_connector"));
+        assert!(!body.contains("spawn_turn_view_count_worker"));
+        assert!(!body.contains("execution_details.turns()"));
+        assert!(!body.contains("begin_loading"));
+        assert!(!body.contains("thread_turn_detail"));
+        assert!(!body.contains("thread/turns/list"));
+        assert!(!body.contains("list_thread_turns"));
+        assert!(!body.contains("begin_transcript_turn_detail"));
+        assert!(!body.contains("thread_history_page_receiver"));
+        assert!(!body.contains(".splice("));
+        assert!(!body.contains("replace_transcript_presentation"));
+        assert!(!body.contains(".replace_turn("));
+        assert!(!body.contains(".replace_turn_with_placeholder("));
+        assert!(!body.contains(".append_turn("));
+        assert!(!body.contains(".prepend_from_turns("));
+    }
+
+    for function_signature in [
+        "fn open_status_turn_operations_popup(",
+        "fn begin_soft_stop_selected_turn_from_control(",
+        "fn begin_hard_stop_hold_from_status_popup_source(",
+        "fn poll_status_operation_hold(",
+        "fn complete_hard_stop_hold_from_status_popup(",
+        "fn begin_hard_stop_selected_turn_from_control(",
+    ] {
+        let body = rust_function_body(status_operation_source, function_signature);
+        assert!(!body.contains("status_line_projection()"));
+        assert!(!body.contains("turn_view"));
+        assert!(!body.contains("transcript_turn_numbering_snapshot"));
+    }
+
+    for function_signature in [
+        "fn handle_soft_stop_turn_tool_result(",
+        "fn handle_hard_stop_turn_tool_result(",
+    ] {
+        let body = rust_function_body(shell_source, function_signature);
+        assert!(!body.contains("status_line_projection()"));
+        assert!(!body.contains("turn_view"));
+        assert!(!body.contains("transcript_turn_numbering_snapshot"));
+    }
+
+    assert!(turn_view_source.contains("viewport_ends_in_virtual_trailing_space"));
+    assert!(turn_view_source.contains("source_turn_index_at"));
+    assert!(turn_view_source.contains("selected_thread_turn_total_is_exact"));
+    assert!(turn_view_source.contains("oldest_source_position_known"));
+    assert!(turn_view_source.contains("backend_turn_count_for_thread"));
+    assert!(!turn_view_source.contains("StatusLineTurnView"));
+    assert!(!turn_view_source.contains("turn_at(viewport_bottom_row_index)"));
+    assert!(!turn_view_source.contains("backend_client_connector"));
+    assert!(!turn_view_source.contains("begin_loading"));
+    assert!(!turn_view_source.contains("execution_details.turns()"));
+    assert!(shell_source.contains("mod turn_view_status;"));
+    assert!(!shell_source.contains("mod turn_view_numbering;"));
+    assert!(!shell_source.contains("mod turn_view_count;"));
+    assert!(!shell_source.contains("turn_numbering_state"));
+    assert!(!shell_source.contains("reset_turn_numbering"));
+    assert!(!shell_source.contains("observe_selected_history_loaded_for_turn_numbering"));
+    assert!(!shell_source.contains("observe_selected_live_turn_started_for_numbering"));
+    assert!(!shell_source.contains("turn_view_count_receiver"));
+    assert!(!shell_source.contains("poll_turn_view_count_updates"));
+    assert!(!shell_source.contains("begin_selected_thread_turn_count_if_needed"));
+
+    for source in [turn_view_status_source, turn_view_source] {
+        assert!(!source.contains("ManagedBackendClientConnector"));
+        assert!(!source.contains("ThreadTurnsListOptions"));
+        assert!(!source.contains("TurnItemsView"));
+        assert!(!source.contains("list_thread_turns"));
+        assert!(!source.contains("thread/turns/list"));
+        assert!(!source.contains("spawn_turn_view_count_worker"));
+        assert!(!source.contains("thread::spawn"));
+        assert!(!source.contains("mpsc"));
+        assert!(!source.contains("backend_client_connector"));
+        assert!(!source.contains("transcript_turn_detail_task"));
+    }
 }
 
 #[test]
@@ -1958,6 +2115,7 @@ fn phase28_shell_splits_final_review_blocks_into_focused_modules() {
         "mod dynamic_theme_worker;",
         "mod dynamic_settings;",
         "mod diagnostics;",
+        "mod turn_view_status;",
     ] {
         assert!(shell_source.contains(module), "missing {module}");
     }
@@ -2285,7 +2443,8 @@ fn transcript_detail_ui_pins_are_production_retention_only_hooks() {
     let cache_source = include_str!("../src/shell/transcript_history/detail_cache.rs");
     let branch_menu_source = include_str!("../src/shell/transcript_branch_menu.rs");
     let edit_mode_source = include_str!("../src/shell/transcript_edit_mode.rs");
-    let transcript_live_rows_source = include_str!("../src/shell/transcript_live_rows.rs");
+    let presentation_reconcile_source =
+        include_str!("../src/shell/transcript_presentation_reconcile.rs");
 
     let sync_body = rust_function_body(
         detail_source,
@@ -2351,15 +2510,68 @@ fn transcript_detail_ui_pins_are_production_retention_only_hooks() {
     assert!(cancel_edit_body.contains("sync_transcript_turn_detail_ui_pins"));
     assert!(reconcile_edit_body.contains("sync_transcript_turn_detail_ui_pins"));
 
-    let live_sync_body = rust_function_body(
-        transcript_live_rows_source,
-        "pub(super) fn sync_live_transcript_rows",
+    let reconcile_body = rust_function_body(
+        presentation_reconcile_source,
+        "pub(super) fn reconcile_transcript_presentation_mutation",
     );
+    assert!(presentation_reconcile_source.contains("replace_transcript_presentation_turn("));
+    assert!(
+        presentation_reconcile_source
+            .contains("replace_transcript_presentation_turn_with_placeholder(")
+    );
+    assert!(reconcile_body.contains("invalidate_item_measurement(index)"));
+    assert!(reconcile_body.contains("self.transcript_list_state.splice(start..start, count)"));
+    assert!(reconcile_body.contains("self.transcript_list_state.splice(start..end, 0)"));
+    assert!(reconcile_body.contains("reconcile_transcript_branch_menu_target"));
+    assert!(reconcile_body.contains("reconcile_transcript_edit_mode"));
     assert_order(
-        live_sync_body,
-        "sync_live_transcript_rows(",
-        "sync_transcript_turn_detail_ui_pins",
+        reconcile_body,
+        "self.transcript_list_state.splice(start..end, 0)",
+        "reconcile_transcript_branch_menu_target",
     );
+}
+
+#[test]
+fn transcript_presentation_row_mutations_are_reconciled_at_shell_boundary() {
+    let shell_source = include_str!("../src/shell.rs");
+    let detail_source = include_str!("../src/shell/transcript_turn_detail.rs");
+    let reconcile_source = include_str!("../src/shell/transcript_presentation_reconcile.rs");
+
+    assert!(shell_source.contains("mod transcript_presentation_reconcile;"));
+    assert!(!shell_source.contains("mod transcript_live_rows;"));
+    assert!(
+        !shell_source.contains(".transcript_presentation\n                        .replace_turn(")
+    );
+    assert!(!shell_source.contains(".transcript_presentation\n                    .replace_turn("));
+    assert!(!shell_source.contains(".transcript_presentation.replace_turn("));
+    assert!(
+        !shell_source.contains(
+            ".transcript_presentation\n                    .replace_turn_with_placeholder("
+        )
+    );
+    assert!(
+        !detail_source.contains(".transcript_presentation\n                        .replace_turn(")
+    );
+    assert!(!detail_source.contains(".transcript_presentation.replace_turn("));
+
+    for helper in [
+        "prepend_transcript_presentation_rows",
+        "append_transcript_presentation_turn",
+        "replace_transcript_presentation_turn",
+        "replace_transcript_presentation_turn_with_placeholder",
+        "reconcile_transcript_presentation_mutation",
+    ] {
+        assert!(
+            reconcile_source.contains(helper),
+            "missing reconciliation helper {helper}"
+        );
+    }
+    assert!(reconcile_source.contains(".prepend_from_turns(turns)"));
+    assert!(reconcile_source.contains(".append_turn(source_turn_index, turn)"));
+    assert!(reconcile_source.contains(".replace_turn(source_turn_index, turn)"));
+    assert!(reconcile_source.contains(".replace_turn_with_placeholder("));
+    assert!(reconcile_source.contains("TranscriptPresentationMutation::Inserted"));
+    assert!(reconcile_source.contains("TranscriptPresentationMutation::Removed"));
 }
 
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {

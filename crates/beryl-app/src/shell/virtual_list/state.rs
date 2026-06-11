@@ -205,6 +205,11 @@ impl ListState {
         self.0.borrow().virtual_trailing_scroll_allowance
     }
 
+    /// Whether the viewport's bottom edge is inside trailing virtual scroll space.
+    pub fn viewport_ends_in_virtual_trailing_space(&self) -> bool {
+        self.0.borrow().viewport_ends_in_virtual_trailing_space()
+    }
+
     /// Scroll the list by the given offset
     pub fn scroll_by(&self, distance: Pixels) {
         if distance == px(0.) {
@@ -212,13 +217,16 @@ impl ListState {
         }
 
         let state = &mut *self.0.borrow_mut();
-        let current_offset = state.logical_scroll_top();
-        let start_pixel_offset = state.scroll_top(&current_offset);
+        let bounds = state.last_layout_bounds;
+        let padding = state.last_padding.unwrap_or_default();
+        let start_pixel_offset = bounds
+            .map(|bounds| state.scroll_top_for_position(bounds.size.height, &padding))
+            .unwrap_or_else(|| {
+                let current_offset = state.logical_scroll_top();
+                state.scroll_top(&current_offset)
+            });
         let new_pixel_offset = (start_pixel_offset + distance).max(px(0.));
-        if state.virtual_trailing_scroll_allowance > px(0.)
-            && let Some(bounds) = state.last_layout_bounds
-        {
-            let padding = state.last_padding.unwrap_or_default();
+        if let Some(bounds) = bounds {
             state.set_scroll_position_from_scroll_top(
                 new_pixel_offset.min(state.effective_scroll_max(bounds.size.height, &padding)),
                 bounds.size.height,

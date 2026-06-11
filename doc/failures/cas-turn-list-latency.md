@@ -48,9 +48,9 @@ The invalid assumption was that bounded retention implies bounded request work. 
 
 Course adjustment:
 
-- Keep request priority and retention as separate scheduler inputs.
-- Use priority-only scheduling for transcript viewport detail requests.
-- Retain visible-plus-overscan rows separately, but do not request retained overscan rows merely because they are retained.
-- Let explicit scroll anchors create the next request when the operator actually scrolls to unloaded history.
+- The old priority-only detail scheduler is superseded by transcript residency policy.
+- Keep request priority, retention, scroll-boundary extension, byte budgets, turn budgets, and in-flight limits as explicit policy inputs.
+- Do not request retained margin rows merely because they are within the desired resident runway; policy budgets and current user intent still control admission.
+- When the operator scrolls beyond the resident boundary, clamp at the resident edge and let the transcript residency controller create the next policy-allowed request before extending scrollable content.
 
 The remaining CAS 0.137 cost is prefix-page detail loading. A jump to the oldest row in the same thread requested `limit = 63` and CAS returned 63 full turns, while Beryl applied and retained only one visible row. That preserves Beryl memory bounds but cannot avoid CAS response work until the app-server exposes a true per-turn detail API.

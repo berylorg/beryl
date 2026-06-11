@@ -2418,6 +2418,7 @@ impl Render for TranscriptPanel {
                                         let shell = shell.clone();
                                         move |_, window, cx| {
                                             shell.update(cx, |view, cx| {
+                                                view.release_transcript_submit_anchor(cx);
                                                 view.note_scrollbar_activity(
                                                     ScrollbarRegion::Transcript,
                                                     window,

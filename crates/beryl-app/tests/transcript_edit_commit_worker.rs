@@ -307,6 +307,7 @@ mod shell {
             let turn = self.details.turns()[turn_index].clone();
             self.presentation
                 .replace_turn(turn_index, turn)
+                .row_index()
                 .expect("failed replacement prompt should stay visible");
         }
 

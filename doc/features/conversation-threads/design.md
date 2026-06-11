@@ -37,7 +37,7 @@ Let users create, resume, branch, edit, title, navigate between, and select back
 - Title-generation cleanup requests app-server lifecycle cleanup for each maintenance thread after the attempt completes or fails.
 - Beryl must not use a prompt-prefix heuristic as an automatic title.
 - `Update thread title` is an explicit user-initiated auto-titling action exposed from the transcript turn context menu for the active selected thread.
-- On-demand title updates may target Beryl-created or externally created registered threads when Beryl can prove the clicked loaded parent turn belongs to the selected backend thread and can reconstruct non-empty ordered user input fragments for that turn.
+- On-demand title updates may target Beryl-created or externally created registered threads when Beryl can prove the clicked resident parent turn belongs to the selected backend thread and can reconstruct non-empty ordered user input fragments for that turn.
 - On-demand title updates use the clicked parent turn's ordered user input fragments as the title seed. If the click lands on assistant narrative inside a parent turn, the seed still comes from that parent turn's user input. V1 does not summarize full-thread history or assistant output for this action.
 - On-demand title updates run asynchronously on a background backend client connection using the same fresh ephemeral maintenance-thread pattern, fixed Beryl title-generation instructions, explicit medium reasoning, developer-instructions isolation, cleanup behavior, generated-title acceptance rules, and `thread/name/set` publication path as automatic title generation.
 - On-demand title updates bypass automatic title-generation eligibility and existing backend-title checks because they represent explicit user intent. A backend title that already exists may be replaced by the newly accepted generated title.
@@ -70,7 +70,7 @@ Let users create, resume, branch, edit, title, navigate between, and select back
 - Thread row ordering uses newest backend update time in the row's visible branch subtree so recently active forks keep their root branch near recent work.
 - Opening the selector preselects the active thread row when it appears in the latest snapshot.
 - Single-click selects rows and may open child columns. Double-clicking a thread row or pressing `Enter` activates that exact thread. `Escape` closes without changing selection.
-- After activation is accepted, the selector closes without changing the active title selector to a transient pending label. The active title selector, breadcrumbs, and transcript region keep rendering the previous coherent selected-thread state until the new selected thread history is loaded and applied.
+- After activation is accepted, the selector closes without changing the active title selector to a transient pending label. The active title selector, breadcrumbs, and transcript region keep rendering the previous coherent selected-thread state until the new selected thread's resident history is prepared and applied.
 - Successful selected-thread activation applies the active title selector, breadcrumbs, transcript rows, and the transcript's initial viewport state together. The activation path must not rely on renderer/prepaint/deferred work to revise transcript scroll position after the newly activated thread first becomes visible.
 - Snapshot reconciliation preserves closed selector state and next-open projections by member and thread identity, pruning invalid fork columns without substituting another selected thread.
 

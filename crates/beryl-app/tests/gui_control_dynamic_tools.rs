@@ -20,8 +20,8 @@ use gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CLOSE_POPUPS_TOOL,
     ClosePopupsResult, GuiControlToolRequest, PopupUiState, READ_UI_STATE_TOOL,
     SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON, SWITCH_THREAD_TOOL,
-    SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState, UiStateSnapshot,
-    close_popups_tool_response, parse_beryl_gui_control_dynamic_tool_request,
+    SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState, TurnViewUiState,
+    UiStateSnapshot, close_popups_tool_response, parse_beryl_gui_control_dynamic_tool_request,
     ui_state_tool_response,
 };
 use serde_json::{Value, json};
@@ -195,6 +195,41 @@ fn ui_state_response_reports_backend_unavailable_reason() {
         payload["result"]["backendUnavailable"]["runtimeTarget"]["canonicalPath"],
         r"C:\Users\operator"
     );
+}
+
+#[test]
+fn ui_state_response_reports_status_line_turn_view() {
+    let request = tool_request(READ_UI_STATE_TOOL, json!({ "limit": 1 }));
+    let response = ui_state_tool_response(
+        &request,
+        UiStateSnapshot {
+            shell_state: "ready".to_string(),
+            selected_surface: "conversation".to_string(),
+            selected_workspace_id: Some("untitled-1".to_string()),
+            selected_thread_id: Some("thread_1".to_string()),
+            selected_runtime_target: None,
+            backend_unavailable: None,
+            turn_state: gui_control_dynamic_tools::TurnUiState {
+                selected_thread_state: "idle".to_string(),
+                last_turn_state: "ok".to_string(),
+                view: TurnViewUiState {
+                    current: Some(2),
+                    total: Some(5),
+                },
+                ..gui_control_dynamic_tools::TurnUiState::default()
+            },
+            transcript: TranscriptUiState::default(),
+            visible_media: VisibleMediaSnapshot::default(),
+            activity_panel: ActivityPanelUiState::default(),
+            popups: PopupUiState::default(),
+            background_work: BackgroundWorkUiState::default(),
+        },
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["turnState"]["view"]["current"], 2);
+    assert_eq!(payload["result"]["turnState"]["view"]["total"], 5);
 }
 
 fn tool_request(tool: &str, arguments: Value) -> DynamicToolCallRequest {

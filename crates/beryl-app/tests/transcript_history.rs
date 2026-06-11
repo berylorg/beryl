@@ -6,6 +6,50 @@ use beryl_backend::{
     AgentMessageItem, ImageGenerationItem, ProtocolPhase, ThreadItem, ThreadTurnsListOptions,
     ThreadTurnsListResponse, TurnInfo, TurnItemsView, TurnStatus, UserInput, UserMessageItem,
 };
+use gpui::px;
+
+mod diagnostic_dynamic_tools {
+    use std::time::Duration;
+
+    #[derive(Clone, Debug, Default)]
+    pub(crate) struct TranscriptDetailLoadEvent {
+        pub(crate) sequence: u64,
+        pub(crate) cursor_present: bool,
+        pub(crate) requested_limit: Option<u32>,
+        pub(crate) returned_turn_count: usize,
+        pub(crate) applied_turn_count: usize,
+        pub(crate) skipped_stale_count: usize,
+        pub(crate) total_micros: u64,
+        pub(crate) cas_micros: u64,
+        pub(crate) response_processing_micros: u64,
+        pub(crate) image_source_resolution_micros: u64,
+        pub(crate) cache_application_micros: u64,
+        pub(crate) outcome: String,
+    }
+
+    impl TranscriptDetailLoadEvent {
+        pub(crate) fn mark_stale(&mut self, stale_count: usize) {
+            self.skipped_stale_count = stale_count;
+            self.outcome = "stale".to_string();
+        }
+    }
+
+    pub(crate) fn diagnostic_duration_micros(duration: Duration) -> u64 {
+        duration.as_micros().try_into().unwrap_or(u64::MAX)
+    }
+}
+
+#[path = "../src/shell/transcript_markdown.rs"]
+mod transcript_markdown;
+
+#[path = "../src/shell/transcript_anchor.rs"]
+mod transcript_anchor;
+
+#[path = "../src/shell/transcript_live_scroll.rs"]
+mod transcript_live_scroll;
+
+#[path = "../src/shell/virtual_list/mod.rs"]
+mod virtual_list;
 
 mod shell {
     use std::ops::Range;
@@ -14,11 +58,49 @@ mod shell {
     mod execution_detail;
     #[path = "../../src/shell/transcript_history.rs"]
     pub(super) mod transcript_history;
+    #[path = "../../src/shell/transcript_presentation.rs"]
+    mod transcript_presentation;
+    #[path = "../../src/shell/transcript_projection.rs"]
+    mod transcript_projection;
+    #[allow(dead_code)]
+    #[path = "../../src/shell/virtual_list/mod.rs"]
+    mod virtual_list;
 
-    use beryl_backend::TurnInfo;
+    use std::sync::mpsc::TryRecvError;
+    use std::time::Duration;
+
+    use beryl_backend::{ThreadInfo, ThreadItem, TurnInfo};
+    use beryl_model::workspace::{BerylWorkspaceId, RuntimeMode, WorkspaceId};
+    use gpui::{Context, Pixels, Window, px};
+
+    use self::execution_detail::TranscriptImagePathResolver;
+    use self::transcript_history::{
+        TranscriptTurnDetailApplyResult, TranscriptTurnDetailCache, TranscriptTurnDetailLoadTicket,
+        TranscriptTurnDetailPinKind, TranscriptTurnDetailReleaseCounts,
+        TranscriptTurnDetailRetention, TranscriptTurnDetailSchedule,
+        TranscriptTurnDetailViewportOrder, TranscriptTurnDetailViewportPlan,
+    };
+    use self::transcript_presentation::TranscriptPresentationState;
+    pub(super) use self::virtual_list::{
+        ListAlignment, ListContentAnchorResizePolicy, ListOffset, ListScrollPosition, ListState,
+        test_support,
+    };
+    use crate::diagnostic_dynamic_tools::TranscriptDetailLoadEvent;
+
+    const SHELL_WORKER_POLL_MAX_EVENTS_PER_FRAME: usize = 8;
+    const SHELL_WORKER_POLL_MAX_FRAME_TIME: Duration = Duration::from_millis(8);
+
+    #[path = "../../src/shell/transcript_presentation_reconcile.rs"]
+    mod transcript_presentation_reconcile;
+    #[path = "../../src/shell/transcript_turn_detail.rs"]
+    mod transcript_turn_detail;
 
     pub(super) struct DetailHarness {
         state: execution_detail::ExecutionDetailState,
+    }
+
+    pub(super) struct SurfaceDetailHarness {
+        surface: ConversationSurfaceState,
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -173,10 +255,469 @@ mod shell {
                 .as_str()
         }
     }
+
+    impl SurfaceDetailHarness {
+        pub(super) fn active_thread_from_history(turns: Vec<TurnInfo>) -> Self {
+            let turns = turns
+                .into_iter()
+                .map(|turn| {
+                    serde_json::json!({
+                        "id": turn.id,
+                        "status": turn_status_wire(turn.status),
+                        "itemsView": turn_items_view_wire(turn.items_view),
+                        "items": [],
+                        "error": turn.error
+                    })
+                })
+                .collect::<Vec<_>>();
+            let thread = serde_json::from_value(serde_json::json!({
+                "createdAt": 1,
+                "cwd": ".",
+                "ephemeral": false,
+                "id": "thread_a",
+                "modelProvider": "test",
+                "preview": "",
+                "status": { "type": "active", "activeFlags": [] },
+                "turns": turns,
+                "updatedAt": 1
+            }))
+            .expect("test thread should deserialize through backend shape");
+            Self {
+                surface: ConversationSurfaceState::from_thread(thread),
+            }
+        }
+
+        pub(super) fn measure_rows(&mut self, row_height: Pixels, viewport_height: Pixels) {
+            let heights = vec![row_height; self.surface.transcript_presentation.len()];
+            test_support::set_measured_item_heights(&self.surface.transcript_list_state, &heights);
+            test_support::set_viewport_height(&self.surface.transcript_list_state, viewport_height);
+        }
+
+        pub(super) fn scroll_by(&mut self, distance: Pixels) {
+            self.surface.transcript_list_state.scroll_by(distance);
+            self.surface.set_transcript_user_scrolled(true);
+            self.surface
+                .transcript_list_state
+                .set_content_anchor_resize_policy(
+                    ListContentAnchorResizePolicy::PreserveAnchorOffset,
+                );
+        }
+
+        pub(super) fn anchor(&self) -> ListOffset {
+            match self.surface.transcript_list_state.scroll_position() {
+                ListScrollPosition::Content(anchor) => anchor,
+                position => panic!("expected content scroll position, got {position:?}"),
+            }
+        }
+
+        pub(super) fn visible_range(&self) -> std::ops::Range<usize> {
+            self.surface.transcript_list_state.visible_range()
+        }
+
+        pub(super) fn row_is_dirty(&self, row_index: usize) -> bool {
+            test_support::item_measurement_is_dirty(&self.surface.transcript_list_state, row_index)
+        }
+
+        pub(super) fn detail_status(
+            &self,
+            turn_id: &str,
+        ) -> transcript_history::TranscriptTurnDetailStatus {
+            self.surface.transcript_turn_detail_cache.status(turn_id)
+        }
+
+        pub(super) fn apply_detail(
+            &mut self,
+            turn_id: &str,
+            items: Vec<ThreadItem>,
+        ) -> (usize, usize) {
+            let ticket = self.begin_detail_loading(turn_id);
+            let counts = self.surface.finish_loading_transcript_turn_details(
+                &ticket,
+                vec![TurnInfo {
+                    id: turn_id.to_string(),
+                    status: beryl_backend::TurnStatus::Completed,
+                    items_view: beryl_backend::TurnItemsView::Full,
+                    items,
+                    error: None,
+                }],
+                &execution_detail::TranscriptImagePathResolver::default(),
+            );
+            (counts.applied, counts.stale)
+        }
+
+        pub(super) fn fail_detail(&mut self, turn_id: &str) -> TranscriptTurnDetailApplyResult {
+            let ticket = self.begin_detail_loading(turn_id);
+            self.surface.fail_loading_transcript_turn_details(&ticket)
+        }
+
+        pub(super) fn schedule_for_manual_viewport(
+            &mut self,
+        ) -> Option<TranscriptTurnDetailSchedule> {
+            let anchor = self.anchor();
+            self.surface.schedule_transcript_turn_details_for_viewport(
+                anchor.item_ix..anchor.item_ix.saturating_add(1),
+                self.visible_range(),
+                TranscriptTurnDetailViewportOrder::NewestFirst,
+                1,
+            )
+        }
+
+        pub(super) fn apply_anchor_height_change(
+            &mut self,
+            row_index: usize,
+            new_height: Pixels,
+        ) -> Option<ListOffset> {
+            test_support::apply_item_height_change_to_content_anchor(
+                &self.surface.transcript_list_state,
+                row_index,
+                new_height,
+            )
+        }
+
+        fn begin_detail_loading(&mut self, turn_id: &str) -> TranscriptTurnDetailLoadTicket {
+            self.surface
+                .transcript_turn_detail_cache
+                .begin_loading("thread_a", turn_id)
+                .expect("detail load should start for selected thread")
+                .ticket()
+                .expect("detail load should have a ticket")
+                .clone()
+        }
+    }
+
+    struct ConversationSurfaceState {
+        selected_thread_id: String,
+        execution_details: execution_detail::ExecutionDetailState,
+        transcript_presentation: TranscriptPresentationState,
+        transcript_list_state: ListState,
+        transcript_history_window: transcript_history::TranscriptHistoryWindow,
+        transcript_turn_detail_cache: TranscriptTurnDetailCache,
+        transcript_turn_detail_scheduler_diagnostics:
+            transcript_turn_detail::TranscriptTurnDetailSchedulerDiagnostics,
+        transcript_user_scrolled: bool,
+        composer_image_labels: ComposerImageLabelState,
+        transcript_branch_menu: TranscriptBranchMenuState,
+        transcript_edit_mode: Option<TranscriptEditModeState>,
+    }
+
+    impl ConversationSurfaceState {
+        fn from_thread(thread: ThreadInfo) -> Self {
+            let mut execution_details = execution_detail::ExecutionDetailState::default();
+            execution_details.load_thread_history_with_image_resolver_and_partial_mode(
+                &thread,
+                &execution_detail::TranscriptImagePathResolver::default(),
+                true,
+            );
+            let mut transcript_presentation = TranscriptPresentationState::default();
+            transcript_presentation.replace_from_turns(execution_details.turns());
+            let transcript_history_window =
+                transcript_history::TranscriptHistoryWindow::from_latest_page(
+                    &transcript_history::LoadedTranscriptHistoryPage {
+                        turns: thread.turns.clone(),
+                        older_cursor: None,
+                        newer_cursor: None,
+                    },
+                );
+            let mut transcript_turn_detail_cache = TranscriptTurnDetailCache::default();
+            transcript_turn_detail_cache.reset_for_thread(&thread.summary().id);
+            transcript_turn_detail_cache.insert_skeletons_from_history_page(&thread.turns, None);
+            let item_count = transcript_presentation.len();
+            Self {
+                selected_thread_id: thread.summary().id.clone(),
+                execution_details,
+                transcript_presentation,
+                transcript_list_state: ListState::new(item_count, ListAlignment::Bottom, px(320.0)),
+                transcript_history_window,
+                transcript_turn_detail_cache,
+                transcript_turn_detail_scheduler_diagnostics: Default::default(),
+                transcript_user_scrolled: false,
+                composer_image_labels: ComposerImageLabelState,
+                transcript_branch_menu: TranscriptBranchMenuState,
+                transcript_edit_mode: None,
+            }
+        }
+
+        fn selected_thread_id(&self) -> Option<&str> {
+            Some(self.selected_thread_id.as_str())
+        }
+
+        fn transcript_presentation(&self) -> &TranscriptPresentationState {
+            &self.transcript_presentation
+        }
+
+        fn transcript_list_state(&self) -> ListState {
+            self.transcript_list_state.clone()
+        }
+
+        fn set_transcript_user_scrolled(&mut self, is_scrolled: bool) -> bool {
+            let changed = self.transcript_user_scrolled != is_scrolled;
+            self.transcript_user_scrolled = is_scrolled;
+            changed
+        }
+
+        fn reconcile_loaded_history_final_runway_for_row(&mut self, _row_index: Option<usize>) {}
+
+        fn shift_transcript_anchor(&mut self, _amount: usize) {}
+
+        fn reconcile_transcript_branch_menu_target(&mut self) {}
+
+        fn reconcile_transcript_edit_mode(&mut self) {}
+    }
+
+    struct ComposerImageLabelState;
+
+    impl ComposerImageLabelState {
+        fn observe_thread_items(&mut self, _thread_id: &str, _items: &[ThreadItem]) {}
+    }
+
+    struct TranscriptBranchMenuState;
+
+    impl TranscriptBranchMenuState {
+        fn active(&self) -> Option<TranscriptBranchMenuOpen> {
+            None
+        }
+    }
+
+    struct TranscriptBranchMenuOpen;
+    struct TranscriptBranchTarget;
+    struct TranscriptBranchEntry;
+    struct TranscriptTargetIdentity;
+    struct TranscriptImageTarget;
+    struct TranscriptEditModeState;
+
+    impl TranscriptBranchMenuOpen {
+        fn branch_target(&self) -> Option<TranscriptBranchTarget> {
+            None
+        }
+
+        fn edit_entry(&self) -> Option<TranscriptBranchEntry> {
+            None
+        }
+
+        fn title_update_entry(&self) -> Option<TranscriptBranchEntry> {
+            None
+        }
+
+        fn image_target(&self) -> Option<TranscriptImageTarget> {
+            None
+        }
+    }
+
+    impl TranscriptBranchTarget {
+        fn source_turn_id(&self) -> &str {
+            ""
+        }
+    }
+
+    impl TranscriptBranchEntry {
+        fn target_identity(&self) -> Option<TranscriptTargetIdentity> {
+            None
+        }
+    }
+
+    impl TranscriptTargetIdentity {
+        fn source_turn_id(&self) -> &str {
+            ""
+        }
+    }
+
+    impl TranscriptImageTarget {
+        fn row_identity(&self) -> &str {
+            ""
+        }
+    }
+
+    impl TranscriptEditModeState {
+        fn target(&self) -> TranscriptTargetIdentity {
+            TranscriptTargetIdentity
+        }
+    }
+
+    struct ShellView {
+        state: ShellState,
+        transcript_turn_detail_task: Option<TranscriptTurnDetailTask>,
+        transcript_detail_load_diagnostics: TranscriptDetailLoadDiagnostics,
+        bootstrap: Bootstrap,
+    }
+
+    enum ShellState {
+        Ready(ReadyState),
+        Other,
+    }
+
+    struct ReadyState {
+        loaded_workspace: LoadedWorkspaceState,
+        execution_target: WorkspaceId,
+        surface: ConversationSurfaceState,
+    }
+
+    struct LoadedWorkspaceState {
+        workspace: WorkspaceManifest,
+    }
+
+    struct WorkspaceManifest {
+        id: BerylWorkspaceId,
+    }
+
+    impl WorkspaceManifest {
+        fn id(&self) -> &BerylWorkspaceId {
+            &self.id
+        }
+    }
+
+    #[derive(Clone)]
+    struct BackendClientConnector;
+
+    #[derive(Clone)]
+    struct WorkspacePersistence;
+
+    struct Bootstrap;
+
+    impl Bootstrap {
+        fn probe_timeout(&self) -> Duration {
+            Duration::from_secs(1)
+        }
+    }
+
+    impl ShellView {
+        fn conversation_surface(&self) -> Option<&ConversationSurfaceState> {
+            match &self.state {
+                ShellState::Ready(ready) => Some(&ready.surface),
+                ShellState::Other => None,
+            }
+        }
+
+        fn conversation_surface_mut(&mut self) -> Option<&mut ConversationSurfaceState> {
+            match &mut self.state {
+                ShellState::Ready(ready) => Some(&mut ready.surface),
+                ShellState::Other => None,
+            }
+        }
+
+        fn backend_client_connector(&self) -> Option<BackendClientConnector> {
+            None
+        }
+
+        fn workspace_persistence_for_worker(&self) -> Option<WorkspacePersistence> {
+            None
+        }
+
+        fn schedule_poll_if_needed(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {}
+
+        fn finish_transcript_turn_detail_worker(&mut self, _outcome: TranscriptTurnDetailOutcome) {}
+    }
+
+    struct TranscriptDetailLoadDiagnostics;
+
+    impl TranscriptDetailLoadDiagnostics {
+        fn record(&mut self, _event: TranscriptDetailLoadEvent) {}
+    }
+
+    struct SurfaceNotice;
+
+    impl SurfaceNotice {
+        fn new(_title: impl Into<String>, _message: impl Into<String>) -> Self {
+            Self
+        }
+    }
+
+    impl ConversationSurfaceState {
+        fn set_notice(&mut self, _notice: SurfaceNotice) {}
+    }
+
+    struct TranscriptTurnDetailTask;
+
+    impl TranscriptTurnDetailTask {
+        fn pop_pending_ticket(&mut self) -> Option<TranscriptTurnDetailLoadTicket> {
+            None
+        }
+
+        fn start_ticket(&mut self, _ticket: TranscriptTurnDetailLoadTicket) -> bool {
+            false
+        }
+
+        fn has_active_tickets(&self) -> bool {
+            false
+        }
+
+        fn try_recv(&self) -> Result<TranscriptTurnDetailUpdate, TryRecvError> {
+            Err(TryRecvError::Empty)
+        }
+
+        fn take_active_tickets(&mut self) -> Vec<TranscriptTurnDetailLoadTicket> {
+            Vec::new()
+        }
+
+        fn finish_ticket(&mut self, _ticket: &TranscriptTurnDetailLoadTicket) {}
+
+        fn resolve_images_for_loaded_turns(
+            &mut self,
+            _ticket: &TranscriptTurnDetailLoadTicket,
+            _turns: Vec<TurnInfo>,
+            _diagnostics: TranscriptDetailLoadEvent,
+        ) -> bool {
+            false
+        }
+
+        fn request(&mut self, _ticket: TranscriptTurnDetailLoadTicket) -> bool {
+            false
+        }
+    }
+
+    enum TranscriptTurnDetailUpdate {
+        DetailsLoaded {
+            ticket: TranscriptTurnDetailLoadTicket,
+            turns: Vec<TurnInfo>,
+            diagnostics: TranscriptDetailLoadEvent,
+        },
+        Finished(TranscriptTurnDetailOutcome),
+    }
+
+    enum TranscriptTurnDetailOutcome {
+        Loaded {
+            ticket: TranscriptTurnDetailLoadTicket,
+            turns: Vec<TurnInfo>,
+            image_resolver: execution_detail::TranscriptImagePathResolver,
+            diagnostics: TranscriptDetailLoadEvent,
+        },
+        Failed {
+            ticket: TranscriptTurnDetailLoadTicket,
+            message: String,
+            diagnostics: TranscriptDetailLoadEvent,
+        },
+    }
+
+    fn spawn_transcript_turn_detail_worker(
+        _persistence: WorkspacePersistence,
+        _connector: BackendClientConnector,
+        _workspace_id: BerylWorkspaceId,
+        _runtime_mode: RuntimeMode,
+        _probe_timeout: Duration,
+    ) -> TranscriptTurnDetailTask {
+        TranscriptTurnDetailTask
+    }
+
+    fn turn_status_wire(status: beryl_backend::TurnStatus) -> &'static str {
+        match status {
+            beryl_backend::TurnStatus::Completed => "completed",
+            beryl_backend::TurnStatus::Interrupted => "interrupted",
+            beryl_backend::TurnStatus::Failed => "failed",
+            beryl_backend::TurnStatus::InProgress => "inProgress",
+        }
+    }
+
+    fn turn_items_view_wire(items_view: beryl_backend::TurnItemsView) -> &'static str {
+        match items_view {
+            beryl_backend::TurnItemsView::NotLoaded => "notLoaded",
+            beryl_backend::TurnItemsView::Summary => "summary",
+            beryl_backend::TurnItemsView::Full => "full",
+        }
+    }
 }
 
 use shell::DetailHarness;
 use shell::GeneratedImageSnapshot;
+use shell::SurfaceDetailHarness;
 use shell::transcript_history::{
     THREAD_HISTORY_PAGE_LIMIT, TRANSCRIPT_HISTORY_MAX_RELEASED_PAGES, TranscriptHistoryBackend,
     TranscriptHistoryPageRequest, TranscriptHistoryWindow, TranscriptTurnDetailApplyResult,
@@ -187,6 +728,9 @@ use shell::transcript_history::{
     load_older_thread_history_page, load_thread_turn_detail_from_history_page,
     loaded_page_from_desc_response, older_thread_history_page_options, thread_history_page_options,
 };
+use transcript_anchor::TranscriptSubmitAnchor;
+use transcript_live_scroll::TranscriptLiveScrollState;
+use virtual_list::{ListAlignment, ListScrollPosition, ListState, test_support};
 
 #[test]
 fn initial_tail_page_is_normalized_to_chronological_turns() {
@@ -374,6 +918,8 @@ fn history_window_releases_cold_pages_and_requests_released_page_by_cursor() {
     });
     window.finish_loading_older_with_added(&oldest_page, oldest_page.turns.len());
     assert_eq!(window.resident_page_count(), 3);
+    assert!(window.current_tail_known());
+    assert!(window.selected_thread_turn_total_is_exact());
 
     let releases = window.release_cold_pages_with_limit(&(100..102), 2);
 
@@ -394,6 +940,8 @@ fn history_window_releases_cold_pages_and_requests_released_page_by_cursor() {
             panic!("expected released-page refetch, got older cursor {cursor}");
         }
     };
+    assert!(window.current_tail_known());
+    assert!(window.selected_thread_turn_total_is_exact());
     assert!(
         window
             .begin_loading_page_for_visible_range(&(0..1))
@@ -1251,6 +1799,157 @@ fn turn_detail_scheduler_tail_micro_batch_requests_newest_visible_skeleton_first
 }
 
 #[test]
+fn manual_scrollback_detaches_live_anchor_and_retains_historical_detail_viewport() {
+    let mut live_scroll = TranscriptLiveScrollState::inactive();
+    live_scroll.start_prompt_reread(TranscriptSubmitAnchor::new(
+        21,
+        Some("thread:main:turn:21".to_string()),
+        0,
+        "active prompt".to_string(),
+    ));
+    assert!(live_scroll.detach_for_manual_scroll());
+    assert!(live_scroll.preserves_content_anchor_offset());
+
+    let list_state = ListState::new(22, ListAlignment::Bottom, px(320.0));
+    test_support::set_measured_item_heights(&list_state, &vec![px(100.0); 22]);
+    test_support::set_viewport_height(&list_state, px(300.0));
+    list_state.scroll_by(px(-1200.0));
+
+    let ListScrollPosition::Content(anchor) = list_state.scroll_position() else {
+        panic!("manual scrollback should enter a content-anchored viewport");
+    };
+    let visible_range = list_state.visible_range();
+    assert_eq!(anchor.item_ix, 7);
+    assert_eq!(visible_range, 7..10);
+
+    let mut cache = TranscriptTurnDetailCache::default();
+    cache.reset_for_thread("thread_a");
+    let turn_ids = (0..22)
+        .map(|index| format!("turn_{index}"))
+        .collect::<Vec<_>>();
+    for turn_id in &turn_ids {
+        cache.insert_skeleton_from_turn(&turn_with_items_view(turn_id, TurnItemsView::NotLoaded));
+    }
+    complete_detail(
+        &mut cache,
+        "thread_a",
+        &turn_ids[8],
+        vec![message_item(&turn_ids[8])],
+    );
+
+    let retained_visible_turn_ids = visible_range
+        .clone()
+        .map(|index| turn_ids[index].as_str())
+        .collect::<Vec<_>>();
+    let priority_turn_id = turn_ids[anchor.item_ix].as_str();
+    let schedule = schedule_priority_for_test(
+        &mut cache,
+        "thread_a",
+        [priority_turn_id],
+        retained_visible_turn_ids.clone(),
+        TranscriptTurnDetailViewportOrder::NewestFirst,
+        1,
+    );
+
+    assert_eq!(
+        ticket_turn_ids(&schedule.requested_tickets),
+        vec![priority_turn_id]
+    );
+    assert_eq!(schedule.released.full_detail_turns, 0);
+    assert_eq!(
+        cache.status(priority_turn_id),
+        TranscriptTurnDetailStatus::Loading
+    );
+    assert_eq!(cache.status(&turn_ids[8]), TranscriptTurnDetailStatus::Full);
+    assert_eq!(
+        cache.status(&turn_ids[21]),
+        TranscriptTurnDetailStatus::Missing
+    );
+    assert!(retained_visible_turn_ids.contains(&turn_ids[8].as_str()));
+}
+
+#[test]
+fn surface_detail_replacements_preserve_manual_anchor_through_apply_failure_release_and_remeasure()
+{
+    let mut turns = (0..22)
+        .map(|index| turn_with_items_view(&format!("turn_{index}"), TurnItemsView::NotLoaded))
+        .collect::<Vec<_>>();
+    turns[21].status = TurnStatus::InProgress;
+
+    let mut harness = SurfaceDetailHarness::active_thread_from_history(turns);
+    harness.measure_rows(px(100.0), px(300.0));
+    harness.scroll_by(px(-1188.0));
+
+    let manual_anchor = harness.anchor();
+    assert_eq!(manual_anchor.item_ix, 7);
+    assert_eq!(manual_anchor.offset_in_item, px(12.0));
+    assert_eq!(harness.visible_range(), 7..11);
+
+    let counts = harness.apply_detail("turn_8", vec![message_item("turn_8_loaded")]);
+    assert_eq!(counts.0, 1);
+    assert_eq!(harness.anchor(), manual_anchor);
+    assert!(harness.row_is_dirty(8));
+    assert_eq!(
+        harness.detail_status("turn_8"),
+        TranscriptTurnDetailStatus::Full
+    );
+
+    let counts = harness.apply_detail("turn_7", vec![message_item("turn_7_loaded")]);
+    assert_eq!(counts.0, 1);
+    assert_eq!(harness.anchor(), manual_anchor);
+    assert!(harness.row_is_dirty(7));
+    assert_eq!(
+        harness.detail_status("turn_7"),
+        TranscriptTurnDetailStatus::Full
+    );
+
+    let remeasure_adjustment = harness.apply_anchor_height_change(7, px(148.0));
+    assert_eq!(remeasure_adjustment, None);
+    assert_eq!(harness.anchor(), manual_anchor);
+
+    assert_eq!(
+        harness.fail_detail("turn_9"),
+        TranscriptTurnDetailApplyResult::Applied
+    );
+    assert_eq!(harness.anchor(), manual_anchor);
+    assert!(harness.row_is_dirty(9));
+    assert_eq!(
+        harness.detail_status("turn_9"),
+        TranscriptTurnDetailStatus::Failed
+    );
+
+    let counts = harness.apply_detail("turn_2", vec![message_item("turn_2_loaded")]);
+    assert_eq!(counts.0, 1);
+    assert_eq!(harness.anchor(), manual_anchor);
+    assert_eq!(
+        harness.detail_status("turn_2"),
+        TranscriptTurnDetailStatus::Full
+    );
+
+    let schedule = harness
+        .schedule_for_manual_viewport()
+        .expect("manual viewport scheduling should run for selected thread");
+    assert_eq!(schedule.released.full_detail_turns, 1);
+    assert_eq!(
+        schedule.released.released_turn_ids,
+        vec!["turn_2".to_string()]
+    );
+    assert_eq!(harness.anchor(), manual_anchor);
+    assert_eq!(
+        harness.detail_status("turn_2"),
+        TranscriptTurnDetailStatus::Missing
+    );
+    assert_eq!(
+        harness.detail_status("turn_8"),
+        TranscriptTurnDetailStatus::Full
+    );
+    assert_eq!(
+        harness.detail_status("turn_21"),
+        TranscriptTurnDetailStatus::Missing
+    );
+}
+
+#[test]
 fn turn_detail_scheduler_micro_batch_does_not_enqueue_every_missing_visible_turn() {
     let mut cache = TranscriptTurnDetailCache::default();
     cache.reset_for_thread("thread_a");
@@ -1361,6 +2060,12 @@ fn turn_detail_scheduler_priority_only_plan_does_not_request_retained_overscan()
     for turn_id in ["turn_1", "turn_2", "turn_3"] {
         cache.insert_skeleton_from_turn(&turn_with_items_view(turn_id, TurnItemsView::NotLoaded));
     }
+    complete_detail(
+        &mut cache,
+        "thread_a",
+        "turn_2",
+        vec![message_item("turn_2")],
+    );
 
     let first = schedule_priority_for_test(
         &mut cache,
@@ -1371,6 +2076,8 @@ fn turn_detail_scheduler_priority_only_plan_does_not_request_retained_overscan()
         1,
     );
     assert_eq!(ticket_turn_ids(&first.requested_tickets), vec!["turn_3"]);
+    assert_eq!(first.released.full_detail_turns, 0);
+    assert_eq!(cache.status("turn_2"), TranscriptTurnDetailStatus::Full);
     assert_eq!(
         cache.finish_loading(&first.requested_tickets[0], 1),
         TranscriptTurnDetailApplyResult::Applied
@@ -1387,7 +2094,7 @@ fn turn_detail_scheduler_priority_only_plan_does_not_request_retained_overscan()
 
     assert!(second.requested_tickets.is_empty());
     assert_eq!(cache.status("turn_3"), TranscriptTurnDetailStatus::Full);
-    assert_eq!(cache.status("turn_2"), TranscriptTurnDetailStatus::Missing);
+    assert_eq!(cache.status("turn_2"), TranscriptTurnDetailStatus::Full);
     assert_eq!(cache.status("turn_1"), TranscriptTurnDetailStatus::Missing);
 }
 

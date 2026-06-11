@@ -71,6 +71,30 @@ pub(crate) struct TranscriptPresentationPanelState {
     pub(crate) active_nested_code_panel_ids: HashSet<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TranscriptPresentationMutation {
+    Unchanged,
+    Replaced { index: usize },
+    Inserted { index: usize, count: usize },
+    Removed { index: usize, count: usize },
+}
+
+impl TranscriptPresentationMutation {
+    pub(crate) fn row_index(self) -> Option<usize> {
+        match self {
+            Self::Replaced { index } | Self::Inserted { index, count: 1 } => Some(index),
+            Self::Unchanged | Self::Inserted { .. } | Self::Removed { .. } => None,
+        }
+    }
+
+    pub(crate) fn replaced_row_index(self) -> Option<usize> {
+        match self {
+            Self::Replaced { index } => Some(index),
+            Self::Unchanged | Self::Inserted { .. } | Self::Removed { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TranscriptPresentationRetainedCounts {
     pub(crate) rows: usize,
@@ -155,7 +179,7 @@ impl TranscriptPresentationState {
         &mut self,
         source_turn_index: usize,
         turn: Arc<TurnExecutionRecord>,
-    ) -> Option<usize> {
+    ) -> TranscriptPresentationMutation {
         let row_index = self.presentation_index_for_source_turn(source_turn_index);
         let projected = project_parent_narrative_turn(turn.as_ref()).map(Arc::new);
 
@@ -170,13 +194,13 @@ impl TranscriptPresentationState {
                 row.placeholder_height = None;
                 row.metrics = new_metrics;
                 self.update_latest_user_prompt_for_replaced_row(index);
-                Some(index)
+                TranscriptPresentationMutation::Replaced { index }
             }
             (Some(index), None) => {
                 let row = self.rows.remove(index);
                 self.subtract_row_metrics(row.metrics);
                 self.rebuild_latest_user_prompt_anchor();
-                None
+                TranscriptPresentationMutation::Removed { index, count: 1 }
             }
             (None, Some(turn)) => {
                 let index = self.insertion_index_for_source_turn(source_turn_index);
@@ -184,9 +208,9 @@ impl TranscriptPresentationState {
                 self.add_row_metrics(row.metrics);
                 self.rows.insert(index, row);
                 self.rebuild_latest_user_prompt_anchor();
-                Some(index)
+                TranscriptPresentationMutation::Inserted { index, count: 1 }
             }
-            (None, None) => None,
+            (None, None) => TranscriptPresentationMutation::Unchanged,
         }
     }
 
@@ -195,13 +219,15 @@ impl TranscriptPresentationState {
         source_turn_index: usize,
         turn: Arc<TurnExecutionRecord>,
         placeholder_height: Option<Pixels>,
-    ) -> Option<usize> {
-        let index = self.presentation_index_for_source_turn(source_turn_index)?;
+    ) -> TranscriptPresentationMutation {
+        let Some(index) = self.presentation_index_for_source_turn(source_turn_index) else {
+            return TranscriptPresentationMutation::Unchanged;
+        };
         let Some(projected) = project_parent_narrative_turn(turn.as_ref()) else {
             let row = self.rows.remove(index);
             self.subtract_row_metrics(row.metrics);
             self.rebuild_latest_user_prompt_anchor();
-            return None;
+            return TranscriptPresentationMutation::Removed { index, count: 1 };
         };
 
         let old_metrics = self.rows[index].metrics;
@@ -213,7 +239,7 @@ impl TranscriptPresentationState {
         row.placeholder_height = placeholder_height;
         row.metrics = new_metrics;
         self.update_latest_user_prompt_for_replaced_row(index);
-        Some(index)
+        TranscriptPresentationMutation::Replaced { index }
     }
 
     pub(crate) fn len(&self) -> usize {

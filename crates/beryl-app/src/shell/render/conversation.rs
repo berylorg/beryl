@@ -1669,13 +1669,12 @@ fn status_line_cell(
     action: StatusLineCellAction,
     cx: &mut Context<ShellView>,
 ) -> gpui::Div {
-    let resolved_value_color = value_color.unwrap_or_else(|| {
-        if enabled || matches!(action, StatusLineCellAction::None) {
-            shell.status_line_value_foreground()
-        } else {
-            shell.surface_muted_foreground()
-        }
-    });
+    let default_value_color = if enabled || matches!(action, StatusLineCellAction::None) {
+        shell.status_line_value_foreground()
+    } else {
+        shell.surface_muted_foreground()
+    };
+    let resolved_value_color = value_color.unwrap_or(default_value_color);
     let mut cell = div()
         .h_full()
         .w(relative(1.0 / 3.0))
@@ -1711,6 +1710,7 @@ fn status_line_cell(
             shell,
             value_segments,
             resolved_value_color,
+            default_value_color,
         ));
 
     if enabled {
@@ -1742,6 +1742,7 @@ fn status_line_value(
     shell: &ShellRenderFrame<'_>,
     segments: Vec<StatusLineCellValueSegment>,
     value_color: gpui::Rgba,
+    default_value_color: gpui::Rgba,
 ) -> gpui::Div {
     if let [segment] = segments.as_slice()
         && segment.kind == StatusLineCellValueSegmentKind::Value
@@ -1773,12 +1774,14 @@ fn status_line_value(
                 shell.status_line_title_foreground(),
             ),
             StatusLineCellValueSegmentKind::Value => value_color,
+            StatusLineCellValueSegmentKind::SecondaryValue => default_value_color,
         };
         let font_weight =
             match segment.kind {
                 StatusLineCellValueSegmentKind::Label => shell
                     .role_font_weight(BerylThemeRole::StatusLineLabel, gpui::FontWeight::NORMAL),
-                StatusLineCellValueSegmentKind::Value => shell
+                StatusLineCellValueSegmentKind::Value
+                | StatusLineCellValueSegmentKind::SecondaryValue => shell
                     .role_font_weight(BerylThemeRole::StatusLineValue, gpui::FontWeight::NORMAL),
             };
         value = value.child(

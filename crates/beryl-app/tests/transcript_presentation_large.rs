@@ -61,8 +61,7 @@ mod shell {
         pub(super) fn apply_stream_event(&mut self, event: TurnStreamEvent) -> Option<usize> {
             let index = self.details.apply_stream_event(event)?;
             let turn = self.details.turns()[index].clone();
-            self.presentation.replace_turn(index, turn);
-            Some(index)
+            self.presentation.replace_turn(index, turn).row_index()
         }
 
         pub(super) fn release_range_with_heights(

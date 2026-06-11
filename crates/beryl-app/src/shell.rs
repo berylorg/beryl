@@ -78,7 +78,7 @@ use crate::gui_control_dynamic_tools::{
     SETTINGS_WINDOW_POPUP_CLOSE_REASON, ScrollTranscriptArguments, ScrollTranscriptCommand,
     ScrollTranscriptResult, SwitchThreadArguments, SwitchThreadResult, SwitchWorkspaceArguments,
     SwitchWorkspaceResult, TranscriptScrollPositionDiagnostic, TranscriptUiState, TurnUiState,
-    UiRangeDiagnostic, UiStateSnapshot, VisibleTranscriptRowDiagnostic, bounded_control_string,
+    TurnViewUiState, UiRangeDiagnostic, UiStateSnapshot, bounded_control_string,
     close_popups_tool_response, gui_control_failure_response, is_beryl_gui_control_dynamic_tool,
     parse_beryl_gui_control_dynamic_tool_request, parse_gui_control_tool_request,
     scroll_transcript_tool_response, switch_thread_tool_response, ui_state_tool_response,
@@ -338,6 +338,13 @@ fn cancellable_turn_ui_state(turn: &CancellableActiveTurn) -> CancellableTurnUiS
     }
 }
 
+fn turn_view_ui_state(turn_view: StatusLineTurnView) -> TurnViewUiState {
+    TurnViewUiState {
+        current: turn_view.current(),
+        total: turn_view.total(),
+    }
+}
+
 fn diagnostic_expected_turn_mismatch(
     expected: &DiagnosticStopTurnArguments,
     current: Option<&CancellableActiveTurn>,
@@ -352,28 +359,6 @@ fn diagnostic_expected_turn_mismatch(
             current.turn_id
         )
     })
-}
-
-fn visible_transcript_rows(
-    surface: &ConversationSurfaceState,
-    visible_range: Range<usize>,
-    limit: usize,
-) -> (Vec<VisibleTranscriptRowDiagnostic>, bool) {
-    let mut rows = Vec::new();
-    for index in visible_range.clone().take(limit) {
-        if let Some(row) = surface.transcript_presentation().turn_at(index) {
-            rows.push(VisibleTranscriptRowDiagnostic {
-                row_index: row.index,
-                row_identity: bounded_control_string(row.identity.as_str().to_string()),
-                source_turn_index: row.source_turn_index,
-                item_count: row.turn.item_count(),
-                text_chars: row.turn.text_char_count(),
-                released_history_placeholder: row.turn.is_released_history_placeholder(),
-            });
-        }
-    }
-    let truncated = visible_range.len() > rows.len();
-    (rows, truncated)
 }
 
 fn workspace_picker_action_keyboard_activation_key(key: &str) -> bool {
@@ -477,7 +462,6 @@ mod transcript_history;
 mod transcript_image_menu_actions;
 mod transcript_image_preview;
 mod transcript_image_sources;
-mod transcript_live_rows;
 mod transcript_live_scroll;
 mod transcript_live_scroll_detection;
 #[allow(dead_code)]
@@ -487,6 +471,7 @@ mod transcript_media;
 mod transcript_media_runs;
 mod transcript_panel_snapshot;
 mod transcript_presentation;
+mod transcript_presentation_reconcile;
 mod transcript_projection;
 #[allow(dead_code)]
 mod transcript_quote;
@@ -499,6 +484,8 @@ mod transcript_thread_links;
 mod transcript_turn_detail;
 mod turn_steering;
 mod turn_stop;
+mod turn_view;
+mod turn_view_status;
 mod turn_worker;
 #[allow(dead_code)]
 mod virtual_list;
@@ -572,7 +559,8 @@ use pending_turn_input::{
 use platform_attention::PlatformAttentionMonitor;
 use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
-    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, ThreadTurnDefaults,
+    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, StatusLineTurnView,
+    ThreadTurnDefaults,
 };
 use status_operation::{StatusOperationUpdate, spawn_context_compaction_worker};
 use status_operation_state::{StatusLineOperationState, StatusModelListCache};
@@ -2504,35 +2492,6 @@ impl ConversationSurfaceState {
         )
     }
 
-    fn status_line_projection(&self) -> status_line::StatusLineProjection {
-        let cancellable_active_turn = self.selected_cancellable_active_turn();
-        let hard_stop_targets = self
-            .hard_stop_targets
-            .selected_turn_targets(cancellable_active_turn.as_ref());
-        self.status_line.projection_with_turn_operations(
-            self.selected_thread_id(),
-            self.status_line_model_reasoning_available(),
-            self.status_line_context_operation_available(),
-            self.execution_details.last_turn_state().label(),
-            cancellable_active_turn,
-            hard_stop_targets,
-        )
-    }
-
-    fn status_line_model_reasoning_available(&self) -> bool {
-        status_line::status_line_model_reasoning_available(
-            self.selected_thread_id(),
-            self.selected_thread_status.as_ref(),
-        )
-    }
-
-    fn status_line_context_operation_available(&self) -> bool {
-        status_line::status_line_context_operation_available(
-            self.selected_thread_id(),
-            self.selected_thread_status.as_ref(),
-        )
-    }
-
     fn set_thread_session_metadata(&mut self, metadata: ThreadSessionMetadata) {
         let selected_thread_id = self.selected_thread_id().map(str::to_string);
         self.status_line
@@ -2671,8 +2630,10 @@ impl ConversationSurfaceState {
     }
 
     fn transcript_live_scroll_preserves_anchor_offset(&self) -> bool {
-        self.transcript_live_scroll
-            .preserves_content_anchor_offset()
+        self.transcript_user_scrolled
+            || self
+                .transcript_live_scroll
+                .preserves_content_anchor_offset()
     }
 
     fn older_history_loading(&self) -> bool {
@@ -2743,13 +2704,9 @@ impl ConversationSurfaceState {
                 self.transcript_history_window
                     .finish_loading_older_with_turn_ids(&page, prepended.turn_ids);
                 if prepended.added_count > 0 {
-                    let visible_added = self.transcript_presentation.prepend_from_turns(
-                        &self.execution_details.turns()[..prepended.added_count],
-                    );
-                    self.shift_transcript_anchor(visible_added);
-                    if visible_added > 0 {
-                        self.transcript_list_state.splice(0..0, visible_added);
-                    }
+                    let prepended_turns =
+                        self.execution_details.turns()[..prepended.added_count].to_vec();
+                    self.prepend_transcript_presentation_rows(prepended_turns.as_slice());
                     self.release_cold_history_pages_around_current_view();
                 }
                 prepended.added_count
@@ -2784,8 +2741,7 @@ impl ConversationSurfaceState {
                     );
                 let restored_count = replacements.len();
                 for replacement in replacements {
-                    self.transcript_presentation
-                        .replace_turn(replacement.index, replacement.turn);
+                    self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
                 }
                 self.release_cold_history_pages_around_current_view();
                 restored_count
@@ -2831,7 +2787,7 @@ impl ConversationSurfaceState {
                         .measured_item_size(presentation_index)
                         .map(|size| size.height)
                 });
-                self.transcript_presentation.replace_turn_with_placeholder(
+                self.replace_transcript_presentation_turn_with_placeholder(
                     replacement.index,
                     replacement.turn,
                     placeholder_height,
@@ -2860,8 +2816,13 @@ impl ConversationSurfaceState {
     }
 
     fn set_transcript_user_scrolled(&mut self, is_scrolled: bool) -> bool {
+        let released_anchor = if is_scrolled {
+            self.release_transcript_submit_anchor()
+        } else {
+            false
+        };
         if self.transcript_user_scrolled == is_scrolled {
-            return false;
+            return released_anchor;
         }
         self.transcript_user_scrolled = is_scrolled;
         true
@@ -3544,7 +3505,6 @@ impl ConversationSurfaceState {
         thread_id: Option<String>,
         user_input: UserInputFragment,
     ) {
-        let before = self.transcript_presentation.len();
         let anchor_text = user_input.text.clone();
         self.observe_composer_image_labels_in_fragment(&user_input);
         let turn_index = self
@@ -3554,10 +3514,8 @@ impl ConversationSurfaceState {
             .execution_details
             .turns()
             .get(turn_index)
-            .and_then(|turn| {
-                self.transcript_presentation
-                    .append_turn(turn_index, turn.clone())
-            });
+            .cloned()
+            .and_then(|turn| self.append_transcript_presentation_turn(turn_index, turn));
         if let Some(index) = presentation_index {
             let anchor =
                 self.transcript_submit_anchor_for_presentation_index(index, 0, anchor_text);
@@ -3575,7 +3533,7 @@ impl ConversationSurfaceState {
                 active_flags: Vec::new(),
             });
         }
-        self.sync_live_transcript_rows(before, None);
+        self.sync_transcript_turn_detail_ui_pins();
     }
 
     fn selected_active_turn_steering_target(&self) -> Option<ActiveTurnSteeringTarget> {
@@ -3632,27 +3590,23 @@ impl ConversationSurfaceState {
         target: &ActiveTurnSteeringTarget,
         user_input: UserInputFragment,
     ) -> Option<SteeringInputFragment> {
-        let before = self.transcript_presentation.len();
         let steering_fragment =
             SteeringInputFragment::from_user_input_fragment(target.turn_index, &user_input);
         self.observe_composer_image_labels_in_thread_fragment(&target.thread_id, &user_input);
         self.execution_details
             .append_user_input_fragment(target.turn_index, user_input)?;
-        let presentation_index = self
+        if let Some(turn) = self
             .execution_details
             .turns()
             .get(target.turn_index)
-            .and_then(|turn| {
-                self.transcript_presentation
-                    .replace_turn(target.turn_index, turn.clone())
-                    .or_else(|| {
-                        self.transcript_presentation
-                            .append_turn(target.turn_index, turn.clone())
-                    })
-            });
+            .cloned()
+        {
+            self.replace_transcript_presentation_turn(target.turn_index, turn)
+                .row_index();
+        }
         self.transcript_live_scroll.preserve_for_steering();
         self.notices.clear_all();
-        self.sync_live_transcript_rows(before, presentation_index);
+        self.sync_transcript_turn_detail_ui_pins();
         Some(steering_fragment)
     }
 
@@ -3821,8 +3775,7 @@ impl ConversationSurfaceState {
             .remove_user_input_fragments(&removals);
         for turn_index in affected_turns {
             if let Some(turn) = self.execution_details.turns().get(turn_index) {
-                self.transcript_presentation
-                    .replace_turn(turn_index, turn.clone());
+                self.replace_transcript_presentation_turn(turn_index, turn.clone());
             }
         }
 
@@ -3837,7 +3790,6 @@ impl ConversationSurfaceState {
         turn_options: TurnStartOptions,
         user_input: UserInputFragment,
     ) -> bool {
-        let before = self.transcript_presentation.len();
         let anchor_text = user_input.text.clone();
         let observed_thread_id = thread_id.clone();
         let observed_user_input = user_input.clone();
@@ -3900,13 +3852,10 @@ impl ConversationSurfaceState {
             .execution_details
             .turns()
             .get(turn_index)
+            .cloned()
             .and_then(|turn| {
-                self.transcript_presentation
-                    .replace_turn(turn_index, turn.clone())
-                    .or_else(|| {
-                        self.transcript_presentation
-                            .append_turn(turn_index, turn.clone())
-                    })
+                self.replace_transcript_presentation_turn(turn_index, turn)
+                    .row_index()
             });
         if let Some(index) = presentation_index {
             let anchor = self.transcript_submit_anchor_for_presentation_index(
@@ -3920,7 +3869,7 @@ impl ConversationSurfaceState {
         }
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
-        self.sync_live_transcript_rows(before, presentation_index);
+        self.sync_transcript_turn_detail_ui_pins();
         true
     }
 
@@ -4074,7 +4023,6 @@ impl ConversationSurfaceState {
                 .finish_turn_stop_request_for_target(thread_id, turn_id);
         }
 
-        let before = self.transcript_presentation.len();
         let Some(turn_index) = self.execution_details.apply_stream_event(event) else {
             return AppliedStreamEvent::default();
         };
@@ -4092,12 +4040,13 @@ impl ConversationSurfaceState {
             .execution_details
             .turns()
             .get(turn_index)
+            .cloned()
             .and_then(|turn| {
-                self.transcript_presentation
-                    .replace_turn(turn_index, turn.clone())
+                self.replace_transcript_presentation_turn(turn_index, turn)
+                    .row_index()
             });
         self.reconcile_transcript_live_scroll_for_row(replaced_row_index);
-        self.sync_live_transcript_rows(before, replaced_row_index);
+        self.sync_transcript_turn_detail_ui_pins();
         let suppresses_ordinary_end_turn_sound = lifecycle_yield
             .as_ref()
             .is_some_and(TerminalLifecycleYield::suppresses_ordinary_end_turn_sound);
@@ -4133,7 +4082,6 @@ impl ConversationSurfaceState {
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
             self.finish_running_tool_activity_for_thread_error(&thread_id);
         }
-        let before = self.transcript_presentation.len();
         let Some(turn_index) = self.execution_details.finish_turn_failure(message.clone()) else {
             return None;
         };
@@ -4141,15 +4089,10 @@ impl ConversationSurfaceState {
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
             self.mark_selected_turn_finished_idle(&thread_id);
         }
-        let replaced_row_index = self
-            .execution_details
-            .turns()
-            .get(turn_index)
-            .and_then(|turn| {
-                self.transcript_presentation
-                    .replace_turn(turn_index, turn.clone())
-            });
-        self.sync_live_transcript_rows(before, replaced_row_index);
+        if let Some(turn) = self.execution_details.turns().get(turn_index).cloned() {
+            self.replace_transcript_presentation_turn(turn_index, turn);
+        }
+        self.sync_transcript_turn_detail_ui_pins();
         active_turn
             .map(|active| TurnCompletionSoundCandidate::new(active.thread_id, active.turn_id))
     }
@@ -14016,6 +13959,7 @@ impl ShellView {
             selected_thread_state,
             selected_thread_status,
             last_turn_state: projection.last_turn_state,
+            view: turn_view_ui_state(projection.turn_view),
             cancellable_active_turn,
             hard_stop_target_count,
             hard_stop_limitation_count,
@@ -14078,7 +14022,7 @@ impl ShellView {
         let visible_range = clamp_ui_range(list_state.visible_range(), item_count);
         let presentation_range = clamp_ui_range(list_state.presentation_range(), item_count);
         let (visible_rows, visible_rows_truncated) =
-            visible_transcript_rows(surface, visible_range.clone(), visible_row_limit);
+            diagnostics::visible_transcript_rows(surface, visible_range.clone(), visible_row_limit);
 
         TranscriptUiState {
             item_count,
@@ -14398,7 +14342,7 @@ impl ShellView {
     ) -> Value {
         let current_target = self
             .conversation_surface()
-            .and_then(|surface| surface.status_line_projection().cancellable_active_turn);
+            .and_then(ConversationSurfaceState::status_line_turn_operation_target);
         if let Some(message) =
             diagnostic_expected_turn_mismatch(&arguments, current_target.as_ref())
         {
@@ -14430,11 +14374,10 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> Value {
         let current_turn = self.conversation_surface().and_then(|surface| {
-            let projection = surface.status_line_projection();
-            projection
-                .hard_stop_targets
+            surface
+                .status_line_turn_hard_stop_targets()
                 .map(|targets| targets.selected_turn)
-                .or(projection.cancellable_active_turn)
+                .or_else(|| surface.status_line_turn_operation_target())
         });
         if let Some(message) = diagnostic_expected_turn_mismatch(&arguments, current_turn.as_ref())
         {

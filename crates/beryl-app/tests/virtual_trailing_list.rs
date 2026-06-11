@@ -80,6 +80,28 @@ fn visible_range_remains_content_only_inside_virtual_tail() {
 }
 
 #[test]
+fn virtual_tail_visible_range_clamps_after_middle_row_removal() {
+    let state = ListState::new(3, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(&state, &[px(20.0), px(20.0), px(20.0)]);
+    test_support::set_viewport_height(&state, px(40.0));
+    state.set_virtual_trailing_scroll_allowance(px(30.0));
+    state.scroll_to_position(ListScrollPosition::VirtualTail {
+        offset_from_content_end: px(30.0),
+    });
+
+    state.splice(1..2, 0);
+
+    assert_eq!(state.item_count(), 2);
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::VirtualTail {
+            offset_from_content_end: px(30.0)
+        }
+    );
+    assert_eq!(test_support::visible_range(&state), 1..2);
+}
+
+#[test]
 fn page_scroll_by_viewport_enters_virtual_tail_without_fake_items() {
     let state = ListState::new(3, ListAlignment::Bottom, px(10.0));
     test_support::set_measured_item_heights(&state, &[px(20.0), px(20.0), px(20.0)]);
@@ -96,6 +118,27 @@ fn page_scroll_by_viewport_enters_virtual_tail_without_fake_items() {
     );
     assert_eq!(state.item_count(), 3);
     assert_eq!(test_support::visible_range(&state), 2..3);
+}
+
+#[test]
+fn page_scroll_up_from_bottom_starts_at_real_viewport_top() {
+    let state = ListState::new(5, ListAlignment::Bottom, px(10.0));
+    test_support::set_measured_item_heights(
+        &state,
+        &[px(100.0), px(100.0), px(100.0), px(100.0), px(100.0)],
+    );
+    test_support::set_viewport_height(&state, px(200.0));
+
+    state.scroll_by(px(-200.0));
+
+    assert_eq!(
+        state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 1,
+            offset_in_item: px(0.0),
+        })
+    );
+    assert_eq!(test_support::visible_range(&state), 1..3);
 }
 
 #[test]

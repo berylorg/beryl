@@ -15,10 +15,7 @@ mod virtual_list;
 mod transcript_scroll;
 
 use gpui::px;
-use transcript_scroll::{
-    LiveTranscriptRows, TranscriptTurnJumpDirection, sync_live_transcript_rows,
-    transcript_turn_jump_target,
-};
+use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
 use virtual_list::{ListAlignment, ListOffset, ListScrollPosition, ListState, test_support};
 
 fn list_offset(item_ix: usize, offset_in_item: gpui::Pixels) -> ListOffset {
@@ -161,100 +158,6 @@ fn turn_jump_virtual_tail_handles_real_turn_boundaries() {
 }
 
 #[test]
-fn live_tail_remeasurement_preserves_manual_scroll_offset() {
-    let list_state = ListState::new(3, ListAlignment::Bottom, px(320.0));
-    list_state.scroll_to(ListOffset {
-        item_ix: 2,
-        offset_in_item: px(84.0),
-    });
-
-    sync_live_transcript_rows(
-        &list_state,
-        LiveTranscriptRows {
-            previous_turn_count: 3,
-            current_turn_count: 3,
-            replaced_row_index: None,
-            preserve_user_scroll: true,
-        },
-    );
-
-    assert_eq!(
-        list_state.scroll_position(),
-        ListScrollPosition::Content(ListOffset {
-            item_ix: 2,
-            offset_in_item: px(84.0),
-        })
-    );
-}
-
-#[test]
-fn live_tail_remeasurement_without_manual_scroll_keeps_existing_scroll_intent() {
-    let list_state = ListState::new(3, ListAlignment::Bottom, px(320.0));
-    list_state.scroll_to(ListOffset {
-        item_ix: 2,
-        offset_in_item: px(84.0),
-    });
-
-    sync_live_transcript_rows(
-        &list_state,
-        LiveTranscriptRows {
-            previous_turn_count: 3,
-            current_turn_count: 3,
-            replaced_row_index: None,
-            preserve_user_scroll: false,
-        },
-    );
-
-    assert_eq!(
-        list_state.scroll_position(),
-        ListScrollPosition::Content(ListOffset {
-            item_ix: 2,
-            offset_in_item: px(84.0),
-        })
-    );
-}
-
-#[test]
-fn live_tail_remeasurement_does_not_collapse_measured_scroll_geometry() {
-    let list_state = ListState::new(3, ListAlignment::Bottom, px(320.0));
-    test_support::set_measured_item_heights(&list_state, &[px(40.0), px(60.0), px(140.0)]);
-    test_support::set_viewport_height(&list_state, px(120.0));
-    list_state.set_virtual_trailing_scroll_allowance(px(80.0));
-    let max_before = list_state.max_offset_for_scrollbar();
-
-    sync_live_transcript_rows(
-        &list_state,
-        LiveTranscriptRows {
-            previous_turn_count: 3,
-            current_turn_count: 3,
-            replaced_row_index: Some(2),
-            preserve_user_scroll: false,
-        },
-    );
-
-    assert_eq!(list_state.max_offset_for_scrollbar(), max_before);
-    assert_eq!(list_state.measured_item_size(2).unwrap().height, px(140.0));
-    assert!(test_support::item_measurement_is_dirty(&list_state, 2));
-}
-
-#[test]
-fn bottom_aligned_sync_keeps_default_bottom_scroll() {
-    let list_state = ListState::new(3, ListAlignment::Bottom, px(320.0));
-
-    sync_live_transcript_rows(
-        &list_state,
-        LiveTranscriptRows {
-            previous_turn_count: 3,
-            current_turn_count: 3,
-            replaced_row_index: None,
-            preserve_user_scroll: false,
-        },
-    );
-
-    assert_eq!(list_state.scroll_position(), ListScrollPosition::Bottom);
-}
-
-#[test]
 fn loaded_history_reset_keeps_bottom_intent_through_tail_allowance_clear() {
     let list_state = ListState::new(3, ListAlignment::Bottom, px(320.0));
     test_support::set_measured_item_heights(&list_state, &[px(120.0), px(120.0), px(120.0)]);
@@ -278,27 +181,60 @@ fn loaded_history_reset_keeps_bottom_intent_through_tail_allowance_clear() {
 }
 
 #[test]
-fn turn_count_changes_do_not_restore_stale_scroll_offsets() {
-    let list_state = ListState::new(2, ListAlignment::Bottom, px(320.0));
+fn middle_row_insert_preserves_content_anchor_on_same_logical_row() {
+    let list_state = measured_turn_list(4);
     list_state.scroll_to(ListOffset {
-        item_ix: 2,
-        offset_in_item: px(64.0),
+        item_ix: 3,
+        offset_in_item: px(48.0),
     });
 
-    sync_live_transcript_rows(
-        &list_state,
-        LiveTranscriptRows {
-            previous_turn_count: 2,
-            current_turn_count: 3,
-            replaced_row_index: Some(2),
-            preserve_user_scroll: true,
-        },
-    );
+    list_state.splice(1..1, 1);
 
+    assert_eq!(list_state.item_count(), 5);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 4,
+            offset_in_item: px(48.0),
+        })
+    );
+}
+
+#[test]
+fn middle_row_remove_preserves_content_anchor_on_same_logical_row() {
+    let list_state = measured_turn_list(5);
+    list_state.scroll_to(ListOffset {
+        item_ix: 4,
+        offset_in_item: px(32.0),
+    });
+
+    list_state.splice(1..2, 0);
+
+    assert_eq!(list_state.item_count(), 4);
     assert_eq!(
         list_state.scroll_position(),
         ListScrollPosition::Content(ListOffset {
             item_ix: 3,
+            offset_in_item: px(32.0),
+        })
+    );
+}
+
+#[test]
+fn removing_content_anchor_row_reanchors_to_replacement_index() {
+    let list_state = measured_turn_list(5);
+    list_state.scroll_to(ListOffset {
+        item_ix: 2,
+        offset_in_item: px(72.0),
+    });
+
+    list_state.splice(2..3, 0);
+
+    assert_eq!(list_state.item_count(), 4);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 2,
             offset_in_item: px(0.0),
         })
     );

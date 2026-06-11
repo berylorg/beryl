@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use gpui::{App, Context, Window, px, size};
 
 use crate::diagnostic_dynamic_tools::{
@@ -6,6 +8,7 @@ use crate::diagnostic_dynamic_tools::{
     RendererDiagnosticSnapshot, SettingsWindowDiagnosticSnapshot, ThemeEditorModelDiagnostic,
     ThemeRoleNavigatorDiagnostic, bounded_diagnostic_string, renderer_snapshot_with_shell_window,
 };
+use crate::gui_control_dynamic_tools::{VisibleTranscriptRowDiagnostic, bounded_control_string};
 use crate::memory_diagnostics::{self, RetainedStateSnapshot};
 
 use super::{
@@ -13,6 +16,28 @@ use super::{
     ConversationSurfaceState, ShellState, ShellView, TextInputRetainedAggregate,
     TranscriptTurnDetailTask, runtime_target_diagnostic,
 };
+
+pub(super) fn visible_transcript_rows(
+    surface: &ConversationSurfaceState,
+    visible_range: Range<usize>,
+    limit: usize,
+) -> (Vec<VisibleTranscriptRowDiagnostic>, bool) {
+    let mut rows = Vec::new();
+    for index in visible_range.clone().take(limit) {
+        if let Some(row) = surface.transcript_presentation().turn_at(index) {
+            rows.push(VisibleTranscriptRowDiagnostic {
+                row_index: row.index,
+                row_identity: bounded_control_string(row.identity.as_str().to_string()),
+                source_turn_index: row.source_turn_index,
+                item_count: row.turn.item_count(),
+                text_chars: row.turn.text_char_count(),
+                released_history_placeholder: row.turn.is_released_history_placeholder(),
+            });
+        }
+    }
+    let truncated = visible_range.len() > rows.len();
+    (rows, truncated)
+}
 
 impl ShellView {
     pub(super) fn retained_state_snapshot(&self) -> RetainedStateSnapshot {

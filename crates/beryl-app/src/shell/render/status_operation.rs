@@ -268,9 +268,10 @@ fn render_turn_operations_menu(
     surface: &ConversationSurfaceState,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
-    let projection = surface.status_line_projection();
-    let target = projection.cancellable_active_turn.as_ref();
-    let hard_stop_targets = projection.hard_stop_targets.as_ref();
+    let target = surface.status_line_turn_operation_target();
+    let hard_stop_targets = surface.status_line_hard_stop_targets_for(target.as_ref());
+    let target = target.as_ref();
+    let hard_stop_targets = hard_stop_targets.as_ref();
     let enabled = shell.status_line_turn_operations_interactive(target.is_some());
     let stop_in_flight = surface.status_line_operations().stop_request_in_flight();
     let hard_stop_enabled =

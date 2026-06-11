@@ -50,12 +50,20 @@ pub(crate) struct TurnUiState {
     pub selected_thread_state: String,
     pub selected_thread_status: Option<String>,
     pub last_turn_state: String,
+    pub view: TurnViewUiState,
     pub cancellable_active_turn: Option<CancellableTurnUiState>,
     pub hard_stop_target_count: usize,
     pub hard_stop_limitation_count: usize,
     pub turn_stop_request_in_flight: bool,
     pub hard_stop_request_in_flight: bool,
     pub hard_stop_hold_active: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnViewUiState {
+    pub current: Option<usize>,
+    pub total: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -74,6 +74,7 @@ pub(crate) struct StatusLineProjection {
     pub(crate) context_space_left: String,
     pub(crate) context_value_segments: Vec<StatusLineCellValueSegment>,
     pub(crate) last_turn_state: String,
+    pub(crate) turn_view: StatusLineTurnView,
     pub(crate) model_reasoning_available: bool,
     pub(crate) context_operation_available: bool,
     pub(crate) cancellable_active_turn: Option<CancellableActiveTurn>,
@@ -96,10 +97,17 @@ pub(crate) struct StatusLineCellValueSegment {
     pub(crate) kind: StatusLineCellValueSegmentKind,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct StatusLineTurnView {
+    current: Option<usize>,
+    total: Option<usize>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StatusLineCellValueSegmentKind {
     Label,
     Value,
+    SecondaryValue,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -174,6 +182,7 @@ pub(crate) fn status_line_cell_specs(
         status.context_value_segments
     };
     let last_turn_state_value = status.last_turn_state;
+    let turn_view_value = status.turn_view.display();
     [
         StatusLineCellSpec {
             label: "Model / Reasoning",
@@ -194,7 +203,11 @@ pub(crate) fn status_line_cell_specs(
         StatusLineCellSpec {
             label: "Turn",
             value: last_turn_state_value.clone(),
-            value_segments: vec![StatusLineCellValueSegment::value(last_turn_state_value)],
+            value_segments: vec![
+                StatusLineCellValueSegment::value(last_turn_state_value),
+                StatusLineCellValueSegment::label("View"),
+                StatusLineCellValueSegment::secondary_value(turn_view_value),
+            ],
             action: if turn_operation_available {
                 StatusLineCellAction::TurnOperations
             } else {
@@ -274,6 +287,13 @@ impl StatusLineCellValueSegment {
         Self {
             text: text.into(),
             kind: StatusLineCellValueSegmentKind::Value,
+        }
+    }
+
+    fn secondary_value(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            kind: StatusLineCellValueSegmentKind::SecondaryValue,
         }
     }
 }
@@ -609,6 +629,7 @@ impl StatusLineState {
                 .turn_state_override_label(selected_thread_id)
                 .unwrap_or(last_turn_state)
                 .to_string(),
+            turn_view: StatusLineTurnView::unknown(),
             model_reasoning_available,
             context_operation_available,
             cancellable_active_turn: None,
@@ -749,6 +770,7 @@ impl StatusLineProjection {
             context_space_left: UNKNOWN_LABEL.to_string(),
             context_value_segments: vec![StatusLineCellValueSegment::value(UNKNOWN_LABEL)],
             last_turn_state: UNKNOWN_LABEL.to_string(),
+            turn_view: StatusLineTurnView::unknown(),
             model_reasoning_available: false,
             context_operation_available: false,
             cancellable_active_turn: None,
@@ -756,10 +778,44 @@ impl StatusLineProjection {
         }
     }
 
+    pub(crate) fn with_turn_view(mut self, turn_view: StatusLineTurnView) -> Self {
+        self.turn_view = turn_view;
+        self
+    }
+
     #[cfg(test)]
     #[allow(dead_code)]
     pub(crate) fn turn_operation_available(&self) -> bool {
         self.cancellable_active_turn.is_some()
+    }
+}
+
+impl StatusLineTurnView {
+    pub(crate) fn new(current: Option<usize>, total: Option<usize>) -> Self {
+        Self {
+            current: positive_usize(current),
+            total: positive_usize(total),
+        }
+    }
+
+    pub(crate) fn unknown() -> Self {
+        Self::new(None, None)
+    }
+
+    pub(crate) fn current(self) -> Option<usize> {
+        self.current
+    }
+
+    pub(crate) fn total(self) -> Option<usize> {
+        self.total
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "{}/{}",
+            turn_view_part(self.current),
+            turn_view_part(self.total)
+        )
     }
 }
 
@@ -1006,6 +1062,16 @@ fn label_or_unknown(value: Option<&str>) -> String {
         .filter(|value| !value.is_empty())
         .unwrap_or(UNKNOWN_LABEL)
         .to_string()
+}
+
+fn positive_usize(value: Option<usize>) -> Option<usize> {
+    value.filter(|value| *value > 0)
+}
+
+fn turn_view_part(value: Option<usize>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 fn thread_status_allows_user_operation(status: &ThreadStatus) -> bool {

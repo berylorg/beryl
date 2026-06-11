@@ -358,8 +358,15 @@ impl TranscriptHistoryWindow {
         self.older_cursor.is_some()
     }
 
+    pub(crate) fn oldest_source_position_known(&self) -> bool {
+        !self.has_older_pages()
+    }
+
     pub(crate) fn current_tail_known(&self) -> bool {
-        if self.loading_page.is_some() {
+        if matches!(
+            self.loading_page,
+            Some(LoadingTranscriptHistoryPage::Older { .. })
+        ) {
             return false;
         }
 
@@ -367,6 +374,10 @@ impl TranscriptHistoryWindow {
             .last()
             .map(|page| page.resident && page.newer_cursor.is_none())
             .unwrap_or_else(|| self.newer_cursor.is_none())
+    }
+
+    pub(crate) fn selected_thread_turn_total_is_exact(&self) -> bool {
+        self.oldest_source_position_known() && self.current_tail_known()
     }
 
     #[allow(dead_code)]

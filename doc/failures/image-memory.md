@@ -26,7 +26,7 @@ Course adjustment: preload runs now return before media lookup unless every item
 
 During the CAS 0.137 transcript-history migration, live testing on the `City Image Generation` thread showed Beryl rendering a visible `Loading transcript details...` skeleton row while retained-state diagnostics reported `transcriptMissingDetailTurns = 1`, `transcriptDetailRetentionTurns = 0`, `transcriptDetailLastRequestedTurns = 0`, and `transcriptDetailPendingRequests = 0`.
 
-The invalid assumption was that the transcript detail scheduler could be gated only on the backend capability report stored in the ready shell state. That report is not the same authority as the selected transcript row state. Once Beryl has a visible non-full turn, the UI must either request full details for that row or mark the row as failed; leaving the scheduler disabled produces a permanent loading placeholder.
+The invalid assumption was that the old transcript detail scheduler could be gated only on the backend capability report stored in the ready shell state. That report was not the same authority as the selected transcript row state. Under the superseded visible-skeleton architecture, once Beryl had a visible non-full turn, the UI had to either request full details for that row or mark the row as failed; leaving the scheduler disabled produced a permanent loading placeholder.
 
 Evidence:
 
@@ -36,7 +36,7 @@ Evidence:
 
 Course adjustment at the time: drive detail scheduling from the visible transcript range and actual cached skeleton/full row state.
 
-This was later superseded by the CAS 0.137 single-contract invariant. Beryl no longer uses the schema-exposed per-turn item-list method; non-full history skeleton rows produce bounded `thread/turns/list itemsView = "full"` requests for the page prefix that can contain the visible turn.
+This was later superseded first by the CAS 0.137 single-contract invariant and then by the resident-window transcript design. Beryl no longer uses the schema-exposed per-turn item-list method. `notLoaded` turn pages are non-rendered index/planning data, and bounded `thread/turns/list itemsView = "full"` requests provide resident full-detail transcript windows admitted by the transcript residency policy.
 
 ## Schema-Exposed Item Detail Method Can Still Be Runtime-Unsupported
 
@@ -46,7 +46,7 @@ The invalid assumption was that schema presence plus experimental initialization
 
 Course adjustment at the time: do not silently replace per-turn detail loading with full turn-page loading without operator approval. The operator approved an explicit CAS 0.137 workaround that retried unsupported per-turn detail requests through `thread/turns/list itemsView = "full"` with the skeleton page cursor and the smallest page prefix that can include the visible turn.
 
-This was later superseded by the root design invariant for the 0.137 migration: Beryl now hardcodes the supported CAS 0.137 transcript contract to `thread/turns/list` with `itemsView` and does not carry an item-list attempt or fallback branch. Beryl still depends on the streaming sanitizer to strip generated-image `result` bytes before typed retention and still releases full detail rows outside the visible-plus-overscan retention window.
+This was later superseded by the root design invariant for the 0.137 migration and by the resident-window transcript design: Beryl hardcodes the supported CAS 0.137 transcript contract to `thread/turns/list` with `itemsView`, does not carry an item-list attempt or fallback branch, and admits returned full details only through transcript residency policy or explicit pins. Beryl still depends on the streaming sanitizer to strip generated-image `result` bytes before typed retention.
 
 ## Visible Transcript Rows Are Not Always History Skeletons
 
@@ -60,4 +60,6 @@ Evidence:
 - A diagnostic child using the patched debug build submitted a copied-home smoke-test turn and retained-state diagnostics reported `transcriptDetailLastRequestedTurns = 0`, `transcriptDetailPendingRequests = 0`, and no popup.
 - `turn_detail_scheduler_ignores_required_turns_without_history_skeleton` covers the missing-skeleton case.
 
-Course adjustment: the history-detail scheduler should request details only for known skeleton entries whose `itemsView` is not full. Unknown live row ids are ignored by the history-detail path rather than being converted into cursorless history-page detail tickets.
+Course adjustment at the time: the history-detail scheduler requested details only for known skeleton entries whose `itemsView` was not full. Unknown live row ids were ignored by the history-detail path rather than converted into cursorless history-page detail tickets.
+
+Current correction: the history-detail scheduler model is superseded. Live rows continue to receive items through stream state, while historical rows become user-visible only after the transcript residency controller admits resident full-detail turn data.

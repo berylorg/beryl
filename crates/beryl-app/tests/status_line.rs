@@ -14,7 +14,7 @@ use beryl_model::workspace::WorkspaceId;
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineCellAction,
     StatusLineCellValueKind, StatusLineCellValueSegmentKind, StatusLineProjection, StatusLineState,
-    ThreadTurnDefaults,
+    StatusLineTurnView, ThreadTurnDefaults,
 };
 use std::collections::BTreeMap;
 
@@ -28,6 +28,7 @@ fn status_projection_uses_unknown_fallbacks() {
     assert_eq!(projection.reasoning_effort, "Unknown");
     assert_eq!(projection.context_space_left, "Unknown");
     assert_eq!(projection.last_turn_state, "Unknown");
+    assert_eq!(projection.turn_view, StatusLineTurnView::unknown());
 }
 
 #[test]
@@ -600,6 +601,7 @@ fn status_line_cell_specs_cover_three_cells_and_disabled_interactions() {
             context_space_left: "42%".to_string(),
             context_value_segments: Vec::new(),
             last_turn_state: "compacting".to_string(),
+            turn_view: StatusLineTurnView::unknown(),
             model_reasoning_available: true,
             context_operation_available: true,
             cancellable_active_turn: None,
@@ -627,6 +629,57 @@ fn status_line_cell_specs_cover_three_cells_and_disabled_interactions() {
     assert_eq!(specs[2].action, StatusLineCellAction::None);
     assert_eq!(specs[2].value_kind, StatusLineCellValueKind::TurnState);
     assert!(!specs[2].enabled);
+    assert_eq!(specs[2].value_segments.len(), 3);
+    assert_eq!(
+        specs[2].value_segments[0].kind,
+        StatusLineCellValueSegmentKind::Value
+    );
+    assert_eq!(specs[2].value_segments[0].text, "compacting");
+    assert_eq!(
+        specs[2].value_segments[1].kind,
+        StatusLineCellValueSegmentKind::Label
+    );
+    assert_eq!(specs[2].value_segments[1].text, "View");
+    assert_eq!(
+        specs[2].value_segments[2].kind,
+        StatusLineCellValueSegmentKind::SecondaryValue
+    );
+    assert_eq!(specs[2].value_segments[2].text, "-/-");
+}
+
+#[test]
+fn status_line_turn_view_count_formats_known_and_unknown_sides() {
+    let unknown_specs =
+        status_line::status_line_cell_specs(StatusLineProjection::unknown(), false, false, false);
+    assert_eq!(unknown_specs[2].value_segments[2].text, "-/-");
+
+    let total_only_specs = status_line::status_line_cell_specs(
+        StatusLineProjection::unknown().with_turn_view(StatusLineTurnView::new(None, Some(5))),
+        false,
+        false,
+        false,
+    );
+    assert_eq!(total_only_specs[2].value_segments[2].text, "-/5");
+
+    let known_specs = status_line::status_line_cell_specs(
+        StatusLineProjection::unknown().with_turn_view(StatusLineTurnView::new(Some(5), Some(5))),
+        false,
+        false,
+        false,
+    );
+    assert_eq!(known_specs[2].value_segments[2].text, "5/5");
+}
+
+#[test]
+fn status_line_turn_view_count_treats_zero_as_unknown() {
+    let specs = status_line::status_line_cell_specs(
+        StatusLineProjection::unknown().with_turn_view(StatusLineTurnView::new(Some(0), Some(0))),
+        false,
+        false,
+        false,
+    );
+
+    assert_eq!(specs[2].value_segments[2].text, "-/-");
 }
 
 #[test]
@@ -637,6 +690,7 @@ fn cancellable_turn_target_enables_turn_operations_cell_when_backend_allows_it()
         context_space_left: "42%".to_string(),
         context_value_segments: Vec::new(),
         last_turn_state: "working".to_string(),
+        turn_view: StatusLineTurnView::unknown(),
         model_reasoning_available: false,
         context_operation_available: false,
         cancellable_active_turn: Some(CancellableActiveTurn::ordinary("thread_1", "turn_1")),
@@ -667,6 +721,7 @@ fn non_owned_active_turn_state_does_not_enable_turn_operations_cell() {
         context_space_left: "42%".to_string(),
         context_value_segments: Vec::new(),
         last_turn_state: "active".to_string(),
+        turn_view: StatusLineTurnView::unknown(),
         model_reasoning_available: false,
         context_operation_available: false,
         cancellable_active_turn: None,
@@ -676,6 +731,28 @@ fn non_owned_active_turn_state_does_not_enable_turn_operations_cell() {
     let specs = status_line::status_line_cell_specs(projection, false, false, true);
 
     assert_eq!(specs[2].value, "active");
+    assert_eq!(specs[2].action, StatusLineCellAction::None);
+    assert!(!specs[2].enabled);
+}
+
+#[test]
+fn known_turn_view_does_not_enable_turn_operations_cell_without_stop_target() {
+    let projection = StatusLineProjection {
+        model: "gpt-5.5".to_string(),
+        reasoning_effort: "high".to_string(),
+        context_space_left: "42%".to_string(),
+        context_value_segments: Vec::new(),
+        last_turn_state: "ok".to_string(),
+        turn_view: StatusLineTurnView::new(Some(5), Some(5)),
+        model_reasoning_available: false,
+        context_operation_available: false,
+        cancellable_active_turn: None,
+        hard_stop_targets: None,
+    };
+
+    let specs = status_line::status_line_cell_specs(projection, false, false, true);
+
+    assert_eq!(specs[2].value_segments[2].text, "5/5");
     assert_eq!(specs[2].action, StatusLineCellAction::None);
     assert!(!specs[2].enabled);
 }
