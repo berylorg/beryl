@@ -44,7 +44,7 @@ The course adjustment is to resolve subagent nicknames through metadata-only `th
 
 While planning model/reasoning suffixes for subagent activity labels, Beryl assumed the metadata-only `thread/read` path used for subagent nicknames could also expose exact child-thread model and reasoning effort.
 
-The invalid assumption was that the read-only child-thread metadata source had parity with metadata-only `thread/resume`. Existing app-server contract notes show `thread/start` and `thread/resume` return exact top-level model and nullable reasoning effort, but observed `thread/read` does not expose those runtime fields. `thread/resume` is an activation/subscription primitive, so using it for background activity labels would be a semantic change rather than read-only metadata plumbing.
+The invalid assumption was that the read-only child-thread metadata source had parity with metadata-only `thread/resume`. App-server contract notes at the time showed `thread/start` and `thread/resume` returning exact top-level model and nullable reasoning effort, but observed `thread/read` did not expose those runtime fields. `thread/resume` is an activation/subscription primitive, so using it for background activity labels would be a semantic change rather than read-only metadata plumbing.
 
 The course adjustment is to normalize optional exact runtime model/reasoning fields from `thread/read` when a protocol version exposes them, keep missing values unknown, and avoid inferring them from defaults, model-list metadata, thread ids, or nicknames.
 

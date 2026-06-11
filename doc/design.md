@@ -70,7 +70,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Beryl must not carry runtime branches that support older Codex App Server schemas or speculative future schemas. Compatibility checks validate that the configured app-server satisfies the required target contract; they do not choose among multiple implementation paths.
 - If a configured app-server does not satisfy the required target contract, Beryl must surface backend incompatibility and stop the affected backend-dependent behavior instead of silently falling back to an older schema.
 - For this target, Beryl validates the app-server version from the `initialize` response userAgent product token that CAS generates as `beryl/<app-server-version>`. Beryl's `clientInfo.version` is the GUI client version echoed later in that userAgent string and is not the CAS version.
-- Upgrading Beryl to a different Codex App Server version requires updating this invariant, the app-server contract notes, and affected feature docs or tests as one migration. The migration should replace the old single contract rather than layer a new contract beside it.
+- Upgrading Beryl to a different Codex App Server version requires updating this invariant, the supporting Codex App Server memory notes under `doc/memory/topic/codex-app-server/`, and affected feature docs or tests as one migration. The migration should replace the old single contract rather than layer a new contract beside it.
 - For transcript history in the current 0.137.0 target, Beryl's supported contract is `thread/turns/list` with `itemsView`. Beryl must not rely on `thread/turns/items/list` for this version, because local 0.137.0 advertises that method but returns runtime unsupported.
 
 ## Responsibility Split

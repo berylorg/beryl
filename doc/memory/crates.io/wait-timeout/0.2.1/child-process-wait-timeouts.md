@@ -1,0 +1,73 @@
+﻿# Reason For Investigation
+
+Beryl needed a reusable exploration-memory note for the legacy dependency investigation migrated from doc/deps/wait-timeout/0.2.1.md. The migration preserves source-entrypoint, feature, lifecycle, gotcha, command, and unresolved-question findings that future dependency work may reuse.
+
+# Outcome
+
+The legacy note is preserved below as a dependency exploration memory note for crates.io package wait-timeout 0.2.1. It is supporting research only; design decisions remain in design docs and implementation sequencing remains in doc/plan.md.
+
+# Sources
+
+- Legacy note: doc/deps/wait-timeout/0.2.1.md.
+- Source identity: crates.io package wait-timeout 0.2.1.
+- Workspace dependency context: Cargo.toml and Cargo.lock in this repository at migration time.
+- Additional upstream files, commands, feature flags, local use sites, and follow-up sources are listed in the migrated legacy details below.
+
+# Migrated Legacy Details
+
+## wait-timeout 0.2.1
+
+Verification date: 2026-05-08.
+
+### Package
+
+- Crate: `wait-timeout`
+- Version: `0.2.1`
+- Features: none; the crates.io index reports an empty feature map.
+- Dependencies: `libc ^0.2.56` only on `cfg(unix)`. On Windows the crate has no Rust crate dependency.
+- Crates.io index marks `0.2.1` as not yanked.
+
+### Workspace Use
+
+Beryl uses `wait_timeout::ChildExt` in `beryl-backend` to replace Beryl-owned polling loops around `std::process::Child` shutdown waits.
+
+### Symbols Used
+
+- `wait_timeout::ChildExt`
+- `ChildExt::wait_timeout(&mut std::process::Child, Duration) -> io::Result<Option<ExitStatus>>`
+
+### Semantics
+
+`Ok(Some(status))` means the child exited and was observed through `Child::try_wait`. `Ok(None)` means the timeout elapsed and the child is still the caller's responsibility. The crate does not kill the child or manage process trees.
+
+The public `ChildExt for Child` implementation closes owned stdin before waiting by taking and dropping `child.stdin`. This mutates `Child` state beyond status observation.
+
+A zero-duration wait is nonblocking. On Windows it calls `WaitForSingleObject` with `0` milliseconds. On Unix it checks `try_wait` first and returns `Ok(None)` immediately for a still-running child.
+
+Windows uses the child process handle with `WaitForSingleObject`, then calls `try_wait` after the handle is signaled. Long durations are clamped to `DWORD::MAX` milliseconds.
+
+Unix registers global `SIGCHLD` handling and uses a self-pipe plus `poll`. This may interact poorly with other application SIGCHLD handlers.
+
+### Integration Gotchas
+
+Do not delegate Beryl shutdown policy to this crate. WSL process-group cleanup, direct child kill, host process-tree termination, and Beryl error mapping remain `beryl-backend` responsibilities.
+
+Because `wait_timeout` closes child stdin, prefer calling it only after Beryl has already taken or intentionally no longer needs stdin.
+
+### Source Entrypoints
+
+- `wait_timeout::ChildExt` in `src/lib.rs`
+- Windows implementation in `src/windows.rs`
+- Unix implementation in `src/unix.rs`
+- Upstream zero-timeout test in `tests/smoke.rs`
+
+### Consulted
+
+- `Cargo.lock`
+- `Cargo.toml`
+- `crates/beryl-backend/Cargo.toml`
+- `crates/beryl-backend/src/managed_process.rs`
+- `doc/plan.md`
+- crates.io sparse index: `https://index.crates.io/wa/it/wait-timeout`
+- docs.rs `wait-timeout 0.2.1` source for `src/lib.rs`, `src/windows.rs`, `src/unix.rs`, and `tests/smoke.rs`
+
