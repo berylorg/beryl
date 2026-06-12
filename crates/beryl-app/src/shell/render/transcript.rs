@@ -7,6 +7,7 @@ mod inline_markdown;
 mod item_blocks;
 mod markdown_cache;
 mod markdown_copy;
+mod media_admission;
 mod media_blocks;
 mod media_cache;
 mod media_preload;
@@ -54,7 +55,7 @@ use crate::diagnostic_dynamic_tools::{
     VisibleMediaDiagnostics, VisibleMediaSnapshot, diagnostic_duration_micros,
 };
 use crate::shell::{
-    ScrollbarRegion, ShellView,
+    JumpTranscriptTurnDown, JumpTranscriptTurnUp, ScrollbarRegion, ShellView,
     execution_detail::{
         ExecutionItem, TranscriptRenderMetrics, TurnExecutionRecord, TurnNarrativeEntry,
     },
@@ -96,6 +97,7 @@ use self::image_markdown::markdown_source_with_image_marker_placeholders;
 use self::inline_markdown::{
     TranscriptSelectableImageMarker, TranscriptSelectableTextLine, TranscriptSelectableThreadLink,
 };
+use self::media_admission::TranscriptWindowMediaAdmissionDriver;
 use self::media_blocks::{TranscriptMediaRenderLayout, TranscriptMediaTheme};
 use self::media_cache::TranscriptMediaRenderContext;
 use self::media_preload::{TranscriptMediaPreloadCoordinator, TranscriptMediaPreloadRequest};
@@ -165,6 +167,16 @@ pub(crate) fn bind_keys(cx: &mut App) {
             ClearTranscriptSelection,
             Some(TRANSCRIPT_KEY_CONTEXT),
         ),
+        KeyBinding::new(
+            "ctrl-up",
+            JumpTranscriptTurnUp,
+            Some(TRANSCRIPT_KEY_CONTEXT),
+        ),
+        KeyBinding::new(
+            "ctrl-down",
+            JumpTranscriptTurnDown,
+            Some(TRANSCRIPT_KEY_CONTEXT),
+        ),
     ]);
 }
 
@@ -207,6 +219,7 @@ pub(crate) struct TranscriptPanel {
     syntax_highlight_cache: Rc<RefCell<SyntaxHighlightCache>>,
     code_panel_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     media_cache: Rc<RefCell<TranscriptMediaCache>>,
+    media_admission: TranscriptWindowMediaAdmissionDriver,
     media_preload: TranscriptMediaPreloadCoordinator,
     row_measurement_keys: HashMap<String, TranscriptRowMeasurementKey>,
     media_events: Rc<RefCell<MediaDiagnosticLog>>,
@@ -553,6 +566,7 @@ impl TranscriptPanel {
             syntax_highlight_cache: Rc::new(RefCell::new(SyntaxHighlightCache::default())),
             code_panel_projection_cache: Rc::new(RefCell::new(CodePanelProjectionCache::default())),
             media_cache: Rc::new(RefCell::new(TranscriptMediaCache::default())),
+            media_admission: TranscriptWindowMediaAdmissionDriver::default(),
             media_preload: TranscriptMediaPreloadCoordinator::default(),
             row_measurement_keys: HashMap::new(),
             media_events: Rc::new(RefCell::new(MediaDiagnosticLog::default())),
@@ -863,6 +877,57 @@ impl TranscriptPanel {
             window,
             cx,
         );
+    }
+
+    fn drain_staged_transcript_media_admission(
+        &mut self,
+        workspace: &WorkspaceId,
+        media_context: TranscriptMediaRenderContext,
+        markdown_context: TranscriptMarkdownRenderContext,
+        stream_projection_context: TranscriptStreamProjectionContext,
+        media_layout: TranscriptMediaRenderLayout,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let request = self
+            .shell
+            .read(cx)
+            .conversation_surface()
+            .and_then(|surface| surface.staged_transcript_media_admission_request());
+        let Some(request) = request else {
+            self.media_admission.clear();
+            return;
+        };
+
+        let drain = self.media_admission.drain_pending(
+            request,
+            workspace,
+            media_context,
+            markdown_context,
+            stream_projection_context,
+            media_layout,
+            window,
+            cx,
+        );
+        self.shell.update(cx, |view, cx| {
+            let mut published_activation = None;
+            let mut published_page_rows = 0usize;
+            if let Some(surface) = view.conversation_surface_mut() {
+                let noted = surface
+                    .note_staged_transcript_media_admission_summary(&drain.target, drain.summary);
+                if noted {
+                    published_activation = surface.publish_staged_selected_thread_activation();
+                    published_page_rows = surface.publish_staged_thread_history_page();
+                }
+            }
+            if let Some(publication) = published_activation {
+                view.finish_published_selected_thread_activation(publication);
+                cx.notify();
+            }
+            if published_page_rows > 0 {
+                cx.notify();
+            }
+        });
     }
 
     fn clear_text_selection(&mut self, cx: &mut Context<Self>) {
@@ -1397,6 +1462,28 @@ impl TranscriptPanel {
         cx: &mut Context<Self>,
     ) {
         self.clear_text_selection(cx);
+    }
+
+    fn jump_transcript_turn_up_action(
+        &mut self,
+        action: &JumpTranscriptTurnUp,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.shell.update(cx, |shell, cx| {
+            shell.jump_transcript_turn_up_action(action, window, cx);
+        });
+    }
+
+    fn jump_transcript_turn_down_action(
+        &mut self,
+        action: &JumpTranscriptTurnDown,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.shell.update(cx, |shell, cx| {
+            shell.jump_transcript_turn_down_action(action, window, cx);
+        });
     }
 
     fn copy_text_selection_to_clipboard(&self, cx: &mut Context<Self>) -> bool {
@@ -1967,6 +2054,7 @@ impl TranscriptPanel {
         self.syntax_highlight_cache.borrow_mut().clear();
         self.code_panel_projection_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
+        self.media_admission.clear();
         self.media_preload.clear();
         self.row_measurement_keys.clear();
         self.release_evicted_media_images(evicted_images, cx);
@@ -2018,6 +2106,7 @@ impl TranscriptPanel {
         self.syntax_highlight_cache.borrow_mut().clear();
         self.code_panel_projection_cache.borrow_mut().clear();
         let evicted_images = self.media_cache.borrow_mut().clear();
+        self.media_admission.clear();
         self.media_preload.clear();
         self.row_measurement_keys.clear();
         self.release_evicted_media_images(evicted_images, cx);
@@ -2056,6 +2145,7 @@ impl TranscriptPanel {
         release_event.detail = Some(generation.to_string());
         self.media_events.borrow_mut().record(release_event);
         let evicted_images = self.media_cache.borrow_mut().clear();
+        self.media_admission.clear();
         self.media_preload.clear();
         for row_identity in row_identities {
             self.row_measurement_keys.remove(row_identity);
@@ -2226,6 +2316,7 @@ impl Render for TranscriptPanel {
                 .borrow_mut()
                 .record(MediaDiagnosticEvent::new("transcript_panel_cleared"));
             let evicted_images = self.media_cache.borrow_mut().clear();
+            self.media_admission.clear();
             self.media_preload.clear();
             self.release_evicted_media_images(evicted_images, cx);
             self.nested_scroll_ownership.clear_to_transcript();
@@ -2525,6 +2616,8 @@ impl Render for TranscriptPanel {
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::copy_text_selection_action))
             .on_action(cx.listener(Self::clear_text_selection_action))
+            .on_action(cx.listener(Self::jump_transcript_turn_up_action))
+            .on_action(cx.listener(Self::jump_transcript_turn_down_action))
             .child(
                 canvas(|bounds, _, _| bounds, {
                     let entity = entity.clone();
@@ -2595,15 +2688,49 @@ impl Render for TranscriptPanel {
                         .flex()
                         .flex_col()
                         .when(!has_turns, |this| {
-                            this.child(
+                            this.child({
+                                let empty_state_staged_admission_entity = entity.clone();
+                                let empty_state_staged_admission_workspace = workspace.clone();
+                                let empty_state_staged_admission_media_context =
+                                    media_context.clone();
+                                let empty_state_staged_admission_markdown_context =
+                                    markdown_context.clone();
+                                let empty_state_staged_admission_stream_projection_context =
+                                    stream_projection_context.clone();
+                                let empty_state_staged_admission_media_layout = media_layout;
                                 div()
                                     .px_3()
                                     .py_4()
+                                    .on_children_prepainted(move |_, window, cx| {
+                                        let entity = empty_state_staged_admission_entity.clone();
+                                        let workspace =
+                                            empty_state_staged_admission_workspace.clone();
+                                        let media_context =
+                                            empty_state_staged_admission_media_context.clone();
+                                        let markdown_context =
+                                            empty_state_staged_admission_markdown_context.clone();
+                                        let stream_projection_context =
+                                            empty_state_staged_admission_stream_projection_context
+                                                .clone();
+                                        window.defer(cx, move |window, cx| {
+                                            entity.update(cx, |view, cx| {
+                                                view.drain_staged_transcript_media_admission(
+                                                    &workspace,
+                                                    media_context,
+                                                    markdown_context,
+                                                    stream_projection_context,
+                                                    empty_state_staged_admission_media_layout,
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                        });
+                                    })
                                     .child(empty_state(
                                         snapshot.selected_thread_present,
                                         theme.as_ref(),
-                                    )),
-                            )
+                                    ))
+                            })
                         })
                         .when(has_turns, |this| {
                             this.child({
@@ -2700,6 +2827,7 @@ impl Render for TranscriptPanel {
                                                 .map(|surface| {
                                                     preload_range
                                                         .clone()
+                                                        .filter(|index| !visible_range.contains(index))
                                                         .filter_map(|index| {
                                                             surface
                                                                 .transcript_presentation()
@@ -2756,9 +2884,19 @@ impl Render for TranscriptPanel {
                                                 preload_markdown_context.clone();
                                             let preload_stream_projection_context =
                                                 preload_stream_projection_context.clone();
+                                            let preload_workspace = preload_workspace.clone();
                                             window.defer(cx, move |window, cx| {
                                                 let preload_started = Instant::now();
                                                 preload_entity.update(cx, |view, cx| {
+                                                    view.drain_staged_transcript_media_admission(
+                                                        &preload_workspace,
+                                                        preload_media_context.clone(),
+                                                        preload_markdown_context.clone(),
+                                                        preload_stream_projection_context.clone(),
+                                                        preload_media_layout,
+                                                        window,
+                                                        cx,
+                                                    );
                                                     view.drain_transcript_media_preload_coordinator(
                                                         preload_media_context,
                                                         preload_markdown_context,

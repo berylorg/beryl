@@ -6,6 +6,10 @@ use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::SemanticGraph;
 use beryl_model::workspace::WorkspaceId;
 
+use super::selected_thread_activation::{
+    SelectedThreadInitialViewportPolicy, StagedSelectedThreadActivation,
+};
+use super::transcript_residency_pages::PendingTranscriptResidencyPageRequest;
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
@@ -104,6 +108,7 @@ impl ShellView {
                 let mut surface = match preserved_surface {
                     Some(mut surface) => {
                         surface.refresh_after_backend_reopen(
+                            &opened.execution_target,
                             &inventory_workspace_state,
                             known_threads.clone(),
                             opened.hard_stop_capabilities.clone(),
@@ -121,6 +126,7 @@ impl ShellView {
                     }
                     None => ConversationSurfaceState::seeded(
                         inventory_workspace_id.clone(),
+                        opened.execution_target.clone(),
                         &inventory_workspace_state,
                         &loaded_workspace.workspace_ui_state,
                         known_threads.clone(),
@@ -407,19 +413,6 @@ impl ShellView {
                 image_resolver,
             } => {
                 let ui_finish_started = Instant::now();
-                if let ShellState::Ready(ready) = &mut self.state {
-                    ready.execution_target = execution_target.clone();
-                }
-                let active_execution_target = match &self.state {
-                    ShellState::Ready(ready) => Some(ready.execution_target.clone()),
-                    ShellState::BackendUnavailable(_) => Some(execution_target.clone()),
-                    ShellState::Discovering(_)
-                    | ShellState::Picker(_)
-                    | ShellState::Opening(_)
-                    | ShellState::WorkspaceIdle(_)
-                    | ShellState::WorkspaceLoaded(_)
-                    | ShellState::Blocked(_) => None,
-                };
                 let summary = thread.summary();
                 let history_turn_count = thread.turns.len();
                 let history_item_count = thread
@@ -433,7 +426,24 @@ impl ShellView {
                     .flat_map(|turn| turn.items.iter())
                     .filter(|item| matches!(item, beryl_backend::ThreadItem::ImageGeneration(_)))
                     .count();
-                let activated_idle = matches!(thread.status, beryl_backend::ThreadStatus::Idle);
+                let Some(activation_source) = self.conversation_surface().and_then(|surface| {
+                    surface.pending_selected_thread_activation_source(
+                        summary.id.as_str(),
+                        &execution_target,
+                    )
+                }) else {
+                    self.discard_pending_thread_navigation_activation();
+                    debug!(
+                        thread_id = summary.id.as_str(),
+                        runtime = execution_target.runtime_mode().display_name(),
+                        "discarded stale selected-thread activation result before publication"
+                    );
+                    return None;
+                };
+                if let ShellState::Ready(ready) = &mut self.state {
+                    ready.execution_target = execution_target.clone();
+                }
+                let mut published_activation = None;
                 if let Some(surface) = self.conversation_surface_mut() {
                     let history_apply_started = Instant::now();
                     MemoryMilestone::new("thread_activation_ui_apply_start")
@@ -444,51 +454,34 @@ impl ShellView {
                             history_generated_image_count,
                         )
                         .log();
-                    surface.load_thread_history_window(&thread, history_window, &image_resolver);
+                    surface.stage_selected_thread_activation(StagedSelectedThreadActivation::new(
+                        execution_target.clone(),
+                        thread,
+                        history_window,
+                        image_resolver,
+                        Some(session_metadata),
+                        activation_source,
+                        SelectedThreadInitialViewportPolicy::Tail,
+                    ));
+                    published_activation = surface.publish_staged_selected_thread_activation();
                     debug!(
                         thread_id = summary.id.as_str(),
                         history_turn_count,
                         history_item_count,
                         history_generated_image_count,
                         history_application_ms = super::elapsed_ms(history_apply_started.elapsed()),
-                        "applied activated thread history to conversation surface"
+                        published = published_activation.is_some(),
+                        "staged activated thread history for conversation surface"
                     );
-                    surface.set_thread_session_metadata(session_metadata);
                 }
-                MemoryMilestone::new("thread_activation_ui_applied")
-                    .thread_id(summary.id.as_str())
-                    .history_counts(
-                        history_turn_count,
-                        history_item_count,
-                        history_generated_image_count,
-                    )
-                    .retained_state_if_enabled(|| self.retained_state_snapshot())
-                    .log();
-                if activated_idle {
-                    MemoryMilestone::new("thread_activation_idle_settled")
-                        .thread_id(summary.id.as_str())
-                        .retained_state_if_enabled(|| self.retained_state_snapshot())
-                        .log();
-                }
-                let read_only_decision_branch =
-                    self.thread_is_read_only_decision_branch(summary.id.as_str());
-                if let Some(active_execution_target) = active_execution_target {
-                    self.remember_thread_summary(
-                        &active_execution_target,
-                        &summary,
-                        false,
-                        !read_only_decision_branch,
-                    );
-                    self.hydrate_selected_thread_token_usage_snapshot();
-                    self.mark_member_thread_inventory_refresh_needed();
-                    self.repair_selected_thread_title_if_needed(active_execution_target);
+                if let Some(publication) = published_activation {
+                    self.finish_published_selected_thread_activation(publication);
                 }
                 debug!(
                     thread_id = summary.id.as_str(),
                     thread_activation_ui_finish_ms = super::elapsed_ms(ui_finish_started.elapsed()),
-                    "finished activated thread UI application"
+                    "finished activated thread UI staging"
                 );
-                self.finish_pending_thread_navigation_activation(&summary.id, &execution_target);
                 Some(summary.id.clone())
             }
             ThreadActivationOutcome::RequiresRebind { detail } => {
@@ -524,29 +517,49 @@ impl ShellView {
         }
     }
 
-    pub(super) fn finish_thread_history_page_worker(&mut self, outcome: ThreadHistoryPageOutcome) {
+    pub(super) fn finish_thread_history_page_worker(
+        &mut self,
+        outcome: ThreadHistoryPageOutcome,
+        pending_request: Option<PendingTranscriptResidencyPageRequest>,
+    ) {
         match outcome {
             ThreadHistoryPageOutcome::Loaded {
                 thread_id,
-                request,
+                request: page_request,
                 page,
                 image_resolver,
             } => {
                 if let Some(surface) = self.conversation_surface_mut() {
-                    surface.finish_loading_thread_history_page(
-                        &thread_id,
-                        request,
-                        page,
-                        &image_resolver,
-                    );
+                    let selected_thread_matches =
+                        surface.selected_thread_id() == Some(thread_id.as_str());
+                    let request_ticket = pending_request.filter(|ticket| {
+                        ticket.thread_id() == thread_id.as_str()
+                            && ticket.request() == &page_request
+                    });
+                    if let Some(request_ticket) = request_ticket {
+                        if surface.stage_loading_thread_history_page(
+                            request_ticket,
+                            page,
+                            image_resolver,
+                        ) {
+                            surface.publish_staged_thread_history_page();
+                        } else if selected_thread_matches {
+                            surface.finish_loading_older_history_failure();
+                        }
+                    } else if selected_thread_matches {
+                        surface.finish_loading_older_history_failure();
+                    }
                 }
             }
             ThreadHistoryPageOutcome::Failed { thread_id, message } => {
+                let request_matches_thread = pending_request
+                    .as_ref()
+                    .is_some_and(|ticket| ticket.thread_id() == thread_id.as_str());
                 if let Some(surface) = self.conversation_surface_mut() {
                     let selected_thread_matches =
                         surface.selected_thread_id() == Some(thread_id.as_str());
-                    surface.finish_loading_older_history_failure();
-                    if selected_thread_matches {
+                    if request_matches_thread && selected_thread_matches {
+                        surface.finish_loading_older_history_failure();
                         surface.set_notice(SurfaceNotice::new(
                             "Thread history load failed",
                             message.clone(),
@@ -653,6 +666,7 @@ fn seed_backend_unavailable_surface(
         unavailable_surface_thread_seed(loaded_workspace, execution_target);
     ConversationSurfaceState::seeded(
         loaded_workspace.workspace.id().clone(),
+        execution_target.clone(),
         &loaded_workspace.workspace_state,
         &loaded_workspace.workspace_ui_state,
         known_threads,

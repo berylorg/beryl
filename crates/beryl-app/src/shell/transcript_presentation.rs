@@ -25,8 +25,9 @@ use identity::{latest_user_prompt_anchor_in_rows, stable_row_identity, user_prom
 use metrics::TranscriptPresentationRowMetrics;
 #[allow(unused_imports)]
 pub(crate) use row_model::{
-    TranscriptRowMeasurementDisplayState, TranscriptRowMeasurementKey, TranscriptRowNarrativeUnit,
-    TranscriptRowPresentationModel,
+    TranscriptRowMeasurementDisplayState, TranscriptRowMeasurementKey,
+    TranscriptRowMediaDescriptor, TranscriptRowMediaDescriptorKind, TranscriptRowNarrativeUnit,
+    TranscriptRowPresentationModel, TranscriptRowPresentationRevision,
 };
 
 #[allow(unused_imports)]
@@ -57,6 +58,10 @@ struct TranscriptPresentationRow {
 pub(crate) struct TranscriptRowIdentity(String);
 
 impl TranscriptRowIdentity {
+    pub(crate) fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
     pub(crate) fn as_str(&self) -> &str {
         self.0.as_str()
     }
@@ -526,6 +531,25 @@ impl TranscriptPresentationState {
 }
 
 impl TranscriptPresentationWindow {
+    pub(crate) fn from_turn_records(
+        turns: &[Arc<TurnExecutionRecord>],
+        source_start: usize,
+    ) -> Self {
+        let mut state = TranscriptPresentationState::default();
+        let rows = turns
+            .iter()
+            .cloned()
+            .enumerate()
+            .filter_map(|(offset, turn)| {
+                let source_turn_index = source_start.saturating_add(offset);
+                state
+                    .row_for_turn(source_turn_index, turn)
+                    .map(|row| row.presented_row_at(offset))
+            })
+            .collect();
+        Self { rows }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn rows(&self) -> &[TranscriptPresentedRow] {
         &self.rows

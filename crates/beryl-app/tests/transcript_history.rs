@@ -321,6 +321,55 @@ fn page_residency_allows_one_history_page_request_in_flight() {
 }
 
 #[test]
+fn history_page_request_identity_matches_only_active_loading_page() {
+    let latest = loaded_history_page(
+        vec![turn("turn_2"), turn("turn_3")],
+        Some("older_cursor"),
+        None,
+    );
+    let older = loaded_history_page(vec![turn("turn_0"), turn("turn_1")], None, Some("newer"));
+    let mut window = TranscriptHistoryWindow::from_latest_page(&latest);
+    window.bind_residency_to_thread("thread_a");
+
+    let older_request = window
+        .begin_loading_page_for_visible_range(&(0..1))
+        .expect("older page should start loading");
+    assert!(window.loading_page_matches_request(&older_request));
+    assert!(
+        !window.loading_page_matches_request(&TranscriptHistoryPageRequest::Older {
+            cursor: "different_cursor".to_string(),
+        })
+    );
+    window.finish_loading_older_with_turn_ids(
+        &older,
+        vec!["turn_0".to_string(), "turn_1".to_string()],
+    );
+    assert!(!window.loading_page_matches_request(&older_request));
+
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_max_resident_pages(1)
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_cold_release_hysteresis_viewports(0)
+            .with_minimum_restore_margin_rows(0),
+    );
+    let releases = window.release_cold_pages(&(2..4));
+    let released_request = window
+        .begin_loading_page_for_visible_range(&(0..1))
+        .expect("released page should start restoring");
+    assert!(window.loading_page_matches_request(&released_request));
+    assert!(
+        !window.loading_page_matches_request(&TranscriptHistoryPageRequest::Released {
+            page_id: releases[0].page_id,
+            cursor: Some("mismatched cursor must not match".to_string()),
+        })
+    );
+    window.fail_loading_older();
+    assert!(!window.loading_page_matches_request(&released_request));
+}
+
+#[test]
 fn pinned_resident_turn_can_exceed_byte_budget_with_diagnostic_reason() {
     let page = loaded_history_page(
         vec![turn_with_text("turn_1", &"x".repeat(4096)), turn("turn_2")],

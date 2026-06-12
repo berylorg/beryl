@@ -2,18 +2,30 @@ use std::path::PathBuf;
 
 use beryl_backend::{
     AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, FileChangeItem,
-    FileUpdateChange, PatchApplyStatus, ProtocolPhase, ReasoningItem, ThreadItem, TurnInfo,
-    TurnStatus, TurnStreamEvent, UserInput, UserMessageItem,
+    FileUpdateChange, ImageGenerationItem, PatchApplyStatus, ProtocolPhase, ReasoningItem,
+    ThreadItem, TurnInfo, TurnStatus, TurnStreamEvent, UserInput, UserMessageItem,
 };
 use gpui::px;
 
 mod shell {
     #[path = "../../src/shell/execution_detail.rs"]
     mod execution_detail;
+    #[path = "../../src/shell/transcript_media.rs"]
+    mod transcript_media;
+    #[path = "../../src/shell/transcript_presentability.rs"]
+    mod transcript_presentability;
     #[path = "../../src/shell/transcript_presentation.rs"]
     mod transcript_presentation;
     #[path = "../../src/shell/transcript_projection.rs"]
     mod transcript_projection;
+    mod transcript_history {
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub(crate) struct TranscriptHistoryPageRequest {
+            pub(crate) page_id: String,
+        }
+    }
+    #[path = "../../src/shell/transcript_media_admission.rs"]
+    mod transcript_media_admission;
     #[allow(dead_code)]
     #[path = "../../src/shell/virtual_list/mod.rs"]
     mod virtual_list;
@@ -23,8 +35,73 @@ mod shell {
     use beryl_backend::{TurnInfo, TurnStreamEvent};
     use gpui::{Pixels, px};
 
+    pub(super) use transcript_media::TranscriptMediaLoadOutcome;
+    pub(super) use transcript_media_admission::TranscriptMediaAdmissionSummary;
+    pub(super) use transcript_presentability::{
+        TranscriptCompletedMediaReadiness, TranscriptMediaPresentability,
+        TranscriptMediaReadinessKey, TranscriptMediaRequestedRenderSize,
+        TranscriptMediaTerminalFallback, TranscriptPresentabilitySummary,
+        TranscriptRowPresentabilityContext,
+    };
     pub(super) use transcript_presentation::TranscriptPresentationMutation;
     pub(super) use transcript_presentation::TranscriptRowMeasurementDisplayState;
+    pub(super) use transcript_presentation::{
+        TranscriptRowIdentity, TranscriptRowPresentationRevision,
+    };
+
+    #[allow(dead_code)]
+    struct StagedSelectedThreadActivationForTest;
+
+    #[allow(dead_code)]
+    struct StagedTranscriptResidencyPageAdmissionForTest;
+
+    #[allow(dead_code)]
+    pub(super) struct ConversationSurfaceState {
+        staged_selected_thread_activation: Option<StagedSelectedThreadActivationForTest>,
+        staged_transcript_residency_page: Option<StagedTranscriptResidencyPageAdmissionForTest>,
+    }
+
+    impl StagedSelectedThreadActivationForTest {
+        fn media_admission_request(
+            &self,
+        ) -> transcript_media_admission::TranscriptMediaAdmissionRequest {
+            unreachable!("test staging stub should not build an admission request")
+        }
+
+        fn media_admission_target_matches(
+            &self,
+            _target: &transcript_media_admission::TranscriptMediaAdmissionTarget,
+        ) -> bool {
+            false
+        }
+
+        fn note_media_admission_summary(
+            &mut self,
+            _summary: transcript_media_admission::TranscriptMediaAdmissionSummary,
+        ) {
+        }
+    }
+
+    impl StagedTranscriptResidencyPageAdmissionForTest {
+        fn media_admission_request(
+            &self,
+        ) -> transcript_media_admission::TranscriptMediaAdmissionRequest {
+            unreachable!("test staging stub should not build an admission request")
+        }
+
+        fn media_admission_target_matches(
+            &self,
+            _target: &transcript_media_admission::TranscriptMediaAdmissionTarget,
+        ) -> bool {
+            false
+        }
+
+        fn note_media_admission_summary(
+            &mut self,
+            _summary: transcript_media_admission::TranscriptMediaAdmissionSummary,
+        ) {
+        }
+    }
 
     pub(super) struct PresentationHarness {
         details: execution_detail::ExecutionDetailState,
@@ -348,11 +425,61 @@ mod shell {
             let counts = self.presentation.retained_counts();
             (counts.rows, counts.items, counts.text_bytes)
         }
+
+        pub(super) fn presentability_summary(
+            &self,
+            context: transcript_presentability::TranscriptRowPresentabilityContext,
+        ) -> transcript_presentability::TranscriptPresentabilitySummary {
+            transcript_presentability::TranscriptPresentabilityWindow::from_turn_records(
+                self.details.turns(),
+                0,
+                context,
+            )
+            .summary()
+        }
+
+        pub(super) fn media_admission_summary(
+            &self,
+        ) -> transcript_media_admission::TranscriptMediaAdmissionSummary {
+            transcript_media_admission::TranscriptMediaAdmissionWindow::from_turn_records(
+                self.details.turns(),
+                0,
+            )
+            .last_summary()
+        }
+
+        pub(super) fn requires_completed_media_admission(&self) -> bool {
+            transcript_media_admission::TranscriptMediaAdmissionWindow::from_turn_records(
+                self.details.turns(),
+                0,
+            )
+            .requires_completed_media_admission()
+        }
+
+        pub(super) fn first_row_completed_media(
+            &self,
+            context: transcript_presentability::TranscriptRowPresentabilityContext,
+        ) -> transcript_presentability::TranscriptCompletedMediaReadiness {
+            transcript_presentability::TranscriptPresentabilityWindow::from_turn_records(
+                self.details.turns(),
+                0,
+                context,
+            )
+            .rows()
+            .first()
+            .map(|row| row.completed_media().clone())
+            .unwrap_or(transcript_presentability::TranscriptCompletedMediaReadiness::NotRequired)
+        }
     }
 }
 
 use shell::{
-    PresentationHarness, TranscriptPresentationMutation, TranscriptRowMeasurementDisplayState,
+    PresentationHarness, TranscriptCompletedMediaReadiness, TranscriptMediaAdmissionSummary,
+    TranscriptMediaLoadOutcome, TranscriptMediaPresentability, TranscriptMediaReadinessKey,
+    TranscriptMediaRequestedRenderSize, TranscriptMediaTerminalFallback,
+    TranscriptPresentabilitySummary, TranscriptPresentationMutation, TranscriptRowIdentity,
+    TranscriptRowMeasurementDisplayState, TranscriptRowPresentabilityContext,
+    TranscriptRowPresentationRevision,
 };
 
 #[test]
@@ -445,6 +572,286 @@ fn row_model_source_identity_updates_on_prepend_without_changing_stable_backend_
         harness.row_model_revision_at(turn_3_index).unwrap(),
         turn_3_revision
     );
+}
+
+#[test]
+fn row_presentability_marks_rows_without_media_presentable() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn("turn_1", "Plain assistant response.")],
+    );
+
+    assert_eq!(
+        harness.presentability_summary(TranscriptRowPresentabilityContext::HistoricalOrCompleted),
+        TranscriptPresentabilitySummary {
+            row_count: 1,
+            presentable_rows: 1,
+            ..TranscriptPresentabilitySummary::default()
+        }
+    );
+}
+
+#[test]
+fn media_admission_marks_rows_without_completed_media_settled() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn("turn_1", "Plain assistant response.")],
+    );
+
+    let summary = harness.media_admission_summary();
+
+    assert_eq!(
+        summary,
+        TranscriptMediaAdmissionSummary {
+            row_count: 1,
+            ..TranscriptMediaAdmissionSummary::default()
+        }
+    );
+    assert!(summary.is_completed_media_settled());
+    assert!(!harness.requires_completed_media_admission());
+}
+
+#[test]
+fn media_admission_marks_markdown_image_candidates_pending() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn(
+            "turn_1",
+            "Look at ![cat](images/cat.png) before continuing.",
+        )],
+    );
+
+    let summary = harness.media_admission_summary();
+
+    assert_eq!(summary.row_count, 1);
+    assert_eq!(summary.completed_media_items, 1);
+    assert_eq!(summary.pending_completed_media_items, 1);
+    assert!(!summary.is_completed_media_settled());
+    assert!(harness.requires_completed_media_admission());
+}
+
+#[test]
+fn media_admission_marks_user_markdown_image_candidates_pending() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![prompt_turn(
+            "turn_1",
+            "Please inspect ![diagram](images/diagram.png) before answering.",
+        )],
+    );
+
+    let summary = harness.media_admission_summary();
+
+    assert_eq!(summary.row_count, 1);
+    assert_eq!(summary.completed_media_items, 1);
+    assert_eq!(summary.pending_completed_media_items, 1);
+    assert!(!summary.is_completed_media_settled());
+    assert!(harness.requires_completed_media_admission());
+}
+
+#[test]
+fn media_admission_tracks_each_completed_generated_image() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history("thread_a", vec![generated_images_turn("turn_1", 3)]);
+
+    let summary = harness.media_admission_summary();
+
+    assert_eq!(summary.row_count, 1);
+    assert_eq!(summary.completed_media_items, 3);
+    assert_eq!(summary.pending_completed_media_items, 3);
+    assert!(!summary.is_completed_media_settled());
+    assert!(harness.requires_completed_media_admission());
+}
+
+#[test]
+fn media_admission_requires_window_pass_for_source_backed_generated_image() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![generated_image_turn(
+            "turn_1",
+            "image_generation_source_backed",
+            None,
+            Some("images/generated.png".to_string()),
+        )],
+    );
+
+    let summary = harness.media_admission_summary();
+
+    assert_eq!(summary.completed_media_items, 1);
+    assert_eq!(summary.pending_completed_media_items, 1);
+    assert!(harness.requires_completed_media_admission());
+}
+
+#[test]
+fn row_presentability_treats_markdown_image_plan_as_pending() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn(
+            "turn_1",
+            "Look at ![cat](images/cat.png) before continuing.",
+        )],
+    );
+
+    let summary =
+        harness.presentability_summary(TranscriptRowPresentabilityContext::HistoricalOrCompleted);
+
+    assert_eq!(summary.row_count, 1);
+    assert_eq!(summary.presentable_rows, 0);
+    assert_eq!(summary.markdown_plan_pending_rows, 1);
+    assert_eq!(summary.completed_media_pending_rows, 0);
+}
+
+#[test]
+fn live_pending_generated_image_is_the_only_pending_placeholder_exception() {
+    let mut harness = PresentationHarness::new();
+    let live_index = harness.begin_live_turn("Draw a city skyline");
+    harness
+        .apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_a".to_string(),
+            turn: empty_turn("turn_live", TurnStatus::InProgress),
+        })
+        .unwrap();
+    harness
+        .apply_stream_event(TurnStreamEvent::ItemStarted {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_live".to_string(),
+            item: ThreadItem::ImageGeneration(ImageGenerationItem {
+                id: "image_generation_live".to_string(),
+                status: Some("generating".to_string()),
+                revised_prompt: Some("A city skyline".to_string()),
+                result: None,
+                saved_path: None,
+            }),
+        })
+        .unwrap();
+
+    let historical =
+        harness.presentability_summary(TranscriptRowPresentabilityContext::HistoricalOrCompleted);
+    let live = harness.presentability_summary(TranscriptRowPresentabilityContext::Live);
+
+    assert_eq!(live_index, 0);
+    assert_eq!(historical.presentable_rows, 0);
+    assert_eq!(historical.completed_media_pending_rows, 1);
+    assert_eq!(historical.live_pending_placeholder_items, 0);
+    assert_eq!(live.presentable_rows, 1);
+    assert_eq!(live.completed_media_pending_rows, 0);
+    assert_eq!(live.live_pending_placeholder_items, 1);
+}
+
+#[test]
+fn completed_generated_image_without_result_reaches_terminal_fallback() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![generated_image_turn(
+            "turn_1",
+            "image_generation_missing",
+            None,
+            None,
+        )],
+    );
+
+    let summary =
+        harness.presentability_summary(TranscriptRowPresentabilityContext::HistoricalOrCompleted);
+    let completed_media = harness
+        .first_row_completed_media(TranscriptRowPresentabilityContext::HistoricalOrCompleted);
+
+    assert_eq!(summary.presentable_rows, 1);
+    assert_eq!(summary.terminal_fallback_media_items, 1);
+    assert!(matches!(
+        completed_media,
+        TranscriptCompletedMediaReadiness::Settled { .. }
+    ));
+}
+
+#[test]
+fn media_presentability_terminal_fallbacks_are_presentable() {
+    let terminal_items = [
+        TranscriptMediaPresentability::from_load_outcome(
+            presentability_key("unsupported", 1),
+            &TranscriptMediaLoadOutcome::RenderNotSupported {
+                alt: "unsupported".to_string(),
+            },
+        ),
+        TranscriptMediaPresentability::from_load_outcome(
+            presentability_key("too-large", 2),
+            &TranscriptMediaLoadOutcome::TooLarge {
+                alt: "too large".to_string(),
+            },
+        ),
+        TranscriptMediaPresentability::from_load_outcome(
+            presentability_key("unavailable", 3),
+            &TranscriptMediaLoadOutcome::FileUnavailable {
+                alt: "unavailable".to_string(),
+            },
+        ),
+        TranscriptMediaPresentability::from_load_outcome(
+            presentability_key("disallowed", 4),
+            &TranscriptMediaLoadOutcome::PathNotAllowed {
+                alt: "disallowed".to_string(),
+            },
+        ),
+        TranscriptMediaPresentability::TerminalFallback {
+            key: presentability_key("decode-failed", 5),
+            reason: TranscriptMediaTerminalFallback::DecodeFailed,
+        },
+        TranscriptMediaPresentability::TerminalFallback {
+            key: presentability_key("admission-failed", 6),
+            reason: TranscriptMediaTerminalFallback::AdmissionFailed,
+        },
+    ];
+
+    assert!(terminal_items.iter().all(|item| item.is_presentable()));
+}
+
+#[test]
+fn media_presentability_key_changes_with_source_layout_and_row_revision() {
+    let base = TranscriptMediaReadinessKey::new(
+        TranscriptRowIdentity::new("row-a"),
+        "media-a",
+        1,
+        None,
+        TranscriptMediaRequestedRenderSize::new(100, 50),
+        1.0,
+        TranscriptRowPresentationRevision::default(),
+    );
+    let changed_source = TranscriptMediaReadinessKey::new(
+        TranscriptRowIdentity::new("row-a"),
+        "media-a",
+        2,
+        None,
+        TranscriptMediaRequestedRenderSize::new(100, 50),
+        1.0,
+        TranscriptRowPresentationRevision::default(),
+    );
+    let changed_size = TranscriptMediaReadinessKey::new(
+        TranscriptRowIdentity::new("row-a"),
+        "media-a",
+        1,
+        None,
+        TranscriptMediaRequestedRenderSize::new(120, 50),
+        1.0,
+        TranscriptRowPresentationRevision::default(),
+    );
+    let changed_row = TranscriptMediaReadinessKey::new(
+        TranscriptRowIdentity::new("row-b"),
+        "media-a",
+        1,
+        None,
+        TranscriptMediaRequestedRenderSize::new(100, 50),
+        1.0,
+        TranscriptRowPresentationRevision::default(),
+    );
+
+    assert_ne!(base, changed_source);
+    assert_ne!(base, changed_size);
+    assert_ne!(base, changed_row);
 }
 
 #[test]
@@ -1199,6 +1606,59 @@ fn agent_markdown_turn(id: &str, text: &str) -> TurnInfo {
         })],
         error: None,
     }
+}
+
+fn generated_image_turn(
+    turn_id: &str,
+    image_id: &str,
+    result: Option<String>,
+    saved_path: Option<String>,
+) -> TurnInfo {
+    TurnInfo {
+        id: turn_id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
+        items: vec![ThreadItem::ImageGeneration(ImageGenerationItem {
+            id: image_id.to_string(),
+            status: Some("completed".to_string()),
+            revised_prompt: Some("Generated image".to_string()),
+            result,
+            saved_path,
+        })],
+        error: None,
+    }
+}
+
+fn generated_images_turn(turn_id: &str, count: usize) -> TurnInfo {
+    TurnInfo {
+        id: turn_id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
+        items: (0..count)
+            .map(|index| {
+                ThreadItem::ImageGeneration(ImageGenerationItem {
+                    id: format!("image_generation_{index}"),
+                    status: Some("completed".to_string()),
+                    revised_prompt: Some(format!("Generated image {index}")),
+                    result: Some(format!("result-{index}")),
+                    saved_path: None,
+                })
+            })
+            .collect(),
+        error: None,
+    }
+}
+
+fn presentability_key(media_key: &str, source_revision: u64) -> TranscriptMediaReadinessKey {
+    TranscriptMediaReadinessKey::new(
+        TranscriptRowIdentity::new("row-a"),
+        media_key,
+        source_revision,
+        None,
+        TranscriptMediaRequestedRenderSize::new(100, 50),
+        1.0,
+        TranscriptRowPresentationRevision::default(),
+    )
 }
 
 fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {

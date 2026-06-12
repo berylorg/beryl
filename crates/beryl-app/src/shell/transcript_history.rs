@@ -50,7 +50,7 @@ pub(crate) enum TranscriptResidentHistoryPageError<E> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TranscriptHistoryPageId(u64);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum TranscriptHistoryPageRequest {
     Older {
         cursor: String,
@@ -360,6 +360,50 @@ impl TranscriptHistoryWindow {
 
     pub(crate) fn is_loading_older(&self) -> bool {
         self.loading_page.is_some()
+    }
+
+    pub(crate) fn loading_page_matches_request(
+        &self,
+        request: &TranscriptHistoryPageRequest,
+    ) -> bool {
+        match (&self.loading_page, request) {
+            (
+                Some(LoadingTranscriptHistoryPage::Older {
+                    cursor: loading_cursor,
+                }),
+                TranscriptHistoryPageRequest::Older { cursor },
+            ) => loading_cursor == cursor,
+            (
+                Some(LoadingTranscriptHistoryPage::Released {
+                    page_id: loading_page_id,
+                }),
+                TranscriptHistoryPageRequest::Released { page_id, .. },
+            ) => {
+                loading_page_id == page_id
+                    && self
+                        .pages
+                        .iter()
+                        .find(|page| page.id == *page_id)
+                        .is_some_and(|page| {
+                            page.load_cursor == request.cursor().map(str::to_string)
+                        })
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn source_start_for_loading_request(
+        &self,
+        request: &TranscriptHistoryPageRequest,
+    ) -> Option<usize> {
+        match request {
+            TranscriptHistoryPageRequest::Older { .. } => Some(0),
+            TranscriptHistoryPageRequest::Released { page_id, .. } => self
+                .pages
+                .iter()
+                .find(|page| page.id == *page_id)
+                .map(|page| page.start),
+        }
     }
 
     pub(crate) fn retained_counts(&self) -> TranscriptHistoryRetainedCounts {

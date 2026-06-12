@@ -422,6 +422,7 @@ mod pending_turn_input;
 mod platform_attention;
 mod render;
 mod render_theme;
+mod selected_thread_activation;
 mod semantic_thread_start;
 mod settings;
 mod status_line;
@@ -468,14 +469,18 @@ mod transcript_live_scroll_detection;
 mod transcript_markdown;
 #[allow(dead_code)]
 mod transcript_media;
+mod transcript_media_admission;
 mod transcript_media_runs;
 mod transcript_panel_snapshot;
+mod transcript_presentability;
 mod transcript_presentation;
 mod transcript_presentation_reconcile;
 mod transcript_projection;
 #[allow(dead_code)]
 mod transcript_quote;
 mod transcript_quote_popup;
+mod transcript_residency_logging;
+mod transcript_residency_pages;
 mod transcript_residency_pins;
 mod transcript_scroll;
 #[allow(dead_code)]
@@ -524,8 +529,8 @@ use composer_submission::prepared_composer_draft_fragment;
 use composer_submit::accepted_composer_draft;
 use discovery::WorkspaceOpenCancellation;
 use execution_detail::{
-    ActiveTurnIdentity, ExecutionDetailState, ExecutionItem, TranscriptImagePathResolver,
-    TurnExecutionStatus, UserInputFragment,
+    ActiveTurnIdentity, ExecutionDetailState, TranscriptImagePathResolver, TurnExecutionStatus,
+    UserInputFragment,
 };
 use graph::{
     GraphColumnKey, GraphCommitApplication, GraphMutationCommitUpdate, GraphMutationUpdate,
@@ -557,6 +562,10 @@ use pending_turn_input::{
     PendingTurnInputSubmissionPlan,
 };
 use platform_attention::PlatformAttentionMonitor;
+use selected_thread_activation::{
+    PendingThreadActivation, PublishedSelectedThreadActivation, SelectedThreadActivationSource,
+    SelectedThreadInitialViewportPolicy, StagedSelectedThreadActivation,
+};
 use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, StatusLineTurnView,
@@ -612,6 +621,9 @@ use transcript_live_scroll::{
     TranscriptNarrativeAnchor,
 };
 use transcript_presentation::{TranscriptActivityCaret, TranscriptPresentationState};
+use transcript_residency_pages::{
+    PendingTranscriptResidencyPageRequest, StagedTranscriptResidencyPageAdmission,
+};
 use transcript_residency_pins::TranscriptResidencyDiagnostics;
 use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
 use transcript_stream_invalidation::TranscriptStreamInvalidations;
@@ -872,6 +884,7 @@ pub(super) struct ShellView {
     pending_thread_navigation_activation: Option<PendingThreadNavigationActivation>,
     thread_navigation_histories: HashMap<BerylWorkspaceId, ThreadNavigationHistory>,
     thread_history_page_receiver: Option<Receiver<ThreadHistoryPageUpdate>>,
+    pending_thread_history_page_request: Option<PendingTranscriptResidencyPageRequest>,
     composer_image_label_validation_receiver: Option<ComposerImageLabelValidationTask>,
     composer_image_label_scan_receiver: Option<ComposerImageLabelScanTask>,
     composer_image_asset_receiver: Option<Receiver<ComposerImageAssetUpdate>>,
@@ -1310,10 +1323,6 @@ struct BlockedState {
 }
 
 #[derive(Clone)]
-struct PendingThreadActivation {
-    label: String,
-}
-
 struct PendingDecisionHandoffNavigation {
     record_id: ThreadedDecisionRecordId,
     parent_thread_id: ConversationThreadId,
@@ -1428,6 +1437,9 @@ struct ConversationSurfaceState {
     last_transcript_content_scroll_signature: Option<TranscriptContentScrollSignature>,
     invalidated_stream_turns: TranscriptStreamInvalidations,
     pending_thread_activation: Option<PendingThreadActivation>,
+    staged_selected_thread_activation: Option<StagedSelectedThreadActivation>,
+    staged_transcript_residency_page: Option<StagedTranscriptResidencyPageAdmission>,
+    transcript_residency_page_cancellation_generation: u64,
     context_compaction_thread_id: Option<String>,
     composer_image_labels: ComposerImageLabelState,
     pending_new_thread_label_scope_id: u64,
@@ -2030,6 +2042,7 @@ impl IdleWorkspaceState {
 impl ConversationSurfaceState {
     fn seeded(
         workspace_id: BerylWorkspaceId,
+        execution_target: WorkspaceId,
         workspace_state: &WorkspaceConversationState,
         workspace_ui_state: &WorkspaceUiState,
         known_threads: Vec<ThreadSummary>,
@@ -2073,6 +2086,9 @@ impl ConversationSurfaceState {
             last_transcript_content_scroll_signature: None,
             invalidated_stream_turns: TranscriptStreamInvalidations::default(),
             pending_thread_activation: None,
+            staged_selected_thread_activation: None,
+            staged_transcript_residency_page: None,
+            transcript_residency_page_cancellation_generation: 0,
             context_compaction_thread_id: None,
             composer_image_labels: ComposerImageLabelState::default(),
             pending_new_thread_label_scope_id: 0,
@@ -2103,14 +2119,16 @@ impl ConversationSurfaceState {
         };
 
         if let Some(thread) = selected_thread_history {
-            state.load_thread_history_window(
-                &thread,
+            state.stage_selected_thread_activation(StagedSelectedThreadActivation::new(
+                execution_target,
+                thread,
                 selected_thread_history_window.unwrap_or_default(),
-                &selected_thread_image_resolver,
-            );
-            if let Some(metadata) = selected_thread_session_metadata {
-                state.set_thread_session_metadata(metadata);
-            }
+                selected_thread_image_resolver,
+                selected_thread_session_metadata,
+                SelectedThreadActivationSource::StartupRestore,
+                SelectedThreadInitialViewportPolicy::Tail,
+            ));
+            state.publish_staged_selected_thread_activation();
         } else if let Some(thread_id) = selected_thread_id {
             state.select_thread_by_id(&thread_id);
         } else {
@@ -2719,141 +2737,6 @@ impl ConversationSurfaceState {
         &self.transcript_content_release_row_identities
     }
 
-    fn begin_loading_thread_history_page(
-        &mut self,
-        visible_range: &std::ops::Range<usize>,
-    ) -> Option<(String, TranscriptHistoryPageRequest)> {
-        let thread_id = self.selected_thread_id()?.to_string();
-        let source_visible_range = self
-            .transcript_presentation
-            .source_range_for_presentation_range(visible_range);
-        let request = self
-            .transcript_history_window
-            .begin_loading_page_for_visible_range(&source_visible_range)?;
-        self.note_transcript_residency_request_started();
-        Some((thread_id, request))
-    }
-
-    fn finish_loading_thread_history_page(
-        &mut self,
-        thread_id: &str,
-        request: TranscriptHistoryPageRequest,
-        page: LoadedTranscriptHistoryPage,
-        image_resolver: &TranscriptImagePathResolver,
-    ) -> usize {
-        if self.selected_thread_id() != Some(thread_id) {
-            self.transcript_history_window.fail_loading_older();
-            return 0;
-        }
-
-        match request {
-            TranscriptHistoryPageRequest::Older { .. } => {
-                self.composer_image_labels
-                    .observe_thread_turns(thread_id, &page.turns);
-                let prepended = self
-                    .execution_details
-                    .prepend_thread_history_page_with_image_resolver_and_partial_mode(
-                        thread_id,
-                        page.turns.clone(),
-                        image_resolver,
-                        false,
-                    );
-                self.transcript_history_window
-                    .finish_loading_older_with_turn_ids(&page, prepended.turn_ids);
-                if prepended.added_count > 0 {
-                    let prepended_turns =
-                        self.execution_details.turns()[..prepended.added_count].to_vec();
-                    self.prepend_transcript_presentation_rows(prepended_turns.as_slice());
-                    self.release_cold_history_pages_around_current_view();
-                }
-                prepended.added_count
-            }
-            TranscriptHistoryPageRequest::Released { page_id, .. } => {
-                self.composer_image_labels
-                    .observe_thread_turns(thread_id, &page.turns);
-                let Some(restored) = self
-                    .transcript_history_window
-                    .finish_loading_released_page(page_id, &page)
-                else {
-                    return 0;
-                };
-                let replacements = self
-                    .execution_details
-                    .restore_history_page_with_image_resolver_and_partial_mode(
-                        thread_id,
-                        restored.range.start,
-                        &restored.turn_ids,
-                        page.turns,
-                        image_resolver,
-                        false,
-                    );
-                let restored_count = replacements.len();
-                for replacement in replacements {
-                    self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
-                }
-                self.release_cold_history_pages_around_current_view();
-                restored_count
-            }
-        }
-    }
-
-    fn finish_loading_older_history_failure(&mut self) {
-        self.transcript_history_window.fail_loading_older();
-    }
-
-    fn release_cold_history_pages(&mut self, visible_range: &std::ops::Range<usize>) -> bool {
-        let source_visible_range = self
-            .transcript_presentation
-            .source_range_for_presentation_range(visible_range);
-        let releases = self
-            .transcript_history_window
-            .release_cold_pages(&source_visible_range);
-        if releases.is_empty() {
-            return false;
-        }
-
-        for release in releases {
-            self.note_transcript_residency_release(release.range.len());
-            let replacements = self
-                .execution_details
-                .release_history_range(release.range.clone());
-            let mut released_row_identities = Vec::new();
-            for replacement in replacements {
-                let presentation_index = self
-                    .transcript_presentation
-                    .presentation_index_for_source_turn(replacement.index);
-                if let Some(row_identity) = presentation_index
-                    .and_then(|presentation_index| {
-                        self.transcript_presentation
-                            .row_identity(presentation_index)
-                    })
-                    .map(|identity| identity.as_str().to_string())
-                {
-                    released_row_identities.push(row_identity);
-                }
-                self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
-            }
-            if !released_row_identities.is_empty() {
-                self.note_transcript_content_release(released_row_identities);
-            }
-        }
-        true
-    }
-
-    fn note_transcript_content_release(&mut self, row_identities: Vec<String>) {
-        self.transcript_content_release_generation =
-            self.transcript_content_release_generation.saturating_add(1);
-        self.transcript_content_release_row_identities = row_identities;
-        self.last_transcript_content_scroll_signature = None;
-        self.reconcile_transcript_branch_menu_target();
-        self.reconcile_transcript_edit_mode();
-    }
-
-    fn release_cold_history_pages_around_current_view(&mut self) -> bool {
-        let visible_range = self.transcript_list_state.visible_range();
-        self.release_cold_history_pages(&visible_range)
-    }
-
     fn set_transcript_user_scrolled(&mut self, is_scrolled: bool) -> bool {
         let released_anchor = if is_scrolled {
             self.release_transcript_submit_anchor()
@@ -3044,6 +2927,10 @@ impl ConversationSurfaceState {
                 .clone(),
             invalidated_stream_turns: self.invalidated_stream_turns.clone(),
             pending_thread_activation: self.pending_thread_activation.clone(),
+            staged_selected_thread_activation: self.staged_selected_thread_activation.clone(),
+            staged_transcript_residency_page: self.staged_transcript_residency_page.clone(),
+            transcript_residency_page_cancellation_generation: self
+                .transcript_residency_page_cancellation_generation,
             context_compaction_thread_id: self.context_compaction_thread_id.clone(),
             composer_image_labels: self.composer_image_labels.clone(),
             pending_new_thread_label_scope_id: self.pending_new_thread_label_scope_id,
@@ -3092,6 +2979,7 @@ impl ConversationSurfaceState {
 
     fn refresh_after_backend_reopen(
         &mut self,
+        execution_target: &WorkspaceId,
         workspace_state: &WorkspaceConversationState,
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
@@ -3115,14 +3003,16 @@ impl ConversationSurfaceState {
         match selected_thread_history {
             Some(thread) => {
                 self.known_threads = known_threads;
-                self.load_thread_history_window(
-                    &thread,
+                self.stage_selected_thread_activation(StagedSelectedThreadActivation::new(
+                    execution_target.clone(),
+                    thread,
                     selected_thread_history_window.unwrap_or_default(),
-                    &selected_thread_image_resolver,
-                );
-                if let Some(metadata) = selected_thread_session_metadata {
-                    self.set_thread_session_metadata(metadata);
-                }
+                    selected_thread_image_resolver,
+                    selected_thread_session_metadata,
+                    SelectedThreadActivationSource::BackendReopenRefresh,
+                    SelectedThreadInitialViewportPolicy::Tail,
+                ));
+                self.publish_staged_selected_thread_activation();
             }
             None => {
                 self.known_threads = known_threads;
@@ -3165,6 +3055,8 @@ impl ConversationSurfaceState {
         self.apply_known_thread_agent_labels();
         self.hydrate_token_usage_snapshots(workspace_state);
         self.pending_thread_activation = None;
+        self.staged_selected_thread_activation = None;
+        self.clear_transcript_residency_page_admission();
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         self.finish_graph_mutation(graph, graph_revision, graph_warning);
@@ -3410,6 +3302,8 @@ impl ConversationSurfaceState {
         self.last_transcript_content_scroll_signature = None;
         self.invalidated_stream_turns.clear();
         self.pending_thread_activation = None;
+        self.staged_selected_thread_activation = None;
+        self.clear_transcript_residency_page_admission();
         self.context_compaction_thread_id = None;
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
@@ -3422,113 +3316,6 @@ impl ConversationSurfaceState {
         self.pending_active_turn_steering_queue = None;
         self.notices.clear_all();
         self.transcript_list_state.reset(0);
-    }
-
-    fn begin_thread_activation(&mut self, label: impl Into<String>) {
-        self.pending_thread_activation = Some(PendingThreadActivation {
-            label: label.into(),
-        });
-        self.notices.clear_all();
-        self.close_transcript_branch_menu();
-        self.cancel_transcript_edit_mode();
-    }
-
-    fn clear_pending_thread_activation(&mut self) {
-        self.pending_thread_activation = None;
-    }
-
-    fn load_thread_history(&mut self, thread: &ThreadInfo) {
-        self.load_thread_history_window(
-            thread,
-            TranscriptHistoryWindow::default(),
-            &TranscriptImagePathResolver::default(),
-        );
-    }
-
-    fn load_thread_history_window(
-        &mut self,
-        thread: &ThreadInfo,
-        mut history_window: TranscriptHistoryWindow,
-        image_resolver: &TranscriptImagePathResolver,
-    ) {
-        let load_started = Instant::now();
-        let thread_id = thread.summary().id;
-        if history_window.is_empty() {
-            history_window = TranscriptHistoryWindow::from_turns(&thread.turns);
-        }
-        self.upsert_selected_thread(thread.summary());
-        self.selected_thread_status = Some(thread.status.clone());
-        self.sync_thread_selector_active_thread();
-        self.composer_image_labels.observe_thread_history(thread);
-        self.composer_image_labels.prepare_thread_history_scan(
-            &thread.summary().id,
-            history_window.has_older_pages()
-                || thread
-                    .turns
-                    .iter()
-                    .any(|turn| turn.items_view != beryl_backend::TurnItemsView::Full),
-        );
-        let execution_detail_started = Instant::now();
-        self.execution_details
-            .load_thread_history_with_image_resolver_and_partial_mode(
-                thread,
-                image_resolver,
-                false,
-            );
-        let execution_detail_elapsed = execution_detail_started.elapsed();
-        self.hard_stop_targets.clear_all();
-        let presentation_started = Instant::now();
-        self.transcript_presentation
-            .replace_from_turns(self.execution_details.turns());
-        let presentation_elapsed = presentation_started.elapsed();
-        if memory_diagnostics::enabled() {
-            let turn_count = self.execution_details.turns().len();
-            let item_count = self
-                .execution_details
-                .turns()
-                .iter()
-                .map(|turn| turn.items.len())
-                .sum::<usize>();
-            let generated_image_count = self
-                .execution_details
-                .turns()
-                .iter()
-                .flat_map(|turn| turn.items.iter())
-                .filter(|item| matches!(item, ExecutionItem::GeneratedImage(_)))
-                .count();
-            MemoryMilestone::new("transcript_projection_update")
-                .thread_id(thread_id.as_str())
-                .history_counts(turn_count, item_count, generated_image_count)
-                .retained_state_if_enabled(|| self.retained_state_snapshot())
-                .log();
-        }
-        self.status_line.clear_session_metadata();
-        self.reset_loaded_history_live_scroll();
-        self.transcript_user_scrolled = false;
-        self.transcript_history_window = history_window;
-        self.transcript_history_window
-            .bind_residency_to_thread(thread_id.as_str());
-        self.transcript_residency_diagnostics = TranscriptResidencyDiagnostics::default();
-        self.transcript_reset_generation = self.transcript_reset_generation.saturating_add(1);
-        self.transcript_content_release_generation = 0;
-        self.transcript_content_release_row_identities.clear();
-        self.invalidated_stream_turns.clear();
-        self.pending_thread_activation = None;
-        self.context_compaction_thread_id = None;
-        self.close_transcript_branch_menu();
-        self.cancel_transcript_edit_mode();
-        self.pending_turn_input_queue = None;
-        self.pending_active_turn_steering_queue = None;
-        self.notices.clear_all();
-        self.transcript_list_state
-            .reset(self.transcript_list_item_count());
-        debug!(
-            thread_id = thread_id.as_str(),
-            execution_detail_load_history_ms = elapsed_ms(execution_detail_elapsed),
-            presentation_replace_from_turns_ms = elapsed_ms(presentation_elapsed),
-            surface_load_thread_history_window_ms = elapsed_ms(load_started.elapsed()),
-            "loaded thread history window into conversation surface"
-        );
     }
 
     fn begin_turn(&mut self, user_input: UserInputFragment) {
@@ -4372,6 +4159,52 @@ impl ConversationSurfaceState {
 }
 
 impl ShellView {
+    fn finish_published_selected_thread_activation(
+        &mut self,
+        publication: PublishedSelectedThreadActivation,
+    ) {
+        let summary = publication.summary;
+        MemoryMilestone::new("thread_activation_ui_applied")
+            .thread_id(summary.id.as_str())
+            .history_counts(
+                publication.history_turn_count,
+                publication.history_item_count,
+                publication.history_generated_image_count,
+            )
+            .retained_state_if_enabled(|| self.retained_state_snapshot())
+            .log();
+        if publication.activated_idle {
+            MemoryMilestone::new("thread_activation_idle_settled")
+                .thread_id(summary.id.as_str())
+                .retained_state_if_enabled(|| self.retained_state_snapshot())
+                .log();
+        }
+        let read_only_decision_branch =
+            self.thread_is_read_only_decision_branch(summary.id.as_str());
+        self.remember_thread_summary(
+            &publication.execution_target,
+            &summary,
+            false,
+            !read_only_decision_branch,
+        );
+        self.hydrate_selected_thread_token_usage_snapshot();
+        self.mark_member_thread_inventory_refresh_needed();
+        self.repair_selected_thread_title_if_needed(publication.execution_target.clone());
+        debug!(
+            thread_id = summary.id.as_str(),
+            runtime = publication
+                .execution_target
+                .runtime_mode()
+                .display_name(),
+            activation_source = ?publication.source,
+            "finished published selected-thread activation"
+        );
+        self.finish_pending_thread_navigation_activation(
+            &summary.id,
+            &publication.execution_target,
+        );
+    }
+
     fn new(
         window: &mut Window,
         bootstrap: AppBootstrap,
@@ -4537,6 +4370,7 @@ impl ShellView {
             pending_thread_navigation_activation: None,
             thread_navigation_histories: HashMap::new(),
             thread_history_page_receiver: None,
+            pending_thread_history_page_request: None,
             composer_image_label_validation_receiver: None,
             composer_image_label_scan_receiver: None,
             composer_image_asset_receiver: None,
@@ -4874,6 +4708,7 @@ impl ShellView {
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
         self.thread_history_page_receiver = None;
+        self.pending_thread_history_page_request = None;
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.composer_image_asset_receiver = None;
@@ -4926,6 +4761,7 @@ impl ShellView {
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
         self.thread_history_page_receiver = None;
+        self.pending_thread_history_page_request = None;
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.turn_receiver = None;
@@ -5147,6 +4983,7 @@ impl ShellView {
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
         self.thread_history_page_receiver = None;
+        self.pending_thread_history_page_request = None;
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.turn_receiver = None;
@@ -5775,12 +5612,14 @@ impl ShellView {
         match receiver.try_recv() {
             Ok(ThreadHistoryPageUpdate::Finished(outcome)) => {
                 self.thread_history_page_receiver = None;
-                self.finish_thread_history_page_worker(outcome);
+                let request = self.pending_thread_history_page_request.take();
+                self.finish_thread_history_page_worker(outcome, request);
                 updated = true;
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 self.thread_history_page_receiver = None;
+                self.pending_thread_history_page_request = None;
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.finish_loading_older_history_failure();
                     surface.set_notice(SurfaceNotice::new(
@@ -7660,20 +7499,24 @@ impl ShellView {
         }) else {
             return;
         };
-        let Some((thread_id, request)) = self.conversation_surface_mut().and_then(|surface| {
-            let request = surface.begin_loading_thread_history_page(&event.visible_range)?;
+        let Some(request_ticket) = self.conversation_surface_mut().and_then(|surface| {
+            let request_ticket = surface.begin_loading_thread_history_page(&event.visible_range)?;
             surface.cancel_transcript_edit_mode();
-            Some(request)
+            Some(request_ticket)
         }) else {
             return;
         };
         let Some(persistence) = self.workspace_persistence_for_worker() else {
+            self.pending_thread_history_page_request = None;
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.finish_loading_older_history_failure();
             }
             return;
         };
 
+        let thread_id = request_ticket.thread_id().to_string();
+        let request = request_ticket.request().clone();
+        self.pending_thread_history_page_request = Some(request_ticket);
         self.thread_history_page_receiver = Some(spawn_thread_residency_page_worker(
             persistence,
             connector,
@@ -10000,7 +9843,12 @@ impl ShellView {
         self.pending_thread_navigation_activation = pending_navigation;
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_thread_activation(label.clone());
+            surface.begin_thread_activation(
+                thread_id.clone(),
+                execution_target.clone(),
+                source,
+                label.clone(),
+            );
             surface.close_thread_selector();
         }
         MemoryMilestone::new("thread_activation_start")
@@ -10177,7 +10025,12 @@ impl ShellView {
 
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_thread_activation(label.clone());
+            surface.begin_thread_activation(
+                thread_id.clone(),
+                execution_target.clone(),
+                ThreadNavigationActivationSource::NonHistory,
+                label.clone(),
+            );
         }
         MemoryMilestone::new("thread_activation_start")
             .runtime(execution_target.runtime_mode().display_name())

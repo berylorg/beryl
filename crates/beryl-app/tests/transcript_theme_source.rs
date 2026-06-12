@@ -1,4 +1,6 @@
 const SHELL_SOURCE: &str = include_str!("../src/shell.rs");
+const SHELL_SELECTED_THREAD_ACTIVATION_SOURCE: &str =
+    include_str!("../src/shell/selected_thread_activation.rs");
 const SHELL_RENDER_THEME_SOURCE: &str = include_str!("../src/shell/render_theme.rs");
 const SHELL_RENDER_THEME_FRAME_SOURCE: &str = include_str!("../src/shell/render_theme/frame.rs");
 const SHELL_RENDER_THEME_ROLE_STYLE_SOURCE: &str =
@@ -97,7 +99,8 @@ fn pending_thread_activation_does_not_replace_transcript_region() {
     );
 
     assert!(TRANSCRIPT_SOURCE.contains("pub pending_thread_activation_label: Option<String>"));
-    assert!(SHELL_SOURCE.contains("surface.begin_thread_activation(label.clone())"));
+    assert!(SHELL_SELECTED_THREAD_ACTIVATION_SOURCE.contains("fn begin_thread_activation"));
+    assert!(SHELL_SOURCE.contains("surface.begin_thread_activation("));
     assert!(!TRANSCRIPT_SOURCE.contains("pending_thread_activation_state"));
     assert!(!TRANSCRIPT_SOURCE.contains("has_pending_thread_activation"));
     assert!(!TRANSCRIPT_TEXT_BLOCKS_SOURCE.contains("Opening {label}"));

@@ -394,7 +394,12 @@ impl ShellView {
             summary.updated_at,
         );
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_thread_activation(label.clone());
+            surface.begin_thread_activation(
+                branch_thread_id.as_str().to_string(),
+                execution_target.clone(),
+                super::super::ThreadNavigationActivationSource::NonHistory,
+                label.clone(),
+            );
         }
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;

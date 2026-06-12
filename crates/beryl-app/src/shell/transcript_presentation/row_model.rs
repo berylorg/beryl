@@ -91,7 +91,7 @@ pub(crate) struct TranscriptRowMeasurementKey {
 }
 
 impl TranscriptRowPresentationModel {
-    pub(super) fn derive(source_turn_index: usize, turn: &TurnExecutionRecord) -> Self {
+    pub(in crate::shell) fn derive(source_turn_index: usize, turn: &TurnExecutionRecord) -> Self {
         let source_turn_identity = TranscriptRowSourceIdentity {
             source_turn_index,
             thread_id: turn.thread_id.clone(),
@@ -114,17 +114,30 @@ impl TranscriptRowPresentationModel {
                         fragment_index,
                     });
                     if !fragment.text.is_empty() {
+                        let key = turn_markdown_key(
+                            &source_turn_identity,
+                            turn,
+                            &user_prompt_block_path(fragment_index),
+                        );
+                        let block_path = user_prompt_block_path(fragment_index);
+                        let source_revision = hash_fragment_source(fragment);
                         markdown_sources.push(TranscriptRowMarkdownSource {
-                            key: turn_markdown_key(
-                                &source_turn_identity,
-                                turn,
-                                &user_prompt_block_path(fragment_index),
-                            ),
-                            block_path: user_prompt_block_path(fragment_index),
+                            key: key.clone(),
+                            block_path,
                             source_kind: TranscriptRowMarkdownSourceKind::UserInput,
                             source_bytes: fragment.text.len(),
-                            source_revision: hash_fragment_source(fragment),
+                            source_revision,
                         });
+                        if fragment.image_markers().is_empty()
+                            && contains_markdown_image_candidate(fragment.text.as_str())
+                        {
+                            media_descriptors.push(TranscriptRowMediaDescriptor {
+                                key,
+                                source_kind:
+                                    TranscriptRowMediaDescriptorKind::MarkdownImageCandidate,
+                                source_revision,
+                            });
+                        }
                     }
                 }
                 TurnNarrativeEntry::Item { item_id } => {
@@ -184,6 +197,10 @@ impl TranscriptRowPresentationModel {
         &self.markdown_sources
     }
 
+    pub(crate) fn media_descriptors(&self) -> &[TranscriptRowMediaDescriptor] {
+        &self.media_descriptors
+    }
+
     pub(crate) fn item_count(&self) -> usize {
         self.item_count
     }
@@ -241,7 +258,7 @@ fn append_item_facts(
                 source_bytes: message.text.len(),
                 source_revision,
             });
-            if message.text.contains("](") || message.text.contains("![") {
+            if contains_markdown_image_candidate(message.text.as_str()) {
                 media_descriptors.push(TranscriptRowMediaDescriptor {
                     key,
                     source_kind: TranscriptRowMediaDescriptorKind::MarkdownImageCandidate,
@@ -388,6 +405,10 @@ fn hash_generated_image_source(
     image.saved_path.hash(&mut hasher);
     image.complete.hash(&mut hasher);
     hasher.finish()
+}
+
+fn contains_markdown_image_candidate(source: &str) -> bool {
+    source.contains("](") || source.contains("![")
 }
 
 fn turn_status_label(status: TurnExecutionStatus) -> &'static str {

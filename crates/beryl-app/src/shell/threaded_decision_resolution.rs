@@ -428,8 +428,14 @@ impl ShellView {
         else {
             return false;
         };
+        let parent_thread_id = record.parent_thread_id().as_str().to_string();
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_thread_activation(label.clone());
+            surface.begin_thread_activation(
+                parent_thread_id.clone(),
+                execution_target.clone(),
+                super::ThreadNavigationActivationSource::NonHistory,
+                label.clone(),
+            );
         }
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
@@ -439,7 +445,7 @@ impl ShellView {
             connector,
             beryl_workspace_id,
             execution_target,
-            record.parent_thread_id().as_str().to_string(),
+            parent_thread_id,
             label,
             self.bootstrap.probe_timeout(),
         ));
