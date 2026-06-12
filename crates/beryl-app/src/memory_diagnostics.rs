@@ -31,11 +31,21 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) transcript_residency_nonresident_turns: Option<usize>,
     pub(crate) transcript_residency_resident_turns: Option<usize>,
     pub(crate) transcript_residency_pinned_turns: Option<usize>,
+    pub(crate) transcript_residency_oversized_fallback_turns: Option<usize>,
     pub(crate) transcript_residency_retained_items: Option<usize>,
+    pub(crate) transcript_residency_desired_turns: Option<usize>,
+    pub(crate) transcript_residency_desired_bytes: Option<usize>,
     pub(crate) transcript_residency_last_requested_turns: Option<usize>,
+    pub(crate) transcript_residency_last_transport_turns: Option<usize>,
+    pub(crate) transcript_residency_last_transport_payload_bytes: Option<usize>,
+    pub(crate) transcript_residency_staged_admission_turns: Option<usize>,
+    pub(crate) transcript_residency_last_admitted_turns: Option<usize>,
+    pub(crate) transcript_residency_last_admitted_payload_bytes: Option<usize>,
     pub(crate) transcript_residency_last_released_turns: Option<usize>,
     pub(crate) transcript_residency_pending_requests: Option<usize>,
     pub(crate) transcript_residency_in_flight_requests: Option<usize>,
+    pub(crate) transcript_residency_resident_payload_bytes: Option<usize>,
+    pub(crate) transcript_residency_resident_derived_bytes: Option<usize>,
     pub(crate) transcript_residency_resident_bytes: Option<usize>,
     pub(crate) transcript_residency_index_metadata_bytes: Option<usize>,
     pub(crate) transcript_residency_total_bytes_estimate: Option<usize>,
@@ -49,6 +59,10 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) transcript_residency_policy_max_released_pages: Option<usize>,
     pub(crate) transcript_residency_policy_request_priority: Option<&'static str>,
     pub(crate) transcript_residency_budget_reason: Option<&'static str>,
+    pub(crate) transcript_residency_last_target_margin_satisfied: Option<bool>,
+    pub(crate) transcript_residency_last_target_window_shrunk_by_budget: Option<bool>,
+    pub(crate) transcript_residency_last_target_budget_reason: Option<&'static str>,
+    pub(crate) transcript_residency_last_oversized_fallback_turns: Option<usize>,
     pub(crate) loaded_transcript_text_bytes: Option<usize>,
     pub(crate) transcript_user_fragments: Option<usize>,
     pub(crate) transcript_user_fragment_text_bytes: Option<usize>,
@@ -73,6 +87,9 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) presentation_text_bytes: Option<usize>,
     pub(crate) presentation_identity_bytes: Option<usize>,
     pub(crate) presentation_anchor_bytes: Option<usize>,
+    pub(crate) presentation_derived_bytes: Option<usize>,
+    pub(crate) presentation_markdown_source_bytes: Option<usize>,
+    pub(crate) presentation_media_descriptors: Option<usize>,
     pub(crate) presentation_range_rows: Option<usize>,
     pub(crate) history_pages: Option<usize>,
     pub(crate) history_resident_pages: Option<usize>,
@@ -289,6 +306,38 @@ impl MemoryMilestone {
             optional_usize(retained_state.retained_payload_bytes_lower_bound);
         let loaded_transcript_turns = optional_usize(retained_state.loaded_transcript_turns);
         let loaded_transcript_items = optional_usize(retained_state.loaded_transcript_items);
+        let transcript_residency_resident_turns =
+            optional_usize(retained_state.transcript_residency_resident_turns);
+        let transcript_residency_nonresident_turns =
+            optional_usize(retained_state.transcript_residency_nonresident_turns);
+        let transcript_residency_desired_turns =
+            optional_usize(retained_state.transcript_residency_desired_turns);
+        let transcript_residency_last_transport_turns =
+            optional_usize(retained_state.transcript_residency_last_transport_turns);
+        let transcript_residency_last_transport_payload_bytes =
+            optional_usize(retained_state.transcript_residency_last_transport_payload_bytes);
+        let transcript_residency_last_admitted_turns =
+            optional_usize(retained_state.transcript_residency_last_admitted_turns);
+        let transcript_residency_last_released_turns =
+            optional_usize(retained_state.transcript_residency_last_released_turns);
+        let transcript_residency_resident_payload_bytes =
+            optional_usize(retained_state.transcript_residency_resident_payload_bytes);
+        let transcript_residency_resident_derived_bytes =
+            optional_usize(retained_state.transcript_residency_resident_derived_bytes);
+        let transcript_residency_resident_bytes =
+            optional_usize(retained_state.transcript_residency_resident_bytes);
+        let transcript_residency_oversized_fallback_turns =
+            optional_usize(retained_state.transcript_residency_oversized_fallback_turns);
+        let transcript_residency_last_target_margin_satisfied =
+            optional_bool(retained_state.transcript_residency_last_target_margin_satisfied);
+        let transcript_residency_last_target_window_shrunk_by_budget =
+            optional_bool(retained_state.transcript_residency_last_target_window_shrunk_by_budget);
+        let transcript_residency_last_target_budget_reason = retained_state
+            .transcript_residency_last_target_budget_reason
+            .unwrap_or_default();
+        let transcript_residency_budget_reason = retained_state
+            .transcript_residency_budget_reason
+            .unwrap_or_default();
         let loaded_transcript_text_bytes =
             optional_usize(retained_state.loaded_transcript_text_bytes);
         let transcript_user_fragments = optional_usize(retained_state.transcript_user_fragments);
@@ -393,6 +442,21 @@ impl MemoryMilestone {
                     retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
                     loaded_transcript_turns = %loaded_transcript_turns,
                     loaded_transcript_items = %loaded_transcript_items,
+                    transcript_residency_resident_turns = %transcript_residency_resident_turns,
+                    transcript_residency_nonresident_turns = %transcript_residency_nonresident_turns,
+                    transcript_residency_desired_turns = %transcript_residency_desired_turns,
+                    transcript_residency_last_transport_turns = %transcript_residency_last_transport_turns,
+                    transcript_residency_last_transport_payload_bytes = %transcript_residency_last_transport_payload_bytes,
+                    transcript_residency_last_admitted_turns = %transcript_residency_last_admitted_turns,
+                    transcript_residency_last_released_turns = %transcript_residency_last_released_turns,
+                    transcript_residency_resident_payload_bytes = %transcript_residency_resident_payload_bytes,
+                    transcript_residency_resident_derived_bytes = %transcript_residency_resident_derived_bytes,
+                    transcript_residency_resident_bytes = %transcript_residency_resident_bytes,
+                    transcript_residency_oversized_fallback_turns = %transcript_residency_oversized_fallback_turns,
+                    transcript_residency_last_target_margin_satisfied = %transcript_residency_last_target_margin_satisfied,
+                    transcript_residency_last_target_window_shrunk_by_budget = %transcript_residency_last_target_window_shrunk_by_budget,
+                    transcript_residency_last_target_budget_reason = %transcript_residency_last_target_budget_reason,
+                    transcript_residency_budget_reason = %transcript_residency_budget_reason,
                     loaded_transcript_text_bytes = %loaded_transcript_text_bytes,
                     transcript_user_fragments = %transcript_user_fragments,
                     transcript_backend_input_records = %transcript_backend_input_records,
@@ -470,6 +534,21 @@ impl MemoryMilestone {
                     retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
                     loaded_transcript_turns = %loaded_transcript_turns,
                     loaded_transcript_items = %loaded_transcript_items,
+                    transcript_residency_resident_turns = %transcript_residency_resident_turns,
+                    transcript_residency_nonresident_turns = %transcript_residency_nonresident_turns,
+                    transcript_residency_desired_turns = %transcript_residency_desired_turns,
+                    transcript_residency_last_transport_turns = %transcript_residency_last_transport_turns,
+                    transcript_residency_last_transport_payload_bytes = %transcript_residency_last_transport_payload_bytes,
+                    transcript_residency_last_admitted_turns = %transcript_residency_last_admitted_turns,
+                    transcript_residency_last_released_turns = %transcript_residency_last_released_turns,
+                    transcript_residency_resident_payload_bytes = %transcript_residency_resident_payload_bytes,
+                    transcript_residency_resident_derived_bytes = %transcript_residency_resident_derived_bytes,
+                    transcript_residency_resident_bytes = %transcript_residency_resident_bytes,
+                    transcript_residency_oversized_fallback_turns = %transcript_residency_oversized_fallback_turns,
+                    transcript_residency_last_target_margin_satisfied = %transcript_residency_last_target_margin_satisfied,
+                    transcript_residency_last_target_window_shrunk_by_budget = %transcript_residency_last_target_window_shrunk_by_budget,
+                    transcript_residency_last_target_budget_reason = %transcript_residency_last_target_budget_reason,
+                    transcript_residency_budget_reason = %transcript_residency_budget_reason,
                     loaded_transcript_text_bytes = %loaded_transcript_text_bytes,
                     transcript_user_fragments = %transcript_user_fragments,
                     transcript_backend_input_records = %transcript_backend_input_records,
@@ -546,6 +625,10 @@ pub fn current_process_memory_snapshot() -> Result<ProcessMemorySnapshot, &'stat
 }
 
 fn optional_usize(value: Option<usize>) -> String {
+    value.map(|value| value.to_string()).unwrap_or_default()
+}
+
+fn optional_bool(value: Option<bool>) -> String {
     value.map(|value| value.to_string()).unwrap_or_default()
 }
 

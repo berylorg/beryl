@@ -5,14 +5,16 @@ use beryl_backend::{
     ThreadSummary, ThreadTurnsListResponse,
 };
 use beryl_model::workspace::WorkspaceId;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::memory_diagnostics::MemoryMilestone;
 
 use super::thread_selection::thread_rebind_detail;
 use super::transcript_history::{
-    TranscriptHistoryBackend, TranscriptHistoryWindow, initial_thread_resident_page_options,
-    loaded_full_page_from_desc_response, validate_resident_history_page,
+    TranscriptHistoryBackend, TranscriptHistoryWindow, estimate_turn_payload_resident_bytes,
+    initial_thread_activation_turn_admission_plan, initial_thread_resident_page_options,
+    loaded_full_page_from_desc_response, sanitize_loaded_page_for_turn_admission_plan,
+    validate_resident_history_page,
 };
 
 #[derive(Debug)]
@@ -46,7 +48,24 @@ impl ExistingThreadActivationBackend for ManagedBackendSession {
     }
 }
 
-pub(crate) fn activate_existing_thread_direct<B>(
+pub(crate) struct ThreadActivationLoader;
+
+impl ThreadActivationLoader {
+    pub(crate) fn load_existing_thread<B>(
+        backend: &mut B,
+        execution_target: &WorkspaceId,
+        thread_id: &str,
+        label: &str,
+        timeout: Duration,
+    ) -> Result<ExistingThreadActivation, ExistingThreadActivationError>
+    where
+        B: ExistingThreadActivationBackend,
+    {
+        load_existing_thread_direct(backend, execution_target, thread_id, label, timeout)
+    }
+}
+
+fn load_existing_thread_direct<B>(
     backend: &mut B,
     execution_target: &WorkspaceId,
     thread_id: &str,
@@ -89,6 +108,16 @@ where
             message: format!("Beryl could not load the requested thread history: {error}"),
         })?;
     let history_stats = history_page_stats(&turns);
+    let transport_payload_bytes = turns
+        .data
+        .iter()
+        .map(estimate_turn_payload_resident_bytes)
+        .sum::<usize>();
+    log_initial_transcript_transport_page_received(
+        thread_id,
+        turns.data.len(),
+        transport_payload_bytes,
+    );
     MemoryMilestone::new("transcript_page_receipt")
         .runtime(execution_target.runtime_mode().display_name())
         .thread_id(thread_id)
@@ -158,12 +187,34 @@ fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
+fn log_initial_transcript_transport_page_received(
+    thread_id: &str,
+    transport_turns: usize,
+    transport_payload_bytes: usize,
+) {
+    if transport_turns == 0 {
+        return;
+    }
+
+    info!(
+        thread_id,
+        request_kind = "initial",
+        source_range_start = 0,
+        source_range_end = transport_turns,
+        transport_turns,
+        transport_payload_bytes,
+        "Fetched transcript transport page"
+    );
+}
+
 fn apply_initial_thread_resident_page(
     thread: &mut ThreadInfo,
     page: ThreadTurnsListResponse,
 ) -> Result<TranscriptHistoryWindow, ExistingThreadActivationError> {
     let page = loaded_full_page_from_desc_response(page);
     validate_initial_resident_page(&page)?;
+    let admission_plan = initial_thread_activation_turn_admission_plan(&page);
+    let page = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
     thread.turns = page.turns.clone();
     Ok(TranscriptHistoryWindow::from_latest_page(&page))
 }

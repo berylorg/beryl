@@ -4,7 +4,9 @@ use beryl_model::workspace::WorkspaceId;
 use gpui::{AnyElement, App, IntoElement};
 
 use crate::shell::execution_detail::{TurnExecutionRecord, UserInputFragment};
-use crate::shell::transcript_selection::transcript_narrative_block_break_before;
+use crate::shell::transcript_selection::{
+    TranscriptTextLineOrder, transcript_narrative_block_break_before,
+};
 
 use super::{
     TranscriptCodeLayout, TranscriptTextRole, TranscriptTheme,
@@ -14,6 +16,8 @@ use super::{
 use super::{
     TranscriptMediaRenderIdentity,
     block_markdown::{
+        markdown_prose_block_slice_with_image_markers_and_selection,
+        markdown_prose_block_slice_with_selection,
         markdown_prose_block_with_image_markers_and_selection, markdown_prose_block_with_selection,
     },
     code_panel_controls::TranscriptCodePanelState,
@@ -38,7 +42,7 @@ pub(super) fn render_user_prompt_units(
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     pending_media: &mut Vec<TranscriptMediaRenderItem>,
     narrative_blocks: &mut Vec<AnyElement>,
@@ -145,7 +149,7 @@ fn render_user_prompt_markdown_source(
     conversation_m_advance: gpui::Pixels,
     row_identity: &str,
     initial_break_before: usize,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     cx: &mut App,
 ) -> AnyElement {
     let markdown = markdown_context.markdown_for(markdown_key, source, cx);
@@ -171,6 +175,119 @@ fn render_user_prompt_markdown_source(
     )
 }
 
+pub(super) fn render_user_prompt_markdown_source_slice(
+    source: &str,
+    markdown_key: crate::shell::transcript_markdown::TranscriptMarkdownCacheKey,
+    block_path: String,
+    block_range: std::ops::Range<usize>,
+    theme: &TranscriptTheme,
+    code_panel_state: TranscriptCodePanelState,
+    markdown_context: TranscriptMarkdownRenderContext,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: gpui::Pixels,
+    row_identity: &str,
+    initial_break_before: usize,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
+    cx: &mut App,
+) -> AnyElement {
+    let markdown = markdown_context.markdown_for(markdown_key, source, cx);
+    let selection_context = TranscriptInlineSelectionContext::new_with_initial_break_before(
+        code_panel_state.entity(),
+        row_identity.to_string(),
+        block_path.clone(),
+        selection_order,
+        initial_break_before,
+        code_panel_state.selection_render(),
+    );
+    markdown_prose_block_slice_with_selection(
+        "",
+        markdown.render_plan(),
+        block_range,
+        theme.user_input.background(),
+        theme,
+        code_layout,
+        conversation_m_advance,
+        InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
+        code_panel_state.controls_for(row_identity.to_string(), block_path),
+        selection_context,
+        cx,
+    )
+}
+
+pub(super) fn render_user_prompt_fragment_markdown_source_slice(
+    turn_index: usize,
+    turn: &TurnExecutionRecord,
+    fragment_index: usize,
+    fragment: &UserInputFragment,
+    block_range: std::ops::Range<usize>,
+    theme: &TranscriptTheme,
+    code_panel_state: TranscriptCodePanelState,
+    markdown_context: TranscriptMarkdownRenderContext,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: gpui::Pixels,
+    row_identity: &str,
+    initial_break_before: usize,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    if fragment.text.is_empty() {
+        return None;
+    }
+
+    let block_path = user_prompt_block_path(fragment_index);
+    let markdown_key = turn_markdown_key(turn_index, turn, &block_path);
+    let markdown_source = markdown_source_with_image_marker_placeholders(
+        fragment.text.as_str(),
+        fragment.image_markers(),
+    );
+    let markdown = markdown_context.markdown_for(markdown_key, &markdown_source, cx);
+    let selection_context = TranscriptInlineSelectionContext::new_with_initial_break_before(
+        code_panel_state.entity(),
+        row_identity.to_string(),
+        block_path.clone(),
+        selection_order,
+        initial_break_before,
+        code_panel_state.selection_render(),
+    );
+    let image_markers = fragment
+        .image_markers()
+        .iter()
+        .map(TranscriptInlineImageMarker::from_transcript_marker)
+        .collect::<Vec<_>>();
+
+    let block = if image_markers.is_empty() {
+        markdown_prose_block_slice_with_selection(
+            "",
+            markdown.render_plan(),
+            block_range,
+            theme.user_input.background(),
+            theme,
+            code_layout,
+            conversation_m_advance,
+            InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
+            code_panel_state.controls_for(row_identity.to_string(), block_path),
+            selection_context,
+            cx,
+        )
+    } else {
+        markdown_prose_block_slice_with_image_markers_and_selection(
+            "",
+            markdown.render_plan(),
+            block_range,
+            theme.user_input.background(),
+            theme,
+            code_layout,
+            conversation_m_advance,
+            InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
+            code_panel_state.controls_for(row_identity.to_string(), block_path),
+            selection_context,
+            image_markers.as_slice(),
+            cx,
+        )
+    };
+    Some(block.into_any_element())
+}
+
 fn render_user_prompt(
     turn_index: usize,
     turn: &TurnExecutionRecord,
@@ -183,7 +300,7 @@ fn render_user_prompt(
     conversation_m_advance: gpui::Pixels,
     row_identity: &str,
     initial_break_before: usize,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     cx: &mut App,
 ) -> Option<AnyElement> {
     if fragment.text.is_empty() {

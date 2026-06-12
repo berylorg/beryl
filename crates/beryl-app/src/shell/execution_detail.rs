@@ -13,6 +13,8 @@ use beryl_backend::{
 };
 use tracing::debug;
 
+#[path = "transcript_fallback.rs"]
+mod transcript_fallback;
 #[path = "execution_detail/transcript_images.rs"]
 mod transcript_images;
 #[allow(unused_imports)]
@@ -49,6 +51,7 @@ pub(super) struct TurnExecutionRecord {
     pub thread_id: Option<String>,
     pub turn_id: Option<String>,
     pub status: TurnExecutionStatus,
+    terminal_fallback: Option<TurnTerminalFallback>,
     suppress_user_input_echoes: bool,
     pub awaiting_user_input: bool,
     pub terminal_assistant_item_id: Option<String>,
@@ -68,6 +71,11 @@ pub(super) struct UserInputFragment {
 pub(super) enum TurnNarrativeEntry {
     UserInput { fragment_id: u64 },
     Item { item_id: String },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TurnTerminalFallback {
+    Oversized,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -298,6 +306,7 @@ impl ExecutionDetailState {
             thread_id,
             turn_id: None,
             status,
+            terminal_fallback: None,
             suppress_user_input_echoes: true,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,
@@ -708,6 +717,104 @@ impl ExecutionDetailState {
         replacements
     }
 
+    pub fn release_history_turns_by_id<I, S>(&mut self, turn_ids: I) -> Vec<HistoryTurnReplacement>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let requested = turn_ids
+            .into_iter()
+            .map(|turn_id| turn_id.as_ref().to_string())
+            .collect::<HashSet<_>>();
+        if requested.is_empty() {
+            return Vec::new();
+        }
+
+        let mut replacements = Vec::new();
+        for index in 0..self.turns.len() {
+            if self.active_turn_index == Some(index) {
+                continue;
+            }
+            if !self.turns[index]
+                .turn_id
+                .as_deref()
+                .is_some_and(|turn_id| requested.contains(turn_id))
+            {
+                continue;
+            }
+
+            let Some(released) =
+                TurnExecutionRecord::released_history_slot_from(self.turns[index].as_ref())
+            else {
+                continue;
+            };
+            let released = Arc::new(released);
+            self.turns[index] = released.clone();
+            replacements.push(HistoryTurnReplacement {
+                index,
+                turn: released,
+            });
+        }
+
+        replacements
+    }
+
+    pub fn release_history_turns_by_id_with_oversized_fallbacks<I, S, J, T>(
+        &mut self,
+        turn_ids: I,
+        oversized_fallback_turn_ids: J,
+    ) -> Vec<HistoryTurnReplacement>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+        J: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        let requested = turn_ids
+            .into_iter()
+            .map(|turn_id| turn_id.as_ref().to_string())
+            .collect::<HashSet<_>>();
+        if requested.is_empty() {
+            return Vec::new();
+        }
+        let oversized_fallback_turn_ids = oversized_fallback_turn_ids
+            .into_iter()
+            .map(|turn_id| turn_id.as_ref().to_string())
+            .collect::<HashSet<_>>();
+
+        let mut replacements = Vec::new();
+        for index in 0..self.turns.len() {
+            if self.active_turn_index == Some(index) {
+                continue;
+            }
+            let Some(turn_id) = self.turns[index].turn_id.as_deref() else {
+                continue;
+            };
+            if !requested.contains(turn_id) {
+                continue;
+            }
+
+            let replacement = if oversized_fallback_turn_ids.contains(turn_id) {
+                TurnExecutionRecord::oversized_history_fallback_from_record(
+                    self.turns[index].as_ref(),
+                )
+            } else {
+                TurnExecutionRecord::released_history_slot_from(self.turns[index].as_ref())
+            };
+            let Some(replacement) = replacement else {
+                continue;
+            };
+            let replacement = Arc::new(replacement);
+            self.turns[index] = replacement.clone();
+            replacements.push(HistoryTurnReplacement {
+                index,
+                turn: replacement,
+            });
+        }
+
+        replacements
+    }
+
     #[allow(dead_code)]
     pub fn restore_history_page(
         &mut self,
@@ -1053,6 +1160,16 @@ impl LastTurnState {
     }
 }
 
+impl TurnTerminalFallback {
+    fn message(self) -> &'static str {
+        match self {
+            Self::Oversized => {
+                "This turn is too large to fit in Beryl's transcript memory budget. Its contents are omitted."
+            }
+        }
+    }
+}
+
 impl UserInputFragment {
     pub fn text(text: impl Into<String>) -> Self {
         let text = text.into();
@@ -1121,6 +1238,14 @@ impl TurnExecutionRecord {
             || !self.narrative_entries.is_empty()
             || !self.items.is_empty()
             || self.error_message.is_some()
+    }
+
+    pub fn terminal_fallback(&self) -> Option<TurnTerminalFallback> {
+        self.terminal_fallback
+    }
+
+    pub fn terminal_fallback_text(&self) -> Option<&'static str> {
+        self.terminal_fallback.map(TurnTerminalFallback::message)
     }
 
     pub fn user_input_fragments(&self) -> &[UserInputFragment] {
@@ -1274,12 +1399,17 @@ impl TurnExecutionRecord {
         image_resolver: &TranscriptImagePathResolver,
         _partial_turns_may_be_incomplete: bool,
     ) -> Self {
+        if transcript_fallback::is_oversized_turn_fallback_marker(turn) {
+            return Self::oversized_history_fallback(thread_id, turn);
+        }
+
         let mut record = Self {
             user_input_fragments: Vec::new(),
             narrative_entries: Vec::new(),
             thread_id: Some(thread_id.to_string()),
             turn_id: Some(turn.id.clone()),
             status: execution_status_from_turn(turn),
+            terminal_fallback: None,
             suppress_user_input_echoes: false,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,
@@ -1301,6 +1431,22 @@ impl TurnExecutionRecord {
         record
     }
 
+    fn oversized_history_fallback(thread_id: &str, turn: &TurnInfo) -> Self {
+        Self {
+            user_input_fragments: Vec::new(),
+            narrative_entries: Vec::new(),
+            thread_id: Some(thread_id.to_string()),
+            turn_id: Some(turn.id.clone()),
+            status: execution_status_from_turn(turn),
+            terminal_fallback: Some(TurnTerminalFallback::Oversized),
+            suppress_user_input_echoes: false,
+            awaiting_user_input: false,
+            terminal_assistant_item_id: None,
+            error_message: None,
+            items: Vec::new(),
+        }
+    }
+
     fn released_history_slot_from(turn: &TurnExecutionRecord) -> Option<Self> {
         if !turn.has_resident_payload() {
             return None;
@@ -1311,6 +1457,28 @@ impl TurnExecutionRecord {
             thread_id: Some(turn.thread_id.clone()?),
             turn_id: Some(turn.turn_id.clone()?),
             status: turn.status,
+            terminal_fallback: None,
+            suppress_user_input_echoes: false,
+            awaiting_user_input: false,
+            terminal_assistant_item_id: None,
+            error_message: None,
+            items: Vec::new(),
+        })
+    }
+
+    fn oversized_history_fallback_from_record(turn: &TurnExecutionRecord) -> Option<Self> {
+        if turn.terminal_fallback == Some(TurnTerminalFallback::Oversized)
+            && !turn.has_resident_payload()
+        {
+            return None;
+        }
+        Some(Self {
+            user_input_fragments: Vec::new(),
+            narrative_entries: Vec::new(),
+            thread_id: Some(turn.thread_id.clone()?),
+            turn_id: Some(turn.turn_id.clone()?),
+            status: turn.status,
+            terminal_fallback: Some(TurnTerminalFallback::Oversized),
             suppress_user_input_echoes: false,
             awaiting_user_input: false,
             terminal_assistant_item_id: None,

@@ -25,12 +25,19 @@ mod layout_state;
 mod scroll_state;
 mod state;
 
-type RenderItemFn = dyn FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static;
+type RenderItemFn =
+    dyn FnMut(usize, ListItemRenderContext, &mut Window, &mut App) -> AnyElement + 'static;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ListItemRenderContext {
+    pub scroll_offset_in_item: Pixels,
+    pub viewport_height: Pixels,
+}
 
 /// Construct a new list element
 pub fn list(
     state: ListState,
-    render_item: impl FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static,
+    render_item: impl FnMut(usize, ListItemRenderContext, &mut Window, &mut App) -> AnyElement + 'static,
 ) -> List {
     List {
         state,
@@ -174,6 +181,7 @@ struct ItemLayout {
     index: usize,
     element: AnyElement,
     size: Size<Pixels>,
+    render_context: ListItemRenderContext,
 }
 
 /// Frame state used by the [List] element after layout.

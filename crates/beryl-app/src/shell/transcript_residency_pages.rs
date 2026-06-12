@@ -1,11 +1,21 @@
+use super::transcript_history::{
+    TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT, TranscriptResidencyTargetPlan,
+    sanitize_loaded_page_for_turn_admission_plan, turn_admission_plan_for_page_window,
+};
 use super::transcript_media_admission::{
     TranscriptMediaAdmissionRequest, TranscriptMediaAdmissionSummary,
     TranscriptMediaAdmissionTarget, TranscriptMediaAdmissionWindow,
 };
+use super::transcript_prepublication_preparation::{
+    TranscriptPrepublicationPreparationLayout, TranscriptPrepublicationPreparationRequest,
+    TranscriptPrepublicationPreparationSummary, TranscriptPrepublicationPreparationWindow,
+};
 use super::transcript_presentability::TranscriptPresentabilityWindow;
 use super::transcript_residency_logging::{
-    log_transcript_turns_loaded, log_transcript_turns_unloaded,
+    log_transcript_resident_turns_admitted, log_transcript_resident_turns_released,
+    log_transcript_transport_page_received,
 };
+use super::transcript_residency_pins::TranscriptResidencyAdmissionSummary;
 use super::*;
 use tracing::debug;
 
@@ -19,7 +29,7 @@ pub(super) struct PendingTranscriptResidencyPageRequest {
 }
 
 impl PendingTranscriptResidencyPageRequest {
-    fn new(
+    pub(super) fn new(
         thread_id: String,
         request: TranscriptHistoryPageRequest,
         presentation_visible_range: std::ops::Range<usize>,
@@ -51,6 +61,8 @@ pub(super) struct StagedTranscriptResidencyPageAdmission {
     image_resolver: TranscriptImagePathResolver,
     presentability: TranscriptPresentabilityWindow,
     media_admission: TranscriptMediaAdmissionWindow,
+    prepublication_preparation: TranscriptPrepublicationPreparationWindow,
+    admission_summary: TranscriptResidencyAdmissionSummary,
 }
 
 impl StagedTranscriptResidencyPageAdmission {
@@ -60,6 +72,8 @@ impl StagedTranscriptResidencyPageAdmission {
         image_resolver: TranscriptImagePathResolver,
         presentability: TranscriptPresentabilityWindow,
         media_admission: TranscriptMediaAdmissionWindow,
+        prepublication_preparation: TranscriptPrepublicationPreparationWindow,
+        admission_summary: TranscriptResidencyAdmissionSummary,
     ) -> Self {
         Self {
             request,
@@ -67,6 +81,8 @@ impl StagedTranscriptResidencyPageAdmission {
             image_resolver,
             presentability,
             media_admission,
+            prepublication_preparation,
+            admission_summary,
         }
     }
 
@@ -77,6 +93,20 @@ impl StagedTranscriptResidencyPageAdmission {
                 request: self.request.request.clone(),
                 cancellation_generation: self.request.cancellation_generation,
             })
+    }
+
+    pub(super) fn prepublication_preparation_request(
+        &self,
+        layout: TranscriptPrepublicationPreparationLayout,
+    ) -> TranscriptPrepublicationPreparationRequest {
+        self.prepublication_preparation.preparation_request(
+            TranscriptMediaAdmissionTarget::ResidencyPage {
+                thread_id: self.request.thread_id.clone(),
+                request: self.request.request.clone(),
+                cancellation_generation: self.request.cancellation_generation,
+            },
+            layout,
+        )
     }
 
     pub(super) fn media_admission_target_matches(
@@ -98,44 +128,34 @@ impl StagedTranscriptResidencyPageAdmission {
     pub(super) fn note_media_admission_summary(
         &mut self,
         summary: TranscriptMediaAdmissionSummary,
-    ) {
+    ) -> TranscriptMediaAdmissionSummary {
         self.media_admission.note_summary(summary);
+        self.media_admission.last_summary()
+    }
+
+    pub(super) fn prepublication_preparation_target_matches(
+        &self,
+        target: &TranscriptMediaAdmissionTarget,
+    ) -> bool {
+        self.media_admission_target_matches(target)
+    }
+
+    pub(super) fn note_prepublication_preparation_summary(
+        &mut self,
+        summary: TranscriptPrepublicationPreparationSummary,
+    ) -> TranscriptPrepublicationPreparationSummary {
+        self.prepublication_preparation.note_summary(summary);
+        self.prepublication_preparation.last_summary().clone()
     }
 
     fn is_ready_for_publication(&self) -> bool {
         self.presentability.structural_readiness_settled()
             && self.media_admission.is_settled_for_publication()
+            && self.prepublication_preparation.is_settled_for_publication()
     }
 }
 
 impl ConversationSurfaceState {
-    pub(super) fn begin_loading_thread_history_page(
-        &mut self,
-        visible_range: &std::ops::Range<usize>,
-    ) -> Option<PendingTranscriptResidencyPageRequest> {
-        if self.staged_transcript_residency_page.is_some() {
-            return None;
-        }
-        let thread_id = self.selected_thread_id()?.to_string();
-        let source_visible_range = self
-            .transcript_presentation
-            .source_range_for_presentation_range(visible_range);
-        let request = self
-            .transcript_history_window
-            .begin_loading_page_for_visible_range(&source_visible_range)?;
-        self.transcript_residency_page_cancellation_generation = self
-            .transcript_residency_page_cancellation_generation
-            .saturating_add(1);
-        self.note_transcript_residency_request_started();
-        Some(PendingTranscriptResidencyPageRequest::new(
-            thread_id,
-            request,
-            visible_range.clone(),
-            source_visible_range,
-            self.transcript_residency_page_cancellation_generation,
-        ))
-    }
-
     pub(super) fn stage_loading_thread_history_page(
         &mut self,
         request: PendingTranscriptResidencyPageRequest,
@@ -150,6 +170,46 @@ impl ConversationSurfaceState {
             .transcript_history_window
             .source_start_for_loading_request(request.request())
             .unwrap_or(request.source_visible_range.start);
+        let controller_facts = self.latest_transcript_residency_controller_facts().cloned();
+        let source_visible_range = controller_facts
+            .as_ref()
+            .map(|facts| facts.source_visible_range.clone())
+            .unwrap_or_else(|| request.source_visible_range.clone());
+        let local_visible_range =
+            local_page_visible_range(&source_visible_range, source_start, page.turns.len());
+        let viewport_height = controller_facts
+            .as_ref()
+            .map(|facts| facts.viewport_height)
+            .unwrap_or_else(|| {
+                local_visible_range
+                    .len()
+                    .max(1)
+                    .saturating_mul(TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT)
+            });
+        let admission_plan = turn_admission_plan_for_page_window(
+            &page,
+            local_visible_range,
+            viewport_height,
+            self.transcript_history_window.residency_target_policy(),
+            self.transcript_history_window.pinned_turn_ids(),
+        );
+        let source_range = source_start..source_start.saturating_add(page.turns.len());
+        let request_kind = request_kind_label(request.request());
+        let transport_summary = TranscriptResidencyAdmissionSummary::from_transport_page(
+            request_kind,
+            source_range.clone(),
+            &page.turns,
+        );
+        log_transcript_transport_page_received(request.thread_id(), &transport_summary);
+        self.note_transcript_residency_transport_page(&transport_summary);
+        let page = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
+        let staged_summary = TranscriptResidencyAdmissionSummary::from_admitted_turns(
+            request_kind,
+            source_range,
+            &page.turns,
+        )
+        .with_transport_observation(&transport_summary);
+        self.note_transcript_residency_staged_admission(&staged_summary);
         let presentability = TranscriptPresentabilityWindow::from_history_page(
             request.thread_id(),
             &page.turns,
@@ -162,6 +222,13 @@ impl ConversationSurfaceState {
             &image_resolver,
             source_start,
         );
+        let prepublication_preparation =
+            TranscriptPrepublicationPreparationWindow::from_history_page(
+                request.thread_id(),
+                &page.turns,
+                &image_resolver,
+                source_start,
+            );
         let presentability_summary = presentability.summary();
         debug!(
             thread_id = request.thread_id(),
@@ -181,6 +248,8 @@ impl ConversationSurfaceState {
             image_resolver,
             presentability,
             media_admission,
+            prepublication_preparation,
+            staged_summary,
         ));
         true
     }
@@ -196,6 +265,7 @@ impl ConversationSurfaceState {
         if !staged.is_ready_for_publication() {
             let presentability = staged.presentability.summary();
             let media_admission = staged.media_admission.last_summary();
+            let preparation = staged.prepublication_preparation.last_summary();
             debug!(
                 thread_id = staged.request.thread_id(),
                 request = ?staged.request.request(),
@@ -207,6 +277,13 @@ impl ConversationSurfaceState {
                 media_admission_rows_budget_exhausted = media_admission.rows_budget_exhausted,
                 media_admission_media_budget_exhausted = media_admission.media_budget_exhausted,
                 media_admission_time_budget_exhausted = media_admission.time_budget_exhausted,
+                preparation_rows = preparation.row_count,
+                preparation_pending_rows = preparation.pending_rows,
+                preparation_rows_budget_exhausted = preparation.rows_budget_exhausted,
+                preparation_block_budget_exhausted = preparation.block_budget_exhausted,
+                preparation_media_budget_exhausted = preparation.media_budget_exhausted,
+                preparation_byte_budget_exhausted = preparation.byte_budget_exhausted,
+                preparation_time_budget_exhausted = preparation.time_budget_exhausted,
                 "transcript residency page admission remains staged pending presentability"
             );
             return 0;
@@ -217,6 +294,7 @@ impl ConversationSurfaceState {
         };
 
         let presentability = staged.presentability.summary();
+        let preparation = staged.prepublication_preparation.last_summary().clone();
         debug!(
             thread_id = staged.request.thread_id(),
             request = ?staged.request.request(),
@@ -225,6 +303,8 @@ impl ConversationSurfaceState {
             presentability_rows = presentability.row_count,
             presentable_rows = presentability.presentable_rows,
             completed_media_pending_rows = presentability.completed_media_pending_rows,
+            preparation_rows = preparation.row_count,
+            preparation_pending_rows = preparation.pending_rows,
             "publishing staged transcript residency page admission"
         );
         self.publish_loaded_thread_history_page(staged)
@@ -238,6 +318,7 @@ impl ConversationSurfaceState {
         let request = staged.request.request;
         let page = staged.page;
         let image_resolver = staged.image_resolver;
+        let admission_summary = staged.admission_summary;
         if self.selected_thread_id() != Some(thread_id.as_str()) {
             self.transcript_history_window.fail_loading_older();
             return 0;
@@ -258,20 +339,17 @@ impl ConversationSurfaceState {
                 self.transcript_history_window
                     .finish_loading_older_with_turn_ids(&page, prepended.turn_ids);
                 if prepended.added_count > 0 {
-                    log_transcript_turns_loaded(
-                        &thread_id,
-                        prepended.added_count,
-                        "older",
-                        0..prepended.added_count,
-                    );
+                    self.note_transcript_residency_admission(&admission_summary);
+                    log_transcript_resident_turns_admitted(&thread_id, &admission_summary);
                     let prepended_turns =
                         self.execution_details.turns()[..prepended.added_count].to_vec();
                     self.prepend_transcript_presentation_rows(prepended_turns.as_slice());
-                    self.release_cold_history_pages_around_current_view();
+                    self.invalidate_transcript_residency_controller();
                 }
                 prepended.added_count
             }
-            TranscriptHistoryPageRequest::Released { page_id, .. } => {
+            TranscriptHistoryPageRequest::Indexed { page_id, .. }
+            | TranscriptHistoryPageRequest::Released { page_id, .. } => {
                 self.composer_image_labels
                     .observe_thread_turns(&thread_id, &page.turns);
                 let Some(restored) = self
@@ -291,16 +369,14 @@ impl ConversationSurfaceState {
                         false,
                     );
                 let restored_count = replacements.len();
-                log_transcript_turns_loaded(
-                    &thread_id,
-                    restored_count,
-                    "released",
-                    restored.range.clone(),
-                );
+                self.note_transcript_residency_admission(&admission_summary);
+                log_transcript_resident_turns_admitted(&thread_id, &admission_summary);
                 for replacement in replacements {
                     self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
                 }
-                self.release_cold_history_pages_around_current_view();
+                if restored_count > 0 {
+                    self.invalidate_transcript_residency_controller();
+                }
                 restored_count
             }
         }
@@ -308,6 +384,7 @@ impl ConversationSurfaceState {
 
     pub(super) fn clear_transcript_residency_page_admission(&mut self) {
         self.staged_transcript_residency_page = None;
+        self.clear_transcript_residency_staged_admission();
         self.transcript_residency_page_cancellation_generation = self
             .transcript_residency_page_cancellation_generation
             .saturating_add(1);
@@ -330,60 +407,106 @@ impl ConversationSurfaceState {
         self.transcript_history_window.fail_loading_older();
     }
 
-    pub(super) fn release_cold_history_pages(
+    pub(super) fn release_resident_turn_payloads_for_plan(
         &mut self,
-        visible_range: &std::ops::Range<usize>,
+        plan: &TranscriptResidencyTargetPlan,
     ) -> bool {
-        let source_visible_range = self
-            .transcript_presentation
-            .source_range_for_presentation_range(visible_range);
-        let releases = self
-            .transcript_history_window
-            .release_cold_pages(&source_visible_range);
-        if releases.is_empty() {
+        if plan.release_turn_ids.is_empty() {
             return false;
         }
 
-        for release in releases {
-            log_transcript_turns_unloaded(release.page_id, release.range.clone());
-            self.note_transcript_residency_release(release.range.len());
-            let replacements = self
-                .execution_details
-                .release_history_range(release.range.clone());
-            let mut released_row_identities = Vec::new();
-            for replacement in replacements {
-                let presentation_index = self
-                    .transcript_presentation
-                    .presentation_index_for_source_turn(replacement.index);
-                if let Some(row_identity) = presentation_index
-                    .and_then(|presentation_index| {
-                        self.transcript_presentation
-                            .row_identity(presentation_index)
-                    })
-                    .map(|identity| identity.as_str().to_string())
-                {
-                    released_row_identities.push(row_identity);
-                }
-                self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
+        let released = self
+            .transcript_history_window
+            .release_resident_turns_by_id_with_oversized_fallbacks(
+                plan.release_turn_ids.iter().map(String::as_str),
+                plan.oversized_turn_fallback_ids.iter().map(String::as_str),
+            );
+        if released.released_turn_ids.is_empty() {
+            return false;
+        }
+
+        self.note_transcript_residency_release(released.released_turn_ids.len());
+        let thread_id = self.selected_thread_id().map(str::to_string);
+        log_transcript_resident_turns_released(
+            thread_id.as_deref(),
+            released.released_turn_ids.len(),
+            "controller_target",
+        );
+
+        let replacements = self
+            .execution_details
+            .release_history_turns_by_id_with_oversized_fallbacks(
+                released.released_turn_ids.iter().map(String::as_str),
+                plan.oversized_turn_fallback_ids.iter().map(String::as_str),
+            );
+        let mut released_row_identities = Vec::new();
+        let mut released_markdown_keys = Vec::new();
+        let mut released_media_keys = Vec::new();
+        for replacement in replacements {
+            let presentation_index = self
+                .transcript_presentation
+                .presentation_index_for_source_turn(replacement.index);
+            if let Some(row) =
+                presentation_index.and_then(|index| self.transcript_presentation.turn_at(index))
+            {
+                released_row_identities.push(row.identity.as_str().to_string());
+                released_markdown_keys.extend(
+                    row.model
+                        .markdown_sources()
+                        .iter()
+                        .map(|source| source.key.clone()),
+                );
+                released_media_keys.extend(
+                    row.model
+                        .media_descriptors()
+                        .iter()
+                        .map(|descriptor| descriptor.key.clone()),
+                );
             }
-            if !released_row_identities.is_empty() {
-                self.note_transcript_content_release(released_row_identities);
-            }
+            self.replace_transcript_presentation_turn(replacement.index, replacement.turn);
+        }
+        if !released_row_identities.is_empty() {
+            self.note_transcript_content_release(
+                released_row_identities,
+                released_markdown_keys,
+                released_media_keys,
+            );
         }
         true
     }
 
-    fn note_transcript_content_release(&mut self, row_identities: Vec<String>) {
+    fn note_transcript_content_release(
+        &mut self,
+        row_identities: Vec<String>,
+        markdown_keys: Vec<String>,
+        media_keys: Vec<String>,
+    ) {
         self.transcript_content_release_generation =
             self.transcript_content_release_generation.saturating_add(1);
         self.transcript_content_release_row_identities = row_identities;
+        self.transcript_content_release_markdown_keys = markdown_keys;
+        self.transcript_content_release_media_keys = media_keys;
         self.last_transcript_content_scroll_signature = None;
         self.reconcile_transcript_branch_menu_target();
         self.reconcile_transcript_edit_mode();
     }
+}
 
-    fn release_cold_history_pages_around_current_view(&mut self) -> bool {
-        let visible_range = self.transcript_list_state.visible_range();
-        self.release_cold_history_pages(&visible_range)
+fn local_page_visible_range(
+    source_visible_range: &std::ops::Range<usize>,
+    source_start: usize,
+    page_len: usize,
+) -> std::ops::Range<usize> {
+    let page_end = source_start.saturating_add(page_len);
+    let start = source_visible_range.start.max(source_start).min(page_end);
+    let end = source_visible_range.end.max(start).min(page_end);
+    start.saturating_sub(source_start)..end.saturating_sub(source_start)
+}
+
+fn request_kind_label(request: &TranscriptHistoryPageRequest) -> &'static str {
+    match request {
+        TranscriptHistoryPageRequest::Older { .. } => "older",
+        TranscriptHistoryPageRequest::Indexed { .. } => "indexed",
+        TranscriptHistoryPageRequest::Released { .. } => "released",
     }
 }

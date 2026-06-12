@@ -1,5 +1,7 @@
 #![allow(dead_code, private_interfaces, unused_imports)]
 
+use std::collections::BTreeMap;
+
 use beryl_backend::{
     AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, ProtocolPhase,
     ThreadBranchCapabilities, ThreadItem, TurnInfo, TurnStatus, UserInput, UserMessageItem,
@@ -183,6 +185,22 @@ fn edit_target_extracts_thread_turn_user_input_and_rollback_count() {
     let latest = harness.target_at(2, true).expect("latest turn is editable");
     assert_eq!(latest.source_turn_id(), "turn_3");
     assert_eq!(latest.rollback_turn_count(), 1);
+}
+
+#[test]
+fn oversized_fallback_row_is_not_editable() {
+    let mut harness = EditHarness::new();
+    harness.replace_history("thread_a", vec![oversized_fallback_turn("turn_big")]);
+
+    assert_eq!(harness.presentation_len(), 1);
+    assert!(harness.target_at(0, true).is_none());
+    assert!(matches!(
+        harness.target_resolution_at(0, true),
+        Some(TranscriptEditTargetResolution::Disabled {
+            reason: TranscriptEditDisabledReason::PresentedTurnNotResident,
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -657,6 +675,29 @@ fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {
                     text: (*prompt).to_string(),
                 })
                 .collect(),
+        })],
+        error: None,
+    }
+}
+
+fn oversized_fallback_turn(id: &str) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Summary,
+        items: vec![ThreadItem::Generic(beryl_backend::GenericThreadItem {
+            id: format!("beryl:oversized-turn-fallback:{id}"),
+            item_type: "beryl.oversizedTurnFallback".to_string(),
+            tool: None,
+            server: None,
+            namespace: None,
+            mcp_app_resource_uri: None,
+            status: None,
+            model: None,
+            reasoning_effort: None,
+            receiver_thread_ids: Vec::new(),
+            agents_states: BTreeMap::new(),
+            agent_nickname: None,
         })],
         error: None,
     }

@@ -5,8 +5,9 @@ use gpui::{App, Context, Window, px, size};
 use crate::diagnostic_dynamic_tools::{
     DiagnosticToolSnapshot, ManagedBackendProcessDiagnostic, MemoryDiagnosticSnapshot,
     MemoryDiagnosticUiCorrelation, PreviewStateDiagnostic, ProcessDiagnosticSnapshot,
-    RendererDiagnosticSnapshot, SettingsWindowDiagnosticSnapshot, ThemeEditorModelDiagnostic,
-    ThemeRoleNavigatorDiagnostic, bounded_diagnostic_string, renderer_snapshot_with_shell_window,
+    RendererDiagnosticSnapshot, RuntimeTargetDiagnostic, SettingsWindowDiagnosticSnapshot,
+    ThemeEditorModelDiagnostic, ThemeRoleNavigatorDiagnostic, bounded_diagnostic_string,
+    renderer_snapshot_with_shell_window,
 };
 use crate::gui_control_dynamic_tools::{VisibleTranscriptRowDiagnostic, bounded_control_string};
 use crate::memory_diagnostics::{self, RetainedStateSnapshot};
@@ -38,7 +39,86 @@ pub(super) fn visible_transcript_rows(
     (rows, truncated)
 }
 
+pub(super) fn selected_runtime_target(state: &ShellState) -> Option<RuntimeTargetDiagnostic> {
+    match state {
+        ShellState::Ready(ready) => Some(runtime_target_diagnostic(&ready.execution_target)),
+        ShellState::BackendUnavailable(unavailable) => {
+            Some(runtime_target_diagnostic(&unavailable.execution_target))
+        }
+        ShellState::Blocked(blocked) => {
+            Some(runtime_target_diagnostic(&blocked.target.workspace()))
+        }
+        ShellState::Discovering(_)
+        | ShellState::Picker(_)
+        | ShellState::Opening(_)
+        | ShellState::WorkspaceIdle(_)
+        | ShellState::WorkspaceLoaded(_) => None,
+    }
+}
+
 impl ShellView {
+    pub(super) fn backend_work_receiver_count(&self) -> usize {
+        [
+            self.discovery_receiver.is_some(),
+            self.workspace_receiver.is_some(),
+            self.graph_receiver.is_some(),
+            self.graph_thread_start_receiver.is_some(),
+            self.decision_branch_start_receiver.is_some(),
+            self.decision_child_progress_receiver.is_some(),
+            self.decision_resolution_graph_receiver.is_some(),
+            self.decision_archive_receiver.is_some(),
+            self.transcript_branch_receiver.is_some(),
+            self.transcript_edit_commit_receiver.is_some(),
+            self.member_thread_inventory_receiver.is_some(),
+            self.thread_activation_receiver.is_some(),
+            self.thread_history_page_receiver.is_some(),
+            self.composer_image_label_validation_receiver.is_some(),
+            self.composer_image_label_scan_receiver.is_some(),
+            self.composer_image_asset_receiver.is_some(),
+            self.turn_receiver.is_some(),
+            self.composer_image_delivery_receiver.is_some(),
+            self.status_operation_receiver.is_some(),
+            self.account_rate_limits_receiver.is_some(),
+            self.turn_stop_receiver.is_some(),
+            self.hard_stop_receiver.is_some(),
+            self.workspace_picker_action_receiver.is_some(),
+            self.workspace_title_receiver.is_some(),
+            self.application_shutdown_receiver.is_some(),
+            self.tool_activity_nickname_resolver.has_active_worker(),
+        ]
+        .into_iter()
+        .filter(|active| *active)
+        .count()
+        .saturating_add(self.turn_steering_receivers.len())
+        .saturating_add(self.thread_title_receivers.len())
+        .saturating_add(self.thread_title_update_receivers.len())
+    }
+
+    fn backend_client_connection_estimate(&self) -> usize {
+        [
+            self.workspace_receiver.is_some(),
+            self.decision_branch_start_receiver.is_some(),
+            self.decision_archive_receiver.is_some(),
+            self.member_thread_inventory_receiver.is_some(),
+            self.thread_activation_receiver.is_some(),
+            self.thread_history_page_receiver.is_some(),
+            self.composer_image_label_validation_receiver.is_some(),
+            self.composer_image_label_scan_receiver.is_some(),
+            self.turn_receiver.is_some(),
+            self.status_operation_receiver.is_some(),
+            self.account_rate_limits_receiver.is_some(),
+            self.turn_stop_receiver.is_some(),
+            self.hard_stop_receiver.is_some(),
+            self.tool_activity_nickname_resolver.has_active_worker(),
+        ]
+        .into_iter()
+        .filter(|active| *active)
+        .count()
+        .saturating_add(self.turn_steering_receivers.len())
+        .saturating_add(self.thread_title_receivers.len())
+        .saturating_add(self.thread_title_update_receivers.len())
+    }
+
     pub(super) fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
         let mut snapshot = self
             .conversation_surface()

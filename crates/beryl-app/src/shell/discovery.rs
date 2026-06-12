@@ -26,11 +26,11 @@ use crate::{WorkspaceGraphRevision, WorkspaceGraphStateSnapshot};
 use super::backend_availability::{BackendUnavailable, BackendUnavailableKind};
 use super::execution_detail::TranscriptImagePathResolver;
 use super::lifecycle::blocked_state_for_error;
-use super::thread_activation::{ExistingThreadActivationError, activate_existing_thread_direct};
+use super::thread_activation::{ExistingThreadActivationError, ThreadActivationLoader};
 use super::thread_selection::{
     KnownThreadSelection, ThreadSelectionRequest, resolve_known_thread_selection,
 };
-use super::transcript_image_sources::transcript_image_path_resolver_for_turns;
+use super::transcript_image_sources::transcript_image_path_resolver_for_workspace_assets;
 use super::workspace_members::{
     WorkspaceTargetResolutionError, reconcile_workspace_member_availability,
     resolve_primary_execution_target, validate_primary_execution_target_selection,
@@ -476,7 +476,7 @@ fn load_selected_thread_history(
     timeout: Duration,
 ) -> SelectedThreadHistory {
     if let ThreadSelectionRequest::Exact { thread_id, label } = thread_selection {
-        return match activate_existing_thread_direct(
+        return match ThreadActivationLoader::load_existing_thread(
             session,
             execution_target,
             thread_id,
@@ -487,12 +487,9 @@ fn load_selected_thread_history(
                 selected_thread_id: Some(thread_id.clone()),
                 thread_session_metadata: Some(activation.session_metadata),
                 image_resolver: selected_thread_image_resolver(
-                    session,
                     persistence,
                     workspace_id,
                     execution_target,
-                    &activation.thread.turns,
-                    timeout,
                 ),
                 thread_history: Some(activation.thread),
                 thread_history_window: Some(activation.history_window),
@@ -529,7 +526,7 @@ fn load_selected_thread_history(
                 .find(|thread| thread.id == thread_id)
                 .and_then(|thread| thread.name.as_deref())
                 .unwrap_or(&thread_id);
-            match activate_existing_thread_direct(
+            match ThreadActivationLoader::load_existing_thread(
                 session,
                 execution_target,
                 &thread_id,
@@ -540,12 +537,9 @@ fn load_selected_thread_history(
                     selected_thread_id: Some(thread_id),
                     thread_session_metadata: Some(activation.session_metadata),
                     image_resolver: selected_thread_image_resolver(
-                        session,
                         persistence,
                         workspace_id,
                         execution_target,
-                        &activation.thread.turns,
-                        timeout,
                     ),
                     thread_history: Some(activation.thread),
                     thread_history_window: Some(activation.history_window),
@@ -599,20 +593,14 @@ fn load_selected_thread_history(
 }
 
 fn selected_thread_image_resolver(
-    session: &mut ManagedBackendSession,
     persistence: &BerylWorkspacePersistence,
     workspace_id: &BerylWorkspaceId,
     execution_target: &WorkspaceId,
-    turns: &[beryl_backend::TurnInfo],
-    timeout: Duration,
 ) -> TranscriptImagePathResolver {
-    match transcript_image_path_resolver_for_turns(
+    match transcript_image_path_resolver_for_workspace_assets(
         persistence,
         workspace_id,
         execution_target.runtime_mode(),
-        turns,
-        session,
-        timeout,
     ) {
         Ok(resolver) => resolver,
         Err(error) => {

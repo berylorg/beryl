@@ -31,9 +31,11 @@ pub(crate) struct UiStateSnapshot {
     pub turn_state: TurnUiState,
     pub transcript: TranscriptUiState,
     pub visible_media: VisibleMediaSnapshot,
+    pub markdown_cache: MarkdownCacheUiState,
     pub activity_panel: ActivityPanelUiState,
     pub popups: PopupUiState,
     pub background_work: BackgroundWorkUiState,
+    pub pending_activation: Option<PendingActivationUiState>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -83,6 +85,7 @@ pub(crate) struct TranscriptUiState {
     pub scroll_position: TranscriptScrollPositionDiagnostic,
     pub user_scrolled: bool,
     pub pending_thread_activation_label: Option<String>,
+    pub pending_thread_activation_progress: Option<f32>,
     pub older_history_loading: bool,
     pub visible_rows: Vec<VisibleTranscriptRowDiagnostic>,
     pub visible_row_count: usize,
@@ -124,6 +127,25 @@ pub(crate) struct VisibleTranscriptRowDiagnostic {
     pub text_chars: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MarkdownCacheUiState {
+    pub lookups: u64,
+    pub ready_hits: u64,
+    pub pending_hits: u64,
+    pub misses: u64,
+    pub invalidations: u64,
+    pub scheduled_parses: u64,
+    pub completed_parses: u64,
+    pub stale_completions: u64,
+    pub evictions: u64,
+    pub entries: usize,
+    pub pending_entries: usize,
+    pub source_bytes: usize,
+    pub in_flight_source_bytes: usize,
+    pub markdown_media_requests: usize,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ActivityPanelUiState {
@@ -158,6 +180,81 @@ pub(crate) struct BackgroundWorkUiState {
     pub thread_activation_pending: bool,
     pub turn_stream_pending: bool,
     pub workspace_transition_pending: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingActivationUiState {
+    pub pending_label: Option<String>,
+    pub pending_thread_id: Option<String>,
+    pub pending_progress: Option<f32>,
+    pub staged_thread_id: Option<String>,
+    pub staged_source: Option<String>,
+    pub staged_history_turn_count: Option<usize>,
+    pub ready_for_publication: Option<bool>,
+    pub progress_cap: Option<f32>,
+    pub presentability: Option<PendingActivationPresentabilityUiState>,
+    pub media_admission: Option<PendingActivationMediaAdmissionUiState>,
+    pub prepublication_preparation: Option<PendingActivationPrepublicationUiState>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingActivationPresentabilityUiState {
+    pub row_count: usize,
+    pub presentable_rows: usize,
+    pub missing_full_detail_rows: usize,
+    pub markdown_plan_pending_rows: usize,
+    pub completed_media_pending_rows: usize,
+    pub terminal_fallback_media_items: usize,
+    pub live_pending_placeholder_items: usize,
+    pub structural_readiness_settled: bool,
+    pub presentable: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingActivationMediaAdmissionUiState {
+    pub row_count: usize,
+    pub completed_media_items: usize,
+    pub ready_completed_media_items: usize,
+    pub pending_completed_media_items: usize,
+    pub terminal_fallback_completed_media_items: usize,
+    pub scheduled_loads: usize,
+    pub source_backed_preloads: usize,
+    pub requested_upload_bytes: usize,
+    pub scan_start_row_index: usize,
+    pub scan_start_item_index: usize,
+    pub scanned_rows: usize,
+    pub scanned_media_items: usize,
+    pub deferred_completed_media_items: usize,
+    pub prefix_recheck_required: bool,
+    pub waiting_on_prefix_media: bool,
+    pub rows_budget_exhausted: bool,
+    pub media_budget_exhausted: bool,
+    pub time_budget_exhausted: bool,
+    pub settled: bool,
+    pub requires_retry: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingActivationPrepublicationUiState {
+    pub has_layout: bool,
+    pub row_count: usize,
+    pub prepared_rows: usize,
+    pub pending_rows: usize,
+    pub prepared_block_units: usize,
+    pub prepared_media_items: usize,
+    pub preparation_bytes: usize,
+    pub rows_budget_exhausted: bool,
+    pub block_budget_exhausted: bool,
+    pub media_budget_exhausted: bool,
+    pub byte_budget_exhausted: bool,
+    pub time_budget_exhausted: bool,
+    pub in_flight_budget_exhausted: bool,
+    pub settled: bool,
+    pub requires_retry: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

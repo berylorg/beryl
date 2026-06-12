@@ -260,6 +260,47 @@ fn evicted_pending_media_completion_is_stale() {
 }
 
 #[test]
+fn released_media_key_completion_is_stale() {
+    let mut reader = FakeReader::with_file(r"c:\work\member\images\released.png", png_bytes());
+    let mut cache = TranscriptMediaCache::new(8);
+    let key = cache_key("released");
+    let source = TranscriptMediaSource::markdown_image("released", "images/released.png", None);
+
+    let lookup = cache.lookup(key.clone(), source, host_workspace(), timeout());
+    let completion = lookup.load_request.unwrap().load(&mut reader);
+    let evicted = cache.release_keys([key.as_str()]);
+    let stale = cache.complete_load(completion);
+
+    assert!(evicted.is_empty());
+    assert!(stale.stale);
+    assert!(stale.follow_up_request.is_none());
+    assert_eq!(cache.stats().entries, 0);
+}
+
+#[test]
+fn released_markdown_media_segment_root_completion_is_stale() {
+    let mut reader = FakeReader::with_file(r"c:\work\member\images\released.png", png_bytes());
+    let mut cache = TranscriptMediaCache::new(8);
+    let source = TranscriptMediaSource::markdown_image("released", "images/released.png", None);
+
+    let lookup = cache.lookup(
+        cache_key("turn:1:agent-message:media:0"),
+        source,
+        host_workspace(),
+        timeout(),
+    );
+    let completion = lookup.load_request.unwrap().load(&mut reader);
+    let evicted =
+        cache.release_keys_and_segment_roots(Vec::<String>::new(), ["turn:1:agent-message"]);
+    let stale = cache.complete_load(completion);
+
+    assert!(evicted.is_empty());
+    assert!(stale.stale);
+    assert!(stale.follow_up_request.is_none());
+    assert_eq!(cache.stats().entries, 0);
+}
+
+#[test]
 fn oversized_media_renders_too_large_fallback_without_gpui_image() {
     let path = r"c:\work\member\images\huge.bmp";
     let source = TranscriptMediaSource::markdown_image("huge", "images/huge.bmp", None);

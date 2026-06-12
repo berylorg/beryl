@@ -720,10 +720,30 @@ fn retained_state_summary_reports_transcript_residency_counters() {
         .transcript_residency_nonresident_turns = Some(96);
     snapshot.retained_state.transcript_residency_resident_turns = Some(2);
     snapshot.retained_state.transcript_residency_pinned_turns = Some(3);
+    snapshot
+        .retained_state
+        .transcript_residency_oversized_fallback_turns = Some(1);
     snapshot.retained_state.transcript_residency_retained_items = Some(7);
+    snapshot.retained_state.transcript_residency_desired_turns = Some(6);
+    snapshot.retained_state.transcript_residency_desired_bytes = Some(4096);
     snapshot
         .retained_state
         .transcript_residency_last_requested_turns = Some(4);
+    snapshot
+        .retained_state
+        .transcript_residency_last_transport_turns = Some(80);
+    snapshot
+        .retained_state
+        .transcript_residency_last_transport_payload_bytes = Some(8192);
+    snapshot
+        .retained_state
+        .transcript_residency_staged_admission_turns = Some(3);
+    snapshot
+        .retained_state
+        .transcript_residency_last_admitted_turns = Some(2);
+    snapshot
+        .retained_state
+        .transcript_residency_last_admitted_payload_bytes = Some(1024);
     snapshot
         .retained_state
         .transcript_residency_last_released_turns = Some(2);
@@ -768,6 +788,18 @@ fn retained_state_summary_reports_transcript_residency_counters() {
         .retained_state
         .transcript_residency_policy_request_priority = Some("provided_order");
     snapshot.retained_state.transcript_residency_budget_reason = Some("resident_byte_limit");
+    snapshot
+        .retained_state
+        .transcript_residency_last_target_margin_satisfied = Some(false);
+    snapshot
+        .retained_state
+        .transcript_residency_last_target_window_shrunk_by_budget = Some(true);
+    snapshot
+        .retained_state
+        .transcript_residency_last_target_budget_reason = Some("resident_byte_limit");
+    snapshot
+        .retained_state
+        .transcript_residency_last_oversized_fallback_turns = Some(1);
 
     let response = dispatch_beryl_diagnostic_dynamic_tool_call(
         &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
@@ -793,12 +825,44 @@ fn retained_state_summary_reports_transcript_residency_counters() {
         3
     );
     assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyOversizedFallbackTurns"],
+        1
+    );
+    assert_eq!(
         payload["result"]["retainedState"]["transcriptResidencyRetainedItems"],
         7
     );
     assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyDesiredTurns"],
+        6
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyDesiredBytes"],
+        4096
+    );
+    assert_eq!(
         payload["result"]["retainedState"]["transcriptResidencyLastRequestedTurns"],
         4
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastTransportTurns"],
+        80
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastTransportPayloadBytes"],
+        8192
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyStagedAdmissionTurns"],
+        3
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastAdmittedTurns"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastAdmittedPayloadBytes"],
+        1024
     );
     assert_eq!(
         payload["result"]["retainedState"]["transcriptResidencyLastReleasedTurns"],
@@ -839,6 +903,22 @@ fn retained_state_summary_reports_transcript_residency_counters() {
     assert_eq!(
         payload["result"]["retainedState"]["transcriptResidencyBudgetReason"],
         "resident_byte_limit"
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastTargetMarginSatisfied"],
+        false
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastTargetWindowShrunkByBudget"],
+        true
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastTargetBudgetReason"],
+        "resident_byte_limit"
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["transcriptResidencyLastOversizedFallbackTurns"],
+        1
     );
 }
 

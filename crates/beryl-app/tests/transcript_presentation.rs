@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use beryl_backend::{
     AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, FileChangeItem,
@@ -26,6 +26,8 @@ mod shell {
     }
     #[path = "../../src/shell/transcript_media_admission.rs"]
     mod transcript_media_admission;
+    #[path = "../../src/shell/transcript_prepublication_preparation.rs"]
+    mod transcript_prepublication_preparation;
     #[allow(dead_code)]
     #[path = "../../src/shell/virtual_list/mod.rs"]
     mod virtual_list;
@@ -36,7 +38,14 @@ mod shell {
     use gpui::{Pixels, px};
 
     pub(super) use transcript_media::TranscriptMediaLoadOutcome;
-    pub(super) use transcript_media_admission::TranscriptMediaAdmissionSummary;
+    pub(super) use transcript_media_admission::{
+        SourceBackedUploadAdmissionDecision, TranscriptMediaAdmissionSummary,
+        TranscriptMediaAdmissionTarget, note_source_backed_upload_admission,
+    };
+    pub(super) use transcript_prepublication_preparation::{
+        TranscriptPrepublicationPreparationBudget, TranscriptPrepublicationPreparationDriver,
+        TranscriptPrepublicationPreparationLayout,
+    };
     pub(super) use transcript_presentability::{
         TranscriptCompletedMediaReadiness, TranscriptMediaPresentability,
         TranscriptMediaReadinessKey, TranscriptMediaRequestedRenderSize,
@@ -44,6 +53,7 @@ mod shell {
         TranscriptRowPresentabilityContext,
     };
     pub(super) use transcript_presentation::TranscriptPresentationMutation;
+    pub(super) use transcript_presentation::TranscriptRowBlockOwner;
     pub(super) use transcript_presentation::TranscriptRowMeasurementDisplayState;
     pub(super) use transcript_presentation::{
         TranscriptRowIdentity, TranscriptRowPresentationRevision,
@@ -77,8 +87,32 @@ mod shell {
 
         fn note_media_admission_summary(
             &mut self,
-            _summary: transcript_media_admission::TranscriptMediaAdmissionSummary,
-        ) {
+            summary: transcript_media_admission::TranscriptMediaAdmissionSummary,
+        ) -> transcript_media_admission::TranscriptMediaAdmissionSummary {
+            summary
+        }
+
+        fn prepublication_preparation_request(
+            &self,
+            _layout: transcript_prepublication_preparation::TranscriptPrepublicationPreparationLayout,
+        ) -> transcript_prepublication_preparation::TranscriptPrepublicationPreparationRequest
+        {
+            unreachable!("test staging stub should not build a preparation request")
+        }
+
+        fn prepublication_preparation_target_matches(
+            &self,
+            _target: &transcript_media_admission::TranscriptMediaAdmissionTarget,
+        ) -> bool {
+            false
+        }
+
+        fn note_prepublication_preparation_summary(
+            &mut self,
+            summary: transcript_prepublication_preparation::TranscriptPrepublicationPreparationSummary,
+        ) -> transcript_prepublication_preparation::TranscriptPrepublicationPreparationSummary
+        {
+            summary
         }
     }
 
@@ -98,8 +132,32 @@ mod shell {
 
         fn note_media_admission_summary(
             &mut self,
-            _summary: transcript_media_admission::TranscriptMediaAdmissionSummary,
-        ) {
+            summary: transcript_media_admission::TranscriptMediaAdmissionSummary,
+        ) -> transcript_media_admission::TranscriptMediaAdmissionSummary {
+            summary
+        }
+
+        fn prepublication_preparation_request(
+            &self,
+            _layout: transcript_prepublication_preparation::TranscriptPrepublicationPreparationLayout,
+        ) -> transcript_prepublication_preparation::TranscriptPrepublicationPreparationRequest
+        {
+            unreachable!("test staging stub should not build a preparation request")
+        }
+
+        fn prepublication_preparation_target_matches(
+            &self,
+            _target: &transcript_media_admission::TranscriptMediaAdmissionTarget,
+        ) -> bool {
+            false
+        }
+
+        fn note_prepublication_preparation_summary(
+            &mut self,
+            summary: transcript_prepublication_preparation::TranscriptPrepublicationPreparationSummary,
+        ) -> transcript_prepublication_preparation::TranscriptPrepublicationPreparationSummary
+        {
+            summary
         }
     }
 
@@ -158,6 +216,18 @@ mod shell {
             _heights: &[Pixels],
         ) -> usize {
             let replacements = self.details.release_history_range(range);
+            let count = replacements.len();
+            for replacement in replacements {
+                self.presentation
+                    .replace_turn(replacement.index, replacement.turn);
+            }
+            count
+        }
+
+        pub(super) fn release_turns_by_id(&mut self, turn_ids: &[&str]) -> usize {
+            let replacements = self
+                .details
+                .release_history_turns_by_id(turn_ids.iter().copied());
             let count = replacements.len();
             for replacement in replacements {
                 self.presentation
@@ -246,10 +316,82 @@ mod shell {
                                 item_id,
                                 item_index,
                             } => format!("item:{item_index}:{item_id}"),
+                            transcript_presentation::TranscriptRowNarrativeUnit::TerminalFallback => {
+                                "fallback".to_string()
+                            }
                         })
                         .collect()
                 })
                 .unwrap_or_default()
+        }
+
+        pub(super) fn row_model_block_summary_at(&self, index: usize) -> Option<(usize, bool)> {
+            self.presentation.turn_at(index).map(|row| {
+                let blocks = row.model.block_presentation();
+                (
+                    blocks.estimated_render_blocks(),
+                    blocks.requires_block_split(),
+                )
+            })
+        }
+
+        pub(super) fn row_model_block_unit_kinds_at(&self, index: usize) -> Vec<String> {
+            self.presentation
+                .turn_at(index)
+                .map(|row| {
+                    row.model
+                        .block_presentation()
+                        .units()
+                        .iter()
+                        .map(|unit| match &unit.owner {
+                            TranscriptRowBlockOwner::NarrativeUnit { unit_index } => {
+                                format!("narrative:{unit_index}")
+                            }
+                            TranscriptRowBlockOwner::MarkdownSource {
+                                key, block_index, ..
+                            } => {
+                                format!("markdown:{key}:{block_index}")
+                            }
+                            TranscriptRowBlockOwner::MediaDescriptor { key } => {
+                                format!("media:{key}")
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+
+        pub(super) fn row_model_block_render_window_at(
+            &self,
+            index: usize,
+            row_offset: f32,
+            viewport_height: f32,
+        ) -> Option<(usize, usize, usize, f32, f32)> {
+            self.presentation.turn_at(index).and_then(|row| {
+                let window = row
+                    .model
+                    .block_presentation()
+                    .render_window(px(row_offset), px(viewport_height))?;
+                Some((
+                    window.start,
+                    window.end,
+                    window.total,
+                    f32::from(window.top_spacer_height),
+                    f32::from(window.bottom_spacer_height),
+                ))
+            })
+        }
+
+        pub(super) fn terminal_fallback_text_at(&self, index: usize) -> Option<&'static str> {
+            self.presentation
+                .turn_at(index)
+                .and_then(|row| row.turn.terminal_fallback_text())
+        }
+
+        pub(super) fn row_has_resident_payload(&self, index: usize) -> bool {
+            self.presentation
+                .turn_at(index)
+                .is_some_and(|row| row.turn.has_resident_payload())
         }
 
         pub(super) fn first_markdown_key_at(&self, index: usize) -> Option<String> {
@@ -426,6 +568,15 @@ mod shell {
             (counts.rows, counts.items, counts.text_bytes)
         }
 
+        pub(super) fn derived_retained_counts(&self) -> (usize, usize, usize) {
+            let counts = self.presentation.retained_counts();
+            (
+                counts.derived_bytes,
+                counts.markdown_source_bytes,
+                counts.media_descriptors,
+            )
+        }
+
         pub(super) fn presentability_summary(
             &self,
             context: transcript_presentability::TranscriptRowPresentabilityContext,
@@ -446,6 +597,25 @@ mod shell {
                 0,
             )
             .last_summary()
+        }
+
+        pub(super) fn media_admission_window(
+            &self,
+        ) -> transcript_media_admission::TranscriptMediaAdmissionWindow {
+            transcript_media_admission::TranscriptMediaAdmissionWindow::from_turn_records(
+                self.details.turns(),
+                0,
+            )
+        }
+
+        pub(super) fn prepublication_preparation_window(
+            &self,
+        ) -> transcript_prepublication_preparation::TranscriptPrepublicationPreparationWindow
+        {
+            transcript_prepublication_preparation::TranscriptPrepublicationPreparationWindow::from_turn_records(
+                self.details.turns(),
+                0,
+            )
         }
 
         pub(super) fn requires_completed_media_admission(&self) -> bool {
@@ -474,12 +644,14 @@ mod shell {
 }
 
 use shell::{
-    PresentationHarness, TranscriptCompletedMediaReadiness, TranscriptMediaAdmissionSummary,
-    TranscriptMediaLoadOutcome, TranscriptMediaPresentability, TranscriptMediaReadinessKey,
-    TranscriptMediaRequestedRenderSize, TranscriptMediaTerminalFallback,
+    PresentationHarness, SourceBackedUploadAdmissionDecision, TranscriptCompletedMediaReadiness,
+    TranscriptMediaAdmissionSummary, TranscriptMediaAdmissionTarget, TranscriptMediaLoadOutcome,
+    TranscriptMediaPresentability, TranscriptMediaReadinessKey, TranscriptMediaRequestedRenderSize,
+    TranscriptMediaTerminalFallback, TranscriptPrepublicationPreparationBudget,
+    TranscriptPrepublicationPreparationDriver, TranscriptPrepublicationPreparationLayout,
     TranscriptPresentabilitySummary, TranscriptPresentationMutation, TranscriptRowIdentity,
     TranscriptRowMeasurementDisplayState, TranscriptRowPresentabilityContext,
-    TranscriptRowPresentationRevision,
+    TranscriptRowPresentationRevision, note_source_backed_upload_admission,
 };
 
 #[test]
@@ -538,6 +710,40 @@ fn row_identity_lookup_tracks_index_after_older_history_prepend() {
 
     assert_eq!(harness.row_index_for_identity(&turn_4_identity), Some(3));
     assert_eq!(harness.row_index_for_identity("missing-row"), None);
+}
+
+#[test]
+fn oversized_fallback_turn_projects_terminal_row_without_resident_payload_sources() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history("thread_a", vec![oversized_fallback_turn("turn_big")]);
+
+    assert_eq!(harness.presentation_len(), 1);
+    assert_eq!(harness.turn_id_at(0), Some("turn_big".to_string()));
+    assert_eq!(harness.row_model_units_at(0), vec!["fallback".to_string()]);
+    assert_eq!(
+        harness.terminal_fallback_text_at(0),
+        Some(
+            "This turn is too large to fit in Beryl's transcript memory budget. Its contents are omitted."
+        )
+    );
+    assert!(!harness.row_has_resident_payload(0));
+    assert!(harness.visible_narrative_texts_at(0).is_empty());
+    assert!(harness.visible_item_kinds_at(0).is_empty());
+    assert_eq!(harness.first_markdown_key_at(0), None);
+    assert_eq!(harness.render_metrics(), (1, 0, 0));
+    assert_eq!(harness.retained_counts(), (1, 0, 0));
+
+    let presentability =
+        harness.presentability_summary(TranscriptRowPresentabilityContext::HistoricalOrCompleted);
+    assert_eq!(
+        presentability,
+        TranscriptPresentabilitySummary {
+            row_count: 1,
+            presentable_rows: 1,
+            ..TranscriptPresentabilitySummary::default()
+        }
+    );
+    assert!(!harness.requires_completed_media_admission());
 }
 
 #[test]
@@ -614,6 +820,235 @@ fn media_admission_marks_rows_without_completed_media_settled() {
 }
 
 #[test]
+fn media_admission_budget_exhaustion_requests_retry() {
+    let exhausted = TranscriptMediaAdmissionSummary {
+        row_count: 36,
+        completed_media_items: 36,
+        pending_completed_media_items: 12,
+        rows_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    };
+    let pending_io = TranscriptMediaAdmissionSummary {
+        row_count: 1,
+        completed_media_items: 1,
+        pending_completed_media_items: 1,
+        ..TranscriptMediaAdmissionSummary::default()
+    };
+    let exhausted_without_media = TranscriptMediaAdmissionSummary {
+        row_count: 36,
+        rows_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    };
+    let settled = TranscriptMediaAdmissionSummary {
+        row_count: 1,
+        completed_media_items: 1,
+        ready_completed_media_items: 1,
+        ..TranscriptMediaAdmissionSummary::default()
+    };
+
+    assert!(exhausted.requires_retry());
+    assert!(!exhausted.is_completed_media_settled());
+    assert!(!pending_io.requires_retry());
+    assert!(!pending_io.is_completed_media_settled());
+    assert!(!exhausted_without_media.requires_retry());
+    assert!(exhausted_without_media.is_completed_media_settled());
+    assert!(!settled.requires_retry());
+    assert!(settled.is_completed_media_settled());
+}
+
+#[test]
+fn media_admission_retry_request_advances_after_row_budget_exhaustion() {
+    let mut harness = PresentationHarness::new();
+    let mut turns = (0..24)
+        .map(|index| prompt_turn(&format!("turn_{index}"), "Prompt without media."))
+        .collect::<Vec<_>>();
+    turns.push(generated_images_turn("turn_24", 1));
+    harness.replace_history("thread_a", turns);
+    let mut window = harness.media_admission_window();
+
+    assert_eq!(window.rows().len(), 25);
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 25,
+        completed_media_items: 1,
+        pending_completed_media_items: 1,
+        scan_start_row_index: 0,
+        scanned_rows: 24,
+        deferred_completed_media_items: 1,
+        rows_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    let retry = window.admission_request(prepublication_target());
+    assert_eq!(retry.scan_start_row_index(), 24);
+    assert_eq!(retry.scan_start_item_index(), 0);
+    assert!(!retry.prefix_recheck_required());
+    assert_eq!(retry.rows().len(), 1);
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 25,
+        completed_media_items: 1,
+        ready_completed_media_items: 1,
+        scan_start_row_index: 24,
+        scan_start_item_index: 0,
+        scanned_rows: 1,
+        scanned_media_items: 1,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    assert!(window.is_settled_for_publication());
+}
+
+#[test]
+fn media_admission_retry_rechecks_pending_prefix_after_suffix_scan() {
+    let mut harness = PresentationHarness::new();
+    let mut turns = vec![generated_images_turn("turn_0", 1)];
+    turns.extend(
+        (1..24).map(|index| prompt_turn(&format!("turn_{index}"), "Prompt without media.")),
+    );
+    turns.push(generated_images_turn("turn_24", 1));
+    harness.replace_history("thread_a", turns);
+    let mut window = harness.media_admission_window();
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 25,
+        completed_media_items: 2,
+        pending_completed_media_items: 2,
+        scan_start_row_index: 0,
+        scan_start_item_index: 0,
+        scanned_rows: 24,
+        scanned_media_items: 1,
+        deferred_completed_media_items: 1,
+        rows_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    let retry = window.admission_request(prepublication_target());
+    assert_eq!(retry.scan_start_row_index(), 24);
+    assert_eq!(retry.scan_start_item_index(), 0);
+    assert!(retry.prefix_recheck_required());
+    assert_eq!(retry.rows().len(), 1);
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 25,
+        completed_media_items: 1,
+        ready_completed_media_items: 1,
+        scan_start_row_index: 24,
+        scan_start_item_index: 0,
+        scanned_rows: 1,
+        scanned_media_items: 1,
+        prefix_recheck_required: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    assert!(!window.is_settled_for_publication());
+    let full_recheck = window.admission_request(prepublication_target());
+    assert_eq!(full_recheck.scan_start_row_index(), 0);
+    assert_eq!(full_recheck.scan_start_item_index(), 0);
+    assert!(!full_recheck.prefix_recheck_required());
+    assert_eq!(full_recheck.rows().len(), 25);
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 25,
+        completed_media_items: 2,
+        pending_completed_media_items: 2,
+        scan_start_row_index: 0,
+        scan_start_item_index: 0,
+        scanned_rows: 24,
+        scanned_media_items: 1,
+        deferred_completed_media_items: 1,
+        rows_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    let waiting_summary = window.last_summary();
+    assert!(waiting_summary.waiting_on_prefix_media);
+    assert!(waiting_summary.requires_retry());
+    let waiting_recheck = window.admission_request(prepublication_target());
+    assert_eq!(waiting_recheck.scan_start_row_index(), 0);
+    assert_eq!(waiting_recheck.scan_start_item_index(), 0);
+    assert!(!waiting_recheck.prefix_recheck_required());
+}
+
+#[test]
+fn media_admission_retry_resumes_inside_row_after_media_budget_exhaustion() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            prompt_turn("turn_0", "Prompt without media."),
+            prompt_turn("turn_1", "Prompt without media."),
+            generated_images_turn("turn_2", 40),
+        ],
+    );
+    let mut window = harness.media_admission_window();
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 3,
+        completed_media_items: 40,
+        pending_completed_media_items: 8,
+        scan_start_row_index: 0,
+        scan_start_item_index: 0,
+        scanned_rows: 2,
+        scanned_media_items: 32,
+        deferred_completed_media_items: 8,
+        media_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    let retry = window.admission_request(prepublication_target());
+    assert_eq!(retry.scan_start_row_index(), 2);
+    assert_eq!(retry.scan_start_item_index(), 32);
+    assert!(!retry.prefix_recheck_required());
+    assert_eq!(retry.rows().len(), 1);
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 3,
+        completed_media_items: 8,
+        ready_completed_media_items: 8,
+        scan_start_row_index: 2,
+        scan_start_item_index: 32,
+        scanned_rows: 1,
+        scanned_media_items: 8,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    assert!(window.is_settled_for_publication());
+}
+
+#[test]
+fn media_admission_retry_current_item_after_media_budget_exhaustion_in_later_row() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            prompt_turn("turn_0", "Prompt without media."),
+            prompt_turn("turn_1", "Prompt without media."),
+            generated_images_turn("turn_2", 1),
+        ],
+    );
+    let mut window = harness.media_admission_window();
+
+    window.note_summary(TranscriptMediaAdmissionSummary {
+        row_count: 3,
+        completed_media_items: 1,
+        pending_completed_media_items: 1,
+        scan_start_row_index: 0,
+        scan_start_item_index: 0,
+        scanned_rows: 2,
+        scanned_media_items: 0,
+        deferred_completed_media_items: 1,
+        media_budget_exhausted: true,
+        ..TranscriptMediaAdmissionSummary::default()
+    });
+
+    let retry = window.admission_request(prepublication_target());
+    assert_eq!(retry.scan_start_row_index(), 2);
+    assert_eq!(retry.scan_start_item_index(), 0);
+    assert_eq!(retry.rows().len(), 1);
+    assert!(window.last_summary().requires_retry());
+}
+
+#[test]
 fn media_admission_marks_markdown_image_candidates_pending() {
     let mut harness = PresentationHarness::new();
     harness.replace_history(
@@ -685,6 +1120,45 @@ fn media_admission_requires_window_pass_for_source_backed_generated_image() {
     assert_eq!(summary.completed_media_items, 1);
     assert_eq!(summary.pending_completed_media_items, 1);
     assert!(harness.requires_completed_media_admission());
+}
+
+#[test]
+fn media_admission_treats_over_full_budget_source_backed_upload_as_terminal() {
+    let mut summary = TranscriptMediaAdmissionSummary {
+        row_count: 1,
+        completed_media_items: 1,
+        ..TranscriptMediaAdmissionSummary::default()
+    };
+
+    let decision = note_source_backed_upload_admission(&mut summary, 101, 100, 100);
+
+    assert_eq!(
+        decision,
+        SourceBackedUploadAdmissionDecision::TerminalFallback
+    );
+    assert_eq!(summary.terminal_fallback_completed_media_items, 1);
+    assert_eq!(summary.pending_completed_media_items, 0);
+    assert!(!summary.media_budget_exhausted);
+    assert!(summary.is_completed_media_settled());
+    assert!(!summary.requires_retry());
+}
+
+#[test]
+fn media_admission_retries_source_backed_upload_over_remaining_budget() {
+    let mut summary = TranscriptMediaAdmissionSummary {
+        row_count: 1,
+        completed_media_items: 1,
+        ..TranscriptMediaAdmissionSummary::default()
+    };
+
+    let decision = note_source_backed_upload_admission(&mut summary, 75, 100, 50);
+
+    assert_eq!(decision, SourceBackedUploadAdmissionDecision::RetryCurrent);
+    assert_eq!(summary.terminal_fallback_completed_media_items, 0);
+    assert!(summary.media_budget_exhausted);
+
+    summary.note_deferred_items(1);
+    assert!(summary.requires_retry());
 }
 
 #[test]
@@ -1019,6 +1493,285 @@ fn transcript_presentation_retained_counts_match_projected_rows() {
         + "The workspace has a root Cargo package.".len();
 
     assert_eq!(harness.retained_counts(), (1, 3, expected_text_bytes));
+}
+
+#[test]
+fn transcript_presentation_retained_counts_include_derived_row_state() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn(
+            "turn_1",
+            "Assistant **markdown** with ![alt](images/cat.png)",
+        )],
+    );
+
+    let (derived_bytes, markdown_source_bytes, media_descriptors) =
+        harness.derived_retained_counts();
+    assert!(derived_bytes > markdown_source_bytes);
+    assert!(markdown_source_bytes >= "Assistant **markdown**".len());
+    assert_eq!(media_descriptors, 1);
+}
+
+#[test]
+fn row_model_keeps_small_turns_on_row_level_rendering() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn("turn_1", "Small assistant response.")],
+    );
+
+    assert_eq!(harness.row_model_block_summary_at(0), Some((1, false)));
+    assert!(
+        harness
+            .row_model_block_unit_kinds_at(0)
+            .iter()
+            .any(|kind| kind.starts_with("markdown:"))
+    );
+}
+
+#[test]
+fn row_model_marks_large_markdown_turns_for_block_level_rendering() {
+    let mut harness = PresentationHarness::new();
+    let markdown = (0..80)
+        .map(|index| format!("Paragraph {index} with enough text to own a block."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
+
+    let (estimated_blocks, requires_split) = harness
+        .row_model_block_summary_at(0)
+        .expect("large markdown row should project");
+    assert!(requires_split);
+    assert!(estimated_blocks >= 32);
+    assert!(
+        harness
+            .row_model_block_unit_kinds_at(0)
+            .iter()
+            .any(|kind| kind.contains(":0"))
+    );
+}
+
+#[test]
+fn row_model_block_window_moves_with_row_scroll_offset() {
+    let mut harness = PresentationHarness::new();
+    let markdown = (0..80)
+        .map(|index| format!("Paragraph {index} with enough text to own a block."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
+
+    let top = harness
+        .row_model_block_render_window_at(0, 0.0, 300.0)
+        .expect("large row should have block render window");
+    let middle = harness
+        .row_model_block_render_window_at(0, 2_400.0, 300.0)
+        .expect("large row should have block render window");
+
+    assert_eq!(top.0, 0);
+    assert!(top.1 < top.2);
+    assert!(middle.0 > top.0);
+    assert_eq!(middle.2, top.2);
+    assert!(middle.3 > top.3);
+    assert!(middle.4 < top.4);
+}
+
+#[test]
+fn row_model_marks_generated_image_heavy_turns_for_block_level_rendering() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history("thread_a", vec![generated_images_turn("turn_1", 16)]);
+
+    let (estimated_blocks, requires_split) = harness
+        .row_model_block_summary_at(0)
+        .expect("image row should project");
+    assert!(requires_split);
+    assert!(estimated_blocks >= 16);
+    assert!(
+        harness
+            .row_model_block_unit_kinds_at(0)
+            .iter()
+            .any(|kind| kind.starts_with("media:"))
+    );
+}
+
+#[test]
+fn row_model_marks_markdown_image_embed_heavy_turns_for_block_level_rendering() {
+    let mut harness = PresentationHarness::new();
+    let markdown = (0..16)
+        .map(|index| format!("![generated {index}](images/generated-{index}.png)"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
+
+    let (estimated_blocks, requires_split) = harness
+        .row_model_block_summary_at(0)
+        .expect("markdown image row should project");
+    assert!(requires_split);
+    assert!(estimated_blocks >= 16);
+    assert_eq!(harness.media_admission_summary().completed_media_items, 16);
+}
+
+#[test]
+fn row_model_keeps_large_reasoning_sources_addressable_by_block_window() {
+    let mut harness = PresentationHarness::new();
+    let summary = (0..36)
+        .map(|index| format!("Reasoning summary paragraph {index}."))
+        .collect::<Vec<_>>();
+    let content = (0..8)
+        .map(|index| format!("Reasoning content paragraph {index}."))
+        .collect::<Vec<_>>();
+    harness.replace_history(
+        "thread_a",
+        vec![reasoning_turn("turn_reasoning", summary, content)],
+    );
+
+    let (estimated_blocks, requires_split) = harness
+        .row_model_block_summary_at(0)
+        .expect("reasoning row should project");
+    assert!(requires_split);
+    assert!(estimated_blocks >= 36);
+
+    let units = harness.row_model_block_unit_kinds_at(0);
+    assert!(units.iter().any(|unit| unit.contains("reasoning-summary")));
+    assert!(units.len() >= 36);
+    let middle = harness
+        .row_model_block_render_window_at(0, 2_400.0, 300.0)
+        .expect("large reasoning row should have a block render window");
+    assert!(middle.0 > 0);
+    assert!(middle.1 < middle.2);
+}
+
+#[test]
+fn row_model_keeps_user_prompt_image_markers_addressable_by_later_block_windows() {
+    let mut harness = PresentationHarness::new();
+    let before_image = (0..40)
+        .map(|index| format!("Prompt paragraph before image {index}."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let after_image = (0..40)
+        .map(|index| format!("Prompt paragraph after image {index}."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    harness.replace_history(
+        "thread_a",
+        vec![prompt_turn_with_local_image(
+            "turn_prompt_image",
+            before_image,
+            "C:\\images\\operator.png",
+            after_image,
+        )],
+    );
+
+    let (estimated_blocks, requires_split) = harness
+        .row_model_block_summary_at(0)
+        .expect("image-marker prompt row should project");
+    assert!(requires_split);
+    assert!(estimated_blocks >= 32);
+
+    let units = harness.row_model_block_unit_kinds_at(0);
+    assert!(units.len() >= 32);
+    assert!(units.iter().any(|unit| unit.contains("user-prompt:0")));
+    let middle = harness
+        .row_model_block_render_window_at(0, 2_400.0, 300.0)
+        .expect("image-marker prompt row should have a block render window");
+    assert!(middle.0 > 0);
+    assert!(middle.1 < middle.2);
+}
+
+#[test]
+fn prepublication_preparation_accumulates_bounded_rows_for_layout() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            agent_markdown_turn("turn_1", "Assistant 1"),
+            agent_markdown_turn("turn_2", "Assistant 2"),
+            agent_markdown_turn("turn_3", "Assistant 3"),
+        ],
+    );
+    let layout = prepublication_layout(1.0, 1);
+    let mut window = harness.prepublication_preparation_window();
+    let mut driver = TranscriptPrepublicationPreparationDriver::with_budget_for_test(
+        TranscriptPrepublicationPreparationBudget::with_test_limits(
+            1,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ),
+    );
+
+    let first = driver.drain_pending(window.preparation_request(prepublication_target(), layout));
+    assert_eq!(first.summary.row_count, 3);
+    assert_eq!(first.summary.prepared_rows, 1);
+    assert_eq!(first.summary.pending_rows, 2);
+    assert!(first.summary.rows_budget_exhausted);
+    assert!(first.summary.requires_retry());
+    window.note_summary(first.summary);
+    assert!(!window.is_settled_for_publication());
+
+    let second = driver.drain_pending(window.preparation_request(prepublication_target(), layout));
+    assert_eq!(second.summary.prepared_rows, 2);
+    assert_eq!(second.summary.pending_rows, 1);
+    assert!(second.summary.requires_retry());
+    window.note_summary(second.summary);
+    assert!(!window.is_settled_for_publication());
+
+    let third = driver.drain_pending(window.preparation_request(prepublication_target(), layout));
+    assert_eq!(third.summary.prepared_rows, 3);
+    assert_eq!(third.summary.pending_rows, 0);
+    assert!(!third.summary.rows_budget_exhausted);
+    assert!(!third.summary.requires_retry());
+    window.note_summary(third.summary);
+    assert!(window.is_settled_for_publication());
+}
+
+#[test]
+fn prepublication_preparation_layout_change_requeues_staged_rows() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            agent_markdown_turn("turn_1", "Assistant 1"),
+            agent_markdown_turn("turn_2", "Assistant 2"),
+        ],
+    );
+    let layout_a = prepublication_layout(1.0, 1);
+    let layout_b = prepublication_layout(1.25, 2);
+    let mut window = harness.prepublication_preparation_window();
+    let mut driver = TranscriptPrepublicationPreparationDriver::default();
+
+    let first = driver.drain_pending(window.preparation_request(prepublication_target(), layout_a));
+    assert_eq!(first.summary.pending_rows, 0);
+    window.note_summary(first.summary);
+    assert!(window.is_settled_for_publication());
+
+    let request_after_layout_change = window.preparation_request(prepublication_target(), layout_b);
+    assert_eq!(request_after_layout_change.pending_row_count(), 2);
+    let second = driver.drain_pending(request_after_layout_change);
+    assert_eq!(second.summary.pending_rows, 0);
+    window.note_summary(second.summary);
+    assert!(window.is_settled_for_publication());
+}
+
+#[test]
+fn prepublication_preparation_processes_one_oversized_row_per_pass() {
+    let mut harness = PresentationHarness::new();
+    harness.replace_history("thread_a", vec![generated_images_turn("turn_1", 16)]);
+    let layout = prepublication_layout(1.0, 1);
+    let mut window = harness.prepublication_preparation_window();
+    let mut driver = TranscriptPrepublicationPreparationDriver::with_budget_for_test(
+        TranscriptPrepublicationPreparationBudget::with_test_limits(0, 1, 1, 1),
+    );
+
+    let drain = driver.drain_pending(window.preparation_request(prepublication_target(), layout));
+    assert_eq!(drain.summary.prepared_rows, 1);
+    assert_eq!(drain.summary.pending_rows, 0);
+    assert!(!drain.summary.rows_budget_exhausted);
+    assert!(!drain.summary.block_budget_exhausted);
+    assert!(!drain.summary.media_budget_exhausted);
+    assert!(!drain.summary.byte_budget_exhausted);
+    window.note_summary(drain.summary);
+    assert!(window.is_settled_for_publication());
 }
 
 #[test]
@@ -1507,6 +2260,28 @@ fn released_history_rows_are_removed_and_restored_by_full_pages() {
 }
 
 #[test]
+fn turn_id_detail_release_removes_only_targeted_presentation_rows() {
+    let mut harness = PresentationHarness::new();
+    let turn_1 = prompt_turn("turn_1", "Prompt 1");
+    let turn_2 = prompt_turn("turn_2", "Prompt 2");
+    let turn_3 = prompt_turn("turn_3", "Prompt 3");
+    harness.replace_history("thread_a", vec![turn_1, turn_2, turn_3]);
+    let turn_2_identity = harness.row_identity(1);
+    let turn_3_identity = harness.row_identity(2);
+
+    assert_eq!(harness.release_turns_by_id(&["turn_1"]), 1);
+
+    assert_eq!(harness.presentation_len(), 2);
+    assert_eq!(harness.row_identity(0), turn_2_identity);
+    assert_eq!(harness.row_identity(1), turn_3_identity);
+    assert_eq!(harness.window_turn_ids(0..2), vec!["turn_2", "turn_3"]);
+    assert_eq!(
+        harness.latest_user_prompt_anchor(),
+        Some((1, 0, "Prompt 3".to_string()))
+    );
+}
+
+#[test]
 fn narrative_detail_release_removes_row_and_full_page_restore_reinserts() {
     let mut harness = PresentationHarness::new();
     let prompt = prompt_turn("turn_1", "Prompt 1");
@@ -1590,6 +2365,26 @@ fn panel_state_for_range_is_bounded_to_requested_rows() {
     assert_eq!(harness.presentation_len(), 1_000);
 }
 
+fn prepublication_layout(
+    window_scale: f32,
+    theme_revision: u64,
+) -> TranscriptPrepublicationPreparationLayout {
+    TranscriptPrepublicationPreparationLayout::new(
+        px(720.0),
+        px(480.0),
+        px(672.0),
+        px(12.0),
+        window_scale,
+        theme_revision,
+    )
+}
+
+fn prepublication_target() -> TranscriptMediaAdmissionTarget {
+    TranscriptMediaAdmissionTarget::SelectedThread {
+        thread_id: "thread_a".to_string(),
+    }
+}
+
 fn prompt_turn(id: &str, prompt: &str) -> TurnInfo {
     prompt_turn_with_fragments(id, &[prompt])
 }
@@ -1645,6 +2440,44 @@ fn generated_images_turn(turn_id: &str, count: usize) -> TurnInfo {
                 })
             })
             .collect(),
+        error: None,
+    }
+}
+
+fn reasoning_turn(id: &str, summary: Vec<String>, content: Vec<String>) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
+        items: vec![ThreadItem::Reasoning(ReasoningItem {
+            id: format!("{id}_reasoning"),
+            summary,
+            content,
+        })],
+        error: None,
+    }
+}
+
+fn prompt_turn_with_local_image(
+    id: &str,
+    before_image: String,
+    image_path: &str,
+    after_image: String,
+) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Full,
+        items: vec![ThreadItem::UserMessage(UserMessageItem {
+            id: format!("{id}_user"),
+            content: vec![
+                UserInput::Text { text: before_image },
+                UserInput::LocalImage {
+                    path: image_path.to_string(),
+                },
+                UserInput::Text { text: after_image },
+            ],
+        })],
         error: None,
     }
 }
@@ -1776,6 +2609,29 @@ fn command_turn_with_status(
             aggregated_output: Some(output.to_string()),
             exit_code: Some(0),
             duration_ms: Some(10),
+        })],
+        error: None,
+    }
+}
+
+fn oversized_fallback_turn(id: &str) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Summary,
+        items: vec![ThreadItem::Generic(beryl_backend::GenericThreadItem {
+            id: format!("beryl:oversized-turn-fallback:{id}"),
+            item_type: "beryl.oversizedTurnFallback".to_string(),
+            tool: None,
+            server: None,
+            namespace: None,
+            mcp_app_resource_uri: None,
+            status: None,
+            model: None,
+            reasoning_effort: None,
+            receiver_thread_ids: Vec::new(),
+            agents_states: BTreeMap::new(),
+            agent_nickname: None,
         })],
         error: None,
     }

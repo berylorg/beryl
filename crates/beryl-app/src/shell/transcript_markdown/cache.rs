@@ -365,6 +365,20 @@ impl TranscriptMarkdownCache {
         self.scope_generation = self.scope_generation.saturating_add(1);
     }
 
+    pub(crate) fn release_keys<I, S>(&mut self, keys: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let keys = keys
+            .into_iter()
+            .map(|key| TranscriptMarkdownCacheKey::new(key.as_ref()))
+            .collect::<Vec<_>>();
+        for key in keys {
+            self.remove_entry(&key);
+        }
+    }
+
     pub(crate) fn lookup(
         &mut self,
         key: TranscriptMarkdownCacheKey,

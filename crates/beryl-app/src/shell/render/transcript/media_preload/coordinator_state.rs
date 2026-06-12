@@ -179,6 +179,10 @@ impl TranscriptMediaRunSegmentCacheKey {
             source_revision: TranscriptMarkdownSourceRevision::new(source),
         }
     }
+
+    pub(crate) fn markdown_key(&self) -> &str {
+        self.markdown_key.as_str()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

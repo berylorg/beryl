@@ -494,7 +494,7 @@ impl ShellView {
         if self.composer_image_label_validation_receiver.is_some()
             || self.composer_image_label_scan_receiver.is_some()
             || self.workspace_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
+            || self.selected_thread_activation_pending()
             || self.thread_history_page_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()

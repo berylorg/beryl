@@ -21,7 +21,7 @@ mod shell {
 }
 
 use shell::thread_activation::{
-    ExistingThreadActivationBackend, ExistingThreadActivationError, activate_existing_thread_direct,
+    ExistingThreadActivationBackend, ExistingThreadActivationError, ThreadActivationLoader,
 };
 use shell::transcript_history::{
     THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend, initial_thread_resident_page_options,
@@ -39,7 +39,7 @@ fn direct_activation_uses_metadata_resume_and_bounded_resident_turn_page() {
         }),
     );
 
-    let activation = activate_existing_thread_direct(
+    let activation = ThreadActivationLoader::load_existing_thread(
         &mut backend,
         &execution_target,
         "thread_a",
@@ -74,6 +74,60 @@ fn direct_activation_uses_metadata_resume_and_bounded_resident_turn_page() {
 }
 
 #[test]
+fn direct_activation_sanitizes_full_transport_page_outside_initial_tail_window() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
+    let mut backend = FakeActivationBackend::new(
+        thread_response("thread_a", r"C:\work\alpha"),
+        Ok(ThreadTurnsListResponse {
+            data: (0..40)
+                .rev()
+                .map(|index| turn(&format!("turn_{index}")))
+                .collect(),
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: None,
+        }),
+    );
+
+    let activation = ThreadActivationLoader::load_existing_thread(
+        &mut backend,
+        &execution_target,
+        "thread_a",
+        "Thread A",
+        Duration::from_secs(5),
+    )
+    .unwrap();
+
+    assert_eq!(
+        backend.turn_calls[0].1,
+        initial_thread_resident_page_options()
+    );
+    assert_eq!(activation.thread.turns.len(), 40);
+    assert_eq!(activation.thread.turns[0].id, "turn_0");
+    assert_eq!(
+        activation.thread.turns[0].items_view,
+        TurnItemsView::NotLoaded
+    );
+    assert!(activation.thread.turns[0].items.is_empty());
+    assert_eq!(activation.thread.turns[39].id, "turn_39");
+    assert_eq!(activation.thread.turns[39].items_view, TurnItemsView::Full);
+    assert!(!activation.thread.turns[39].items.is_empty());
+    assert_eq!(
+        activation
+            .history_window
+            .residency_retained_counts()
+            .resident_turns,
+        32
+    );
+    assert_eq!(
+        activation
+            .history_window
+            .residency_retained_counts()
+            .nonresident_turns,
+        8
+    );
+}
+
+#[test]
 fn direct_activation_keeps_generated_image_items_in_resident_page() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
     let mut backend = FakeActivationBackend::new(
@@ -88,7 +142,7 @@ fn direct_activation_keeps_generated_image_items_in_resident_page() {
         }),
     );
 
-    let activation = activate_existing_thread_direct(
+    let activation = ThreadActivationLoader::load_existing_thread(
         &mut backend,
         &execution_target,
         "thread_a",
@@ -119,7 +173,7 @@ fn direct_activation_requests_full_latest_turn_page() {
         }),
     );
 
-    let activation = activate_existing_thread_direct(
+    let activation = ThreadActivationLoader::load_existing_thread(
         &mut backend,
         &execution_target,
         "thread_a",
@@ -153,7 +207,7 @@ fn direct_activation_rejects_non_full_resident_page_response() {
         }),
     );
 
-    let error = activate_existing_thread_direct(
+    let error = ThreadActivationLoader::load_existing_thread(
         &mut backend,
         &execution_target,
         "thread_a",
@@ -191,7 +245,7 @@ fn direct_activation_rejects_cwd_mismatch_as_rebind() {
         }),
     );
 
-    let error = activate_existing_thread_direct(
+    let error = ThreadActivationLoader::load_existing_thread(
         &mut backend,
         &execution_target,
         "thread_a",
@@ -222,7 +276,7 @@ fn direct_activation_fails_when_initial_history_page_cannot_load() {
         Err("page unavailable".to_string()),
     );
 
-    let error = activate_existing_thread_direct(
+    let error = ThreadActivationLoader::load_existing_thread(
         &mut backend,
         &execution_target,
         "thread_a",

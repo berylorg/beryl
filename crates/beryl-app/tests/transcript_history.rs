@@ -96,11 +96,17 @@ mod shell {
 use shell::transcript_history::{
     LoadedTranscriptHistoryPage, THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend,
     TranscriptHistoryPageRequest, TranscriptHistoryWindow, TranscriptResidencyBudgetReason,
+    TranscriptResidencyGrowthStrategy, TranscriptResidencyMeasuredTurnHeight,
     TranscriptResidencyPinKind, TranscriptResidencyPolicy, TranscriptResidencyRequestPriority,
-    TranscriptResidencyRetention, initial_thread_history_page_options,
+    TranscriptResidencyRetention, TranscriptResidencyTargetInput, TranscriptResidencyTargetPolicy,
+    TranscriptResidencyTurnPlanInput, TranscriptResidencyViewport,
+    initial_thread_activation_resident_turn_ids, initial_thread_history_page_options,
     initial_thread_resident_page_options, load_thread_resident_history_page,
-    loaded_page_from_desc_response, older_thread_history_page_options, thread_history_page_options,
-    thread_resident_history_page_options,
+    loaded_page_from_desc_response, older_thread_history_page_options,
+    plan_transcript_residency_target, resident_turn_ids_for_page_window,
+    sanitize_loaded_page_for_resident_turn_ids, sanitize_loaded_page_for_turn_admission_plan,
+    thread_history_page_options, thread_resident_history_page_options,
+    turn_admission_plan_for_page_window,
 };
 
 #[test]
@@ -177,6 +183,11 @@ fn older_history_page_requests_start_only_at_resident_boundary() {
         newer_cursor: None,
     };
     let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(1)
+            .with_trailing_viewport_margins(1),
+    );
 
     assert_eq!(window.begin_loading_page_for_visible_range(&(4..7)), None);
     assert_eq!(
@@ -225,6 +236,265 @@ fn full_latest_page_is_admitted_as_resident_payload() {
 }
 
 #[test]
+fn initial_activation_admits_tail_window_without_retaining_whole_transport_page() {
+    let page = loaded_history_page(
+        (0..40)
+            .map(|index| turn(&format!("turn_{index}")))
+            .collect(),
+        Some("older_cursor"),
+        None,
+    );
+    let resident_turn_ids = initial_thread_activation_resident_turn_ids(&page);
+    let admitted_page = sanitize_loaded_page_for_resident_turn_ids(&page, resident_turn_ids);
+    let window = TranscriptHistoryWindow::from_latest_page(&admitted_page);
+    let counts = window.residency_retained_counts();
+
+    assert_eq!(counts.index_turns, 40);
+    assert_eq!(counts.resident_turns, 32);
+    assert_eq!(counts.nonresident_turns, 8);
+    assert_eq!(
+        window.resident_turn_ids(),
+        (8..40)
+            .map(|index| format!("turn_{index}"))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(admitted_page.turns[0].items_view, TurnItemsView::NotLoaded);
+    assert!(admitted_page.turns[0].items.is_empty());
+    assert_eq!(admitted_page.turns[39].items_view, TurnItemsView::Full);
+    assert!(!admitted_page.turns[39].items.is_empty());
+    assert!(window.has_older_pages());
+}
+
+#[test]
+fn page_window_admission_sanitizes_full_response_outside_target_window() {
+    let page = loaded_history_page(
+        (0..10)
+            .map(|index| turn(&format!("turn_{index}")))
+            .collect(),
+        None,
+        Some("newer_cursor"),
+    );
+    let resident_turn_ids = resident_turn_ids_for_page_window(
+        &page,
+        0..1,
+        96,
+        TranscriptResidencyTargetPolicy::new(),
+        Vec::<String>::new(),
+    );
+    let admitted_page = sanitize_loaded_page_for_resident_turn_ids(&page, resident_turn_ids);
+    let window = TranscriptHistoryWindow::from_latest_page(&admitted_page);
+    let counts = window.residency_retained_counts();
+
+    assert_eq!(counts.index_turns, 10);
+    assert_eq!(counts.resident_turns, 4);
+    assert_eq!(counts.nonresident_turns, 6);
+    assert_eq!(
+        window.resident_turn_ids(),
+        (0..4)
+            .map(|index| format!("turn_{index}"))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(admitted_page.turns[3].items_view, TurnItemsView::Full);
+    assert_eq!(admitted_page.turns[4].items_view, TurnItemsView::NotLoaded);
+    assert!(admitted_page.turns[4].items.is_empty());
+}
+
+#[test]
+fn page_window_admission_keeps_explicit_pin_outside_visible_target() {
+    let page = loaded_history_page(
+        (0..10)
+            .map(|index| turn(&format!("turn_{index}")))
+            .collect(),
+        None,
+        None,
+    );
+    let resident_turn_ids = resident_turn_ids_for_page_window(
+        &page,
+        0..1,
+        96,
+        TranscriptResidencyTargetPolicy::new(),
+        ["turn_9"],
+    );
+    let admitted_page = sanitize_loaded_page_for_resident_turn_ids(&page, resident_turn_ids);
+    let window = TranscriptHistoryWindow::from_latest_page(&admitted_page);
+
+    assert_eq!(
+        window.resident_turn_ids(),
+        vec![
+            "turn_0".to_string(),
+            "turn_1".to_string(),
+            "turn_2".to_string(),
+            "turn_3".to_string(),
+            "turn_9".to_string(),
+        ]
+    );
+    assert_eq!(admitted_page.turns[8].items_view, TurnItemsView::NotLoaded);
+    assert_eq!(admitted_page.turns[9].items_view, TurnItemsView::Full);
+}
+
+#[test]
+fn page_window_admission_replaces_required_oversized_turn_with_terminal_marker() {
+    let huge_text = "x".repeat(2048);
+    let page = loaded_history_page(vec![turn_with_text("turn_huge", &huge_text)], None, None);
+    let admission_plan = turn_admission_plan_for_page_window(
+        &page,
+        0..1,
+        96,
+        TranscriptResidencyTargetPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_max_resident_bytes(256),
+        Vec::<String>::new(),
+    );
+
+    assert!(admission_plan.resident_turn_ids.is_empty());
+    assert_eq!(
+        admission_plan.oversized_turn_fallback_ids,
+        vec!["turn_huge".to_string()]
+    );
+
+    let admitted_page = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
+    let admitted = &admitted_page.turns[0];
+    assert_eq!(admitted.id, "turn_huge");
+    assert_eq!(admitted.items_view, TurnItemsView::Summary);
+    assert_eq!(admitted.items.len(), 1);
+    assert!(matches!(
+        &admitted.items[0],
+        ThreadItem::Generic(item) if item.item_type == "beryl.oversizedTurnFallback"
+    ));
+    assert!(!format!("{:?}", admitted.items).contains(huge_text.as_str()));
+
+    let window = TranscriptHistoryWindow::from_latest_page(&admitted_page);
+    let counts = window.residency_retained_counts();
+    assert_eq!(counts.index_turns, 1);
+    assert_eq!(counts.resident_turns, 0);
+    assert_eq!(counts.nonresident_turns, 1);
+    assert_eq!(counts.oversized_fallback_turns, 1);
+    assert!(window.resident_turn_ids().is_empty());
+}
+
+#[test]
+fn page_window_admission_reuses_stable_oversized_marker_after_reload() {
+    let visible_turn = turn("turn_visible");
+    let pinned_turn = turn_with_text("turn_pinned", &"x".repeat(2048));
+    let page = loaded_history_page(vec![visible_turn, pinned_turn], None, None);
+    let admission_plan = turn_admission_plan_for_page_window(
+        &page,
+        0..1,
+        96,
+        TranscriptResidencyTargetPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_max_resident_bytes(4 * 1024),
+        ["turn_pinned"],
+    );
+
+    assert_eq!(
+        admission_plan.resident_turn_ids,
+        vec!["turn_visible".to_string()]
+    );
+    assert_eq!(
+        admission_plan.oversized_turn_fallback_ids,
+        vec!["turn_pinned".to_string()]
+    );
+
+    let first = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
+    let second = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
+
+    assert_eq!(first.turns[1], second.turns[1]);
+    assert_eq!(first.turns[1].items_view, TurnItemsView::Summary);
+    assert!(matches!(
+        &first.turns[1].items[0],
+        ThreadItem::Generic(item) if item.id == "beryl:oversized-turn-fallback:turn_pinned"
+    ));
+}
+
+#[test]
+fn residency_target_plan_does_not_rerequest_indexed_oversized_fallback() {
+    let page = loaded_history_page(
+        vec![turn_with_text("turn_huge", &"x".repeat(2048))],
+        None,
+        None,
+    );
+    let admission_plan = turn_admission_plan_for_page_window(
+        &page,
+        0..1,
+        96,
+        TranscriptResidencyTargetPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_max_resident_bytes(256),
+        Vec::<String>::new(),
+    );
+    let admitted_page = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
+    let mut window = TranscriptHistoryWindow::from_latest_page(&admitted_page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_max_resident_bytes(64 * 1024),
+    );
+
+    let plan = window.residency_target_plan(
+        0..1,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert!(plan.desired_full_turn_ids.is_empty());
+    assert_eq!(
+        plan.oversized_turn_fallback_ids,
+        vec!["turn_huge".to_string()]
+    );
+    assert!(plan.missing_transport_ranges.is_empty());
+    assert!(plan.release_turn_ids.is_empty());
+}
+
+#[test]
+fn oversized_fallback_release_bypasses_pin_preservation_for_planner_selected_turns() {
+    let page = loaded_history_page(
+        vec![
+            turn_with_text("turn_huge", &"x".repeat(2048)),
+            turn("turn_visible"),
+        ],
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.pin_resident_turn("turn_huge", TranscriptResidencyPinKind::ActiveContextMenu);
+
+    let released =
+        window.release_resident_turns_by_id_with_oversized_fallbacks(["turn_huge"], ["turn_huge"]);
+
+    assert_eq!(released.released_turn_ids, vec!["turn_huge"]);
+    assert_eq!(window.resident_turn_ids(), vec!["turn_visible"]);
+    let counts = window.residency_retained_counts();
+    assert_eq!(counts.resident_turns, 1);
+    assert_eq!(counts.oversized_fallback_turns, 1);
+
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_max_resident_bytes(4 * 1024),
+    );
+    let next_plan = window.residency_target_plan(
+        0..1,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+    assert_eq!(
+        next_plan.oversized_turn_fallback_ids,
+        vec!["turn_huge".to_string()]
+    );
+    assert!(next_plan.missing_transport_ranges.is_empty());
+}
+
+#[test]
 fn pinned_resident_turn_survives_release_outside_retention() {
     let page = loaded_history_page(vec![turn("turn_1"), turn("turn_2")], None, None);
     let mut window = TranscriptHistoryWindow::from_latest_page(&page);
@@ -240,6 +510,33 @@ fn pinned_resident_turn_survives_release_outside_retention() {
     let released = window.release_unretained_resident_turns(&retention);
     assert_eq!(released.released_turn_ids, vec!["turn_1"]);
     assert_eq!(window.resident_turn_ids(), vec!["turn_2"]);
+}
+
+#[test]
+fn exact_resident_turn_release_preserves_pins_and_page_index_metadata() {
+    let page = loaded_history_page(
+        vec![turn("turn_0"), turn("turn_1"), turn("turn_2")],
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.pin_resident_turn("turn_1", TranscriptResidencyPinKind::ActiveContextMenu);
+
+    let released = window.release_resident_turns_by_id(["turn_0", "turn_1"]);
+
+    assert_eq!(released.released_turn_ids, vec!["turn_0"]);
+    assert_eq!(window.resident_turn_ids(), vec!["turn_1", "turn_2"]);
+    assert_eq!(window.resident_page_count(), 1);
+    assert_eq!(window.indexed_turns().len(), 3);
+
+    window.unpin_resident_turn("turn_1", TranscriptResidencyPinKind::ActiveContextMenu);
+    let released = window.release_resident_turns_by_id(["turn_1"]);
+
+    assert_eq!(released.released_turn_ids, vec!["turn_1"]);
+    assert_eq!(window.resident_turn_ids(), vec!["turn_2"]);
+    assert_eq!(window.resident_page_count(), 1);
+    assert_eq!(window.indexed_turns().len(), 3);
 }
 
 #[test]
@@ -282,6 +579,475 @@ fn residency_policy_records_elastic_loading_knobs_without_scheduler_side_effects
         counts.request_priority,
         TranscriptResidencyRequestPriority::NewestFirst
     );
+}
+
+#[test]
+fn residency_target_planner_expands_window_by_viewport_height_margins() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(3..4, 100),
+            planner_turns(7, 100, 10, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_leading_viewport_margins(2)
+                .with_trailing_viewport_margins(2),
+        ),
+    );
+
+    assert_eq!(
+        plan.desired_full_turn_ids,
+        vec!["turn_3", "turn_2", "turn_4", "turn_1", "turn_5"]
+    );
+    assert!(plan.diagnostics.viewport_margin_satisfied);
+    assert_eq!(plan.missing_transport_ranges, vec![1..6]);
+}
+
+#[test]
+fn residency_target_planner_uses_missing_measurement_fallback_and_required_priority() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(2..3, 50),
+            (0..6)
+                .map(|index| {
+                    TranscriptResidencyTurnPlanInput::new(format!("turn_{index}"))
+                        .with_source_position(index)
+                        .with_estimated_resident_bytes(10)
+                })
+                .collect(),
+        )
+        .with_active_turn_id("turn_5")
+        .with_pinned_turn_ids(["turn_0", "turn_2"])
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_default_row_height(50)
+                .with_leading_viewport_margins(1)
+                .with_trailing_viewport_margins(1),
+        ),
+    );
+
+    assert_eq!(
+        plan.desired_full_turn_ids,
+        vec!["turn_2", "turn_5", "turn_0", "turn_1", "turn_3"]
+    );
+    assert!(plan.diagnostics.viewport_margin_satisfied);
+}
+
+#[test]
+fn residency_target_planner_shrinks_and_grows_optional_margin_under_byte_budget() {
+    let constrained = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(2..3, 100),
+            planner_turns(5, 100, 100, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_max_resident_bytes(300)
+                .with_leading_viewport_margins(2)
+                .with_trailing_viewport_margins(2),
+        ),
+    );
+
+    assert_eq!(
+        constrained.desired_full_turn_ids,
+        vec!["turn_2", "turn_1", "turn_3"]
+    );
+    assert!(!constrained.diagnostics.viewport_margin_satisfied);
+    assert!(constrained.diagnostics.resident_byte_limit);
+    assert_eq!(
+        constrained.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::ResidentByteLimit
+    );
+
+    let grown = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(2..3, 100),
+            planner_turns(5, 100, 100, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_max_resident_bytes(500)
+                .with_leading_viewport_margins(2)
+                .with_trailing_viewport_margins(2),
+        ),
+    );
+
+    assert_eq!(
+        grown.desired_full_turn_ids,
+        vec!["turn_2", "turn_1", "turn_3", "turn_0", "turn_4"]
+    );
+    assert!(grown.diagnostics.viewport_margin_satisfied);
+    assert!(!grown.diagnostics.resident_byte_limit);
+}
+
+#[test]
+fn residency_target_planner_reports_required_oversized_fallback_without_retaining_payload() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(1..2, 100),
+            vec![
+                planner_turn("turn_0", 0, 100, 10, false),
+                planner_turn("turn_1", 1, 100, 501, true),
+                planner_turn("turn_2", 2, 100, 10, false),
+            ],
+        )
+        .with_policy(TranscriptResidencyTargetPolicy::new().with_max_resident_bytes(500)),
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_0", "turn_2"]);
+    assert_eq!(plan.oversized_turn_fallback_ids, vec!["turn_1"]);
+    assert_eq!(plan.release_turn_ids, vec!["turn_1"]);
+    assert!(plan.diagnostics.oversized_turn_fallback);
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::OversizedTurnFallback
+    );
+}
+
+#[test]
+fn residency_target_planner_keeps_oversized_active_turn_out_of_history_release() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(0..1, 100),
+            vec![
+                planner_turn("turn_active", 0, 100, 900, true),
+                planner_turn("turn_1", 1, 100, 10, false),
+            ],
+        )
+        .with_active_turn_id("turn_active")
+        .with_policy(TranscriptResidencyTargetPolicy::new().with_max_resident_bytes(100)),
+    );
+
+    assert!(
+        !plan
+            .desired_full_turn_ids
+            .iter()
+            .any(|turn_id| turn_id == "turn_active")
+    );
+    assert!(plan.oversized_turn_fallback_ids.is_empty());
+    assert!(plan.release_turn_ids.is_empty());
+    assert!(plan.diagnostics.viewport_margin_satisfied);
+    assert!(plan.diagnostics.resident_byte_limit);
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::PinnedResidentOverBudget
+    );
+}
+
+#[test]
+fn residency_target_planner_reports_active_over_budget_when_other_turn_falls_back() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(0..1, 100),
+            vec![
+                planner_turn("turn_active", 0, 100, 900, true),
+                planner_turn("turn_huge", 1, 100, 900, true),
+            ],
+        )
+        .with_active_turn_id("turn_active")
+        .with_pinned_turn_ids(["turn_huge"])
+        .with_policy(TranscriptResidencyTargetPolicy::new().with_max_resident_bytes(100)),
+    );
+
+    assert!(plan.desired_full_turn_ids.is_empty());
+    assert_eq!(
+        plan.oversized_turn_fallback_ids,
+        vec!["turn_huge".to_string()]
+    );
+    assert_eq!(plan.release_turn_ids, vec!["turn_huge".to_string()]);
+    assert!(plan.diagnostics.oversized_turn_fallback);
+    assert!(plan.diagnostics.resident_byte_limit);
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::PinnedResidentOverBudget
+    );
+}
+
+#[test]
+fn residency_target_planner_keeps_visible_turn_and_falls_back_huge_offscreen_pin() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(1..2, 100),
+            vec![
+                planner_turn("turn_0", 0, 100, 900, true),
+                planner_turn("turn_1", 1, 100, 10, false),
+                planner_turn("turn_2", 2, 100, 10, false),
+            ],
+        )
+        .with_pinned_turn_ids(["turn_0"])
+        .with_policy(TranscriptResidencyTargetPolicy::new().with_max_resident_bytes(100)),
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_1", "turn_2"]);
+    assert_eq!(plan.oversized_turn_fallback_ids, vec!["turn_0"]);
+    assert_eq!(plan.release_turn_ids, vec!["turn_0"]);
+    assert!(plan.diagnostics.oversized_turn_fallback);
+}
+
+#[test]
+fn residency_target_planner_suppresses_transport_ranges_at_in_flight_limit() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(1..2, 100),
+            planner_turns(3, 100, 10, false),
+        )
+        .with_in_flight_requests(1)
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_max_in_flight_requests(1)
+                .with_leading_viewport_margins(1)
+                .with_trailing_viewport_margins(1),
+        ),
+    );
+
+    assert!(plan.missing_transport_ranges.is_empty());
+    assert!(plan.diagnostics.in_flight_limit);
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::InFlightRequestLimit
+    );
+}
+
+#[test]
+fn residency_target_planner_growth_strategy_can_saturate_budget_beyond_fixed_margins() {
+    let fixed = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(2..3, 100),
+            planner_turns(6, 100, 10, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_leading_viewport_margins(0)
+                .with_trailing_viewport_margins(0),
+        ),
+    );
+    let saturating = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(2..3, 100),
+            planner_turns(6, 100, 10, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_leading_viewport_margins(0)
+                .with_trailing_viewport_margins(0)
+                .with_max_resident_turns(3)
+                .with_growth_strategy(TranscriptResidencyGrowthStrategy::SaturateBudget),
+        ),
+    );
+
+    assert_eq!(fixed.desired_full_turn_ids, vec!["turn_2"]);
+    assert_eq!(
+        saturating.desired_full_turn_ids,
+        vec!["turn_2", "turn_1", "turn_3"]
+    );
+}
+
+#[test]
+fn history_window_residency_target_plan_moves_with_viewport_facts() {
+    let mut window = indexed_window(["turn_0", "turn_1", "turn_2", "turn_3", "turn_4", "turn_5"]);
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(1)
+            .with_trailing_viewport_margins(1),
+    );
+    let measured = (0..6)
+        .map(|source_position| TranscriptResidencyMeasuredTurnHeight {
+            source_position,
+            measured_height: 50,
+        })
+        .collect::<Vec<_>>();
+
+    let first = window.residency_target_plan(2..3, 50, measured.clone(), None);
+    let second = window.residency_target_plan(4..5, 50, measured, None);
+
+    assert_eq!(
+        first.desired_full_turn_ids,
+        vec!["turn_2", "turn_1", "turn_3"]
+    );
+    assert_eq!(first.missing_transport_ranges, vec![1..4]);
+    assert_eq!(
+        second.desired_full_turn_ids,
+        vec!["turn_4", "turn_3", "turn_5"]
+    );
+    assert_eq!(second.missing_transport_ranges, vec![3..6]);
+}
+
+#[test]
+fn history_window_bounded_residency_target_plan_uses_source_window_and_required_turns() {
+    let mut window = indexed_window([
+        "turn_0", "turn_1", "turn_2", "turn_3", "turn_4", "turn_5", "turn_6",
+    ]);
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+    );
+
+    let bounded = window.residency_target_plan_for_source_window(
+        5..6,
+        5..6,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(bounded.desired_full_turn_ids, vec!["turn_5"]);
+    assert_eq!(bounded.missing_transport_ranges, vec![5..6]);
+
+    window.pin_resident_turn("turn_1", TranscriptResidencyPinKind::ActiveContextMenu);
+    let with_pin = window.residency_target_plan_for_source_window(
+        5..6,
+        5..6,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(with_pin.desired_full_turn_ids, vec!["turn_5", "turn_1"]);
+    assert_eq!(with_pin.missing_transport_ranges, vec![1..2, 5..6]);
+}
+
+#[test]
+fn history_window_bounded_residency_target_plan_releases_residents_outside_source_window() {
+    let page = loaded_history_page(
+        (0..5).map(|index| turn(&format!("turn_{index}"))).collect(),
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(1)
+            .with_trailing_viewport_margins(1),
+    );
+
+    let plan = window.residency_target_plan_for_source_window(
+        2..3,
+        2..3,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_2"]);
+    assert_eq!(
+        plan.release_turn_ids,
+        vec!["turn_0", "turn_1", "turn_3", "turn_4"]
+    );
+}
+
+#[test]
+fn history_window_residency_target_plan_reports_release_intents_by_policy() {
+    let page = loaded_history_page(
+        (0..5).map(|index| turn(&format!("turn_{index}"))).collect(),
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+    );
+
+    let plan = window.residency_target_plan(
+        2..3,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_2"]);
+    assert_eq!(
+        plan.release_turn_ids,
+        vec!["turn_0", "turn_1", "turn_3", "turn_4"]
+    );
+}
+
+#[test]
+fn planner_missing_ranges_restore_released_page_before_requesting_older() {
+    let latest = loaded_history_page(
+        vec![turn("turn_2"), turn("turn_3")],
+        Some("older_cursor"),
+        None,
+    );
+    let older = loaded_history_page(vec![turn("turn_0"), turn("turn_1")], None, Some("newer"));
+    let mut window = TranscriptHistoryWindow::from_latest_page(&latest);
+    window.bind_residency_to_thread("thread_a");
+    assert_eq!(
+        window.begin_loading_older().as_deref(),
+        Some("older_cursor")
+    );
+    window.finish_loading_older_with_turn_ids(
+        &older,
+        vec!["turn_0".to_string(), "turn_1".to_string()],
+    );
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_max_resident_pages(1)
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_cold_release_hysteresis_viewports(0)
+            .with_minimum_restore_margin_rows(0),
+    );
+    let releases = window.release_cold_pages(&(2..4));
+    let page_id = releases[0].page_id;
+    let plan = window.residency_target_plan(
+        0..1,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(plan.missing_transport_ranges, vec![0..1]);
+    assert_eq!(
+        window.begin_loading_page_for_residency_target_plan(&plan, &(0..1)),
+        Some(TranscriptHistoryPageRequest::Released {
+            page_id,
+            cursor: Some("older_cursor".to_string()),
+        })
+    );
+}
+
+#[test]
+fn planner_missing_ranges_reload_partially_resident_indexed_page() {
+    let page = loaded_history_page(
+        (0..6).map(|index| turn(&format!("turn_{index}"))).collect(),
+        Some("older_cursor"),
+        None,
+    );
+    let admission_plan = turn_admission_plan_for_page_window(
+        &page,
+        5..6,
+        96,
+        TranscriptResidencyTargetPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+        Vec::<String>::new(),
+    );
+    let admitted_page = sanitize_loaded_page_for_turn_admission_plan(&page, &admission_plan);
+    let mut window = TranscriptHistoryWindow::from_latest_page(&admitted_page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+    );
+    let plan = window.residency_target_plan(
+        2..3,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(window.resident_turn_ids(), vec!["turn_5"]);
+    assert_eq!(plan.missing_transport_ranges, vec![2..3]);
+    assert!(matches!(
+        window.begin_loading_page_for_residency_target_plan(&plan, &(2..3)),
+        Some(TranscriptHistoryPageRequest::Indexed { cursor: None, .. })
+    ));
 }
 
 #[test]
@@ -389,6 +1155,99 @@ fn pinned_resident_turn_can_exceed_byte_budget_with_diagnostic_reason() {
         counts.budget_reason,
         TranscriptResidencyBudgetReason::PinnedResidentOverBudget
     );
+}
+
+#[test]
+fn residency_retained_counts_split_payload_and_derived_bytes() {
+    let page = loaded_history_page(
+        vec![turn_with_text("turn_1", "plain **markdown**")],
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    let initial = window.residency_retained_counts();
+
+    assert!(initial.resident_payload_bytes > 0);
+    assert!(initial.resident_derived_bytes > 0);
+    assert_eq!(
+        initial.resident_bytes,
+        initial
+            .resident_payload_bytes
+            .saturating_add(initial.resident_derived_bytes)
+    );
+
+    assert!(window.update_residency_derived_byte_estimates([("turn_1", 777usize)]));
+    let updated = window.residency_retained_counts();
+    assert_eq!(updated.resident_derived_bytes, 777);
+    assert_eq!(
+        updated.resident_bytes,
+        updated
+            .resident_payload_bytes
+            .saturating_add(updated.resident_derived_bytes)
+    );
+}
+
+#[test]
+fn residency_target_plan_uses_updated_derived_byte_estimates() {
+    let page = loaded_history_page(
+        vec![turn("turn_0"), turn("turn_1"), turn("turn_2")],
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_max_resident_bytes(50_000)
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(3),
+    );
+
+    assert!(window.update_residency_derived_byte_estimates([("turn_1", 1_000_000usize)]));
+    let plan = window.residency_target_plan(0..1, 96, Vec::new(), None);
+
+    assert!(plan.desired_full_turn_ids.contains(&"turn_0".to_string()));
+    assert!(plan.release_turn_ids.contains(&"turn_1".to_string()));
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::ResidentByteLimit
+    );
+}
+
+#[test]
+fn saved_path_generated_image_estimate_does_not_count_inline_result_bytes() {
+    let huge_result = "x".repeat(2_000_000);
+    let page = loaded_history_page(
+        vec![turn_with_items(
+            "turn_image",
+            vec![generated_image_item(
+                "image_1",
+                "completed",
+                Some(huge_result.as_str()),
+                Some(r"C:\work\generated\image_1.png"),
+            )],
+        )],
+        None,
+        None,
+    );
+
+    let admission_plan = turn_admission_plan_for_page_window(
+        &page,
+        0..1,
+        96,
+        TranscriptResidencyTargetPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0)
+            .with_max_resident_bytes(1_500_000),
+        Vec::<String>::new(),
+    );
+
+    assert_eq!(
+        admission_plan.resident_turn_ids,
+        vec!["turn_image".to_string()]
+    );
+    assert!(admission_plan.oversized_turn_fallback_ids.is_empty());
 }
 
 #[test]
@@ -687,6 +1546,39 @@ fn indexed_window<const N: usize>(turn_ids: [&str; N]) -> TranscriptHistoryWindo
     let mut window = TranscriptHistoryWindow::from_latest_page(&page);
     window.bind_residency_to_thread("thread_a");
     window
+}
+
+fn planner_turns(
+    count: usize,
+    height: usize,
+    estimated_resident_bytes: usize,
+    resident: bool,
+) -> Vec<TranscriptResidencyTurnPlanInput> {
+    (0..count)
+        .map(|index| {
+            planner_turn(
+                &format!("turn_{index}"),
+                index,
+                height,
+                estimated_resident_bytes,
+                resident,
+            )
+        })
+        .collect()
+}
+
+fn planner_turn(
+    turn_id: &str,
+    source_position: usize,
+    height: usize,
+    estimated_resident_bytes: usize,
+    resident: bool,
+) -> TranscriptResidencyTurnPlanInput {
+    TranscriptResidencyTurnPlanInput::new(turn_id)
+        .with_source_position(source_position)
+        .with_measured_height(height)
+        .with_estimated_resident_bytes(estimated_resident_bytes)
+        .with_resident(resident)
 }
 
 struct FakeHistoryBackend {

@@ -217,6 +217,24 @@ fn markdown_cache_rejects_parse_completion_after_scope_clear() {
     assert_eq!(stats.stale_completions, 1);
 }
 
+#[test]
+fn markdown_cache_release_key_rejects_in_flight_completion() {
+    let mut cache = TranscriptMarkdownCache::new(8, 4096);
+    let key = TranscriptMarkdownCacheKey::new("turn:1:assistant");
+
+    let lookup = cache.lookup(key.clone(), "- item");
+    let completion = lookup.parse_request.unwrap().parse();
+    cache.release_keys([key.as_str()]);
+
+    let result = cache.complete_parse(completion);
+    assert!(!result.display_changed);
+    assert!(result.stale);
+    assert!(result.follow_up_request.is_none());
+    let stats = cache.stats();
+    assert_eq!(stats.entries, 0);
+    assert_eq!(stats.stale_completions, 1);
+}
+
 fn assert_display_changed(result: TranscriptMarkdownParseCompletionResult) {
     assert!(result.display_changed);
     assert!(!result.stale);

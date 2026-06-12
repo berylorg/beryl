@@ -9,6 +9,16 @@ use super::execution_detail::{
 pub(super) fn project_parent_narrative_turn(
     turn: &TurnExecutionRecord,
 ) -> Option<TurnExecutionRecord> {
+    if turn.terminal_fallback().is_some() {
+        let mut projected = turn.clone();
+        projected.user_input_fragments.clear();
+        projected.narrative_entries.clear();
+        projected.items.clear();
+        projected.error_message = None;
+        projected.terminal_assistant_item_id = None;
+        return Some(projected);
+    }
+
     let items = turn
         .items
         .iter()

@@ -578,6 +578,42 @@ fn scroll_handler_dispatch_runs_after_list_state_borrow_is_released() {
     assert!(!state_inner_scroll_body.contains("cx"));
 }
 
+#[test]
+fn list_row_render_context_is_layout_owned_and_refreshed_after_bottom_up_fill() {
+    let mod_source = include_str!("../src/shell/virtual_list/mod.rs");
+    let layout_source = include_str!("../src/shell/virtual_list/layout_state.rs");
+    let layout_body = rust_function_body(layout_source, "pub(super) fn layout_items");
+    let refresh_body = rust_function_body(layout_source, "fn refresh_item_layout_render_contexts");
+    let replace_size_body = rust_function_body(layout_source, "fn replace_measured_item_size");
+    let context_body = rust_function_body(layout_source, "fn list_item_render_context");
+
+    assert!(mod_source.contains("pub struct ListItemRenderContext"));
+    assert!(mod_source.contains("dyn FnMut(usize, ListItemRenderContext"));
+    assert!(
+        layout_body.contains("list_item_render_context(&scroll_top, item_index, available_height)")
+    );
+    assert!(layout_body.contains("self.refresh_item_layout_render_contexts("));
+    assert_order(
+        layout_body,
+        "scroll_top = ListOffset",
+        "self.refresh_item_layout_render_contexts(",
+    );
+    assert!(refresh_body.contains("render_item(item_layout.index, render_context"));
+    assert!(refresh_body.contains("let old_size = item_layout.size"));
+    assert!(refresh_body.contains("if size == old_size"));
+    assert!(refresh_body.contains("self.replace_measured_item_size(item_layout.index, size)"));
+    assert!(
+        refresh_body.contains("preserve_bottom_offset && item_layout.index == scroll_top.item_ix")
+    );
+    assert!(refresh_body.contains("scroll_top.offset_in_item ="));
+    assert!(!refresh_body.contains("SumTree::from_iter"));
+    assert!(replace_size_body.contains("old_items.slice(&Count(index), Bias::Right)"));
+    assert!(replace_size_body.contains("new_items.extend("));
+    assert!(replace_size_body.contains("new_items.append(old_items.suffix(), ())"));
+    assert!(context_body.contains("scroll_top.item_ix == item_index"));
+    assert!(context_body.contains("scroll_top.offset_in_item.max(px(0.0))"));
+}
+
 fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
     let signature_index = source
         .find(function_signature)

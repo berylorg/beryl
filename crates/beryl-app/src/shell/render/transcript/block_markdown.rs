@@ -1,5 +1,6 @@
 use gpui::{AnyElement, App, Pixels, div, prelude::*, px};
 
+use std::ops::Range;
 use std::time::Instant;
 
 use crate::shell::transcript_markdown::{
@@ -50,6 +51,31 @@ pub(super) fn render_markdown_plan_with_style_and_selection(
     )
 }
 
+pub(super) fn render_markdown_plan_slice_with_style_and_selection(
+    plan: &BlockRenderPlan,
+    block_range: Range<usize>,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
+    style: InlineMarkdownStyle,
+    code_panel_controls: TranscriptCodePanelControls,
+    selection_context: TranscriptInlineSelectionContext,
+    cx: &mut App,
+) -> AnyElement {
+    render_markdown_plan_slice(
+        plan,
+        block_range,
+        theme,
+        code_layout,
+        conversation_m_advance,
+        style,
+        Some(code_panel_controls),
+        Some(selection_context),
+        &[],
+        cx,
+    )
+}
+
 pub(super) fn markdown_prose_block_with_selection(
     label: &str,
     plan: &BlockRenderPlan,
@@ -65,6 +91,7 @@ pub(super) fn markdown_prose_block_with_selection(
     markdown_prose_block_inner(
         label,
         plan,
+        None,
         background,
         theme,
         code_layout,
@@ -73,6 +100,65 @@ pub(super) fn markdown_prose_block_with_selection(
         Some(code_panel_controls),
         Some(selection_context),
         &[],
+        cx,
+    )
+}
+
+pub(super) fn markdown_prose_block_slice_with_selection(
+    label: &str,
+    plan: &BlockRenderPlan,
+    block_range: Range<usize>,
+    background: gpui::Rgba,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
+    style: InlineMarkdownStyle,
+    code_panel_controls: TranscriptCodePanelControls,
+    selection_context: TranscriptInlineSelectionContext,
+    cx: &mut App,
+) -> AnyElement {
+    markdown_prose_block_inner(
+        label,
+        plan,
+        Some(block_range),
+        background,
+        theme,
+        code_layout,
+        conversation_m_advance,
+        style,
+        Some(code_panel_controls),
+        Some(selection_context),
+        &[],
+        cx,
+    )
+}
+
+pub(super) fn markdown_prose_block_slice_with_image_markers_and_selection(
+    label: &str,
+    plan: &BlockRenderPlan,
+    block_range: Range<usize>,
+    background: gpui::Rgba,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
+    style: InlineMarkdownStyle,
+    code_panel_controls: TranscriptCodePanelControls,
+    selection_context: TranscriptInlineSelectionContext,
+    image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
+) -> AnyElement {
+    markdown_prose_block_inner(
+        label,
+        plan,
+        Some(block_range),
+        background,
+        theme,
+        code_layout,
+        conversation_m_advance,
+        style,
+        Some(code_panel_controls),
+        Some(selection_context),
+        image_markers,
         cx,
     )
 }
@@ -93,6 +179,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
     markdown_prose_block_inner(
         label,
         plan,
+        None,
         background,
         theme,
         code_layout,
@@ -108,6 +195,7 @@ pub(super) fn markdown_prose_block_with_image_markers_and_selection(
 fn markdown_prose_block_inner(
     label: &str,
     plan: &BlockRenderPlan,
+    block_range: Option<Range<usize>>,
     background: gpui::Rgba,
     theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
@@ -138,17 +226,31 @@ fn markdown_prose_block_inner(
     }
 
     block
-        .child(render_markdown_plan(
-            plan,
-            theme,
-            code_layout,
-            conversation_m_advance,
-            style,
-            code_panel_controls,
-            selection_context,
-            image_markers,
-            cx,
-        ))
+        .child(match block_range {
+            Some(block_range) => render_markdown_plan_slice(
+                plan,
+                block_range,
+                theme,
+                code_layout,
+                conversation_m_advance,
+                style,
+                code_panel_controls,
+                selection_context,
+                image_markers,
+                cx,
+            ),
+            None => render_markdown_plan(
+                plan,
+                theme,
+                code_layout,
+                conversation_m_advance,
+                style,
+                code_panel_controls,
+                selection_context,
+                image_markers,
+                cx,
+            ),
+        })
         .into_any_element()
 }
 
@@ -163,8 +265,39 @@ fn render_markdown_plan(
     image_markers: &[TranscriptInlineImageMarker],
     cx: &mut App,
 ) -> AnyElement {
-    render_block_sequence(
+    render_block_sequence_range(
         plan.blocks.as_slice(),
+        0..plan.blocks.len(),
+        theme,
+        code_layout,
+        conversation_m_advance,
+        BlockSpacing::Normal,
+        style,
+        code_panel_controls,
+        "",
+        selection_context,
+        image_markers,
+        cx,
+    )
+}
+
+fn render_markdown_plan_slice(
+    plan: &BlockRenderPlan,
+    block_range: Range<usize>,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
+) -> AnyElement {
+    let start = block_range.start.min(plan.blocks.len());
+    let end = block_range.end.min(plan.blocks.len()).max(start);
+    render_block_sequence_range(
+        plan.blocks.as_slice(),
+        start..end,
         theme,
         code_layout,
         conversation_m_advance,
@@ -206,38 +339,78 @@ fn render_block_sequence(
     image_markers: &[TranscriptInlineImageMarker],
     cx: &mut App,
 ) -> AnyElement {
+    render_block_sequence_range(
+        blocks,
+        0..blocks.len(),
+        theme,
+        code_layout,
+        conversation_m_advance,
+        spacing,
+        style,
+        code_panel_controls,
+        structural_parent_path,
+        selection_context,
+        image_markers,
+        cx,
+    )
+}
+
+fn render_block_sequence_range(
+    blocks: &[BlockRenderNode],
+    block_range: Range<usize>,
+    theme: &TranscriptTheme,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: Pixels,
+    spacing: BlockSpacing,
+    style: InlineMarkdownStyle,
+    code_panel_controls: Option<TranscriptCodePanelControls>,
+    structural_parent_path: &str,
+    selection_context: Option<TranscriptInlineSelectionContext>,
+    image_markers: &[TranscriptInlineImageMarker],
+    cx: &mut App,
+) -> AnyElement {
     let mut container = div().w_full().min_w(px(0.0)).flex().flex_col();
     container = match spacing {
         BlockSpacing::Normal => container.gap_2(),
         BlockSpacing::Tight => container.gap_1(),
     };
 
-    if blocks.is_empty() {
+    let start = block_range.start.min(blocks.len());
+    let end = block_range.end.min(blocks.len()).max(start);
+
+    if start == end {
         return container.child(empty_line()).into_any_element();
     }
 
     container
-        .children(blocks.iter().enumerate().map(|(index, block)| {
-            let structural_path = markdown_code_panel_block_path(structural_parent_path, index);
-            if index > 0
-                && let Some(selection_context) = selection_context.as_ref()
-            {
-                selection_context.set_next_break_before(spacing.raw_break_before());
-            }
-            render_block(
-                block,
-                theme,
-                code_layout,
-                conversation_m_advance,
-                style,
-                code_panel_controls.clone(),
-                structural_path,
-                selection_context.clone(),
-                image_markers,
-                cx,
-            )
-            .into_any_element()
-        }))
+        .children(
+            blocks[start..end]
+                .iter()
+                .enumerate()
+                .map(|(offset, block)| {
+                    let block_index = start.saturating_add(offset);
+                    let structural_path =
+                        markdown_code_panel_block_path(structural_parent_path, block_index);
+                    if block_index > 0
+                        && let Some(selection_context) = selection_context.as_ref()
+                    {
+                        selection_context.set_next_break_before(spacing.raw_break_before());
+                    }
+                    render_block(
+                        block,
+                        theme,
+                        code_layout,
+                        conversation_m_advance,
+                        style,
+                        code_panel_controls.clone(),
+                        structural_path,
+                        selection_context.clone(),
+                        image_markers,
+                        cx,
+                    )
+                    .into_any_element()
+                }),
+        )
         .into_any_element()
 }
 

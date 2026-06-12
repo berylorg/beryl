@@ -228,7 +228,7 @@ impl ShellView {
             || self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
             || self.transcript_edit_commit_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
+            || self.selected_thread_activation_pending()
             || self.thread_history_page_receiver.is_some()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
@@ -244,7 +244,7 @@ impl ShellView {
         activated_thread_id: &str,
         execution_target: &WorkspaceId,
     ) -> bool {
-        let Some(pending) = self.pending_thread_navigation_activation.take() else {
+        let Some(pending) = self.pending_thread_navigation_activation.as_ref() else {
             return false;
         };
         let target = pending.target();
@@ -267,6 +267,9 @@ impl ShellView {
             return false;
         }
 
+        let Some(pending) = self.pending_thread_navigation_activation.take() else {
+            return false;
+        };
         let workspace_id = pending.workspace_id().clone();
         let history = self
             .thread_navigation_histories

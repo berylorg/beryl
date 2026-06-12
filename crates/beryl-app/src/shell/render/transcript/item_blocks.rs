@@ -6,7 +6,9 @@ use gpui::{AnyElement, App, Pixels, div, prelude::*};
 use crate::shell::execution_detail::{
     AgentMessageDetail, ExecutionItem, ReasoningDetail, TurnExecutionRecord, TurnExecutionStatus,
 };
-use crate::shell::transcript_selection::TRANSCRIPT_NARRATIVE_BLOCK_BREAK_BEFORE;
+use crate::shell::transcript_selection::{
+    TRANSCRIPT_NARRATIVE_BLOCK_BREAK_BEFORE, TranscriptTextLineOrder,
+};
 
 use super::block_markdown::render_markdown_plan_with_style_and_selection;
 use super::code_panel_controls::TranscriptCodePanelState;
@@ -31,7 +33,7 @@ pub(super) fn render_item(
     conversation_m_advance: Pixels,
     row_identity: &str,
     initial_break_before: usize,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     cx: &mut App,
 ) -> Option<gpui::AnyElement> {
     match item {
@@ -81,7 +83,7 @@ pub(super) fn render_agent_message(
     code_panel_state: TranscriptCodePanelState,
     row_identity: &str,
     initial_break_before: usize,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
@@ -148,7 +150,7 @@ pub(super) fn render_reasoning(
     code_panel_state: TranscriptCodePanelState,
     row_identity: &str,
     initial_break_before: usize,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,
@@ -221,7 +223,7 @@ fn markdown_reasoning_blocks(
     row_identity: &str,
     first_block_break_before: usize,
     rendered_block_count: Rc<Cell<usize>>,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     theme: &TranscriptTheme,
     code_layout: TranscriptCodeLayout,
     conversation_m_advance: Pixels,

@@ -8,7 +8,7 @@ use crate::shell::execution_detail::TranscriptImagePreviewState;
 use crate::shell::transcript_markdown::BlockRenderCode;
 use crate::shell::transcript_selection::{
     TranscriptLineCopyGroup, TranscriptLineCopyText, TranscriptTextLineKey,
-    transcript_context_line_break_before,
+    TranscriptTextLineOrder, transcript_context_line_break_before,
 };
 
 use super::super::code_panel::{CodePanelSelectableLine, CodePanelSelection, SelectedTextStyle};
@@ -22,7 +22,7 @@ pub(super) struct TranscriptInlineSelectionContext {
     block_path: String,
     line_prefix: String,
     selection_render: Option<TranscriptTextSelectionRenderState>,
-    next_order: Rc<Cell<usize>>,
+    next_order: Rc<Cell<TranscriptTextLineOrder>>,
     next_line_index: Rc<Cell<usize>>,
     next_break_before: Rc<Cell<usize>>,
     pending_start_prefix: Rc<RefCell<Option<String>>>,
@@ -63,7 +63,7 @@ impl TranscriptInlineSelectionContext {
         entity: Entity<TranscriptPanel>,
         row_identity: impl Into<String>,
         block_path: impl Into<String>,
-        next_order: Rc<Cell<usize>>,
+        next_order: Rc<Cell<TranscriptTextLineOrder>>,
         initial_break_before: usize,
         selection_render: Option<TranscriptTextSelectionRenderState>,
     ) -> Self {
@@ -232,7 +232,7 @@ impl TranscriptInlineSelectionContext {
             line_index
         });
         let order = self.next_order.get();
-        self.next_order.set(order.saturating_add(1));
+        self.next_order.set(order.next_line());
         let start_prefix = self
             .pending_start_prefix
             .borrow_mut()
@@ -303,7 +303,7 @@ impl TranscriptInlineSelectionContext {
 pub(super) struct TranscriptSelectableTextLine {
     pub(super) entity: Entity<TranscriptPanel>,
     pub(super) key: TranscriptTextLineKey,
-    pub(super) order: usize,
+    pub(super) order: TranscriptTextLineOrder,
     pub(super) display_text: String,
     pub(super) copy_text: TranscriptLineCopyText,
     pub(super) break_before: usize,

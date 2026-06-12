@@ -162,7 +162,7 @@ impl ShellView {
                 self.graph_receiver.is_some(),
                 self.graph_thread_start_receiver.is_some(),
             )
-            || self.thread_activation_receiver.is_some()
+            || self.selected_thread_activation_pending()
             || self.thread_history_page_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()

@@ -67,6 +67,38 @@ impl TranscriptTextLineKey {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct TranscriptTextLineOrder {
+    row_index: usize,
+    line_index: usize,
+}
+
+impl TranscriptTextLineOrder {
+    pub(crate) fn row_start(row_index: usize) -> Self {
+        Self::row_line(row_index, 0)
+    }
+
+    pub(crate) fn row_line(row_index: usize, line_index: usize) -> Self {
+        Self {
+            row_index,
+            line_index,
+        }
+    }
+
+    pub(crate) fn next_line(self) -> Self {
+        Self {
+            row_index: self.row_index,
+            line_index: self.line_index.saturating_add(1),
+        }
+    }
+}
+
+impl From<usize> for TranscriptTextLineOrder {
+    fn from(order: usize) -> Self {
+        Self::row_line(0, order)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TranscriptTextPoint {
     pub(crate) key: TranscriptTextLineKey,
@@ -82,7 +114,7 @@ impl TranscriptTextPoint {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct VisibleTranscriptTextLine {
     pub(crate) key: TranscriptTextLineKey,
-    pub(crate) order: usize,
+    pub(crate) order: TranscriptTextLineOrder,
     pub(crate) text: String,
     pub(crate) copy_text: TranscriptLineCopyText,
     pub(crate) break_before: usize,
@@ -91,14 +123,14 @@ pub(crate) struct VisibleTranscriptTextLine {
 impl VisibleTranscriptTextLine {
     pub(crate) fn new(
         key: TranscriptTextLineKey,
-        order: usize,
+        order: impl Into<TranscriptTextLineOrder>,
         text: impl Into<String>,
         break_before: usize,
     ) -> Self {
         let text = text.into();
         Self {
             key,
-            order,
+            order: order.into(),
             copy_text: TranscriptLineCopyText::plain(text.clone()),
             text,
             break_before,
@@ -107,14 +139,14 @@ impl VisibleTranscriptTextLine {
 
     pub(crate) fn with_copy_text(
         key: TranscriptTextLineKey,
-        order: usize,
+        order: impl Into<TranscriptTextLineOrder>,
         text: impl Into<String>,
         copy_text: TranscriptLineCopyText,
         break_before: usize,
     ) -> Self {
         Self {
             key,
-            order,
+            order: order.into(),
             text: text.into(),
             copy_text,
             break_before,
@@ -442,7 +474,7 @@ fn selected_text_from_snapshot_lines(lines: &[TranscriptSelectedLineSnapshot]) -
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct NormalizedTranscriptTextPoint {
-    order: usize,
+    order: TranscriptTextLineOrder,
     offset: usize,
 }
 

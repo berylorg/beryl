@@ -6,7 +6,9 @@ use gpui::{AnyElement, App};
 use crate::shell::transcript_markdown::{ParsedTranscriptMarkdown, TranscriptMarkdownCacheKey};
 use crate::shell::transcript_media::{TranscriptMediaCacheKey, TranscriptMediaSource};
 use crate::shell::transcript_media_runs::{TranscriptMediaRunSegment, markdown_media_run_segments};
-use crate::shell::transcript_selection::transcript_narrative_block_break_before;
+use crate::shell::transcript_selection::{
+    TranscriptTextLineOrder, transcript_narrative_block_break_before,
+};
 
 use super::{
     media_blocks::{TranscriptMediaRenderItem, TranscriptMediaRenderLayout, render_media_run},
@@ -33,7 +35,7 @@ pub(super) fn push_rendered_block(
     narrative_blocks: &mut Vec<AnyElement>,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     rendered: AnyElement,
     cx: &mut App,
@@ -60,7 +62,7 @@ pub(super) fn flush_media_run(
     narrative_blocks: &mut Vec<AnyElement>,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     cx: &mut App,
 ) {

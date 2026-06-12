@@ -1,5 +1,8 @@
 //! Backend launch and protocol-facing types for Beryl.
 //!
+//! Protocol item structs, including generic thread items, are exported so GUI
+//! layers can preserve and synthesize bounded protocol-shaped records.
+//!
 //! ```no_run
 //! use std::time::Duration;
 //!
@@ -134,11 +137,11 @@ pub use thread_history::{
 pub use turn::{
     AccountRateLimitsResponse, ActiveTurnNotSteerable, AgentMessageItem, ApprovalRequest,
     ApprovalRequestKind, CommandExecutionItem, CommandExecutionStatus, FileChangeItem,
-    FileUpdateChange, ImageGenerationItem, NonSteerableTurnKind, PatchApplyStatus, PatchChangeKind,
-    RateLimitSnapshot, RateLimitWindow, ReasoningItem, ThreadInfo, ThreadItem,
-    ThreadSessionMetadata, ThreadSessionResponse, ThreadStartOptions, ThreadStatus,
-    ThreadTokenUsage, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, TokenUsageBreakdown,
-    TurnError, TurnInfo, TurnItemsView, TurnStartOptions, TurnStartResponse, TurnStatus,
-    TurnSteerResponse, TurnStreamEvent, UserInput, UserMessageItem,
+    FileUpdateChange, GenericThreadItem, ImageGenerationItem, NonSteerableTurnKind,
+    PatchApplyStatus, PatchChangeKind, RateLimitSnapshot, RateLimitWindow, ReasoningItem,
+    ThreadInfo, ThreadItem, ThreadSessionMetadata, ThreadSessionResponse, ThreadStartOptions,
+    ThreadStatus, ThreadTokenUsage, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus,
+    TokenUsageBreakdown, TurnError, TurnInfo, TurnItemsView, TurnStartOptions, TurnStartResponse,
+    TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput, UserMessageItem,
     active_turn_not_steerable_error, parse_approval_request, parse_turn_stream_event,
 };

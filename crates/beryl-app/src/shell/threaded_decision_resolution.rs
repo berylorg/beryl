@@ -249,7 +249,7 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.turn_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
+            || self.selected_thread_activation_pending()
             || self.status_operation_receiver.is_some()
             || self.thread_history_page_receiver.is_some()
         {

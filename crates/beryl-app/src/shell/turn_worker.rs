@@ -24,17 +24,17 @@ use beryl_backend::{
     ThreadStatus, ThreadSummary, TurnStartOptions, TurnStreamEvent,
 };
 use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use super::execution_detail::{TranscriptImagePathResolver, UserInputFragment};
 use super::graph::GraphMutationUpdate;
-use super::thread_activation::{ExistingThreadActivationError, activate_existing_thread_direct};
+use super::thread_activation::{ExistingThreadActivationError, ThreadActivationLoader};
 use super::thread_title::{ThreadTitleCandidate, TurnThreadTitleMode};
 use super::transcript_branch_core::{
     ForegroundTranscriptBranchPublication, ForegroundTranscriptBranchStart,
 };
 use super::transcript_history::TranscriptHistoryWindow;
-use super::transcript_image_sources::transcript_image_path_resolver_for_turns;
+use super::transcript_image_sources::transcript_image_path_resolver_for_workspace_assets;
 use crate::memory_diagnostics::MemoryMilestone;
 use crate::{
     BerylWorkspacePersistence, WorkspaceGraphToolService,
@@ -800,7 +800,13 @@ fn run_thread_activation_worker(
         ));
         return;
     }
-    match activate_existing_thread_direct(&mut session, &workspace, &thread_id, &label, timeout) {
+    match ThreadActivationLoader::load_existing_thread(
+        &mut session,
+        &workspace,
+        &thread_id,
+        &label,
+        timeout,
+    ) {
         Ok(activation) => {
             let history_turn_count = activation.thread.turns.len();
             let history_item_count = activation
@@ -832,13 +838,10 @@ fn run_thread_activation_worker(
                 "thread activation worker received backend activation"
             );
             let resolver_started = Instant::now();
-            let image_resolver = match transcript_image_path_resolver_for_turns(
+            let image_resolver = match transcript_image_path_resolver_for_workspace_assets(
                 &persistence,
                 &beryl_workspace_id,
                 workspace.runtime_mode(),
-                &activation.thread.turns,
-                &mut session,
-                timeout,
             ) {
                 Ok(resolver) => resolver,
                 Err(error) => {
@@ -866,6 +869,14 @@ fn run_thread_activation_worker(
                     history_generated_image_count,
                 )
                 .log();
+            info!(
+                thread_id = thread_id.as_str(),
+                resident_turns = history_turn_count,
+                resident_items = history_item_count,
+                generated_images = history_generated_image_count,
+                image_resolver_prepare_ms = elapsed_ms(resolver_started.elapsed()),
+                "Prepared selected-thread activation worker result"
+            );
             let _ = sender.send(ThreadActivationUpdate::Finished(
                 ThreadActivationOutcome::Activated {
                     execution_target: workspace,

@@ -26,7 +26,7 @@ mod transcript_image_sources;
 use execution_detail::TranscriptImagePreviewState;
 use transcript_image_sources::{
     TranscriptImageExternalReader, transcript_image_path_resolver_for_assets,
-    transcript_image_path_resolver_for_turns,
+    transcript_image_path_resolver_for_turns, transcript_image_path_resolver_for_workspace_assets,
 };
 
 #[test]
@@ -97,6 +97,31 @@ fn missing_existing_asset_resolves_with_unavailable_preview_state() {
     assert_eq!(
         resolution.preview_state(),
         TranscriptImagePreviewState::Unavailable
+    );
+
+    cleanup_temp_dir(root);
+}
+
+#[test]
+fn workspace_asset_resolver_does_not_import_historical_paths() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let workspace_id = workspace_id("sources_assets_only");
+    let source_path = "/tmp/cas-history/not-imported.png";
+
+    let resolver = transcript_image_path_resolver_for_workspace_assets(
+        &persistence,
+        &workspace_id,
+        &RuntimeMode::HostWindows,
+    )
+    .unwrap();
+
+    assert!(resolver.resolve_local_path(source_path).is_none());
+    assert!(
+        persistence
+            .load_workspace_image_assets(&workspace_id)
+            .unwrap()
+            .is_empty()
     );
 
     cleanup_temp_dir(root);

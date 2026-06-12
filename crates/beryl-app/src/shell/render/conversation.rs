@@ -1346,8 +1346,13 @@ fn render_thread_strip(
 ) -> impl IntoElement {
     let entity = cx.entity();
     let new_thread_enabled = new_thread_controls_disabled.is_none();
-    let thread_selector_enabled = thread_selector_controls_disabled.is_none();
-    let active_label = selected_thread_title_label(surface, workspace_state, workspace);
+    let pending_activation_progress = surface.pending_thread_activation_progress();
+    let thread_selector_enabled =
+        thread_selector_controls_disabled.is_none() && pending_activation_progress.is_none();
+    let active_label = surface
+        .pending_thread_activation_label()
+        .map(str::to_string)
+        .unwrap_or_else(|| selected_thread_title_label(surface, workspace_state, workspace));
     let backward_disabled_reason = shell.thread_navigation_backward_disabled_reason();
     let forward_disabled_reason = shell.thread_navigation_forward_disabled_reason();
 
@@ -1404,6 +1409,7 @@ fn render_thread_strip(
                     shell,
                     entity,
                     active_label,
+                    pending_activation_progress,
                     thread_selector_enabled,
                     surface.thread_selector().is_open(),
                     cx,
@@ -1415,10 +1421,34 @@ fn render_thread_strip_active_thread_title(
     shell: &ShellRenderFrame<'_>,
     entity: Entity<ShellView>,
     active_label: String,
+    pending_activation_progress: Option<f32>,
     thread_selector_enabled: bool,
     thread_selector_open: bool,
     cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
+    let progress_fill = shell.role_color(
+        BerylThemeRole::PrimitiveAccentMarker,
+        shell.general_ui_foreground(),
+    );
+    let text_color = if pending_activation_progress.is_some() {
+        shell.role_foreground(
+            BerylThemeRole::MainThreadStripActiveThreadLabel,
+            shell.general_ui_foreground(),
+        )
+    } else if !thread_selector_enabled {
+        shell.secondary_button_theme().disabled.foreground
+    } else if thread_selector_open {
+        shell.role_foreground(
+            BerylThemeRole::MainThreadStripActiveThreadLabel,
+            shell.secondary_button_theme().active.foreground,
+        )
+    } else {
+        shell.role_foreground(
+            BerylThemeRole::MainThreadStripActiveThreadLabel,
+            shell.general_ui_foreground(),
+        )
+    };
+
     div()
         .on_children_prepainted(move |children, _, cx| {
             let bounds = children.first().copied();
@@ -1434,6 +1464,8 @@ fn render_thread_strip_active_thread_title(
         .child(
             div()
                 .id("thread-strip-active-thread-title")
+                .relative()
+                .overflow_hidden()
                 .w_full()
                 .h(px(layout::BUTTON_OUTER_HEIGHT))
                 .px(px(layout::BUTTON_HORIZONTAL_PADDING))
@@ -1457,25 +1489,26 @@ fn render_thread_strip_active_thread_title(
                     })
                 })
                 .when(thread_selector_enabled, |this| this.cursor_pointer())
+                .when_some(pending_activation_progress, |this, progress| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .top_0()
+                            .bottom_0()
+                            .w(relative(progress.clamp(0.0, 1.0)))
+                            .bg(progress_fill)
+                            .opacity(0.28),
+                    )
+                })
                 .child(
                     div()
+                        .relative()
                         .min_w(px(0.0))
                         .text_size(px(layout::BUTTON_LABEL_FONT_SIZE))
                         .line_height(px(layout::BUTTON_LABEL_LINE_HEIGHT))
                         .font_weight(shell.secondary_button_theme().font_weight)
-                        .text_color(if !thread_selector_enabled {
-                            shell.secondary_button_theme().disabled.foreground
-                        } else if thread_selector_open {
-                            shell.role_foreground(
-                                BerylThemeRole::MainThreadStripActiveThreadLabel,
-                                shell.secondary_button_theme().active.foreground,
-                            )
-                        } else {
-                            shell.role_foreground(
-                                BerylThemeRole::MainThreadStripActiveThreadLabel,
-                                shell.general_ui_foreground(),
-                            )
-                        })
+                        .text_color(text_color)
                         .whitespace_nowrap()
                         .truncate()
                         .child(active_label),

@@ -100,6 +100,67 @@ fn transcript_thread_link_activation_defers_shell_update_from_panel_handler() {
 }
 
 #[test]
+fn thread_selector_activation_defers_shell_work_out_of_selector_callbacks() {
+    let shell_source = include_str!("../src/shell.rs");
+    let selection_body = rust_function_body(shell_source, "fn activate_thread_selector_selection");
+    let defer_body = rust_function_body(shell_source, "fn defer_thread_selector_activation_target");
+    let click_handler_tail = shell_source
+        .split("event: &gpui::ClickEvent")
+        .nth(1)
+        .expect("thread selector click handler should accept a click event");
+    let click_handler_body = &click_handler_tail[..click_handler_tail
+        .find("fn activate_thread_selector_selection")
+        .expect("click handler should precede activation helper")];
+    let key_handler_body = rust_function_body(shell_source, "fn handle_thread_selector_key_down");
+
+    assert!(selection_body.contains("ThreadNavigationActivationSource::ThreadSelector"));
+    assert!(selection_body.contains("self.defer_thread_selector_activation_target("));
+    assert!(!selection_body.contains("self.activate_thread_selector_target("));
+    assert!(defer_body.contains("window.defer(cx, move |window, cx|"));
+    assert_order(defer_body, "window.defer(cx", "shell.update(cx");
+    assert_order(
+        defer_body,
+        "shell.update(cx",
+        "shell.activate_thread_selector_target",
+    );
+    assert!(click_handler_body.contains("self.activate_thread_selector_selection(window, cx)"));
+    assert!(key_handler_body.contains("self.activate_thread_selector_selection(window, cx)"));
+}
+
+#[test]
+fn thread_selector_activation_duplicate_pending_target_is_stable() {
+    let shell_source = include_str!("../src/shell.rs");
+    let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let activation_body = rust_function_body(shell_source, "fn activate_thread_selector_target");
+
+    assert!(selected_activation_source.contains("pub(super) fn pending_thread_activation_matches"));
+    assert!(activation_body.contains("surface.pending_thread_activation_matches("));
+    assert_order(
+        activation_body,
+        "surface.pending_thread_activation_matches(",
+        "return ThreadActivationStart::Started;",
+    );
+    assert_order(
+        activation_body,
+        "return ThreadActivationStart::Started;",
+        "Thread activation unavailable",
+    );
+    assert!(activation_body.contains("kind: \"busy\""));
+}
+
+#[test]
+fn transcript_block_window_renderer_follows_multi_block_user_prompts_and_reasoning() {
+    let turn_blocks_source = include_str!("../src/shell/render/transcript/turn_blocks.rs");
+    let body = rust_function_body(turn_blocks_source, "fn render_turn_card_block_window");
+
+    assert!(body.contains("render_user_prompt_fragment_markdown_source_slice"));
+    assert!(!body.contains("render_user_prompt_units("));
+    assert!(body.contains("ExecutionItem::Reasoning(reasoning)"));
+    assert!(body.contains("reasoning_source_text("));
+    assert!(body.contains("TranscriptTextRole::AssistantReasoning"));
+}
+
+#[test]
 fn thread_navigation_history_is_source_aware_and_committed_after_success() {
     let shell_source = include_str!("../src/shell.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
@@ -144,9 +205,15 @@ fn thread_navigation_history_is_source_aware_and_committed_after_success() {
     assert!(activation_body.contains("WorkspaceOpenIntent::ThreadSelectorActivation"));
     assert!(finish_thread_body.contains("finish_published_selected_thread_activation"));
     assert!(publication_finish_body.contains("finish_pending_thread_navigation_activation"));
+    assert!(finish_workspace_body.contains("synchronous_publication"));
+    assert_order(
+        finish_workspace_body,
+        "self.state = ShellState::Ready",
+        "self.finish_published_selected_thread_activation(publication)",
+    );
     assert!(finish_thread_body.contains("discard_pending_thread_navigation_activation"));
-    assert!(finish_workspace_body.contains("finish_pending_thread_navigation_activation"));
     assert!(finish_workspace_body.contains("discard_pending_thread_navigation_activation"));
+    assert!(!finish_workspace_body.contains("finish_pending_thread_navigation_activation"));
 }
 
 #[test]
@@ -206,15 +273,30 @@ fn thread_navigation_rejection_paths_do_not_consume_history_before_success() {
     assert!(activate_navigation_body.contains("navigation_target_unavailable"));
     assert_order(
         finish_pending_body,
+        "self.pending_thread_navigation_activation.as_ref()",
+        "self.pending_thread_navigation_activation.take()",
+    );
+    assert_order(
+        finish_pending_body,
         "target.thread_id().as_str() != activated_thread_id",
-        ".thread_navigation_histories",
+        "self.pending_thread_navigation_activation.take()",
     );
     assert_order(
         finish_pending_body,
         "target.execution_target() != execution_target",
-        ".thread_navigation_histories",
+        "self.pending_thread_navigation_activation.take()",
     );
     assert!(finish_pending_body.contains("ConversationSurfaceState::selected_thread_id"));
+    assert_order(
+        finish_pending_body,
+        "ConversationSurfaceState::selected_thread_id",
+        "self.pending_thread_navigation_activation.take()",
+    );
+    assert_order(
+        finish_pending_body,
+        "self.pending_thread_navigation_activation.take()",
+        ".thread_navigation_histories",
+    );
     assert!(finish_thread_body.contains("ThreadActivationOutcome::RequiresRebind"));
     assert!(finish_thread_body.contains("ThreadActivationOutcome::Failed"));
     let requires_rebind_tail = finish_thread_body
@@ -237,9 +319,34 @@ fn thread_navigation_rejection_paths_do_not_consume_history_before_success() {
 fn pending_thread_activation_preserves_visible_transcript_until_staged_publication() {
     let shell_source = include_str!("../src/shell.rs");
     let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_preparation_source =
+        include_str!("../src/shell/selected_thread_activation/preparation.rs");
+    let selected_activation_publisher_source =
+        include_str!("../src/shell/selected_thread_activation/publisher.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let shell_poll_body = rust_function_body(shell_source, "fn poll(");
+    let selected_activation_pending_body = rust_function_body(
+        selected_activation_source,
+        "fn selected_thread_activation_pending",
+    );
+    let poll_activation_updates_body =
+        rust_function_body(shell_source, "fn poll_thread_activation_updates");
+    let current_submission_block_body =
+        rust_function_body(shell_source, "fn current_conversation_submission_block");
+    let current_new_thread_block_body =
+        rust_function_body(shell_source, "fn current_new_thread_block");
+    let graph_thread_ref_body = rust_function_body(shell_source, "fn select_graph_thread_ref");
     let begin_activation_body =
         rust_function_body(selected_activation_source, "fn begin_thread_activation");
+    let progress_poll_body = rust_function_body(
+        selected_activation_source,
+        "fn poll_pending_thread_activation_progress",
+    );
+    let progress_cap_body = rust_function_body(
+        selected_activation_source,
+        "fn pending_thread_activation_progress_cap",
+    );
     let stage_activation_body = rust_function_body(
         selected_activation_source,
         "fn stage_selected_thread_activation",
@@ -249,8 +356,16 @@ fn pending_thread_activation_preserves_visible_transcript_until_staged_publicati
         "fn publish_staged_selected_thread_activation",
     );
     let publish_history_body = rust_function_body(
-        selected_activation_source,
-        "fn publish_selected_thread_history_window",
+        selected_activation_publisher_source,
+        "fn publish_history_window",
+    );
+    let publisher_try_body = rust_function_body(
+        selected_activation_publisher_source,
+        "pub(super) fn try_publish",
+    );
+    let finish_publication_body = rust_function_body(
+        shell_source,
+        "fn finish_published_selected_thread_activation",
     );
     let seeded_surface_body = rust_function_body(shell_source, "fn seeded");
     let refresh_reopen_body = rust_function_body(shell_source, "fn refresh_after_backend_reopen");
@@ -263,6 +378,8 @@ fn pending_thread_activation_preserves_visible_transcript_until_staged_publicati
     assert!(begin_activation_body.contains("thread_id: thread_id.into()"));
     assert!(begin_activation_body.contains("execution_target"));
     assert!(begin_activation_body.contains("source"));
+    assert!(begin_activation_body.contains("started_at: Instant::now()"));
+    assert!(begin_activation_body.contains("PENDING_THREAD_ACTIVATION_INITIAL_PROGRESS"));
     assert!(begin_activation_body.contains("self.notices.clear_all()"));
     assert!(begin_activation_body.contains("self.close_transcript_branch_menu()"));
     assert!(begin_activation_body.contains("self.cancel_transcript_edit_mode()"));
@@ -272,7 +389,13 @@ fn pending_thread_activation_preserves_visible_transcript_until_staged_publicati
     assert!(!begin_activation_body.contains("self.transcript_list_state"));
     assert!(!begin_activation_body.contains("self.transcript_reset_generation"));
     assert!(!begin_activation_body.contains("load_thread_history_window"));
-    assert!(!begin_activation_body.contains("publish_selected_thread_history_window"));
+    assert!(!begin_activation_body.contains("publish_history_window"));
+    assert!(!begin_activation_body.contains("sync_thread_selector_active_thread"));
+    assert!(progress_poll_body.contains("pending_thread_activation_progress_cap"));
+    assert!(progress_poll_body.contains("advance_progress_to"));
+    assert!(!progress_poll_body.contains("publish_history_window"));
+    assert!(progress_cap_body.contains("PENDING_THREAD_ACTIVATION_WORKER_PROGRESS_CAP"));
+    assert!(progress_cap_body.contains("StagedSelectedThreadActivation::progress_cap"));
     assert!(
         stage_activation_body.contains("self.staged_selected_thread_activation = Some(activation)")
     );
@@ -280,59 +403,145 @@ fn pending_thread_activation_preserves_visible_transcript_until_staged_publicati
     assert!(!stage_activation_body.contains("self.transcript_presentation"));
     assert!(!stage_activation_body.contains("self.transcript_history_window"));
     assert!(!stage_activation_body.contains("self.transcript_list_state"));
+    assert!(!stage_activation_body.contains("sync_thread_selector_active_thread"));
+    assert!(!stage_activation_body.contains("upsert_selected_thread"));
+    assert!(publish_staged_body.contains("SelectedThreadPublisher::try_publish(self)"));
     assert!(
-        publish_staged_body
-            .contains("let staged = self.staged_selected_thread_activation.as_ref()?")
+        publisher_try_body
+            .contains("let staged = surface.staged_selected_thread_activation.as_ref()?")
     );
-    assert!(publish_staged_body.contains("if !staged.is_ready_for_publication()"));
-    assert!(publish_staged_body.contains("self.staged_selected_thread_activation.take()?"));
-    assert!(publish_staged_body.contains("self.publish_selected_thread_history_window"));
-    assert!(publish_staged_body.contains("self.set_thread_session_metadata(metadata)"));
+    assert!(publisher_try_body.contains("if !staged.is_ready_for_publication()"));
+    assert!(publisher_try_body.contains("surface.staged_selected_thread_activation.take()?"));
+    assert!(selected_activation_publisher_source.contains("publish_history_window("));
+    assert!(
+        selected_activation_publisher_source
+            .contains("surface.set_thread_session_metadata(metadata)")
+    );
     assert_order(
-        publish_staged_body,
+        publisher_try_body,
         "if !staged.is_ready_for_publication()",
-        "self.staged_selected_thread_activation.take()?",
+        "surface.staged_selected_thread_activation.take()?",
     );
     assert_order(
-        publish_staged_body,
-        "self.staged_selected_thread_activation.take()?",
-        "self.publish_selected_thread_history_window",
-    );
-    assert_order(
-        publish_history_body,
-        ".replace_from_turns(self.execution_details.turns())",
-        "self.pending_thread_activation = None",
+        selected_activation_publisher_source,
+        "surface.staged_selected_thread_activation.take()?",
+        "publish_history_window",
     );
     assert_order(
         publish_history_body,
-        ".replace_from_turns(self.execution_details.turns())",
-        "self.transcript_list_state",
+        ".replace_from_turns(surface.execution_details.turns())",
+        "surface.pending_thread_activation = None",
+    );
+    assert_order(
+        publish_history_body,
+        ".replace_from_turns(surface.execution_details.turns())",
+        ".transcript_list_state",
+    );
+    assert!(
+        seeded_surface_body
+            .contains("state.stage_selected_thread_activation(ActivationPreparer::prepare")
     );
     assert_order(
         seeded_surface_body,
         "state.stage_selected_thread_activation",
         "state.publish_staged_selected_thread_activation",
     );
+    assert!(seeded_surface_body.contains("let published_activation = if let Some(thread)"));
+    assert!(seeded_surface_body.contains("(state, published_activation)"));
     assert!(!seeded_surface_body.contains("load_thread_history_window"));
+    assert!(
+        refresh_reopen_body
+            .contains("self.stage_selected_thread_activation(ActivationPreparer::prepare")
+    );
     assert_order(
         refresh_reopen_body,
         "self.stage_selected_thread_activation",
         "self.publish_staged_selected_thread_activation",
     );
+    assert!(
+        refresh_reopen_body
+            .contains("let (preserve_staged_selected_thread_activation, published_activation) =")
+    );
+    assert!(
+        refresh_reopen_body.contains(
+            "let published_activation = self.publish_staged_selected_thread_activation()"
+        )
+    );
+    assert!(refresh_reopen_body.contains("(published_activation.is_none(), published_activation)"));
+    assert!(refresh_reopen_body.contains("published_activation"));
+    assert_order(
+        refresh_reopen_body,
+        "let (preserve_staged_selected_thread_activation, published_activation) =",
+        "if !preserve_staged_selected_thread_activation",
+    );
     assert!(!refresh_reopen_body.contains("load_thread_history_window"));
     assert!(finish_activation_body.contains("pending_selected_thread_activation_source"));
+    assert!(finish_activation_body.contains("ActivationPreparer::prepare"));
     assert!(finish_activation_body.contains("surface.stage_selected_thread_activation"));
     assert!(finish_activation_body.contains("surface.publish_staged_selected_thread_activation"));
     assert!(!finish_activation_body.contains("surface.load_thread_history_window"));
+    assert!(!finish_activation_body.contains("ready.execution_target = execution_target.clone()"));
+    assert!(finish_activation_body.contains("ThreadActivationFinish::Staged"));
+    assert!(finish_activation_body.contains("ThreadActivationFinish::Published"));
+    assert!(finish_publication_body.contains("ready.execution_target = execution_target.clone()"));
+    assert!(selected_activation_pending_body.contains("self.thread_activation_receiver.is_some()"));
+    assert!(
+        selected_activation_pending_body.contains("pending_thread_activation_label().is_some()")
+    );
+    assert!(
+        selected_activation_pending_body.contains("staged_selected_thread_activation.is_some()")
+    );
+    assert!(current_submission_block_body.contains("self.selected_thread_activation_pending()"));
+    assert!(current_submission_block_body.contains("kind: \"pending_thread_activation\""));
+    assert!(current_new_thread_block_body.contains("self.selected_thread_activation_pending()"));
+    assert!(poll_activation_updates_body.contains("ThreadActivationFinish::Staged => {}"));
     assert_order(
-        finish_activation_body,
-        "pending_selected_thread_activation_source",
-        "ready.execution_target = execution_target.clone()",
+        poll_activation_updates_body,
+        "ThreadActivationFinish::Published",
+        "finish_decision_resolution_parent_activation(true",
+    );
+    assert!(
+        !poll_activation_updates_body
+            .contains("matches!(outcome, ThreadActivationOutcome::Activated")
+    );
+    assert!(!transcript_source.contains("finish_delayed_selected_thread_activation_publication"));
+    assert_order(
+        graph_thread_ref_body,
+        "self.workspace_persistence_for_worker()",
+        "surface.begin_thread_activation",
+    );
+    assert!(shell_poll_body.contains("poll_pending_thread_activation_progress"));
+    assert_order(
+        shell_poll_body,
+        "poll_pending_thread_activation_progress",
+        "poll_thread_activation_updates",
+    );
+    assert!(
+        finish_activation_body
+            .contains("surface.stage_selected_thread_activation(ActivationPreparer::prepare")
     );
     assert_order(
         finish_activation_body,
         "surface.stage_selected_thread_activation",
         "surface.publish_staged_selected_thread_activation",
+    );
+    assert!(
+        selected_activation_preparation_source.contains("struct StagedSelectedThreadActivation")
+    );
+}
+
+#[test]
+fn selected_thread_activation_worker_uses_assets_only_image_resolver_before_ui_result() {
+    let worker_source = include_str!("../src/shell/turn_worker.rs");
+    let activation_worker_body =
+        rust_function_body(worker_source, "fn run_thread_activation_worker");
+
+    assert!(activation_worker_body.contains("transcript_image_path_resolver_for_workspace_assets"));
+    assert!(!activation_worker_body.contains("transcript_image_path_resolver_for_turns"));
+    assert_order(
+        activation_worker_body,
+        "transcript_image_path_resolver_for_workspace_assets",
+        "ThreadActivationOutcome::Activated",
     );
 }
 
@@ -341,15 +550,17 @@ fn existing_thread_activation_prepares_resident_history_before_shell_publish() {
     let activation_source = include_str!("../src/shell/thread_activation.rs");
     let discovery_source = include_str!("../src/shell/discovery.rs");
     let worker_source = include_str!("../src/shell/turn_worker.rs");
-    let activation_body = rust_function_body(
-        activation_source,
-        "pub(crate) fn activate_existing_thread_direct",
-    );
+    let activation_body = rust_function_body(activation_source, "fn load_existing_thread_direct");
+    let loader_body = rust_function_body(activation_source, "pub(crate) fn load_existing_thread");
     let apply_body = rust_function_body(activation_source, "fn apply_initial_thread_resident_page");
     let selected_history_body =
         rust_function_body(discovery_source, "fn load_selected_thread_history");
+    let selected_image_resolver_body =
+        rust_function_body(discovery_source, "fn selected_thread_image_resolver");
     let worker_body = rust_function_body(worker_source, "fn run_thread_activation_worker");
 
+    assert!(activation_source.contains("struct ThreadActivationLoader"));
+    assert!(loader_body.contains("load_existing_thread_direct"));
     assert!(activation_body.contains("initial_thread_resident_page_options()"));
     assert!(!activation_body.contains("initial_thread_history_page_options()"));
     assert!(activation_body.contains("apply_initial_thread_resident_page"));
@@ -363,26 +574,32 @@ fn existing_thread_activation_prepares_resident_history_before_shell_publish() {
     assert!(!apply_body.contains("loaded_page_from_desc_response"));
     assert_order(
         worker_body,
-        "activate_existing_thread_direct",
-        "transcript_image_path_resolver_for_turns",
+        "ThreadActivationLoader::load_existing_thread",
+        "transcript_image_path_resolver_for_workspace_assets",
     );
     assert_order(
         worker_body,
-        "transcript_image_path_resolver_for_turns",
+        "transcript_image_path_resolver_for_workspace_assets",
         "ThreadActivationOutcome::Activated",
     );
-    assert!(selected_history_body.contains("activate_existing_thread_direct"));
+    assert!(selected_history_body.contains("ThreadActivationLoader::load_existing_thread"));
     assert_order(
         selected_history_body,
-        "activate_existing_thread_direct",
+        "ThreadActivationLoader::load_existing_thread",
         "selected_thread_image_resolver",
     );
+    assert!(
+        selected_image_resolver_body
+            .contains("transcript_image_path_resolver_for_workspace_assets")
+    );
+    assert!(!selected_image_resolver_body.contains("transcript_image_path_resolver_for_turns"));
 }
 
 #[test]
 fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     let shell_source = include_str!("../src/shell.rs");
-    let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_publisher_source =
+        include_str!("../src/shell/selected_thread_activation/publisher.rs");
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
     let transcript_theme_source = include_str!("../src/shell/render/transcript/theme.rs");
     let item_blocks_source = include_str!("../src/shell/render/transcript/item_blocks.rs");
@@ -393,8 +610,8 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     let live_scroll_detection_source =
         include_str!("../src/shell/transcript_live_scroll_detection.rs");
     let load_history_body = rust_function_body(
-        selected_activation_source,
-        "fn publish_selected_thread_history_window",
+        selected_activation_publisher_source,
+        "fn publish_history_window",
     );
     let finish_history_page_body = rust_function_body(
         residency_pages_source,
@@ -442,7 +659,7 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
         assert!(!source.contains("TranscriptSubmitAnchor::passive"));
     }
     assert!(!anchor_source.contains("fn passive("));
-    assert!(load_history_body.contains("self.reset_loaded_history_live_scroll();"));
+    assert!(load_history_body.contains("surface.reset_loaded_history_live_scroll();"));
     assert!(loaded_history_live_scroll_body.contains("clear_for_tail_activation"));
     assert!(loaded_history_live_scroll_body.contains("set_loaded_history_final_runway"));
     assert!(
@@ -491,8 +708,8 @@ fn loaded_history_activation_does_not_schedule_deferred_submit_anchor_scroll() {
     );
     assert_order(
         load_history_body,
-        "self.reset_loaded_history_live_scroll();",
-        ".reset(self.transcript_list_item_count())",
+        "surface.reset_loaded_history_live_scroll();",
+        ".reset(surface.transcript_list_item_count())",
     );
     assert_order(
         finish_history_page_body,
@@ -648,7 +865,7 @@ fn thread_navigation_history_is_pruned_when_backend_sessions_teardown() {
     assert_order(
         finish_workspace_body,
         "discard_thread_navigation_for_execution_target(&opened.execution_target)",
-        "self.finish_pending_thread_navigation_activation",
+        "self\n                    .backend_servers\n                    .insert(opened.execution_target.clone(), opened.server)",
     );
     assert_order(
         finish_workspace_body,
@@ -1016,6 +1233,8 @@ fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
         rust_function_body(render_source, "fn render_workspace_surface");
     let toolbar_body = rust_function_body(render_source, "fn render_toolbar");
     let thread_strip_body = rust_function_body(render_source, "fn render_thread_strip");
+    let active_title_body =
+        rust_function_body(render_source, "fn render_thread_strip_active_thread_title");
     let breadcrumb_source_body =
         rust_function_body(render_source, "fn toolbar_branch_breadcrumb_segments");
     let breadcrumb_body = rust_function_body(render_source, "fn render_toolbar_branch_breadcrumbs");
@@ -1027,10 +1246,17 @@ fn toolbar_branch_breadcrumbs_render_as_bounded_exact_parent_activation() {
     assert!(!render_source.contains("format!(\"Opening {label}\")"));
     assert!(toolbar_body.contains("toolbar_branch_breadcrumb_segments"));
     assert!(thread_strip_body.contains("render_thread_strip_active_thread_title"));
-    assert!(thread_strip_body.contains("let active_label = selected_thread_title_label"));
-    assert!(!thread_strip_body.contains("pending_thread_activation_label"));
+    assert!(thread_strip_body.contains("pending_thread_activation_progress"));
+    assert!(thread_strip_body.contains("pending_thread_activation_label"));
+    assert!(thread_strip_body.contains("selected_thread_title_label"));
+    assert!(thread_strip_body.contains("&& pending_activation_progress.is_none()"));
+    assert!(active_title_body.contains("pending_activation_progress.is_some()"));
+    assert!(active_title_body.contains(".when_some(pending_activation_progress"));
+    assert!(active_title_body.contains("BerylThemeRole::PrimitiveAccentMarker"));
+    assert!(active_title_body.contains(".w(relative(progress.clamp(0.0, 1.0)))"));
     assert!(!thread_strip_body.contains("thread_strip_breadcrumb_trail"));
     assert!(!breadcrumb_source_body.contains("pending_thread_activation_label().is_some()"));
+    assert!(!breadcrumb_source_body.contains("pending_thread_activation_progress"));
     assert!(toolbar_body.contains("selected_thread_title_label"));
     assert!(toolbar_body.contains("&selected_label"));
     assert!(breadcrumb_source_body.contains("thread_strip_breadcrumb_trail"));
@@ -1137,9 +1363,33 @@ fn transcript_media_render_consumes_displayed_media_without_scheduling_loads() {
 }
 
 #[test]
-fn completed_media_admission_is_window_backed_and_staged() {
+fn huge_turn_render_uses_block_window_slices() {
+    let turn_blocks_source = include_str!("../src/shell/render/transcript/turn_blocks.rs");
+    let block_markdown_source = include_str!("../src/shell/render/transcript/block_markdown.rs");
+
+    let card_body = rust_function_body(turn_blocks_source, "pub(super) fn render_turn_card");
+    let block_window_body =
+        rust_function_body(turn_blocks_source, "fn render_turn_card_block_window");
+
+    assert!(card_body.contains("render_window(row_scroll_offset, viewport_height)"));
+    assert!(card_body.contains("render_turn_card_block_window"));
+    assert!(card_body.contains("render_turn_card_full"));
+    assert!(block_window_body.contains("intersect_local_range"));
+    assert!(block_window_body.contains("render_block_spacer"));
+    assert!(turn_blocks_source.contains("markdown_render_units(&markdown_key"));
+    assert!(turn_blocks_source.contains("TranscriptMarkdownRenderUnit::Media"));
+    assert!(turn_blocks_source.contains("TranscriptMediaRenderIdentity::new"));
+    assert!(turn_blocks_source.contains("render_user_prompt_markdown_source_slice"));
+    assert!(turn_blocks_source.contains("render_item_markdown_source_slice"));
+    assert!(block_markdown_source.contains("fn render_markdown_plan_slice"));
+    assert!(block_markdown_source.contains("render_block_sequence_range"));
+}
+
+#[test]
+fn completed_media_admission_is_window_backed_for_residency_pages_only() {
     let shell_source = include_str!("../src/shell.rs");
-    let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_preparation_source =
+        include_str!("../src/shell/selected_thread_activation/preparation.rs");
     let residency_pages_source = include_str!("../src/shell/transcript_residency_pages.rs");
     let admission_source = include_str!("../src/shell/transcript_media_admission.rs");
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
@@ -1147,10 +1397,6 @@ fn completed_media_admission_is_window_backed_and_staged() {
     let media_blocks_source = include_str!("../src/shell/render/transcript/media_blocks.rs");
     let diagnostics_source = include_str!("../src/shell/diagnostics.rs");
 
-    let selected_activation_new_body = rust_function_body(
-        selected_activation_source,
-        "pub(super) fn new(\n        execution_target: WorkspaceId,",
-    );
     let stage_residency_body = rust_function_body(
         residency_pages_source,
         "fn stage_loading_thread_history_page",
@@ -1161,15 +1407,19 @@ fn completed_media_admission_is_window_backed_and_staged() {
     );
 
     assert!(shell_source.contains("mod transcript_media_admission;"));
-    assert!(selected_activation_source.contains("media_admission: TranscriptMediaAdmissionWindow"));
     assert!(
-        selected_activation_new_body
+        !selected_activation_preparation_source
+            .contains("media_admission: TranscriptMediaAdmissionWindow")
+    );
+    assert!(
+        !selected_activation_preparation_source
             .contains("TranscriptMediaAdmissionWindow::from_selected_thread_activation")
     );
     assert!(stage_residency_body.contains("TranscriptMediaAdmissionWindow::from_history_page"));
     assert!(admission_source.contains("staged_transcript_media_admission_request"));
     assert!(admission_source.contains("note_staged_transcript_media_admission_summary"));
     assert!(admission_source.contains("requires_completed_media_admission"));
+    assert!(admission_source.contains("pub(crate) fn requires_retry"));
     assert!(admission_source.contains("estimated_required_media_item_count"));
 
     assert!(transcript_source.contains("mod media_admission;"));
@@ -1179,9 +1429,11 @@ fn completed_media_admission_is_window_backed_and_staged() {
     assert!(drain_body.contains("markdown_context"));
     assert!(drain_body.contains("stream_projection_context"));
     assert!(drain_body.contains("note_staged_transcript_media_admission_summary"));
-    assert!(drain_body.contains("publish_staged_selected_thread_activation"));
+    assert!(!admission_source.contains("staged_selected_thread_activation"));
     assert!(drain_body.contains("publish_staged_thread_history_page"));
-    assert!(drain_body.contains("finish_published_selected_thread_activation"));
+    assert!(!drain_body.contains("publish_staged_selected_thread_activation"));
+    assert!(drain_body.contains("publish_staged_thread_history_page"));
+    assert!(!drain_body.contains("finish_delayed_selected_thread_activation_publication"));
     assert!(transcript_source.contains("empty_state_staged_admission_entity"));
     assert_order(
         transcript_source,
@@ -1198,9 +1450,23 @@ fn completed_media_admission_is_window_backed_and_staged() {
         "view.drain_staged_transcript_media_admission",
         "view.drain_transcript_media_preload_coordinator",
     );
+    assert!(drain_body.contains("let mut media_requires_retry = false;"));
+    assert!(drain_body.contains("media_requires_retry = summary.requires_retry();"));
+    assert_order(
+        drain_body,
+        "surface.note_staged_transcript_media_admission_summary",
+        "media_requires_retry = summary.requires_retry();",
+    );
+    assert!(drain_body.contains("preparation_requires_retry || media_requires_retry"));
 
     assert!(admission_driver_source.contains("source_backed_image_request_status"));
     assert!(admission_driver_source.contains("preload_source_backed_image"));
+    assert!(admission_driver_source.contains("AdmissionMediaItemDrain::RetryCurrent"));
+    assert!(admission_driver_source.contains("note_source_backed_upload_admission"));
+    assert!(admission_driver_source.contains("SourceBackedUploadAdmissionDecision"));
+    assert!(admission_source.contains("requested_upload_bytes > max_upload_bytes"));
+    assert!(admission_source.contains("SourceBackedUploadAdmissionDecision::TerminalFallback"));
+    assert!(admission_source.contains("SourceBackedUploadAdmissionDecision::RetryCurrent"));
     assert!(admission_driver_source.contains("TranscriptMediaReadinessKey"));
     assert!(admission_driver_source.contains("leased_source_backed"));
     assert!(admission_driver_source.contains("SourceBackedImageRequestStatus::Live"));
@@ -1214,6 +1480,152 @@ fn completed_media_admission_is_window_backed_and_staged() {
 
     assert!(!media_blocks_source.contains("TranscriptWindowMediaAdmissionDriver"));
     assert!(!diagnostics_source.contains("TranscriptWindowMediaAdmissionDriver"));
+}
+
+#[test]
+fn selected_thread_publication_is_not_gated_by_renderer_media_admission() {
+    let selected_activation_preparation_source =
+        include_str!("../src/shell/selected_thread_activation/preparation.rs");
+    let publish_activation_body = rust_function_body(
+        selected_activation_preparation_source,
+        "fn is_ready_for_publication",
+    );
+    let progress_cap_body =
+        rust_function_body(selected_activation_preparation_source, "fn progress_cap");
+
+    assert!(publish_activation_body.contains("presentability.structural_readiness_settled()"));
+    assert!(!publish_activation_body.contains("prepublication_preparation"));
+    assert!(!publish_activation_body.contains("media_admission.is_settled_for_publication()"));
+    assert!(!progress_cap_body.contains("preparation_progress"));
+    assert!(!progress_cap_body.contains("media_progress"));
+}
+
+#[test]
+fn prepublication_preparation_is_bounded_and_staged_for_residency_pages_only() {
+    let shell_source = include_str!("../src/shell.rs");
+    let selected_activation_preparation_source =
+        include_str!("../src/shell/selected_thread_activation/preparation.rs");
+    let residency_pages_source = include_str!("../src/shell/transcript_residency_pages.rs");
+    let preparation_source = include_str!("../src/shell/transcript_prepublication_preparation.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+
+    let stage_residency_body = rust_function_body(
+        residency_pages_source,
+        "fn stage_loading_thread_history_page",
+    );
+    let drain_body = rust_function_body(
+        transcript_source,
+        "fn drain_staged_transcript_media_admission",
+    );
+    let publish_activation_body = rust_function_body(
+        selected_activation_preparation_source,
+        "fn is_ready_for_publication",
+    );
+    let publish_page_body =
+        rust_function_body(residency_pages_source, "fn is_ready_for_publication");
+
+    assert!(shell_source.contains("mod transcript_prepublication_preparation;"));
+    assert!(
+        !selected_activation_preparation_source
+            .contains("prepublication_preparation: TranscriptPrepublicationPreparationWindow")
+    );
+    assert!(
+        residency_pages_source
+            .contains("prepublication_preparation: TranscriptPrepublicationPreparationWindow")
+    );
+    assert!(
+        !selected_activation_preparation_source
+            .contains("TranscriptPrepublicationPreparationWindow::from_selected_thread_activation")
+    );
+    assert!(
+        stage_residency_body
+            .contains("TranscriptPrepublicationPreparationWindow::from_history_page")
+    );
+    assert!(preparation_source.contains("TranscriptPrepublicationPreparationLayout"));
+    assert!(preparation_source.contains("TranscriptPrepublicationPreparedRow"));
+    assert!(preparation_source.contains("max_rows_per_drain"));
+    assert!(preparation_source.contains("max_block_units_per_drain"));
+    assert!(preparation_source.contains("max_media_items_per_drain"));
+    assert!(preparation_source.contains("max_preparation_bytes_per_drain"));
+    assert!(preparation_source.contains("max_in_flight_preparation_passes"));
+    assert!(preparation_source.contains("prepared_row_count_for_layout"));
+    assert!(preparation_source.contains("can_start_row"));
+
+    assert!(transcript_source.contains("TranscriptPrepublicationPreparationDriver"));
+    assert!(transcript_source.contains("TranscriptPrepublicationPreparationLayout::new"));
+    assert!(drain_body.contains("staged_transcript_prepublication_preparation_request"));
+    assert!(drain_body.contains("self.prepublication_preparation.drain_pending"));
+    assert!(drain_body.contains("note_staged_transcript_prepublication_preparation_summary"));
+    assert!(!preparation_source.contains("staged_selected_thread_activation"));
+    assert!(preparation_source.contains("Option<TranscriptPrepublicationPreparationSummary>"));
+    assert!(drain_body.contains("let mut preparation_requires_retry = false;"));
+    assert!(drain_body.contains("preparation_requires_retry = summary.requires_retry();"));
+    assert_order(
+        drain_body,
+        "note_staged_transcript_prepublication_preparation_summary",
+        "preparation_requires_retry = summary.requires_retry();",
+    );
+    assert_order(
+        drain_body,
+        "note_staged_transcript_prepublication_preparation_summary",
+        "publish_staged_thread_history_page",
+    );
+    assert!(!publish_activation_body.contains("prepublication_preparation"));
+    assert!(
+        publish_page_body.contains("prepublication_preparation")
+            && publish_page_body.contains("is_settled_for_publication")
+    );
+}
+
+#[test]
+fn staged_history_page_publication_defers_residency_followup_from_transcript_panel_update() {
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let drain_body = rust_function_body(
+        transcript_source,
+        "fn drain_staged_transcript_media_admission",
+    );
+
+    let defer_index = drain_body
+        .find("window.defer(cx, move |window, cx|")
+        .expect("staged publication follow-up should defer shell work");
+    let residency_update_index = drain_body
+        .find("view.begin_transcript_residency_update_for_current_view")
+        .expect("staged publication should still schedule residency follow-up");
+    let synchronous_shell_update = &drain_body[..defer_index];
+
+    assert!(
+        drain_body
+            .contains("let (defer_residency_update, retry_staged_admission) = self.shell.update")
+    );
+    assert!(drain_body.contains("defer_residency_update = true;"));
+    assert!(drain_body.contains("if retry_staged_admission"));
+    assert!(defer_index < residency_update_index);
+    assert!(
+        !synchronous_shell_update
+            .contains("view.begin_transcript_residency_update_for_current_view")
+    );
+    assert_order(
+        drain_body,
+        "surface.publish_staged_thread_history_page",
+        "defer_residency_update = true;",
+    );
+    assert!(!drain_body.contains("finish_delayed_selected_thread_activation_publication"));
+    assert_order(drain_body, "if defer_residency_update", "window.defer(cx");
+    assert_order(
+        drain_body,
+        "let (defer_residency_update, retry_staged_admission) = self.shell.update",
+        "if retry_staged_admission",
+    );
+    assert_order(
+        drain_body,
+        "if retry_staged_admission",
+        "if defer_residency_update",
+    );
+    assert_order(
+        drain_body,
+        "window.defer(cx",
+        "view.begin_transcript_residency_update_for_current_view",
+    );
 }
 
 #[test]
@@ -1236,32 +1648,43 @@ fn transcript_focus_routes_turn_jump_keybindings() {
 #[test]
 fn transcript_history_load_and_unload_paths_log_turn_counts() {
     let shell_source = include_str!("../src/shell.rs");
-    let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_publisher_source =
+        include_str!("../src/shell/selected_thread_activation/publisher.rs");
     let logging_source = include_str!("../src/shell/transcript_residency_logging.rs");
     let residency_pages_source = include_str!("../src/shell/transcript_residency_pages.rs");
 
     let load_window_body = rust_function_body(
-        selected_activation_source,
-        "fn publish_selected_thread_history_window",
+        selected_activation_publisher_source,
+        "fn publish_history_window",
     );
     let finish_page_body = rust_function_body(
         residency_pages_source,
         "fn publish_loaded_thread_history_page",
     );
-    let release_body = rust_function_body(residency_pages_source, "fn release_cold_history_pages");
+    let release_body = rust_function_body(
+        residency_pages_source,
+        "fn release_resident_turn_payloads_for_plan",
+    );
 
     assert!(shell_source.contains("mod transcript_residency_logging;"));
-    assert!(load_window_body.contains("log_transcript_turns_loaded"));
+    assert!(load_window_body.contains("log_transcript_resident_turns_admitted"));
+    assert!(load_window_body.contains("note_transcript_residency_admission"));
     assert!(load_window_body.contains("\"initial\""));
-    assert!(finish_page_body.contains("log_transcript_turns_loaded"));
-    assert!(finish_page_body.contains("\"older\""));
-    assert!(finish_page_body.contains("\"released\""));
-    assert!(release_body.contains("log_transcript_turns_unloaded"));
+    assert!(finish_page_body.contains("log_transcript_resident_turns_admitted"));
+    assert!(finish_page_body.contains("note_transcript_residency_admission"));
+    assert!(residency_pages_source.contains("\"older\""));
+    assert!(residency_pages_source.contains("\"released\""));
+    assert!(release_body.contains("log_transcript_resident_turns_released"));
+    assert!(release_body.contains("release_history_turns_by_id"));
+    assert!(release_body.contains("note_transcript_content_release"));
     assert!(logging_source.contains("use tracing::info;"));
-    assert!(logging_source.contains("\"Loaded transcript turns\""));
-    assert!(logging_source.contains("\"Unloaded transcript turns\""));
-    assert!(logging_source.contains("loaded_turns"));
-    assert!(logging_source.contains("unloaded_turns"));
+    assert!(logging_source.contains("\"Fetched transcript transport page\""));
+    assert!(logging_source.contains("\"Admitted transcript resident turns\""));
+    assert!(logging_source.contains("\"Released transcript resident turns\""));
+    assert!(logging_source.contains("\"Planned transcript residency target\""));
+    assert!(logging_source.contains("transport_turns"));
+    assert!(logging_source.contains("admitted_turns"));
+    assert!(logging_source.contains("released_turns"));
 }
 
 #[test]
@@ -1311,6 +1734,46 @@ fn transcript_scroll_routes_boundary_work_through_residency_controller() {
 }
 
 #[test]
+fn transcript_row_renderer_uses_layout_context_without_reentrant_list_state_reads() {
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let render_body = rust_function_body(transcript_source, "fn render(&mut self");
+    let list_start = render_body
+        .find("list(transcript_list_state.clone(), move |index, row_context, _, cx| {")
+        .expect("missing transcript list row renderer");
+    let list_region = &render_body[list_start..];
+    let list_end = list_region
+        .find("\n                                        })\n                                        .size_full()")
+        .expect("missing transcript list row renderer end");
+    let row_renderer_body = &list_region[..list_end];
+
+    assert!(!render_body.contains("list_row_scroll_top"));
+    assert!(!render_body.contains("list_row_viewport_height"));
+    assert!(!row_renderer_body.contains("logical_scroll_top()"));
+    assert!(!row_renderer_body.contains("viewport_bounds()"));
+    assert!(row_renderer_body.contains("row_context.scroll_offset_in_item"));
+    assert!(row_renderer_body.contains("row_context.viewport_height"));
+}
+
+#[test]
+fn transcript_row_renderer_uses_row_local_selection_and_copy_counters() {
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let render_body = rust_function_body(transcript_source, "fn render(&mut self");
+    let list_start = render_body
+        .find("list(transcript_list_state.clone(), move |index, row_context, _, cx| {")
+        .expect("missing transcript list row renderer");
+    let list_region = &render_body[list_start..];
+    let list_end = list_region
+        .find("\n                                        })\n                                        .size_full()")
+        .expect("missing transcript list row renderer end");
+    let row_renderer_body = &list_region[..list_end];
+
+    assert!(!render_body.contains("let selection_order = Rc::new(Cell::new(0usize));"));
+    assert!(!render_body.contains("let narrative_copy_block_count = Rc::new(Cell::new(0usize));"));
+    assert!(row_renderer_body.contains("TranscriptTextLineOrder::row_start(index)"));
+    assert!(row_renderer_body.contains("transcript_row_initial_narrative_copy_block_count"));
+}
+
+#[test]
 fn transcript_scroll_residency_worker_loads_full_pages_before_range_extension() {
     let shell_source = include_str!("../src/shell.rs");
     let history_worker_source = include_str!("../src/shell/thread_history_worker.rs");
@@ -1333,19 +1796,28 @@ fn transcript_scroll_residency_worker_loads_full_pages_before_range_extension() 
 fn transcript_residency_page_worker_stages_before_publication() {
     let shell_source = include_str!("../src/shell.rs");
     let lifecycle_source = include_str!("../src/shell/lifecycle.rs");
+    let controller_source = include_str!("../src/shell/transcript_residency_controller.rs");
     let residency_pages_source = include_str!("../src/shell/transcript_residency_pages.rs");
 
     let scroll_body = rust_function_body(
         shell_source,
         "fn begin_transcript_residency_update_for_scroll_event",
     );
+    let controller_body = rust_function_body(
+        controller_source,
+        "pub(super) fn begin_transcript_residency_controller_update",
+    );
+    let controller_request_body = rust_function_body(
+        controller_source,
+        "fn begin_loading_thread_history_page_for_residency_plan",
+    );
+    let controller_facts_body = rust_function_body(
+        controller_source,
+        "fn transcript_residency_controller_facts",
+    );
     let poll_body = rust_function_body(shell_source, "fn poll_thread_history_page_updates");
     let worker_finish_body =
         rust_function_body(lifecycle_source, "fn finish_thread_history_page_worker");
-    let begin_body = rust_function_body(
-        residency_pages_source,
-        "fn begin_loading_thread_history_page",
-    );
     let stage_body = rust_function_body(
         residency_pages_source,
         "fn stage_loading_thread_history_page",
@@ -1365,8 +1837,25 @@ fn transcript_residency_page_worker_stages_before_publication() {
 
     assert!(shell_source.contains("pending_thread_history_page_request"));
     assert!(shell_source.contains("staged_transcript_residency_page"));
-    assert!(scroll_body.contains("begin_loading_thread_history_page(&event.visible_range)"));
+    assert!(scroll_body.contains("begin_transcript_residency_controller_update"));
     assert!(scroll_body.contains("let request = request_ticket.request().clone();"));
+    assert!(controller_body.contains("residency_target_plan"));
+    assert!(controller_body.contains("release_resident_turn_payloads_for_plan"));
+    assert!(
+        controller_body.contains(
+            "let released_content = self.release_resident_turn_payloads_for_plan(&plan);"
+        )
+    );
+    assert!(!controller_body.contains("release_cold_history_pages"));
+    assert!(controller_body.contains("begin_loading_thread_history_page_for_residency_plan"));
+    assert_order(
+        controller_body,
+        "let released_content = self.release_resident_turn_payloads_for_plan(&plan);",
+        "let request = allow_request",
+    );
+    assert!(controller_facts_body.contains("request_allowed"));
+    assert!(controller_request_body.contains("begin_loading_page_for_residency_target_plan"));
+    assert!(controller_request_body.contains("note_transcript_residency_request_started"));
     assert_order(
         scroll_body,
         "self.pending_thread_history_page_request = Some(request_ticket);",
@@ -1385,11 +1874,8 @@ fn transcript_residency_page_worker_stages_before_publication() {
     );
     assert!(!worker_finish_body.contains("publish_loaded_thread_history_page"));
 
-    assert!(begin_body.contains("staged_transcript_residency_page.is_some()"));
-    assert!(begin_body.contains("source_range_for_presentation_range"));
-    assert!(begin_body.contains("transcript_residency_page_cancellation_generation"));
-    assert!(begin_body.contains("note_transcript_residency_request_started"));
     assert!(stage_body.contains("transcript_residency_page_request_is_current"));
+    assert!(stage_body.contains("latest_transcript_residency_controller_facts"));
     assert!(stage_body.contains("staged_transcript_residency_page = Some"));
     assert!(!stage_body.contains("finish_loading_older_with_turn_ids"));
     assert!(!stage_body.contains("finish_loading_released_page"));
@@ -1397,6 +1883,8 @@ fn transcript_residency_page_worker_stages_before_publication() {
     assert!(!stage_body.contains("prepend_thread_history_page_with_image_resolver"));
     assert!(!stage_body.contains("restore_history_page_with_image_resolver"));
     assert!(!stage_body.contains("log_transcript_turns_loaded"));
+    assert!(stage_body.contains("log_transcript_transport_page_received"));
+    assert!(stage_body.contains("note_transcript_residency_staged_admission"));
     assert!(publish_staged_body.contains("staged_transcript_residency_page.as_ref()"));
     assert!(publish_staged_body.contains("if !staged.is_ready_for_publication()"));
     assert!(publish_staged_body.contains("staged_transcript_residency_page.take()"));
@@ -1408,16 +1896,102 @@ fn transcript_residency_page_worker_stages_before_publication() {
     assert!(publish_staged_body.contains("self.publish_loaded_thread_history_page(staged)"));
     assert!(publish_loaded_body.contains("prepend_thread_history_page_with_image_resolver"));
     assert!(publish_loaded_body.contains("restore_history_page_with_image_resolver"));
-    assert!(publish_loaded_body.contains("log_transcript_turns_loaded"));
+    assert!(publish_loaded_body.contains("log_transcript_resident_turns_admitted"));
+    assert!(publish_loaded_body.contains("note_transcript_residency_admission"));
     assert!(current_body.contains("selected_thread_id()"));
     assert!(current_body.contains("cancellation_generation"));
     assert!(current_body.contains("loading_page_matches_request"));
 }
 
 #[test]
+fn transcript_residency_controller_gathers_bounded_scroll_facts() {
+    let controller_source = include_str!("../src/shell/transcript_residency_controller.rs");
+    let history_source = include_str!("../src/shell/transcript_history.rs");
+    let begin_body = rust_function_body(
+        controller_source,
+        "pub(super) fn begin_transcript_residency_controller_update",
+    );
+    let facts_body = rust_function_body(
+        controller_source,
+        "fn transcript_residency_controller_facts",
+    );
+    let planning_range_body = rust_function_body(
+        controller_source,
+        "fn transcript_residency_planning_presentation_range",
+    );
+    let bounded_plan_body = rust_function_body(
+        history_source,
+        "pub(crate) fn residency_target_plan_for_source_window",
+    );
+
+    assert!(begin_body.contains("transcript_residency_planning_presentation_range"));
+    assert!(begin_body.contains("sync_transcript_residency_derived_byte_estimates"));
+    assert!(begin_body.contains("residency_target_plan_for_source_window"));
+    assert!(planning_range_body.contains("range_with_vertical_margin"));
+    assert!(facts_body.contains("presentation_range_for_source_range"));
+    assert!(controller_source.contains("derived_byte_estimates_by_turn_id_for_range"));
+    assert!(!controller_source.contains("derived_byte_estimates_by_turn_id()"));
+    assert!(!facts_body.contains("0..self.transcript_presentation.len()"));
+    assert!(!facts_body.contains("resident_turn_ids()"));
+    assert!(!facts_body.contains("pinned_turn_ids()"));
+    assert!(!facts_body.contains("indexed_turns().len()"));
+    assert!(bounded_plan_body.contains("indexed_turns_for_source_range_and_required"));
+    assert!(bounded_plan_body.contains("unpinned_resident_turns_outside_source_range"));
+    assert!(bounded_plan_body.contains("cached_pinned_turn_ids"));
+    assert!(!bounded_plan_body.contains(".indexed_turns()"));
+    assert!(!bounded_plan_body.contains(".pinned_turn_ids()"));
+}
+
+#[test]
+fn transcript_residency_controller_defers_until_activation_viewport_is_authoritative() {
+    let controller_source = include_str!("../src/shell/transcript_residency_controller.rs");
+    let begin_body = rust_function_body(
+        controller_source,
+        "pub(super) fn begin_transcript_residency_controller_update",
+    );
+    let deferred_body = rust_function_body(
+        controller_source,
+        "fn transcript_residency_controller_update_deferred",
+    );
+    let viewport_body = rust_function_body(
+        controller_source,
+        "fn transcript_residency_controller_viewport_unready",
+    );
+
+    assert!(begin_body.contains("transcript_residency_controller_update_deferred"));
+    assert!(begin_body.contains("return TranscriptResidencyControllerUpdate::default();"));
+    assert_order(
+        begin_body,
+        "transcript_residency_controller_update_deferred",
+        "transcript_residency_planning_presentation_range",
+    );
+    assert_order(
+        begin_body,
+        "transcript_residency_controller_update_deferred",
+        "sync_transcript_residency_derived_byte_estimates",
+    );
+    assert_order(
+        begin_body,
+        "transcript_residency_controller_update_deferred",
+        "residency_target_plan_for_source_window",
+    );
+    assert_order(
+        begin_body,
+        "transcript_residency_controller_update_deferred",
+        "release_resident_turn_payloads_for_plan",
+    );
+    assert!(deferred_body.contains("self.staged_selected_thread_activation.is_some()"));
+    assert!(deferred_body.contains("transcript_residency_controller_viewport_unready"));
+    assert!(viewport_body.contains("self.transcript_presentation.len() > 0"));
+    assert!(viewport_body.contains("presentation_visible_range.is_empty()"));
+    assert!(viewport_body.contains("viewport_bounds().size.height"));
+}
+
+#[test]
 fn row_presentability_model_is_staged_outside_render_paths() {
     let shell_source = include_str!("../src/shell.rs");
-    let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_preparation_source =
+        include_str!("../src/shell/selected_thread_activation/preparation.rs");
     let residency_pages_source = include_str!("../src/shell/transcript_residency_pages.rs");
     let presentability_source = include_str!("../src/shell/transcript_presentability.rs");
     let transcript_render_source = include_str!("../src/shell/render/transcript.rs");
@@ -1426,8 +2000,8 @@ fn row_presentability_model_is_staged_outside_render_paths() {
     let scrollbars_source = include_str!("../src/shell/render/scrollbars.rs");
 
     let staged_activation_new_body = rust_function_body(
-        selected_activation_source,
-        "pub(super) fn new(\n        execution_target: WorkspaceId,",
+        selected_activation_preparation_source,
+        "pub(in crate::shell) fn prepare",
     );
     let stage_residency_body = rust_function_body(
         residency_pages_source,
@@ -1462,7 +2036,10 @@ fn transcript_release_removes_rows_without_rendered_placeholders() {
     let residency_pages_source = include_str!("../src/shell/transcript_residency_pages.rs");
     let projection_source = include_str!("../src/shell/transcript_projection.rs");
 
-    let release_body = rust_function_body(residency_pages_source, "fn release_cold_history_pages");
+    let release_body = rust_function_body(
+        residency_pages_source,
+        "fn release_resident_turn_payloads_for_plan",
+    );
 
     assert!(release_body.contains("self.replace_transcript_presentation_turn("));
     assert!(projection_source.contains("if !has_user_prompt && items.is_empty()"));
@@ -1537,10 +2114,11 @@ fn composer_image_label_sync_waits_for_residency_page_loading() {
 
 #[test]
 fn composer_image_label_sync_treats_not_loaded_thread_history_as_unscanned() {
-    let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_publisher_source =
+        include_str!("../src/shell/selected_thread_activation/publisher.rs");
     let load_body = rust_function_body(
-        selected_activation_source,
-        "fn publish_selected_thread_history_window",
+        selected_activation_publisher_source,
+        "fn publish_history_window",
     );
 
     assert!(load_body.contains("history_window.has_older_pages()"));
@@ -2276,7 +2854,7 @@ fn backend_unavailable_target_gates_are_target_scoped() {
     assert!(lifecycle_continue_body.contains("unavailable.surface.queue_pending_turn_fragment"));
     assert!(!lifecycle_continue_body.contains("| ShellState::BackendUnavailable(_)"));
     assert!(activation_finish_body.contains("published_activation"));
-    assert!(publication_finish_body.contains("&publication.execution_target"));
+    assert!(publication_finish_body.contains("&execution_target"));
     assert!(publication_finish_body.contains("remember_thread_summary"));
     assert!(publication_finish_body.contains("finish_pending_thread_navigation_activation"));
     assert_order(
@@ -2465,6 +3043,8 @@ fn phase28_shell_splits_final_review_blocks_into_focused_modules() {
     let dynamic_theme_worker_source = include_str!("../src/shell/dynamic_theme_worker.rs");
     let diagnostics_source = include_str!("../src/shell/diagnostics.rs");
     let selected_activation_source = include_str!("../src/shell/selected_thread_activation.rs");
+    let selected_activation_preparation_source =
+        include_str!("../src/shell/selected_thread_activation/preparation.rs");
 
     assert!(shell_source.lines().count() < 15_000);
     for module in [
@@ -2498,7 +3078,10 @@ fn phase28_shell_splits_final_review_blocks_into_focused_modules() {
     assert!(dynamic_theme_worker_source.contains("fn run_dynamic_theme_durable_operation"));
     assert!(dynamic_settings_source.contains("fn handle_beryl_settings_dynamic_tool_request"));
     assert!(diagnostics_source.contains("fn diagnostic_tool_snapshot"));
-    assert!(selected_activation_source.contains("struct StagedSelectedThreadActivation"));
+    assert!(selected_activation_source.contains("mod preparation;"));
+    assert!(
+        selected_activation_preparation_source.contains("struct StagedSelectedThreadActivation")
+    );
 }
 
 #[test]
@@ -2797,7 +3380,7 @@ fn decision_branch_bootstrap_uses_visible_parent_context_source_content() {
 }
 
 #[test]
-fn transcript_residency_ui_pins_are_production_retention_only_hooks() {
+fn transcript_residency_ui_pins_invalidate_controller_without_direct_loads() {
     let pins_source = include_str!("../src/shell/transcript_residency_pins.rs");
     let residency_source = include_str!("../src/shell/transcript_history/residency.rs");
     let branch_menu_source = include_str!("../src/shell/transcript_branch_menu.rs");
@@ -2813,7 +3396,8 @@ fn transcript_residency_ui_pins_are_production_retention_only_hooks() {
     assert!(sync_body.contains("TranscriptResidencyPinKind::EditTarget"));
     assert!(sync_body.contains("TranscriptResidencyPinKind::MediaActionTarget"));
     assert!(sync_body.contains("TranscriptResidencyPinKind::ActiveTurn"));
-    assert!(sync_body.contains("release_unpinned_resident_turns_for_current_viewport"));
+    assert!(sync_body.contains("invalidate_transcript_residency_controller"));
+    assert!(!sync_body.contains("release_unpinned_resident_turns_for_current_viewport"));
     assert!(!sync_body.contains("begin_loading"));
 
     assert!(!residency_source.contains("ActiveSelection"));

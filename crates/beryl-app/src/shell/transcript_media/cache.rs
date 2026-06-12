@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -165,6 +165,65 @@ impl TranscriptMediaCache {
             .filter_map(|(_, entry)| entry.loaded_image_handle())
             .collect();
         self.scope_generation = self.scope_generation.saturating_add(1);
+        evicted_images
+    }
+
+    pub(crate) fn release_keys<I, S>(&mut self, keys: I) -> Vec<Arc<gpui::Image>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut evicted_images = Vec::new();
+        for key in keys {
+            let key = TranscriptMediaCacheKey::new(key.as_ref());
+            if let Some(entry) = self.entries.remove(&key)
+                && let Some(image) = entry.loaded_image_handle()
+            {
+                evicted_images.push(image);
+            }
+        }
+        evicted_images
+    }
+
+    pub(crate) fn release_keys_and_segment_roots<I, S, J, T>(
+        &mut self,
+        keys: I,
+        segment_roots: J,
+    ) -> Vec<Arc<gpui::Image>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+        J: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        let keys = keys
+            .into_iter()
+            .map(|key| key.as_ref().to_string())
+            .collect::<HashSet<_>>();
+        let prefixes = segment_roots
+            .into_iter()
+            .map(|root| format!("{}:media:", root.as_ref()))
+            .collect::<Vec<_>>();
+        let released = self
+            .entries
+            .keys()
+            .filter(|key| {
+                keys.contains(key.as_str())
+                    || prefixes
+                        .iter()
+                        .any(|prefix| key.as_str().starts_with(prefix.as_str()))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut evicted_images = Vec::new();
+        for key in released {
+            if let Some(entry) = self.entries.remove(&key)
+                && let Some(image) = entry.loaded_image_handle()
+            {
+                evicted_images.push(image);
+            }
+        }
         evicted_images
     }
 

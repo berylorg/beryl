@@ -6,22 +6,21 @@ use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::SemanticGraph;
 use beryl_model::workspace::WorkspaceId;
 
-use super::selected_thread_activation::{
-    SelectedThreadInitialViewportPolicy, StagedSelectedThreadActivation,
-};
+use super::selected_thread_activation::{ActivationPreparer, SelectedThreadInitialViewportPolicy};
 use super::transcript_residency_pages::PendingTranscriptResidencyPageRequest;
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
     OpenWorkspaceFailure, OpenedWorkspace, RetryTarget, ShellState, ShellView, SurfaceNotice,
-    ThreadHistoryPageOutcome, TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
+    ThreadActivationFinish, ThreadHistoryPageOutcome, TurnCompletionSoundCandidate,
+    WorkspaceSurfaceSeed,
 };
 use crate::backend_failure::{
     json_rpc_error_detail, non_empty_user_text, source_chain_detail, truncate_user_detail,
 };
 use crate::member_thread_inventory::MemberThreadInventoryEvent;
 use crate::memory_diagnostics::MemoryMilestone;
-use tracing::debug;
+use tracing::{debug, info};
 
 impl ShellView {
     pub(super) fn finish_workspace_open(
@@ -105,9 +104,9 @@ impl ShellView {
                 );
                 let inventory_workspace_id = loaded_workspace.workspace.id().clone();
                 let inventory_workspace_state = loaded_workspace.workspace_state.clone();
-                let mut surface = match preserved_surface {
+                let (mut surface, synchronous_publication) = match preserved_surface {
                     Some(mut surface) => {
-                        surface.refresh_after_backend_reopen(
+                        let published_activation = surface.refresh_after_backend_reopen(
                             &opened.execution_target,
                             &inventory_workspace_state,
                             known_threads.clone(),
@@ -122,7 +121,7 @@ impl ShellView {
                             opened.graph_revision,
                             opened.graph_warning,
                         );
-                        surface
+                        (surface, published_activation)
                     }
                     None => ConversationSurfaceState::seeded(
                         inventory_workspace_id.clone(),
@@ -191,23 +190,19 @@ impl ShellView {
                     .backend_pid(process_id)
                     .retained_state_if_enabled(|| self.retained_state_snapshot())
                     .log();
+                if let Some(publication) = synchronous_publication {
+                    self.finish_published_selected_thread_activation(publication);
+                }
                 self.update_workspace_state_for_opened_target(
                     &opened.execution_target,
                     &known_threads,
                     active_thread_id.as_deref(),
                     workspace_backend_state_changed,
                 );
-                if intent == super::WorkspaceOpenIntent::ThreadSelectorActivation {
-                    if let Some(active_thread_id) =
-                        thread_navigation_activation_thread_id.as_deref()
-                    {
-                        self.finish_pending_thread_navigation_activation(
-                            active_thread_id,
-                            &opened.execution_target,
-                        );
-                    } else {
-                        self.discard_pending_thread_navigation_activation();
-                    }
+                if intent == super::WorkspaceOpenIntent::ThreadSelectorActivation
+                    && thread_navigation_activation_thread_id.is_none()
+                {
+                    self.discard_pending_thread_navigation_activation();
                 }
                 self.apply_member_thread_inventory_event(
                     MemberThreadInventoryEvent::BackendTargetAvailable,
@@ -403,7 +398,7 @@ impl ShellView {
     pub(super) fn finish_thread_activation_worker(
         &mut self,
         outcome: ThreadActivationOutcome,
-    ) -> Option<String> {
+    ) -> ThreadActivationFinish {
         match outcome {
             ThreadActivationOutcome::Activated {
                 execution_target,
@@ -438,11 +433,8 @@ impl ShellView {
                         runtime = execution_target.runtime_mode().display_name(),
                         "discarded stale selected-thread activation result before publication"
                     );
-                    return None;
+                    return ThreadActivationFinish::Failed;
                 };
-                if let ShellState::Ready(ready) = &mut self.state {
-                    ready.execution_target = execution_target.clone();
-                }
                 let mut published_activation = None;
                 if let Some(surface) = self.conversation_surface_mut() {
                     let history_apply_started = Instant::now();
@@ -454,7 +446,7 @@ impl ShellView {
                             history_generated_image_count,
                         )
                         .log();
-                    surface.stage_selected_thread_activation(StagedSelectedThreadActivation::new(
+                    surface.stage_selected_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
                         thread,
                         history_window,
@@ -473,16 +465,26 @@ impl ShellView {
                         published = published_activation.is_some(),
                         "staged activated thread history for conversation surface"
                     );
+                    info!(
+                        thread_id = summary.id.as_str(),
+                        history_turn_count,
+                        history_item_count,
+                        history_generated_image_count,
+                        published = published_activation.is_some(),
+                        "Staged selected-thread activation result"
+                    );
                 }
-                if let Some(publication) = published_activation {
-                    self.finish_published_selected_thread_activation(publication);
-                }
+                let published_thread_id = published_activation.map(|publication| {
+                    self.finish_published_selected_thread_activation(publication)
+                });
                 debug!(
                     thread_id = summary.id.as_str(),
                     thread_activation_ui_finish_ms = super::elapsed_ms(ui_finish_started.elapsed()),
                     "finished activated thread UI staging"
                 );
-                Some(summary.id.clone())
+                published_thread_id
+                    .map(ThreadActivationFinish::Published)
+                    .unwrap_or(ThreadActivationFinish::Staged)
             }
             ThreadActivationOutcome::RequiresRebind { detail } => {
                 self.discard_pending_thread_navigation_activation();
@@ -494,7 +496,7 @@ impl ShellView {
                 self.apply_member_thread_inventory_event(
                     MemberThreadInventoryEvent::InventoryContentsChanged,
                 );
-                None
+                ThreadActivationFinish::Failed
             }
             ThreadActivationOutcome::Failed { message } => {
                 self.discard_pending_thread_navigation_activation();
@@ -512,7 +514,7 @@ impl ShellView {
                     "The backend process for the selected workspace exited before Beryl could reopen the requested thread.",
                     &message,
                 );
-                None
+                ThreadActivationFinish::Failed
             }
         }
     }
@@ -681,6 +683,7 @@ fn seed_backend_unavailable_surface(
         seed.graph_revision,
         seed.graph_warning,
     )
+    .0
 }
 
 fn reconcile_loaded_threaded_decision_state(

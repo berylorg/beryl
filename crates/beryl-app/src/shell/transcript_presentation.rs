@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     collections::{HashMap, HashSet},
     ops::Range,
     sync::Arc,
@@ -25,6 +26,9 @@ use identity::{latest_user_prompt_anchor_in_rows, stable_row_identity, user_prom
 use metrics::TranscriptPresentationRowMetrics;
 #[allow(unused_imports)]
 pub(crate) use row_model::{
+    TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX, TRANSCRIPT_ROW_BLOCK_RENDER_OVERSCAN_BLOCKS,
+    TranscriptRowBlockOwner, TranscriptRowBlockPresentation, TranscriptRowBlockRenderWindow,
+    TranscriptRowBlockUnit, TranscriptRowDerivedByteEstimate, TranscriptRowMarkdownSource,
     TranscriptRowMeasurementDisplayState, TranscriptRowMeasurementKey,
     TranscriptRowMediaDescriptor, TranscriptRowMediaDescriptorKind, TranscriptRowNarrativeUnit,
     TranscriptRowPresentationModel, TranscriptRowPresentationRevision,
@@ -112,6 +116,9 @@ pub(crate) struct TranscriptPresentationRetainedCounts {
     pub(crate) text_bytes: usize,
     pub(crate) identity_bytes: usize,
     pub(crate) anchor_bytes: usize,
+    pub(crate) derived_bytes: usize,
+    pub(crate) markdown_source_bytes: usize,
+    pub(crate) media_descriptors: usize,
 }
 
 impl TranscriptPresentationRetainedCounts {
@@ -260,11 +267,23 @@ impl TranscriptPresentationState {
                     ..TranscriptPresentationRetainedCounts::default()
                 },
                 |mut counts, row| {
+                    let derived = row.model.estimated_derived_bytes();
                     counts.items = counts.items.saturating_add(row.metrics.item_count);
                     counts.text_bytes = counts.text_bytes.saturating_add(row.metrics.text_chars);
                     counts.identity_bytes = counts
                         .identity_bytes
                         .saturating_add(row.identity.as_str().len());
+                    counts.derived_bytes = counts.derived_bytes.saturating_add(derived.total());
+                    counts.markdown_source_bytes = counts.markdown_source_bytes.saturating_add(
+                        row.model
+                            .markdown_sources()
+                            .iter()
+                            .map(|source| source.source_bytes)
+                            .sum::<usize>(),
+                    );
+                    counts.media_descriptors = counts
+                        .media_descriptors
+                        .saturating_add(row.model.media_descriptors().len());
                     counts
                 },
             )
@@ -273,6 +292,28 @@ impl TranscriptPresentationState {
                     .as_ref()
                     .map_or(0, |(_, _, value)| value.len()),
             )
+    }
+
+    pub(crate) fn derived_byte_estimates_by_turn_id_for_range(
+        &self,
+        range: &Range<usize>,
+    ) -> Vec<(String, usize)> {
+        let start = range.start.min(self.rows.len());
+        let end = range.end.min(self.rows.len()).max(start);
+        let mut estimates = BTreeMap::new();
+        for row in &self.rows[start..end] {
+            let Some(turn_id) = row.model.source_turn_identity().turn_id.as_ref() else {
+                continue;
+            };
+            let bytes = row.model.estimated_derived_bytes().total();
+            estimates
+                .entry(turn_id.clone())
+                .and_modify(|current: &mut usize| {
+                    *current = current.saturating_add(bytes);
+                })
+                .or_insert(bytes);
+        }
+        estimates.into_iter().collect()
     }
 
     #[allow(dead_code)]
@@ -339,6 +380,16 @@ impl TranscriptPresentationState {
         let source_start = self.rows[start].source_turn_index;
         let source_end = self.rows[end - 1].source_turn_index.saturating_add(1);
         source_start..source_end
+    }
+
+    pub(crate) fn presentation_range_for_source_range(&self, range: &Range<usize>) -> Range<usize> {
+        let start = self
+            .rows
+            .partition_point(|row| row.source_turn_index < range.start);
+        let end = self
+            .rows
+            .partition_point(|row| row.source_turn_index < range.end);
+        start..end.max(start)
     }
 
     pub(crate) fn presentation_index_for_source_turn(

@@ -70,6 +70,18 @@ where
     Ok(resolver)
 }
 
+pub(crate) fn transcript_image_path_resolver_for_workspace_assets(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
+    runtime_mode: &RuntimeMode,
+) -> Result<TranscriptImagePathResolver, WorkspacePersistenceError> {
+    let assets = persistence.load_workspace_image_assets(workspace_id)?;
+    Ok(transcript_image_path_resolver_for_assets(
+        runtime_mode,
+        &assets,
+    ))
+}
+
 pub(crate) fn transcript_image_path_resolver_for_assets(
     runtime_mode: &RuntimeMode,
     assets: &[WorkspaceImageAsset],

@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     ops::Range,
     sync::Arc,
     time::Instant,
@@ -99,6 +99,28 @@ impl TranscriptMediaPreloadCoordinator {
             self.pending = Some(pending);
             self.superseded_requests = self.superseded_requests.saturating_add(1);
         }
+    }
+
+    pub(super) fn release_rows_and_markdown_keys(
+        &mut self,
+        row_identities: &HashSet<String>,
+        markdown_keys: &HashSet<String>,
+    ) {
+        if let Some(pending) = self.pending.as_mut() {
+            pending
+                .request
+                .rows
+                .retain(|row| !row_identities.contains(row.identity.as_str()));
+        }
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.request.rows.is_empty())
+        {
+            self.pending = None;
+        }
+        self.segment_cache
+            .retain(|key, _| !markdown_keys.contains(key.markdown_key()));
     }
 
     pub(super) fn drain_pending(
@@ -479,6 +501,7 @@ fn preload_turn_media_runs(
                     | ExecutionItem::Generic(_) => {}
                 }
             }
+            TranscriptRowNarrativeUnit::TerminalFallback => {}
         }
     }
 

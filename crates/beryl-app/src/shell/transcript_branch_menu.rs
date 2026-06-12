@@ -822,7 +822,7 @@ impl ShellView {
     fn transcript_edit_menu_conflicting_work_active(&self) -> bool {
         self.workspace_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
+            || self.selected_thread_activation_pending()
             || self.thread_history_page_receiver.is_some()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
@@ -836,7 +836,7 @@ impl ShellView {
             || self.graph_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
             || self.transcript_branch_receiver.is_some()
-            || self.thread_activation_receiver.is_some()
+            || self.selected_thread_activation_pending()
             || self.thread_history_page_receiver.is_some()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()

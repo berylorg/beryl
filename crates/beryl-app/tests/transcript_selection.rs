@@ -7,8 +7,9 @@ use std::collections::HashSet;
 mod transcript_selection;
 
 use transcript_selection::{
-    TranscriptLineCopyText, TranscriptSelectionState, TranscriptTextLineKey, TranscriptTextPoint,
-    VisibleTranscriptTextFrame, VisibleTranscriptTextLine, transcript_context_line_break_before,
+    TranscriptLineCopyText, TranscriptSelectionState, TranscriptTextLineKey,
+    TranscriptTextLineOrder, TranscriptTextPoint, VisibleTranscriptTextFrame,
+    VisibleTranscriptTextLine, transcript_context_line_break_before,
     transcript_narrative_block_break_before, vertical_hit_candidate_range,
 };
 
@@ -69,6 +70,32 @@ fn selected_text_uses_visible_order_not_key_order() {
         (second.clone(), 20, "second", 1),
         (first.clone(), 10, "first", 1),
     ]);
+    let mut selection = TranscriptSelectionState::default();
+
+    selection.begin(point(first, 0), &frame);
+    selection.extend(point(second, "second".len()), &frame);
+
+    assert_eq!(selection.selected_text(), Some("first\nsecond"));
+}
+
+#[test]
+fn selected_text_line_order_has_no_fixed_row_stride() {
+    let first = key("row-a", "assistant", 0);
+    let second = key("row-b", "assistant", 0);
+    let mut frame = VisibleTranscriptTextFrame::default();
+    frame.insert_line(VisibleTranscriptTextLine::new(
+        first.clone(),
+        TranscriptTextLineOrder::row_line(1, usize::MAX),
+        "first",
+        1,
+    ));
+    frame.insert_line(VisibleTranscriptTextLine::new(
+        second.clone(),
+        TranscriptTextLineOrder::row_start(2),
+        "second",
+        1,
+    ));
+    frame.finish_insertions();
     let mut selection = TranscriptSelectionState::default();
 
     selection.begin(point(first, 0), &frame);

@@ -8,7 +8,9 @@ use crate::shell::execution_detail::{
 };
 use crate::shell::transcript_markdown::TranscriptMarkdownCacheKey;
 use crate::shell::transcript_media::{TranscriptMediaCacheKey, TranscriptMediaSource};
-use crate::shell::transcript_selection::transcript_narrative_block_break_before;
+use crate::shell::transcript_selection::{
+    TranscriptTextLineOrder, transcript_narrative_block_break_before,
+};
 
 use super::{
     TranscriptCodeLayout, TranscriptTheme, item_markdown_key,
@@ -18,7 +20,10 @@ use super::{
 };
 use super::{
     TranscriptMediaRenderIdentity,
-    block_markdown::render_markdown_plan_with_style_and_selection,
+    block_markdown::{
+        render_markdown_plan_slice_with_style_and_selection,
+        render_markdown_plan_with_style_and_selection,
+    },
     code_panel_controls::TranscriptCodePanelState,
     inline_markdown::{InlineMarkdownStyle, TranscriptInlineSelectionContext},
     item_blocks::{
@@ -41,7 +46,7 @@ pub(super) fn render_item_units(
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     pending_media: &mut Vec<TranscriptMediaRenderItem>,
     narrative_blocks: &mut Vec<AnyElement>,
@@ -113,7 +118,7 @@ fn render_plain_item(
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     pending_media: &mut Vec<TranscriptMediaRenderItem>,
     narrative_blocks: &mut Vec<AnyElement>,
@@ -165,7 +170,7 @@ fn render_agent_message_units(
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     pending_media: &mut Vec<TranscriptMediaRenderItem>,
     narrative_blocks: &mut Vec<AnyElement>,
@@ -280,7 +285,7 @@ fn render_unsplit_agent_message(
     code_layout: TranscriptCodeLayout,
     media_layout: TranscriptMediaRenderLayout,
     row_identity: &str,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     narrative_copy_block_count: Rc<Cell<usize>>,
     pending_media: &mut Vec<TranscriptMediaRenderItem>,
     narrative_blocks: &mut Vec<AnyElement>,
@@ -329,7 +334,7 @@ fn render_item_markdown_source(
     conversation_m_advance: gpui::Pixels,
     row_identity: &str,
     initial_break_before: usize,
-    selection_order: Rc<Cell<usize>>,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
     style: InlineMarkdownStyle,
     cx: &mut App,
 ) -> AnyElement {
@@ -345,6 +350,45 @@ fn render_item_markdown_source(
 
     render_markdown_plan_with_style_and_selection(
         markdown.render_plan(),
+        theme,
+        code_layout,
+        conversation_m_advance,
+        style,
+        code_panel_state.controls_for(row_identity.to_string(), block_path),
+        selection_context,
+        cx,
+    )
+}
+
+pub(super) fn render_item_markdown_source_slice(
+    source: &str,
+    markdown_key: TranscriptMarkdownCacheKey,
+    block_path: String,
+    block_range: std::ops::Range<usize>,
+    theme: &TranscriptTheme,
+    code_panel_state: TranscriptCodePanelState,
+    markdown_context: TranscriptMarkdownRenderContext,
+    code_layout: TranscriptCodeLayout,
+    conversation_m_advance: gpui::Pixels,
+    row_identity: &str,
+    initial_break_before: usize,
+    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
+    style: InlineMarkdownStyle,
+    cx: &mut App,
+) -> AnyElement {
+    let markdown = markdown_context.markdown_for(markdown_key, source, cx);
+    let selection_context = TranscriptInlineSelectionContext::new_with_initial_break_before(
+        code_panel_state.entity(),
+        row_identity.to_string(),
+        block_path.clone(),
+        selection_order,
+        initial_break_before,
+        code_panel_state.selection_render(),
+    );
+
+    render_markdown_plan_slice_with_style_and_selection(
+        markdown.render_plan(),
+        block_range,
         theme,
         code_layout,
         conversation_m_advance,

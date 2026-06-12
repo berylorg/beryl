@@ -16,6 +16,9 @@ use super::{
     transcript_projection::project_parent_narrative_turn,
 };
 
+#[path = "transcript_fallback.rs"]
+mod transcript_fallback;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TranscriptPresentabilityWindow {
     rows: Vec<TranscriptRowPresentabilityState>,
@@ -283,7 +286,8 @@ impl TranscriptRowPresentabilityState {
             .filter(|descriptor| {
                 descriptor.source_kind == TranscriptRowMediaDescriptorKind::MarkdownImageCandidate
             })
-            .count();
+            .map(|descriptor| descriptor.estimated_items.max(1))
+            .sum::<usize>();
         let markdown_media_plan = if markdown_media_candidates == 0 {
             TranscriptMarkdownMediaPlanReadiness::NotRequired
         } else {
@@ -596,7 +600,9 @@ fn stable_row_identity(turn: &TurnExecutionRecord) -> Option<TranscriptRowIdenti
 }
 
 pub(crate) fn full_detail_readiness(turn: &TurnInfo) -> TranscriptFullDetailReadiness {
-    if turn.items_view == TurnItemsView::Full {
+    if turn.items_view == TurnItemsView::Full
+        || transcript_fallback::is_oversized_turn_fallback_marker(turn)
+    {
         TranscriptFullDetailReadiness::Available
     } else {
         TranscriptFullDetailReadiness::Missing

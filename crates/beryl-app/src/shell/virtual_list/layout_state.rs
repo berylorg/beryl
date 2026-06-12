@@ -30,7 +30,7 @@ impl StateInner {
 
         for (ix, item) in cursor.enumerate() {
             let size = if item.needs_measurement() {
-                let mut element = render_item(ix, window, cx);
+                let mut element = render_item(ix, ListItemRenderContext::default(), window, cx);
                 element.layout_as_root(available_item_space, window, cx)
             } else {
                 item.size().unwrap()
@@ -95,7 +95,9 @@ impl StateInner {
             // If we're within the visible area or the height wasn't cached, render and measure the item's element
             if visible_height < available_height || needs_measurement {
                 let item_index = scroll_top.item_ix + ix;
-                let mut element = render_item(item_index, window, cx);
+                let render_context =
+                    list_item_render_context(&scroll_top, item_index, available_height);
+                let mut element = render_item(item_index, render_context, window, cx);
                 let element_size = element.layout_as_root(available_item_space, window, cx);
                 size = Some(element_size);
                 if let Some((item_ix, old_height, new_height)) = content_anchor_height_change_for(
@@ -117,6 +119,7 @@ impl StateInner {
                         index: item_index,
                         element,
                         size: element_size,
+                        render_context,
                     });
                     if item.contains_focused(window, cx) {
                         rendered_focused_item = true;
@@ -151,7 +154,11 @@ impl StateInner {
                 cursor.prev();
                 if let Some(item) = cursor.item() {
                     let item_index = cursor.start().0;
-                    let mut element = render_item(item_index, window, cx);
+                    let render_context = ListItemRenderContext {
+                        scroll_offset_in_item: px(0.0),
+                        viewport_height: available_height,
+                    };
+                    let mut element = render_item(item_index, render_context, window, cx);
                     let element_size = element.layout_as_root(available_item_space, window, cx);
                     let focus_handle = item.focus_handle();
                     rendered_height += element_size.height;
@@ -163,6 +170,7 @@ impl StateInner {
                         index: item_index,
                         element,
                         size: element_size,
+                        render_context,
                     });
                     if item.contains_focused(window, cx) {
                         rendered_focused_item = true;
@@ -200,7 +208,11 @@ impl StateInner {
                 let size = if item.needs_measurement() {
                     let item_index = cursor.start().0;
                     let old_size = item.size();
-                    let mut element = render_item(item_index, window, cx);
+                    let render_context = ListItemRenderContext {
+                        scroll_offset_in_item: px(0.0),
+                        viewport_height: available_height,
+                    };
+                    let mut element = render_item(item_index, render_context, window, cx);
                     let element_size = element.layout_as_root(available_item_space, window, cx);
                     if let Some(change) = content_anchor_height_change_for(
                         content_anchor,
@@ -216,7 +228,11 @@ impl StateInner {
                 } else if let Some(size) = item.size() {
                     size
                 } else {
-                    let mut element = render_item(cursor.start().0, window, cx);
+                    let render_context = ListItemRenderContext {
+                        scroll_offset_in_item: px(0.0),
+                        viewport_height: available_height,
+                    };
+                    let mut element = render_item(cursor.start().0, render_context, window, cx);
                     element.layout_as_root(available_item_space, window, cx)
                 };
 
@@ -246,6 +262,24 @@ impl StateInner {
             scroll_top = adjusted_scroll_top;
         }
 
+        let preserve_bottom_offset = matches!(self.alignment, ListAlignment::Bottom)
+            && matches!(self.scroll_position(), ListScrollPosition::Bottom);
+        for _ in 0..3 {
+            if !self.refresh_item_layout_render_contexts(
+                &mut item_layouts,
+                &mut scroll_top,
+                preserve_bottom_offset,
+                available_height,
+                available_item_space,
+                render_item,
+                window,
+                cx,
+                &mut max_item_width,
+            ) {
+                break;
+            }
+        }
+
         // If none of the visible items are focused, check if an off-screen item is focused
         // and include it to be rendered after the visible items so keyboard interaction continues
         // to work for it.
@@ -257,12 +291,17 @@ impl StateInner {
             while let Some(item) = cursor.item() {
                 if item.contains_focused(window, cx) {
                     let item_index = cursor.start().0;
-                    let mut element = render_item(cursor.start().0, window, cx);
+                    let render_context = ListItemRenderContext {
+                        scroll_offset_in_item: px(0.0),
+                        viewport_height: available_height,
+                    };
+                    let mut element = render_item(cursor.start().0, render_context, window, cx);
                     let size = element.layout_as_root(available_item_space, window, cx);
                     item_layouts.push_back(ItemLayout {
                         index: item_index,
                         element,
                         size,
+                        render_context,
                     });
                     break;
                 }
@@ -275,6 +314,65 @@ impl StateInner {
             scroll_top,
             item_layouts,
         }
+    }
+
+    fn refresh_item_layout_render_contexts(
+        &mut self,
+        item_layouts: &mut VecDeque<ItemLayout>,
+        scroll_top: &mut ListOffset,
+        preserve_bottom_offset: bool,
+        available_height: Pixels,
+        available_item_space: Size<AvailableSpace>,
+        render_item: &mut RenderItemFn,
+        window: &mut Window,
+        cx: &mut App,
+        max_item_width: &mut Pixels,
+    ) -> bool {
+        let mut top_offset_changed = false;
+        for item_layout in item_layouts.iter_mut() {
+            let render_context =
+                list_item_render_context(scroll_top, item_layout.index, available_height);
+            if item_layout.render_context == render_context {
+                continue;
+            }
+
+            let mut element = render_item(item_layout.index, render_context, window, cx);
+            let size = element.layout_as_root(available_item_space, window, cx);
+            let old_size = item_layout.size;
+            item_layout.element = element;
+            item_layout.size = size;
+            item_layout.render_context = render_context;
+            *max_item_width = (*max_item_width).max(size.width);
+            if size == old_size {
+                continue;
+            }
+            self.replace_measured_item_size(item_layout.index, size);
+            if preserve_bottom_offset && item_layout.index == scroll_top.item_ix {
+                let old_offset = scroll_top.offset_in_item;
+                scroll_top.offset_in_item =
+                    (scroll_top.offset_in_item + size.height - old_size.height).max(px(0.0));
+                top_offset_changed |= scroll_top.offset_in_item != old_offset;
+            }
+        }
+
+        top_offset_changed
+    }
+
+    fn replace_measured_item_size(&mut self, index: usize, size: Size<Pixels>) {
+        let mut old_items = self.items.cursor::<Count>(());
+        let mut new_items = old_items.slice(&Count(index), Bias::Right);
+        let Some(item) = old_items.item() else {
+            return;
+        };
+        let focus_handle = item.focus_handle();
+        old_items.seek_forward(&Count(index + 1), Bias::Right);
+        new_items.extend(
+            std::iter::once(ListItem::Measured { size, focus_handle }),
+            (),
+        );
+        new_items.append(old_items.suffix(), ());
+        drop(old_items);
+        self.items = new_items;
     }
 
     pub(super) fn prepaint_items(
@@ -337,7 +435,12 @@ impl StateInner {
                                 let Some(item) = cursor.item() else { break };
 
                                 let size = item.size().unwrap_or_else(|| {
-                                    let mut item = render_item(cursor.start().0, window, cx);
+                                    let render_context = ListItemRenderContext {
+                                        scroll_offset_in_item: px(0.0),
+                                        viewport_height: bounds.size.height,
+                                    };
+                                    let mut item =
+                                        render_item(cursor.start().0, render_context, window, cx);
                                     let item_available_size =
                                         size(bounds.size.width.into(), AvailableSpace::MinContent);
                                     item.layout_as_root(item_available_size, window, cx)
@@ -474,4 +577,19 @@ fn content_anchor_height_change_for(
         return None;
     }
     Some((item_index, old_size.height, new_size.height))
+}
+
+fn list_item_render_context(
+    scroll_top: &ListOffset,
+    item_index: usize,
+    viewport_height: Pixels,
+) -> ListItemRenderContext {
+    ListItemRenderContext {
+        scroll_offset_in_item: if scroll_top.item_ix == item_index {
+            scroll_top.offset_in_item.max(px(0.0))
+        } else {
+            px(0.0)
+        },
+        viewport_height,
+    }
 }

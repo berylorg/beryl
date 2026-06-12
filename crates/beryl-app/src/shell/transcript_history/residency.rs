@@ -7,16 +7,21 @@ use std::{
 
 use beryl_backend::{TurnError, TurnInfo, TurnItemsView, TurnStatus};
 
+use super::transcript_fallback;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TranscriptTurnIndexRecord {
     pub(crate) id: String,
     pub(crate) status: TurnStatus,
     pub(crate) items_view: TurnItemsView,
     pub(crate) error: Option<TurnError>,
+    oversized_fallback: bool,
     history_page_cursor: Option<String>,
     history_page_index: usize,
     history_page_len: usize,
     source_position: usize,
+    estimated_resident_payload_bytes: usize,
+    estimated_resident_derived_bytes: usize,
     estimated_resident_bytes: usize,
 }
 
@@ -41,7 +46,10 @@ pub(crate) struct TranscriptResidencyRetainedCounts {
     pub(crate) nonresident_turns: usize,
     pub(crate) resident_turns: usize,
     pub(crate) pinned_turns: usize,
+    pub(crate) oversized_fallback_turns: usize,
     pub(crate) retained_item_count: usize,
+    pub(crate) resident_payload_bytes: usize,
+    pub(crate) resident_derived_bytes: usize,
     pub(crate) resident_bytes: usize,
     pub(crate) index_metadata_bytes: usize,
     pub(crate) in_flight_requests: usize,
@@ -72,12 +80,22 @@ pub(crate) enum TranscriptResidencyBudgetReason {
     ResidentTurnLimit,
     ResidentByteLimit,
     InFlightRequestLimit,
+    OversizedTurnFallback,
     PinnedResidentOverBudget,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TranscriptResidencyRetention {
     turn_ids: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TranscriptResidencyIndexedTurn {
+    pub(crate) turn_id: String,
+    pub(crate) source_position: usize,
+    pub(crate) estimated_resident_bytes: usize,
+    pub(crate) resident: bool,
+    pub(crate) oversized_fallback: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,7 +119,10 @@ struct TranscriptResidencyStats {
     nonresident_turns: usize,
     resident_turns: usize,
     pinned_turns: usize,
+    oversized_fallback_turns: usize,
     retained_item_count: usize,
+    resident_payload_bytes: usize,
+    resident_derived_bytes: usize,
     resident_bytes: usize,
     index_metadata_bytes: usize,
     in_flight_requests: usize,
@@ -111,8 +132,11 @@ struct TranscriptResidencyStats {
 pub(crate) struct TranscriptResidencyState {
     thread_id: Option<String>,
     generation: u64,
+    revision: u64,
     entries: BTreeMap<String, TranscriptResidencyEntry>,
     ordered_turn_ids: Vec<String>,
+    resident_turn_ids: BTreeSet<String>,
+    pinned_turn_ids: BTreeSet<String>,
     policy: TranscriptResidencyPolicy,
     stats: TranscriptResidencyStats,
 }
@@ -129,6 +153,8 @@ struct TranscriptResidencyEntry {
 struct TranscriptResidentTurn {
     turn: TurnInfo,
     item_count: usize,
+    payload_bytes: usize,
+    derived_bytes: usize,
     resident_bytes: usize,
 }
 
@@ -137,6 +163,8 @@ enum TranscriptResidencyEntryState {
     Missing,
     Full {
         item_count: usize,
+        payload_bytes: usize,
+        derived_bytes: usize,
         resident_bytes: usize,
     },
 }
@@ -144,13 +172,21 @@ enum TranscriptResidencyEntryState {
 const DEFAULT_MAX_RESIDENT_TURNS: usize = 320;
 const DEFAULT_MAX_RESIDENT_BYTES: usize = 100 * 1024 * 1024;
 const DEFAULT_MAX_IN_FLIGHT_REQUESTS: usize = 1;
-const DEFAULT_LEADING_VIEWPORT_MARGINS: usize = 1;
-const DEFAULT_TRAILING_VIEWPORT_MARGINS: usize = 1;
+const DEFAULT_LEADING_VIEWPORT_MARGINS: usize = 3;
+const DEFAULT_TRAILING_VIEWPORT_MARGINS: usize = 3;
 const DEFAULT_COLD_RELEASE_HYSTERESIS_VIEWPORTS: usize = 1;
 const DEFAULT_MINIMUM_REQUEST_BOUNDARY_ROWS: usize = 2;
 const DEFAULT_MINIMUM_RESTORE_MARGIN_ROWS: usize = 8;
 const DEFAULT_MAX_RESIDENT_PAGES: usize = 4;
 const DEFAULT_MAX_RELEASED_PAGES: usize = 32;
+const ESTIMATED_TURN_PRESENTATION_BASE_BYTES: usize = 512;
+const ESTIMATED_MARKDOWN_SOURCE_BYTES: usize = 160;
+const ESTIMATED_MARKDOWN_STRUCTURE_BYTES_PER_SOURCE_BYTE: usize = 2;
+const ESTIMATED_CODE_PANEL_PROJECTION_BYTES_PER_SOURCE_BYTE: usize = 1;
+const ESTIMATED_MARKDOWN_MEDIA_DESCRIPTOR_BYTES: usize = 256 * 1024;
+const ESTIMATED_NATIVE_MEDIA_DESCRIPTOR_BYTES: usize = 1024 * 1024;
+const ESTIMATED_RETAINED_MEDIA_LEASE_BYTES: usize = 256 * 1024;
+const ESTIMATED_ROW_MEASUREMENT_BYTES: usize = 160;
 
 impl Default for TranscriptResidencyPolicy {
     fn default() -> Self {
@@ -337,6 +373,7 @@ impl TranscriptResidencyBudgetReason {
             Self::ResidentTurnLimit => "resident_turn_limit",
             Self::ResidentByteLimit => "resident_byte_limit",
             Self::InFlightRequestLimit => "in_flight_request_limit",
+            Self::OversizedTurnFallback => "oversized_turn_fallback",
             Self::PinnedResidentOverBudget => "pinned_resident_over_budget",
         }
     }
@@ -350,16 +387,22 @@ impl TranscriptTurnIndexRecord {
         history_page_len: usize,
         source_position: usize,
     ) -> Self {
+        let estimated_resident_payload_bytes = estimate_turn_payload_resident_bytes(turn);
+        let estimated_resident_derived_bytes = estimate_turn_derived_state_bytes(turn);
         Self {
             id: turn.id.clone(),
             status: turn.status,
             items_view: turn.items_view,
             error: turn.error.clone(),
+            oversized_fallback: transcript_fallback::is_oversized_turn_fallback_marker(turn),
             history_page_cursor,
             history_page_index,
             history_page_len,
             source_position,
-            estimated_resident_bytes: estimate_turn_resident_bytes(turn),
+            estimated_resident_payload_bytes,
+            estimated_resident_derived_bytes,
+            estimated_resident_bytes: estimated_resident_payload_bytes
+                .saturating_add(estimated_resident_derived_bytes),
         }
     }
 
@@ -374,6 +417,12 @@ impl TranscriptTurnIndexRecord {
                     .saturating_add(error.additional_details.as_ref().map_or(0, String::len))
             }))
             .saturating_add(std::mem::size_of::<Self>())
+    }
+
+    fn mark_oversized_fallback(&mut self) {
+        self.items_view = TurnItemsView::Summary;
+        self.error = None;
+        self.oversized_fallback = true;
     }
 }
 
@@ -473,8 +522,11 @@ impl Default for TranscriptResidencyState {
         Self {
             thread_id: None,
             generation: 0,
+            revision: 0,
             entries: BTreeMap::new(),
             ordered_turn_ids: Vec::new(),
+            resident_turn_ids: BTreeSet::new(),
+            pinned_turn_ids: BTreeSet::new(),
             policy: TranscriptResidencyPolicy::default(),
             stats: TranscriptResidencyStats::default(),
         }
@@ -485,31 +537,52 @@ impl TranscriptResidencyState {
     pub(crate) fn reset_for_thread(&mut self, thread_id: impl Into<String>) {
         self.thread_id = Some(thread_id.into());
         self.generation = self.generation.saturating_add(1);
+        self.revision = self.revision.saturating_add(1);
         self.entries.clear();
         self.ordered_turn_ids.clear();
+        self.resident_turn_ids.clear();
+        self.pinned_turn_ids.clear();
         self.stats = TranscriptResidencyStats::default();
     }
 
     pub(crate) fn bind_thread(&mut self, thread_id: impl Into<String>) {
         self.thread_id = Some(thread_id.into());
         self.generation = self.generation.saturating_add(1);
+        self.revision = self.revision.saturating_add(1);
     }
 
     pub(crate) fn clear(&mut self) {
         self.thread_id = None;
         self.generation = self.generation.saturating_add(1);
+        self.revision = self.revision.saturating_add(1);
         self.entries.clear();
         self.ordered_turn_ids.clear();
+        self.resident_turn_ids.clear();
+        self.pinned_turn_ids.clear();
         self.stats = TranscriptResidencyStats::default();
     }
 
     pub(crate) fn set_policy(&mut self, policy: TranscriptResidencyPolicy) {
+        if self.policy != policy {
+            self.revision = self.revision.saturating_add(1);
+        }
         self.policy = policy;
         self.enforce_policy_budget(&TranscriptResidencyRetention::new());
     }
 
     pub(crate) fn set_in_flight_requests(&mut self, in_flight_requests: usize) {
+        if self.stats.in_flight_requests != in_flight_requests {
+            self.revision = self.revision.saturating_add(1);
+        }
         self.stats.in_flight_requests = in_flight_requests;
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn indexed_turn_count(&self) -> usize {
+        self.stats.index_turns
     }
 
     pub(crate) fn policy(&self) -> &TranscriptResidencyPolicy {
@@ -546,6 +619,7 @@ impl TranscriptResidencyState {
         if amount == 0 {
             return;
         }
+        self.revision = self.revision.saturating_add(1);
         for entry in self.entries.values_mut() {
             if let Some(index) = entry.index.as_mut() {
                 index.source_position = index.source_position.saturating_add(amount);
@@ -588,6 +662,101 @@ impl TranscriptResidencyState {
             .collect()
     }
 
+    pub(crate) fn pinned_turn_ids(&self) -> Vec<String> {
+        self.ordered_turn_ids
+            .iter()
+            .filter(|turn_id| {
+                self.entries
+                    .get(turn_id.as_str())
+                    .is_some_and(TranscriptResidencyEntry::is_pinned)
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub(crate) fn cached_pinned_turn_ids(&self) -> Vec<String> {
+        self.pinned_turn_ids.iter().cloned().collect()
+    }
+
+    pub(crate) fn indexed_turns(&self) -> Vec<TranscriptResidencyIndexedTurn> {
+        self.ordered_turn_ids
+            .iter()
+            .filter_map(|turn_id| {
+                let entry = self.entries.get(turn_id.as_str())?;
+                Self::indexed_turn_for_entry(entry)
+            })
+            .collect()
+    }
+
+    pub(crate) fn indexed_turns_for_source_range_and_required(
+        &self,
+        source_range: &Range<usize>,
+        active_turn_id: Option<&str>,
+    ) -> Vec<TranscriptResidencyIndexedTurn> {
+        let mut turns = BTreeMap::<String, TranscriptResidencyIndexedTurn>::new();
+        let start = self.ordered_turn_ids.partition_point(|turn_id| {
+            self.index_source_position(turn_id.as_str())
+                .is_some_and(|position| position < source_range.start)
+        });
+        let end = self.ordered_turn_ids.partition_point(|turn_id| {
+            self.index_source_position(turn_id.as_str())
+                .is_some_and(|position| position < source_range.end)
+        });
+
+        for turn_id in &self.ordered_turn_ids[start..end] {
+            let Some(entry) = self.entries.get(turn_id.as_str()) else {
+                continue;
+            };
+            let Some(turn) = Self::indexed_turn_for_entry(entry) else {
+                continue;
+            };
+            if source_range.contains(&turn.source_position) {
+                turns.insert(turn.turn_id.clone(), turn);
+            }
+        }
+
+        for turn_id in &self.pinned_turn_ids {
+            let Some(entry) = self.entries.get(turn_id.as_str()) else {
+                continue;
+            };
+            let Some(turn) = Self::indexed_turn_for_entry(entry) else {
+                continue;
+            };
+            turns.insert(turn.turn_id.clone(), turn);
+        }
+        if let Some(turn_id) = active_turn_id
+            && let Some(entry) = self.entries.get(turn_id)
+            && let Some(turn) = Self::indexed_turn_for_entry(entry)
+        {
+            turns.insert(turn.turn_id.clone(), turn);
+        }
+
+        let mut turns = turns.into_values().collect::<Vec<_>>();
+        turns.sort_by_key(|turn| (turn.source_position, turn.turn_id.clone()));
+        turns
+    }
+
+    pub(crate) fn unpinned_resident_turns_outside_source_range(
+        &self,
+        source_range: &Range<usize>,
+        active_turn_id: Option<&str>,
+    ) -> Vec<TranscriptResidencyIndexedTurn> {
+        let mut turns = self
+            .resident_turn_ids
+            .iter()
+            .filter_map(|turn_id| {
+                let entry = self.entries.get(turn_id.as_str())?;
+                if entry.is_pinned() || active_turn_id == Some(turn_id.as_str()) {
+                    return None;
+                }
+                let turn = Self::indexed_turn_for_entry(entry)?;
+                (!source_range.contains(&turn.source_position)).then_some(turn)
+            })
+            .collect::<Vec<_>>();
+        turns.sort_by_key(|turn| (turn.source_position, turn.turn_id.clone()));
+        turns
+    }
+
     pub(crate) fn full_item_count(&self, turn_id: &str) -> Option<usize> {
         match &self.entries.get(turn_id)?.state {
             TranscriptResidencyEntryState::Full { item_count, .. } => Some(*item_count),
@@ -598,6 +767,7 @@ impl TranscriptResidencyState {
     pub(crate) fn pin_turn(&mut self, turn_id: &str, kind: TranscriptResidencyPinKind) {
         let before = self.entry_stats_for(turn_id);
         self.entry_mut(turn_id).pins.insert(kind);
+        self.pinned_turn_ids.insert(turn_id.to_string());
         let after = self.entry_stats_for(turn_id);
         self.apply_entry_stats_delta(before, after);
     }
@@ -606,6 +776,9 @@ impl TranscriptResidencyState {
         let before = self.entry_stats_for(turn_id);
         let should_remove = if let Some(entry) = self.entries.get_mut(turn_id) {
             entry.pins.remove(&kind);
+            if !entry.is_pinned() {
+                self.pinned_turn_ids.remove(turn_id);
+            }
             entry.cleanup_candidate()
         } else {
             false
@@ -646,10 +819,12 @@ impl TranscriptResidencyState {
             self.entries.remove(&turn_id);
             self.ordered_turn_ids
                 .retain(|ordered_turn_id| ordered_turn_id != &turn_id);
+            self.resident_turn_ids.remove(&turn_id);
         }
         for turn_id in turn_ids {
             self.pin_turn(turn_id.as_ref(), kind);
         }
+        self.rebuild_pinned_turn_ids();
     }
 
     pub(crate) fn release_unretained_resident_turns(
@@ -676,6 +851,7 @@ impl TranscriptResidencyState {
                         released.retained_item_count.saturating_add(item_count);
                     released.released_turn_ids.push(turn_id.clone());
                     entry.resident = None;
+                    self.resident_turn_ids.remove(turn_id.as_str());
                 }
             }
             let after = Self::entry_stats(entry);
@@ -685,7 +861,140 @@ impl TranscriptResidencyState {
         self.entries.retain(|_, entry| !entry.cleanup_candidate());
         self.ordered_turn_ids
             .retain(|turn_id| self.entries.contains_key(turn_id));
+        self.pinned_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
         released
+    }
+
+    pub(crate) fn release_resident_turns_by_id<I, S>(
+        &mut self,
+        turn_ids: I,
+    ) -> TranscriptResidencyReleaseCounts
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut released = TranscriptResidencyReleaseCounts::default();
+        let turn_ids = turn_ids
+            .into_iter()
+            .map(|turn_id| turn_id.as_ref().to_string())
+            .collect::<Vec<_>>();
+
+        for turn_id in turn_ids {
+            let Some(entry) = self.entries.get(turn_id.as_str()) else {
+                continue;
+            };
+            if entry.is_pinned() {
+                continue;
+            }
+            self.release_one_resident_turn(&turn_id, &mut released);
+        }
+
+        self.entries.retain(|_, entry| !entry.cleanup_candidate());
+        self.ordered_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
+        self.resident_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
+        self.pinned_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
+        released
+    }
+
+    pub(crate) fn release_resident_turns_by_id_with_oversized_fallbacks<I, S, J, T>(
+        &mut self,
+        turn_ids: I,
+        oversized_fallback_turn_ids: J,
+    ) -> TranscriptResidencyReleaseCounts
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+        J: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        let oversized_fallback_turn_ids = oversized_fallback_turn_ids
+            .into_iter()
+            .map(|turn_id| turn_id.as_ref().to_string())
+            .collect::<BTreeSet<_>>();
+        let mut released = TranscriptResidencyReleaseCounts::default();
+        let turn_ids = turn_ids
+            .into_iter()
+            .map(|turn_id| turn_id.as_ref().to_string())
+            .collect::<Vec<_>>();
+
+        for turn_id in turn_ids {
+            let Some(entry) = self.entries.get(turn_id.as_str()) else {
+                continue;
+            };
+            let oversized_fallback = oversized_fallback_turn_ids.contains(turn_id.as_str());
+            if entry.is_pinned() && !oversized_fallback {
+                continue;
+            }
+            if oversized_fallback {
+                self.release_one_resident_turn_as_oversized_fallback(&turn_id, &mut released);
+            } else {
+                self.release_one_resident_turn(&turn_id, &mut released);
+            }
+        }
+
+        self.entries.retain(|_, entry| !entry.cleanup_candidate());
+        self.ordered_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
+        self.resident_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
+        self.pinned_turn_ids
+            .retain(|turn_id| self.entries.contains_key(turn_id));
+        released
+    }
+
+    pub(crate) fn update_estimated_derived_bytes<I, S>(&mut self, estimates: I) -> bool
+    where
+        I: IntoIterator<Item = (S, usize)>,
+        S: AsRef<str>,
+    {
+        let mut changed = false;
+        for (turn_id, derived_bytes) in estimates {
+            let turn_id = turn_id.as_ref();
+            let before = self.entry_stats_for(turn_id);
+            let Some(entry) = self.entries.get_mut(turn_id) else {
+                continue;
+            };
+
+            let mut entry_changed = false;
+            if let Some(index) = entry.index.as_mut()
+                && index.estimated_resident_derived_bytes != derived_bytes
+            {
+                index.estimated_resident_derived_bytes = derived_bytes;
+                index.estimated_resident_bytes = index
+                    .estimated_resident_payload_bytes
+                    .saturating_add(index.estimated_resident_derived_bytes);
+                entry_changed = true;
+            }
+            if let Some(resident) = entry.resident.as_mut()
+                && resident.derived_bytes != derived_bytes
+            {
+                resident.derived_bytes = derived_bytes;
+                resident.resident_bytes = resident.payload_bytes.saturating_add(derived_bytes);
+                entry_changed = true;
+            }
+            if let TranscriptResidencyEntryState::Full {
+                payload_bytes,
+                derived_bytes: state_derived_bytes,
+                resident_bytes,
+                ..
+            } = &mut entry.state
+                && *state_derived_bytes != derived_bytes
+            {
+                *state_derived_bytes = derived_bytes;
+                *resident_bytes = (*payload_bytes).saturating_add(derived_bytes);
+                entry_changed = true;
+            }
+            if entry_changed {
+                let after = Self::entry_stats(entry);
+                self.apply_entry_stats_delta(before, after);
+                changed = true;
+            }
+        }
+        changed
     }
 
     pub(crate) fn retained_counts(&self) -> TranscriptResidencyRetainedCounts {
@@ -694,7 +1003,10 @@ impl TranscriptResidencyState {
             nonresident_turns: self.stats.nonresident_turns,
             resident_turns: self.stats.resident_turns,
             pinned_turns: self.stats.pinned_turns,
+            oversized_fallback_turns: self.stats.oversized_fallback_turns,
             retained_item_count: self.stats.retained_item_count,
+            resident_payload_bytes: self.stats.resident_payload_bytes,
+            resident_derived_bytes: self.stats.resident_derived_bytes,
             resident_bytes: self.stats.resident_bytes,
             index_metadata_bytes: self.stats.index_metadata_bytes,
             in_flight_requests: self.stats.in_flight_requests,
@@ -724,6 +1036,12 @@ impl TranscriptResidencyState {
         let mut stats = TranscriptResidencyStats {
             index_turns: usize::from(entry.index.is_some()),
             pinned_turns: usize::from(entry.is_pinned()),
+            oversized_fallback_turns: usize::from(
+                entry
+                    .index
+                    .as_ref()
+                    .is_some_and(|index| index.oversized_fallback),
+            ),
             index_metadata_bytes: entry
                 .index
                 .as_ref()
@@ -736,10 +1054,14 @@ impl TranscriptResidencyState {
             }
             TranscriptResidencyEntryState::Full {
                 item_count,
+                payload_bytes,
+                derived_bytes,
                 resident_bytes,
             } => {
                 stats.resident_turns = 1;
                 stats.retained_item_count = *item_count;
+                stats.resident_payload_bytes = *payload_bytes;
+                stats.resident_derived_bytes = *derived_bytes;
                 stats.resident_bytes = *resident_bytes;
             }
         }
@@ -751,6 +1073,9 @@ impl TranscriptResidencyState {
         before: TranscriptResidencyStats,
         after: TranscriptResidencyStats,
     ) {
+        if before != after {
+            self.revision = self.revision.saturating_add(1);
+        }
         self.stats.index_turns = apply_stats_delta(
             self.stats.index_turns,
             before.index_turns,
@@ -771,10 +1096,25 @@ impl TranscriptResidencyState {
             before.pinned_turns,
             after.pinned_turns,
         );
+        self.stats.oversized_fallback_turns = apply_stats_delta(
+            self.stats.oversized_fallback_turns,
+            before.oversized_fallback_turns,
+            after.oversized_fallback_turns,
+        );
         self.stats.retained_item_count = apply_stats_delta(
             self.stats.retained_item_count,
             before.retained_item_count,
             after.retained_item_count,
+        );
+        self.stats.resident_payload_bytes = apply_stats_delta(
+            self.stats.resident_payload_bytes,
+            before.resident_payload_bytes,
+            after.resident_payload_bytes,
+        );
+        self.stats.resident_derived_bytes = apply_stats_delta(
+            self.stats.resident_derived_bytes,
+            before.resident_derived_bytes,
+            after.resident_derived_bytes,
         );
         self.stats.resident_bytes = apply_stats_delta(
             self.stats.resident_bytes,
@@ -790,6 +1130,11 @@ impl TranscriptResidencyState {
 
     fn insert_index_record(&mut self, record: TranscriptTurnIndexRecord) {
         let turn_id = record.id.clone();
+        let index_changed = self
+            .entries
+            .get(&turn_id)
+            .and_then(|entry| entry.index.as_ref())
+            != Some(&record);
         if !self.ordered_turn_ids.iter().any(|id| id == &turn_id) {
             self.ordered_turn_ids.push(turn_id.clone());
             self.ordered_turn_ids.sort_by_key(|id| {
@@ -803,6 +1148,9 @@ impl TranscriptResidencyState {
         let entry = self.entry_mut(&turn_id);
         entry.index = Some(record);
         let after = self.entry_stats_for(&turn_id);
+        if index_changed {
+            self.revision = self.revision.saturating_add(1);
+        }
         self.apply_entry_stats_delta(before, after);
     }
 
@@ -814,7 +1162,9 @@ impl TranscriptResidencyState {
         if !self.ordered_turn_ids.iter().any(|id| id == &turn_id) {
             self.ordered_turn_ids.push(turn_id.clone());
         }
-        let resident_bytes = estimate_turn_resident_bytes(&turn);
+        let payload_bytes = estimate_turn_payload_resident_bytes(&turn);
+        let derived_bytes = estimate_turn_derived_state_bytes(&turn);
+        let resident_bytes = payload_bytes.saturating_add(derived_bytes);
         let item_count = turn.items.len();
         let before = self.entry_stats_for(&turn_id);
         let entry = self.entry_mut(&turn_id);
@@ -826,12 +1176,17 @@ impl TranscriptResidencyState {
         entry.resident = Some(TranscriptResidentTurn {
             turn,
             item_count,
+            payload_bytes,
+            derived_bytes,
             resident_bytes,
         });
         entry.state = TranscriptResidencyEntryState::Full {
             item_count,
+            payload_bytes,
+            derived_bytes,
             resident_bytes,
         };
+        self.resident_turn_ids.insert(turn_id.clone());
         let after = self.entry_stats_for(&turn_id);
         self.apply_entry_stats_delta(before, after);
     }
@@ -886,6 +1241,34 @@ impl TranscriptResidencyState {
             }
         }
         entry.resident = None;
+        self.resident_turn_ids.remove(turn_id);
+        let after = Self::entry_stats(entry);
+        self.apply_entry_stats_delta(before, after);
+    }
+
+    fn release_one_resident_turn_as_oversized_fallback(
+        &mut self,
+        turn_id: &str,
+        released: &mut TranscriptResidencyReleaseCounts,
+    ) {
+        let Some(entry) = self.entries.get_mut(turn_id) else {
+            return;
+        };
+        let before = Self::entry_stats(entry);
+        if let Some(index) = entry.index.as_mut() {
+            index.mark_oversized_fallback();
+        }
+        match std::mem::replace(&mut entry.state, TranscriptResidencyEntryState::Missing) {
+            TranscriptResidencyEntryState::Missing => {}
+            TranscriptResidencyEntryState::Full { item_count, .. } => {
+                released.resident_turns = released.resident_turns.saturating_add(1);
+                released.retained_item_count =
+                    released.retained_item_count.saturating_add(item_count);
+                released.released_turn_ids.push(turn_id.to_string());
+            }
+        }
+        entry.resident = None;
+        self.resident_turn_ids.remove(turn_id);
         let after = Self::entry_stats(entry);
         self.apply_entry_stats_delta(before, after);
     }
@@ -926,6 +1309,35 @@ impl TranscriptResidencyState {
             .entry(turn_id.to_string())
             .or_insert_with(TranscriptResidencyEntry::missing)
     }
+
+    fn index_source_position(&self, turn_id: &str) -> Option<usize> {
+        self.entries
+            .get(turn_id)
+            .and_then(|entry| entry.index.as_ref())
+            .map(|index| index.source_position)
+    }
+
+    fn indexed_turn_for_entry(
+        entry: &TranscriptResidencyEntry,
+    ) -> Option<TranscriptResidencyIndexedTurn> {
+        let index = entry.index.as_ref()?;
+        Some(TranscriptResidencyIndexedTurn {
+            turn_id: index.id.clone(),
+            source_position: index.source_position,
+            estimated_resident_bytes: index.estimated_resident_bytes,
+            resident: entry.resident.is_some(),
+            oversized_fallback: index.oversized_fallback,
+        })
+    }
+
+    fn rebuild_pinned_turn_ids(&mut self) {
+        self.pinned_turn_ids = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.is_pinned())
+            .map(|(turn_id, _)| turn_id.clone())
+            .collect();
+    }
 }
 
 fn margin_rows(range: &Range<usize>, viewport_margins: usize, minimum_rows: usize) -> usize {
@@ -940,7 +1352,12 @@ fn apply_stats_delta(current: usize, before: usize, after: usize) -> usize {
     current.saturating_sub(before).saturating_add(after)
 }
 
-fn estimate_turn_resident_bytes(turn: &TurnInfo) -> usize {
+pub(crate) fn estimate_turn_resident_bytes(turn: &TurnInfo) -> usize {
+    estimate_turn_payload_resident_bytes(turn)
+        .saturating_add(estimate_turn_derived_state_bytes(turn))
+}
+
+pub(crate) fn estimate_turn_payload_resident_bytes(turn: &TurnInfo) -> usize {
     turn.id
         .len()
         .saturating_add(std::mem::size_of::<TurnInfo>())
@@ -954,6 +1371,22 @@ fn estimate_turn_resident_bytes(turn: &TurnInfo) -> usize {
             turn.items
                 .iter()
                 .map(estimate_thread_item_resident_bytes)
+                .sum::<usize>(),
+        )
+}
+
+fn estimate_turn_derived_state_bytes(turn: &TurnInfo) -> usize {
+    if turn.items_view != TurnItemsView::Full {
+        return 0;
+    }
+
+    ESTIMATED_TURN_PRESENTATION_BASE_BYTES
+        .saturating_add(turn.id.len())
+        .saturating_add(ESTIMATED_ROW_MEASUREMENT_BYTES)
+        .saturating_add(
+            turn.items
+                .iter()
+                .map(estimate_thread_item_derived_state_bytes)
                 .sum::<usize>(),
         )
 }
@@ -1000,7 +1433,17 @@ fn estimate_thread_item_resident_bytes(item: &beryl_backend::ThreadItem) -> usiz
             .saturating_add(image.id.len())
             .saturating_add(image.status.as_ref().map_or(0, String::len))
             .saturating_add(image.revised_prompt.as_ref().map_or(0, String::len))
-            .saturating_add(image.result.as_ref().map_or(0, String::len))
+            .saturating_add(
+                if image
+                    .saved_path
+                    .as_deref()
+                    .is_some_and(|path| !path.trim().is_empty())
+                {
+                    0
+                } else {
+                    image.result.as_ref().map_or(0, String::len)
+                },
+            )
             .saturating_add(image.saved_path.as_ref().map_or(0, String::len)),
         beryl_backend::ThreadItem::Generic(generic) => std::mem::size_of_val(generic)
             .saturating_add(generic.id.len())
@@ -1011,6 +1454,77 @@ fn estimate_thread_item_resident_bytes(item: &beryl_backend::ThreadItem) -> usiz
             .saturating_add(generic.status.as_ref().map_or(0, String::len))
             .saturating_add(generic.model.as_ref().map_or(0, String::len)),
     }
+}
+
+fn estimate_thread_item_derived_state_bytes(item: &beryl_backend::ThreadItem) -> usize {
+    match item {
+        beryl_backend::ThreadItem::UserMessage(message) => message
+            .content
+            .iter()
+            .map(|input| match input {
+                beryl_backend::UserInput::Text { text } => {
+                    estimate_markdown_derived_state_bytes(text)
+                }
+                beryl_backend::UserInput::Image { .. }
+                | beryl_backend::UserInput::LocalImage { .. } => {
+                    ESTIMATED_RETAINED_MEDIA_LEASE_BYTES
+                }
+                beryl_backend::UserInput::Skill { .. }
+                | beryl_backend::UserInput::Mention { .. } => 0,
+            })
+            .sum(),
+        beryl_backend::ThreadItem::AgentMessage(message) => {
+            estimate_markdown_derived_state_bytes(message.text.as_str())
+        }
+        beryl_backend::ThreadItem::Reasoning(reasoning) => reasoning
+            .summary
+            .iter()
+            .chain(reasoning.content.iter())
+            .map(|source| estimate_markdown_derived_state_bytes(source))
+            .sum(),
+        beryl_backend::ThreadItem::ImageGeneration(image) => {
+            let saved_path_backed = image
+                .saved_path
+                .as_deref()
+                .is_some_and(|path| !path.trim().is_empty());
+            if saved_path_backed {
+                ESTIMATED_NATIVE_MEDIA_DESCRIPTOR_BYTES
+            } else {
+                ESTIMATED_RETAINED_MEDIA_LEASE_BYTES
+                    .saturating_add(image.result.as_ref().map_or(0, String::len))
+            }
+        }
+        beryl_backend::ThreadItem::CommandExecution(_)
+        | beryl_backend::ThreadItem::FileChange(_)
+        | beryl_backend::ThreadItem::Generic(_) => 0,
+    }
+}
+
+fn estimate_markdown_derived_state_bytes(source: &str) -> usize {
+    if source.is_empty() {
+        return 0;
+    }
+    ESTIMATED_MARKDOWN_SOURCE_BYTES
+        .saturating_add(source.len())
+        .saturating_add(
+            source
+                .len()
+                .saturating_mul(ESTIMATED_MARKDOWN_STRUCTURE_BYTES_PER_SOURCE_BYTE),
+        )
+        .saturating_add(
+            source
+                .len()
+                .saturating_mul(ESTIMATED_CODE_PANEL_PROJECTION_BYTES_PER_SOURCE_BYTE),
+        )
+        .saturating_add(
+            contains_markdown_image_candidate(source)
+                .then_some(ESTIMATED_MARKDOWN_MEDIA_DESCRIPTOR_BYTES)
+                .unwrap_or_default(),
+        )
+}
+
+fn contains_markdown_image_candidate(source: &str) -> bool {
+    source.contains("](") || source.contains("![")
 }
 
 fn estimate_user_input_resident_bytes(input: &beryl_backend::UserInput) -> usize {

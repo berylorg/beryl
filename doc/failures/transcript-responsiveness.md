@@ -120,3 +120,57 @@
 - Do not repeat generated-image live verification through an unconstrained debug diagnostic child.
 - Before retrying, add or use stricter guardrails: prefer a release child, avoid parallel diagnostic reads while image preload is active, stop after a small bounded sample, and abort on the first sustained media-preload spike or shell-response timeout.
 - Treat generated-image Phase 6 verification as unresolved until the media-preload/render loop is investigated without risking operator-machine responsiveness.
+
+## Staged Activation Admission Retry Deadlock
+
+- Scope: selected-thread activation publication after bounded transcript prepublication and media admission were introduced.
+- Invalid assumption: notifying the shell after one staged admission drain was enough to keep activation publication moving.
+- Evidence: live testing on June 12, 2026 showed switching from a blank New Thread screen fetched 36 transport turns, then left the GUI on the blank New Thread screen indefinitely with no CPU activity.
+- Why it failed: a bounded drain can make progress but still leave staged activation unpublished. Retrying from shell notification alone does not reliably re-render the cached transcript panel child. Media admission also treated a row-budget flag as unpublishable even when the unprocessed rows had no required media, so long plain-text histories could remain staged forever.
+- Course correction: staged admission now returns an explicit retry signal that notifies the `TranscriptPanel` itself. Media admission settlement depends on unresolved required media, while budget flags only request another pass when required media remains pending.
+- Affected tests: keep `media_admission_budget_exhaustion_requests_retry`, `prepublication_preparation_accumulates_bounded_rows_for_layout`, and the staged-admission source guards in `conversation_shell_source`.
+
+## Media-admission retry cursor failure
+
+- Scope: staged selected-thread activation and staged residency pages that require multiple bounded completed-media admission passes.
+- Invalid assumption: once a bounded media-admission pass reported `requires_retry`, rerunning the same request would eventually reach later rows.
+- Evidence: completion review on June 12, 2026 found that each retry rebuilt the request from the full row list and the drain restarted at row zero. If required media began after the row budget, the same prefix could be rescanned forever.
+- Why it failed: retry state was modeled as a boolean, not as scan progress. The summary also needed to distinguish media that was deferred because it had not been scanned from pending media already seen in earlier rows.
+- Course correction: media-admission requests now carry row and item scan starts plus an explicit prefix-recheck flag. Summaries report scanned rows, current-row scanned media items, deferred completed-media items, and whether a prefix recheck is required. The staged window advances after row/time exhaustion, resumes inside a heavy row after media-budget exhaustion, forces a full pass from row zero after suffix scanning when earlier pending media may have changed readiness, and waits for media readiness instead of spinning if that prefix is still pending.
+- Affected tests: keep `media_admission_retry_request_advances_after_row_budget_exhaustion`, `media_admission_retry_rechecks_pending_prefix_after_suffix_scan`, and `media_admission_retry_resumes_inside_row_after_media_budget_exhaustion`.
+
+## Staged-admission post-summary retry failure
+
+- Scope: staged selected-thread activation and staged residency page publication after completed-media admission updates the staged window.
+- Invalid assumption: a raw drain summary could decide whether the transcript panel should self-notify for another admission pass before the staged admission window incorporated that summary.
+- Evidence: completion review on June 12, 2026 found that full-prefix rechecks with still-pending prefix media would keep requesting immediate retries even after the staged window correctly transitioned into a wait-for-media state. The same review found that a source-backed image whose requested upload bytes exceeded the entire per-drain upload budget could remain the current retry item forever.
+- Why it failed: retry intent is derived state owned by the staged media-admission window, not by the raw drain result. Source-backed admission also needed a terminal fallback path for items that can never fit in one drain budget.
+- Course correction: the transcript panel now asks the staged window for retry intent after writing back the admission summary. Source-backed completed media that exceeds the whole upload budget is counted as terminal fallback for admission instead of being retried, while ordinary row-budget and item-budget exhaustion still request retry passes.
+- Affected tests: keep `media_admission_retry_rechecks_pending_prefix_after_suffix_scan`, `media_admission_retry_current_item_after_media_budget_exhaustion_in_later_row`, and the completed-media admission source guards in `conversation_shell_source`.
+
+## Prepublication pre-writeback retry failure
+
+- Scope: staged selected-thread activation and staged residency page publication after prepublication preparation updates the staged window.
+- Invalid assumption: fixing completed-media admission retry derivation was sufficient because prepublication preparation had a simpler boolean acceptance path.
+- Evidence: completion review on June 12, 2026 found that `TranscriptPanel` still computed prepublication retry from the raw drain before the staged target accepted the summary. A stale drain for a replaced staged target could therefore schedule a transcript-panel self-notify even though no staged state changed.
+- Why it failed: prepublication retry is derived from the staged preparation window in the same way media-admission retry is derived from the staged media window.
+- Course correction: prepublication summary acceptance now returns the accepted stored summary, and the transcript panel computes `preparation_requires_retry` only after the matching staged activation or residency page writes that summary back.
+- Affected tests: keep `prepublication_preparation_is_bounded_and_staged_before_publication` source guards for accepted-summary return and post-acceptance retry ordering.
+
+## Activation Worker Historical Image Import Stall
+
+- Scope: selected-thread activation after the initial transcript transport page has loaded.
+- Invalid assumption: preparing a full `TranscriptImagePathResolver` inside the activation worker was cheap enough to do before handing the activation result back to the UI.
+- Evidence: live testing on June 12, 2026 showed thread switching from a blank New Thread screen logged only `Fetched transcript transport page` for a 42-turn page and then left the GUI blank for minutes.
+- Why it failed: `transcript_image_path_resolver_for_turns` may synchronously import unresolved historical local-image paths, including backend `fs/readFile` calls, before the worker sends `ThreadActivationOutcome::Activated`. A slow or missing historical image path can therefore block the staged activation pipeline before the transcript panel can run bounded admission.
+- Course correction: selected-thread activation and selected-thread startup restore now use an assets-only resolver before UI publication. Already-retained workspace image assets still resolve, while unresolved historical image import must not block activation publication.
+- Affected tests: keep `selected_thread_activation_worker_uses_assets_only_image_resolver_before_ui_result` and `workspace_asset_resolver_does_not_import_historical_paths`.
+
+## Transcript list row reentrant state read
+
+- Scope: transcript row rendering during selected-thread activation and residency release.
+- Invalid assumption: a transcript row renderer could query `ListState` for `logical_scroll_top()` and `viewport_bounds()` while the virtual list was rendering rows.
+- Evidence: live testing on June 12, 2026 showed activation of the recent `Implement plan.md` thread admitted 16 resident turns, planned a budget shrink to one desired turn, released 15 turns, and then panicked at `crates\beryl-app\src\shell\virtual_list\state.rs:177:16` with `RefCell already mutably borrowed`.
+- Why it failed: the Beryl-owned virtual list calls the row closure while holding a mutable borrow of `StateInner` for layout and measurement. Reading `ListState` inside that closure nests a borrow of the same `RefCell`.
+- Course correction: the Beryl-owned virtual list now passes a layout-owned row viewport context into each row renderer, including row offset and viewport height. Transcript rows consume that context instead of reading `ListState`, and list layout refreshes rows whose final top offset differs from a provisional render before prepaint.
+- Affected tests: keep `transcript_row_renderer_uses_layout_context_without_reentrant_list_state_reads` and `list_row_render_context_is_layout_owned_and_refreshed_after_bottom_up_fill`.

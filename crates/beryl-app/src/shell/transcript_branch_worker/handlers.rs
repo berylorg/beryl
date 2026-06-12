@@ -365,7 +365,7 @@ impl ShellView {
         let connector = self.backend_client_connector();
         if let Some(blocker) =
             transcript_branch_activation_blocker(TranscriptBranchActivationGate {
-                activation_in_progress: self.thread_activation_receiver.is_some(),
+                activation_in_progress: self.selected_thread_activation_pending(),
                 workspace_ready: current_execution_target.is_some(),
                 execution_target_matches_branch: current_execution_target
                     .as_ref()

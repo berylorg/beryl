@@ -50,6 +50,14 @@ impl ShellView {
                         .surface
                         .transcript_content_release_row_identities()
                         .to_vec(),
+                    content_release_markdown_keys: ready
+                        .surface
+                        .transcript_content_release_markdown_keys()
+                        .to_vec(),
+                    content_release_media_keys: ready
+                        .surface
+                        .transcript_content_release_media_keys()
+                        .to_vec(),
                     style_snapshot_micros,
                     composer_measurement_micros,
                 })
@@ -97,6 +105,14 @@ impl ShellView {
                         .surface
                         .transcript_content_release_row_identities()
                         .to_vec(),
+                    content_release_markdown_keys: unavailable
+                        .surface
+                        .transcript_content_release_markdown_keys()
+                        .to_vec(),
+                    content_release_media_keys: unavailable
+                        .surface
+                        .transcript_content_release_media_keys()
+                        .to_vec(),
                     style_snapshot_micros,
                     composer_measurement_micros,
                 })
@@ -134,6 +150,12 @@ impl ShellView {
                     content_release_generation: surface.transcript_content_release_generation(),
                     content_release_row_identities: surface
                         .transcript_content_release_row_identities()
+                        .to_vec(),
+                    content_release_markdown_keys: surface
+                        .transcript_content_release_markdown_keys()
+                        .to_vec(),
+                    content_release_media_keys: surface
+                        .transcript_content_release_media_keys()
                         .to_vec(),
                     style_snapshot_micros,
                     composer_measurement_micros,

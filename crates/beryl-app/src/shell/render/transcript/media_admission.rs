@@ -15,8 +15,9 @@ use crate::shell::{
         transcript_media_source_backed_request_size,
     },
     transcript_media_admission::{
-        TranscriptMediaAdmissionRequest, TranscriptMediaAdmissionSummary,
-        TranscriptMediaAdmissionTarget, estimated_required_media_item_count,
+        SourceBackedUploadAdmissionDecision, TranscriptMediaAdmissionRequest,
+        TranscriptMediaAdmissionSummary, TranscriptMediaAdmissionTarget,
+        estimated_required_media_item_count, note_source_backed_upload_admission,
     },
     transcript_presentability::{
         TranscriptMediaPathIdentity, TranscriptMediaReadinessKey,
@@ -78,7 +79,7 @@ impl TranscriptWindowMediaAdmissionDrainBudget {
     }
 
     fn can_start_item(&self) -> bool {
-        self.processed_items < self.max_items
+        self.processed_items < self.max_items || self.processed_items == 0
     }
 
     fn note_row_processed(&mut self) {
@@ -267,6 +268,8 @@ fn row_admission_items(
                     | ExecutionItem::Generic(_) => {}
                 }
             }
+            crate::shell::transcript_presentation::TranscriptRowNarrativeUnit::TerminalFallback => {
+            }
         }
     }
 
@@ -321,10 +324,7 @@ fn note_unprocessed_estimated_items(
     estimated_items: &[usize],
 ) {
     let pending = estimated_items.iter().copied().sum::<usize>();
-    summary.completed_media_items = summary.completed_media_items.saturating_add(pending);
-    summary.pending_completed_media_items = summary
-        .pending_completed_media_items
-        .saturating_add(pending);
+    summary.note_deferred_items(pending);
 }
 
 #[derive(Clone, Copy)]
@@ -358,6 +358,11 @@ enum AdmissionRowPlan {
     Ready { items: Vec<AdmissionMediaItem> },
 }
 
+enum AdmissionMediaItemDrain {
+    Scanned,
+    RetryCurrent,
+}
+
 pub(super) struct TranscriptWindowMediaAdmissionDrain {
     pub(super) target: TranscriptMediaAdmissionTarget,
     pub(super) summary: TranscriptMediaAdmissionSummary,
@@ -382,6 +387,11 @@ impl TranscriptWindowMediaAdmissionDriver {
         self.leased_source_backed.clear();
     }
 
+    pub(super) fn release_rows(&mut self, row_identities: &HashSet<String>) {
+        self.leased_source_backed
+            .retain(|key| !row_identities.contains(key.row_identity().as_str()));
+    }
+
     pub(super) fn drain_pending(
         &mut self,
         request: TranscriptMediaAdmissionRequest,
@@ -395,6 +405,10 @@ impl TranscriptWindowMediaAdmissionDriver {
     ) -> TranscriptWindowMediaAdmissionDrain {
         self.reset_leases_if_target_changed(request.target());
         let started_at = Instant::now();
+        let total_rows = request.total_rows();
+        let scan_start_row_index = request.scan_start_row_index();
+        let scan_start_item_index = request.scan_start_item_index();
+        let prefix_recheck_required = request.prefix_recheck_required();
         let rows = request.into_rows();
         let estimated_required_media_items = rows
             .iter()
@@ -407,7 +421,10 @@ impl TranscriptWindowMediaAdmissionDriver {
             self.budget.max_in_flight_loads.saturating_sub(in_flight),
         );
         let mut summary = TranscriptMediaAdmissionSummary {
-            row_count: rows.len(),
+            row_count: total_rows,
+            scan_start_row_index,
+            scan_start_item_index,
+            prefix_recheck_required,
             ..TranscriptMediaAdmissionSummary::default()
         };
 
@@ -435,24 +452,47 @@ impl TranscriptWindowMediaAdmissionDriver {
                         .pending_completed_media_items
                         .saturating_add(estimated_items);
                     budget.note_row_processed();
+                    summary.scanned_rows = summary.scanned_rows.saturating_add(1);
                     continue;
                 }
                 AdmissionRowPlan::Ready { items } => items,
             };
 
-            summary.completed_media_items = summary
-                .completed_media_items
-                .saturating_add(row_media_items.len());
+            summary.completed_media_items =
+                summary
+                    .completed_media_items
+                    .saturating_add(row_media_items.len().saturating_sub(if row_index == 0 {
+                        scan_start_item_index.min(row_media_items.len())
+                    } else {
+                        0
+                    }));
             let run_length = row_media_items.len().max(1);
-            for (media_index, media_item) in row_media_items.into_iter().enumerate() {
+            let mut row_fully_scanned = true;
+            let mut row_scanned_media_items = 0usize;
+            let item_start_index = if row_index == 0 {
+                scan_start_item_index.min(run_length)
+            } else {
+                0
+            };
+            for (media_index, media_item) in row_media_items
+                .into_iter()
+                .enumerate()
+                .skip(item_start_index)
+            {
                 if !budget.can_start_item() {
                     summary.media_budget_exhausted = true;
+                    let deferred_items = run_length.saturating_sub(media_index);
                     summary.pending_completed_media_items = summary
                         .pending_completed_media_items
-                        .saturating_add(run_length.saturating_sub(media_index));
+                        .saturating_add(deferred_items);
+                    summary.deferred_completed_media_items = summary
+                        .deferred_completed_media_items
+                        .saturating_add(deferred_items);
+                    summary.scanned_media_items = row_scanned_media_items;
+                    row_fully_scanned = false;
                     break;
                 }
-                self.admit_media_item(
+                match self.admit_media_item(
                     row,
                     media_item,
                     run_length,
@@ -465,9 +505,29 @@ impl TranscriptWindowMediaAdmissionDriver {
                     &mut summary,
                     window,
                     cx,
-                );
+                ) {
+                    AdmissionMediaItemDrain::Scanned => {
+                        row_scanned_media_items = row_scanned_media_items.saturating_add(1);
+                    }
+                    AdmissionMediaItemDrain::RetryCurrent => {
+                        let deferred_items = run_length.saturating_sub(media_index);
+                        summary.pending_completed_media_items = summary
+                            .pending_completed_media_items
+                            .saturating_add(deferred_items);
+                        summary.deferred_completed_media_items = summary
+                            .deferred_completed_media_items
+                            .saturating_add(deferred_items);
+                        summary.scanned_media_items = row_scanned_media_items;
+                        row_fully_scanned = false;
+                        break;
+                    }
+                }
+            }
+            if !row_fully_scanned {
+                break;
             }
             budget.note_row_processed();
+            summary.scanned_rows = summary.scanned_rows.saturating_add(1);
             if started_at.elapsed() >= self.budget.max_drain_time {
                 summary.time_budget_exhausted = true;
                 note_unprocessed_estimated_items(
@@ -509,7 +569,7 @@ impl TranscriptWindowMediaAdmissionDriver {
         summary: &mut TranscriptMediaAdmissionSummary,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> AdmissionMediaItemDrain {
         budget.note_item_processed();
         let lookup = if budget.remaining_load_requests > 0 {
             media_context.preload_media_for(
@@ -537,14 +597,16 @@ impl TranscriptWindowMediaAdmissionDriver {
         match lookup.outcome.as_ref() {
             TranscriptMediaLoadOutcome::Pending { .. } => {
                 summary.note_pending_item();
+                AdmissionMediaItemDrain::Scanned
             }
             outcome if outcome.fallback_text().is_some() => {
                 summary.note_terminal_fallback_item();
+                AdmissionMediaItemDrain::Scanned
             }
             TranscriptMediaLoadOutcome::Loaded(image) => {
                 let Some(path) = image.source_backed_file_path() else {
                     summary.note_ready_item();
-                    return;
+                    return AdmissionMediaItemDrain::Scanned;
                 };
                 let Some((requested_size, requested_upload_bytes)) = requested_source_backed_size(
                     run_length,
@@ -553,12 +615,21 @@ impl TranscriptWindowMediaAdmissionDriver {
                     lookup.outcome.as_ref(),
                 ) else {
                     summary.note_pending_item();
-                    return;
+                    return AdmissionMediaItemDrain::Scanned;
                 };
-                if requested_upload_bytes > budget.remaining_upload_bytes() {
-                    summary.media_budget_exhausted = true;
-                    summary.note_pending_item();
-                    return;
+                match note_source_backed_upload_admission(
+                    summary,
+                    requested_upload_bytes,
+                    budget.max_upload_bytes,
+                    budget.remaining_upload_bytes(),
+                ) {
+                    SourceBackedUploadAdmissionDecision::ReadyToRequest => {}
+                    SourceBackedUploadAdmissionDecision::RetryCurrent => {
+                        return AdmissionMediaItemDrain::RetryCurrent;
+                    }
+                    SourceBackedUploadAdmissionDecision::TerminalFallback => {
+                        return AdmissionMediaItemDrain::Scanned;
+                    }
                 }
 
                 let source = ImageRenderSource::file(path.clone());
@@ -581,9 +652,11 @@ impl TranscriptWindowMediaAdmissionDriver {
                 match window.source_backed_image_request_status(render_request.clone()) {
                     SourceBackedImageRequestStatus::Live => {
                         summary.note_ready_item();
+                        AdmissionMediaItemDrain::Scanned
                     }
                     SourceBackedImageRequestStatus::Failed => {
                         summary.note_terminal_fallback_item();
+                        AdmissionMediaItemDrain::Scanned
                     }
                     SourceBackedImageRequestStatus::Missing
                     | SourceBackedImageRequestStatus::BudgetDeferred => {
@@ -594,10 +667,12 @@ impl TranscriptWindowMediaAdmissionDriver {
                                 summary.source_backed_preloads.saturating_add(1);
                         }
                         summary.note_pending_item();
+                        AdmissionMediaItemDrain::Scanned
                     }
                     SourceBackedImageRequestStatus::Loading
                     | SourceBackedImageRequestStatus::ReadyForUpload => {
                         summary.note_pending_item();
+                        AdmissionMediaItemDrain::Scanned
                     }
                 }
             }
@@ -606,6 +681,7 @@ impl TranscriptWindowMediaAdmissionDriver {
             | TranscriptMediaLoadOutcome::FileUnavailable { .. }
             | TranscriptMediaLoadOutcome::PathNotAllowed { .. } => {
                 summary.note_terminal_fallback_item();
+                AdmissionMediaItemDrain::Scanned
             }
         }
     }

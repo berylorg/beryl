@@ -1,4 +1,9 @@
-use std::{fmt, ops::Range, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    ops::Range,
+    time::Duration,
+};
 
 use beryl_backend::{
     ManagedBackendError, ManagedBackendSession, SortDirection, ThreadTurnsListOptions,
@@ -7,16 +12,31 @@ use beryl_backend::{
 
 #[path = "transcript_history/residency.rs"]
 mod residency;
+#[path = "transcript_history/residency_plan.rs"]
+mod residency_plan;
+#[path = "transcript_fallback.rs"]
+mod transcript_fallback;
 
 #[allow(unused_imports)]
 pub(crate) use residency::{
-    TranscriptResidencyBudgetReason, TranscriptResidencyPinKind, TranscriptResidencyPolicy,
-    TranscriptResidencyReleaseCounts, TranscriptResidencyRequestPriority,
-    TranscriptResidencyRetainedCounts, TranscriptResidencyRetention, TranscriptResidencyState,
-    TranscriptTurnIndexRecord,
+    TranscriptResidencyBudgetReason, TranscriptResidencyIndexedTurn, TranscriptResidencyPinKind,
+    TranscriptResidencyPolicy, TranscriptResidencyReleaseCounts,
+    TranscriptResidencyRequestPriority, TranscriptResidencyRetainedCounts,
+    TranscriptResidencyRetention, TranscriptResidencyState, TranscriptTurnIndexRecord,
+    estimate_turn_payload_resident_bytes,
 };
+#[allow(unused_imports)]
+pub(crate) use residency_plan::{
+    TranscriptResidencyGrowthStrategy, TranscriptResidencyTargetDiagnostics,
+    TranscriptResidencyTargetInput, TranscriptResidencyTargetPlan, TranscriptResidencyTargetPolicy,
+    TranscriptResidencyTurnPlanInput, TranscriptResidencyViewport,
+    plan_transcript_residency_target,
+};
+pub(crate) use transcript_fallback::is_oversized_turn_fallback_marker;
 
 pub(crate) const THREAD_HISTORY_PAGE_LIMIT: u32 = 80;
+const INITIAL_THREAD_ACTIVATION_VIEWPORT_ROWS: usize = 8;
+pub(crate) const TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT: usize = 96;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TranscriptHistoryWindow {
@@ -33,6 +53,18 @@ pub(crate) struct LoadedTranscriptHistoryPage {
     pub turns: Vec<TurnInfo>,
     pub older_cursor: Option<String>,
     pub newer_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TranscriptTurnAdmissionPlan {
+    pub(crate) resident_turn_ids: Vec<String>,
+    pub(crate) oversized_turn_fallback_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TranscriptResidencyMeasuredTurnHeight {
+    pub(crate) source_position: usize,
+    pub(crate) measured_height: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,6 +86,10 @@ pub(crate) struct TranscriptHistoryPageId(u64);
 pub(crate) enum TranscriptHistoryPageRequest {
     Older {
         cursor: String,
+    },
+    Indexed {
+        page_id: TranscriptHistoryPageId,
+        cursor: Option<String>,
     },
     Released {
         page_id: TranscriptHistoryPageId,
@@ -109,6 +145,7 @@ struct TranscriptHistoryPageState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum LoadingTranscriptHistoryPage {
     Older { cursor: String },
+    Indexed { page_id: TranscriptHistoryPageId },
     Released { page_id: TranscriptHistoryPageId },
 }
 
@@ -215,6 +252,14 @@ impl TranscriptHistoryWindow {
         self.residency.retained_counts()
     }
 
+    pub(crate) fn residency_revision(&self) -> u64 {
+        self.residency.revision()
+    }
+
+    pub(crate) fn indexed_turn_count(&self) -> usize {
+        self.residency.indexed_turn_count()
+    }
+
     pub(crate) fn replace_residency_pins<I, S>(
         &mut self,
         kind: TranscriptResidencyPinKind,
@@ -239,6 +284,43 @@ impl TranscriptHistoryWindow {
         retention: &TranscriptResidencyRetention,
     ) -> TranscriptResidencyReleaseCounts {
         self.residency.release_unretained_resident_turns(retention)
+    }
+
+    pub(crate) fn release_resident_turns_by_id<I, S>(
+        &mut self,
+        turn_ids: I,
+    ) -> TranscriptResidencyReleaseCounts
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.residency.release_resident_turns_by_id(turn_ids)
+    }
+
+    pub(crate) fn release_resident_turns_by_id_with_oversized_fallbacks<I, S, J, T>(
+        &mut self,
+        turn_ids: I,
+        oversized_fallback_turn_ids: J,
+    ) -> TranscriptResidencyReleaseCounts
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+        J: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        self.residency
+            .release_resident_turns_by_id_with_oversized_fallbacks(
+                turn_ids,
+                oversized_fallback_turn_ids,
+            )
+    }
+
+    pub(crate) fn update_residency_derived_byte_estimates<I, S>(&mut self, estimates: I) -> bool
+    where
+        I: IntoIterator<Item = (S, usize)>,
+        S: AsRef<str>,
+    {
+        self.residency.update_estimated_derived_bytes(estimates)
     }
 
     pub(crate) fn retention_range_for_visible_range(
@@ -333,7 +415,7 @@ impl TranscriptHistoryWindow {
             }
             self.residency.shift_source_positions(added_turn_count);
             let id = self.allocate_page_id();
-            let resident = page_has_full_turns(page);
+            let resident = page_has_resident_turns(page);
             self.residency
                 .index_history_page(&page.turns, load_cursor.as_deref(), 0);
             self.pages.insert(
@@ -388,6 +470,21 @@ impl TranscriptHistoryWindow {
                             page.load_cursor == request.cursor().map(str::to_string)
                         })
             }
+            (
+                Some(LoadingTranscriptHistoryPage::Indexed {
+                    page_id: loading_page_id,
+                }),
+                TranscriptHistoryPageRequest::Indexed { page_id, .. },
+            ) => {
+                loading_page_id == page_id
+                    && self
+                        .pages
+                        .iter()
+                        .find(|page| page.id == *page_id)
+                        .is_some_and(|page| {
+                            page.load_cursor == request.cursor().map(str::to_string)
+                        })
+            }
             _ => false,
         }
     }
@@ -398,6 +495,11 @@ impl TranscriptHistoryWindow {
     ) -> Option<usize> {
         match request {
             TranscriptHistoryPageRequest::Older { .. } => Some(0),
+            TranscriptHistoryPageRequest::Indexed { page_id, .. } => self
+                .pages
+                .iter()
+                .find(|page| page.id == *page_id)
+                .map(|page| page.start),
             TranscriptHistoryPageRequest::Released { page_id, .. } => self
                 .pages
                 .iter()
@@ -426,6 +528,7 @@ impl TranscriptHistoryWindow {
                     .as_ref()
                     .map_or(0, |loading| match loading {
                         LoadingTranscriptHistoryPage::Older { cursor } => cursor.len(),
+                        LoadingTranscriptHistoryPage::Indexed { .. } => 0,
                         LoadingTranscriptHistoryPage::Released { .. } => 0,
                     }),
             )
@@ -454,6 +557,174 @@ impl TranscriptHistoryWindow {
 
     pub(crate) fn resident_turn_ids(&self) -> Vec<String> {
         self.residency.resident_turn_ids()
+    }
+
+    pub(crate) fn pinned_turn_ids(&self) -> Vec<String> {
+        self.residency.pinned_turn_ids()
+    }
+
+    pub(crate) fn indexed_turns(&self) -> Vec<TranscriptResidencyIndexedTurn> {
+        self.residency.indexed_turns()
+    }
+
+    pub(crate) fn residency_target_plan<I>(
+        &self,
+        source_visible_range: Range<usize>,
+        viewport_height: usize,
+        measured_heights: I,
+        active_turn_id: Option<&str>,
+    ) -> TranscriptResidencyTargetPlan
+    where
+        I: IntoIterator<Item = TranscriptResidencyMeasuredTurnHeight>,
+    {
+        let measured_heights = measured_heights
+            .into_iter()
+            .map(|height| (height.source_position, height.measured_height))
+            .collect::<BTreeMap<_, _>>();
+        let turns = self
+            .residency
+            .indexed_turns()
+            .into_iter()
+            .map(|turn| {
+                let mut input = TranscriptResidencyTurnPlanInput::new(turn.turn_id)
+                    .with_source_position(turn.source_position)
+                    .with_estimated_resident_bytes(turn.estimated_resident_bytes)
+                    .with_resident(turn.resident)
+                    .with_oversized_fallback(turn.oversized_fallback);
+                if let Some(measured_height) = measured_heights.get(&turn.source_position) {
+                    input = input.with_measured_height(*measured_height);
+                }
+                input
+            })
+            .collect::<Vec<_>>();
+        let target_policy = self.residency_target_policy();
+        let counts = self.residency.retained_counts();
+        let mut input = TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(source_visible_range, viewport_height.max(1)),
+            turns,
+        )
+        .with_pinned_turn_ids(self.residency.cached_pinned_turn_ids())
+        .with_in_flight_requests(counts.in_flight_requests)
+        .with_policy(target_policy);
+        if let Some(active_turn_id) = active_turn_id {
+            input = input.with_active_turn_id(active_turn_id);
+        }
+        plan_transcript_residency_target(input)
+    }
+
+    pub(crate) fn residency_target_plan_for_source_window<I>(
+        &self,
+        source_visible_range: Range<usize>,
+        source_planning_range: Range<usize>,
+        viewport_height: usize,
+        measured_heights: I,
+        active_turn_id: Option<&str>,
+    ) -> TranscriptResidencyTargetPlan
+    where
+        I: IntoIterator<Item = TranscriptResidencyMeasuredTurnHeight>,
+    {
+        let source_planning_range = source_planning_range.start.min(source_visible_range.start)
+            ..source_planning_range.end.max(source_visible_range.end);
+        let measured_heights = measured_heights
+            .into_iter()
+            .map(|height| (height.source_position, height.measured_height))
+            .collect::<BTreeMap<_, _>>();
+        let turns = self
+            .residency
+            .indexed_turns_for_source_range_and_required(&source_planning_range, active_turn_id)
+            .into_iter()
+            .map(|turn| {
+                let mut input = TranscriptResidencyTurnPlanInput::new(turn.turn_id)
+                    .with_source_position(turn.source_position)
+                    .with_estimated_resident_bytes(turn.estimated_resident_bytes)
+                    .with_resident(turn.resident)
+                    .with_oversized_fallback(turn.oversized_fallback);
+                if let Some(measured_height) = measured_heights.get(&turn.source_position) {
+                    input = input.with_measured_height(*measured_height);
+                }
+                input
+            })
+            .collect::<Vec<_>>();
+        let source_visible_range =
+            local_source_visible_range_for_planning_input(&turns, &source_visible_range);
+        let target_policy = self.residency_target_policy();
+        let counts = self.residency.retained_counts();
+        let mut input = TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(source_visible_range, viewport_height.max(1)),
+            turns,
+        )
+        .with_pinned_turn_ids(self.residency.cached_pinned_turn_ids())
+        .with_in_flight_requests(counts.in_flight_requests)
+        .with_policy(target_policy);
+        if let Some(active_turn_id) = active_turn_id {
+            input = input.with_active_turn_id(active_turn_id);
+        }
+        let mut plan = plan_transcript_residency_target(input);
+        let mut release_turn_ids = plan
+            .release_turn_ids
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for turn in self
+            .residency
+            .unpinned_resident_turns_outside_source_range(&source_planning_range, active_turn_id)
+        {
+            if release_turn_ids.insert(turn.turn_id.clone()) {
+                plan.release_turn_ids.push(turn.turn_id);
+            }
+        }
+        plan
+    }
+
+    pub(crate) fn residency_target_policy(&self) -> TranscriptResidencyTargetPolicy {
+        let policy = self.residency.policy();
+        TranscriptResidencyTargetPolicy::new()
+            .with_max_resident_turns(policy.max_resident_turns())
+            .with_max_resident_bytes(policy.max_resident_bytes())
+            .with_max_in_flight_requests(policy.max_in_flight_requests())
+            .with_leading_viewport_margins(policy.leading_viewport_margins())
+            .with_trailing_viewport_margins(policy.trailing_viewport_margins())
+            .with_default_row_height(TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT)
+    }
+
+    pub(crate) fn begin_loading_page_for_residency_target_plan(
+        &mut self,
+        plan: &TranscriptResidencyTargetPlan,
+        source_visible_range: &Range<usize>,
+    ) -> Option<TranscriptHistoryPageRequest> {
+        if self.loading_page.is_some() {
+            return None;
+        }
+
+        if let Some(page) = self.released_page_for_target_ranges(
+            plan.missing_transport_ranges.as_slice(),
+            source_visible_range,
+        ) {
+            let page_id = page.id;
+            let cursor = page.load_cursor.clone();
+            self.loading_page = Some(LoadingTranscriptHistoryPage::Released { page_id });
+            self.residency.set_in_flight_requests(1);
+            return Some(TranscriptHistoryPageRequest::Released { page_id, cursor });
+        }
+
+        if let Some(page) = self.indexed_page_for_target_ranges(
+            plan.missing_transport_ranges.as_slice(),
+            source_visible_range,
+        ) {
+            let page_id = page.id;
+            let cursor = page.load_cursor.clone();
+            self.loading_page = Some(LoadingTranscriptHistoryPage::Indexed { page_id });
+            self.residency.set_in_flight_requests(1);
+            return Some(TranscriptHistoryPageRequest::Indexed { page_id, cursor });
+        }
+
+        if self.should_request_older(source_visible_range) {
+            return self
+                .begin_loading_older()
+                .map(|cursor| TranscriptHistoryPageRequest::Older { cursor });
+        }
+
+        None
     }
 
     #[allow(dead_code)]
@@ -512,7 +783,7 @@ impl TranscriptHistoryWindow {
         self.loading_page = None;
         self.residency.set_in_flight_requests(0);
         let page_state = self.pages.iter_mut().find(|page| page.id == page_id)?;
-        page_state.resident = page_has_full_turns(page);
+        page_state.resident = page_has_resident_turns(page);
         page_state.older_cursor = page.older_cursor.clone();
         page_state.newer_cursor = page.newer_cursor.clone();
         self.residency.index_history_page(
@@ -554,6 +825,7 @@ impl TranscriptHistoryWindow {
         );
         let loading_page_id = match self.loading_page {
             Some(LoadingTranscriptHistoryPage::Released { page_id }) => Some(page_id),
+            Some(LoadingTranscriptHistoryPage::Indexed { page_id }) => Some(page_id),
             _ => None,
         };
         let mut candidates = self
@@ -609,7 +881,7 @@ impl TranscriptHistoryWindow {
         }
 
         let id = self.allocate_page_id();
-        let resident = page_has_full_turns(page);
+        let resident = page_has_resident_turns(page);
         self.residency.index_history_page(&page.turns, None, 0);
         self.pages.push(TranscriptHistoryPageState {
             id,
@@ -638,6 +910,46 @@ impl TranscriptHistoryWindow {
             .min_by_key(|page| page_distance_to_range(&page.range(), visible_range))
     }
 
+    fn released_page_for_target_ranges(
+        &self,
+        target_ranges: &[Range<usize>],
+        visible_range: &Range<usize>,
+    ) -> Option<&TranscriptHistoryPageState> {
+        if target_ranges.is_empty() {
+            return None;
+        }
+
+        self.pages
+            .iter()
+            .filter(|page| {
+                !page.resident
+                    && target_ranges
+                        .iter()
+                        .any(|target| ranges_intersect(&page.range(), target))
+            })
+            .min_by_key(|page| page_distance_to_range(&page.range(), visible_range))
+    }
+
+    fn indexed_page_for_target_ranges(
+        &self,
+        target_ranges: &[Range<usize>],
+        visible_range: &Range<usize>,
+    ) -> Option<&TranscriptHistoryPageState> {
+        if target_ranges.is_empty() {
+            return None;
+        }
+
+        self.pages
+            .iter()
+            .filter(|page| {
+                page.resident
+                    && target_ranges
+                        .iter()
+                        .any(|target| ranges_intersect(&page.range(), target))
+            })
+            .min_by_key(|page| page_distance_to_range(&page.range(), visible_range))
+    }
+
     fn allocate_page_id(&mut self) -> TranscriptHistoryPageId {
         let id = TranscriptHistoryPageId(self.next_page_id);
         self.next_page_id += 1;
@@ -647,6 +959,7 @@ impl TranscriptHistoryWindow {
     fn prune_released_page_metadata(&mut self, visible_range: &Range<usize>) {
         let loading_page_id = match self.loading_page {
             Some(LoadingTranscriptHistoryPage::Released { page_id }) => Some(page_id),
+            Some(LoadingTranscriptHistoryPage::Indexed { page_id }) => Some(page_id),
             _ => None,
         };
         while self.pages.iter().filter(|page| !page.resident).count()
@@ -730,6 +1043,19 @@ fn normalize_index_only_history_turn(mut turn: TurnInfo) -> TurnInfo {
     turn
 }
 
+fn local_source_visible_range_for_planning_input(
+    turns: &[TranscriptResidencyTurnPlanInput],
+    source_visible_range: &Range<usize>,
+) -> Range<usize> {
+    let start = turns.partition_point(|turn| {
+        turn.source_position.unwrap_or_default() < source_visible_range.start
+    });
+    let end = turns.partition_point(|turn| {
+        turn.source_position.unwrap_or_default() < source_visible_range.end
+    });
+    start..end.max(start)
+}
+
 pub(crate) fn loaded_full_page_from_desc_response(
     response: ThreadTurnsListResponse,
 ) -> LoadedTranscriptHistoryPage {
@@ -737,6 +1063,152 @@ pub(crate) fn loaded_full_page_from_desc_response(
         turns: response.data.into_iter().rev().collect(),
         older_cursor: response.next_cursor,
         newer_cursor: response.backwards_cursor,
+    }
+}
+
+pub(crate) fn initial_thread_activation_resident_turn_ids(
+    page: &LoadedTranscriptHistoryPage,
+) -> Vec<String> {
+    initial_thread_activation_turn_admission_plan(page).resident_turn_ids
+}
+
+pub(crate) fn initial_thread_activation_turn_admission_plan(
+    page: &LoadedTranscriptHistoryPage,
+) -> TranscriptTurnAdmissionPlan {
+    if page.turns.is_empty() {
+        return TranscriptTurnAdmissionPlan::default();
+    }
+
+    let visible_rows = INITIAL_THREAD_ACTIVATION_VIEWPORT_ROWS.min(page.turns.len());
+    let visible_start = page.turns.len().saturating_sub(visible_rows);
+    turn_admission_plan_for_page_window(
+        page,
+        visible_start..page.turns.len(),
+        visible_rows
+            .max(1)
+            .saturating_mul(TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT),
+        TranscriptResidencyTargetPolicy::new(),
+        Vec::<String>::new(),
+    )
+}
+
+pub(crate) fn resident_turn_ids_for_page_window<I, S>(
+    page: &LoadedTranscriptHistoryPage,
+    visible_range: Range<usize>,
+    viewport_height: usize,
+    policy: TranscriptResidencyTargetPolicy,
+    pinned_turn_ids: I,
+) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    turn_admission_plan_for_page_window(
+        page,
+        visible_range,
+        viewport_height,
+        policy,
+        pinned_turn_ids,
+    )
+    .resident_turn_ids
+}
+
+pub(crate) fn turn_admission_plan_for_page_window<I, S>(
+    page: &LoadedTranscriptHistoryPage,
+    visible_range: Range<usize>,
+    viewport_height: usize,
+    policy: TranscriptResidencyTargetPolicy,
+    pinned_turn_ids: I,
+) -> TranscriptTurnAdmissionPlan
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    if page.turns.is_empty() {
+        return TranscriptTurnAdmissionPlan::default();
+    }
+
+    let turns = page
+        .turns
+        .iter()
+        .enumerate()
+        .map(|(index, turn)| {
+            TranscriptResidencyTurnPlanInput::new(turn.id.clone())
+                .with_source_position(index)
+                .with_estimated_height(TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT)
+                .with_estimated_resident_bytes(residency::estimate_turn_resident_bytes(turn))
+                .with_resident(turn.items_view == TurnItemsView::Full)
+                .with_oversized_fallback(transcript_fallback::is_oversized_turn_fallback_marker(
+                    turn,
+                ))
+        })
+        .collect::<Vec<_>>();
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(visible_range, viewport_height.max(1)),
+            turns,
+        )
+        .with_pinned_turn_ids(pinned_turn_ids)
+        .with_policy(policy),
+    );
+    TranscriptTurnAdmissionPlan {
+        resident_turn_ids: plan.desired_full_turn_ids,
+        oversized_turn_fallback_ids: plan.oversized_turn_fallback_ids,
+    }
+}
+
+pub(crate) fn sanitize_loaded_page_for_resident_turn_ids<I, S>(
+    page: &LoadedTranscriptHistoryPage,
+    resident_turn_ids: I,
+) -> LoadedTranscriptHistoryPage
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let resident_turn_ids = resident_turn_ids
+        .into_iter()
+        .map(|turn_id| turn_id.as_ref().to_string())
+        .collect::<Vec<_>>();
+    sanitize_loaded_page_for_turn_admission_plan(
+        page,
+        &TranscriptTurnAdmissionPlan {
+            resident_turn_ids,
+            oversized_turn_fallback_ids: Vec::new(),
+        },
+    )
+}
+
+pub(crate) fn sanitize_loaded_page_for_turn_admission_plan(
+    page: &LoadedTranscriptHistoryPage,
+    admission_plan: &TranscriptTurnAdmissionPlan,
+) -> LoadedTranscriptHistoryPage {
+    let resident_turn_ids = admission_plan
+        .resident_turn_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let oversized_turn_fallback_ids = admission_plan
+        .oversized_turn_fallback_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    LoadedTranscriptHistoryPage {
+        turns: page
+            .turns
+            .iter()
+            .cloned()
+            .map(|turn| {
+                if resident_turn_ids.contains(turn.id.as_str()) {
+                    turn
+                } else if oversized_turn_fallback_ids.contains(turn.id.as_str()) {
+                    transcript_fallback::oversized_turn_fallback_marker(turn)
+                } else {
+                    normalize_index_only_history_turn(turn)
+                }
+            })
+            .collect(),
+        older_cursor: page.older_cursor.clone(),
+        newer_cursor: page.newer_cursor.clone(),
     }
 }
 
@@ -773,21 +1245,6 @@ where
         .map(loaded_page_from_desc_response)
 }
 
-pub(crate) fn load_thread_history_page<B>(
-    backend: &mut B,
-    thread_id: &str,
-    cursor: Option<&str>,
-    timeout: Duration,
-) -> Result<LoadedTranscriptHistoryPage, B::Error>
-where
-    B: TranscriptHistoryBackend,
-{
-    let options = thread_history_page_options(cursor);
-    backend
-        .list_thread_turns(thread_id, &options, timeout)
-        .map(loaded_page_from_desc_response)
-}
-
 pub(crate) fn load_thread_resident_history_page<B>(
     backend: &mut B,
     thread_id: &str,
@@ -811,6 +1268,7 @@ impl TranscriptHistoryPageRequest {
     pub(crate) fn cursor(&self) -> Option<&str> {
         match self {
             Self::Older { cursor } => Some(cursor.as_str()),
+            Self::Indexed { cursor, .. } => cursor.as_deref(),
             Self::Released { cursor, .. } => cursor.as_deref(),
         }
     }
@@ -840,10 +1298,8 @@ fn page_distance_to_range(page: &Range<usize>, range: &Range<usize>) -> usize {
     }
 }
 
-fn page_has_full_turns(page: &LoadedTranscriptHistoryPage) -> bool {
-    !page.turns.is_empty()
-        && page
-            .turns
-            .iter()
-            .all(|turn| turn.items_view == TurnItemsView::Full)
+fn page_has_resident_turns(page: &LoadedTranscriptHistoryPage) -> bool {
+    page.turns
+        .iter()
+        .any(|turn| turn.items_view == TurnItemsView::Full)
 }

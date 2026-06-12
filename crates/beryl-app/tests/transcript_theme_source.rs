@@ -367,7 +367,7 @@ fn phase3_transcript_rows_use_presentation_models_and_measurement_keys() {
     assert!(TRANSCRIPT_ROW_MODEL_SOURCE.contains("TranscriptRowPresentationModel"));
     assert!(TRANSCRIPT_ROW_MODEL_SOURCE.contains("TranscriptRowMeasurementKey"));
     assert!(TRANSCRIPT_ROW_MODEL_SOURCE.contains("TranscriptRowNarrativeUnit"));
-    assert!(render_card_body.contains("row_model.narrative_units()"));
+    assert!(TRANSCRIPT_TURN_BLOCKS_SOURCE.contains("row_model.narrative_units()"));
     assert!(!render_card_body.contains("turn.narrative_entries()"));
     assert!(preload_body.contains("row_model.narrative_units()"));
     assert!(!preload_body.contains("turn.narrative_entries()"));

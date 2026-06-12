@@ -1,6 +1,6 @@
 #![allow(dead_code, private_interfaces, unused_imports)]
 
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc};
 
 use beryl_backend::{ThreadItem, TurnInfo, TurnStatus, UserInput, UserMessageItem};
 use gpui::{Bounds, ClipboardEntry, Image, ImageFormat, point, px, size};
@@ -210,6 +210,23 @@ fn branch_target_replaces_transcript_image_markers_with_copy_fallback_text() {
         target.title_seed_fragments(),
         &["Look at [Image A]".to_string()]
     );
+}
+
+#[test]
+fn oversized_fallback_row_is_not_a_branch_or_title_update_target() {
+    let mut harness = BranchHarness::new();
+    harness.replace_history("thread_a", vec![oversized_fallback_turn("turn_big")]);
+
+    assert_eq!(harness.presentation_len(), 1);
+    assert!(harness.target_at(0).is_none());
+    assert!(harness.title_target_at(0).is_none());
+    assert!(matches!(
+        harness.title_target_resolution_at(0),
+        Some(TranscriptThreadTitleUpdateTargetResolution::Disabled {
+            reason: TranscriptThreadTitleUpdateDisabledReason::NonResidentRowTarget,
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -976,6 +993,29 @@ fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {
                     text: (*prompt).to_string(),
                 })
                 .collect(),
+        })],
+        error: None,
+    }
+}
+
+fn oversized_fallback_turn(id: &str) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status: TurnStatus::Completed,
+        items_view: beryl_backend::TurnItemsView::Summary,
+        items: vec![ThreadItem::Generic(beryl_backend::GenericThreadItem {
+            id: format!("beryl:oversized-turn-fallback:{id}"),
+            item_type: "beryl.oversizedTurnFallback".to_string(),
+            tool: None,
+            server: None,
+            namespace: None,
+            mcp_app_resource_uri: None,
+            status: None,
+            model: None,
+            reasoning_effort: None,
+            receiver_thread_ids: Vec::new(),
+            agents_states: BTreeMap::new(),
+            agent_nickname: None,
         })],
         error: None,
     }
