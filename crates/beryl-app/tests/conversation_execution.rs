@@ -430,6 +430,99 @@ fn active_turn_identity_is_unknown_until_turn_started_then_cleared_on_completion
 }
 
 #[test]
+fn active_turn_source_pin_blocks_release_until_terminal_completion() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Initial prompt".to_string());
+    state.apply_stream_event(TurnStreamEvent::TurnStarted {
+        thread_id: "thread_1".to_string(),
+        turn: turn_info("turn_1", TurnStatus::InProgress),
+    });
+    state.apply_stream_event(TurnStreamEvent::AgentMessageDelta {
+        thread_id: "thread_1".to_string(),
+        turn_id: "turn_1".to_string(),
+        item_id: "assistant_live".to_string(),
+        delta: "Live answer".to_string(),
+    });
+
+    assert!(state.release_history_turns_by_id(["turn_1"]).is_empty());
+    assert!(state.turns()[0].has_resident_payload());
+
+    state.apply_stream_event(TurnStreamEvent::TurnCompleted {
+        thread_id: "thread_1".to_string(),
+        turn: turn_info("turn_1", TurnStatus::Completed),
+    });
+
+    assert_eq!(state.active_turn_identity(), None);
+    let replacements = state.release_history_turns_by_id(["turn_1"]);
+    assert_eq!(replacements.len(), 1);
+    assert!(!state.turns()[0].has_resident_payload());
+}
+
+#[test]
+fn active_turn_source_cap_replaces_live_source_with_stable_fallback() {
+    let mut state = ExecutionDetailState::default();
+    state.begin_turn("Initial prompt".to_string());
+    state.apply_stream_event_with_active_source_cap(
+        TurnStreamEvent::TurnStarted {
+            thread_id: "thread_1".to_string(),
+            turn: turn_info("turn_capped", TurnStatus::InProgress),
+        },
+        512,
+    );
+
+    state.apply_stream_event_with_active_source_cap(
+        TurnStreamEvent::AgentMessageDelta {
+            thread_id: "thread_1".to_string(),
+            turn_id: "turn_capped".to_string(),
+            item_id: "assistant_huge".to_string(),
+            delta: "A".repeat(1024),
+        },
+        512,
+    );
+
+    let turn = &state.turns()[0];
+    assert!(turn.active_source_budget_fallback_active());
+    assert_eq!(turn.thread_id.as_deref(), Some("thread_1"));
+    assert_eq!(turn.turn_id.as_deref(), Some("turn_capped"));
+    assert_eq!(turn.status, TurnExecutionStatus::Running);
+    assert!(turn.user_input_fragments().is_empty());
+    assert!(turn.narrative_entries().is_empty());
+    assert!(turn.items.is_empty());
+    assert_eq!(
+        turn.terminal_fallback_text(),
+        Some(
+            "This live turn exceeded Beryl's active-turn transcript memory budget before it finished. Beryl stopped retaining its live source and will reload the completed turn from history when available."
+        )
+    );
+    let fallback_counts = state.retained_counts();
+
+    state.apply_stream_event_with_active_source_cap(
+        TurnStreamEvent::AgentMessageDelta {
+            thread_id: "thread_1".to_string(),
+            turn_id: "turn_capped".to_string(),
+            item_id: "assistant_huge".to_string(),
+            delta: "B".repeat(2048),
+        },
+        512,
+    );
+
+    assert_eq!(state.retained_counts(), fallback_counts);
+
+    state.apply_stream_event_with_active_source_cap(
+        TurnStreamEvent::TurnCompleted {
+            thread_id: "thread_1".to_string(),
+            turn: turn_info("turn_capped", TurnStatus::Completed),
+        },
+        512,
+    );
+
+    let turn = &state.turns()[0];
+    assert_eq!(state.active_turn_identity(), None);
+    assert!(turn.active_source_budget_fallback_active());
+    assert_eq!(turn.status, TurnExecutionStatus::Completed);
+}
+
+#[test]
 fn active_turn_steering_fragment_keeps_accepted_narrative_position() {
     let mut state = ExecutionDetailState::default();
     let turn_index = state.begin_turn("Initial prompt".to_string());
@@ -1777,6 +1870,16 @@ fn user_input_texts(turn: &TurnExecutionRecord) -> Vec<&str> {
         .iter()
         .map(|fragment| fragment.text.as_str())
         .collect()
+}
+
+fn turn_info(id: &str, status: TurnStatus) -> TurnInfo {
+    TurnInfo {
+        id: id.to_string(),
+        status,
+        items_view: beryl_backend::TurnItemsView::Full,
+        items: Vec::new(),
+        error: None,
+    }
 }
 
 fn response_with_user_content(content: serde_json::Value) -> ThreadSessionResponse {

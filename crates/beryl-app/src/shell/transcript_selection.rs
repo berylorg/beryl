@@ -47,6 +47,7 @@ pub(crate) struct TranscriptTextLineKey {
     row_identity: String,
     block_path: String,
     line_index: usize,
+    viewport_local_scope: Option<String>,
 }
 
 impl TranscriptTextLineKey {
@@ -59,11 +60,24 @@ impl TranscriptTextLineKey {
             row_identity: row_identity.into(),
             block_path: block_path.into(),
             line_index,
+            viewport_local_scope: None,
         }
     }
 
     pub(crate) fn row_identity(&self) -> &str {
         &self.row_identity
+    }
+
+    pub(crate) fn with_viewport_local_scope(
+        mut self,
+        scope: impl Into<String>,
+    ) -> TranscriptTextLineKey {
+        self.viewport_local_scope = Some(scope.into());
+        self
+    }
+
+    fn is_viewport_local(&self) -> bool {
+        self.viewport_local_scope.is_some()
     }
 }
 
@@ -227,6 +241,14 @@ struct TranscriptSelectionSnapshot {
     selected_lines: Vec<TranscriptSelectedLineSnapshot>,
 }
 
+impl TranscriptSelectionSnapshot {
+    fn includes_viewport_local_lines(&self) -> bool {
+        self.selected_lines
+            .iter()
+            .any(|line| line.key.is_viewport_local())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TranscriptSelectedLineSnapshot {
     key: TranscriptTextLineKey,
@@ -336,7 +358,11 @@ impl TranscriptSelectionState {
             return self.snapshot.take().is_some();
         }
 
+        let viewport_local_selection = self.viewport_local_selection_active();
         let Some((start, end)) = self.normalized_points(frame) else {
+            if viewport_local_selection {
+                return self.clear();
+            }
             return false;
         };
         let snapshot = selection_snapshot_for_points(frame, &start, &end);
@@ -406,6 +432,20 @@ impl TranscriptSelectionState {
         } else {
             Some((focus, anchor))
         }
+    }
+
+    fn viewport_local_selection_active(&self) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(TranscriptSelectionSnapshot::includes_viewport_local_lines)
+            || self
+                .anchor
+                .as_ref()
+                .is_some_and(|point| point.key.is_viewport_local())
+            || self
+                .focus
+                .as_ref()
+                .is_some_and(|point| point.key.is_viewport_local())
     }
 }
 

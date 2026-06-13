@@ -52,10 +52,11 @@ use tracing::{Level, debug};
 use crate::diagnostic_dynamic_tools::{
     MediaDiagnosticEvent, MediaDiagnosticLog, PresentationRangeDiagnostic, PreviewStateDiagnostic,
     TranscriptFrameMetric, TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot,
+    TranscriptFrameRenderBudgetDiagnostic, TranscriptSemanticViewportDiagnostic,
     VisibleMediaDiagnostics, VisibleMediaSnapshot, diagnostic_duration_micros,
 };
 use crate::shell::{
-    JumpTranscriptTurnDown, JumpTranscriptTurnUp, ScrollbarRegion, ShellView,
+    JumpTranscriptTurnDown, JumpTranscriptTurnUp, ShellView, TranscriptStreamedNavigationSnapshot,
     execution_detail::{
         ExecutionItem, TranscriptRenderMetrics, TurnExecutionRecord, TurnNarrativeEntry,
     },
@@ -65,6 +66,7 @@ use crate::shell::{
     transcript_anchor::{self, TranscriptSubmitAnchorSnapshot},
     transcript_branch_menu_state::TranscriptImageMenuTarget,
     transcript_edit_mode_state::TranscriptEditModeSnapshot,
+    transcript_history::TranscriptResidencyStreamedTurnFill,
     transcript_image_preview::{
         TranscriptImagePreviewData, TranscriptImagePreviewUpdate,
         spawn_transcript_image_preview_worker,
@@ -83,6 +85,8 @@ use crate::shell::{
     },
     transcript_presentation::TranscriptActivityCaret,
     transcript_presentation::{
+        TranscriptRenderBudgetAdmission, TranscriptRenderBudgetPolicy,
+        TranscriptRenderChunkAdmissionDecision, TranscriptRowChunkRenderWindow,
         transcript_frame_preload_range, transcript_frame_presentation_range,
     },
     transcript_quote_popup::{self, TranscriptQuotePopupState},
@@ -90,6 +94,12 @@ use crate::shell::{
         TranscriptSelectionState, TranscriptTextLineKey, TranscriptTextLineOrder,
         TranscriptTextPoint, VisibleTranscriptTextFrame, VisibleTranscriptTextLine,
         vertical_hit_candidate_range,
+    },
+    transcript_viewport::{
+        TranscriptStreamedNavigationFrame, TranscriptViewportChunkAnchor,
+        TranscriptViewportLiveAutoscroll, TranscriptViewportMode,
+        TranscriptViewportNavigationDirection, TranscriptViewportPlacement,
+        TranscriptViewportState, TranscriptViewportTurnAnchor, TranscriptViewportTurnTarget,
     },
 };
 
@@ -138,7 +148,9 @@ use crate::shell::transcript_prepublication_preparation::{
 };
 use crate::shell::transcript_presentation::{
     TranscriptRowChunkMeasurementKey, TranscriptRowMeasurementDisplayState,
-    TranscriptRowMeasurementKey, TranscriptRowPresentationModel, measured_chunk_heights_for,
+    TranscriptRowMeasurementKey, TranscriptRowPresentationModel, TranscriptRowRenderChunk,
+    TranscriptRowStreamedAnchorPlacement, TranscriptRowStreamedRenderAnchor,
+    measured_chunk_heights_for, transcript_row_chunk_render_window,
 };
 
 const SLOW_TRANSCRIPT_FRAME_THRESHOLD: Duration = Duration::from_millis(8);
@@ -253,6 +265,7 @@ pub(crate) struct TranscriptPanel {
     activity_caret_blink_task: Option<Task<()>>,
     quote_popup: TranscriptQuotePopupState,
     handled_transcript_reset_generation: u64,
+    last_residency_followup_transcript_reset_generation: u64,
     memory_logged_transcript_reset_generation: u64,
     handled_content_release_generation: u64,
     handled_theme_revision: Option<u64>,
@@ -558,6 +571,7 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub pending_thread_activation_label: Option<String>,
     pub transcript_width: Pixels,
     pub transcript_list_state: ListState,
+    pub transcript_viewport: TranscriptViewportState,
     pub live_scroll: Option<TranscriptLiveScrollEffectSnapshot>,
     pub live_scroll_preserves_anchor_offset: bool,
     pub older_history_loading: bool,
@@ -565,6 +579,10 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub residency_retained_bytes: usize,
     pub residency_in_flight_requests: usize,
     pub residency_budget_reason: Option<String>,
+    pub active_turn_source_pin_active: bool,
+    pub active_turn_source_retained_bytes: usize,
+    pub active_turn_source_budget_max_bytes: usize,
+    pub active_turn_source_budget_fallback_active: bool,
     pub metrics: Option<TranscriptRenderMetrics>,
     pub activity_caret: Option<TranscriptActivityCaret>,
     pub transcript_edit_mode: Option<TranscriptEditModeSnapshot>,
@@ -623,6 +641,7 @@ impl TranscriptPanel {
             activity_caret_blink_task: None,
             quote_popup: TranscriptQuotePopupState::default(),
             handled_transcript_reset_generation: 0,
+            last_residency_followup_transcript_reset_generation: 0,
             memory_logged_transcript_reset_generation: 0,
             handled_content_release_generation: 0,
             handled_theme_revision: None,
@@ -875,6 +894,101 @@ impl TranscriptPanel {
             .borrow_mut()
             .begin_preload_frame(request.preload_range.clone());
         self.media_preload.request_preload(request);
+    }
+
+    fn report_transcript_streamed_residency_facts(
+        &mut self,
+        visible_range: Range<usize>,
+        viewport_height: Pixels,
+        transcript_viewport: &TranscriptViewportState,
+        scroll_position: ListScrollPosition,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let facts = self
+            .shell
+            .read(cx)
+            .conversation_surface()
+            .map(|surface| {
+                let turn_count = surface.transcript_presentation().len();
+                visible_range
+                    .clone()
+                    .filter_map(|index| {
+                        let row = surface.transcript_presentation().turn_at(index)?;
+                        let fact = streamed_residency_fill_fact_for_row(
+                            row.index,
+                            row.source_turn_index,
+                            row.identity.as_str(),
+                            row.model.as_ref(),
+                            &self.row_measurement_keys,
+                            &self.chunk_measurements,
+                            transcript_viewport,
+                            turn_count,
+                            scroll_position,
+                            viewport_height,
+                        )?;
+                        Some((row.identity.as_str().to_string(), fact))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        self.shell.update(cx, |shell, _| {
+            shell.conversation_surface_mut().is_some_and(|surface| {
+                surface.replace_transcript_streamed_residency_fill_facts(facts)
+            })
+        })
+    }
+
+    fn report_transcript_streamed_navigation_snapshot(
+        &mut self,
+        visible_range: Range<usize>,
+        viewport_height: Pixels,
+        transcript_viewport: &TranscriptViewportState,
+        scroll_position: ListScrollPosition,
+        transcript_list_state: &ListState,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let snapshot = self
+            .shell
+            .read(cx)
+            .conversation_surface()
+            .and_then(|surface| {
+                transcript_streamed_navigation_snapshot(
+                    surface,
+                    visible_range,
+                    viewport_height,
+                    transcript_viewport,
+                    scroll_position,
+                    transcript_list_state,
+                    &self.row_measurement_keys,
+                    &self.chunk_measurements,
+                )
+            });
+
+        self.shell.update(cx, |shell, _| {
+            shell.conversation_surface_mut().is_some_and(|surface| {
+                surface.replace_transcript_streamed_navigation_snapshot(snapshot)
+            })
+        })
+    }
+
+    fn take_transcript_reset_residency_followup(
+        &mut self,
+        generation: u64,
+        selected_thread_id: Option<&str>,
+        visible_range: &Range<usize>,
+        viewport_height: Pixels,
+    ) -> bool {
+        if generation == 0
+            || selected_thread_id.is_none()
+            || visible_range.is_empty()
+            || viewport_height <= px(0.0)
+            || self.last_residency_followup_transcript_reset_generation == generation
+        {
+            return false;
+        }
+        self.last_residency_followup_transcript_reset_generation = generation;
+        true
     }
 
     fn drain_transcript_media_preload_coordinator(
@@ -2743,6 +2857,7 @@ impl Render for TranscriptPanel {
         let profiler = Some(TranscriptFrameProfile::new(
             frame_started_at,
             snapshot.metrics,
+            semantic_viewport_diagnostic(&snapshot.transcript_viewport),
             snapshot.selected_thread_id.clone(),
             presentation_range.clone(),
             transcript_list_state.visible_range(),
@@ -2752,6 +2867,10 @@ impl Render for TranscriptPanel {
             snapshot.residency_retained_bytes,
             snapshot.residency_in_flight_requests,
             snapshot.residency_budget_reason.clone(),
+            snapshot.active_turn_source_pin_active,
+            snapshot.active_turn_source_retained_bytes,
+            snapshot.active_turn_source_budget_max_bytes,
+            snapshot.active_turn_source_budget_fallback_active,
             turn_count,
             snapshot.style_snapshot_micros,
             snapshot.composer_measurement_micros,
@@ -2779,6 +2898,8 @@ impl Render for TranscriptPanel {
         );
         let row_measurement_keys_for_render = Arc::new(self.row_measurement_keys.clone());
         let chunk_measurements_for_render = Arc::new(self.chunk_measurements.clone());
+        let transcript_viewport_for_render = snapshot.transcript_viewport.clone();
+        let scroll_position_for_streamed_render = transcript_list_state.scroll_position();
         div()
             .relative()
             .size_full()
@@ -2916,29 +3037,29 @@ impl Render for TranscriptPanel {
                                     .w_full()
                                     .flex_1()
                                     .min_h(px(0.0))
-                                    .on_mouse_move({
-                                        let shell = shell.clone();
-                                        move |_, window, cx| {
-                                            shell.update(cx, |view, cx| {
-                                                view.note_scrollbar_activity(
-                                                    ScrollbarRegion::Transcript,
-                                                    window,
-                                                    cx,
-                                                );
-                                            });
-                                        }
-                                    })
                                     .on_scroll_wheel({
                                         let shell = shell.clone();
-                                        move |_, window, cx| {
-                                            shell.update(cx, |view, cx| {
-                                                view.release_transcript_submit_anchor(cx);
-                                                view.note_scrollbar_activity(
-                                                    ScrollbarRegion::Transcript,
-                                                    window,
-                                                    cx,
-                                                );
+                                        move |event, window, cx| {
+                                            let streamed = shell
+                                                .read(cx)
+                                                .conversation_surface()
+                                                .and_then(|surface| {
+                                                    surface
+                                                        .current_transcript_streamed_navigation_snapshot()
+                                                        .cloned()
+                                                });
+                                            let consumed = shell.update(cx, |view, cx| {
+                                                view.apply_transcript_scroll_wheel(
+                                                    event, streamed, window, cx,
+                                                )
                                             });
+                                            if consumed {
+                                                cx.stop_propagation();
+                                            } else {
+                                                shell.update(cx, |view, cx| {
+                                                    view.release_transcript_submit_anchor(cx);
+                                                });
+                                            }
                                         }
                                     })
                                     .on_mouse_down(MouseButton::Left, {
@@ -2978,6 +3099,12 @@ impl Render for TranscriptPanel {
                                         let transcript_list_state = transcript_list_state.clone();
                                         let preload_selected_thread_id =
                                             snapshot.selected_thread_id.clone();
+                                        let preload_transcript_reset_generation =
+                                            snapshot.transcript_reset_generation;
+                                        let preload_transcript_viewport =
+                                            transcript_viewport_for_render.clone();
+                                        let preload_scroll_position =
+                                            scroll_position_for_streamed_render;
                                         let preload_workspace = workspace.clone();
                                         let preload_media_context = media_context.clone();
                                         let preload_markdown_context = markdown_context.clone();
@@ -3014,7 +3141,7 @@ impl Render for TranscriptPanel {
                                                 selected_thread_id: preload_selected_thread_id
                                                     .clone(),
                                                 workspace: preload_workspace.clone(),
-                                                visible_range,
+                                                visible_range: visible_range.clone(),
                                                 preload_range,
                                                 viewport_height: viewport_bounds.size.height,
                                                 rows,
@@ -3023,6 +3150,30 @@ impl Render for TranscriptPanel {
                                             entity.update(cx, |view, cx| {
                                                 view.finish_text_span_frame(viewport_bounds, cx);
                                                 view.report_transcript_media_preload_facts(request);
+                                                let streamed_facts_changed = view
+                                                    .report_transcript_streamed_residency_facts(
+                                                        visible_range.clone(),
+                                                        viewport_bounds.size.height,
+                                                        &preload_transcript_viewport,
+                                                        preload_scroll_position,
+                                                        cx,
+                                                    );
+                                                let streamed_navigation_changed = view
+                                                    .report_transcript_streamed_navigation_snapshot(
+                                                        visible_range.clone(),
+                                                        viewport_bounds.size.height,
+                                                        &preload_transcript_viewport,
+                                                        preload_scroll_position,
+                                                        &transcript_list_state,
+                                                        cx,
+                                                    );
+                                                let reset_followup_due = view
+                                                    .take_transcript_reset_residency_followup(
+                                                        preload_transcript_reset_generation,
+                                                        preload_selected_thread_id.as_deref(),
+                                                        &visible_range,
+                                                        viewport_bounds.size.height,
+                                                    );
                                                 let rendered_code_panel_ids =
                                                     prepaint_rendered_code_panel_ids
                                                         .borrow()
@@ -3048,6 +3199,20 @@ impl Render for TranscriptPanel {
                                                     if changed {
                                                         cx.notify();
                                                     }
+                                                }
+                                                if streamed_facts_changed
+                                                    || streamed_navigation_changed
+                                                    || reset_followup_due
+                                                {
+                                                    let shell = shell.clone();
+                                                    window.defer(cx, move |window, cx| {
+                                                        shell.update(cx, |view, cx| {
+                                                            view.begin_transcript_residency_update_for_current_view(
+                                                                window, cx,
+                                                            );
+                                                            cx.notify();
+                                                        });
+                                                    });
                                                 }
                                             });
                                             let preload_entity = entity.clone();
@@ -3117,6 +3282,8 @@ impl Render for TranscriptPanel {
                                             row_measurement_keys_for_render.clone();
                                         let list_chunk_measurements =
                                             chunk_measurements_for_render.clone();
+                                        let list_transcript_viewport =
+                                            transcript_viewport_for_render.clone();
                                         let list_rendered_code_panel_ids =
                                             rendered_nested_code_panel_ids.clone();
                                         list(transcript_list_state.clone(), move |index, row_context, _, cx| {
@@ -3140,6 +3307,10 @@ impl Render for TranscriptPanel {
                                             let turn_item_count = row
                                                 .as_ref()
                                                 .map_or(0, |row| row.turn.item_count());
+                                            let turn_terminal_fallback = row
+                                                .as_ref()
+                                                .and_then(|row| row.turn.terminal_fallback())
+                                                .map(|fallback| fallback.diagnostic_label());
                                             let row_identity_for_profile =
                                                 row.as_ref().map(|row| row.identity.as_str().to_string());
                                             let workspace = workspace.clone();
@@ -3200,6 +3371,17 @@ impl Render for TranscriptPanel {
                                                                 chunk_measurements.as_ref(),
                                                             )
                                                         });
+                                                    let streamed_render_anchor =
+                                                        streamed_render_anchor_for_row(
+                                                            &list_transcript_viewport,
+                                                            index,
+                                                            row_identity.as_str(),
+                                                            row.model
+                                                                .chunk_presentation()
+                                                                .chunks(),
+                                                            turn_count,
+                                                            scroll_position_for_streamed_render,
+                                                        );
                                                     let media_context =
                                                         media_context.for_row(row_identity.clone());
                                                     let show_activity_caret =
@@ -3248,8 +3430,8 @@ impl Render for TranscriptPanel {
                                                         show_activity_caret,
                                                         dimmed_for_edit,
                                                         activity_caret_opacity,
-                                                        row_context.scroll_offset_in_item,
                                                         row_context.viewport_height,
+                                                        streamed_render_anchor,
                                                         row_measurement_key,
                                                         measured_chunk_heights,
                                                         profiler.clone(),
@@ -3265,6 +3447,7 @@ impl Render for TranscriptPanel {
                                                     row_identity_for_profile.as_deref(),
                                                     turn_text_chars,
                                                     turn_item_count,
+                                                    turn_terminal_fallback,
                                                     row_started.elapsed(),
                                                 );
                                             }
@@ -4188,6 +4371,296 @@ fn transcript_row_initial_narrative_copy_block_count(index: usize) -> usize {
     usize::from(index > 0)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn streamed_residency_fill_fact_for_row(
+    row_index: usize,
+    source_position: usize,
+    row_identity: &str,
+    row_model: &TranscriptRowPresentationModel,
+    row_measurement_keys: &HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+    transcript_viewport: &TranscriptViewportState,
+    row_count: usize,
+    scroll_position: ListScrollPosition,
+    viewport_height: Pixels,
+) -> Option<TranscriptResidencyStreamedTurnFill> {
+    if !row_model.chunk_presentation().requires_chunking() {
+        return None;
+    }
+    let chunks = row_model.chunk_presentation().chunks();
+    let row_key = row_measurement_keys.get(row_identity)?;
+    let measured_heights = measured_chunk_heights_for(chunks, row_key, chunk_measurements);
+    let anchor = streamed_render_anchor_for_row(
+        transcript_viewport,
+        row_index,
+        row_identity,
+        chunks,
+        row_count,
+        scroll_position,
+    )?;
+    let render_window = transcript_row_chunk_render_window(
+        chunks.len(),
+        &measured_heights,
+        anchor,
+        viewport_height,
+    );
+    let leading_margin_satisfied = !render_window.reached_start;
+    let trailing_margin_satisfied = !render_window.reached_end;
+    (leading_margin_satisfied || trailing_margin_satisfied).then_some(
+        TranscriptResidencyStreamedTurnFill {
+            source_position,
+            leading_margin_satisfied,
+            trailing_margin_satisfied,
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn transcript_streamed_navigation_snapshot(
+    surface: &crate::shell::ConversationSurfaceState,
+    visible_range: Range<usize>,
+    viewport_height: Pixels,
+    transcript_viewport: &TranscriptViewportState,
+    scroll_position: ListScrollPosition,
+    transcript_list_state: &ListState,
+    row_measurement_keys: &HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+) -> Option<TranscriptStreamedNavigationSnapshot> {
+    let turn_count = surface.transcript_presentation().len();
+    let row_index = streamed_navigation_row_index(
+        surface,
+        visible_range,
+        transcript_viewport,
+        scroll_position,
+        transcript_list_state,
+    )?;
+    let row = surface.transcript_presentation().turn_at(row_index)?;
+    let chunks = row.model.chunk_presentation().chunks();
+    if !row.model.chunk_presentation().requires_chunking() || chunks.is_empty() {
+        return None;
+    }
+
+    let row_key = row_measurement_keys.get(row.identity.as_str())?;
+    let measured_heights = measured_chunk_heights_for(chunks, row_key, chunk_measurements);
+    let anchor = streamed_render_anchor_for_row(
+        transcript_viewport,
+        row.index,
+        row.identity.as_str(),
+        chunks,
+        turn_count,
+        scroll_position,
+    )?;
+    let render_window = transcript_row_chunk_render_window(
+        chunks.len(),
+        measured_heights.as_slice(),
+        anchor.clone(),
+        viewport_height,
+    );
+    let first_rendered_chunk = chunks.get(render_window.range.start).map(|chunk| {
+        TranscriptViewportChunkAnchor::new(render_window.range.start, chunk.identity.clone())
+    });
+    let last_index = render_window.range.end.checked_sub(1);
+    let last_rendered_chunk = last_index.and_then(|index| {
+        chunks
+            .get(index)
+            .map(|chunk| TranscriptViewportChunkAnchor::new(index, chunk.identity.clone()))
+    });
+    let previous_chunk = render_window.range.start.checked_sub(1).and_then(|index| {
+        chunks
+            .get(index)
+            .map(|chunk| TranscriptViewportChunkAnchor::new(index, chunk.identity.clone()))
+    });
+    let next_chunk = chunks.get(render_window.range.end).map(|chunk| {
+        TranscriptViewportChunkAnchor::new(render_window.range.end, chunk.identity.clone())
+    });
+    let local_scroll_max = transcript_list_state
+        .measured_item_size(row.index)
+        .map(|size| (size.height - viewport_height).max(px(0.0)))
+        .unwrap_or(px(0.0));
+    let local_scroll_offset = streamed_navigation_local_scroll_offset(
+        row.index,
+        turn_count,
+        scroll_position,
+        transcript_list_state,
+        local_scroll_max,
+    );
+    let frame = TranscriptStreamedNavigationFrame::new(
+        chunks.len(),
+        render_window.range,
+        first_rendered_chunk,
+        last_rendered_chunk,
+        previous_chunk,
+        next_chunk,
+        local_scroll_offset,
+        local_scroll_max,
+    );
+    let turn = TranscriptViewportTurnAnchor::new(
+        row.index,
+        Some(row.identity.as_str().to_string()),
+        row.turn.thread_id.clone(),
+        row.turn.turn_id.clone(),
+    );
+    let anchor_chunk = chunks.get(anchor.chunk_index).map(|chunk| {
+        TranscriptViewportChunkAnchor::new(anchor.chunk_index, chunk.identity.clone())
+    })?;
+    let target = TranscriptViewportTurnTarget::streamed(
+        turn,
+        anchor_chunk,
+        chunks.len(),
+        transcript_viewport_placement_from_row_anchor(anchor.placement),
+    );
+    Some(TranscriptStreamedNavigationSnapshot {
+        row_index: row.index,
+        row_identity: row.identity.as_str().to_string(),
+        target,
+        frame,
+    })
+}
+
+fn streamed_navigation_row_index(
+    surface: &crate::shell::ConversationSurfaceState,
+    visible_range: Range<usize>,
+    transcript_viewport: &TranscriptViewportState,
+    scroll_position: ListScrollPosition,
+    transcript_list_state: &ListState,
+) -> Option<usize> {
+    if let TranscriptViewportMode::Streamed(anchor) = transcript_viewport.mode() {
+        if let Some(identity) = anchor.turn.row_identity.as_deref()
+            && let Some(index) = surface
+                .transcript_presentation()
+                .row_index_for_identity(identity)
+            && visible_range.contains(&index)
+        {
+            return Some(index);
+        }
+        if visible_range.contains(&anchor.turn.turn_index) {
+            return Some(anchor.turn.turn_index);
+        }
+    }
+
+    let turn_count = surface.transcript_presentation().len();
+    if matches!(scroll_position, ListScrollPosition::Bottom)
+        && let Some(last) = turn_count.checked_sub(1)
+        && visible_range.contains(&last)
+        && surface
+            .transcript_presentation()
+            .turn_at(last)
+            .is_some_and(|row| row.model.chunk_presentation().requires_chunking())
+    {
+        return Some(last);
+    }
+
+    let top = transcript_list_state.logical_scroll_top().item_ix;
+    if visible_range.contains(&top)
+        && surface
+            .transcript_presentation()
+            .turn_at(top)
+            .is_some_and(|row| row.model.chunk_presentation().requires_chunking())
+    {
+        return Some(top);
+    }
+
+    visible_range.into_iter().find(|index| {
+        surface
+            .transcript_presentation()
+            .turn_at(*index)
+            .is_some_and(|row| row.model.chunk_presentation().requires_chunking())
+    })
+}
+
+fn streamed_navigation_local_scroll_offset(
+    row_index: usize,
+    turn_count: usize,
+    scroll_position: ListScrollPosition,
+    transcript_list_state: &ListState,
+    local_scroll_max: Pixels,
+) -> Pixels {
+    match scroll_position {
+        ListScrollPosition::Bottom if row_index.saturating_add(1) >= turn_count => {
+            return local_scroll_max;
+        }
+        ListScrollPosition::Content(offset) if offset.item_ix == row_index => {
+            return offset.offset_in_item.clamp(px(0.0), local_scroll_max);
+        }
+        ListScrollPosition::VirtualTail { .. } if row_index.saturating_add(1) >= turn_count => {
+            return local_scroll_max;
+        }
+        _ => {}
+    }
+
+    let logical = transcript_list_state.logical_scroll_top();
+    if logical.item_ix == row_index {
+        logical.offset_in_item.clamp(px(0.0), local_scroll_max)
+    } else {
+        px(0.0)
+    }
+}
+
+fn transcript_viewport_placement_from_row_anchor(
+    placement: TranscriptRowStreamedAnchorPlacement,
+) -> TranscriptViewportPlacement {
+    match placement {
+        TranscriptRowStreamedAnchorPlacement::Top => TranscriptViewportPlacement::Top,
+        TranscriptRowStreamedAnchorPlacement::Bottom => TranscriptViewportPlacement::Bottom,
+    }
+}
+
+fn streamed_render_anchor_for_row(
+    transcript_viewport: &TranscriptViewportState,
+    row_index: usize,
+    row_identity: &str,
+    chunks: &[TranscriptRowRenderChunk],
+    row_count: usize,
+    scroll_position: ListScrollPosition,
+) -> Option<TranscriptRowStreamedRenderAnchor> {
+    if chunks.is_empty() {
+        return None;
+    }
+
+    if let TranscriptViewportMode::Streamed(anchor) = transcript_viewport.mode()
+        && (anchor.turn.row_identity.as_deref() == Some(row_identity)
+            || anchor.turn.turn_index == row_index)
+    {
+        let chunk_index = chunks
+            .get(anchor.anchor_chunk.chunk_index)
+            .filter(|chunk| chunk.identity == anchor.anchor_chunk.chunk_identity)
+            .map(|_| anchor.anchor_chunk.chunk_index)
+            .or_else(|| {
+                chunks
+                    .iter()
+                    .position(|chunk| chunk.identity == anchor.anchor_chunk.chunk_identity)
+            })
+            .unwrap_or(anchor.anchor_chunk.chunk_index.min(chunks.len() - 1));
+        return Some(TranscriptRowStreamedRenderAnchor {
+            chunk_index,
+            placement: streamed_anchor_placement(anchor.placement),
+        });
+    }
+
+    if matches!(scroll_position, ListScrollPosition::Bottom)
+        && row_index.saturating_add(1) >= row_count
+    {
+        return Some(TranscriptRowStreamedRenderAnchor {
+            chunk_index: chunks.len() - 1,
+            placement: TranscriptRowStreamedAnchorPlacement::Bottom,
+        });
+    }
+
+    Some(TranscriptRowStreamedRenderAnchor {
+        chunk_index: 0,
+        placement: TranscriptRowStreamedAnchorPlacement::Top,
+    })
+}
+
+fn streamed_anchor_placement(
+    placement: TranscriptViewportPlacement,
+) -> TranscriptRowStreamedAnchorPlacement {
+    match placement {
+        TranscriptViewportPlacement::Top => TranscriptRowStreamedAnchorPlacement::Top,
+        TranscriptViewportPlacement::Bottom => TranscriptRowStreamedAnchorPlacement::Bottom,
+    }
+}
+
 fn render_turn(
     index: usize,
     workspace: &WorkspaceId,
@@ -4218,19 +4691,19 @@ fn render_turn(
     show_activity_caret: bool,
     dimmed_for_edit: bool,
     activity_caret_opacity: f32,
-    row_scroll_offset: Pixels,
     viewport_height: Pixels,
+    streamed_render_anchor: Option<TranscriptRowStreamedRenderAnchor>,
     row_measurement_key: Option<TranscriptRowMeasurementKey>,
     measured_chunk_heights: Option<Vec<Option<Pixels>>>,
     profiler: Option<Rc<TranscriptFrameProfile>>,
     cx: &mut gpui::App,
 ) -> AnyElement {
-    let chunk_render_state =
-        row_measurement_key
-            .zip(measured_chunk_heights)
-            .map(|(row_key, measured_heights)| {
-                TranscriptRowChunkRenderState::new(row_key, measured_heights, entity.clone())
-            });
+    let chunk_render_state = row_measurement_key
+        .zip(measured_chunk_heights)
+        .zip(streamed_render_anchor)
+        .map(|((row_key, measured_heights), anchor)| {
+            TranscriptRowChunkRenderState::new(row_key, measured_heights, anchor, entity.clone())
+        });
     let row = div()
         .w_full()
         .px_3()
@@ -4291,9 +4764,9 @@ fn render_turn(
         narrative_copy_block_count,
         show_activity_caret,
         activity_caret_opacity,
-        row_scroll_offset,
         viewport_height,
         chunk_render_state,
+        profiler.clone(),
         cx,
     ))
     .into_any_element()
@@ -4420,6 +4893,7 @@ struct TranscriptFrameProfile {
     total_turns: usize,
     total_item_count: Option<usize>,
     total_text_chars: Option<usize>,
+    semantic_viewport: TranscriptSemanticViewportDiagnostic,
     selected_thread_id: Option<String>,
     presentation_range: Range<usize>,
     visible_range: Range<usize>,
@@ -4429,6 +4903,10 @@ struct TranscriptFrameProfile {
     residency_retained_bytes: usize,
     residency_in_flight_requests: usize,
     residency_budget_reason: Option<String>,
+    active_turn_source_pin_active: bool,
+    active_turn_source_retained_bytes: usize,
+    active_turn_source_budget_max_bytes: usize,
+    active_turn_source_budget_fallback_active: bool,
     style_snapshot_micros: u64,
     composer_measurement_micros: u64,
     snapshot_micros: u64,
@@ -4447,6 +4925,10 @@ struct TranscriptFrameProfile {
     slowest_turn_prepaint: Cell<Duration>,
     slowest_turn_prepaint_index: Cell<Option<usize>>,
     slowest_turn_prepaint_identity: RefCell<Option<String>>,
+    resident_budget_fallback_turns: Cell<usize>,
+    active_source_budget_fallback_turns: Cell<usize>,
+    total_chunk_window_computation: Cell<Duration>,
+    render_budget_diagnostic: RefCell<TranscriptFrameRenderBudgetDiagnostic>,
     total_inline_text_construction: Cell<Duration>,
     total_code_panel_render: Cell<Duration>,
     total_media_run_render: Cell<Duration>,
@@ -4457,6 +4939,7 @@ impl TranscriptFrameProfile {
     fn new(
         started_at: Instant,
         metrics: Option<TranscriptRenderMetrics>,
+        semantic_viewport: TranscriptSemanticViewportDiagnostic,
         selected_thread_id: Option<String>,
         presentation_range: Range<usize>,
         visible_range: Range<usize>,
@@ -4466,6 +4949,10 @@ impl TranscriptFrameProfile {
         residency_retained_bytes: usize,
         residency_in_flight_requests: usize,
         residency_budget_reason: Option<String>,
+        active_turn_source_pin_active: bool,
+        active_turn_source_retained_bytes: usize,
+        active_turn_source_budget_max_bytes: usize,
+        active_turn_source_budget_fallback_active: bool,
         total_turns: usize,
         style_snapshot_micros: u64,
         composer_measurement_micros: u64,
@@ -4486,6 +4973,7 @@ impl TranscriptFrameProfile {
             total_turns,
             total_item_count,
             total_text_chars,
+            semantic_viewport,
             selected_thread_id,
             presentation_range,
             visible_range,
@@ -4495,6 +4983,10 @@ impl TranscriptFrameProfile {
             residency_retained_bytes,
             residency_in_flight_requests,
             residency_budget_reason,
+            active_turn_source_pin_active,
+            active_turn_source_retained_bytes,
+            active_turn_source_budget_max_bytes,
+            active_turn_source_budget_fallback_active,
             style_snapshot_micros,
             composer_measurement_micros,
             snapshot_micros,
@@ -4513,6 +5005,10 @@ impl TranscriptFrameProfile {
             slowest_turn_prepaint: Cell::new(Duration::ZERO),
             slowest_turn_prepaint_index: Cell::new(None),
             slowest_turn_prepaint_identity: RefCell::new(None),
+            resident_budget_fallback_turns: Cell::new(0),
+            active_source_budget_fallback_turns: Cell::new(0),
+            total_chunk_window_computation: Cell::new(Duration::ZERO),
+            render_budget_diagnostic: RefCell::new(TranscriptFrameRenderBudgetDiagnostic::default()),
             total_inline_text_construction: Cell::new(Duration::ZERO),
             total_code_panel_render: Cell::new(Duration::ZERO),
             total_media_run_render: Cell::new(Duration::ZERO),
@@ -4526,6 +5022,7 @@ impl TranscriptFrameProfile {
         identity: Option<&str>,
         text_chars: usize,
         item_count: usize,
+        terminal_fallback: Option<&'static str>,
         elapsed: Duration,
     ) {
         self.rendered_turn_count
@@ -4540,6 +5037,20 @@ impl TranscriptFrameProfile {
         if item_count > self.largest_visible_turn_item_count.get() {
             self.largest_visible_turn_item_count.set(item_count);
             self.largest_visible_turn_item_count_index.set(Some(index));
+        }
+        match terminal_fallback {
+            Some("resident_budget_oversized_turn") => {
+                self.resident_budget_fallback_turns
+                    .set(self.resident_budget_fallback_turns.get().saturating_add(1));
+            }
+            Some("active_turn_source_budget") => {
+                self.active_source_budget_fallback_turns.set(
+                    self.active_source_budget_fallback_turns
+                        .get()
+                        .saturating_add(1),
+                );
+            }
+            Some(_) | None => {}
         }
 
         if elapsed > self.slowest_turn_build.get() {
@@ -4557,6 +5068,53 @@ impl TranscriptFrameProfile {
             self.slowest_turn_prepaint.set(elapsed);
             self.slowest_turn_prepaint_index.set(Some(index));
             *self.slowest_turn_prepaint_identity.borrow_mut() = identity.map(str::to_string);
+        }
+    }
+
+    fn observe_chunk_window_admission(
+        &self,
+        _window: &TranscriptRowChunkRenderWindow,
+        admission: &TranscriptRenderBudgetAdmission,
+        policy: TranscriptRenderBudgetPolicy,
+        elapsed: Duration,
+    ) {
+        self.total_chunk_window_computation.set(
+            self.total_chunk_window_computation
+                .get()
+                .saturating_add(elapsed),
+        );
+        let mut diagnostic = self.render_budget_diagnostic.borrow_mut();
+        diagnostic.chunk_window_count = diagnostic.chunk_window_count.saturating_add(1);
+        diagnostic.admitted_chunk_count = diagnostic
+            .admitted_chunk_count
+            .saturating_add(admission.chunks.len());
+        diagnostic.rendered_chunk_count = diagnostic
+            .rendered_chunk_count
+            .saturating_add(admission.rendered_chunks);
+        diagnostic.fallback_chunk_count = diagnostic
+            .fallback_chunk_count
+            .saturating_add(admission.fallback_chunks);
+        diagnostic.rendered_cost_units = diagnostic
+            .rendered_cost_units
+            .saturating_add(admission.rendered_cost_units);
+        diagnostic.fallback_cost_units = diagnostic
+            .fallback_cost_units
+            .saturating_add(admission.fallback_cost_units);
+        diagnostic.max_chunk_cost_units = diagnostic
+            .max_chunk_cost_units
+            .max(policy.max_chunk_units());
+        diagnostic.max_frame_cost_units = diagnostic
+            .max_frame_cost_units
+            .max(policy.max_frame_units());
+        for chunk in &admission.chunks {
+            diagnostic.largest_chunk_cost_units =
+                diagnostic.largest_chunk_cost_units.max(chunk.cost_units);
+            if let TranscriptRenderChunkAdmissionDecision::Fallback(reason) = chunk.decision {
+                let label = reason.diagnostic_label().to_string();
+                if !diagnostic.fallback_reasons.contains(&label) {
+                    diagnostic.fallback_reasons.push(label);
+                }
+            }
         }
     }
 
@@ -4595,6 +5153,7 @@ impl TranscriptFrameProfile {
         TranscriptFrameMetric {
             sequence: 0,
             selected_thread_id: self.selected_thread_id.clone(),
+            semantic_viewport: self.semantic_viewport.clone(),
             presentation_range: Some(range_diagnostic(&self.presentation_range)),
             visible_range: Some(range_diagnostic(&self.visible_range)),
             total_loaded_turn_count: self.total_turns,
@@ -4607,11 +5166,23 @@ impl TranscriptFrameProfile {
             residency_retained_bytes: self.residency_retained_bytes,
             residency_in_flight_requests: self.residency_in_flight_requests,
             residency_budget_reason: self.residency_budget_reason.clone(),
+            active_turn_source_pin_active: self.active_turn_source_pin_active,
+            active_turn_source_retained_bytes: self.active_turn_source_retained_bytes,
+            active_turn_source_budget_max_bytes: self.active_turn_source_budget_max_bytes,
+            active_turn_source_budget_fallback_active: self
+                .active_turn_source_budget_fallback_active,
+            resident_budget_fallback_row_count: self.resident_budget_fallback_turns.get(),
+            active_source_budget_fallback_row_count: self.active_source_budget_fallback_turns.get(),
+            transcript_scrollbar_visible: false,
             frame_micros: diagnostic_duration_micros(frame_elapsed),
             snapshot_micros: self.snapshot_micros,
             render_state_pruning_micros: self.render_state_pruning_micros,
             style_snapshot_micros: self.style_snapshot_micros,
             composer_measurement_micros: self.composer_measurement_micros,
+            chunk_window_computation_micros: diagnostic_duration_micros(
+                self.total_chunk_window_computation.get(),
+            ),
+            render_budget: self.render_budget_diagnostic.borrow().clone(),
             row_build_total_micros: diagnostic_duration_micros(self.total_turn_build.get()),
             row_prepaint_total_micros: diagnostic_duration_micros(self.total_turn_prepaint.get()),
             inline_text_construction_micros: diagnostic_duration_micros(
@@ -4669,11 +5240,25 @@ impl TranscriptFrameProfile {
                 .largest_visible_turn_item_count_index
                 .get()
                 .unwrap_or_default(),
+            active_turn_source_pin_active = self.active_turn_source_pin_active,
+            active_turn_source_retained_bytes = self.active_turn_source_retained_bytes,
+            active_turn_source_budget_max_bytes = self.active_turn_source_budget_max_bytes,
+            active_turn_source_budget_fallback_active =
+                self.active_turn_source_budget_fallback_active,
+            resident_budget_fallback_row_count = self.resident_budget_fallback_turns.get(),
+            active_source_budget_fallback_row_count =
+                self.active_source_budget_fallback_turns.get(),
+            transcript_scrollbar_visible = false,
             frame_ms = frame_elapsed.as_secs_f64() * 1000.0,
             snapshot_ms = self.snapshot_micros as f64 / 1000.0,
             render_state_pruning_ms = self.render_state_pruning_micros as f64 / 1000.0,
             style_snapshot_ms = self.style_snapshot_micros as f64 / 1000.0,
             composer_measurement_ms = self.composer_measurement_micros as f64 / 1000.0,
+            chunk_window_computation_ms =
+                self.total_chunk_window_computation.get().as_secs_f64() * 1000.0,
+            render_budget_chunk_windows = self.render_budget_diagnostic.borrow().chunk_window_count,
+            render_budget_fallback_chunks =
+                self.render_budget_diagnostic.borrow().fallback_chunk_count,
             turn_build_total_ms = self.total_turn_build.get().as_secs_f64() * 1000.0,
             turn_prepaint_total_ms = self.total_turn_prepaint.get().as_secs_f64() * 1000.0,
             inline_text_construction_ms =
@@ -4711,6 +5296,10 @@ impl TranscriptFrameProfile {
             ("style_snapshot", self.style_snapshot_micros),
             ("composer_measurement", self.composer_measurement_micros),
             (
+                "chunk_window_computation",
+                diagnostic_duration_micros(self.total_chunk_window_computation.get()),
+            ),
+            (
                 "row_build",
                 diagnostic_duration_micros(self.total_turn_build.get()),
             ),
@@ -4746,5 +5335,79 @@ fn range_diagnostic(range: &Range<usize>) -> PresentationRangeDiagnostic {
     PresentationRangeDiagnostic {
         start: range.start,
         end: range.end,
+    }
+}
+
+fn semantic_viewport_diagnostic(
+    viewport: &TranscriptViewportState,
+) -> TranscriptSemanticViewportDiagnostic {
+    match viewport.mode() {
+        TranscriptViewportMode::Empty => TranscriptSemanticViewportDiagnostic {
+            viewport_mode: "empty".to_string(),
+            live_autoscroll: transcript_live_autoscroll_label(viewport.live_autoscroll())
+                .to_string(),
+            ..TranscriptSemanticViewportDiagnostic::default()
+        },
+        TranscriptViewportMode::Ordinary(anchor) => TranscriptSemanticViewportDiagnostic {
+            viewport_mode: "ordinary".to_string(),
+            live_autoscroll: transcript_live_autoscroll_label(viewport.live_autoscroll())
+                .to_string(),
+            anchor_row_index: Some(anchor.turn.turn_index),
+            anchor_row_identity: anchor.turn.row_identity.clone(),
+            anchor_placement: Some(
+                transcript_viewport_placement_label(anchor.placement).to_string(),
+            ),
+            ..TranscriptSemanticViewportDiagnostic::default()
+        },
+        TranscriptViewportMode::Streamed(anchor) => TranscriptSemanticViewportDiagnostic {
+            viewport_mode: "streamed".to_string(),
+            live_autoscroll: transcript_live_autoscroll_label(viewport.live_autoscroll())
+                .to_string(),
+            anchor_row_index: Some(anchor.turn.turn_index),
+            anchor_row_identity: anchor.turn.row_identity.clone(),
+            anchor_chunk_index: Some(anchor.anchor_chunk.chunk_index),
+            anchor_chunk_identity: Some(anchor.anchor_chunk.chunk_identity.clone()),
+            anchor_placement: Some(
+                transcript_viewport_placement_label(anchor.placement).to_string(),
+            ),
+            rendered_chunk_range: Some(range_diagnostic(&anchor.rendered_chunk_range)),
+            chunk_count: Some(anchor.chunk_count),
+            fill_direction: anchor
+                .last_navigation_direction
+                .map(transcript_viewport_navigation_direction_label)
+                .map(str::to_string)
+                .or_else(|| {
+                    Some(
+                        match anchor.placement {
+                            TranscriptViewportPlacement::Top => "down",
+                            TranscriptViewportPlacement::Bottom => "up",
+                        }
+                        .to_string(),
+                    )
+                }),
+        },
+    }
+}
+
+fn transcript_live_autoscroll_label(mode: TranscriptViewportLiveAutoscroll) -> &'static str {
+    match mode {
+        TranscriptViewportLiveAutoscroll::Detached => "detached",
+        TranscriptViewportLiveAutoscroll::FollowingTail => "following_tail",
+    }
+}
+
+fn transcript_viewport_placement_label(placement: TranscriptViewportPlacement) -> &'static str {
+    match placement {
+        TranscriptViewportPlacement::Top => "top",
+        TranscriptViewportPlacement::Bottom => "bottom",
+    }
+}
+
+fn transcript_viewport_navigation_direction_label(
+    direction: TranscriptViewportNavigationDirection,
+) -> &'static str {
+    match direction {
+        TranscriptViewportNavigationDirection::Up => "up",
+        TranscriptViewportNavigationDirection::Down => "down",
     }
 }

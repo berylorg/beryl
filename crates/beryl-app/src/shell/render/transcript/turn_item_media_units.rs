@@ -346,7 +346,8 @@ fn render_item_markdown_source(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
 
     render_markdown_plan_with_style_and_selection(
         markdown.render_plan(),
@@ -384,7 +385,8 @@ pub(super) fn render_item_markdown_source_slice(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
 
     render_markdown_plan_slice_with_style_and_selection(
         markdown.render_plan(),

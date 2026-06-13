@@ -1,6 +1,9 @@
 use super::{
-    execution_detail::ExecutionDetailState, transcript_history::TranscriptHistoryWindow,
-    transcript_presentation::TranscriptPresentationState, virtual_list::ListState,
+    execution_detail::ExecutionDetailState,
+    transcript_history::TranscriptHistoryWindow,
+    transcript_presentation::TranscriptPresentationState,
+    transcript_viewport::{TranscriptViewportMode, TranscriptViewportState},
+    virtual_list::ListState,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -24,6 +27,7 @@ pub(crate) fn transcript_turn_numbering_snapshot(
     execution_details: &ExecutionDetailState,
     history_window: &TranscriptHistoryWindow,
     presentation: &TranscriptPresentationState,
+    viewport: &TranscriptViewportState,
     list_state: &ListState,
 ) -> TranscriptTurnNumberingSnapshot {
     let Some(thread_id) = selected_thread_id else {
@@ -36,6 +40,7 @@ pub(crate) fn transcript_turn_numbering_snapshot(
     let current = transcript_view_current_turn_number(
         history_window,
         presentation,
+        viewport,
         list_state,
         loaded_backend_turn_count,
         total,
@@ -46,6 +51,7 @@ pub(crate) fn transcript_turn_numbering_snapshot(
 fn transcript_view_current_turn_number(
     history_window: &TranscriptHistoryWindow,
     presentation: &TranscriptPresentationState,
+    viewport: &TranscriptViewportState,
     list_state: &ListState,
     loaded_backend_turn_count: usize,
     total: Option<usize>,
@@ -57,6 +63,10 @@ fn transcript_view_current_turn_number(
     if loaded_backend_turn_count == 0 || !history_window.oldest_source_position_known() {
         return None;
     }
+    if let Some(source_turn_index) = streamed_view_current_source_turn_index(viewport, presentation)
+    {
+        return (source_turn_index < loaded_backend_turn_count).then_some(source_turn_index + 1);
+    }
     let visible_range = list_state.visible_range();
     if visible_range.is_empty() {
         return None;
@@ -67,4 +77,20 @@ fn transcript_view_current_turn_number(
         return None;
     }
     Some(source_turn_index + 1)
+}
+
+fn streamed_view_current_source_turn_index(
+    viewport: &TranscriptViewportState,
+    presentation: &TranscriptPresentationState,
+) -> Option<usize> {
+    let TranscriptViewportMode::Streamed(anchor) = viewport.mode() else {
+        return None;
+    };
+    let row_index = anchor
+        .turn
+        .row_identity
+        .as_deref()
+        .and_then(|identity| presentation.row_index_for_identity(identity))
+        .unwrap_or(anchor.turn.turn_index);
+    presentation.source_turn_index_at(row_index)
 }

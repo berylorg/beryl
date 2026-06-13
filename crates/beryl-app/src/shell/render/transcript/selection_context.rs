@@ -27,6 +27,7 @@ pub(super) struct TranscriptInlineSelectionContext {
     next_break_before: Rc<Cell<usize>>,
     pending_start_prefix: Rc<RefCell<Option<String>>>,
     copy_group: Option<TranscriptLineCopyGroup>,
+    viewport_local_scope: Option<String>,
 }
 
 #[derive(Clone)]
@@ -78,7 +79,13 @@ impl TranscriptInlineSelectionContext {
             next_break_before: Rc::new(Cell::new(initial_break_before)),
             pending_start_prefix: Rc::new(RefCell::new(None)),
             copy_group: None,
+            viewport_local_scope: None,
         }
+    }
+
+    pub(super) fn with_viewport_local_scope(mut self, scope: Option<String>) -> Self {
+        self.viewport_local_scope = scope;
+        self
     }
 
     pub(super) fn with_pending_prefix(&self, prefix: impl Into<String>) -> Self {
@@ -93,6 +100,7 @@ impl TranscriptInlineSelectionContext {
             next_break_before: self.next_break_before.clone(),
             pending_start_prefix: Rc::new(RefCell::new(Some(prefix.into()))),
             copy_group: self.copy_group.clone(),
+            viewport_local_scope: self.viewport_local_scope.clone(),
         }
     }
 
@@ -108,6 +116,7 @@ impl TranscriptInlineSelectionContext {
             next_break_before: self.next_break_before.clone(),
             pending_start_prefix: Rc::new(RefCell::new(None)),
             copy_group: self.copy_group.clone(),
+            viewport_local_scope: self.viewport_local_scope.clone(),
         }
     }
 
@@ -123,6 +132,7 @@ impl TranscriptInlineSelectionContext {
             next_break_before: self.next_break_before.clone(),
             pending_start_prefix: self.pending_start_prefix.clone(),
             copy_group: Some(copy_group),
+            viewport_local_scope: self.viewport_local_scope.clone(),
         }
     }
 
@@ -291,11 +301,16 @@ impl TranscriptInlineSelectionContext {
     }
 
     fn text_line_key(&self, line_index: usize) -> TranscriptTextLineKey {
-        TranscriptTextLineKey::new(
+        let key = TranscriptTextLineKey::new(
             self.row_identity.clone(),
             self.block_path.clone(),
             line_index,
-        )
+        );
+        if let Some(scope) = self.viewport_local_scope.as_ref() {
+            key.with_viewport_local_scope(scope.clone())
+        } else {
+            key
+        }
     }
 }
 

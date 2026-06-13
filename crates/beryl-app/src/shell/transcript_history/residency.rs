@@ -736,6 +736,46 @@ impl TranscriptResidencyState {
         turns
     }
 
+    pub(crate) fn source_range_with_turn_margins(
+        &self,
+        source_visible_range: &Range<usize>,
+        leading_turns: usize,
+        trailing_turns: usize,
+    ) -> Range<usize> {
+        if self.ordered_turn_ids.is_empty() {
+            return source_visible_range.clone();
+        }
+
+        let visible_start = source_visible_range.start;
+        let visible_end = source_visible_range.end.max(visible_start);
+        let start_index = self.ordered_turn_ids.partition_point(|turn_id| {
+            self.index_source_position(turn_id.as_str())
+                .is_some_and(|position| position < visible_start)
+        });
+        let end_index = self.ordered_turn_ids.partition_point(|turn_id| {
+            self.index_source_position(turn_id.as_str())
+                .is_some_and(|position| position < visible_end)
+        });
+        let expanded_start_index = start_index.saturating_sub(leading_turns);
+        let expanded_end_index = end_index
+            .saturating_add(trailing_turns)
+            .min(self.ordered_turn_ids.len())
+            .max(expanded_start_index);
+        let source_start = self
+            .ordered_turn_ids
+            .get(expanded_start_index)
+            .and_then(|turn_id| self.index_source_position(turn_id))
+            .unwrap_or(visible_start);
+        let source_end = expanded_end_index
+            .checked_sub(1)
+            .and_then(|index| self.ordered_turn_ids.get(index))
+            .and_then(|turn_id| self.index_source_position(turn_id))
+            .map(|position| position.saturating_add(1))
+            .unwrap_or(visible_end)
+            .max(source_start);
+        source_start..source_end
+    }
+
     pub(crate) fn budget_excess_release_turn_ids(
         &self,
         retention: &TranscriptResidencyRetention,

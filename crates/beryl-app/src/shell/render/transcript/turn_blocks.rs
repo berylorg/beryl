@@ -1,11 +1,12 @@
-use std::{cell::Cell, rc::Rc, sync::Arc};
+use std::{cell::Cell, rc::Rc, sync::Arc, time::Instant};
 
 use beryl_model::workspace::WorkspaceId;
 use gpui::{AnyElement, App, Entity, Pixels, div, prelude::*, px};
 
 use super::{
-    TranscriptCodeLayout, TranscriptTextRole, TranscriptTheme, item_markdown_key,
-    markdown_cache::TranscriptMarkdownRenderContext, media_cache::TranscriptMediaRenderContext,
+    TranscriptCodeLayout, TranscriptFrameProfile, TranscriptTextRole, TranscriptTheme,
+    item_markdown_key, markdown_cache::TranscriptMarkdownRenderContext,
+    media_cache::TranscriptMediaRenderContext,
     stream_projection::TranscriptStreamProjectionContext, turn_markdown_key,
 };
 use super::{
@@ -28,9 +29,11 @@ use super::{
 use crate::shell::execution_detail::{ExecutionItem, ReasoningDetail, TurnExecutionRecord};
 use crate::shell::transcript_markdown::TranscriptMarkdownCacheKey;
 use crate::shell::transcript_presentation::{
-    TranscriptRowChunkMeasurementKey, TranscriptRowChunkOwner, TranscriptRowMeasurementKey,
-    TranscriptRowNarrativeUnit, TranscriptRowPresentationModel, TranscriptRowRenderChunk,
-    transcript_row_chunk_render_window,
+    TranscriptRenderBudgetFallbackReason, TranscriptRenderBudgetPolicy,
+    TranscriptRenderChunkAdmissionDecision, TranscriptRowChunkMeasurementKey,
+    TranscriptRowChunkOwner, TranscriptRowMeasurementKey, TranscriptRowNarrativeUnit,
+    TranscriptRowPresentationModel, TranscriptRowRenderChunk, TranscriptRowStreamedRenderAnchor,
+    transcript_render_window_admission, transcript_row_chunk_render_window,
 };
 use crate::shell::transcript_selection::{
     TranscriptTextLineOrder, transcript_narrative_block_break_before,
@@ -38,18 +41,11 @@ use crate::shell::transcript_selection::{
 
 use super::TranscriptPanel;
 
-#[allow(dead_code)]
-struct TranscriptRowBlockRenderWindow {
-    start: usize,
-    end: usize,
-    top_spacer_height: Pixels,
-    bottom_spacer_height: Pixels,
-}
-
 #[derive(Clone)]
 pub(super) struct TranscriptRowChunkRenderState {
     row_key: TranscriptRowMeasurementKey,
     measured_heights: Vec<Option<Pixels>>,
+    anchor: TranscriptRowStreamedRenderAnchor,
     measurement_entity: Entity<TranscriptPanel>,
 }
 
@@ -57,11 +53,13 @@ impl TranscriptRowChunkRenderState {
     pub(super) fn new(
         row_key: TranscriptRowMeasurementKey,
         measured_heights: Vec<Option<Pixels>>,
+        anchor: TranscriptRowStreamedRenderAnchor,
         measurement_entity: Entity<TranscriptPanel>,
     ) -> Self {
         Self {
             row_key,
             measured_heights,
+            anchor,
             measurement_entity,
         }
     }
@@ -84,9 +82,9 @@ pub(super) fn render_turn_card(
     narrative_copy_block_count: Rc<Cell<usize>>,
     show_activity_caret: bool,
     activity_caret_opacity: f32,
-    row_scroll_offset: Pixels,
     viewport_height: Pixels,
     chunk_render_state: Option<TranscriptRowChunkRenderState>,
+    profiler: Option<Rc<TranscriptFrameProfile>>,
     cx: &mut App,
 ) -> AnyElement {
     if row_model.chunk_presentation().requires_chunking()
@@ -109,9 +107,9 @@ pub(super) fn render_turn_card(
             narrative_copy_block_count,
             show_activity_caret,
             activity_caret_opacity,
-            row_scroll_offset,
             viewport_height,
             chunk_render_state,
+            profiler,
             cx,
         );
     }
@@ -278,46 +276,66 @@ fn render_turn_card_chunk_window(
     narrative_copy_block_count: Rc<Cell<usize>>,
     show_activity_caret: bool,
     activity_caret_opacity: f32,
-    row_scroll_offset: Pixels,
     viewport_height: Pixels,
     chunk_render_state: TranscriptRowChunkRenderState,
+    profiler: Option<Rc<TranscriptFrameProfile>>,
     cx: &mut App,
 ) -> AnyElement {
     let chunks = row_model.chunk_presentation().chunks();
+    let chunk_window_started = Instant::now();
     let render_window = transcript_row_chunk_render_window(
         chunks.len(),
         chunk_render_state.measured_heights.as_slice(),
-        row_scroll_offset,
+        chunk_render_state.anchor.clone(),
         viewport_height,
     );
+    let policy = TranscriptRenderBudgetPolicy::default_frame();
+    let admission = transcript_render_window_admission(chunks, render_window.range.clone(), policy);
+    if let Some(profiler) = profiler.as_ref() {
+        profiler.observe_chunk_window_admission(
+            &render_window,
+            &admission,
+            policy,
+            chunk_window_started.elapsed(),
+        );
+    }
     let mut children = Vec::new();
 
-    if render_window.top_spacer_height > px(0.0) {
-        children.push(render_chunk_spacer(render_window.top_spacer_height));
-    }
-
-    for chunk_index in render_window.range.clone() {
+    for chunk_admission in admission.chunks {
+        let chunk_index = chunk_admission.chunk_index;
         let Some(chunk) = chunks.get(chunk_index) else {
             continue;
         };
-        let blocks = render_turn_card_chunk_blocks(
-            turn_index,
-            workspace,
-            theme.clone(),
-            turn.clone(),
-            code_panel_state.clone(),
-            markdown_context.clone(),
-            media_context.clone(),
-            stream_projection_context.clone(),
-            row_model.as_ref(),
-            code_layout,
-            media_layout,
-            row_identity,
-            selection_order.clone(),
-            narrative_copy_block_count.clone(),
-            chunk,
-            cx,
-        );
+        let blocks = match chunk_admission.decision {
+            TranscriptRenderChunkAdmissionDecision::Render => {
+                let selection_scope = chunk.identity.clone();
+                render_turn_card_chunk_blocks(
+                    turn_index,
+                    workspace,
+                    theme.clone(),
+                    turn.clone(),
+                    code_panel_state
+                        .clone()
+                        .with_viewport_local_selection_scope(selection_scope.clone()),
+                    markdown_context.clone(),
+                    media_context
+                        .clone()
+                        .with_viewport_local_selection_scope(selection_scope),
+                    stream_projection_context.clone(),
+                    row_model.as_ref(),
+                    code_layout,
+                    media_layout,
+                    row_identity,
+                    selection_order.clone(),
+                    narrative_copy_block_count.clone(),
+                    chunk,
+                    cx,
+                )
+            }
+            TranscriptRenderChunkAdmissionDecision::Fallback(reason) => {
+                vec![render_render_budget_fallback(reason, theme.as_ref())]
+            }
+        };
         let is_last_chunk = chunk_index.saturating_add(1) == chunks.len();
         children.push(render_measured_chunk(
             blocks,
@@ -325,10 +343,6 @@ fn render_turn_card_chunk_window(
             chunk_render_state.measurement_entity.clone(),
             !is_last_chunk,
         ));
-    }
-
-    if render_window.bottom_spacer_height > px(0.0) {
-        children.push(render_chunk_spacer(render_window.bottom_spacer_height));
     }
 
     div()
@@ -359,7 +373,7 @@ fn render_measured_chunk(
         .when(include_following_gap, |this| {
             this.child(div().h(px(0.0)).flex_none())
         })
-        .on_children_prepainted(move |children, _, cx| {
+        .on_children_prepainted(move |children, window, cx| {
             let Some(first) = children.first().copied() else {
                 return;
             };
@@ -370,18 +384,14 @@ fn render_measured_chunk(
                 bottom = bottom.max(child.bottom());
             }
             let height = (bottom - top).max(px(0.0));
-            measurement_entity.update(cx, |view, cx| {
-                view.record_transcript_row_chunk_measurement(measurement_key.clone(), height, cx);
+            let measurement_key = measurement_key.clone();
+            let measurement_entity = measurement_entity.clone();
+            window.defer(cx, move |_, cx| {
+                measurement_entity.update(cx, |view, cx| {
+                    view.record_transcript_row_chunk_measurement(measurement_key, height, cx);
+                });
             });
         })
-        .into_any_element()
-}
-
-fn render_chunk_spacer(height: Pixels) -> AnyElement {
-    div()
-        .w_full()
-        .h(height.max(px(0.0)))
-        .flex_none()
         .into_any_element()
 }
 
@@ -909,378 +919,6 @@ fn agent_message_item_id(block_path: &str) -> Option<&str> {
         .and_then(|path| path.strip_suffix(":agent-message"))
 }
 
-fn render_turn_card_block_window(
-    turn_index: usize,
-    workspace: &WorkspaceId,
-    theme: Arc<TranscriptTheme>,
-    turn: Arc<TurnExecutionRecord>,
-    code_panel_state: TranscriptCodePanelState,
-    markdown_context: TranscriptMarkdownRenderContext,
-    media_context: TranscriptMediaRenderContext,
-    stream_projection_context: TranscriptStreamProjectionContext,
-    row_model: Arc<TranscriptRowPresentationModel>,
-    code_layout: TranscriptCodeLayout,
-    media_layout: TranscriptMediaRenderLayout,
-    row_identity: &str,
-    selection_order: Rc<Cell<TranscriptTextLineOrder>>,
-    narrative_copy_block_count: Rc<Cell<usize>>,
-    show_activity_caret: bool,
-    activity_caret_opacity: f32,
-    block_window: TranscriptRowBlockRenderWindow,
-    cx: &mut App,
-) -> AnyElement {
-    let mut narrative_blocks = Vec::new();
-    let mut pending_media = Vec::new();
-    let mut block_cursor = 0usize;
-
-    if block_window.top_spacer_height > px(0.0) {
-        narrative_blocks.push(render_block_spacer(block_window.top_spacer_height));
-    }
-
-    for unit in row_model.narrative_units() {
-        match unit {
-            TranscriptRowNarrativeUnit::UserInput {
-                fragment_id,
-                fragment_index,
-            } => {
-                let fragment = turn
-                    .user_input_fragments()
-                    .get(*fragment_index)
-                    .filter(|fragment| fragment.id == *fragment_id)
-                    .or_else(|| {
-                        turn.user_input_fragment_by_id(*fragment_id)
-                            .map(|(_, fragment)| fragment)
-                    });
-                let Some(fragment) = fragment else {
-                    continue;
-                };
-                if fragment.text.is_empty() {
-                    continue;
-                }
-                let block_path = user_prompt_block_path(*fragment_index);
-                let markdown_source = row_model
-                    .markdown_sources()
-                    .iter()
-                    .find(|source| source.block_path.as_str() == block_path.as_str());
-                let estimated_blocks =
-                    markdown_source.map_or(1, |source| source.estimated_render_blocks.max(1));
-                if !fragment.image_markers().is_empty() {
-                    let Some(local_range) =
-                        intersect_local_range(block_cursor, estimated_blocks, &block_window)
-                    else {
-                        block_cursor = block_cursor.saturating_add(estimated_blocks);
-                        continue;
-                    };
-                    let initial_break_before =
-                        transcript_narrative_block_break_before(narrative_copy_block_count.get());
-                    if let Some(rendered) = render_user_prompt_fragment_markdown_source_slice(
-                        turn_index,
-                        turn.as_ref(),
-                        *fragment_index,
-                        fragment,
-                        local_range,
-                        theme.as_ref(),
-                        code_panel_state.clone(),
-                        markdown_context.clone(),
-                        code_layout,
-                        media_layout.conversation_m_advance,
-                        row_identity,
-                        initial_break_before,
-                        selection_order.clone(),
-                        cx,
-                    ) {
-                        push_rendered_block(
-                            workspace,
-                            media_context.clone(),
-                            &mut pending_media,
-                            &mut narrative_blocks,
-                            media_layout,
-                            row_identity,
-                            selection_order.clone(),
-                            narrative_copy_block_count.clone(),
-                            rendered,
-                            cx,
-                        );
-                    }
-                    block_cursor = block_cursor.saturating_add(estimated_blocks);
-                    continue;
-                }
-
-                let Some(local_range) =
-                    intersect_local_range(block_cursor, estimated_blocks, &block_window)
-                else {
-                    block_cursor = block_cursor.saturating_add(estimated_blocks);
-                    continue;
-                };
-                let markdown_key = turn_markdown_key(turn_index, turn.as_ref(), &block_path);
-                render_markdown_source_window(
-                    workspace,
-                    markdown_key,
-                    block_path,
-                    fragment.text.as_str(),
-                    local_range,
-                    theme.as_ref(),
-                    code_panel_state.clone(),
-                    markdown_context.clone(),
-                    media_context.clone(),
-                    code_layout,
-                    media_layout,
-                    row_identity,
-                    selection_order.clone(),
-                    narrative_copy_block_count.clone(),
-                    true,
-                    InlineMarkdownStyle::base(TranscriptTextRole::UserInput),
-                    cx,
-                    &mut pending_media,
-                    &mut narrative_blocks,
-                );
-                block_cursor = block_cursor.saturating_add(estimated_blocks);
-            }
-            TranscriptRowNarrativeUnit::Item {
-                item_id,
-                item_index,
-            } => {
-                let item = turn
-                    .items
-                    .get(*item_index)
-                    .filter(|item| item.id() == item_id)
-                    .or_else(|| turn.item_by_id(item_id));
-                let Some(item) = item else {
-                    continue;
-                };
-                match item {
-                    ExecutionItem::AgentMessage(message) => {
-                        if message.text.is_empty() {
-                            continue;
-                        }
-                        let block_path = format!("item:{}:agent-message", message.id);
-                        let markdown_source = row_model
-                            .markdown_sources()
-                            .iter()
-                            .find(|source| source.block_path.as_str() == block_path.as_str());
-                        let estimated_blocks = markdown_source
-                            .map_or(1, |source| source.estimated_render_blocks.max(1));
-                        let Some(local_range) =
-                            intersect_local_range(block_cursor, estimated_blocks, &block_window)
-                        else {
-                            block_cursor = block_cursor.saturating_add(estimated_blocks);
-                            continue;
-                        };
-                        let markdown_key = item_markdown_key(
-                            turn_index,
-                            turn.as_ref(),
-                            message.id.as_str(),
-                            "agent-message",
-                        );
-                        let source = stream_projection_context.visible_text(
-                            super::stream_projection::TranscriptStreamProjectionKey::new(
-                                markdown_key.as_str(),
-                            ),
-                            message.text.as_str(),
-                            live_item_complete(turn.as_ref(), message.complete),
-                            std::time::Instant::now(),
-                        );
-                        if !source.is_empty() {
-                            render_markdown_source_window(
-                                workspace,
-                                markdown_key,
-                                block_path,
-                                source.as_ref(),
-                                local_range,
-                                theme.as_ref(),
-                                code_panel_state.clone(),
-                                markdown_context.clone(),
-                                media_context.clone(),
-                                code_layout,
-                                media_layout,
-                                row_identity,
-                                selection_order.clone(),
-                                narrative_copy_block_count.clone(),
-                                false,
-                                agent_message_markdown_style(message),
-                                cx,
-                                &mut pending_media,
-                                &mut narrative_blocks,
-                            );
-                        }
-                        block_cursor = block_cursor.saturating_add(estimated_blocks);
-                    }
-                    ExecutionItem::Reasoning(reasoning) => {
-                        let prefix = format!("item:{}:", reasoning.id);
-                        let mut pushed_reasoning_source = false;
-                        for markdown_source in row_model
-                            .markdown_sources()
-                            .iter()
-                            .filter(|source| source.block_path.starts_with(prefix.as_str()))
-                        {
-                            pushed_reasoning_source = true;
-                            let estimated_blocks = markdown_source.estimated_render_blocks.max(1);
-                            let Some(source_text) = reasoning_source_text(
-                                reasoning,
-                                markdown_source.block_path.as_str(),
-                            ) else {
-                                block_cursor = block_cursor.saturating_add(estimated_blocks);
-                                continue;
-                            };
-                            let Some(local_range) = intersect_local_range(
-                                block_cursor,
-                                estimated_blocks,
-                                &block_window,
-                            ) else {
-                                block_cursor = block_cursor.saturating_add(estimated_blocks);
-                                continue;
-                            };
-                            let markdown_key =
-                                TranscriptMarkdownCacheKey::new(markdown_source.key.clone());
-                            let source = stream_projection_context.visible_text(
-                                super::stream_projection::TranscriptStreamProjectionKey::new(
-                                    markdown_key.as_str(),
-                                ),
-                                source_text,
-                                live_item_complete(turn.as_ref(), reasoning.complete),
-                                std::time::Instant::now(),
-                            );
-                            if !source.is_empty() {
-                                render_markdown_source_window(
-                                    workspace,
-                                    markdown_key,
-                                    markdown_source.block_path.clone(),
-                                    source.as_ref(),
-                                    local_range,
-                                    theme.as_ref(),
-                                    code_panel_state.clone(),
-                                    markdown_context.clone(),
-                                    media_context.clone(),
-                                    code_layout,
-                                    media_layout,
-                                    row_identity,
-                                    selection_order.clone(),
-                                    narrative_copy_block_count.clone(),
-                                    false,
-                                    InlineMarkdownStyle::base(
-                                        TranscriptTextRole::AssistantReasoning,
-                                    ),
-                                    cx,
-                                    &mut pending_media,
-                                    &mut narrative_blocks,
-                                );
-                            }
-                            block_cursor = block_cursor.saturating_add(estimated_blocks);
-                        }
-                        if !pushed_reasoning_source {
-                            if range_intersects(block_cursor, 1, &block_window) {
-                                render_item_units(
-                                    turn_index,
-                                    workspace,
-                                    theme.clone(),
-                                    turn.clone(),
-                                    item,
-                                    code_panel_state.clone(),
-                                    markdown_context.clone(),
-                                    media_context.clone(),
-                                    stream_projection_context.clone(),
-                                    code_layout,
-                                    media_layout,
-                                    row_identity,
-                                    selection_order.clone(),
-                                    narrative_copy_block_count.clone(),
-                                    &mut pending_media,
-                                    &mut narrative_blocks,
-                                    cx,
-                                );
-                            }
-                            block_cursor = block_cursor.saturating_add(1);
-                        }
-                    }
-                    ExecutionItem::GeneratedImage(image) => {
-                        if range_intersects(block_cursor, 1, &block_window) {
-                            pending_media.push(generated_image_media_item(
-                                turn_index,
-                                turn.as_ref(),
-                                image,
-                                row_identity,
-                            ));
-                        }
-                        block_cursor = block_cursor.saturating_add(1);
-                    }
-                    _ => {
-                        if range_intersects(block_cursor, 1, &block_window) {
-                            render_item_units(
-                                turn_index,
-                                workspace,
-                                theme.clone(),
-                                turn.clone(),
-                                item,
-                                code_panel_state.clone(),
-                                markdown_context.clone(),
-                                media_context.clone(),
-                                stream_projection_context.clone(),
-                                code_layout,
-                                media_layout,
-                                row_identity,
-                                selection_order.clone(),
-                                narrative_copy_block_count.clone(),
-                                &mut pending_media,
-                                &mut narrative_blocks,
-                                cx,
-                            );
-                        }
-                        block_cursor = block_cursor.saturating_add(1);
-                    }
-                }
-            }
-            TranscriptRowNarrativeUnit::TerminalFallback => {
-                if range_intersects(block_cursor, 1, &block_window)
-                    && let Some(message) = turn.terminal_fallback_text()
-                {
-                    flush_media_run(
-                        workspace,
-                        media_context.clone(),
-                        &mut pending_media,
-                        &mut narrative_blocks,
-                        media_layout,
-                        row_identity,
-                        selection_order.clone(),
-                        narrative_copy_block_count.clone(),
-                        cx,
-                    );
-                    narrative_blocks.push(render_terminal_fallback(message, theme.as_ref()));
-                }
-                block_cursor = block_cursor.saturating_add(1);
-            }
-        }
-    }
-
-    flush_media_run(
-        workspace,
-        media_context,
-        &mut pending_media,
-        &mut narrative_blocks,
-        media_layout,
-        row_identity,
-        selection_order,
-        narrative_copy_block_count,
-        cx,
-    );
-
-    if block_window.bottom_spacer_height > px(0.0) {
-        narrative_blocks.push(render_block_spacer(block_window.bottom_spacer_height));
-    }
-
-    div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .children(narrative_blocks)
-        .when(show_activity_caret, |this| {
-            this.child(render_activity_caret(
-                activity_caret_opacity,
-                theme.as_ref(),
-            ))
-        })
-        .into_any_element()
-}
-
 fn render_markdown_source_window(
     workspace: &WorkspaceId,
     markdown_key: TranscriptMarkdownCacheKey,
@@ -1621,17 +1259,6 @@ fn reasoning_source_text<'a>(reasoning: &'a ReasoningDetail, block_path: &str) -
 
 const TRANSCRIPT_ROW_MARKDOWN_SOURCE_BYTES_PER_BLOCK: usize = 4 * 1024;
 
-fn intersect_local_range(
-    block_start: usize,
-    block_count: usize,
-    window: &TranscriptRowBlockRenderWindow,
-) -> Option<std::ops::Range<usize>> {
-    let block_end = block_start.saturating_add(block_count);
-    let start = block_start.max(window.start);
-    let end = block_end.min(window.end);
-    (start < end).then(|| start.saturating_sub(block_start)..end.saturating_sub(block_start))
-}
-
 fn intersect_block_range(
     block_start: usize,
     block_count: usize,
@@ -1641,22 +1268,6 @@ fn intersect_block_range(
     let start = block_start.max(range.start);
     let end = block_end.min(range.end);
     (start < end).then(|| start.saturating_sub(block_start)..end.saturating_sub(block_start))
-}
-
-fn range_intersects(
-    block_start: usize,
-    block_count: usize,
-    window: &TranscriptRowBlockRenderWindow,
-) -> bool {
-    intersect_local_range(block_start, block_count, window).is_some()
-}
-
-fn render_block_spacer(height: Pixels) -> AnyElement {
-    div()
-        .w_full()
-        .h(height.max(px(0.0)))
-        .flex_none()
-        .into_any_element()
 }
 
 pub(super) fn user_prompt_block_path(fragment_index: usize) -> String {
@@ -1672,7 +1283,21 @@ fn render_activity_caret(opacity: f32, theme: &TranscriptTheme) -> impl IntoElem
         .bg(theme.activity_caret.color())
 }
 
+fn render_render_budget_fallback(
+    reason: TranscriptRenderBudgetFallbackReason,
+    theme: &TranscriptTheme,
+) -> gpui::AnyElement {
+    render_transcript_unavailable_message(reason.message(), theme)
+}
+
 fn render_terminal_fallback(message: &'static str, theme: &TranscriptTheme) -> gpui::AnyElement {
+    render_transcript_unavailable_message(message, theme)
+}
+
+fn render_transcript_unavailable_message(
+    message: &'static str,
+    theme: &TranscriptTheme,
+) -> gpui::AnyElement {
     div()
         .w_full()
         .min_w(px(0.0))

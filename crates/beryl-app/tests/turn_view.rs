@@ -13,6 +13,8 @@ mod shell {
     mod transcript_presentation;
     #[path = "../../src/shell/transcript_projection.rs"]
     mod transcript_projection;
+    #[path = "../../src/shell/transcript_viewport.rs"]
+    mod transcript_viewport;
     #[path = "../../src/shell/turn_view.rs"]
     mod turn_view;
     #[allow(dead_code)]
@@ -28,6 +30,10 @@ mod shell {
         execution_detail::ExecutionDetailState,
         transcript_history::{LoadedTranscriptHistoryPage, TranscriptHistoryWindow},
         transcript_presentation::TranscriptPresentationState,
+        transcript_viewport::{
+            TranscriptViewportChunkAnchor, TranscriptViewportPlacement, TranscriptViewportState,
+            TranscriptViewportTurnAnchor,
+        },
         turn_view::TranscriptTurnNumberingSnapshot,
         virtual_list::{ListAlignment, ListOffset, ListScrollPosition, ListState, test_support},
     };
@@ -97,11 +103,20 @@ mod shell {
         }
 
         pub(super) fn snapshot(&self, list_state: &ListState) -> TranscriptTurnNumberingSnapshot {
+            self.snapshot_with_viewport(&TranscriptViewportState::default(), list_state)
+        }
+
+        pub(super) fn snapshot_with_viewport(
+            &self,
+            viewport: &TranscriptViewportState,
+            list_state: &ListState,
+        ) -> TranscriptTurnNumberingSnapshot {
             turn_view::transcript_turn_numbering_snapshot(
                 Some("thread_a"),
                 &self.details,
                 &self.history_window,
                 &self.presentation,
+                viewport,
                 list_state,
             )
         }
@@ -115,8 +130,44 @@ mod shell {
                 &self.details,
                 &self.history_window,
                 &self.presentation,
+                &TranscriptViewportState::default(),
                 list_state,
             )
+        }
+
+        pub(super) fn streamed_viewport_for_row(
+            &self,
+            row_index: usize,
+            chunk_index: usize,
+        ) -> TranscriptViewportState {
+            let row = self
+                .presentation
+                .turn_at(row_index)
+                .expect("test row should exist");
+            let chunks = row.model.chunk_presentation().chunks();
+            let chunk = chunks
+                .get(chunk_index)
+                .expect("test chunk should exist for streamed viewport");
+            let mut viewport = TranscriptViewportState::default();
+            viewport.anchor_streamed(
+                TranscriptViewportTurnAnchor::new(
+                    row.index,
+                    Some(row.identity.as_str().to_string()),
+                    row.turn.thread_id.clone(),
+                    row.turn.turn_id.clone(),
+                ),
+                TranscriptViewportChunkAnchor::new(chunk_index, chunk.identity.clone()),
+                chunks.len(),
+                TranscriptViewportPlacement::Top,
+            );
+            viewport
+        }
+
+        pub(super) fn chunk_count_at(&self, row_index: usize) -> usize {
+            self.presentation
+                .turn_at(row_index)
+                .map(|row| row.model.chunk_presentation().chunks().len())
+                .unwrap_or_default()
         }
     }
 
@@ -543,6 +594,36 @@ fn turn_view_source_index_counts_hidden_operational_prefix_turns() {
     assert_eq!(
         shell::snapshot_parts(harness.snapshot(&list_state)),
         (Some(2), Some(2))
+    );
+}
+
+#[test]
+fn turn_view_current_uses_streamed_anchor_turn_not_visible_chunk_or_adjacent_row() {
+    let huge_prompt = (0..80)
+        .map(|index| format!("Huge prompt paragraph {index}."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let harness = shell::TurnViewHarness::from_latest_page(
+        vec![
+            prompt_turn("turn_1", "first"),
+            prompt_turn("turn_2", &huge_prompt),
+            prompt_turn("turn_3", "third"),
+        ],
+        None,
+        None,
+    );
+    assert!(harness.chunk_count_at(1) > 1);
+    let viewport = harness.streamed_viewport_for_row(1, 1);
+    let list_state = shell::measured_list_state(
+        harness.presentation_len(),
+        shell::content_position(1),
+        px(40.0),
+        &[px(20.0), px(20.0), px(20.0)],
+    );
+
+    assert_eq!(
+        shell::snapshot_parts(harness.snapshot_with_viewport(&viewport, &list_state)),
+        (Some(2), Some(3))
     );
 }
 

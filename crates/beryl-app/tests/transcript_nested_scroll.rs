@@ -137,6 +137,18 @@ fn visible_selected_panel_is_retained() {
 }
 
 #[test]
+fn selected_streamed_chunk_panel_survives_rerender_by_identity() {
+    let mut ownership = TranscriptNestedScrollOwnership::default();
+    let panel_a = panel("b0");
+
+    ownership.select_panel(panel_a.clone());
+    assert!(!ownership.retain_visible_panel_identities([&panel_a]));
+
+    assert_eq!(ownership.selected_panel_id(), Some(panel_a.as_str()));
+    assert!(ownership.panel_owns_vertical_wheel(&panel_a));
+}
+
+#[test]
 fn removed_selected_panel_is_cleared() {
     let mut ownership = TranscriptNestedScrollOwnership::default();
     let panel_a = panel("b0");

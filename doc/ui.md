@@ -142,7 +142,7 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Beryl uses one shared app-wide scrollbar affordance rather than per-surface custom chrome.
 - The shared scrollbar affordance is backed by reusable app-neutral scrollbar primitives that own chrome visibility and direct manipulation.
 - Beryl surfaces own viewport routing and scroll-state semantics around the shared scrollbar.
-- Every Beryl surface that owns scrolling must render the shared scrollbar affordance.
+- Every Beryl surface that owns scrolling must render the shared scrollbar affordance unless its owning feature doc explicitly removes visual scrollbar chrome. The transcript region is the current exception: it owns semantic turn/chunk navigation and does not render a visual scrollbar.
 - The shared scrollbar renders only a thumb; the full outline or track remains visually invisible.
 - The thumb appears only after pointer movement or active scrolling within the owning scrollable area and only while the surface has overflow.
 - After pointer movement and scrolling stop, the thumb fades in and out around a short inactivity delay using render-frame-driven opacity interpolation.
@@ -154,11 +154,12 @@ The terms `stretch`, `fixed`, `anchored`, `overlay`, and `scrollable` describe t
 - Reporting scrollbar activity must be state-change aware. Hover, wheel, fade, and thumb activity may invalidate scrollbar chrome, but they must not force broad content-surface recomputation when the owning content viewport and scrollbar visibility state have not meaningfully changed.
 - Keyboard scrolling commands act on the scrollable viewport selected by focus or shell routing, not on scrollbar chrome.
 - Pointer-wheel and touchpad scrolling act on the routed scrollable viewport, while thumb dragging and lane clicks originate from scrollbar chrome.
+- Streaming scroll surfaces that omit continuous pixel extent for unrendered content must preserve visual anchors for continuous pointer-wheel and touchpad input. They may lazily expand the rendered frame in the scroll direction, but they must not reinterpret a small continuous scroll delta as a command to place the next semantic segment at the top or bottom of the viewport.
 - Streaming scroll surfaces may opt into a bounded virtual trailing scroll allowance that increases scroll range without adding fake content.
 - Virtual trailing allowance is capped by the owning viewport and caller's visual anchor so at least one real content line remains visible for orientation.
-- Scrollbar geometry reflects virtual trailing allowance, but content item counts, visible ranges, and preserved anchors remain based on real content only.
+- For surfaces that render scrollbar chrome, scrollbar geometry reflects virtual trailing allowance, but content item counts, visible ranges, and preserved anchors remain based on real content only.
 - Virtual trailing allowance is provided by Beryl-owned scroll/list support layered on `gpui`, not by changing third-party `gpui` list primitives.
-- Pointer movement over an overflowed scrollable surface may reveal that surface's scrollbar even when that surface does not currently own pointer-wheel scrolling.
+- Pointer movement over an overflowed scrollable surface may reveal that surface's scrollbar even when that surface does not currently own pointer-wheel scrolling, when the surface has not opted out of visual scrollbar chrome.
 - The toolbar strip, user input panel, activity panel, and status line strip remain pinned rather than becoming general outer scrolling surfaces.
 
 ## Small-Window Behavior

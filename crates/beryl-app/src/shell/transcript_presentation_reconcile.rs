@@ -3,6 +3,7 @@ use std::sync::Arc;
 use super::{
     ConversationSurfaceState, execution_detail::TurnExecutionRecord,
     transcript_presentation::TranscriptPresentationMutation,
+    transcript_viewport::TranscriptViewportRowMutation,
 };
 
 impl ConversationSurfaceState {
@@ -64,6 +65,9 @@ impl ConversationSurfaceState {
                 if count == 0 {
                     return;
                 }
+                self.transcript_viewport.reconcile_row_mutation(
+                    TranscriptViewportRowMutation::Inserted { index, count },
+                );
                 let start = index.min(self.transcript_list_state.item_count());
                 self.transcript_list_state.splice(start..start, count);
             }
@@ -71,6 +75,9 @@ impl ConversationSurfaceState {
                 if count == 0 {
                     return;
                 }
+                self.transcript_viewport.reconcile_row_mutation(
+                    TranscriptViewportRowMutation::Removed { index, count },
+                );
                 let item_count = self.transcript_list_state.item_count();
                 let start = index.min(item_count);
                 let end = index.saturating_add(count).min(item_count).max(start);

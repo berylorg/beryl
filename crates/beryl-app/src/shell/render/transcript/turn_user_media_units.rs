@@ -160,7 +160,8 @@ fn render_user_prompt_markdown_source(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
     markdown_prose_block_with_selection(
         "",
         markdown.render_plan(),
@@ -198,7 +199,8 @@ pub(super) fn render_user_prompt_markdown_source_slice(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
     markdown_prose_block_slice_with_selection(
         "",
         markdown.render_plan(),
@@ -248,7 +250,8 @@ pub(super) fn render_user_prompt_fragment_markdown_source_slice(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
     let image_markers = fragment
         .image_markers()
         .iter()
@@ -321,7 +324,8 @@ fn render_user_prompt(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
     let image_markers = fragment
         .image_markers()
         .iter()

@@ -147,6 +147,8 @@ pub(super) fn publish_history_window(
     surface.transcript_content_release_row_identities.clear();
     surface.transcript_content_release_markdown_keys.clear();
     surface.transcript_content_release_media_keys.clear();
+    surface.transcript_streamed_residency_fill_facts.clear();
+    surface.transcript_streamed_navigation_snapshot = None;
     surface.transcript_residency_controller_facts = None;
     surface.invalidate_transcript_residency_controller();
     surface.invalidated_stream_turns.clear();
@@ -162,6 +164,9 @@ pub(super) fn publish_history_window(
     surface
         .transcript_list_state
         .reset(surface.transcript_list_item_count());
+    surface
+        .transcript_viewport
+        .reset_to_tail(surface.transcript_list_item_count());
     let loaded_turns = surface.execution_details.turns().len();
     let admission_summary = TranscriptResidencyAdmissionSummary::from_admitted_turns(
         "initial",

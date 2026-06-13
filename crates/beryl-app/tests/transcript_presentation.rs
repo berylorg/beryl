@@ -56,7 +56,16 @@ mod shell {
     pub(super) use transcript_presentation::TranscriptRowChunkMeasurementKey;
     pub(super) use transcript_presentation::TranscriptRowChunkOwner;
     pub(super) use transcript_presentation::TranscriptRowMeasurementDisplayState;
+    pub(super) use transcript_presentation::TranscriptRowRenderChunk;
+    pub(super) use transcript_presentation::TranscriptRowStreamedAnchorPlacement;
+    pub(super) use transcript_presentation::TranscriptRowStreamedRenderAnchor;
     pub(super) use transcript_presentation::transcript_row_chunk_render_window;
+    pub(super) use transcript_presentation::{
+        TRANSCRIPT_RENDER_BUDGET_CHUNK_FALLBACK_MESSAGE,
+        TRANSCRIPT_RENDER_BUDGET_FRAME_FALLBACK_MESSAGE, TranscriptRenderBudgetFallbackReason,
+        TranscriptRenderBudgetPolicy, TranscriptRenderChunkAdmissionDecision,
+        transcript_render_chunk_cost_units, transcript_render_window_admission,
+    };
     pub(super) use transcript_presentation::{
         TranscriptRowIdentity, TranscriptRowPresentationRevision,
     };
@@ -199,6 +208,19 @@ mod shell {
 
         pub(super) fn apply_stream_event(&mut self, event: TurnStreamEvent) -> Option<usize> {
             let index = self.details.apply_stream_event(event)?;
+            let turn = self.details.turns()[index].clone();
+            self.presentation.replace_turn(index, turn).row_index();
+            Some(index)
+        }
+
+        pub(super) fn apply_stream_event_with_active_source_cap(
+            &mut self,
+            event: TurnStreamEvent,
+            max_retained_source_bytes: usize,
+        ) -> Option<usize> {
+            let index = self
+                .details
+                .apply_stream_event_with_active_source_cap(event, max_retained_source_bytes)?;
             let turn = self.details.turns()[index].clone();
             self.presentation.replace_turn(index, turn).row_index();
             Some(index)
@@ -377,6 +399,13 @@ mod shell {
                         .map(|chunk| chunk.estimated_render_blocks)
                         .collect()
                 })
+                .unwrap_or_default()
+        }
+
+        pub(super) fn row_model_chunks_at(&self, index: usize) -> Vec<TranscriptRowRenderChunk> {
+            self.presentation
+                .turn_at(index)
+                .map(|row| row.model.chunk_presentation().chunks().to_vec())
                 .unwrap_or_default()
         }
 
@@ -663,15 +692,21 @@ mod shell {
 }
 
 use shell::{
-    PresentationHarness, SourceBackedUploadAdmissionDecision, TranscriptCompletedMediaReadiness,
+    PresentationHarness, SourceBackedUploadAdmissionDecision,
+    TRANSCRIPT_RENDER_BUDGET_CHUNK_FALLBACK_MESSAGE,
+    TRANSCRIPT_RENDER_BUDGET_FRAME_FALLBACK_MESSAGE, TranscriptCompletedMediaReadiness,
     TranscriptMediaAdmissionSummary, TranscriptMediaAdmissionTarget, TranscriptMediaLoadOutcome,
     TranscriptMediaPresentability, TranscriptMediaReadinessKey, TranscriptMediaRequestedRenderSize,
     TranscriptMediaTerminalFallback, TranscriptPrepublicationPreparationBudget,
     TranscriptPrepublicationPreparationDriver, TranscriptPrepublicationPreparationLayout,
-    TranscriptPresentabilitySummary, TranscriptPresentationMutation, TranscriptRowIdentity,
+    TranscriptPresentabilitySummary, TranscriptPresentationMutation,
+    TranscriptRenderBudgetFallbackReason, TranscriptRenderBudgetPolicy,
+    TranscriptRenderChunkAdmissionDecision, TranscriptRowChunkOwner, TranscriptRowIdentity,
     TranscriptRowMeasurementDisplayState, TranscriptRowPresentabilityContext,
-    TranscriptRowPresentationRevision, note_source_backed_upload_admission,
-    transcript_row_chunk_render_window,
+    TranscriptRowPresentationRevision, TranscriptRowRenderChunk,
+    TranscriptRowStreamedAnchorPlacement, TranscriptRowStreamedRenderAnchor,
+    note_source_backed_upload_admission, transcript_render_chunk_cost_units,
+    transcript_render_window_admission, transcript_row_chunk_render_window,
 };
 
 #[test]
@@ -764,6 +799,54 @@ fn oversized_fallback_turn_projects_terminal_row_without_resident_payload_source
         }
     );
     assert!(!harness.requires_completed_media_admission());
+}
+
+#[test]
+fn active_source_budget_fallback_projects_terminal_row_without_live_source() {
+    let mut harness = PresentationHarness::new();
+    let live_index = harness.begin_live_turn("Initial prompt");
+    harness
+        .apply_stream_event_with_active_source_cap(
+            TurnStreamEvent::TurnStarted {
+                thread_id: "thread_a".to_string(),
+                turn: empty_turn("turn_live", TurnStatus::InProgress),
+            },
+            512,
+        )
+        .unwrap();
+    harness
+        .apply_stream_event_with_active_source_cap(
+            TurnStreamEvent::AgentMessageDelta {
+                thread_id: "thread_a".to_string(),
+                turn_id: "turn_live".to_string(),
+                item_id: "assistant_huge".to_string(),
+                delta: "A".repeat(1024),
+            },
+            512,
+        )
+        .unwrap();
+
+    assert_eq!(harness.presentation_len(), 1);
+    assert_eq!(
+        harness.turn_id_at(live_index),
+        Some("turn_live".to_string())
+    );
+    assert_eq!(
+        harness.row_model_units_at(live_index),
+        vec!["fallback".to_string()]
+    );
+    assert_eq!(
+        harness.terminal_fallback_text_at(live_index),
+        Some(
+            "This live turn exceeded Beryl's active-turn transcript memory budget before it finished. Beryl stopped retaining its live source and will reload the completed turn from history when available."
+        )
+    );
+    assert!(!harness.row_has_resident_payload(live_index));
+    assert!(harness.visible_narrative_texts_at(live_index).is_empty());
+    assert!(harness.visible_item_kinds_at(live_index).is_empty());
+    assert_eq!(harness.first_markdown_key_at(live_index), None);
+    assert_eq!(harness.render_metrics(), (1, 0, 0));
+    assert_eq!(harness.retained_counts(), (1, 0, 0));
 }
 
 #[test]
@@ -1732,6 +1815,122 @@ fn row_model_marks_huge_single_line_as_single_safe_chunk() {
 }
 
 #[test]
+fn active_live_huge_turn_uses_streamed_chunks_and_render_budget_admission() {
+    let mut harness = PresentationHarness::new();
+    let live_index = harness.begin_live_turn("Initial prompt");
+    harness
+        .apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_a".to_string(),
+            turn: empty_turn("turn_live", TurnStatus::InProgress),
+        })
+        .unwrap();
+    let markdown = (0..80)
+        .map(|index| format!("Live paragraph {index} with enough text to own a block."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    harness
+        .apply_stream_event(TurnStreamEvent::AgentMessageDelta {
+            thread_id: "thread_a".to_string(),
+            turn_id: "turn_live".to_string(),
+            item_id: "assistant_live".to_string(),
+            delta: markdown,
+        })
+        .unwrap();
+
+    let (_, requires_split) = harness
+        .row_model_chunk_summary_at(live_index)
+        .expect("live huge row should project");
+    assert!(requires_split);
+    let chunks = harness.row_model_chunks_at(live_index);
+    assert!(chunks.len() > 1);
+
+    let admission = transcript_render_window_admission(
+        &chunks,
+        0..chunks.len(),
+        TranscriptRenderBudgetPolicy::with_test_limits(64, 64),
+    );
+    assert!(admission.fallback_chunks > 0);
+}
+
+#[test]
+fn render_budget_cost_weights_are_checked_in_and_deterministic() {
+    let policy = TranscriptRenderBudgetPolicy::default_frame();
+    let markdown = synthetic_markdown_chunk("chunk-a", 3, 2);
+    let media = synthetic_media_chunk("media-a");
+
+    let markdown_cost = transcript_render_chunk_cost_units(&markdown, policy);
+    let media_cost = transcript_render_chunk_cost_units(&media, policy);
+
+    assert_eq!(markdown_cost, 68);
+    assert_eq!(media_cost, 118);
+    assert!(media_cost > markdown_cost);
+}
+
+#[test]
+fn render_budget_admits_chunks_until_frame_budget_is_spent() {
+    let chunks = vec![
+        synthetic_markdown_chunk("chunk-0", 2, 1),
+        synthetic_markdown_chunk("chunk-1", 2, 1),
+        synthetic_markdown_chunk("chunk-2", 2, 1),
+    ];
+    let policy = TranscriptRenderBudgetPolicy::with_test_limits(1_000, 80);
+
+    let admission = transcript_render_window_admission(&chunks, 0..chunks.len(), policy);
+
+    assert_eq!(admission.rendered_chunks, 1);
+    assert_eq!(admission.fallback_chunks, 2);
+    assert_eq!(
+        admission.chunks[0].decision,
+        TranscriptRenderChunkAdmissionDecision::Render
+    );
+    assert_eq!(
+        admission.chunks[1].decision,
+        TranscriptRenderChunkAdmissionDecision::Fallback(
+            TranscriptRenderBudgetFallbackReason::FrameCostExceedsLimit
+        )
+    );
+    assert_eq!(
+        admission.chunks[2].decision,
+        TranscriptRenderChunkAdmissionDecision::Fallback(
+            TranscriptRenderBudgetFallbackReason::FrameCostExceedsLimit
+        )
+    );
+}
+
+#[test]
+fn render_budget_replaces_single_over_limit_chunk_with_fallback() {
+    let chunks = vec![synthetic_markdown_chunk("chunk-huge", 400, 1)];
+    let policy = TranscriptRenderBudgetPolicy::with_test_limits(128, 10_000);
+
+    let admission = transcript_render_window_admission(&chunks, 0..1, policy);
+
+    assert_eq!(admission.rendered_chunks, 0);
+    assert_eq!(admission.fallback_chunks, 1);
+    assert_eq!(
+        admission.chunks[0].decision,
+        TranscriptRenderChunkAdmissionDecision::Fallback(
+            TranscriptRenderBudgetFallbackReason::ChunkCostExceedsLimit
+        )
+    );
+}
+
+#[test]
+fn render_budget_fallback_diagnostics_are_content_free() {
+    assert_eq!(
+        TranscriptRenderBudgetFallbackReason::ChunkCostExceedsLimit.diagnostic_label(),
+        "chunk_cost_exceeds_limit"
+    );
+    assert_eq!(
+        TranscriptRenderBudgetFallbackReason::FrameCostExceedsLimit.diagnostic_label(),
+        "frame_cost_exceeds_limit"
+    );
+    assert!(TRANSCRIPT_RENDER_BUDGET_CHUNK_FALLBACK_MESSAGE.contains("frame render budget"));
+    assert!(TRANSCRIPT_RENDER_BUDGET_FRAME_FALLBACK_MESSAGE.contains("render budget was reached"));
+    assert!(!TRANSCRIPT_RENDER_BUDGET_CHUNK_FALLBACK_MESSAGE.contains("render anyway"));
+    assert!(!TRANSCRIPT_RENDER_BUDGET_FRAME_FALLBACK_MESSAGE.contains("force render"));
+}
+
+#[test]
 fn prepublication_preparation_accumulates_bounded_rows_for_layout() {
     let mut harness = PresentationHarness::new();
     harness.replace_history(
@@ -1889,40 +2088,82 @@ fn row_measurement_key_tracks_revision_width_theme_and_display_state() {
 }
 
 #[test]
-fn chunk_geometry_uses_measured_prefix_and_suffix_spacers() {
+fn chunk_geometry_streams_down_from_top_anchor_until_viewport_is_saturated() {
     let measured = vec![Some(px(100.0)); 8];
-    let window = transcript_row_chunk_render_window(8, measured.as_slice(), px(250.0), px(200.0));
+    let window = transcript_row_chunk_render_window(
+        8,
+        measured.as_slice(),
+        TranscriptRowStreamedRenderAnchor {
+            chunk_index: 2,
+            placement: TranscriptRowStreamedAnchorPlacement::Top,
+        },
+        px(200.0),
+    );
 
-    assert_eq!(window.range, 1..6);
-    assert_eq!(window.top_spacer_height, px(100.0));
-    assert_eq!(window.bottom_spacer_height, px(200.0));
+    assert_eq!(window.range, 2..5);
+    assert_eq!(window.anchor_chunk_index, 2);
+    assert_eq!(window.measured_rendered_height, px(300.0));
     assert_eq!(window.rendered_unknown_chunks, 0);
-    assert_eq!(window.skipped_unknown_chunks, 0);
+    assert!(!window.reached_start);
+    assert!(!window.reached_end);
+}
+
+#[test]
+fn chunk_geometry_streams_up_from_bottom_anchor_until_viewport_is_saturated() {
+    let measured = vec![Some(px(100.0)); 8];
+    let window = transcript_row_chunk_render_window(
+        8,
+        measured.as_slice(),
+        TranscriptRowStreamedRenderAnchor {
+            chunk_index: 5,
+            placement: TranscriptRowStreamedAnchorPlacement::Bottom,
+        },
+        px(200.0),
+    );
+
+    assert_eq!(window.range, 3..6);
+    assert_eq!(window.anchor_chunk_index, 5);
+    assert_eq!(window.measured_rendered_height, px(300.0));
+    assert_eq!(window.rendered_unknown_chunks, 0);
 }
 
 #[test]
 fn chunk_geometry_covers_short_chunks_past_the_viewport() {
     let measured = vec![Some(px(20.0)); 40];
-    let window = transcript_row_chunk_render_window(40, measured.as_slice(), px(200.0), px(200.0));
+    let window = transcript_row_chunk_render_window(
+        40,
+        measured.as_slice(),
+        TranscriptRowStreamedRenderAnchor {
+            chunk_index: 10,
+            placement: TranscriptRowStreamedAnchorPlacement::Top,
+        },
+        px(200.0),
+    );
 
-    assert_eq!(window.range, 5..25);
-    assert_eq!(window.top_spacer_height, px(100.0));
-    assert_eq!(window.bottom_spacer_height, px(300.0));
+    assert_eq!(window.range, 10..25);
+    assert_eq!(window.measured_rendered_height, px(300.0));
     assert_eq!(window.rendered_unknown_chunks, 0);
 }
 
 #[test]
-fn chunk_geometry_does_not_create_spacers_for_unknown_suffix() {
-    let mut measured = vec![Some(px(20.0)); 5];
+fn chunk_geometry_renders_bounded_unknown_chunks_without_spacers() {
+    let mut measured = vec![Some(px(20.0)); 2];
     measured.extend(std::iter::repeat(None).take(40));
-    let window =
-        transcript_row_chunk_render_window(measured.len(), measured.as_slice(), px(0.0), px(60.0));
+    let window = transcript_row_chunk_render_window(
+        measured.len(),
+        measured.as_slice(),
+        TranscriptRowStreamedRenderAnchor {
+            chunk_index: 0,
+            placement: TranscriptRowStreamedAnchorPlacement::Top,
+        },
+        px(60.0),
+    );
 
-    assert_eq!(window.range, 0..29);
-    assert_eq!(window.top_spacer_height, px(0.0));
-    assert_eq!(window.bottom_spacer_height, px(0.0));
+    assert_eq!(window.range, 0..26);
+    assert_eq!(window.measured_rendered_height, px(40.0));
     assert_eq!(window.rendered_unknown_chunks, 24);
-    assert_eq!(window.skipped_unknown_chunks, 16);
+    assert!(window.reached_start);
+    assert!(!window.reached_end);
 }
 
 #[test]
@@ -1972,7 +2213,7 @@ fn chunk_measurement_key_tracks_row_layout_inputs() {
 }
 
 #[test]
-fn chunk_geometry_reconciles_anchor_offset_when_measurements_change() {
+fn chunk_geometry_preserves_semantic_anchor_when_measurements_change() {
     let before = vec![Some(px(100.0)); 8];
     let after = vec![
         Some(px(100.0)),
@@ -1985,15 +2226,36 @@ fn chunk_geometry_reconciles_anchor_offset_when_measurements_change() {
         Some(px(100.0)),
     ];
 
+    let anchor = TranscriptRowStreamedRenderAnchor {
+        chunk_index: 2,
+        placement: TranscriptRowStreamedAnchorPlacement::Top,
+    };
     let before_window =
-        transcript_row_chunk_render_window(8, before.as_slice(), px(250.0), px(200.0));
-    let after_window =
-        transcript_row_chunk_render_window(8, after.as_slice(), px(310.0), px(200.0));
+        transcript_row_chunk_render_window(8, before.as_slice(), anchor.clone(), px(200.0));
+    let after_window = transcript_row_chunk_render_window(8, after.as_slice(), anchor, px(200.0));
 
-    assert_eq!(before_window.range.start, 1);
-    assert_eq!(after_window.range.start, 1);
-    assert_eq!(before_window.top_spacer_height, px(100.0));
-    assert_eq!(after_window.top_spacer_height, px(100.0));
+    assert_eq!(before_window.anchor_chunk_index, 2);
+    assert_eq!(after_window.anchor_chunk_index, 2);
+    assert_eq!(before_window.range.start, 2);
+    assert_eq!(after_window.range.start, 2);
+}
+
+#[test]
+fn chunk_geometry_clamps_anchor_to_turn_boundary() {
+    let measured = vec![Some(px(100.0)); 4];
+    let window = transcript_row_chunk_render_window(
+        4,
+        measured.as_slice(),
+        TranscriptRowStreamedRenderAnchor {
+            chunk_index: 99,
+            placement: TranscriptRowStreamedAnchorPlacement::Bottom,
+        },
+        px(200.0),
+    );
+
+    assert_eq!(window.anchor_chunk_index, 3);
+    assert_eq!(window.range, 1..4);
+    assert!(window.reached_end);
 }
 
 #[test]
@@ -2653,6 +2915,35 @@ fn presentability_key(media_key: &str, source_revision: u64) -> TranscriptMediaR
         1.0,
         TranscriptRowPresentationRevision::default(),
     )
+}
+
+fn synthetic_markdown_chunk(
+    identity: &str,
+    estimated_render_blocks: usize,
+    unit_count: usize,
+) -> TranscriptRowRenderChunk {
+    TranscriptRowRenderChunk {
+        identity: identity.to_string(),
+        owner: TranscriptRowChunkOwner::MarkdownSource {
+            key: format!("{identity}:key"),
+            block_path: format!("{identity}:block"),
+            first_unit_index: 0,
+            unit_count,
+        },
+        estimated_render_blocks,
+        source_revision: 1,
+    }
+}
+
+fn synthetic_media_chunk(identity: &str) -> TranscriptRowRenderChunk {
+    TranscriptRowRenderChunk {
+        identity: identity.to_string(),
+        owner: TranscriptRowChunkOwner::MediaDescriptor {
+            key: format!("{identity}:media"),
+        },
+        estimated_render_blocks: 1,
+        source_revision: 1,
+    }
 }
 
 fn prompt_turn_with_fragments(id: &str, prompts: &[&str]) -> TurnInfo {

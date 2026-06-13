@@ -489,6 +489,8 @@ mod transcript_scroll;
 mod transcript_selection;
 mod transcript_stream_invalidation;
 mod transcript_thread_links;
+mod transcript_viewport;
+mod transcript_viewport_navigation;
 mod turn_steering;
 mod turn_stop;
 mod turn_view;
@@ -617,6 +619,7 @@ use transcript_edit_commit_worker::TranscriptEditCommitUpdate;
 use transcript_history::{
     LoadedTranscriptHistoryPage, THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBoundaryState,
     TranscriptHistoryPageRequest, TranscriptHistoryWindow, TranscriptResidencyPinKind,
+    TranscriptResidencyStreamedTurnFill,
 };
 use transcript_live_scroll::{
     TranscriptFinalAnchor, TranscriptLiveScrollEffectSnapshot, TranscriptLiveScrollState,
@@ -632,6 +635,11 @@ use transcript_residency_pages::{
 use transcript_residency_pins::TranscriptResidencyDiagnostics;
 use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
 use transcript_stream_invalidation::TranscriptStreamInvalidations;
+use transcript_viewport::{
+    TranscriptViewportNavigationDirection, TranscriptViewportPlacement, TranscriptViewportState,
+};
+use transcript_viewport_navigation::TranscriptContentScrollSignature;
+pub(crate) use transcript_viewport_navigation::TranscriptStreamedNavigationSnapshot;
 use turn_steering::{
     SteeringInputFragment, TurnSteeringOutcome, TurnSteeringUpdate, spawn_turn_steering_worker,
 };
@@ -1192,7 +1200,6 @@ enum ScrollbarRegion {
     WorkspacePicker,
     WorkspaceMembers,
     WorkspaceRuntimeSelector,
-    Transcript,
     ToolActivity,
     GraphThreadLinkMenu,
     StatusOperation,
@@ -1439,6 +1446,7 @@ struct ConversationSurfaceState {
     status_line: StatusLineState,
     status_line_operations: StatusLineOperationState,
     transcript_live_scroll: TranscriptLiveScrollState,
+    transcript_viewport: TranscriptViewportState,
     transcript_user_scrolled: bool,
     transcript_history_window: TranscriptHistoryWindow,
     transcript_residency_diagnostics: TranscriptResidencyDiagnostics,
@@ -1448,6 +1456,8 @@ struct ConversationSurfaceState {
     transcript_content_release_markdown_keys: Vec<String>,
     transcript_content_release_media_keys: Vec<String>,
     last_transcript_content_scroll_signature: Option<TranscriptContentScrollSignature>,
+    transcript_streamed_residency_fill_facts: HashMap<String, TranscriptResidencyStreamedTurnFill>,
+    transcript_streamed_navigation_snapshot: Option<TranscriptStreamedNavigationSnapshot>,
     transcript_residency_controller_facts: Option<TranscriptResidencyControllerFacts>,
     last_transcript_residency_controller_signature: Option<TranscriptResidencyControllerSignature>,
     invalidated_stream_turns: TranscriptStreamInvalidations,
@@ -1495,16 +1505,6 @@ struct ToolActivityPanelDragState {
     pointer_offset: Pixels,
     min_height: Pixels,
     max_height: Pixels,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct TranscriptContentScrollSignature {
-    visible_range: Range<usize>,
-    item_count: usize,
-    scroll_position: ListScrollPosition,
-    user_scrolled: bool,
-    anchor_preserves_offset: bool,
-    resident_boundary: TranscriptHistoryBoundaryState,
 }
 
 #[derive(Clone)]
@@ -2092,6 +2092,7 @@ impl ConversationSurfaceState {
             status_line: StatusLineState::default(),
             status_line_operations: StatusLineOperationState::default(),
             transcript_live_scroll: TranscriptLiveScrollState::inactive(),
+            transcript_viewport: TranscriptViewportState::default(),
             transcript_user_scrolled: false,
             transcript_history_window: TranscriptHistoryWindow::default(),
             transcript_residency_diagnostics: TranscriptResidencyDiagnostics::default(),
@@ -2101,6 +2102,8 @@ impl ConversationSurfaceState {
             transcript_content_release_markdown_keys: Vec::new(),
             transcript_content_release_media_keys: Vec::new(),
             last_transcript_content_scroll_signature: None,
+            transcript_streamed_residency_fill_facts: HashMap::new(),
+            transcript_streamed_navigation_snapshot: None,
             transcript_residency_controller_facts: None,
             last_transcript_residency_controller_signature: None,
             invalidated_stream_turns: TranscriptStreamInvalidations::default(),
@@ -2264,8 +2267,13 @@ impl ConversationSurfaceState {
         &self.transcript_presentation
     }
 
+    fn transcript_viewport(&self) -> &TranscriptViewportState {
+        &self.transcript_viewport
+    }
+
     fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
         let transcript = self.execution_details.retained_counts();
+        let active_source_pin = self.execution_details.active_turn_source_pin_snapshot();
         let residency = self.transcript_history_window.residency_retained_counts();
         let presentation = self.transcript_presentation.retained_counts();
         let history = self.transcript_history_window.retained_counts();
@@ -2412,6 +2420,10 @@ impl ConversationSurfaceState {
             transcript_image_marker_bytes: Some(transcript.image_marker_bytes),
             transcript_narrative_entries: Some(transcript.narrative_entries),
             active_turn_payload_bytes: Some(transcript.active_turn_payload_bytes),
+            active_turn_source_pin_active: Some(active_source_pin.active),
+            active_turn_source_retained_bytes: Some(active_source_pin.retained_bytes),
+            active_turn_source_budget_max_bytes: Some(active_source_pin.max_retained_bytes),
+            active_turn_source_budget_fallback_active: Some(active_source_pin.fallback_active),
             transcript_agent_text_bytes: Some(transcript.agent_text_bytes),
             transcript_reasoning_summary_bytes: Some(transcript.reasoning_summary_bytes),
             transcript_reasoning_content_bytes: Some(transcript.reasoning_content_bytes),
@@ -2734,34 +2746,6 @@ impl ConversationSurfaceState {
         self.transcript_list_state.clone()
     }
 
-    fn transcript_content_scroll_signature(
-        &self,
-        event: &ListScrollEvent,
-    ) -> TranscriptContentScrollSignature {
-        let source_visible_range = self
-            .transcript_presentation
-            .source_range_for_presentation_range(&event.visible_range);
-        TranscriptContentScrollSignature {
-            visible_range: event.visible_range.clone(),
-            item_count: event.count,
-            scroll_position: self.transcript_list_state.scroll_position(),
-            user_scrolled: self.transcript_user_scrolled,
-            anchor_preserves_offset: self.transcript_live_scroll_preserves_anchor_offset(),
-            resident_boundary: self
-                .transcript_history_window
-                .boundary_state_for_visible_range(&source_visible_range),
-        }
-    }
-
-    fn note_transcript_content_scroll_signature(&mut self, event: &ListScrollEvent) -> bool {
-        let signature = self.transcript_content_scroll_signature(event);
-        if self.last_transcript_content_scroll_signature.as_ref() == Some(&signature) {
-            return false;
-        }
-        self.last_transcript_content_scroll_signature = Some(signature);
-        true
-    }
-
     fn transcript_live_scroll_effect_snapshot(&self) -> Option<TranscriptLiveScrollEffectSnapshot> {
         self.transcript_live_scroll.effect_snapshot()
     }
@@ -2787,6 +2771,10 @@ impl ConversationSurfaceState {
             in_flight_requests: residency.in_flight_requests,
             budget_reason: Some(residency.budget_reason.label().to_string()),
         }
+    }
+
+    fn active_turn_source_pin_snapshot(&self) -> execution_detail::ActiveTurnSourcePinSnapshot {
+        self.execution_details.active_turn_source_pin_snapshot()
     }
 
     fn transcript_content_release_generation(&self) -> u64 {
@@ -2986,6 +2974,7 @@ impl ConversationSurfaceState {
             status_line: self.status_line.clone(),
             status_line_operations: self.status_line_operations.clone(),
             transcript_live_scroll: self.transcript_live_scroll.clone(),
+            transcript_viewport: self.transcript_viewport.clone(),
             transcript_user_scrolled: self.transcript_user_scrolled,
             transcript_history_window: self.transcript_history_window.clone(),
             transcript_residency_diagnostics: self.transcript_residency_diagnostics.clone(),
@@ -3002,6 +2991,12 @@ impl ConversationSurfaceState {
                 .clone(),
             last_transcript_content_scroll_signature: self
                 .last_transcript_content_scroll_signature
+                .clone(),
+            transcript_streamed_residency_fill_facts: self
+                .transcript_streamed_residency_fill_facts
+                .clone(),
+            transcript_streamed_navigation_snapshot: self
+                .transcript_streamed_navigation_snapshot
                 .clone(),
             transcript_residency_controller_facts: self
                 .transcript_residency_controller_facts
@@ -3392,6 +3387,8 @@ impl ConversationSurfaceState {
         self.transcript_content_release_markdown_keys.clear();
         self.transcript_content_release_media_keys.clear();
         self.last_transcript_content_scroll_signature = None;
+        self.transcript_streamed_residency_fill_facts.clear();
+        self.transcript_streamed_navigation_snapshot = None;
         self.transcript_residency_controller_facts = None;
         self.invalidate_transcript_residency_controller();
         self.invalidated_stream_turns.clear();
@@ -3410,6 +3407,7 @@ impl ConversationSurfaceState {
         self.pending_active_turn_steering_queue = None;
         self.notices.clear_all();
         self.transcript_list_state.reset(0);
+        self.transcript_viewport.clear();
     }
 
     fn begin_turn(&mut self, user_input: UserInputFragment) {
@@ -7523,14 +7521,11 @@ impl ShellView {
     fn note_transcript_scroll(
         &mut self,
         is_scrolled: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) -> bool {
-        let changed = self
-            .conversation_surface_mut()
-            .is_some_and(|surface| surface.set_transcript_user_scrolled(is_scrolled));
-        self.note_scrollbar_activity(ScrollbarRegion::Transcript, window, cx);
-        changed
+        self.conversation_surface_mut()
+            .is_some_and(|surface| surface.set_transcript_user_scrolled(is_scrolled))
     }
 
     fn note_transcript_scroll_event(
@@ -7547,22 +7542,6 @@ impl ShellView {
             self.notify_transcript_panel(cx);
         }
         self.begin_transcript_residency_update_for_scroll_event(event, window, cx);
-    }
-
-    fn note_transcript_scrollbar_owner_update(
-        &mut self,
-        list_state: &ListState,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.release_transcript_submit_anchor(cx);
-        let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
-        let event = ListScrollEvent {
-            visible_range: list_state.visible_range(),
-            count: list_state.item_count(),
-            is_scrolled,
-        };
-        self.note_transcript_scroll_event(&event, window, cx);
     }
 
     fn begin_transcript_residency_update_for_scroll_event(
@@ -11901,6 +11880,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let mut viewport_changed = false;
         let scroll_event = self.conversation_surface_mut().and_then(|surface| {
             let list_state = surface.transcript_list_state();
             let turn_count = surface.transcript_presentation().len();
@@ -11909,7 +11889,15 @@ impl ShellView {
                 return None;
             };
 
-            list_state.scroll_to_position(target);
+            let viewport_target =
+                surface.transcript_viewport_turn_target_for_scroll_position(&target);
+            if let Some(viewport_target) = viewport_target {
+                let application =
+                    surface.apply_transcript_viewport_turn_jump(viewport_target, target);
+                viewport_changed |= application.changed;
+            } else {
+                list_state.scroll_to_position(target);
+            }
             surface.release_transcript_submit_anchor();
             let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
             Some(ListScrollEvent {
@@ -11921,6 +11909,10 @@ impl ShellView {
 
         if let Some(event) = scroll_event {
             self.note_transcript_scroll_event(&event, window, cx);
+        }
+        if viewport_changed {
+            self.notify_transcript_panel(cx);
+            cx.notify();
         }
     }
 
@@ -14795,11 +14787,17 @@ impl ShellView {
                     item_ix: 0,
                     offset_in_item: px(0.0),
                 }));
+                if let Some(target) = surface
+                    .transcript_viewport_turn_target_for_row(0, TranscriptViewportPlacement::Top)
+                {
+                    surface.transcript_viewport.apply_turn_jump(Some(target));
+                }
                 surface.release_transcript_submit_anchor();
                 surface.set_transcript_user_scrolled(true);
             }
             ScrollTranscriptCommand::Bottom => {
                 list_state.scroll_to_position(ListScrollPosition::Bottom);
+                surface.transcript_viewport.reset_to_tail(item_count);
                 surface.release_transcript_submit_anchor();
                 surface.set_transcript_user_scrolled(false);
             }
@@ -14817,7 +14815,23 @@ impl ShellView {
                     ScrollTranscriptCommand::Top | ScrollTranscriptCommand::Bottom => 0.0,
                 };
                 for _ in 0..repeat {
-                    list_state.scroll_by(viewport_height * direction);
+                    let semantic_direction = match command {
+                        ScrollTranscriptCommand::PageUp => {
+                            TranscriptViewportNavigationDirection::Up
+                        }
+                        ScrollTranscriptCommand::PageDown => {
+                            TranscriptViewportNavigationDirection::Down
+                        }
+                        ScrollTranscriptCommand::Top | ScrollTranscriptCommand::Bottom => {
+                            unreachable!("page branch handles only page commands")
+                        }
+                    };
+                    let semantic = surface.apply_transcript_viewport_page(semantic_direction);
+                    if semantic.consumed {
+                        surface.release_transcript_submit_anchor();
+                    } else {
+                        list_state.scroll_by(viewport_height * direction);
+                    }
                 }
                 surface.release_transcript_submit_anchor();
                 let at_bottom = matches!(list_state.scroll_position(), ListScrollPosition::Bottom);

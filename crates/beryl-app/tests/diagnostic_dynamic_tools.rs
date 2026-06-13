@@ -22,7 +22,8 @@ use diagnostic_dynamic_tools::{
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
     SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
     ThemeRoleNavigatorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
-    TranscriptFrameMetricsSnapshot, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
+    TranscriptFrameMetricsSnapshot, TranscriptFrameRenderBudgetDiagnostic,
+    TranscriptSemanticViewportDiagnostic, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
     VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
     dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
     renderer_snapshot_with_shell_window,
@@ -119,6 +120,21 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
         log.record(TranscriptFrameMetric {
             sequence: 0,
             selected_thread_id: Some(format!("thread-{index}-{}", "x".repeat(700))),
+            semantic_viewport: TranscriptSemanticViewportDiagnostic {
+                viewport_mode: "streamed".to_string(),
+                live_autoscroll: "detached".to_string(),
+                anchor_row_index: Some(3),
+                anchor_row_identity: Some(format!("row-{index}-{}", "r".repeat(700))),
+                anchor_chunk_index: Some(9),
+                anchor_chunk_identity: Some(format!("chunk-{index}-{}", "c".repeat(700))),
+                anchor_placement: Some("top".to_string()),
+                rendered_chunk_range: Some(diagnostic_dynamic_tools::PresentationRangeDiagnostic {
+                    start: 8,
+                    end: 12,
+                }),
+                chunk_count: Some(64),
+                fill_direction: Some("down".to_string()),
+            },
             presentation_range: None,
             visible_range: None,
             total_loaded_turn_count: 12,
@@ -131,11 +147,34 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
             residency_retained_bytes: 2048,
             residency_in_flight_requests: 1,
             residency_budget_reason: Some("resident_byte_limit".to_string()),
+            active_turn_source_pin_active: true,
+            active_turn_source_retained_bytes: 512,
+            active_turn_source_budget_max_bytes: 4096,
+            active_turn_source_budget_fallback_active: false,
+            resident_budget_fallback_row_count: 1,
+            active_source_budget_fallback_row_count: 2,
+            transcript_scrollbar_visible: false,
             frame_micros: index,
             snapshot_micros: 11,
             render_state_pruning_micros: 12,
             style_snapshot_micros: 1,
             composer_measurement_micros: 2,
+            chunk_window_computation_micros: 13,
+            render_budget: TranscriptFrameRenderBudgetDiagnostic {
+                chunk_window_count: 1,
+                admitted_chunk_count: 4,
+                rendered_chunk_count: 2,
+                fallback_chunk_count: 2,
+                rendered_cost_units: 300,
+                fallback_cost_units: 700,
+                largest_chunk_cost_units: 400,
+                max_chunk_cost_units: 2048,
+                max_frame_cost_units: 8192,
+                fallback_reasons: vec![
+                    "chunk_cost_exceeds_limit".repeat(40),
+                    "frame_cost_exceeds_limit".to_string(),
+                ],
+            },
             row_build_total_micros: 3,
             row_prepaint_total_micros: 4,
             inline_text_construction_micros: 5,
@@ -198,6 +237,75 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
     assert_eq!(
         payload["result"]["frames"][0]["residencyBudgetReason"],
         "resident_byte_limit"
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["semanticViewport"]["viewportMode"],
+        "streamed"
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["semanticViewport"]["anchorChunkIndex"],
+        9
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["semanticViewport"]["renderedChunkRange"]["start"],
+        8
+    );
+    assert!(
+        payload["result"]["frames"][0]["semanticViewport"]["anchorRowIdentity"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
+    );
+    assert!(
+        payload["result"]["frames"][0]["semanticViewport"]["anchorChunkIdentity"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["activeTurnSourcePinActive"],
+        true
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["activeTurnSourceRetainedBytes"],
+        512
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["activeTurnSourceBudgetFallbackActive"],
+        false
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["residentBudgetFallbackRowCount"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["activeSourceBudgetFallbackRowCount"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["transcriptScrollbarVisible"],
+        false
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["chunkWindowComputationMicros"],
+        13
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["renderBudget"]["fallbackChunkCount"],
+        2
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["renderBudget"]["maxFrameCostUnits"],
+        8192
+    );
+    assert!(
+        payload["result"]["frames"][0]["renderBudget"]["fallbackReasons"][0]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
     );
     assert_eq!(payload["result"]["frames"][0]["snapshotMicros"], 11);
     assert_eq!(
@@ -800,6 +908,12 @@ fn retained_state_summary_reports_transcript_residency_counters() {
     snapshot
         .retained_state
         .transcript_residency_last_oversized_fallback_turns = Some(1);
+    snapshot.retained_state.active_turn_source_pin_active = Some(true);
+    snapshot.retained_state.active_turn_source_retained_bytes = Some(512);
+    snapshot.retained_state.active_turn_source_budget_max_bytes = Some(4096);
+    snapshot
+        .retained_state
+        .active_turn_source_budget_fallback_active = Some(false);
 
     let response = dispatch_beryl_diagnostic_dynamic_tool_call(
         &diagnostic_tool_request(READ_RETAINED_STATE_SUMMARY_TOOL, json!({})),
@@ -827,6 +941,22 @@ fn retained_state_summary_reports_transcript_residency_counters() {
     assert_eq!(
         payload["result"]["retainedState"]["transcriptResidencyOversizedFallbackTurns"],
         1
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["activeTurnSourcePinActive"],
+        true
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["activeTurnSourceRetainedBytes"],
+        512
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["activeTurnSourceBudgetMaxBytes"],
+        4096
+    );
+    assert_eq!(
+        payload["result"]["retainedState"]["activeTurnSourceBudgetFallbackActive"],
+        false
     );
     assert_eq!(
         payload["result"]["retainedState"]["transcriptResidencyRetainedItems"],

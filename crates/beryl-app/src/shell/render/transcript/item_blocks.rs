@@ -114,7 +114,8 @@ pub(super) fn render_agent_message(
         selection_order,
         initial_break_before,
         code_panel_state.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
 
     Some(render_markdown_plan_with_style_and_selection(
         markdown.render_plan(),
@@ -256,14 +257,16 @@ fn markdown_reasoning_blocks(
                 TRANSCRIPT_NARRATIVE_BLOCK_BREAK_BEFORE
             };
             rendered_block_count.set(rendered_block_count.get().saturating_add(1));
-            let selection_context = TranscriptInlineSelectionContext::new_with_initial_break_before(
-                code_panel_state.entity(),
-                row_identity.to_string(),
-                block_path.clone(),
-                selection_order.clone(),
-                initial_break_before,
-                code_panel_state.selection_render(),
-            );
+            let selection_context =
+                TranscriptInlineSelectionContext::new_with_initial_break_before(
+                    code_panel_state.entity(),
+                    row_identity.to_string(),
+                    block_path.clone(),
+                    selection_order.clone(),
+                    initial_break_before,
+                    code_panel_state.selection_render(),
+                )
+                .with_viewport_local_scope(code_panel_state.viewport_local_selection_scope());
             Some(render_markdown_plan_with_style_and_selection(
                 markdown.render_plan(),
                 theme,

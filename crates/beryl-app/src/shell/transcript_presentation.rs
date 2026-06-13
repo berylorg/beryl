@@ -21,13 +21,16 @@ mod metrics;
 #[allow(dead_code)]
 #[path = "transcript_presentation/range.rs"]
 mod range;
+#[path = "transcript_presentation/render_budget.rs"]
+mod render_budget;
 #[path = "transcript_presentation/row_model.rs"]
 mod row_model;
 
 #[allow(unused_imports)]
 pub(crate) use chunk_geometry::{
-    TranscriptRowChunkMeasurementKey, TranscriptRowChunkRenderWindow, measured_chunk_heights_for,
-    transcript_row_chunk_render_window,
+    TranscriptRowChunkMeasurementKey, TranscriptRowChunkRenderWindow,
+    TranscriptRowStreamedAnchorPlacement, TranscriptRowStreamedRenderAnchor,
+    measured_chunk_heights_for, transcript_row_chunk_render_window,
 };
 use identity::{latest_user_prompt_anchor_in_rows, stable_row_identity, user_prompt_anchor_text};
 use metrics::TranscriptPresentationRowMetrics;
@@ -44,6 +47,14 @@ pub(crate) use row_model::{
 pub(crate) use range::{
     TRANSCRIPT_INITIAL_PRESENTATION_ROWS, TRANSCRIPT_MAX_PRESENTATION_ROWS,
     transcript_frame_preload_range, transcript_frame_presentation_range,
+};
+#[allow(unused_imports)]
+pub(crate) use render_budget::{
+    TRANSCRIPT_RENDER_BUDGET_CHUNK_FALLBACK_MESSAGE,
+    TRANSCRIPT_RENDER_BUDGET_FRAME_FALLBACK_MESSAGE, TranscriptRenderBudgetAdmission,
+    TranscriptRenderBudgetFallbackReason, TranscriptRenderBudgetPolicy,
+    TranscriptRenderChunkAdmission, TranscriptRenderChunkAdmissionDecision,
+    transcript_render_chunk_cost_units, transcript_render_window_admission,
 };
 
 #[derive(Clone, Default)]

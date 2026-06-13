@@ -368,3 +368,47 @@ fn projection_cache_does_not_schedule_oversized_source_on_render_lookup() {
     assert_eq!(stats.uncached_oversize_lookups, 1);
     assert_eq!(stats.represented_source_bytes, 0);
 }
+
+#[test]
+fn projection_cache_retains_and_prunes_by_stable_owner_id() {
+    let source = "plain line\n".repeat(5_000);
+    let mut cache = CodePanelProjectionCache::new_with_estimated_bytes(
+        8,
+        source.len().saturating_mul(3),
+        64_000_000,
+    );
+    complete_ready_projection(
+        &mut cache,
+        "transcript-code-panel:r5:row-a:b11:item:answer:c2:b0",
+        source.as_str(),
+        CodePanelWrapMode::NoWrap,
+    );
+    complete_ready_projection(
+        &mut cache,
+        "transcript-code-panel:r5:row-b:b11:item:answer:c2:b0",
+        source.as_str(),
+        CodePanelWrapMode::NoWrap,
+    );
+    assert_eq!(cache.stats().entries, 2);
+
+    cache.retain_owners(
+        &["transcript-code-panel:r5:row-a:b11:item:answer:c2:b0".to_string()]
+            .into_iter()
+            .collect(),
+    );
+
+    assert_eq!(cache.stats().entries, 1);
+    let retained = cache.lookup(
+        "transcript-code-panel:r5:row-a:b11:item:answer:c2:b0",
+        source_revision(source.as_str(), Some("text")),
+        CodePanelWrapMode::NoWrap,
+    );
+    assert!(retained.ready.is_some());
+    let pruned = cache.lookup(
+        "transcript-code-panel:r5:row-b:b11:item:answer:c2:b0",
+        source_revision(source.as_str(), Some("text")),
+        CodePanelWrapMode::NoWrap,
+    );
+    assert!(pruned.ready.is_none());
+    assert!(pruned.projection_request.is_some());
+}

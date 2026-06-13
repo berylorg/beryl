@@ -18,11 +18,11 @@ use beryl_backend::{
 use diagnostic_dynamic_tools::VisibleMediaSnapshot;
 use gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CLOSE_POPUPS_TOOL,
-    ClosePopupsResult, GuiControlToolRequest, PopupUiState, READ_UI_STATE_TOOL,
-    SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON, SWITCH_THREAD_TOOL,
-    SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState, TurnViewUiState,
-    UiStateSnapshot, close_popups_tool_response, parse_beryl_gui_control_dynamic_tool_request,
-    ui_state_tool_response,
+    ClosePopupsResult, GuiControlToolRequest, MarkdownCacheUiState, PopupUiState,
+    READ_UI_STATE_TOOL, SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON,
+    SWITCH_THREAD_TOOL, SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState,
+    TurnViewUiState, UiStateSnapshot, close_popups_tool_response,
+    parse_beryl_gui_control_dynamic_tool_request, ui_state_tool_response,
 };
 use serde_json::{Value, json};
 
@@ -130,6 +130,7 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
                 turn_state: gui_control_dynamic_tools::TurnUiState::default(),
                 transcript: TranscriptUiState::default(),
                 visible_media: VisibleMediaSnapshot::default(),
+                markdown_cache: MarkdownCacheUiState::default(),
                 activity_panel: ActivityPanelUiState::default(),
                 popups: PopupUiState {
                     settings_window_visible: Some(true),
@@ -137,6 +138,7 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
                     ..PopupUiState::default()
                 },
                 background_work: BackgroundWorkUiState::default(),
+                pending_activation: None,
             },
         },
     );
@@ -178,9 +180,11 @@ fn ui_state_response_reports_backend_unavailable_reason() {
             turn_state: gui_control_dynamic_tools::TurnUiState::default(),
             transcript: TranscriptUiState::default(),
             visible_media: VisibleMediaSnapshot::default(),
+            markdown_cache: MarkdownCacheUiState::default(),
             activity_panel: ActivityPanelUiState::default(),
             popups: PopupUiState::default(),
             background_work: BackgroundWorkUiState::default(),
+            pending_activation: None,
         },
     );
     let payload = response_json(&response);
@@ -220,9 +224,11 @@ fn ui_state_response_reports_status_line_turn_view() {
             },
             transcript: TranscriptUiState::default(),
             visible_media: VisibleMediaSnapshot::default(),
+            markdown_cache: MarkdownCacheUiState::default(),
             activity_panel: ActivityPanelUiState::default(),
             popups: PopupUiState::default(),
             background_work: BackgroundWorkUiState::default(),
+            pending_activation: None,
         },
     );
     let payload = response_json(&response);

@@ -141,6 +141,13 @@ mod shell {
         pub(super) fn presentation_len(&self) -> usize {
             self.presentation.len()
         }
+
+        pub(super) fn chunk_count_at(&self, index: usize) -> usize {
+            self.presentation
+                .turn_at(index)
+                .map(|row| row.model.chunk_presentation().chunks().len())
+                .unwrap_or_default()
+        }
     }
 }
 
@@ -225,6 +232,29 @@ fn edit_target_counts_hidden_operational_tail_turns() {
         .expect("latest visible prompt is editable");
     assert_eq!(latest_visible.source_turn_id(), "turn_3");
     assert_eq!(latest_visible.rollback_turn_count(), 1);
+}
+
+#[test]
+fn edit_target_for_huge_streamed_row_uses_owning_backend_turn() {
+    let mut harness = EditHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![
+            huge_assistant_turn("turn_huge", "Seed prompt"),
+            prompt_turn_with_fragments("turn_tail", &["Tail prompt"]),
+        ],
+    );
+    assert_eq!(harness.presentation_len(), 2);
+    assert!(harness.chunk_count_at(0) > 1);
+
+    let target = harness
+        .target_at(0, true)
+        .expect("resident huge row should be editable by owning turn");
+    assert_eq!(target.source_thread_id(), "thread_a");
+    assert_eq!(target.source_turn_id(), "turn_huge");
+    assert_eq!(target.source_turn_index(), 0);
+    assert_eq!(target.rollback_turn_count(), 2);
+    assert_eq!(target.draft_seed_fragments(), &["Seed prompt".to_string()]);
 }
 
 #[test]
@@ -709,6 +739,20 @@ fn assistant_narrative_turn(id: &str, prompt: &str, answer: &str) -> TurnInfo {
         id: format!("{id}_answer"),
         phase: Some(ProtocolPhase::FinalAnswer),
         text: answer.to_string(),
+    }));
+    turn
+}
+
+fn huge_assistant_turn(id: &str, prompt: &str) -> TurnInfo {
+    let mut turn = prompt_turn_with_fragments(id, &[prompt]);
+    let markdown = (0..80)
+        .map(|index| format!("Large assistant paragraph {index}."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    turn.items.push(ThreadItem::AgentMessage(AgentMessageItem {
+        id: format!("{id}_answer"),
+        phase: Some(ProtocolPhase::FinalAnswer),
+        text: markdown,
     }));
     turn
 }

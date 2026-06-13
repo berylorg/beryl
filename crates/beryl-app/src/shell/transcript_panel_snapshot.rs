@@ -16,6 +16,7 @@ impl ShellView {
         match &self.state {
             ShellState::Ready(ready) => {
                 let residency = ready.surface.transcript_residency_frame_diagnostic();
+                let active_source_pin = ready.surface.active_turn_source_pin_snapshot();
                 Some(render::transcript::TranscriptPanelSnapshot {
                     workspace_id: Some(ready.loaded_workspace.workspace.id().clone()),
                     workspace: ready.execution_target.clone(),
@@ -29,6 +30,7 @@ impl ShellView {
                         .map(str::to_string),
                     transcript_width: ready.surface.transcript_width(),
                     transcript_list_state: ready.surface.transcript_list_state(),
+                    transcript_viewport: ready.surface.transcript_viewport().clone(),
                     live_scroll: ready.surface.transcript_live_scroll_effect_snapshot(),
                     live_scroll_preserves_anchor_offset: ready
                         .surface
@@ -38,6 +40,10 @@ impl ShellView {
                     residency_retained_bytes: residency.retained_bytes,
                     residency_in_flight_requests: residency.in_flight_requests,
                     residency_budget_reason: residency.budget_reason,
+                    active_turn_source_pin_active: active_source_pin.active,
+                    active_turn_source_retained_bytes: active_source_pin.retained_bytes,
+                    active_turn_source_budget_max_bytes: active_source_pin.max_retained_bytes,
+                    active_turn_source_budget_fallback_active: active_source_pin.fallback_active,
                     metrics: tracing::enabled!(tracing::Level::DEBUG)
                         .then(|| ready.surface.transcript_presentation().render_metrics()),
                     activity_caret: ready.surface.transcript_activity_caret(),
@@ -64,6 +70,7 @@ impl ShellView {
             }
             ShellState::BackendUnavailable(unavailable) => {
                 let residency = unavailable.surface.transcript_residency_frame_diagnostic();
+                let active_source_pin = unavailable.surface.active_turn_source_pin_snapshot();
                 Some(render::transcript::TranscriptPanelSnapshot {
                     workspace_id: Some(unavailable.loaded_workspace.workspace.id().clone()),
                     workspace: unavailable.execution_target.clone(),
@@ -80,6 +87,7 @@ impl ShellView {
                         .map(str::to_string),
                     transcript_width: unavailable.surface.transcript_width(),
                     transcript_list_state: unavailable.surface.transcript_list_state(),
+                    transcript_viewport: unavailable.surface.transcript_viewport().clone(),
                     live_scroll: unavailable.surface.transcript_live_scroll_effect_snapshot(),
                     live_scroll_preserves_anchor_offset: unavailable
                         .surface
@@ -89,6 +97,10 @@ impl ShellView {
                     residency_retained_bytes: residency.retained_bytes,
                     residency_in_flight_requests: residency.in_flight_requests,
                     residency_budget_reason: residency.budget_reason,
+                    active_turn_source_pin_active: active_source_pin.active,
+                    active_turn_source_retained_bytes: active_source_pin.retained_bytes,
+                    active_turn_source_budget_max_bytes: active_source_pin.max_retained_bytes,
+                    active_turn_source_budget_fallback_active: active_source_pin.fallback_active,
                     metrics: tracing::enabled!(tracing::Level::DEBUG).then(|| {
                         unavailable
                             .surface
@@ -119,6 +131,7 @@ impl ShellView {
             }
             ShellState::Blocked(blocked) => blocked.surface.as_ref().map(|surface| {
                 let residency = surface.transcript_residency_frame_diagnostic();
+                let active_source_pin = surface.active_turn_source_pin_snapshot();
                 render::transcript::TranscriptPanelSnapshot {
                     workspace_id: blocked
                         .loaded_workspace
@@ -134,6 +147,7 @@ impl ShellView {
                         .map(str::to_string),
                     transcript_width: surface.transcript_width(),
                     transcript_list_state: surface.transcript_list_state(),
+                    transcript_viewport: surface.transcript_viewport().clone(),
                     live_scroll: surface.transcript_live_scroll_effect_snapshot(),
                     live_scroll_preserves_anchor_offset: surface
                         .transcript_live_scroll_preserves_anchor_offset(),
@@ -142,6 +156,10 @@ impl ShellView {
                     residency_retained_bytes: residency.retained_bytes,
                     residency_in_flight_requests: residency.in_flight_requests,
                     residency_budget_reason: residency.budget_reason,
+                    active_turn_source_pin_active: active_source_pin.active,
+                    active_turn_source_retained_bytes: active_source_pin.retained_bytes,
+                    active_turn_source_budget_max_bytes: active_source_pin.max_retained_bytes,
+                    active_turn_source_budget_fallback_active: active_source_pin.fallback_active,
                     metrics: tracing::enabled!(tracing::Level::DEBUG)
                         .then(|| surface.transcript_presentation().render_metrics()),
                     activity_caret: surface.transcript_activity_caret(),

@@ -57,6 +57,8 @@ pub(crate) struct TranscriptResidencyTurnPlanInput {
     pub(crate) estimated_resident_bytes: usize,
     pub(crate) resident: bool,
     pub(crate) oversized_fallback: bool,
+    pub(crate) streamed_leading_margin_satisfied: bool,
+    pub(crate) streamed_trailing_margin_satisfied: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -104,6 +106,8 @@ struct PlannedTurn {
     estimated_resident_bytes: usize,
     resident: bool,
     oversized_fallback: bool,
+    streamed_leading_margin_satisfied: bool,
+    streamed_trailing_margin_satisfied: bool,
     top: usize,
     bottom: usize,
 }
@@ -197,6 +201,8 @@ impl TranscriptResidencyTurnPlanInput {
             estimated_resident_bytes: 0,
             resident: false,
             oversized_fallback: false,
+            streamed_leading_margin_satisfied: false,
+            streamed_trailing_margin_satisfied: false,
         }
     }
 
@@ -227,6 +233,16 @@ impl TranscriptResidencyTurnPlanInput {
 
     pub(crate) fn with_oversized_fallback(mut self, oversized_fallback: bool) -> Self {
         self.oversized_fallback = oversized_fallback;
+        self
+    }
+
+    pub(crate) fn with_streamed_margin_satisfaction(
+        mut self,
+        leading_margin_satisfied: bool,
+        trailing_margin_satisfied: bool,
+    ) -> Self {
+        self.streamed_leading_margin_satisfied = leading_margin_satisfied;
+        self.streamed_trailing_margin_satisfied = trailing_margin_satisfied;
         self
     }
 }
@@ -293,18 +309,19 @@ pub(crate) fn plan_transcript_residency_target(
 
     let visible_range = clamp_range(input.viewport.visible_range.clone(), turns.len());
     let (visible_top, visible_bottom) = visible_pixel_bounds(&turns, &visible_range, &input);
-    let target_top = visible_top.saturating_sub(
+    let mut target_top = visible_top.saturating_sub(
         input
             .viewport
             .viewport_height
             .saturating_mul(input.policy.leading_viewport_margins),
     );
-    let target_bottom = visible_bottom.saturating_add(
+    let mut target_bottom = visible_bottom.saturating_add(
         input
             .viewport
             .viewport_height
             .saturating_mul(input.policy.trailing_viewport_margins),
     );
+    apply_streamed_margin_satisfaction(&turns, &visible_range, &mut target_top, &mut target_bottom);
     let candidates = planning_candidates(&input, &turns, &visible_range, target_top, target_bottom);
     let target_turn_ids = target_turn_ids(&turns, target_top, target_bottom);
 
@@ -466,6 +483,8 @@ fn planned_turns(input: &TranscriptResidencyTargetInput) -> Vec<PlannedTurn> {
                 estimated_resident_bytes: turn.estimated_resident_bytes,
                 resident: turn.resident,
                 oversized_fallback: turn.oversized_fallback,
+                streamed_leading_margin_satisfied: turn.streamed_leading_margin_satisfied,
+                streamed_trailing_margin_satisfied: turn.streamed_trailing_margin_satisfied,
                 top: 0,
                 bottom: 0,
             }
@@ -481,6 +500,32 @@ fn planned_turns(input: &TranscriptResidencyTargetInput) -> Vec<PlannedTurn> {
     }
 
     turns
+}
+
+fn apply_streamed_margin_satisfaction(
+    turns: &[PlannedTurn],
+    visible_range: &Range<usize>,
+    target_top: &mut usize,
+    target_bottom: &mut usize,
+) {
+    if visible_range.is_empty() {
+        return;
+    }
+
+    if let Some(first_visible) = turns.get(visible_range.start)
+        && first_visible.streamed_leading_margin_satisfied
+    {
+        *target_top = (*target_top).max(first_visible.top);
+    }
+
+    if let Some(last_visible) = visible_range
+        .end
+        .checked_sub(1)
+        .and_then(|index| turns.get(index))
+        && last_visible.streamed_trailing_margin_satisfied
+    {
+        *target_bottom = (*target_bottom).min(last_visible.bottom);
+    }
 }
 
 fn planning_candidates(

@@ -67,6 +67,13 @@ pub(crate) struct TranscriptResidencyMeasuredTurnHeight {
     pub(crate) measured_height: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TranscriptResidencyStreamedTurnFill {
+    pub(crate) source_position: usize,
+    pub(crate) leading_margin_satisfied: bool,
+    pub(crate) trailing_margin_satisfied: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TranscriptResidentPageValidationError {
     turn_id: String,
@@ -567,6 +574,29 @@ impl TranscriptHistoryWindow {
         self.residency.indexed_turns()
     }
 
+    pub(crate) fn source_planning_range_for_visible_range(
+        &self,
+        source_visible_range: Range<usize>,
+        viewport_height: usize,
+    ) -> Range<usize> {
+        let policy = self.residency.policy();
+        let viewport_turns = viewport_height
+            .max(1)
+            .div_ceil(TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT)
+            .max(1);
+        let leading_turns = viewport_turns
+            .saturating_mul(policy.leading_viewport_margins())
+            .min(policy.max_resident_turns());
+        let trailing_turns = viewport_turns
+            .saturating_mul(policy.trailing_viewport_margins())
+            .min(policy.max_resident_turns());
+        self.residency.source_range_with_turn_margins(
+            &source_visible_range,
+            leading_turns,
+            trailing_turns,
+        )
+    }
+
     pub(crate) fn residency_target_plan<I>(
         &self,
         source_visible_range: Range<usize>,
@@ -577,9 +607,34 @@ impl TranscriptHistoryWindow {
     where
         I: IntoIterator<Item = TranscriptResidencyMeasuredTurnHeight>,
     {
+        self.residency_target_plan_with_streamed_fill(
+            source_visible_range,
+            viewport_height,
+            measured_heights,
+            Vec::<TranscriptResidencyStreamedTurnFill>::new(),
+            active_turn_id,
+        )
+    }
+
+    pub(crate) fn residency_target_plan_with_streamed_fill<I, J>(
+        &self,
+        source_visible_range: Range<usize>,
+        viewport_height: usize,
+        measured_heights: I,
+        streamed_turn_fills: J,
+        active_turn_id: Option<&str>,
+    ) -> TranscriptResidencyTargetPlan
+    where
+        I: IntoIterator<Item = TranscriptResidencyMeasuredTurnHeight>,
+        J: IntoIterator<Item = TranscriptResidencyStreamedTurnFill>,
+    {
         let measured_heights = measured_heights
             .into_iter()
             .map(|height| (height.source_position, height.measured_height))
+            .collect::<BTreeMap<_, _>>();
+        let streamed_turn_fills = streamed_turn_fills
+            .into_iter()
+            .map(|fill| (fill.source_position, fill))
             .collect::<BTreeMap<_, _>>();
         let turns = self
             .residency
@@ -593,6 +648,12 @@ impl TranscriptHistoryWindow {
                     .with_oversized_fallback(turn.oversized_fallback);
                 if let Some(measured_height) = measured_heights.get(&turn.source_position) {
                     input = input.with_measured_height(*measured_height);
+                }
+                if let Some(fill) = streamed_turn_fills.get(&turn.source_position) {
+                    input = input.with_streamed_margin_satisfaction(
+                        fill.leading_margin_satisfied,
+                        fill.trailing_margin_satisfied,
+                    );
                 }
                 input
             })
@@ -625,11 +686,38 @@ impl TranscriptHistoryWindow {
     where
         I: IntoIterator<Item = TranscriptResidencyMeasuredTurnHeight>,
     {
+        self.residency_target_plan_for_source_window_with_streamed_fill(
+            source_visible_range,
+            source_planning_range,
+            viewport_height,
+            measured_heights,
+            Vec::<TranscriptResidencyStreamedTurnFill>::new(),
+            active_turn_id,
+        )
+    }
+
+    pub(crate) fn residency_target_plan_for_source_window_with_streamed_fill<I, J>(
+        &self,
+        source_visible_range: Range<usize>,
+        source_planning_range: Range<usize>,
+        viewport_height: usize,
+        measured_heights: I,
+        streamed_turn_fills: J,
+        active_turn_id: Option<&str>,
+    ) -> TranscriptResidencyTargetPlan
+    where
+        I: IntoIterator<Item = TranscriptResidencyMeasuredTurnHeight>,
+        J: IntoIterator<Item = TranscriptResidencyStreamedTurnFill>,
+    {
         let source_planning_range = source_planning_range.start.min(source_visible_range.start)
             ..source_planning_range.end.max(source_visible_range.end);
         let measured_heights = measured_heights
             .into_iter()
             .map(|height| (height.source_position, height.measured_height))
+            .collect::<BTreeMap<_, _>>();
+        let streamed_turn_fills = streamed_turn_fills
+            .into_iter()
+            .map(|fill| (fill.source_position, fill))
             .collect::<BTreeMap<_, _>>();
         let turns = self
             .residency
@@ -643,6 +731,12 @@ impl TranscriptHistoryWindow {
                     .with_oversized_fallback(turn.oversized_fallback);
                 if let Some(measured_height) = measured_heights.get(&turn.source_position) {
                     input = input.with_measured_height(*measured_height);
+                }
+                if let Some(fill) = streamed_turn_fills.get(&turn.source_position) {
+                    input = input.with_streamed_margin_satisfaction(
+                        fill.leading_margin_satisfied,
+                        fill.trailing_margin_satisfied,
+                    );
                 }
                 input
             })

@@ -98,7 +98,8 @@ use shell::transcript_history::{
     TranscriptHistoryPageRequest, TranscriptHistoryWindow, TranscriptResidencyBudgetReason,
     TranscriptResidencyGrowthStrategy, TranscriptResidencyMeasuredTurnHeight,
     TranscriptResidencyPinKind, TranscriptResidencyPolicy, TranscriptResidencyRequestPriority,
-    TranscriptResidencyRetention, TranscriptResidencyTargetInput, TranscriptResidencyTargetPolicy,
+    TranscriptResidencyRetention, TranscriptResidencyStreamedTurnFill,
+    TranscriptResidencyTargetInput, TranscriptResidencyTargetPolicy,
     TranscriptResidencyTurnPlanInput, TranscriptResidencyViewport,
     initial_thread_activation_resident_turn_ids, initial_thread_history_page_options,
     initial_thread_resident_page_options, load_thread_resident_history_page,
@@ -604,6 +605,47 @@ fn residency_target_planner_expands_window_by_viewport_height_margins() {
 }
 
 #[test]
+fn residency_target_planner_uses_streamed_fill_to_stop_before_previous_turns() {
+    let mut turns = planner_turns(7, 100, 10, false);
+    turns[5] = turns[5]
+        .clone()
+        .with_streamed_margin_satisfaction(true, false);
+    let streamed = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(TranscriptResidencyViewport::new(5..6, 100), turns)
+            .with_policy(
+                TranscriptResidencyTargetPolicy::new()
+                    .with_leading_viewport_margins(3)
+                    .with_trailing_viewport_margins(0),
+            ),
+    );
+
+    assert_eq!(streamed.desired_full_turn_ids, vec!["turn_5"]);
+    assert_eq!(streamed.missing_transport_ranges, vec![5..6]);
+    assert!(streamed.diagnostics.viewport_margin_satisfied);
+}
+
+#[test]
+fn residency_target_planner_loads_previous_turns_without_streamed_fill() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(5..6, 100),
+            planner_turns(7, 100, 10, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_leading_viewport_margins(3)
+                .with_trailing_viewport_margins(0),
+        ),
+    );
+
+    assert_eq!(
+        plan.desired_full_turn_ids,
+        vec!["turn_5", "turn_4", "turn_3", "turn_2"]
+    );
+    assert_eq!(plan.missing_transport_ranges, vec![2..6]);
+}
+
+#[test]
 fn residency_target_planner_retains_loaded_turns_outside_viewport_when_under_budget() {
     let plan = plan_transcript_residency_target(
         TranscriptResidencyTargetInput::new(
@@ -927,6 +969,92 @@ fn history_window_bounded_residency_target_plan_uses_source_window_and_required_
 
     assert_eq!(with_pin.desired_full_turn_ids, vec!["turn_5", "turn_1"]);
     assert_eq!(with_pin.missing_transport_ranges, vec![1..2, 5..6]);
+}
+
+#[test]
+fn history_window_activation_tail_source_planning_reaches_indexed_previous_turns() {
+    let page = loaded_history_page(
+        (0..10)
+            .map(|index| {
+                let view = if index == 9 {
+                    TurnItemsView::Full
+                } else {
+                    TurnItemsView::NotLoaded
+                };
+                turn_with_items_view(&format!("turn_{index}"), view)
+            })
+            .collect(),
+        Some("older_cursor"),
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(2)
+            .with_trailing_viewport_margins(0),
+    );
+
+    let source_planning_range = window.source_planning_range_for_visible_range(9..10, 96);
+    let plan = window.residency_target_plan_for_source_window(
+        9..10,
+        source_planning_range,
+        96,
+        [TranscriptResidencyMeasuredTurnHeight {
+            source_position: 9,
+            measured_height: 48,
+        }],
+        None,
+    );
+
+    assert_eq!(
+        plan.desired_full_turn_ids,
+        vec!["turn_9", "turn_8", "turn_7"]
+    );
+    assert_eq!(plan.missing_transport_ranges, vec![7..9]);
+}
+
+#[test]
+fn history_window_streamed_tail_fill_suppresses_indexed_previous_turn_request() {
+    let page = loaded_history_page(
+        (0..10)
+            .map(|index| {
+                let view = if index == 9 {
+                    TurnItemsView::Full
+                } else {
+                    TurnItemsView::NotLoaded
+                };
+                turn_with_items_view(&format!("turn_{index}"), view)
+            })
+            .collect(),
+        Some("older_cursor"),
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(2)
+            .with_trailing_viewport_margins(0),
+    );
+
+    let source_planning_range = window.source_planning_range_for_visible_range(9..10, 96);
+    let plan = window.residency_target_plan_for_source_window_with_streamed_fill(
+        9..10,
+        source_planning_range,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        [TranscriptResidencyStreamedTurnFill {
+            source_position: 9,
+            leading_margin_satisfied: true,
+            trailing_margin_satisfied: false,
+        }],
+        None,
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_9"]);
+    assert!(plan.missing_transport_ranges.is_empty());
+    assert!(plan.diagnostics.viewport_margin_satisfied);
 }
 
 #[test]

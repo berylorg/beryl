@@ -17,10 +17,23 @@ pub(crate) struct TranscriptRowChunkMeasurementKey {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TranscriptRowChunkRenderWindow {
     pub(crate) range: Range<usize>,
-    pub(crate) top_spacer_height: Pixels,
-    pub(crate) bottom_spacer_height: Pixels,
+    pub(crate) anchor_chunk_index: usize,
+    pub(crate) measured_rendered_height: Pixels,
     pub(crate) rendered_unknown_chunks: usize,
-    pub(crate) skipped_unknown_chunks: usize,
+    pub(crate) reached_start: bool,
+    pub(crate) reached_end: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TranscriptRowStreamedAnchorPlacement {
+    Top,
+    Bottom,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptRowStreamedRenderAnchor {
+    pub(crate) chunk_index: usize,
+    pub(crate) placement: TranscriptRowStreamedAnchorPlacement,
 }
 
 impl TranscriptRowChunkMeasurementKey {
@@ -61,80 +74,58 @@ pub(crate) fn measured_chunk_heights_for(
 pub(crate) fn transcript_row_chunk_render_window(
     chunk_count: usize,
     measured_chunk_heights: &[Option<Pixels>],
-    row_scroll_offset: Pixels,
+    anchor: TranscriptRowStreamedRenderAnchor,
     viewport_height: Pixels,
 ) -> TranscriptRowChunkRenderWindow {
     if chunk_count == 0 {
         return TranscriptRowChunkRenderWindow {
             range: 0..0,
-            top_spacer_height: px(0.0),
-            bottom_spacer_height: px(0.0),
+            anchor_chunk_index: 0,
+            measured_rendered_height: px(0.0),
             rendered_unknown_chunks: 0,
-            skipped_unknown_chunks: 0,
+            reached_start: true,
+            reached_end: true,
         };
     }
 
     let viewport_height = viewport_height.max(px(0.0));
-    let row_scroll_offset = row_scroll_offset.max(px(0.0));
-    let overscan_height = viewport_height * TRANSCRIPT_ROW_CHUNK_RENDER_OVERSCAN_VIEWPORTS;
-    let target_start = (row_scroll_offset - overscan_height).max(px(0.0));
-    let target_end = (row_scroll_offset + viewport_height + overscan_height).max(target_start);
+    let target_height =
+        viewport_height + viewport_height * TRANSCRIPT_ROW_CHUNK_RENDER_OVERSCAN_VIEWPORTS;
+    let anchor_chunk_index = anchor.chunk_index.min(chunk_count - 1);
 
-    let mut start = 0usize;
-    let mut measured_offset = px(0.0);
-    while start < chunk_count {
-        let Some(height) = measured_height_at(measured_chunk_heights, start) else {
-            break;
-        };
-        let next_offset = measured_offset + height;
-        if next_offset > target_start {
-            break;
+    let mut window = TranscriptRowChunkRenderAccumulator::new(
+        anchor_chunk_index,
+        measured_height_at(measured_chunk_heights, anchor_chunk_index),
+    );
+
+    match anchor.placement {
+        TranscriptRowStreamedAnchorPlacement::Top => {
+            fill_down(
+                &mut window,
+                chunk_count,
+                measured_chunk_heights,
+                target_height,
+            );
+            fill_up(&mut window, measured_chunk_heights, target_height);
         }
-        measured_offset = next_offset;
-        start = start.saturating_add(1);
-    }
-
-    let mut end = start;
-    let mut rendered_unknown_chunks = 0usize;
-    let mut measured_end_offset = measured_offset;
-    while end < chunk_count {
-        match measured_height_at(measured_chunk_heights, end) {
-            Some(height) => {
-                measured_end_offset += height;
-            }
-            None => {
-                rendered_unknown_chunks = rendered_unknown_chunks.saturating_add(1);
-            }
-        }
-        end = end.saturating_add(1);
-
-        if rendered_unknown_chunks == 0
-            && measured_end_offset >= target_end
-            && !suffix_has_unknown(measured_chunk_heights, end, chunk_count)
-        {
-            break;
-        }
-
-        if rendered_unknown_chunks >= TRANSCRIPT_ROW_CHUNK_UNKNOWN_RENDER_AHEAD
-            && measured_end_offset >= row_scroll_offset
-        {
-            break;
+        TranscriptRowStreamedAnchorPlacement::Bottom => {
+            fill_up(&mut window, measured_chunk_heights, target_height);
+            fill_down(
+                &mut window,
+                chunk_count,
+                measured_chunk_heights,
+                target_height,
+            );
         }
     }
-
-    if end == start {
-        end = start.saturating_add(1).min(chunk_count);
-    }
-
-    let (bottom_spacer_height, skipped_unknown_chunks) =
-        measured_suffix_height(measured_chunk_heights, end, chunk_count);
 
     TranscriptRowChunkRenderWindow {
-        range: start..end,
-        top_spacer_height: measured_offset,
-        bottom_spacer_height,
-        rendered_unknown_chunks,
-        skipped_unknown_chunks,
+        range: window.start..window.end,
+        anchor_chunk_index,
+        measured_rendered_height: window.measured_height,
+        rendered_unknown_chunks: window.unknown_chunks,
+        reached_start: window.start == 0,
+        reached_end: window.end >= chunk_count,
     }
 }
 
@@ -145,30 +136,59 @@ fn measured_height_at(measured_chunk_heights: &[Option<Pixels>], index: usize) -
         .map(|height| height.max(px(0.0)))
 }
 
-fn measured_suffix_height(
-    measured_chunk_heights: &[Option<Pixels>],
+#[derive(Clone, Debug)]
+struct TranscriptRowChunkRenderAccumulator {
     start: usize,
-    chunk_count: usize,
-) -> (Pixels, usize) {
-    let mut height = px(0.0);
-    let mut skipped_unknown_chunks = 0usize;
-    for index in start..chunk_count {
-        match measured_height_at(measured_chunk_heights, index) {
-            Some(chunk_height) => height += chunk_height,
-            None => skipped_unknown_chunks = skipped_unknown_chunks.saturating_add(1),
+    end: usize,
+    measured_height: Pixels,
+    unknown_chunks: usize,
+}
+
+impl TranscriptRowChunkRenderAccumulator {
+    fn new(anchor_index: usize, anchor_height: Option<Pixels>) -> Self {
+        let mut this = Self {
+            start: anchor_index,
+            end: anchor_index.saturating_add(1),
+            measured_height: px(0.0),
+            unknown_chunks: 0,
+        };
+        this.add_height(anchor_height);
+        this
+    }
+
+    fn add_height(&mut self, height: Option<Pixels>) {
+        match height {
+            Some(height) => self.measured_height += height,
+            None => self.unknown_chunks = self.unknown_chunks.saturating_add(1),
         }
     }
-    if skipped_unknown_chunks > 0 {
-        (px(0.0), skipped_unknown_chunks)
-    } else {
-        (height, 0)
+
+    fn is_saturated(&self, target_height: Pixels) -> bool {
+        self.measured_height >= target_height
+            || self.unknown_chunks >= TRANSCRIPT_ROW_CHUNK_UNKNOWN_RENDER_AHEAD
     }
 }
 
-fn suffix_has_unknown(
-    measured_chunk_heights: &[Option<Pixels>],
-    start: usize,
+fn fill_down(
+    window: &mut TranscriptRowChunkRenderAccumulator,
     chunk_count: usize,
-) -> bool {
-    (start..chunk_count).any(|index| measured_height_at(measured_chunk_heights, index).is_none())
+    measured_chunk_heights: &[Option<Pixels>],
+    target_height: Pixels,
+) {
+    while window.end < chunk_count && !window.is_saturated(target_height) {
+        let next = window.end;
+        window.end = window.end.saturating_add(1);
+        window.add_height(measured_height_at(measured_chunk_heights, next));
+    }
+}
+
+fn fill_up(
+    window: &mut TranscriptRowChunkRenderAccumulator,
+    measured_chunk_heights: &[Option<Pixels>],
+    target_height: Pixels,
+) {
+    while window.start > 0 && !window.is_saturated(target_height) {
+        window.start = window.start.saturating_sub(1);
+        window.add_height(measured_height_at(measured_chunk_heights, window.start));
+    }
 }

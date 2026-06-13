@@ -13,6 +13,10 @@ fn key(row: &str, block: &str, line: usize) -> TranscriptTextLineKey {
     TranscriptTextLineKey::new(row, block, line)
 }
 
+fn viewport_key(row: &str, block: &str, line: usize, scope: &str) -> TranscriptTextLineKey {
+    TranscriptTextLineKey::new(row, block, line).with_viewport_local_scope(scope)
+}
+
 fn point(key: TranscriptTextLineKey, offset: usize) -> TranscriptTextPoint {
     TranscriptTextPoint::new(key, offset)
 }
@@ -274,6 +278,39 @@ fn selection_retains_markdown_copy_text_when_endpoint_leaves_visible_frame() {
     let ranges = selection.selected_line_ranges(&partial_frame);
     assert_eq!(ranges.len(), 1);
     assert_eq!(ranges[0].key, first);
+}
+
+#[test]
+fn streamed_selection_drops_markdown_copy_text_when_chunk_leaves_visible_frame() {
+    let first = viewport_key("row-huge", "assistant", 0, "chunk-a");
+    let second = viewport_key("row-huge", "assistant", 1, "chunk-a");
+    let mut second_copy = TranscriptLineCopyText::default();
+    second_copy.push_wrapped_run("world".to_string(), "`".to_string(), "`".to_string());
+    let frame = frame_with_copy_text([
+        (
+            first.clone(),
+            0,
+            "Hello",
+            TranscriptLineCopyText::plain("Hello".to_string()),
+            1,
+        ),
+        (second.clone(), 1, "world", second_copy, 1),
+    ]);
+    let replacement_chunk_frame = frame_with_copy_text([(
+        viewport_key("row-huge", "assistant", 0, "chunk-b"),
+        0,
+        "Later",
+        TranscriptLineCopyText::plain("Later".to_string()),
+        1,
+    )]);
+    let mut selection = TranscriptSelectionState::default();
+
+    selection.begin(point(first, 0), &frame);
+    selection.extend(point(second, "world".len()), &frame);
+
+    assert_eq!(selection.selected_text(), Some("Hello\n`world`"));
+    assert!(selection.sync_visible_frame(&replacement_chunk_frame));
+    assert_eq!(selection.selected_text(), None);
 }
 
 #[test]

@@ -64,6 +64,7 @@ impl ConversationSurfaceState {
             &self.execution_details,
             &self.transcript_history_window,
             &self.transcript_presentation,
+            &self.transcript_viewport,
             &self.transcript_list_state,
         )
     }

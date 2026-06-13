@@ -43,6 +43,7 @@ pub(super) struct TranscriptCodePanelState {
     display_projection_cache: Rc<RefCell<CodePanelProjectionCache>>,
     rendered_panel_ids: Rc<RefCell<HashSet<TranscriptCodePanelIdentity>>>,
     selection_render: Option<TranscriptTextSelectionRenderState>,
+    viewport_local_selection_scope: Option<String>,
     button_font_weight: FontWeight,
     profiler: Option<Rc<TranscriptFrameProfile>>,
 }
@@ -87,9 +88,15 @@ impl TranscriptCodePanelState {
             display_projection_cache,
             rendered_panel_ids,
             selection_render,
+            viewport_local_selection_scope: None,
             button_font_weight,
             profiler,
         }
+    }
+
+    pub(super) fn with_viewport_local_selection_scope(mut self, scope: String) -> Self {
+        self.viewport_local_selection_scope = Some(scope);
+        self
     }
 
     pub(super) fn entity(&self) -> Entity<TranscriptPanel> {
@@ -98,6 +105,10 @@ impl TranscriptCodePanelState {
 
     pub(super) fn selection_render(&self) -> Option<TranscriptTextSelectionRenderState> {
         self.selection_render.clone()
+    }
+
+    pub(super) fn viewport_local_selection_scope(&self) -> Option<String> {
+        self.viewport_local_selection_scope.clone()
     }
 
     pub(super) fn controls_for(

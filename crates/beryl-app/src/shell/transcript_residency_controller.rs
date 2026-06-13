@@ -1,7 +1,8 @@
-use std::ops::Range;
+use std::{collections::HashMap, ops::Range};
 
 use super::transcript_history::{
-    TranscriptResidencyMeasuredTurnHeight, TranscriptResidencyTargetPlan,
+    TranscriptResidencyMeasuredTurnHeight, TranscriptResidencyStreamedTurnFill,
+    TranscriptResidencyTargetPlan,
 };
 use super::transcript_residency_logging::log_transcript_residency_target_decision;
 use super::*;
@@ -14,6 +15,7 @@ pub(super) struct TranscriptResidencyControllerFacts {
     pub(super) source_planning_range: Range<usize>,
     pub(super) viewport_height: usize,
     pub(super) measured_turn_heights: Vec<TranscriptResidencyMeasuredTurnHeight>,
+    pub(super) streamed_turn_fills: Vec<TranscriptResidencyStreamedTurnFill>,
     pub(super) active_turn_id: Option<String>,
     signature: TranscriptResidencyControllerSignature,
 }
@@ -27,6 +29,7 @@ pub(super) struct TranscriptResidencyControllerSignature {
     source_planning_range: Range<usize>,
     viewport_height: usize,
     measured_turn_heights: Vec<TranscriptResidencyMeasuredTurnHeight>,
+    streamed_turn_fills: Vec<TranscriptResidencyStreamedTurnFill>,
     active_turn_id: Option<String>,
     residency_revision: u64,
     resident_turn_count: usize,
@@ -45,6 +48,30 @@ pub(super) struct TranscriptResidencyControllerUpdate {
 impl ConversationSurfaceState {
     pub(super) fn invalidate_transcript_residency_controller(&mut self) {
         self.last_transcript_residency_controller_signature = None;
+    }
+
+    pub(super) fn replace_transcript_streamed_residency_fill_facts<I>(&mut self, facts: I) -> bool
+    where
+        I: IntoIterator<Item = (String, TranscriptResidencyStreamedTurnFill)>,
+    {
+        let next = facts.into_iter().collect::<HashMap<_, _>>();
+        if self.transcript_streamed_residency_fill_facts == next {
+            return false;
+        }
+        self.transcript_streamed_residency_fill_facts = next;
+        self.invalidate_transcript_residency_controller();
+        true
+    }
+
+    fn transcript_streamed_residency_fill_facts_for_source_range(
+        &self,
+        source_range: &Range<usize>,
+    ) -> Vec<TranscriptResidencyStreamedTurnFill> {
+        self.transcript_streamed_residency_fill_facts
+            .values()
+            .copied()
+            .filter(|fact| source_range.contains(&fact.source_position))
+            .collect()
     }
 
     pub(super) fn latest_transcript_residency_controller_facts(
@@ -87,11 +114,12 @@ impl ConversationSurfaceState {
 
         let plan = self
             .transcript_history_window
-            .residency_target_plan_for_source_window(
+            .residency_target_plan_for_source_window_with_streamed_fill(
                 facts.source_visible_range.clone(),
                 facts.source_planning_range.clone(),
                 facts.viewport_height,
                 facts.measured_turn_heights.clone(),
+                facts.streamed_turn_fills.clone(),
                 facts.active_turn_id.as_deref(),
             );
         self.note_transcript_residency_controller_plan(&plan);
@@ -150,11 +178,11 @@ impl ConversationSurfaceState {
         let source_visible_range = self
             .transcript_presentation
             .source_range_for_presentation_range(presentation_visible_range);
-        let source_planning_range = self
-            .transcript_presentation
-            .source_range_for_presentation_range(&presentation_planning_range);
         let viewport_height =
             pixels_to_residency_units(self.transcript_list_state.viewport_bounds().size.height);
+        let source_planning_range = self
+            .transcript_history_window
+            .source_planning_range_for_visible_range(source_visible_range.clone(), viewport_height);
         let measured_turn_heights = self
             .transcript_presentation
             .presentation_range_for_source_range(&source_planning_range)
@@ -171,6 +199,8 @@ impl ConversationSurfaceState {
                 })
             })
             .collect::<Vec<_>>();
+        let streamed_turn_fills =
+            self.transcript_streamed_residency_fill_facts_for_source_range(&source_planning_range);
         let active_turn_id = self.active_transcript_residency_turn_id();
         let residency_counts = self.transcript_history_window.residency_retained_counts();
         let signature = TranscriptResidencyControllerSignature {
@@ -181,6 +211,7 @@ impl ConversationSurfaceState {
             source_planning_range: source_planning_range.clone(),
             viewport_height,
             measured_turn_heights: measured_turn_heights.clone(),
+            streamed_turn_fills: streamed_turn_fills.clone(),
             active_turn_id: active_turn_id.clone(),
             residency_revision: self.transcript_history_window.residency_revision(),
             resident_turn_count: residency_counts.resident_turns,
@@ -196,6 +227,7 @@ impl ConversationSurfaceState {
             source_planning_range,
             viewport_height,
             measured_turn_heights,
+            streamed_turn_fills,
             active_turn_id,
             signature,
         }

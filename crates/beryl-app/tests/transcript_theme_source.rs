@@ -447,6 +447,12 @@ fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
     assert!(TRANSCRIPT_SOURCE.contains("observe_media_preload"));
     assert!(TRANSCRIPT_SOURCE.contains("snapshot_micros"));
     assert!(TRANSCRIPT_SOURCE.contains("render_state_pruning_micros"));
+    assert!(TRANSCRIPT_SOURCE.contains("semantic_viewport_diagnostic"));
+    assert!(TRANSCRIPT_SOURCE.contains("observe_chunk_window_admission"));
+    assert!(TRANSCRIPT_SOURCE.contains("chunk_window_computation_micros"));
+    assert!(TRANSCRIPT_SOURCE.contains("active_turn_source_pin_active"));
+    assert!(TRANSCRIPT_SOURCE.contains("resident_budget_fallback_row_count"));
+    assert!(TRANSCRIPT_SOURCE.contains("transcript_scrollbar_visible: false"));
     assert!(TRANSCRIPT_SOURCE.contains("style_snapshot_micros"));
     assert!(TRANSCRIPT_SOURCE.contains("composer_measurement_micros"));
     assert!(TRANSCRIPT_SOURCE.contains("render_state_pruning"));
@@ -459,6 +465,10 @@ fn phase16_transcript_frame_metrics_are_bounded_and_content_free() {
     assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("READ_TRANSCRIPT_FRAME_METRICS_TOOL"));
     assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("snapshot_micros"));
     assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("render_state_pruning_micros"));
+    assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("semantic_viewport"));
+    assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("render_budget"));
+    assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("active_turn_source_pin_active"));
+    assert!(DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("transcript_scrollbar_visible"));
     assert!(!DIAGNOSTIC_DYNAMIC_TOOLS_SOURCE.contains("transcript_text"));
     assert!(
         SHELL_SOURCE.contains("dispatch_beryl_transcript_frame_metrics_dynamic_tool_call"),

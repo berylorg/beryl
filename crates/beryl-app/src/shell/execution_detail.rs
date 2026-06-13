@@ -37,6 +37,7 @@ pub(crate) const MAX_REASONING_SUMMARY_BYTES: usize = 512 * 1024;
 pub(crate) const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_FILE_CHANGE_OUTPUT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_ERROR_MESSAGE_BYTES: usize = 128 * 1024;
+pub(crate) const ACTIVE_TURN_RETAINED_SOURCE_MAX_BYTES: usize = 100 * 1024 * 1024;
 
 #[derive(Clone, Default)]
 pub(super) struct ExecutionDetailState {
@@ -76,6 +77,7 @@ pub(super) enum TurnNarrativeEntry {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TurnTerminalFallback {
     Oversized,
+    ActiveSourceBudget,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -222,6 +224,14 @@ pub(super) struct ExecutionDetailRetainedCounts {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct ActiveTurnSourcePinSnapshot {
+    pub(super) active: bool,
+    pub(super) retained_bytes: usize,
+    pub(super) max_retained_bytes: usize,
+    pub(super) fallback_active: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct TurnPayloadRetainedCounts {
     user_fragment_text_bytes: usize,
     backend_input_bytes: usize,
@@ -326,9 +336,50 @@ impl ExecutionDetailState {
         turn_index: usize,
         fragment: UserInputFragment,
     ) -> Option<usize> {
+        self.append_user_input_fragment_with_active_source_cap(
+            turn_index,
+            fragment,
+            ACTIVE_TURN_RETAINED_SOURCE_MAX_BYTES,
+        )
+    }
+
+    pub fn append_user_input_fragment_with_active_source_cap(
+        &mut self,
+        turn_index: usize,
+        fragment: UserInputFragment,
+        max_retained_source_bytes: usize,
+    ) -> Option<usize> {
         let turn = self.turns.get_mut(turn_index)?;
+        if self.active_turn_index == Some(turn_index) && turn.active_source_budget_fallback_active()
+        {
+            return Some(turn_index);
+        }
         Arc::make_mut(turn).append_user_input_fragment_to_narrative(fragment);
+        self.enforce_active_turn_retained_source_cap(turn_index, max_retained_source_bytes);
         Some(turn_index)
+    }
+
+    fn enforce_active_turn_retained_source_cap(
+        &mut self,
+        turn_index: usize,
+        max_retained_source_bytes: usize,
+    ) -> bool {
+        if self.active_turn_index != Some(turn_index) {
+            return false;
+        }
+        let Some(turn) = self.turns.get(turn_index) else {
+            return false;
+        };
+        if turn.active_source_budget_fallback_active()
+            || turn.retained_payload_counts().total_bytes() <= max_retained_source_bytes
+        {
+            return false;
+        }
+
+        self.turns[turn_index] = Arc::new(TurnExecutionRecord::active_source_budget_fallback_from(
+            turn,
+        ));
+        true
     }
 
     pub fn remove_user_input_fragments(&mut self, removals: &[(usize, u64, &str)]) -> Vec<usize> {
@@ -457,6 +508,27 @@ impl ExecutionDetailState {
                 counts
             },
         )
+    }
+
+    pub(super) fn active_turn_source_pin_snapshot(&self) -> ActiveTurnSourcePinSnapshot {
+        let Some(turn_index) = self.active_turn_index else {
+            return ActiveTurnSourcePinSnapshot {
+                max_retained_bytes: ACTIVE_TURN_RETAINED_SOURCE_MAX_BYTES,
+                ..ActiveTurnSourcePinSnapshot::default()
+            };
+        };
+        let Some(turn) = self.turns.get(turn_index) else {
+            return ActiveTurnSourcePinSnapshot {
+                max_retained_bytes: ACTIVE_TURN_RETAINED_SOURCE_MAX_BYTES,
+                ..ActiveTurnSourcePinSnapshot::default()
+            };
+        };
+        ActiveTurnSourcePinSnapshot {
+            active: true,
+            retained_bytes: turn.retained_payload_counts().total_bytes(),
+            max_retained_bytes: ACTIVE_TURN_RETAINED_SOURCE_MAX_BYTES,
+            fallback_active: turn.active_source_budget_fallback_active(),
+        }
     }
 
     pub fn working_turn_index(&self) -> Option<usize> {
@@ -911,6 +983,14 @@ impl ExecutionDetailState {
     }
 
     pub fn apply_stream_event(&mut self, event: TurnStreamEvent) -> Option<usize> {
+        self.apply_stream_event_with_active_source_cap(event, ACTIVE_TURN_RETAINED_SOURCE_MAX_BYTES)
+    }
+
+    pub fn apply_stream_event_with_active_source_cap(
+        &mut self,
+        event: TurnStreamEvent,
+        max_retained_source_bytes: usize,
+    ) -> Option<usize> {
         let Some(index) = self.active_turn_index else {
             return None;
         };
@@ -956,21 +1036,32 @@ impl ExecutionDetailState {
                     finished_turn = true;
                 }
                 TurnStreamEvent::ItemStarted { item, .. } => {
-                    turn.upsert_item(item, false, &TranscriptImagePathResolver::default());
+                    if !turn.active_source_budget_fallback_active() {
+                        turn.upsert_item(item, false, &TranscriptImagePathResolver::default());
+                    }
                 }
                 TurnStreamEvent::ItemCompleted { item, .. } => {
-                    turn.upsert_item(item, true, &TranscriptImagePathResolver::default());
-                    turn.terminal_assistant_item_id = resolve_terminal_assistant_item(turn);
+                    if !turn.active_source_budget_fallback_active() {
+                        turn.upsert_item(item, true, &TranscriptImagePathResolver::default());
+                        turn.terminal_assistant_item_id = resolve_terminal_assistant_item(turn);
+                    }
                 }
                 TurnStreamEvent::AgentMessageDelta { item_id, delta, .. } => {
-                    turn.ensure_agent_message(item_id).text.push_str(&delta);
+                    if !turn.active_source_budget_fallback_active() {
+                        turn.ensure_agent_message(item_id).text.push_str(&delta);
+                    }
                 }
                 TurnStreamEvent::ReasoningSummaryPartAdded {
                     item_id,
                     summary_index,
                     ..
                 } => {
-                    ensure_text_slot(&mut turn.ensure_reasoning(item_id).summary, summary_index);
+                    if !turn.active_source_budget_fallback_active() {
+                        ensure_text_slot(
+                            &mut turn.ensure_reasoning(item_id).summary,
+                            summary_index,
+                        );
+                    }
                 }
                 TurnStreamEvent::ReasoningSummaryTextDelta {
                     item_id,
@@ -978,14 +1069,16 @@ impl ExecutionDetailState {
                     delta,
                     ..
                 } => {
-                    let item = turn.ensure_reasoning(item_id);
-                    ensure_text_slot(&mut item.summary, summary_index);
-                    push_bounded_text(
-                        &mut item.summary[summary_index],
-                        &delta,
-                        MAX_REASONING_SUMMARY_BYTES,
-                        "reasoning summary",
-                    );
+                    if !turn.active_source_budget_fallback_active() {
+                        let item = turn.ensure_reasoning(item_id);
+                        ensure_text_slot(&mut item.summary, summary_index);
+                        push_bounded_text(
+                            &mut item.summary[summary_index],
+                            &delta,
+                            MAX_REASONING_SUMMARY_BYTES,
+                            "reasoning summary",
+                        );
+                    }
                 }
                 TurnStreamEvent::ReasoningTextDelta {
                     item_id,
@@ -993,30 +1086,36 @@ impl ExecutionDetailState {
                     delta,
                     ..
                 } => {
-                    let item = turn.ensure_reasoning(item_id);
-                    ensure_text_slot(&mut item.content, content_index);
-                    push_bounded_text(
-                        &mut item.content[content_index],
-                        &delta,
-                        MAX_REASONING_CONTENT_BYTES,
-                        "reasoning detail",
-                    );
+                    if !turn.active_source_budget_fallback_active() {
+                        let item = turn.ensure_reasoning(item_id);
+                        ensure_text_slot(&mut item.content, content_index);
+                        push_bounded_text(
+                            &mut item.content[content_index],
+                            &delta,
+                            MAX_REASONING_CONTENT_BYTES,
+                            "reasoning detail",
+                        );
+                    }
                 }
                 TurnStreamEvent::CommandExecutionOutputDelta { item_id, delta, .. } => {
-                    push_bounded_text(
-                        &mut turn.ensure_command_execution(item_id).output,
-                        &delta,
-                        MAX_COMMAND_OUTPUT_BYTES,
-                        "command output",
-                    );
+                    if !turn.active_source_budget_fallback_active() {
+                        push_bounded_text(
+                            &mut turn.ensure_command_execution(item_id).output,
+                            &delta,
+                            MAX_COMMAND_OUTPUT_BYTES,
+                            "command output",
+                        );
+                    }
                 }
                 TurnStreamEvent::FileChangeOutputDelta { item_id, delta, .. } => {
-                    push_bounded_text(
-                        &mut turn.ensure_file_change(item_id).output,
-                        &delta,
-                        MAX_FILE_CHANGE_OUTPUT_BYTES,
-                        "file-change output",
-                    );
+                    if !turn.active_source_budget_fallback_active() {
+                        push_bounded_text(
+                            &mut turn.ensure_file_change(item_id).output,
+                            &delta,
+                            MAX_FILE_CHANGE_OUTPUT_BYTES,
+                            "file-change output",
+                        );
+                    }
                 }
                 TurnStreamEvent::ThreadStarted { .. } => {}
                 TurnStreamEvent::AgentLabelUpdated { .. } => {}
@@ -1033,6 +1132,8 @@ impl ExecutionDetailState {
         }
         if finished_turn {
             self.active_turn_index = None;
+        } else {
+            self.enforce_active_turn_retained_source_cap(index, max_retained_source_bytes);
         }
         Some(index)
     }
@@ -1161,10 +1262,20 @@ impl LastTurnState {
 }
 
 impl TurnTerminalFallback {
+    pub(super) fn diagnostic_label(self) -> &'static str {
+        match self {
+            Self::Oversized => "resident_budget_oversized_turn",
+            Self::ActiveSourceBudget => "active_turn_source_budget",
+        }
+    }
+
     fn message(self) -> &'static str {
         match self {
             Self::Oversized => {
                 "This turn is too large to fit in Beryl's transcript memory budget. Its contents are omitted."
+            }
+            Self::ActiveSourceBudget => {
+                "This live turn exceeded Beryl's active-turn transcript memory budget before it finished. Beryl stopped retaining its live source and will reload the completed turn from history when available."
             }
         }
     }
@@ -1246,6 +1357,10 @@ impl TurnExecutionRecord {
 
     pub fn terminal_fallback_text(&self) -> Option<&'static str> {
         self.terminal_fallback.map(TurnTerminalFallback::message)
+    }
+
+    pub fn active_source_budget_fallback_active(&self) -> bool {
+        self.terminal_fallback == Some(TurnTerminalFallback::ActiveSourceBudget)
     }
 
     pub fn user_input_fragments(&self) -> &[UserInputFragment] {
@@ -1441,6 +1556,22 @@ impl TurnExecutionRecord {
             terminal_fallback: Some(TurnTerminalFallback::Oversized),
             suppress_user_input_echoes: false,
             awaiting_user_input: false,
+            terminal_assistant_item_id: None,
+            error_message: None,
+            items: Vec::new(),
+        }
+    }
+
+    fn active_source_budget_fallback_from(turn: &TurnExecutionRecord) -> Self {
+        Self {
+            user_input_fragments: Vec::new(),
+            narrative_entries: Vec::new(),
+            thread_id: turn.thread_id.clone(),
+            turn_id: turn.turn_id.clone(),
+            status: turn.status,
+            terminal_fallback: Some(TurnTerminalFallback::ActiveSourceBudget),
+            suppress_user_input_echoes: false,
+            awaiting_user_input: turn.awaiting_user_input,
             terminal_assistant_item_id: None,
             error_message: None,
             items: Vec::new(),

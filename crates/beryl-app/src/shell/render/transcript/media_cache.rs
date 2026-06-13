@@ -30,6 +30,7 @@ pub(super) struct TranscriptMediaRenderContext {
     visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     panel: Entity<TranscriptPanel>,
     selection_render: Option<TranscriptTextSelectionRenderState>,
+    viewport_local_selection_scope: Option<String>,
     connector: Option<ManagedBackendClientConnector>,
     timeout: Duration,
     row_identity: Option<String>,
@@ -61,6 +62,7 @@ impl TranscriptMediaRenderContext {
             visible_media,
             panel,
             selection_render,
+            viewport_local_selection_scope: None,
             connector,
             timeout,
             row_identity: None,
@@ -72,6 +74,11 @@ impl TranscriptMediaRenderContext {
 
     pub(super) fn with_profiler(mut self, profiler: Option<Rc<TranscriptFrameProfile>>) -> Self {
         self.profiler = profiler;
+        self
+    }
+
+    pub(super) fn with_viewport_local_selection_scope(mut self, scope: String) -> Self {
+        self.viewport_local_selection_scope = Some(scope);
         self
     }
 
@@ -191,6 +198,10 @@ impl TranscriptMediaRenderContext {
 
     pub(super) fn selection_render(&self) -> Option<TranscriptTextSelectionRenderState> {
         self.selection_render.clone()
+    }
+
+    pub(super) fn viewport_local_selection_scope(&self) -> Option<String> {
+        self.viewport_local_selection_scope.clone()
     }
 
     pub(super) fn promotion(&self) -> TranscriptMediaPromotionState {
@@ -326,6 +337,7 @@ fn schedule_media_load(
                                     .map(|row_index| (surface.transcript_list_state(), row_index))
                             })
                     {
+                        view.clear_transcript_row_chunk_measurements(row_identity);
                         list_state.invalidate_item_measurement(row_index);
                         row_measure_invalidated = true;
                     }

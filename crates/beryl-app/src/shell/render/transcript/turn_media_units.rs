@@ -79,7 +79,8 @@ pub(super) fn flush_media_run(
         selection_order,
         transcript_narrative_block_break_before(block_index),
         media_context.selection_render(),
-    );
+    )
+    .with_viewport_local_scope(media_context.viewport_local_selection_scope());
     narrative_blocks.push(render_media_run(
         items.as_slice(),
         media_context,

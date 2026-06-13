@@ -396,6 +396,7 @@ pub(crate) struct SettingsWindowPerformanceDiagnostic {
 pub(crate) struct TranscriptFrameMetric {
     pub sequence: u64,
     pub selected_thread_id: Option<String>,
+    pub semantic_viewport: TranscriptSemanticViewportDiagnostic,
     pub presentation_range: Option<PresentationRangeDiagnostic>,
     pub visible_range: Option<PresentationRangeDiagnostic>,
     pub total_loaded_turn_count: usize,
@@ -408,11 +409,20 @@ pub(crate) struct TranscriptFrameMetric {
     pub residency_retained_bytes: usize,
     pub residency_in_flight_requests: usize,
     pub residency_budget_reason: Option<String>,
+    pub active_turn_source_pin_active: bool,
+    pub active_turn_source_retained_bytes: usize,
+    pub active_turn_source_budget_max_bytes: usize,
+    pub active_turn_source_budget_fallback_active: bool,
+    pub resident_budget_fallback_row_count: usize,
+    pub active_source_budget_fallback_row_count: usize,
+    pub transcript_scrollbar_visible: bool,
     pub frame_micros: u64,
     pub snapshot_micros: u64,
     pub render_state_pruning_micros: u64,
     pub style_snapshot_micros: u64,
     pub composer_measurement_micros: u64,
+    pub chunk_window_computation_micros: u64,
+    pub render_budget: TranscriptFrameRenderBudgetDiagnostic,
     pub row_build_total_micros: u64,
     pub row_prepaint_total_micros: u64,
     pub inline_text_construction_micros: u64,
@@ -430,6 +440,36 @@ pub(crate) struct TranscriptFrameMetric {
     pub largest_visible_row_item_count: usize,
     pub largest_visible_row_item_count_index: Option<usize>,
     pub dominant_cost_category: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptSemanticViewportDiagnostic {
+    pub viewport_mode: String,
+    pub live_autoscroll: String,
+    pub anchor_row_index: Option<usize>,
+    pub anchor_row_identity: Option<String>,
+    pub anchor_chunk_index: Option<usize>,
+    pub anchor_chunk_identity: Option<String>,
+    pub anchor_placement: Option<String>,
+    pub rendered_chunk_range: Option<PresentationRangeDiagnostic>,
+    pub chunk_count: Option<usize>,
+    pub fill_direction: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptFrameRenderBudgetDiagnostic {
+    pub chunk_window_count: usize,
+    pub admitted_chunk_count: usize,
+    pub rendered_chunk_count: usize,
+    pub fallback_chunk_count: usize,
+    pub rendered_cost_units: usize,
+    pub fallback_cost_units: usize,
+    pub largest_chunk_cost_units: usize,
+    pub max_chunk_cost_units: usize,
+    pub max_frame_cost_units: usize,
+    pub fallback_reasons: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -615,6 +655,7 @@ impl TranscriptFrameMetric {
             .selected_thread_id
             .take()
             .map(truncate_diagnostic_string);
+        self.semantic_viewport.truncate_strings();
         self.slowest_row_build_identity = self
             .slowest_row_build_identity
             .take()
@@ -629,6 +670,33 @@ impl TranscriptFrameMetric {
             .map(truncate_diagnostic_string);
         self.dominant_cost_category =
             truncate_diagnostic_string(std::mem::take(&mut self.dominant_cost_category));
+        self.render_budget.truncate_strings();
+    }
+}
+
+impl TranscriptSemanticViewportDiagnostic {
+    fn truncate_strings(&mut self) {
+        self.viewport_mode = truncate_diagnostic_string(std::mem::take(&mut self.viewport_mode));
+        self.live_autoscroll =
+            truncate_diagnostic_string(std::mem::take(&mut self.live_autoscroll));
+        self.anchor_row_identity = self
+            .anchor_row_identity
+            .take()
+            .map(truncate_diagnostic_string);
+        self.anchor_chunk_identity = self
+            .anchor_chunk_identity
+            .take()
+            .map(truncate_diagnostic_string);
+        self.anchor_placement = self.anchor_placement.take().map(truncate_diagnostic_string);
+        self.fill_direction = self.fill_direction.take().map(truncate_diagnostic_string);
+    }
+}
+
+impl TranscriptFrameRenderBudgetDiagnostic {
+    fn truncate_strings(&mut self) {
+        for reason in &mut self.fallback_reasons {
+            *reason = truncate_diagnostic_string(std::mem::take(reason));
+        }
     }
 }
 

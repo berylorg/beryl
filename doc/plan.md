@@ -1,124 +1,177 @@
 # Scope
 
-Implement measured chunked rendering for very large transcript turns while preserving whole-turn residency semantics from `doc/features/transcript/design.md`.
+Replace the current mixed outer-list plus streamed-row navigation architecture with a single transcript viewport frame owner for continuous transcript scrolling.
 
-The work is limited to transcript presentation, rendering, measurement, residency integration points, diagnostics, and automated tests in `crates/beryl-app`. It must not change the CAS history contract, load partial backend turns, introduce synthetic transcript rows, or make source-size heuristics authoritative for visible scroll geometry.
+The work is limited to transcript viewport state, frame construction, continuous wheel/touchpad navigation, streamed chunk and ordinary row rendering, local segment measurement, residency fill facts, diagnostics, and automated tests in `crates/beryl-app`. It must preserve the existing design constraints from `doc/features/transcript/design.md`: whole-turn historical residency, active live-turn source pinning, no transcript visual scrollbar, no unrendered huge-turn spacer geometry, no dedicated chunk navigation commands, no render-anyway control, and viewport-local selection/copy for streamed chunks.
 
-Readiness: design authority has been updated to require whole-turn residency, Markdown-safe render chunks for huge turns, and measured chunk heights for row interior spacers. The fixed `96px` block-window path is an invalidated approach and must not remain in control of visible omission.
+Readiness: live testing showed two architecture failures. First, continuous scrolling from the latest turn into the previous offscreen turn can jump far into the previous turn, because a streamed boundary crossing is translated into row or chunk placement instead of preserving the wheel delta and visual anchor. Second, continued scrolling can oscillate vertically, because measurement updates, list row invalidation, and semantic anchor refill are still coupled through competing scroll owners.
 
-Resumable milestone: Phase 3 is in progress.
+Target architecture: the transcript viewport owns one rendered-frame model spanning ordinary rows and streamed chunks. Continuous wheel and touchpad input moves through that rendered frame by pixel delta, lazily prepending or appending adjacent resident content when the frame edge is reached. Explicit placement remains only for selected-thread activation, tail/bottom commands, `PageUp`, `PageDown`, and turn-to-turn commands.
 
-# Phase 1: Replace Fragile Block Window Model (finished)
+Resumable milestone: new frame-owner architecture is planned; implementation has not started.
 
-Tasks:
+# Phase 1: Establish Transcript Frame Ownership (pending)
 
-- Replace the current fixed-height block-window contract with a presentation model that can represent stable render chunks inside one resident transcript row.
-- Split large resident turns at Markdown-safe presentation boundaries, preserving backend turn identity, item order, copy-source spans, media ownership, code-panel ids, context-menu targeting, and selection semantics.
-- Keep normal turns on the whole-row render path.
-- Disable or remove any path where `TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX` or another fixed pixel estimate decides which content is visible or how tall skipped visible-adjacent spacers are.
-- Define chunk-cost thresholds from presentation facts such as text bytes, Markdown block count, line count, media count, code-panel count, and item count. These thresholds may trigger chunking and bound chunk source size only.
+Task:
+
+- Introduce a transcript viewport frame model that represents visible and overscan content segments across ordinary rows and streamed chunks.
+- Define stable segment identities for ordinary rows, streamed chunks, render-budget fallback chunks, and terminal resident-budget fallback rows.
+- Make the frame model the only continuous-scroll authority for transcript wheel and touchpad input.
+- Identify and remove design reliance on `scroll_transcript_streamed_row_to_placement` and any equivalent row placement helper for continuous scroll.
 
 Edge cases:
 
-- Huge assistant text made of many short paragraphs.
-- Huge fenced code block and huge single-line code block.
-- Mixed reasoning, commentary, final answer, user fragments, and media runs in one backend turn.
-- Markdown constructs that must not be split in the middle of a semantic block or copy-source span.
-
-Automated tests:
-
-- Add focused `transcript_presentation` coverage for deterministic chunk identity, stable order, source-span preservation, and markdown-safe split boundaries.
-- Add large-turn tests where many short blocks trigger chunking but do not use fixed pixel estimates for the visible window.
-- Add source-guard coverage in `conversation_shell_source` or an equivalent source test proving fixed per-block pixel estimates no longer control visible omission or spacer height.
+- Latest ordinary turn with the previous turn just above the viewport.
+- Latest streamed huge turn with the previous ordinary turn just above the viewport.
+- Latest ordinary turn with the previous streamed huge turn just above the viewport.
+- Adjacent streamed huge turns.
+- Empty transcript, single-row transcript, and resident-boundary clamp.
 
 Verification:
 
-- `cargo nextest run -p beryl-app --test transcript_presentation --test conversation_shell_source` passes.
-- A broader `cargo nextest run -p beryl-app transcript_presentation conversation_shell_source` currently fails before running the focused tests because unrelated `gui_control_dynamic_tools` initializers are missing `UiStateSnapshot` fields `markdown_cache` and `pending_activation`.
+- Add pure frame-model tests proving adjacent segment lookup works across ordinary row and streamed chunk boundaries.
+- Add source guards proving continuous wheel/touchpad paths do not call row-to-top or row-to-bottom placement helpers.
+- Add source guards proving transcript visual scrollbar remains absent.
 
-Resumable milestone: chunk models exist, normal rows still render whole, large rows can be identified and split without relying on guessed pixel geometry, and the fixed pixel block-window path no longer controls visible omission.
+Resumable milestone: transcript frame state can describe continuous visible content without delegating scroll ownership to the outer virtual list.
 
-# Phase 2: Add Measured Chunk Geometry (finished)
+# Phase 2: Implement Delta-Preserving Continuous Scroll Reducer (pending)
 
-Tasks:
+Task:
 
-- Add chunk measurement records keyed by row identity, row presentation revision, chunk identity, transcript width, theme/font revision, and layout-affecting display state.
-- Build a row-interior geometry helper that maps row scroll offset and viewport height to chunk ranges using measured cumulative chunk heights.
-- Render chunks around the current row anchor until measured chunk heights cover the viewport plus bounded render overscan, or until the row boundary is reached.
-- Use measured heights for top and bottom spacers when measured offscreen chunks are skipped.
-- For unknown geometry, over-render additional chunks, retain prior measured geometry until explicit invalidation, or use an explicit bounded large-turn fallback. Do not insert blank guessed spacers for possibly visible content.
-- Preserve semantic scroll anchors when chunk heights change after measurement or invalidation.
+- Replace streamed boundary wheel/touchpad reduction with a frame reducer that consumes pixel deltas locally, expands the frame in the scroll direction when needed, and preserves the visual anchor plus any remaining delta.
+- Treat resident history boundaries as clamps that request residency work without entering unloaded or fake rows.
+- Keep live-tail detachment on manual scroll intent before boundary and residency decisions.
 
 Edge cases:
 
-- Short chunks where under-rendering previously created a blank lower viewport.
-- Mixed very short and very tall chunks.
-- Unknown chunk heights at the top, middle, and bottom of a large row.
-- Width, theme, font, media readiness, code-panel state, and display-state changes that invalidate chunk measurements.
-
-Automated tests:
-
-- Add pure geometry tests with artificial measured chunk heights for range selection, prefix offsets, spacer heights, overscan, and boundary clamping.
-- Add tests proving unknown geometry chooses over-render or explicit fallback rather than blank spacer geometry.
-- Add invalidation tests for width, theme/font revision, media readiness, and display-state changes.
-- Add scroll-anchor tests proving row offsets reconcile when measured chunk heights change.
+- Small delta crossing a turn boundary by only a few pixels.
+- Large wheel delta crossing multiple chunks or rows.
+- Touchpad deltas that accumulate over multiple events.
+- Boundary clamp at oldest or newest resident content.
+- Manual scroll while live autoscroll is following tail.
 
 Verification:
 
-- `cargo nextest run -p beryl-app --test transcript_presentation --test conversation_shell_source` passes with 135 tests.
-- `git diff --check` passes.
-- `rg -n "TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX|block_presentation\(|requires_block_split|TranscriptRowBlockPresentation|TranscriptRowBlockUnit" crates/beryl-app/src crates/beryl-app/tests doc/features/transcript/design.md doc/plan.md` finds only the plan task text and negative source guards.
+- Add pure reducer tests for no-jump boundary crossing, multi-segment delta consumption, residual delta handling, clamps, and live-tail detachment.
+- Add production bridge tests proving wheel/touchpad input goes through the frame reducer before any fallback.
 
-Resumable milestone: large rows render from measured chunk geometry, and the previous blank-bottom failure shape is covered by tests.
+Resumable milestone: continuous scroll advances through rows and chunks by delta rather than by semantic placement.
 
-# Phase 3: Integrate Residency, Diagnostics, And Render Metrics (wip)
+# Phase 3: Render From Transcript Frames (pending)
 
-Tasks:
+Task:
 
-- Keep transcript residency admission and release at whole-turn granularity while allowing the renderer to chunk presentation for an admitted turn.
-- Ensure selected-thread activation loads the default tail turn first, stages coherent row presentation, obtains activation-time row measurement before publication, then expands the resident window until the policy margin is satisfied or budget limits are hit.
-- Preserve oversized-turn fallback behavior only for turns that exceed the resident turn-data budget, not merely for turns that exceed frame render budget.
-- Extend bounded diagnostics with large-turn chunk counts, measured versus unknown chunk geometry counts, rendered chunk counts, and chunk fallback reasons without logging transcript content.
-- Keep render-frame metrics content-free and bounded around snapshot construction, chunk-window computation, and render-adjacent pruning.
+- Replace the transcript row-list render path for the transcript region with a frame renderer that renders only frame segments plus bounded overscan.
+- Preserve existing row visuals so adjacent chunks from the same turn still read as one turn to the user.
+- Keep ordinary rows on whole-row segment rendering and huge turns on chunk segment rendering.
+- Preserve nested code-panel wheel ownership above transcript scrolling.
 
 Edge cases:
 
-- A single huge resident turn already satisfies the viewport margin.
-- Several small turns must be loaded after the default turn to satisfy the viewport margin.
-- A huge turn fits resident data budget but exceeds frame render budget.
-- A turn exceeds resident data budget and must render the explicit oversized fallback.
-- Resident-window release keeps enough measured row or chunk geometry to avoid scroll jumps.
+- Same-turn chunks split across the top and bottom of the viewport.
+- Turn card chrome and context-menu targeting across multiple visible chunks of one turn.
+- Render-budget fallback chunk inside a streamed turn.
+- Nested code panel selected for wheel ownership while its outer streamed chunk remains visible.
 
-Automated tests:
+Verification:
 
-- Add residency planner tests proving whole-turn measured heights, not chunk counts or source bytes, decide whether the viewport-height margin is satisfied.
-- Add shell/source guards proving renderer, prepaint, deferred, media preload, status-line, and scrollbar callbacks do not independently schedule resident loads.
-- Add diagnostics tests proving new chunk counters are present, bounded, and content-free.
-- Add integration coverage for activation at tail with one huge turn and with multiple small turns.
+- Add render/source tests proving the transcript region renders from frame segments, not an outer variable-height list scroll extent.
+- Add context-menu and code-panel tests proving visible segment rendering still targets the owning backend turn and nested code panel.
 
-Resumable milestone: residency and rendering budgets are separated, diagnostics expose chunk behavior, and activation/window expansion follow measured whole-turn rows.
+Resumable milestone: the transcript surface renders bounded frame segments directly.
 
-Blocked issue:
+# Phase 4: Transactional Segment Measurement (pending)
 
-- Selected-thread activation does not currently have a technical path to obtain activation-time visual row measurements before publication. The activation worker loads the initial full page and `initial_thread_activation_turn_admission_plan` still admits by `INITIAL_THREAD_ACTIVATION_VIEWPORT_ROWS` and `TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT`; publication waits for structural presentability only in `StagedSelectedThreadActivation::is_ready_for_publication`. Whole-row visual measurements are produced later by the GPUI virtual list through `transcript_list_state.measured_item_size`, after the transcript panel has rendered the published rows. Implementing the Phase 3 task "obtains activation-time row measurement before publication, then expands the resident window" therefore requires a design decision: introduce a staged/offscreen GPUI measurement path for activation, relax activation to publish the default tail turn first and expand immediately after first measurement, or revise the design requirement.
+Task:
 
-# Phase 4: Regression Verification And Completion Review (pending)
+- Replace ad hoc row/chunk measurement invalidation with a staged segment-measurement queue committed once per frame.
+- Coalesce measurements by segment key and display/layout revision before mutating viewport state.
+- Preserve the current visual anchor when measured heights change, and forbid repeated corrections that oscillate visible text.
 
-Tasks:
+Edge cases:
 
-- Run focused `cargo nextest run -p beryl-app` suites for transcript presentation, large transcript presentation, transcript history, virtual trailing list, transcript scroll, and source-guard tests.
+- Chunk height changes after first measurement.
+- Media readiness changes a visible or overscan segment height.
+- Width, theme, font, or code-panel state invalidates segment measurements.
+- Same measurement reported repeatedly.
+- Multiple segment measurements arrive in one frame.
+
+Verification:
+
+- Add pure measurement-commit tests proving coalescing, no-op same-height updates, anchor preservation, and no oscillating correction loop.
+- Add source guards proving segment measurement callbacks do not synchronously mutate transcript scroll state during prepaint.
+
+Resumable milestone: measured segment heights refine future frames without causing vertical oscillation.
+
+# Phase 5: Reconnect Residency To Frame Facts (pending)
+
+Task:
+
+- Feed residency planning from frame facts: visible source range, leading and trailing rendered overscan, resident boundary clamps, and streamed segment fill facts.
+- Ensure renderer, prepaint, deferred callbacks, media preload, diagnostics, and status-line code report facts only; the residency controller remains the only loader/releaser.
+
+Edge cases:
+
+- Frame reaches resident start while scrolling upward and must clamp while requesting older resident turns.
+- Frame reaches resident end while detached from live tail.
+- One huge streamed turn satisfies the configured viewport margin.
+- Several small ordinary turns are needed to satisfy the configured viewport margin.
+- Resident-window release preserves enough semantic identity and measured facts for stable frame reconstruction.
+
+Verification:
+
+- Add residency planner tests driven by frame facts for ordinary rows, streamed chunks, clamps, and budget-limited margins.
+- Add source guards proving non-controller paths do not schedule history loads or releases.
+
+Resumable milestone: residency expansion and release follow frame-owned viewport facts.
+
+# Phase 6: Rebuild Explicit Navigation On Frame Anchors (pending)
+
+Task:
+
+- Reimplement selected-thread activation, bottom/tail command, `PageUp`, `PageDown`, and turn-to-turn commands as explicit frame-anchor placements.
+- Keep these commands distinct from continuous wheel/touchpad delta handling.
+- Preserve live prompt, commentary, final-start, and passive final-runway semantics through frame anchors rather than outer-list offsets.
+
+Edge cases:
+
+- PageUp/PageDown with ordinary rows only.
+- PageUp/PageDown with a streamed huge turn.
+- Ctrl+Up/Ctrl+Down targeting ordinary and huge turns.
+- Existing-thread activation at tail with passive final runway.
+- Active live-turn prompt and final-start anchoring with detached manual scroll.
+
+Verification:
+
+- Add command tests proving explicit navigation may place anchors while wheel/touchpad cannot.
+- Rerun live-scroll, selected-thread activation, transcript scroll, and viewport suites.
+
+Resumable milestone: all non-continuous navigation commands target frame anchors.
+
+# Phase 7: Diagnostics And Regression Review (pending)
+
+Task:
+
+- Update content-free diagnostics and frame metrics to report frame anchor, visible segment range, overscan segment count, segment measurement commit counts, clamp reasons, and residency requests.
+- Run focused and broad regression suites.
+- Request completion-review subagent after implementation phases finish.
+
+Regression targets:
+
+- Scrolling upward from the latest turn into a previous offscreen turn has no visual jump.
+- Scrolling through many streamed chunks in either direction has no vertical oscillation.
+- Adjacent ordinary and streamed turns fill the viewport plus overscan.
+- Render-budget fallback chunks do not become scroll spacers.
+- Selection and quote behavior remain viewport-local for streamed chunks.
+- Nested code-panel scrolling remains isolated.
+- Live-tail detach, passive final runway, and selected-thread activation still behave correctly.
+
+Verification:
+
+- Run focused `cargo nextest run -p beryl-app` suites for transcript viewport, transcript scroll, transcript presentation, transcript history, live scroll, selection/copy/quote, nested code panels, diagnostics, and source guards.
 - Run broader `cargo nextest run -p beryl-app` if focused suites pass and runtime is acceptable.
-- Use Beryl diagnostics or a test harness to verify the pathological many-short-paragraph turn no longer leaves the bottom half of the transcript viewport blank.
-- Request a completion-review subagent after all implementation phases are finished, then address any findings through an updated plan before finalizing.
+- Use live Beryl or diagnostic-child testing on the reported thread shape before finalizing.
+- Address reviewer findings through an updated plan before clearing `doc/plan.md`.
 
-Automated regression targets:
-
-- Many short Markdown paragraphs in one assistant turn.
-- Long wrapped prose in a narrow viewport and a wide viewport.
-- Huge single-line code block.
-- Mixed Markdown, media placeholders, and code panels.
-- Theme/font change after chunk measurement.
-- Media readiness changing chunk and row heights.
-- Manual scroll, tail activation, passive final runway, and detached live-scroll states interacting with a chunked huge turn.
-
-Resumable milestone: all planned tests pass or blockers are recorded here with exact failing commands and symptoms.
+Resumable milestone: frame-owned transcript scrolling passes automated and live regression review.

@@ -17,6 +17,10 @@ fn key(row: &str, block: &str, line: usize) -> TranscriptTextLineKey {
     TranscriptTextLineKey::new(row, block, line)
 }
 
+fn viewport_key(row: &str, block: &str, line: usize, scope: &str) -> TranscriptTextLineKey {
+    TranscriptTextLineKey::new(row, block, line).with_viewport_local_scope(scope)
+}
+
 fn point(key: TranscriptTextLineKey, offset: usize) -> TranscriptTextPoint {
     TranscriptTextPoint::new(key, offset)
 }
@@ -452,6 +456,52 @@ fn selection_retains_text_when_endpoint_leaves_visible_frame() {
     assert_eq!(ranges[0].key, first);
     assert_eq!(ranges[0].start, 0);
     assert_eq!(ranges[0].end, "first".len());
+}
+
+#[test]
+fn streamed_selection_clears_when_viewport_local_chunk_leaves_visible_frame() {
+    let first = viewport_key("row-huge", "assistant", 0, "chunk-a");
+    let second = viewport_key("row-huge", "assistant", 1, "chunk-a");
+    let current_frame = frame([
+        (first.clone(), 0, "first", 1),
+        (second.clone(), 1, "second", 1),
+    ]);
+    let replacement_chunk_frame = frame([(
+        viewport_key("row-huge", "assistant", 0, "chunk-b"),
+        0,
+        "third",
+        1,
+    )]);
+    let mut selection = TranscriptSelectionState::default();
+
+    selection.begin(point(first, 0), &current_frame);
+    selection.extend(point(second, "second".len()), &current_frame);
+
+    assert_eq!(selection.selected_text(), Some("first\nsecond"));
+    assert!(selection.sync_visible_frame(&replacement_chunk_frame));
+    assert_eq!(selection.selected_text(), None);
+}
+
+#[test]
+fn streamed_selection_clears_when_mixed_ordinary_and_chunk_selection_loses_chunk() {
+    let streamed = viewport_key("row-huge", "assistant", 0, "chunk-a");
+    let ordinary = key("row-small", "assistant", 0);
+    let current_frame = frame([
+        (streamed.clone(), 0, "streamed", 1),
+        (ordinary.clone(), 1, "ordinary", 1),
+    ]);
+    let ordinary_only_frame = frame([(ordinary, 1, "ordinary", 1)]);
+    let mut selection = TranscriptSelectionState::default();
+
+    selection.begin(point(streamed, 0), &current_frame);
+    selection.extend(
+        point(key("row-small", "assistant", 0), "ordinary".len()),
+        &current_frame,
+    );
+
+    assert_eq!(selection.selected_text(), Some("streamed\nordinary"));
+    assert!(selection.sync_visible_frame(&ordinary_only_frame));
+    assert_eq!(selection.selected_text(), None);
 }
 
 #[test]

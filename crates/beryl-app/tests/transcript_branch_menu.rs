@@ -2,7 +2,9 @@
 
 use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc};
 
-use beryl_backend::{ThreadItem, TurnInfo, TurnStatus, UserInput, UserMessageItem};
+use beryl_backend::{
+    AgentMessageItem, ProtocolPhase, ThreadItem, TurnInfo, TurnStatus, UserInput, UserMessageItem,
+};
 use gpui::{Bounds, ClipboardEntry, Image, ImageFormat, point, px, size};
 
 mod shell {
@@ -156,6 +158,13 @@ mod shell {
         pub(super) fn presentation_len(&self) -> usize {
             self.presentation.len()
         }
+
+        pub(super) fn chunk_count_at(&self, index: usize) -> usize {
+            self.presentation
+                .turn_at(index)
+                .map(|row| row.model.chunk_presentation().chunks().len())
+                .unwrap_or_default()
+        }
     }
 }
 
@@ -209,6 +218,39 @@ fn branch_target_replaces_transcript_image_markers_with_copy_fallback_text() {
     assert_eq!(
         target.title_seed_fragments(),
         &["Look at [Image A]".to_string()]
+    );
+}
+
+#[test]
+fn branch_and_title_targets_for_huge_streamed_row_use_owning_backend_turn() {
+    let mut harness = BranchHarness::new();
+    harness.replace_history(
+        "thread_a",
+        vec![huge_assistant_turn("turn_huge", "Seed prompt")],
+    );
+    assert_eq!(harness.presentation_len(), 1);
+    assert!(harness.chunk_count_at(0) > 1);
+
+    let branch_target = harness
+        .target_at(0)
+        .expect("resident huge row should be branchable by owning turn");
+    assert_eq!(branch_target.source_thread_id(), "thread_a");
+    assert_eq!(branch_target.source_turn_id(), "turn_huge");
+    assert_eq!(branch_target.source_turn_index(), 0);
+    assert_eq!(
+        branch_target.title_seed_fragments(),
+        &["Seed prompt".to_string()]
+    );
+
+    let title_target = harness
+        .title_target_at(0)
+        .expect("resident huge row should support title updates by owning turn");
+    assert_eq!(title_target.source_thread_id(), "thread_a");
+    assert_eq!(title_target.source_turn_id(), "turn_huge");
+    assert_eq!(title_target.source_turn_index(), 0);
+    assert_eq!(
+        title_target.title_seed_fragments(),
+        &["Seed prompt".to_string()]
     );
 }
 
@@ -1019,6 +1061,20 @@ fn oversized_fallback_turn(id: &str) -> TurnInfo {
         })],
         error: None,
     }
+}
+
+fn huge_assistant_turn(id: &str, prompt: &str) -> TurnInfo {
+    let mut turn = prompt_turn_with_fragments(id, &[prompt]);
+    let markdown = (0..80)
+        .map(|index| format!("Large assistant paragraph {index}."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    turn.items.push(ThreadItem::AgentMessage(AgentMessageItem {
+        id: format!("{id}_answer"),
+        phase: Some(ProtocolPhase::FinalAnswer),
+        text: markdown,
+    }));
+    turn
 }
 
 fn image_menu_target() -> TranscriptImageMenuTarget {
