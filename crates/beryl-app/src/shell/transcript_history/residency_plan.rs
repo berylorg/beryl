@@ -394,11 +394,15 @@ fn build_plan(
         }
     }
 
+    let release_for_budget = resident_turn_limit || resident_byte_limit;
     let release_turn_ids = turns
         .iter()
         .filter(|turn| turn.resident)
         .filter(|turn| !turn_matches_id(turn, active_turn_id))
-        .filter(|turn| !desired_set.contains(&turn.turn_id) || fallback_set.contains(&turn.turn_id))
+        .filter(|turn| {
+            fallback_set.contains(&turn.turn_id)
+                || (release_for_budget && !desired_set.contains(&turn.turn_id))
+        })
         .map(|turn| turn.turn_id.clone())
         .collect::<Vec<_>>();
     let in_flight_limit = input.in_flight_requests >= input.policy.max_in_flight_requests.max(1);

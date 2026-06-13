@@ -604,6 +604,28 @@ fn residency_target_planner_expands_window_by_viewport_height_margins() {
 }
 
 #[test]
+fn residency_target_planner_retains_loaded_turns_outside_viewport_when_under_budget() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(2..3, 100),
+            planner_turns(5, 100, 10, true),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_leading_viewport_margins(0)
+                .with_trailing_viewport_margins(0),
+        ),
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_2"]);
+    assert!(plan.release_turn_ids.is_empty());
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::None
+    );
+}
+
+#[test]
 fn residency_target_planner_uses_missing_measurement_fallback_and_required_priority() {
     let plan = plan_transcript_residency_target(
         TranscriptResidencyTargetInput::new(
@@ -908,7 +930,7 @@ fn history_window_bounded_residency_target_plan_uses_source_window_and_required_
 }
 
 #[test]
-fn history_window_bounded_residency_target_plan_releases_residents_outside_source_window() {
+fn history_window_bounded_residency_target_plan_retains_residents_outside_source_window() {
     let page = loaded_history_page(
         (0..5).map(|index| turn(&format!("turn_{index}"))).collect(),
         None,
@@ -931,14 +953,92 @@ fn history_window_bounded_residency_target_plan_releases_residents_outside_sourc
     );
 
     assert_eq!(plan.desired_full_turn_ids, vec!["turn_2"]);
+    assert!(plan.release_turn_ids.is_empty());
+}
+
+#[test]
+fn history_window_bounded_residency_target_plan_releases_global_byte_budget_excess() {
+    let page = loaded_history_page(
+        (0..5).map(|index| turn(&format!("turn_{index}"))).collect(),
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_max_resident_bytes(50_000)
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+    );
+    assert!(window.update_residency_derived_byte_estimates([("turn_0", 1_000_000usize)]));
     assert_eq!(
-        plan.release_turn_ids,
-        vec!["turn_0", "turn_1", "turn_3", "turn_4"]
+        window.residency_retained_counts().budget_reason,
+        TranscriptResidencyBudgetReason::ResidentByteLimit
+    );
+
+    let plan = window.residency_target_plan_for_source_window(
+        4..5,
+        4..5,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_4"]);
+    assert_eq!(plan.release_turn_ids, vec!["turn_0"]);
+    assert!(plan.diagnostics.resident_byte_limit);
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::ResidentByteLimit
     );
 }
 
 #[test]
-fn history_window_residency_target_plan_reports_release_intents_by_policy() {
+fn history_window_bounded_residency_target_plan_releases_global_turn_budget_excess() {
+    let latest = loaded_history_page(
+        vec![turn("turn_2"), turn("turn_3")],
+        Some("older_cursor"),
+        None,
+    );
+    let older = loaded_history_page(vec![turn("turn_0"), turn("turn_1")], None, Some("newer"));
+    let mut window = TranscriptHistoryWindow::from_latest_page(&latest);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_max_resident_turns(3)
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+    );
+    assert_eq!(window.resident_turn_ids(), vec!["turn_2", "turn_3"]);
+    window.finish_loading_older_with_turn_ids(
+        &older,
+        vec!["turn_0".to_string(), "turn_1".to_string()],
+    );
+    assert_eq!(
+        window.residency_retained_counts().budget_reason,
+        TranscriptResidencyBudgetReason::ResidentTurnLimit
+    );
+
+    let plan = window.residency_target_plan_for_source_window(
+        3..4,
+        3..4,
+        96,
+        Vec::<TranscriptResidencyMeasuredTurnHeight>::new(),
+        None,
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_3"]);
+    assert_eq!(plan.release_turn_ids, vec!["turn_0"]);
+    assert!(plan.diagnostics.resident_turn_limit);
+    assert_eq!(
+        plan.diagnostics.limiting_reason,
+        TranscriptResidencyBudgetReason::ResidentTurnLimit
+    );
+}
+
+#[test]
+fn history_window_residency_target_plan_does_not_release_under_budget() {
     let page = loaded_history_page(
         (0..5).map(|index| turn(&format!("turn_{index}"))).collect(),
         None,
@@ -960,10 +1060,7 @@ fn history_window_residency_target_plan_reports_release_intents_by_policy() {
     );
 
     assert_eq!(plan.desired_full_turn_ids, vec!["turn_2"]);
-    assert_eq!(
-        plan.release_turn_ids,
-        vec!["turn_0", "turn_1", "turn_3", "turn_4"]
-    );
+    assert!(plan.release_turn_ids.is_empty());
 }
 
 #[test]

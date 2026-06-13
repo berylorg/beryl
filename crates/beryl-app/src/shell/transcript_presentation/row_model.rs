@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use gpui::{Pixels, px};
+use gpui::Pixels;
 
 use super::super::execution_detail::{
     ExecutionItem, TurnExecutionRecord, TurnExecutionStatus, TurnNarrativeEntry,
@@ -19,13 +19,12 @@ const ESTIMATED_MEDIA_DESCRIPTOR_BYTES: usize = 192;
 const ESTIMATED_SOURCE_BACKED_MEDIA_LEASE_BYTES: usize = 1024 * 1024;
 const ESTIMATED_RETAINED_MEDIA_LEASE_BYTES: usize = 256 * 1024;
 const ESTIMATED_ROW_MEASUREMENT_BYTES: usize = 160;
-const ESTIMATED_BLOCK_UNIT_BYTES: usize = 96;
-const TRANSCRIPT_ROW_BLOCK_SPLIT_MIN_ESTIMATED_BLOCKS: usize = 32;
-const TRANSCRIPT_ROW_BLOCK_SPLIT_MIN_TEXT_CHARS: usize = 16 * 1024;
-const TRANSCRIPT_ROW_BLOCK_SPLIT_MIN_MEDIA_DESCRIPTORS: usize = 12;
-const TRANSCRIPT_ROW_MARKDOWN_SOURCE_BYTES_PER_BLOCK: usize = 4 * 1024;
-pub(crate) const TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX: f32 = 96.0;
-pub(crate) const TRANSCRIPT_ROW_BLOCK_RENDER_OVERSCAN_BLOCKS: usize = 3;
+const ESTIMATED_RENDER_CHUNK_BYTES: usize = 96;
+const TRANSCRIPT_ROW_CHUNK_SPLIT_MIN_ESTIMATED_BLOCKS: usize = 32;
+const TRANSCRIPT_ROW_CHUNK_SPLIT_MIN_TEXT_CHARS: usize = 16 * 1024;
+const TRANSCRIPT_ROW_CHUNK_SPLIT_MIN_MEDIA_DESCRIPTORS: usize = 12;
+const TRANSCRIPT_ROW_MARKDOWN_SOURCE_BYTES_PER_CHUNK_UNIT: usize = 4 * 1024;
+const TRANSCRIPT_ROW_RENDER_CHUNK_MAX_ESTIMATED_BLOCKS: usize = 8;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TranscriptRowPresentationModel {
@@ -33,7 +32,7 @@ pub(crate) struct TranscriptRowPresentationModel {
     narrative_units: Vec<TranscriptRowNarrativeUnit>,
     markdown_sources: Vec<TranscriptRowMarkdownSource>,
     media_descriptors: Vec<TranscriptRowMediaDescriptor>,
-    block_presentation: TranscriptRowBlockPresentation,
+    chunk_presentation: TranscriptRowChunkPresentation,
     item_count: usize,
     text_chars: usize,
     revision: TranscriptRowPresentationRevision,
@@ -66,6 +65,7 @@ pub(crate) struct TranscriptRowMarkdownSource {
     pub(crate) source_kind: TranscriptRowMarkdownSourceKind,
     pub(crate) source_bytes: usize,
     pub(crate) estimated_render_blocks: usize,
+    pub(crate) estimated_render_unit_costs: Vec<usize>,
     pub(crate) source_revision: u64,
 }
 
@@ -92,42 +92,34 @@ pub(crate) enum TranscriptRowMediaDescriptorKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TranscriptRowBlockPresentation {
-    units: Vec<TranscriptRowBlockUnit>,
+pub(crate) struct TranscriptRowChunkPresentation {
+    chunks: Vec<TranscriptRowRenderChunk>,
     estimated_render_blocks: usize,
-    requires_block_split: bool,
+    requires_chunking: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct TranscriptRowBlockUnit {
+pub(crate) struct TranscriptRowRenderChunk {
     pub(crate) identity: String,
-    pub(crate) owner: TranscriptRowBlockOwner,
+    pub(crate) owner: TranscriptRowChunkOwner,
     pub(crate) estimated_render_blocks: usize,
     pub(crate) source_revision: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum TranscriptRowBlockOwner {
+pub(crate) enum TranscriptRowChunkOwner {
     NarrativeUnit {
         unit_index: usize,
     },
     MarkdownSource {
         key: String,
         block_path: String,
-        block_index: usize,
+        first_unit_index: usize,
+        unit_count: usize,
     },
     MediaDescriptor {
         key: String,
     },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TranscriptRowBlockRenderWindow {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-    pub(crate) total: usize,
-    pub(crate) top_spacer_height: Pixels,
-    pub(crate) bottom_spacer_height: Pixels,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -141,7 +133,7 @@ pub(crate) struct TranscriptRowMeasurementDisplayState {
     pub(crate) code_panel_state_digest: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TranscriptRowMeasurementKey {
     pub(crate) row_identity: TranscriptRowIdentity,
     pub(crate) row_revision: TranscriptRowPresentationRevision,
@@ -196,16 +188,20 @@ impl TranscriptRowPresentationModel {
                         let source_revision = hash_fragment_source(fragment);
                         let estimated_media_items =
                             estimate_markdown_media_candidate_count(fragment.text.as_str());
+                        let estimated_render_unit_costs =
+                            estimate_markdown_source_render_unit_costs(
+                                fragment.text.as_str(),
+                                estimated_media_items,
+                            );
+                        let estimated_render_blocks =
+                            estimated_render_unit_costs.iter().copied().sum::<usize>();
                         markdown_sources.push(TranscriptRowMarkdownSource {
                             key: key.clone(),
                             block_path,
                             source_kind: TranscriptRowMarkdownSourceKind::UserInput,
                             source_bytes: fragment.text.len(),
-                            estimated_render_blocks:
-                                estimate_markdown_source_render_blocks_from_text(
-                                    fragment.text.as_str(),
-                                )
-                                .saturating_add(estimated_media_items),
+                            estimated_render_blocks,
+                            estimated_render_unit_costs,
                             source_revision,
                         });
                         if fragment.image_markers().is_empty() && estimated_media_items > 0 {
@@ -245,7 +241,7 @@ impl TranscriptRowPresentationModel {
 
         let item_count = turn.item_count();
         let text_chars = turn.text_char_count();
-        let block_presentation = TranscriptRowBlockPresentation::derive(
+        let chunk_presentation = TranscriptRowChunkPresentation::derive(
             &source_turn_identity,
             turn,
             &narrative_units,
@@ -259,7 +255,7 @@ impl TranscriptRowPresentationModel {
             &narrative_units,
             &markdown_sources,
             &media_descriptors,
-            &block_presentation,
+            &chunk_presentation,
         );
 
         Self {
@@ -267,7 +263,7 @@ impl TranscriptRowPresentationModel {
             narrative_units,
             markdown_sources,
             media_descriptors,
-            block_presentation,
+            chunk_presentation,
             item_count,
             text_chars,
             revision,
@@ -290,8 +286,8 @@ impl TranscriptRowPresentationModel {
         &self.media_descriptors
     }
 
-    pub(crate) fn block_presentation(&self) -> &TranscriptRowBlockPresentation {
-        &self.block_presentation
+    pub(crate) fn chunk_presentation(&self) -> &TranscriptRowChunkPresentation {
+        &self.chunk_presentation
     }
 
     pub(crate) fn item_count(&self) -> usize {
@@ -327,10 +323,10 @@ impl TranscriptRowPresentationModel {
                     .sum::<usize>(),
             )
             .saturating_add(
-                self.block_presentation
-                    .units()
+                self.chunk_presentation
+                    .chunks()
                     .iter()
-                    .map(estimate_block_unit_bytes)
+                    .map(estimate_render_chunk_bytes)
                     .sum::<usize>(),
             );
         let markdown_bytes = self
@@ -380,7 +376,7 @@ impl TranscriptRowDerivedByteEstimate {
     }
 }
 
-impl TranscriptRowBlockPresentation {
+impl TranscriptRowChunkPresentation {
     fn derive(
         source_turn_identity: &TranscriptRowSourceIdentity,
         turn: &TurnExecutionRecord,
@@ -389,20 +385,20 @@ impl TranscriptRowBlockPresentation {
         media_descriptors: &[TranscriptRowMediaDescriptor],
         text_chars: usize,
     ) -> Self {
-        let mut units = Vec::new();
+        let mut chunks = Vec::new();
         let turn_key = turn_identity(source_turn_identity, turn);
 
         for (unit_index, unit) in narrative_units.iter().enumerate() {
             match unit {
                 TranscriptRowNarrativeUnit::UserInput { fragment_index, .. } => {
                     let block_path = user_prompt_block_path(*fragment_index);
-                    if !push_markdown_block_units(
+                    if !push_markdown_chunks(
                         &turn_key,
                         markdown_sources,
                         block_path.as_str(),
-                        &mut units,
+                        &mut chunks,
                     ) {
-                        push_narrative_block_unit(&turn_key, unit_index, unit, &mut units);
+                        push_narrative_chunk(&turn_key, unit_index, unit, &mut chunks);
                     }
                 }
                 TranscriptRowNarrativeUnit::Item {
@@ -414,19 +410,19 @@ impl TranscriptRowBlockPresentation {
                         .get(*item_index)
                         .filter(|item| item.id() == item_id)
                     else {
-                        push_narrative_block_unit(&turn_key, unit_index, unit, &mut units);
+                        push_narrative_chunk(&turn_key, unit_index, unit, &mut chunks);
                         continue;
                     };
                     match item {
                         ExecutionItem::AgentMessage(message) => {
                             let block_path = format!("item:{}:agent-message", message.id);
-                            if !push_markdown_block_units(
+                            if !push_markdown_chunks(
                                 &turn_key,
                                 markdown_sources,
                                 block_path.as_str(),
-                                &mut units,
+                                &mut chunks,
                             ) {
-                                push_narrative_block_unit(&turn_key, unit_index, unit, &mut units);
+                                push_narrative_chunk(&turn_key, unit_index, unit, &mut chunks);
                             }
                         }
                         ExecutionItem::Reasoning(reasoning) => {
@@ -436,21 +432,21 @@ impl TranscriptRowBlockPresentation {
                                 .iter()
                                 .filter(|source| source.block_path.starts_with(&prefix))
                             {
-                                push_markdown_source_units(&turn_key, source, &mut units);
+                                push_markdown_source_chunks(&turn_key, source, &mut chunks);
                                 pushed = true;
                             }
                             if !pushed {
-                                push_narrative_block_unit(&turn_key, unit_index, unit, &mut units);
+                                push_narrative_chunk(&turn_key, unit_index, unit, &mut chunks);
                             }
                         }
                         ExecutionItem::GeneratedImage(image) => {
                             let source_revision = hash_generated_image_source(image);
-                            units.push(TranscriptRowBlockUnit {
+                            chunks.push(TranscriptRowRenderChunk {
                                 identity: format!(
                                     "{turn_key}:generated-image:{}:rev:{source_revision}",
                                     image.id
                                 ),
-                                owner: TranscriptRowBlockOwner::MediaDescriptor {
+                                owner: TranscriptRowChunkOwner::MediaDescriptor {
                                     key: image.id.clone(),
                                 },
                                 estimated_render_blocks: 1,
@@ -460,38 +456,38 @@ impl TranscriptRowBlockPresentation {
                         ExecutionItem::CommandExecution(_)
                         | ExecutionItem::FileChange(_)
                         | ExecutionItem::Generic(_) => {
-                            push_narrative_block_unit(&turn_key, unit_index, unit, &mut units);
+                            push_narrative_chunk(&turn_key, unit_index, unit, &mut chunks);
                         }
                     }
                 }
                 TranscriptRowNarrativeUnit::TerminalFallback => {
-                    push_narrative_block_unit(&turn_key, unit_index, unit, &mut units);
+                    push_narrative_chunk(&turn_key, unit_index, unit, &mut chunks);
                 }
             }
         }
 
-        let estimated_render_blocks = units
+        let estimated_render_blocks = chunks
             .iter()
-            .map(|unit| unit.estimated_render_blocks.max(1))
+            .map(|chunk| chunk.estimated_render_blocks.max(1))
             .sum::<usize>();
         let estimated_media_items = media_descriptors
             .iter()
             .map(|descriptor| descriptor.estimated_items.max(1))
             .sum::<usize>();
-        let requires_block_split = estimated_render_blocks
-            >= TRANSCRIPT_ROW_BLOCK_SPLIT_MIN_ESTIMATED_BLOCKS
-            || text_chars >= TRANSCRIPT_ROW_BLOCK_SPLIT_MIN_TEXT_CHARS
-            || estimated_media_items >= TRANSCRIPT_ROW_BLOCK_SPLIT_MIN_MEDIA_DESCRIPTORS;
+        let requires_chunking = estimated_render_blocks
+            >= TRANSCRIPT_ROW_CHUNK_SPLIT_MIN_ESTIMATED_BLOCKS
+            || text_chars >= TRANSCRIPT_ROW_CHUNK_SPLIT_MIN_TEXT_CHARS
+            || estimated_media_items >= TRANSCRIPT_ROW_CHUNK_SPLIT_MIN_MEDIA_DESCRIPTORS;
 
         Self {
-            units,
+            chunks,
             estimated_render_blocks,
-            requires_block_split,
+            requires_chunking,
         }
     }
 
-    pub(crate) fn units(&self) -> &[TranscriptRowBlockUnit] {
-        &self.units
+    pub(crate) fn chunks(&self) -> &[TranscriptRowRenderChunk] {
+        &self.chunks
     }
 
     #[cfg(test)]
@@ -499,43 +495,8 @@ impl TranscriptRowBlockPresentation {
         self.estimated_render_blocks
     }
 
-    #[cfg(test)]
-    pub(crate) fn requires_block_split(&self) -> bool {
-        self.requires_block_split
-    }
-
-    pub(crate) fn render_window(
-        &self,
-        row_scroll_offset: Pixels,
-        viewport_height: Pixels,
-    ) -> Option<TranscriptRowBlockRenderWindow> {
-        if !self.requires_block_split || self.units.is_empty() {
-            return None;
-        }
-
-        let total = self.units.len();
-        let block_height = px(TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX);
-        let first_visible = ((f32::from(row_scroll_offset.max(px(0.0)))
-            / TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX)
-            .floor() as usize)
-            .min(total);
-        let visible_blocks = ((f32::from(viewport_height.max(block_height))
-            / TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX)
-            .ceil() as usize)
-            .max(1);
-        let start = first_visible.saturating_sub(TRANSCRIPT_ROW_BLOCK_RENDER_OVERSCAN_BLOCKS);
-        let end = first_visible
-            .saturating_add(visible_blocks)
-            .saturating_add(TRANSCRIPT_ROW_BLOCK_RENDER_OVERSCAN_BLOCKS)
-            .min(total)
-            .max(start);
-        Some(TranscriptRowBlockRenderWindow {
-            start,
-            end,
-            total,
-            top_spacer_height: block_height * start as f32,
-            bottom_spacer_height: block_height * total.saturating_sub(end) as f32,
-        })
+    pub(crate) fn requires_chunking(&self) -> bool {
+        self.requires_chunking
     }
 }
 
@@ -597,11 +558,11 @@ fn estimate_media_descriptor_bytes(descriptor: &TranscriptRowMediaDescriptor) ->
         })
 }
 
-fn push_markdown_block_units(
+fn push_markdown_chunks(
     turn_key: &str,
     markdown_sources: &[TranscriptRowMarkdownSource],
     block_path: &str,
-    units: &mut Vec<TranscriptRowBlockUnit>,
+    chunks: &mut Vec<TranscriptRowRenderChunk>,
 ) -> bool {
     let Some(source) = markdown_sources
         .iter()
@@ -609,56 +570,76 @@ fn push_markdown_block_units(
     else {
         return false;
     };
-    push_markdown_source_units(turn_key, source, units);
+    push_markdown_source_chunks(turn_key, source, chunks);
     true
 }
 
-fn push_markdown_source_units(
+fn push_markdown_source_chunks(
     _turn_key: &str,
     source: &TranscriptRowMarkdownSource,
-    units: &mut Vec<TranscriptRowBlockUnit>,
+    chunks: &mut Vec<TranscriptRowRenderChunk>,
 ) {
-    let blocks = estimated_markdown_source_render_blocks(source);
-    for block_index in 0..blocks {
-        units.push(TranscriptRowBlockUnit {
+    let mut first_unit_index = 0usize;
+    while first_unit_index < source.estimated_render_unit_costs.len() {
+        let mut unit_count = 0usize;
+        let mut estimated_render_blocks = 0usize;
+        while first_unit_index.saturating_add(unit_count) < source.estimated_render_unit_costs.len()
+        {
+            let next_cost = source.estimated_render_unit_costs
+                [first_unit_index.saturating_add(unit_count)]
+            .max(1);
+            if unit_count > 0
+                && estimated_render_blocks.saturating_add(next_cost)
+                    > TRANSCRIPT_ROW_RENDER_CHUNK_MAX_ESTIMATED_BLOCKS
+            {
+                break;
+            }
+            estimated_render_blocks = estimated_render_blocks.saturating_add(next_cost);
+            unit_count = unit_count.saturating_add(1);
+        }
+        let unit_count = unit_count.max(1);
+        let end_unit_index = first_unit_index.saturating_add(unit_count);
+        chunks.push(TranscriptRowRenderChunk {
             identity: format!(
-                "{}:markdown-block:{block_index}:rev:{}",
+                "{}:markdown-chunk:{first_unit_index}-{end_unit_index}:rev:{}",
                 source.key, source.source_revision
             ),
-            owner: TranscriptRowBlockOwner::MarkdownSource {
+            owner: TranscriptRowChunkOwner::MarkdownSource {
                 key: source.key.clone(),
                 block_path: source.block_path.clone(),
-                block_index,
+                first_unit_index,
+                unit_count,
             },
-            estimated_render_blocks: 1,
+            estimated_render_blocks: estimated_render_blocks.max(1),
             source_revision: source.source_revision,
         });
+        first_unit_index = end_unit_index;
     }
 }
 
-fn push_narrative_block_unit(
+fn push_narrative_chunk(
     turn_key: &str,
     unit_index: usize,
     unit: &TranscriptRowNarrativeUnit,
-    units: &mut Vec<TranscriptRowBlockUnit>,
+    chunks: &mut Vec<TranscriptRowRenderChunk>,
 ) {
-    units.push(TranscriptRowBlockUnit {
+    chunks.push(TranscriptRowRenderChunk {
         identity: format!("{turn_key}:narrative:{unit_index}"),
-        owner: TranscriptRowBlockOwner::NarrativeUnit { unit_index },
+        owner: TranscriptRowChunkOwner::NarrativeUnit { unit_index },
         estimated_render_blocks: estimated_narrative_unit_render_blocks(unit),
         source_revision: 0,
     });
 }
 
-fn estimate_block_unit_bytes(unit: &TranscriptRowBlockUnit) -> usize {
-    ESTIMATED_BLOCK_UNIT_BYTES
-        .saturating_add(unit.identity.len())
-        .saturating_add(match &unit.owner {
-            TranscriptRowBlockOwner::NarrativeUnit { .. } => 0,
-            TranscriptRowBlockOwner::MarkdownSource {
+fn estimate_render_chunk_bytes(chunk: &TranscriptRowRenderChunk) -> usize {
+    ESTIMATED_RENDER_CHUNK_BYTES
+        .saturating_add(chunk.identity.len())
+        .saturating_add(match &chunk.owner {
+            TranscriptRowChunkOwner::NarrativeUnit { .. } => 0,
+            TranscriptRowChunkOwner::MarkdownSource {
                 key, block_path, ..
             } => key.len().saturating_add(block_path.len()),
-            TranscriptRowBlockOwner::MediaDescriptor { key } => key.len(),
+            TranscriptRowChunkOwner::MediaDescriptor { key } => key.len(),
         })
 }
 
@@ -670,36 +651,27 @@ fn estimated_narrative_unit_render_blocks(unit: &TranscriptRowNarrativeUnit) -> 
     }
 }
 
-fn estimated_markdown_source_render_blocks(source: &TranscriptRowMarkdownSource) -> usize {
-    source.estimated_render_blocks.max(
-        source
-            .source_bytes
-            .max(1)
-            .div_ceil(TRANSCRIPT_ROW_MARKDOWN_SOURCE_BYTES_PER_BLOCK),
-    )
-}
-
-fn estimate_markdown_source_render_blocks_from_text(source: &str) -> usize {
+fn estimate_markdown_source_render_unit_costs(
+    source: &str,
+    estimated_media_items: usize,
+) -> Vec<usize> {
     let source = source.replace("\r\n", "\n").replace('\r', "\n");
-    let structural_blocks = source
+    let mut costs = source
         .split("\n\n")
         .filter(|block| !block.trim().is_empty())
         .map(|block| {
-            let fenced_lines =
-                if block.trim_start().starts_with("```") || block.trim_start().starts_with("~~~") {
-                    block.lines().count().max(1)
-                } else {
-                    1
-                };
-            fenced_lines.max(1).max(
-                block
-                    .len()
-                    .max(1)
-                    .div_ceil(TRANSCRIPT_ROW_MARKDOWN_SOURCE_BYTES_PER_BLOCK),
-            )
+            block
+                .len()
+                .max(1)
+                .div_ceil(TRANSCRIPT_ROW_MARKDOWN_SOURCE_BYTES_PER_CHUNK_UNIT)
+                .max(1)
         })
-        .sum::<usize>();
-    structural_blocks.max(1)
+        .collect::<Vec<_>>();
+    costs.extend(std::iter::repeat(1).take(estimated_media_items));
+    if costs.is_empty() {
+        costs.push(1);
+    }
+    costs
 }
 
 fn append_item_facts(
@@ -723,15 +695,19 @@ fn append_item_facts(
             let source_revision = hash_agent_message_source(message);
             let estimated_media_items =
                 estimate_markdown_media_candidate_count(message.text.as_str());
+            let estimated_render_unit_costs = estimate_markdown_source_render_unit_costs(
+                message.text.as_str(),
+                estimated_media_items,
+            );
+            let estimated_render_blocks =
+                estimated_render_unit_costs.iter().copied().sum::<usize>();
             markdown_sources.push(TranscriptRowMarkdownSource {
                 key: key.clone(),
                 block_path: format!("item:{}:agent-message", message.id),
                 source_kind: TranscriptRowMarkdownSourceKind::AgentMessage,
                 source_bytes: message.text.len(),
-                estimated_render_blocks: estimate_markdown_source_render_blocks_from_text(
-                    message.text.as_str(),
-                )
-                .saturating_add(estimated_media_items),
+                estimated_render_blocks,
+                estimated_render_unit_costs,
                 source_revision,
             });
             if estimated_media_items > 0 {
@@ -801,14 +777,16 @@ fn append_reasoning_markdown_sources(
         if source.is_empty() {
             continue;
         }
+        let estimated_render_unit_costs =
+            estimate_markdown_source_render_unit_costs(source.as_str(), 0);
+        let estimated_render_blocks = estimated_render_unit_costs.iter().copied().sum::<usize>();
         markdown_sources.push(TranscriptRowMarkdownSource {
             key: indexed_item_markdown_key(source_turn_identity, turn, item_id, slot, index),
             block_path: format!("item:{item_id}:{slot}:{index}"),
             source_kind,
             source_bytes: source.len(),
-            estimated_render_blocks: estimate_markdown_source_render_blocks_from_text(
-                source.as_str(),
-            ),
+            estimated_render_blocks,
+            estimated_render_unit_costs,
             source_revision: hash_reasoning_source(item_id, slot, index, source, complete),
         });
     }
@@ -820,7 +798,7 @@ fn presentation_revision(
     narrative_units: &[TranscriptRowNarrativeUnit],
     markdown_sources: &[TranscriptRowMarkdownSource],
     media_descriptors: &[TranscriptRowMediaDescriptor],
-    block_presentation: &TranscriptRowBlockPresentation,
+    chunk_presentation: &TranscriptRowChunkPresentation,
 ) -> TranscriptRowPresentationRevision {
     let mut hasher = DefaultHasher::new();
     turn_identity(source_turn_identity, turn).hash(&mut hasher);
@@ -834,9 +812,9 @@ fn presentation_revision(
     narrative_units.hash(&mut hasher);
     markdown_sources.hash(&mut hasher);
     media_descriptors.hash(&mut hasher);
-    block_presentation.units.hash(&mut hasher);
-    block_presentation.estimated_render_blocks.hash(&mut hasher);
-    block_presentation.requires_block_split.hash(&mut hasher);
+    chunk_presentation.chunks.hash(&mut hasher);
+    chunk_presentation.estimated_render_blocks.hash(&mut hasher);
+    chunk_presentation.requires_chunking.hash(&mut hasher);
     TranscriptRowPresentationRevision(hasher.finish())
 }
 

@@ -118,7 +118,7 @@ use self::{
     },
     markdown_cache::TranscriptMarkdownRenderContext,
     text_blocks::empty_state,
-    turn_blocks::{render_turn_card, user_prompt_block_path},
+    turn_blocks::{TranscriptRowChunkRenderState, render_turn_card, user_prompt_block_path},
     turn_media_units::{TranscriptMarkdownRenderUnit, markdown_render_units},
 };
 use super::super::virtual_list::{
@@ -137,8 +137,8 @@ use crate::shell::transcript_prepublication_preparation::{
     TranscriptPrepublicationPreparationDriver, TranscriptPrepublicationPreparationLayout,
 };
 use crate::shell::transcript_presentation::{
-    TranscriptRowMeasurementDisplayState, TranscriptRowMeasurementKey,
-    TranscriptRowPresentationModel,
+    TranscriptRowChunkMeasurementKey, TranscriptRowMeasurementDisplayState,
+    TranscriptRowMeasurementKey, TranscriptRowPresentationModel, measured_chunk_heights_for,
 };
 
 const SLOW_TRANSCRIPT_FRAME_THRESHOLD: Duration = Duration::from_millis(8);
@@ -228,6 +228,7 @@ pub(crate) struct TranscriptPanel {
     prepublication_preparation: TranscriptPrepublicationPreparationDriver,
     media_preload: TranscriptMediaPreloadCoordinator,
     row_measurement_keys: HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
     media_events: Rc<RefCell<MediaDiagnosticLog>>,
     visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     frame_metrics: Rc<RefCell<TranscriptFrameMetricsLog>>,
@@ -597,6 +598,7 @@ impl TranscriptPanel {
             prepublication_preparation: TranscriptPrepublicationPreparationDriver::default(),
             media_preload: TranscriptMediaPreloadCoordinator::default(),
             row_measurement_keys: HashMap::new(),
+            chunk_measurements: HashMap::new(),
             media_events: Rc::new(RefCell::new(MediaDiagnosticLog::default())),
             visible_media: Rc::new(RefCell::new(VisibleMediaDiagnostics::default())),
             frame_metrics: Rc::new(RefCell::new(TranscriptFrameMetricsLog::default())),
@@ -1297,7 +1299,12 @@ impl TranscriptPanel {
         should_clear && self.clear_promoted_media(cx)
     }
 
-    fn invalidate_transcript_row_measurement(&self, row_identity: &str, cx: &mut Context<Self>) {
+    fn invalidate_transcript_row_measurement(
+        &mut self,
+        row_identity: &str,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_transcript_row_chunk_measurements(row_identity);
         let Some((list_state, row_index)) =
             self.shell
                 .read(cx)
@@ -1315,10 +1322,55 @@ impl TranscriptPanel {
     }
 
     pub(super) fn invalidate_transcript_row_measurement_for_markdown_key(
-        &self,
+        &mut self,
         markdown_key: &TranscriptMarkdownCacheKey,
         cx: &mut Context<Self>,
     ) {
+        let Some((list_state, row_index, row_identity)) = self
+            .shell
+            .read(cx)
+            .conversation_surface()
+            .and_then(|surface| {
+                surface
+                    .transcript_presentation()
+                    .row_index_for_markdown_key(markdown_key.as_str())
+                    .and_then(|row_index| {
+                        surface
+                            .transcript_presentation()
+                            .row_identity(row_index)
+                            .map(|row_identity| {
+                                (
+                                    surface.transcript_list_state(),
+                                    row_index,
+                                    row_identity.as_str().to_string(),
+                                )
+                            })
+                    })
+            })
+        else {
+            return;
+        };
+        self.clear_transcript_row_chunk_measurements(row_identity.as_str());
+        list_state.invalidate_item_measurement(row_index);
+    }
+
+    fn clear_transcript_row_chunk_measurements(&mut self, row_identity: &str) {
+        self.chunk_measurements
+            .retain(|key, _| key.row_identity() != row_identity);
+    }
+
+    fn record_transcript_row_chunk_measurement(
+        &mut self,
+        key: TranscriptRowChunkMeasurementKey,
+        height: Pixels,
+        cx: &mut Context<Self>,
+    ) {
+        let height = height.max(px(0.0));
+        if self.chunk_measurements.get(&key) == Some(&height) {
+            return;
+        }
+        let row_identity = key.row_identity().to_string();
+        self.chunk_measurements.insert(key, height);
         let Some((list_state, row_index)) =
             self.shell
                 .read(cx)
@@ -1326,13 +1378,14 @@ impl TranscriptPanel {
                 .and_then(|surface| {
                     surface
                         .transcript_presentation()
-                        .row_index_for_markdown_key(markdown_key.as_str())
+                        .row_index_for_identity(row_identity.as_str())
                         .map(|row_index| (surface.transcript_list_state(), row_index))
                 })
         else {
             return;
         };
         list_state.invalidate_item_measurement(row_index);
+        cx.notify();
     }
 
     fn reconcile_transcript_row_measurement_keys(
@@ -1403,6 +1456,7 @@ impl TranscriptPanel {
                 continue;
             }
             list_state.invalidate_item_measurement(row_index);
+            self.clear_transcript_row_chunk_measurements(row_identity_string.as_str());
             self.row_measurement_keys.insert(row_identity_string, key);
         }
 
@@ -2145,6 +2199,7 @@ impl TranscriptPanel {
         self.prepublication_preparation.clear();
         self.media_preload.clear();
         self.row_measurement_keys.clear();
+        self.chunk_measurements.clear();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
         self.clear_code_panel_interaction_state();
@@ -2170,6 +2225,7 @@ impl TranscriptPanel {
         }
 
         self.handled_theme_revision = Some(revision);
+        self.chunk_measurements.clear();
         self.syntax_highlight_cache.borrow_mut().clear();
         self.code_panel_projection_cache.borrow_mut().clear();
         self.visible_text_frame.clear();
@@ -2198,6 +2254,7 @@ impl TranscriptPanel {
         self.prepublication_preparation.clear();
         self.media_preload.clear();
         self.row_measurement_keys.clear();
+        self.chunk_measurements.clear();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
         self.clear_code_panel_interaction_state();
@@ -2252,6 +2309,7 @@ impl TranscriptPanel {
             .release_rows_and_markdown_keys(&row_identities, &markdown_keys);
         for row_identity in &row_identities {
             self.row_measurement_keys.remove(row_identity);
+            self.clear_transcript_row_chunk_measurements(row_identity);
         }
         self.release_evicted_media_images(evicted_images, cx);
         self.visible_media.borrow_mut().clear();
@@ -2719,6 +2777,8 @@ impl Render for TranscriptPanel {
             activity_caret.as_ref(),
             cx,
         );
+        let row_measurement_keys_for_render = Arc::new(self.row_measurement_keys.clone());
+        let chunk_measurements_for_render = Arc::new(self.chunk_measurements.clone());
         div()
             .relative()
             .size_full()
@@ -3053,6 +3113,10 @@ impl Render for TranscriptPanel {
                                     .child({
                                         let row_shell = shell.clone();
                                         let list_theme = theme.clone();
+                                        let list_row_measurement_keys =
+                                            row_measurement_keys_for_render.clone();
+                                        let list_chunk_measurements =
+                                            chunk_measurements_for_render.clone();
                                         let list_rendered_code_panel_ids =
                                             rendered_nested_code_panel_ids.clone();
                                         list(transcript_list_state.clone(), move |index, row_context, _, cx| {
@@ -3103,6 +3167,10 @@ impl Render for TranscriptPanel {
                                             let media_context = media_context.clone();
                                             let stream_projection_context =
                                                 stream_projection_context.clone();
+                                            let row_measurement_keys =
+                                                list_row_measurement_keys.clone();
+                                            let chunk_measurements =
+                                                list_chunk_measurements.clone();
                                             let selection_order = Rc::new(Cell::new(
                                                 TranscriptTextLineOrder::row_start(index),
                                             ));
@@ -3120,6 +3188,18 @@ impl Render for TranscriptPanel {
                                                     debug_assert_eq!(row.index, index);
                                                     let row_identity =
                                                         row.identity.as_str().to_string();
+                                                    let row_measurement_key =
+                                                        row_measurement_keys.get(&row_identity).cloned();
+                                                    let measured_chunk_heights =
+                                                        row_measurement_key.as_ref().map(|key| {
+                                                            measured_chunk_heights_for(
+                                                                row.model
+                                                                    .chunk_presentation()
+                                                                    .chunks(),
+                                                                key,
+                                                                chunk_measurements.as_ref(),
+                                                            )
+                                                        });
                                                     let media_context =
                                                         media_context.for_row(row_identity.clone());
                                                     let show_activity_caret =
@@ -3170,6 +3250,8 @@ impl Render for TranscriptPanel {
                                                         activity_caret_opacity,
                                                         row_context.scroll_offset_in_item,
                                                         row_context.viewport_height,
+                                                        row_measurement_key,
+                                                        measured_chunk_heights,
                                                         profiler.clone(),
                                                         cx,
                                                     )
@@ -4138,9 +4220,17 @@ fn render_turn(
     activity_caret_opacity: f32,
     row_scroll_offset: Pixels,
     viewport_height: Pixels,
+    row_measurement_key: Option<TranscriptRowMeasurementKey>,
+    measured_chunk_heights: Option<Vec<Option<Pixels>>>,
     profiler: Option<Rc<TranscriptFrameProfile>>,
     cx: &mut gpui::App,
 ) -> AnyElement {
+    let chunk_render_state =
+        row_measurement_key
+            .zip(measured_chunk_heights)
+            .map(|(row_key, measured_heights)| {
+                TranscriptRowChunkRenderState::new(row_key, measured_heights, entity.clone())
+            });
     let row = div()
         .w_full()
         .px_3()
@@ -4203,6 +4293,7 @@ fn render_turn(
         activity_caret_opacity,
         row_scroll_offset,
         viewport_height,
+        chunk_render_state,
         cx,
     ))
     .into_any_element()

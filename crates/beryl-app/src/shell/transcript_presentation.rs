@@ -12,6 +12,8 @@ use super::{
     transcript_projection::project_parent_narrative_turn,
 };
 
+#[path = "transcript_presentation/chunk_geometry.rs"]
+mod chunk_geometry;
 #[path = "transcript_presentation/identity.rs"]
 mod identity;
 #[path = "transcript_presentation/metrics.rs"]
@@ -22,16 +24,20 @@ mod range;
 #[path = "transcript_presentation/row_model.rs"]
 mod row_model;
 
+#[allow(unused_imports)]
+pub(crate) use chunk_geometry::{
+    TranscriptRowChunkMeasurementKey, TranscriptRowChunkRenderWindow, measured_chunk_heights_for,
+    transcript_row_chunk_render_window,
+};
 use identity::{latest_user_prompt_anchor_in_rows, stable_row_identity, user_prompt_anchor_text};
 use metrics::TranscriptPresentationRowMetrics;
 #[allow(unused_imports)]
 pub(crate) use row_model::{
-    TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX, TRANSCRIPT_ROW_BLOCK_RENDER_OVERSCAN_BLOCKS,
-    TranscriptRowBlockOwner, TranscriptRowBlockPresentation, TranscriptRowBlockRenderWindow,
-    TranscriptRowBlockUnit, TranscriptRowDerivedByteEstimate, TranscriptRowMarkdownSource,
+    TranscriptRowChunkOwner, TranscriptRowChunkPresentation, TranscriptRowDerivedByteEstimate,
+    TranscriptRowMarkdownSource, TranscriptRowMarkdownSourceKind,
     TranscriptRowMeasurementDisplayState, TranscriptRowMeasurementKey,
     TranscriptRowMediaDescriptor, TranscriptRowMediaDescriptorKind, TranscriptRowNarrativeUnit,
-    TranscriptRowPresentationModel, TranscriptRowPresentationRevision,
+    TranscriptRowPresentationModel, TranscriptRowPresentationRevision, TranscriptRowRenderChunk,
 };
 
 #[allow(unused_imports)]

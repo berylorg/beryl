@@ -53,8 +53,10 @@ mod shell {
         TranscriptRowPresentabilityContext,
     };
     pub(super) use transcript_presentation::TranscriptPresentationMutation;
-    pub(super) use transcript_presentation::TranscriptRowBlockOwner;
+    pub(super) use transcript_presentation::TranscriptRowChunkMeasurementKey;
+    pub(super) use transcript_presentation::TranscriptRowChunkOwner;
     pub(super) use transcript_presentation::TranscriptRowMeasurementDisplayState;
+    pub(super) use transcript_presentation::transcript_row_chunk_render_window;
     pub(super) use transcript_presentation::{
         TranscriptRowIdentity, TranscriptRowPresentationRevision,
     };
@@ -325,34 +327,37 @@ mod shell {
                 .unwrap_or_default()
         }
 
-        pub(super) fn row_model_block_summary_at(&self, index: usize) -> Option<(usize, bool)> {
+        pub(super) fn row_model_chunk_summary_at(&self, index: usize) -> Option<(usize, bool)> {
             self.presentation.turn_at(index).map(|row| {
-                let blocks = row.model.block_presentation();
-                (
-                    blocks.estimated_render_blocks(),
-                    blocks.requires_block_split(),
-                )
+                let chunks = row.model.chunk_presentation();
+                (chunks.estimated_render_blocks(), chunks.requires_chunking())
             })
         }
 
-        pub(super) fn row_model_block_unit_kinds_at(&self, index: usize) -> Vec<String> {
+        pub(super) fn row_model_chunk_kinds_at(&self, index: usize) -> Vec<String> {
             self.presentation
                 .turn_at(index)
                 .map(|row| {
                     row.model
-                        .block_presentation()
-                        .units()
+                        .chunk_presentation()
+                        .chunks()
                         .iter()
-                        .map(|unit| match &unit.owner {
-                            TranscriptRowBlockOwner::NarrativeUnit { unit_index } => {
+                        .map(|chunk| match &chunk.owner {
+                            TranscriptRowChunkOwner::NarrativeUnit { unit_index } => {
                                 format!("narrative:{unit_index}")
                             }
-                            TranscriptRowBlockOwner::MarkdownSource {
-                                key, block_index, ..
+                            TranscriptRowChunkOwner::MarkdownSource {
+                                key,
+                                first_unit_index,
+                                unit_count,
+                                ..
                             } => {
-                                format!("markdown:{key}:{block_index}")
+                                format!(
+                                    "markdown:{key}:{first_unit_index}:{}",
+                                    first_unit_index.saturating_add(*unit_count)
+                                )
                             }
-                            TranscriptRowBlockOwner::MediaDescriptor { key } => {
+                            TranscriptRowChunkOwner::MediaDescriptor { key } => {
                                 format!("media:{key}")
                             }
                         })
@@ -361,25 +366,18 @@ mod shell {
                 .unwrap_or_default()
         }
 
-        pub(super) fn row_model_block_render_window_at(
-            &self,
-            index: usize,
-            row_offset: f32,
-            viewport_height: f32,
-        ) -> Option<(usize, usize, usize, f32, f32)> {
-            self.presentation.turn_at(index).and_then(|row| {
-                let window = row
-                    .model
-                    .block_presentation()
-                    .render_window(px(row_offset), px(viewport_height))?;
-                Some((
-                    window.start,
-                    window.end,
-                    window.total,
-                    f32::from(window.top_spacer_height),
-                    f32::from(window.bottom_spacer_height),
-                ))
-            })
+        pub(super) fn row_model_chunk_costs_at(&self, index: usize) -> Vec<usize> {
+            self.presentation
+                .turn_at(index)
+                .map(|row| {
+                    row.model
+                        .chunk_presentation()
+                        .chunks()
+                        .iter()
+                        .map(|chunk| chunk.estimated_render_blocks)
+                        .collect()
+                })
+                .unwrap_or_default()
         }
 
         pub(super) fn terminal_fallback_text_at(&self, index: usize) -> Option<&'static str> {
@@ -417,6 +415,27 @@ mod shell {
             self.presentation
                 .measurement_key_for_row(index, px(width), theme_revision, display_state)
                 .map(|key| format!("{key:?}"))
+        }
+
+        pub(super) fn first_chunk_measurement_key_at(
+            &self,
+            index: usize,
+            width: f32,
+            theme_revision: u64,
+            display_state: TranscriptRowMeasurementDisplayState,
+        ) -> Option<String> {
+            let row = self.presentation.turn_at(index)?;
+            let row_key = self.presentation.measurement_key_for_row(
+                index,
+                px(width),
+                theme_revision,
+                display_state,
+            )?;
+            let chunk = row.model.chunk_presentation().chunks().first()?;
+            Some(format!(
+                "{:?}",
+                TranscriptRowChunkMeasurementKey::new(row_key, chunk)
+            ))
         }
 
         pub(super) fn visible_item_kinds_at(&self, index: usize) -> Vec<String> {
@@ -652,6 +671,7 @@ use shell::{
     TranscriptPresentabilitySummary, TranscriptPresentationMutation, TranscriptRowIdentity,
     TranscriptRowMeasurementDisplayState, TranscriptRowPresentabilityContext,
     TranscriptRowPresentationRevision, note_source_backed_upload_admission,
+    transcript_row_chunk_render_window,
 };
 
 #[test]
@@ -1521,17 +1541,17 @@ fn row_model_keeps_small_turns_on_row_level_rendering() {
         vec![agent_markdown_turn("turn_1", "Small assistant response.")],
     );
 
-    assert_eq!(harness.row_model_block_summary_at(0), Some((1, false)));
+    assert_eq!(harness.row_model_chunk_summary_at(0), Some((1, false)));
     assert!(
         harness
-            .row_model_block_unit_kinds_at(0)
+            .row_model_chunk_kinds_at(0)
             .iter()
             .any(|kind| kind.starts_with("markdown:"))
     );
 }
 
 #[test]
-fn row_model_marks_large_markdown_turns_for_block_level_rendering() {
+fn row_model_marks_large_markdown_turns_for_chunked_rendering() {
     let mut harness = PresentationHarness::new();
     let markdown = (0..80)
         .map(|index| format!("Paragraph {index} with enough text to own a block."))
@@ -1540,20 +1560,26 @@ fn row_model_marks_large_markdown_turns_for_block_level_rendering() {
     harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
 
     let (estimated_blocks, requires_split) = harness
-        .row_model_block_summary_at(0)
+        .row_model_chunk_summary_at(0)
         .expect("large markdown row should project");
     assert!(requires_split);
     assert!(estimated_blocks >= 32);
+    let chunks = harness.row_model_chunk_kinds_at(0);
+    assert!(chunks.iter().any(|kind| kind.contains(":0:")));
+    assert!(
+        chunks.len() > 1,
+        "large markdown should split into stable render chunks"
+    );
     assert!(
         harness
-            .row_model_block_unit_kinds_at(0)
-            .iter()
-            .any(|kind| kind.contains(":0"))
+            .row_model_chunk_costs_at(0)
+            .into_iter()
+            .all(|cost| cost <= 8)
     );
 }
 
 #[test]
-fn row_model_block_window_moves_with_row_scroll_offset() {
+fn row_model_has_no_unmeasured_chunk_render_window() {
     let mut harness = PresentationHarness::new();
     let markdown = (0..80)
         .map(|index| format!("Paragraph {index} with enough text to own a block."))
@@ -1561,41 +1587,36 @@ fn row_model_block_window_moves_with_row_scroll_offset() {
         .join("\n\n");
     harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
 
-    let top = harness
-        .row_model_block_render_window_at(0, 0.0, 300.0)
-        .expect("large row should have block render window");
-    let middle = harness
-        .row_model_block_render_window_at(0, 2_400.0, 300.0)
-        .expect("large row should have block render window");
-
-    assert_eq!(top.0, 0);
-    assert!(top.1 < top.2);
-    assert!(middle.0 > top.0);
-    assert_eq!(middle.2, top.2);
-    assert!(middle.3 > top.3);
-    assert!(middle.4 < top.4);
+    let (_, requires_chunking) = harness
+        .row_model_chunk_summary_at(0)
+        .expect("large row should project");
+    assert!(requires_chunking);
+    assert!(
+        harness.row_model_chunk_kinds_at(0).len() > 1,
+        "Phase 1 records chunks but does not expose guessed visible windows"
+    );
 }
 
 #[test]
-fn row_model_marks_generated_image_heavy_turns_for_block_level_rendering() {
+fn row_model_marks_generated_image_heavy_turns_for_chunked_rendering() {
     let mut harness = PresentationHarness::new();
     harness.replace_history("thread_a", vec![generated_images_turn("turn_1", 16)]);
 
     let (estimated_blocks, requires_split) = harness
-        .row_model_block_summary_at(0)
+        .row_model_chunk_summary_at(0)
         .expect("image row should project");
     assert!(requires_split);
     assert!(estimated_blocks >= 16);
     assert!(
         harness
-            .row_model_block_unit_kinds_at(0)
+            .row_model_chunk_kinds_at(0)
             .iter()
             .any(|kind| kind.starts_with("media:"))
     );
 }
 
 #[test]
-fn row_model_marks_markdown_image_embed_heavy_turns_for_block_level_rendering() {
+fn row_model_marks_markdown_image_embed_heavy_turns_for_chunked_rendering() {
     let mut harness = PresentationHarness::new();
     let markdown = (0..16)
         .map(|index| format!("![generated {index}](images/generated-{index}.png)"))
@@ -1604,7 +1625,7 @@ fn row_model_marks_markdown_image_embed_heavy_turns_for_block_level_rendering() 
     harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
 
     let (estimated_blocks, requires_split) = harness
-        .row_model_block_summary_at(0)
+        .row_model_chunk_summary_at(0)
         .expect("markdown image row should project");
     assert!(requires_split);
     assert!(estimated_blocks >= 16);
@@ -1612,7 +1633,7 @@ fn row_model_marks_markdown_image_embed_heavy_turns_for_block_level_rendering() 
 }
 
 #[test]
-fn row_model_keeps_large_reasoning_sources_addressable_by_block_window() {
+fn row_model_keeps_large_reasoning_sources_addressable_by_chunks() {
     let mut harness = PresentationHarness::new();
     let summary = (0..36)
         .map(|index| format!("Reasoning summary paragraph {index}."))
@@ -1626,23 +1647,18 @@ fn row_model_keeps_large_reasoning_sources_addressable_by_block_window() {
     );
 
     let (estimated_blocks, requires_split) = harness
-        .row_model_block_summary_at(0)
+        .row_model_chunk_summary_at(0)
         .expect("reasoning row should project");
     assert!(requires_split);
     assert!(estimated_blocks >= 36);
 
-    let units = harness.row_model_block_unit_kinds_at(0);
-    assert!(units.iter().any(|unit| unit.contains("reasoning-summary")));
-    assert!(units.len() >= 36);
-    let middle = harness
-        .row_model_block_render_window_at(0, 2_400.0, 300.0)
-        .expect("large reasoning row should have a block render window");
-    assert!(middle.0 > 0);
-    assert!(middle.1 < middle.2);
+    let chunks = harness.row_model_chunk_kinds_at(0);
+    assert!(chunks.iter().any(|unit| unit.contains("reasoning-summary")));
+    assert!(chunks.len() > 1);
 }
 
 #[test]
-fn row_model_keeps_user_prompt_image_markers_addressable_by_later_block_windows() {
+fn row_model_keeps_user_prompt_image_markers_addressable_by_chunks() {
     let mut harness = PresentationHarness::new();
     let before_image = (0..40)
         .map(|index| format!("Prompt paragraph before image {index}."))
@@ -1663,19 +1679,56 @@ fn row_model_keeps_user_prompt_image_markers_addressable_by_later_block_windows(
     );
 
     let (estimated_blocks, requires_split) = harness
-        .row_model_block_summary_at(0)
+        .row_model_chunk_summary_at(0)
         .expect("image-marker prompt row should project");
     assert!(requires_split);
     assert!(estimated_blocks >= 32);
 
-    let units = harness.row_model_block_unit_kinds_at(0);
-    assert!(units.len() >= 32);
-    assert!(units.iter().any(|unit| unit.contains("user-prompt:0")));
-    let middle = harness
-        .row_model_block_render_window_at(0, 2_400.0, 300.0)
-        .expect("image-marker prompt row should have a block render window");
-    assert!(middle.0 > 0);
-    assert!(middle.1 < middle.2);
+    let chunks = harness.row_model_chunk_kinds_at(0);
+    assert!(chunks.len() > 1);
+    assert!(chunks.iter().any(|unit| unit.contains("user-prompt:0")));
+}
+
+#[test]
+fn row_model_marks_huge_fenced_code_block_as_single_safe_chunk() {
+    let mut harness = PresentationHarness::new();
+    let code = "let value = 42;\n".repeat(1_200);
+    let markdown = format!("```rust\n{code}```");
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn("turn_code", &markdown)],
+    );
+
+    let (estimated_blocks, requires_split) = harness
+        .row_model_chunk_summary_at(0)
+        .expect("huge fenced code row should project");
+    assert!(requires_split);
+    assert!(estimated_blocks >= 1);
+    assert_eq!(
+        harness.row_model_chunk_kinds_at(0).len(),
+        1,
+        "an indivisible fenced code block must not be split on guessed geometry"
+    );
+}
+
+#[test]
+fn row_model_marks_huge_single_line_as_single_safe_chunk() {
+    let mut harness = PresentationHarness::new();
+    let markdown = "M".repeat(20 * 1024);
+    harness.replace_history(
+        "thread_a",
+        vec![agent_markdown_turn("turn_single_line", &markdown)],
+    );
+
+    let (_, requires_split) = harness
+        .row_model_chunk_summary_at(0)
+        .expect("huge single-line row should project");
+    assert!(requires_split);
+    assert_eq!(
+        harness.row_model_chunk_kinds_at(0).len(),
+        1,
+        "a single Markdown block remains one chunk until measured geometry exists"
+    );
 }
 
 #[test]
@@ -1833,6 +1886,114 @@ fn row_measurement_key_tracks_revision_width_theme_and_display_state() {
             .unwrap(),
         base
     );
+}
+
+#[test]
+fn chunk_geometry_uses_measured_prefix_and_suffix_spacers() {
+    let measured = vec![Some(px(100.0)); 8];
+    let window = transcript_row_chunk_render_window(8, measured.as_slice(), px(250.0), px(200.0));
+
+    assert_eq!(window.range, 1..6);
+    assert_eq!(window.top_spacer_height, px(100.0));
+    assert_eq!(window.bottom_spacer_height, px(200.0));
+    assert_eq!(window.rendered_unknown_chunks, 0);
+    assert_eq!(window.skipped_unknown_chunks, 0);
+}
+
+#[test]
+fn chunk_geometry_covers_short_chunks_past_the_viewport() {
+    let measured = vec![Some(px(20.0)); 40];
+    let window = transcript_row_chunk_render_window(40, measured.as_slice(), px(200.0), px(200.0));
+
+    assert_eq!(window.range, 5..25);
+    assert_eq!(window.top_spacer_height, px(100.0));
+    assert_eq!(window.bottom_spacer_height, px(300.0));
+    assert_eq!(window.rendered_unknown_chunks, 0);
+}
+
+#[test]
+fn chunk_geometry_does_not_create_spacers_for_unknown_suffix() {
+    let mut measured = vec![Some(px(20.0)); 5];
+    measured.extend(std::iter::repeat(None).take(40));
+    let window =
+        transcript_row_chunk_render_window(measured.len(), measured.as_slice(), px(0.0), px(60.0));
+
+    assert_eq!(window.range, 0..29);
+    assert_eq!(window.top_spacer_height, px(0.0));
+    assert_eq!(window.bottom_spacer_height, px(0.0));
+    assert_eq!(window.rendered_unknown_chunks, 24);
+    assert_eq!(window.skipped_unknown_chunks, 16);
+}
+
+#[test]
+fn chunk_measurement_key_tracks_row_layout_inputs() {
+    let mut harness = PresentationHarness::new();
+    let markdown = (0..40)
+        .map(|index| format!("Paragraph {index} with enough text to own a block."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    harness.replace_history("thread_a", vec![agent_markdown_turn("turn_1", &markdown)]);
+    let base_display = TranscriptRowMeasurementDisplayState {
+        is_first_row: true,
+        show_activity_caret: false,
+        promoted_media_key: None,
+        code_panel_state_digest: 0,
+    };
+    let base = harness
+        .first_chunk_measurement_key_at(0, 640.0, 1, base_display.clone())
+        .unwrap();
+
+    assert_ne!(
+        harness
+            .first_chunk_measurement_key_at(0, 720.0, 1, base_display.clone())
+            .unwrap(),
+        base
+    );
+    assert_ne!(
+        harness
+            .first_chunk_measurement_key_at(0, 640.0, 2, base_display.clone())
+            .unwrap(),
+        base
+    );
+    assert_ne!(
+        harness
+            .first_chunk_measurement_key_at(
+                0,
+                640.0,
+                1,
+                TranscriptRowMeasurementDisplayState {
+                    promoted_media_key: Some("media-a".to_string()),
+                    ..base_display
+                },
+            )
+            .unwrap(),
+        base
+    );
+}
+
+#[test]
+fn chunk_geometry_reconciles_anchor_offset_when_measurements_change() {
+    let before = vec![Some(px(100.0)); 8];
+    let after = vec![
+        Some(px(100.0)),
+        Some(px(160.0)),
+        Some(px(100.0)),
+        Some(px(100.0)),
+        Some(px(100.0)),
+        Some(px(100.0)),
+        Some(px(100.0)),
+        Some(px(100.0)),
+    ];
+
+    let before_window =
+        transcript_row_chunk_render_window(8, before.as_slice(), px(250.0), px(200.0));
+    let after_window =
+        transcript_row_chunk_render_window(8, after.as_slice(), px(310.0), px(200.0));
+
+    assert_eq!(before_window.range.start, 1);
+    assert_eq!(after_window.range.start, 1);
+    assert_eq!(before_window.top_spacer_height, px(100.0));
+    assert_eq!(after_window.top_spacer_height, px(100.0));
 }
 
 #[test]

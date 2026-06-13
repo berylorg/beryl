@@ -471,10 +471,10 @@ fn prepared_key_for_row(
 fn preparation_cost_for_row(row: &TranscriptPresentedRow) -> TranscriptPrepublicationRowCost {
     let block_units = row
         .model
-        .block_presentation()
-        .units()
+        .chunk_presentation()
+        .chunks()
         .iter()
-        .map(|unit| unit.estimated_render_blocks.max(1))
+        .map(|chunk| chunk.estimated_render_blocks.max(1))
         .sum::<usize>()
         .max(1);
     let media_items = row

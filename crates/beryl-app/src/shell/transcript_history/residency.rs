@@ -736,25 +736,60 @@ impl TranscriptResidencyState {
         turns
     }
 
-    pub(crate) fn unpinned_resident_turns_outside_source_range(
+    pub(crate) fn budget_excess_release_turn_ids(
         &self,
-        source_range: &Range<usize>,
-        active_turn_id: Option<&str>,
-    ) -> Vec<TranscriptResidencyIndexedTurn> {
-        let mut turns = self
-            .resident_turn_ids
+        retention: &TranscriptResidencyRetention,
+        planned_release_turn_ids: &[String],
+        oversized_fallback_release_turn_ids: &[String],
+    ) -> Vec<String> {
+        let mut resident_turns = self.resident_turn_count();
+        let mut resident_bytes = self.resident_bytes();
+        let planned_release_turn_ids = planned_release_turn_ids
             .iter()
-            .filter_map(|turn_id| {
-                let entry = self.entries.get(turn_id.as_str())?;
-                if entry.is_pinned() || active_turn_id == Some(turn_id.as_str()) {
-                    return None;
-                }
-                let turn = Self::indexed_turn_for_entry(entry)?;
-                (!source_range.contains(&turn.source_position)).then_some(turn)
-            })
-            .collect::<Vec<_>>();
-        turns.sort_by_key(|turn| (turn.source_position, turn.turn_id.clone()));
-        turns
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let oversized_fallback_release_turn_ids = oversized_fallback_release_turn_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+
+        for turn_id in &planned_release_turn_ids {
+            let Some(entry) = self.entries.get(*turn_id) else {
+                continue;
+            };
+            if entry.is_pinned() && !oversized_fallback_release_turn_ids.contains(turn_id) {
+                continue;
+            }
+            if let Some(resident_bytes_to_release) = resident_state_bytes(entry) {
+                resident_turns = resident_turns.saturating_sub(1);
+                resident_bytes = resident_bytes.saturating_sub(resident_bytes_to_release);
+            }
+        }
+
+        let mut release_turn_ids = Vec::new();
+        for turn_id in &self.ordered_turn_ids {
+            if !resident_budget_exceeded(resident_turns, resident_bytes, &self.policy) {
+                break;
+            }
+            if planned_release_turn_ids.contains(turn_id.as_str())
+                || retention.contains(turn_id.as_str())
+            {
+                continue;
+            }
+            let Some(entry) = self.entries.get(turn_id.as_str()) else {
+                continue;
+            };
+            if entry.is_pinned() {
+                continue;
+            }
+            let Some(resident_bytes_to_release) = resident_state_bytes(entry) else {
+                continue;
+            };
+            release_turn_ids.push(turn_id.clone());
+            resident_turns = resident_turns.saturating_sub(1);
+            resident_bytes = resident_bytes.saturating_sub(resident_bytes_to_release);
+        }
+        release_turn_ids
     }
 
     pub(crate) fn full_item_count(&self, turn_id: &str) -> Option<usize> {
@@ -1338,6 +1373,21 @@ impl TranscriptResidencyState {
             .map(|(turn_id, _)| turn_id.clone())
             .collect();
     }
+}
+
+fn resident_state_bytes(entry: &TranscriptResidencyEntry) -> Option<usize> {
+    match &entry.state {
+        TranscriptResidencyEntryState::Missing => None,
+        TranscriptResidencyEntryState::Full { resident_bytes, .. } => Some(*resident_bytes),
+    }
+}
+
+fn resident_budget_exceeded(
+    resident_turns: usize,
+    resident_bytes: usize,
+    policy: &TranscriptResidencyPolicy,
+) -> bool {
+    resident_turns > policy.max_resident_turns || resident_bytes > policy.max_resident_bytes
 }
 
 fn margin_rows(range: &Range<usize>, viewport_margins: usize, minimum_rows: usize) -> usize {

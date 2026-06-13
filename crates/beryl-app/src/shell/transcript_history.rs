@@ -609,7 +609,9 @@ impl TranscriptHistoryWindow {
         if let Some(active_turn_id) = active_turn_id {
             input = input.with_active_turn_id(active_turn_id);
         }
-        plan_transcript_residency_target(input)
+        let mut plan = plan_transcript_residency_target(input);
+        self.extend_plan_with_budget_excess_release_intents(&mut plan, active_turn_id, &counts);
+        plan
     }
 
     pub(crate) fn residency_target_plan_for_source_window<I>(
@@ -660,19 +662,7 @@ impl TranscriptHistoryWindow {
             input = input.with_active_turn_id(active_turn_id);
         }
         let mut plan = plan_transcript_residency_target(input);
-        let mut release_turn_ids = plan
-            .release_turn_ids
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        for turn in self
-            .residency
-            .unpinned_resident_turns_outside_source_range(&source_planning_range, active_turn_id)
-        {
-            if release_turn_ids.insert(turn.turn_id.clone()) {
-                plan.release_turn_ids.push(turn.turn_id);
-            }
-        }
+        self.extend_plan_with_budget_excess_release_intents(&mut plan, active_turn_id, &counts);
         plan
     }
 
@@ -685,6 +675,45 @@ impl TranscriptHistoryWindow {
             .with_leading_viewport_margins(policy.leading_viewport_margins())
             .with_trailing_viewport_margins(policy.trailing_viewport_margins())
             .with_default_row_height(TRANSCRIPT_RESIDENCY_ESTIMATED_ROW_HEIGHT)
+    }
+
+    fn extend_plan_with_budget_excess_release_intents(
+        &self,
+        plan: &mut TranscriptResidencyTargetPlan,
+        active_turn_id: Option<&str>,
+        counts: &TranscriptResidencyRetainedCounts,
+    ) {
+        let resident_turn_limit = counts.resident_turns > counts.max_resident_turns;
+        let resident_byte_limit = counts.resident_bytes > counts.max_resident_bytes;
+        if !resident_turn_limit && !resident_byte_limit {
+            return;
+        }
+
+        let mut retention =
+            TranscriptResidencyRetention::from_turn_ids(&plan.desired_full_turn_ids);
+        if let Some(active_turn_id) = active_turn_id {
+            retention.include_turn_id(active_turn_id);
+        }
+        let mut release_turn_ids = plan
+            .release_turn_ids
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for turn_id in self.residency.budget_excess_release_turn_ids(
+            &retention,
+            &plan.release_turn_ids,
+            &plan.oversized_turn_fallback_ids,
+        ) {
+            if release_turn_ids.insert(turn_id.clone()) {
+                plan.release_turn_ids.push(turn_id);
+            }
+        }
+
+        plan.diagnostics.resident_turn_limit |= resident_turn_limit;
+        plan.diagnostics.resident_byte_limit |= resident_byte_limit;
+        if plan.diagnostics.limiting_reason == TranscriptResidencyBudgetReason::None {
+            plan.diagnostics.limiting_reason = counts.budget_reason;
+        }
     }
 
     pub(crate) fn begin_loading_page_for_residency_target_plan(

@@ -149,15 +149,19 @@ fn thread_selector_activation_duplicate_pending_target_is_stable() {
 }
 
 #[test]
-fn transcript_block_window_renderer_follows_multi_block_user_prompts_and_reasoning() {
+fn transcript_large_turn_renderer_does_not_use_unmeasured_block_windows() {
     let turn_blocks_source = include_str!("../src/shell/render/transcript/turn_blocks.rs");
-    let body = rust_function_body(turn_blocks_source, "fn render_turn_card_block_window");
+    let row_model_source = include_str!("../src/shell/transcript_presentation/row_model.rs");
+    let card_body = rust_function_body(turn_blocks_source, "pub(super) fn render_turn_card");
 
-    assert!(body.contains("render_user_prompt_fragment_markdown_source_slice"));
-    assert!(!body.contains("render_user_prompt_units("));
-    assert!(body.contains("ExecutionItem::Reasoning(reasoning)"));
-    assert!(body.contains("reasoning_source_text("));
-    assert!(body.contains("TranscriptTextRole::AssistantReasoning"));
+    assert!(card_body.contains("render_turn_card_full"));
+    assert!(!card_body.contains("render_window("));
+    assert!(!card_body.contains("render_turn_card_block_window"));
+    assert!(!turn_blocks_source.contains("TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX"));
+    assert!(!row_model_source.contains("TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX"));
+    assert!(!row_model_source.contains("TranscriptRowBlockRenderWindow"));
+    assert!(row_model_source.contains("TranscriptRowChunkPresentation"));
+    assert!(row_model_source.contains("requires_chunking"));
 }
 
 #[test]
@@ -1363,26 +1367,25 @@ fn transcript_media_render_consumes_displayed_media_without_scheduling_loads() {
 }
 
 #[test]
-fn huge_turn_render_uses_block_window_slices() {
+fn huge_turn_render_uses_chunk_metadata_without_fixed_spacers() {
     let turn_blocks_source = include_str!("../src/shell/render/transcript/turn_blocks.rs");
-    let block_markdown_source = include_str!("../src/shell/render/transcript/block_markdown.rs");
+    let row_model_source = include_str!("../src/shell/transcript_presentation/row_model.rs");
 
     let card_body = rust_function_body(turn_blocks_source, "pub(super) fn render_turn_card");
-    let block_window_body =
-        rust_function_body(turn_blocks_source, "fn render_turn_card_block_window");
 
-    assert!(card_body.contains("render_window(row_scroll_offset, viewport_height)"));
-    assert!(card_body.contains("render_turn_card_block_window"));
     assert!(card_body.contains("render_turn_card_full"));
-    assert!(block_window_body.contains("intersect_local_range"));
-    assert!(block_window_body.contains("render_block_spacer"));
-    assert!(turn_blocks_source.contains("markdown_render_units(&markdown_key"));
-    assert!(turn_blocks_source.contains("TranscriptMarkdownRenderUnit::Media"));
-    assert!(turn_blocks_source.contains("TranscriptMediaRenderIdentity::new"));
-    assert!(turn_blocks_source.contains("render_user_prompt_markdown_source_slice"));
-    assert!(turn_blocks_source.contains("render_item_markdown_source_slice"));
-    assert!(block_markdown_source.contains("fn render_markdown_plan_slice"));
-    assert!(block_markdown_source.contains("render_block_sequence_range"));
+    assert!(!card_body.contains("render_window("));
+    assert!(card_body.contains("render_turn_card_chunk_window"));
+    assert!(card_body.contains("row_scroll_offset"));
+    assert!(card_body.contains("viewport_height"));
+    assert!(turn_blocks_source.contains("transcript_row_chunk_render_window"));
+    assert!(turn_blocks_source.contains("record_transcript_row_chunk_measurement"));
+    assert!(!card_body.contains("render_turn_card_block_window"));
+    assert!(!turn_blocks_source.contains("TRANSCRIPT_ROW_BLOCK_ESTIMATED_HEIGHT_PX"));
+    assert!(row_model_source.contains("TranscriptRowRenderChunk"));
+    assert!(row_model_source.contains("estimated_render_unit_costs"));
+    assert!(row_model_source.contains("TRANSCRIPT_ROW_RENDER_CHUNK_MAX_ESTIMATED_BLOCKS"));
+    assert!(row_model_source.contains("markdown-chunk:{first_unit_index}-{end_unit_index}"));
 }
 
 #[test]
@@ -1936,8 +1939,8 @@ fn transcript_residency_controller_gathers_bounded_scroll_facts() {
     assert!(!facts_body.contains("pinned_turn_ids()"));
     assert!(!facts_body.contains("indexed_turns().len()"));
     assert!(bounded_plan_body.contains("indexed_turns_for_source_range_and_required"));
-    assert!(bounded_plan_body.contains("unpinned_resident_turns_outside_source_range"));
     assert!(bounded_plan_body.contains("cached_pinned_turn_ids"));
+    assert!(!bounded_plan_body.contains("unpinned_resident_turns_outside_source_range"));
     assert!(!bounded_plan_body.contains(".indexed_turns()"));
     assert!(!bounded_plan_body.contains(".pinned_turn_ids()"));
 }
