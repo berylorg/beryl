@@ -37,6 +37,7 @@ pub(crate) struct TranscriptOrdinaryViewportAnchor {
     pub(crate) turn: TranscriptViewportTurnAnchor,
     pub(crate) placement: TranscriptViewportPlacement,
     pub(crate) local_offset: Pixels,
+    pub(crate) local_offset_basis: TranscriptViewportLocalOffsetBasis,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -60,6 +61,15 @@ pub(crate) enum TranscriptViewportPlacement {
 pub(crate) enum TranscriptViewportNavigationDirection {
     Up,
     Down,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) enum TranscriptViewportLocalOffsetBasis {
+    #[default]
+    Top,
+    Trailing {
+        distance_from_end: Pixels,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -110,6 +120,7 @@ pub(crate) struct TranscriptViewportScrollCursor {
     pub(crate) segment: TranscriptFrameSegment,
     pub(crate) local_offset: Pixels,
     pub(crate) placement: TranscriptViewportPlacement,
+    pub(crate) local_offset_basis: TranscriptViewportLocalOffsetBasis,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -150,6 +161,7 @@ pub(crate) struct TranscriptSegmentMeasurementChange {
 pub(crate) struct TranscriptSegmentMeasurementAnchor {
     pub(crate) key: TranscriptFrameSegmentKey,
     pub(crate) local_offset: Pixels,
+    pub(crate) local_offset_basis: TranscriptViewportLocalOffsetBasis,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -340,6 +352,36 @@ impl TranscriptFrameSegment {
     }
 }
 
+impl TranscriptViewportLocalOffsetBasis {
+    fn trailing_for_height_and_offset(height: Pixels, local_offset: Pixels) -> Self {
+        Self::Trailing {
+            distance_from_end: (height.max(px(0.0)) - local_offset.max(px(0.0))).max(px(0.0)),
+        }
+    }
+
+    fn effective_local_offset(
+        self,
+        stored_local_offset: Pixels,
+        measured_height: Option<Pixels>,
+    ) -> Pixels {
+        match self {
+            Self::Top => stored_local_offset.max(px(0.0)),
+            Self::Trailing { distance_from_end } => measured_height
+                .map(|height| (height.max(px(0.0)) - distance_from_end).max(px(0.0)))
+                .unwrap_or_else(|| stored_local_offset.max(px(0.0))),
+        }
+    }
+
+    fn measurement_baseline_height(self, stored_local_offset: Pixels) -> Option<Pixels> {
+        match self {
+            Self::Top => None,
+            Self::Trailing { distance_from_end } => {
+                Some(stored_local_offset.max(px(0.0)) + distance_from_end)
+            }
+        }
+    }
+}
+
 impl TranscriptViewportScrollCursor {
     fn new(
         segment: TranscriptFrameSegment,
@@ -350,7 +392,34 @@ impl TranscriptViewportScrollCursor {
             segment,
             local_offset: local_offset.max(px(0.0)),
             placement,
+            local_offset_basis: TranscriptViewportLocalOffsetBasis::Top,
         }
+    }
+
+    fn with_local_offset_basis(mut self, basis: TranscriptViewportLocalOffsetBasis) -> Self {
+        self.local_offset_basis = basis;
+        self
+    }
+
+    pub(crate) fn effective_local_offset(&self, measured_height: Option<Pixels>) -> Pixels {
+        self.local_offset_basis
+            .effective_local_offset(self.local_offset, measured_height)
+    }
+}
+
+impl TranscriptOrdinaryViewportAnchor {
+    pub(crate) fn effective_local_offset(&self, measured_height: Option<Pixels>) -> Pixels {
+        self.local_offset_basis
+            .effective_local_offset(self.local_offset, measured_height)
+    }
+
+    fn set_local_offset(
+        &mut self,
+        local_offset: Pixels,
+        basis: TranscriptViewportLocalOffsetBasis,
+    ) {
+        self.local_offset = local_offset.max(px(0.0));
+        self.local_offset_basis = basis;
     }
 }
 
@@ -406,7 +475,11 @@ impl TranscriptSegmentMeasurementQueue {
             if let Some(anchor) = anchor
                 && anchor.key == key.segment
                 && anchor.local_offset > px(0.0)
-                && let Some(previous_height) = previous_height
+                && let Some(previous_height) = previous_height.or_else(|| {
+                    anchor
+                        .local_offset_basis
+                        .measurement_baseline_height(anchor.local_offset)
+                })
             {
                 commit.anchor_offset_correction += measured_height - previous_height;
             }
@@ -505,19 +578,20 @@ impl TranscriptViewportFrame {
         };
         let visible_top = self.segment_top(visible_range.start);
         let cursor_top = self.segment_top(cursor_index);
-        let local_offset = (cursor_top - visible_top + cursor.local_offset).max(px(0.0));
+        let cursor_segment_height = self
+            .segments
+            .get(cursor_index)
+            .and_then(|segment| segment.measured_height)
+            .map(|height| height.max(px(0.0)));
+        let cursor_local_offset = cursor.effective_local_offset(cursor_segment_height);
+        let local_offset = (cursor_top - visible_top + cursor_local_offset).max(px(0.0));
         let local_max = if self.visible_segment_range.contains(&cursor_index) {
             self.local_scroll_max.max(local_offset)
         } else {
             let previous_visible_top = self.segment_top(self.visible_segment_range.start);
             let previous_absolute_max = previous_visible_top + self.local_scroll_max;
             let previous_rebased_max = (previous_absolute_max - visible_top).max(px(0.0));
-            let cursor_segment_height = self
-                .segments
-                .get(cursor_index)
-                .and_then(|segment| segment.measured_height)
-                .map(|height| height.max(px(0.0)))
-                .unwrap_or(cursor.local_offset);
+            let cursor_segment_height = cursor_segment_height.unwrap_or(cursor_local_offset);
             let cursor_segment_bottom = cursor_top + cursor_segment_height;
             let cursor_rebased_bottom = (cursor_segment_bottom - visible_top).max(px(0.0));
             previous_rebased_max
@@ -531,6 +605,47 @@ impl TranscriptViewportFrame {
             local_offset,
             local_max,
         ))
+    }
+
+    pub(crate) fn with_viewport_anchor_rebased(&self, viewport: &TranscriptViewportState) -> Self {
+        let Some(local_offset) = self.local_scroll_offset_for_viewport_anchor(viewport) else {
+            return self.clone();
+        };
+        self.clone()
+            .with_local_scroll_range(local_offset, self.local_scroll_max.max(local_offset))
+    }
+
+    fn local_scroll_offset_for_viewport_anchor(
+        &self,
+        viewport: &TranscriptViewportState,
+    ) -> Option<Pixels> {
+        let TranscriptViewportMode::Ordinary(anchor) = viewport.mode() else {
+            return None;
+        };
+        if anchor.placement != TranscriptViewportPlacement::Top {
+            return None;
+        }
+        let index = self.segments.iter().position(|segment| {
+            transcript_frame_turn_matches(&segment.key.turn, &anchor.turn)
+                && matches!(
+                    segment.key.kind,
+                    TranscriptFrameSegmentKind::OrdinaryRow
+                        | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. }
+                )
+        })?;
+        if !self.visible_segment_range.contains(&index) {
+            return None;
+        }
+        let visible_top = self.segment_top(self.visible_segment_range.start);
+        let segment_top = self.segment_top(index);
+        let segment_height = self
+            .segments
+            .get(index)
+            .and_then(|segment| segment.measured_height);
+        Some(
+            (segment_top - visible_top + anchor.effective_local_offset(segment_height))
+                .max(px(0.0)),
+        )
     }
 
     pub(crate) fn first_visible_segment(&self) -> Option<&TranscriptFrameSegment> {
@@ -611,7 +726,13 @@ impl TranscriptViewportFrame {
             .segments
             .iter()
             .position(|segment| segment.key == cursor.segment.key)?;
-        Some((self.segment_top(index) + cursor.local_offset).max(px(0.0)))
+        let measured_height = self
+            .segments
+            .get(index)
+            .and_then(|segment| segment.measured_height);
+        Some(
+            (self.segment_top(index) + cursor.effective_local_offset(measured_height)).max(px(0.0)),
+        )
     }
 
     fn segment_top(&self, index: usize) -> Pixels {
@@ -759,11 +880,19 @@ impl TranscriptViewportFrame {
             let segment = self.segments.get(index)?;
             let height = segment.measured_height.map(|height| height.max(px(0.0)))?;
             if distance <= height {
-                return Some(TranscriptViewportScrollCursor::new(
-                    segment.clone(),
-                    height - distance,
-                    TranscriptViewportPlacement::Top,
-                ));
+                return Some(
+                    TranscriptViewportScrollCursor::new(
+                        segment.clone(),
+                        height - distance,
+                        TranscriptViewportPlacement::Top,
+                    )
+                    .with_local_offset_basis(
+                        TranscriptViewportLocalOffsetBasis::trailing_for_height_and_offset(
+                            height,
+                            height - distance,
+                        ),
+                    ),
+                );
             }
             distance -= height;
             index = index.checked_sub(1)?;
@@ -869,6 +998,7 @@ impl TranscriptViewportState {
                 turn: TranscriptViewportTurnAnchor::new(turn_count - 1, None, None, None),
                 placement: TranscriptViewportPlacement::Bottom,
                 local_offset: px(0.0),
+                local_offset_basis: TranscriptViewportLocalOffsetBasis::Top,
             })
         };
     }
@@ -896,6 +1026,7 @@ impl TranscriptViewportState {
             turn,
             placement,
             local_offset: local_offset.max(px(0.0)),
+            local_offset_basis: TranscriptViewportLocalOffsetBasis::Top,
         });
     }
 
@@ -937,11 +1068,14 @@ impl TranscriptViewportState {
             outcome.changed |= anchor.reconcile_frame(frame);
         }
 
+        let rendered_frame = rendered_frame.with_viewport_anchor_rebased(self);
         let reduction = rendered_frame.reduce_scroll_delta(input.direction, input.distance);
         if let Some(cursor) = reduction.cursor.as_ref() {
+            let cursor =
+                continuous_scroll_cursor_with_basis(cursor.clone(), &self.mode, input.direction);
             let same_segment = viewport_mode_matches_segment(&self.mode, &cursor.segment);
             if same_segment {
-                outcome.changed |= apply_cursor_to_matching_viewport_mode(&mut self.mode, cursor);
+                outcome.changed |= apply_cursor_to_matching_viewport_mode(&mut self.mode, &cursor);
                 outcome.ordinary_pixel_scroll |=
                     matches!(self.mode, TranscriptViewportMode::Ordinary(_));
             } else {
@@ -949,6 +1083,7 @@ impl TranscriptViewportState {
                     &cursor.segment,
                     cursor.placement,
                     cursor.local_offset,
+                    cursor.local_offset_basis,
                     input.direction,
                 );
                 outcome.changed |= self.mode != next_mode;
@@ -1015,8 +1150,9 @@ impl TranscriptViewportState {
             TranscriptViewportMode::Empty => TranscriptViewportReduceOutcome::default(),
             TranscriptViewportMode::Ordinary(anchor) => {
                 let changed = anchor.local_offset != px(0.0)
-                    || anchor.placement != TranscriptViewportPlacement::Top;
-                anchor.local_offset = px(0.0);
+                    || anchor.placement != TranscriptViewportPlacement::Top
+                    || anchor.local_offset_basis != TranscriptViewportLocalOffsetBasis::Top;
+                anchor.set_local_offset(px(0.0), TranscriptViewportLocalOffsetBasis::Top);
                 anchor.placement = TranscriptViewportPlacement::Top;
                 TranscriptViewportReduceOutcome {
                     changed,
@@ -1046,6 +1182,7 @@ impl TranscriptViewportState {
             TranscriptViewportMode::Ordinary(anchor) => Some(TranscriptSegmentMeasurementAnchor {
                 key: TranscriptFrameSegmentKey::ordinary_row(anchor.turn.clone()),
                 local_offset: anchor.local_offset,
+                local_offset_basis: anchor.local_offset_basis,
             }),
             TranscriptViewportMode::Streamed(anchor) => Some(TranscriptSegmentMeasurementAnchor {
                 key: TranscriptFrameSegmentKey::streamed_chunk(
@@ -1053,6 +1190,7 @@ impl TranscriptViewportState {
                     anchor.anchor_chunk.clone(),
                 ),
                 local_offset: anchor.local_anchor_offset.unwrap_or(px(0.0)),
+                local_offset_basis: TranscriptViewportLocalOffsetBasis::Top,
             }),
         }
     }
@@ -1099,7 +1237,7 @@ impl TranscriptViewportState {
             TranscriptViewportMode::Empty => {}
             TranscriptViewportMode::Ordinary(anchor) => {
                 anchor.turn.shift_index_for_mutation(mutation);
-                anchor.local_offset = px(0.0);
+                anchor.set_local_offset(px(0.0), TranscriptViewportLocalOffsetBasis::Top);
             }
             TranscriptViewportMode::Streamed(anchor) => {
                 anchor.turn.shift_index_for_mutation(mutation);
@@ -1227,6 +1365,7 @@ fn continuous_scroll_mode_for_frame_segment(
     target: &TranscriptFrameSegment,
     placement: TranscriptViewportPlacement,
     local_offset: Pixels,
+    local_offset_basis: TranscriptViewportLocalOffsetBasis,
     direction: TranscriptViewportNavigationDirection,
 ) -> TranscriptViewportMode {
     match &target.key.kind {
@@ -1251,9 +1390,40 @@ fn continuous_scroll_mode_for_frame_segment(
                 turn: target.key.turn.clone(),
                 placement,
                 local_offset,
+                local_offset_basis,
             })
         }
     }
+}
+
+fn continuous_scroll_cursor_with_basis(
+    cursor: TranscriptViewportScrollCursor,
+    current_mode: &TranscriptViewportMode,
+    _direction: TranscriptViewportNavigationDirection,
+) -> TranscriptViewportScrollCursor {
+    let TranscriptViewportMode::Ordinary(anchor) = current_mode else {
+        return cursor;
+    };
+    if !transcript_frame_turn_matches(&cursor.segment.key.turn, &anchor.turn) {
+        return cursor;
+    }
+    if !matches!(
+        anchor.local_offset_basis,
+        TranscriptViewportLocalOffsetBasis::Trailing { .. }
+    ) {
+        return cursor;
+    }
+    let Some(height) = cursor
+        .segment
+        .measured_height
+        .map(|height| height.max(px(0.0)))
+    else {
+        return cursor;
+    };
+    let local_offset = cursor.local_offset;
+    cursor.with_local_offset_basis(
+        TranscriptViewportLocalOffsetBasis::trailing_for_height_and_offset(height, local_offset),
+    )
 }
 
 fn apply_cursor_to_matching_viewport_mode(
@@ -1262,9 +1432,10 @@ fn apply_cursor_to_matching_viewport_mode(
 ) -> bool {
     match mode {
         TranscriptViewportMode::Ordinary(anchor) => {
-            let changed =
-                anchor.local_offset != cursor.local_offset || anchor.placement != cursor.placement;
-            anchor.local_offset = cursor.local_offset;
+            let changed = anchor.local_offset != cursor.local_offset
+                || anchor.placement != cursor.placement
+                || anchor.local_offset_basis != cursor.local_offset_basis;
+            anchor.set_local_offset(cursor.local_offset, cursor.local_offset_basis);
             anchor.placement = cursor.placement;
             changed
         }
@@ -1362,6 +1533,7 @@ fn explicit_navigation_mode_for_frame_segment(
                 turn: target.key.turn.clone(),
                 placement,
                 local_offset: px(0.0),
+                local_offset_basis: TranscriptViewportLocalOffsetBasis::Top,
             })
         }
     }

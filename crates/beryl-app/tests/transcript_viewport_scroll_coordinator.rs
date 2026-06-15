@@ -13,9 +13,9 @@ mod transcript_viewport_scroll_coordinator;
 use gpui::px;
 use transcript_viewport::{
     TranscriptFrameSegment, TranscriptFrameSegmentKey, TranscriptStreamedNavigationFrame,
-    TranscriptViewportChunkAnchor, TranscriptViewportFrame, TranscriptViewportMode,
-    TranscriptViewportNavigationDirection, TranscriptViewportPlacement, TranscriptViewportState,
-    TranscriptViewportTurnAnchor,
+    TranscriptViewportChunkAnchor, TranscriptViewportFrame, TranscriptViewportLocalOffsetBasis,
+    TranscriptViewportMode, TranscriptViewportNavigationDirection, TranscriptViewportPlacement,
+    TranscriptViewportState, TranscriptViewportTurnAnchor,
 };
 use transcript_viewport_scroll_coordinator::{
     TranscriptEventTimeScrollState, TranscriptStreamedNavigationSnapshot,
@@ -250,6 +250,174 @@ fn event_time_scroll_frame_rebases_after_crossing_visible_boundary_before_repain
         ListScrollPosition::Content(ListOffset {
             item_ix: 1,
             offset_in_item: px(90.0),
+        })
+    );
+}
+
+#[test]
+fn ordinary_boundary_remeasurement_preserves_bottom_relative_crossing_anchor() {
+    let list_state = ListState::new(12, ListAlignment::Bottom, px(320.0));
+    let mut viewport = TranscriptViewportState::default();
+    viewport.anchor_ordinary(turn(11), TranscriptViewportPlacement::Top, px(0.0));
+    let prepaint_frame = TranscriptViewportFrame::new(
+        vec![
+            ordinary_segment(turn(10), px(120.0)),
+            ordinary_segment(turn(11), px(320.0)),
+        ],
+        1..2,
+        px(0.0),
+        px(220.0),
+    );
+    let mut event_time = TranscriptEventTimeScrollState::default();
+
+    let crossed = apply_transcript_viewport_scroll(
+        &mut viewport,
+        &list_state,
+        TranscriptViewportNavigationDirection::Up,
+        px(24.0),
+        TranscriptViewportScrollKindForShell::Wheel,
+        None,
+        Some(prepaint_frame.clone()),
+    );
+    assert!(crossed.consumed);
+    event_time.apply_navigation_application(TranscriptViewportNavigationDirection::Up, &crossed);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 10,
+            offset_in_item: px(96.0),
+        })
+    );
+
+    assert!(event_time.clear());
+    let fresh_frame_after_measurement = TranscriptViewportFrame::new(
+        vec![
+            ordinary_segment(turn(10), px(200.0)),
+            ordinary_segment(turn(11), px(320.0)),
+        ],
+        0..1,
+        px(96.0),
+        px(420.0),
+    );
+
+    let after_refresh = apply_transcript_viewport_scroll(
+        &mut viewport,
+        &list_state,
+        TranscriptViewportNavigationDirection::Up,
+        px(10.0),
+        TranscriptViewportScrollKindForShell::Wheel,
+        None,
+        event_time.effective_rendered_frame(Some(fresh_frame_after_measurement)),
+    );
+
+    assert!(after_refresh.consumed);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 10,
+            offset_in_item: px(166.0),
+        })
+    );
+}
+
+#[test]
+fn ordinary_boundary_trajectory_from_local_max_preserves_remeasurement_anchor() {
+    let list_state = ListState::new(12, ListAlignment::Bottom, px(320.0));
+    let mut viewport = TranscriptViewportState::default();
+    viewport.anchor_ordinary(turn(11), TranscriptViewportPlacement::Top, px(220.0));
+    let prepaint_frame = TranscriptViewportFrame::new(
+        vec![
+            ordinary_segment(turn(10), px(120.0)),
+            ordinary_segment(turn(11), px(320.0)),
+        ],
+        1..2,
+        px(220.0),
+        px(220.0),
+    );
+    assert_eq!(
+        prepaint_frame.local_scroll_offset(),
+        prepaint_frame.local_scroll_max()
+    );
+    let mut event_time = TranscriptEventTimeScrollState::default();
+
+    let same_row = apply_transcript_viewport_scroll(
+        &mut viewport,
+        &list_state,
+        TranscriptViewportNavigationDirection::Up,
+        px(220.0),
+        TranscriptViewportScrollKindForShell::Wheel,
+        None,
+        Some(prepaint_frame.clone()),
+    );
+    assert!(same_row.consumed);
+    event_time.apply_navigation_application(TranscriptViewportNavigationDirection::Up, &same_row);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 11,
+            offset_in_item: px(0.0),
+        })
+    );
+
+    let crossed = apply_transcript_viewport_scroll(
+        &mut viewport,
+        &list_state,
+        TranscriptViewportNavigationDirection::Up,
+        px(24.0),
+        TranscriptViewportScrollKindForShell::Wheel,
+        None,
+        event_time.effective_rendered_frame(Some(prepaint_frame.clone())),
+    );
+    assert!(crossed.consumed);
+    event_time.apply_navigation_application(TranscriptViewportNavigationDirection::Up, &crossed);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 10,
+            offset_in_item: px(96.0),
+        })
+    );
+    match viewport.mode() {
+        TranscriptViewportMode::Ordinary(anchor) => {
+            assert_eq!(anchor.turn.turn_index, 10);
+            assert_eq!(anchor.local_offset, px(96.0));
+            assert_eq!(
+                anchor.local_offset_basis,
+                TranscriptViewportLocalOffsetBasis::Trailing {
+                    distance_from_end: px(24.0)
+                }
+            );
+        }
+        other => panic!("expected ordinary viewport, got {other:?}"),
+    }
+
+    assert!(event_time.clear());
+    let fresh_frame_after_measurement = TranscriptViewportFrame::new(
+        vec![
+            ordinary_segment(turn(10), px(200.0)),
+            ordinary_segment(turn(11), px(320.0)),
+        ],
+        0..1,
+        px(96.0),
+        px(420.0),
+    );
+
+    let after_refresh = apply_transcript_viewport_scroll(
+        &mut viewport,
+        &list_state,
+        TranscriptViewportNavigationDirection::Up,
+        px(10.0),
+        TranscriptViewportScrollKindForShell::Wheel,
+        None,
+        event_time.effective_rendered_frame(Some(fresh_frame_after_measurement)),
+    );
+
+    assert!(after_refresh.consumed);
+    assert_eq!(
+        list_state.scroll_position(),
+        ListScrollPosition::Content(ListOffset {
+            item_ix: 10,
+            offset_in_item: px(166.0),
         })
     );
 }

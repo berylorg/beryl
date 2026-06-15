@@ -4968,7 +4968,7 @@ fn transcript_frame_offset_for_ordinary_anchor(
         TranscriptViewportPlacement::Top => top,
         TranscriptViewportPlacement::Bottom => top + height - viewport_height,
     };
-    Some(base + anchor.local_offset)
+    Some(base + anchor.effective_local_offset(Some(height)))
 }
 
 fn transcript_frame_offset_for_streamed_anchor(

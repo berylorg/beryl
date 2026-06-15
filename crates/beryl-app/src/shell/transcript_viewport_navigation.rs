@@ -335,10 +335,17 @@ impl ConversationSurfaceState {
         match self.transcript_viewport.mode() {
             TranscriptViewportMode::Empty => {}
             TranscriptViewportMode::Ordinary(anchor) => {
+                let offset = self
+                    .transcript_list_state
+                    .measured_item_size(anchor.turn.turn_index)
+                    .map(|size| size.height)
+                    .map_or(anchor.local_offset, |height| {
+                        anchor.effective_local_offset(Some(height))
+                    });
                 self.transcript_list_state
                     .scroll_to_position(ListScrollPosition::Content(ListOffset {
                         item_ix: anchor.turn.turn_index,
-                        offset_in_item: anchor.local_offset,
+                        offset_in_item: offset,
                     }));
             }
             TranscriptViewportMode::Streamed(anchor) => {
@@ -515,9 +522,14 @@ fn transcript_scroll_input_anchor_diagnostic(
     frame: &TranscriptViewportFrame,
     cursor: &TranscriptViewportScrollCursor,
 ) -> Option<TranscriptScrollInputAnchorDiagnostic> {
+    let measured_height = frame
+        .segments()
+        .iter()
+        .find(|segment| segment.key == cursor.segment.key)
+        .and_then(|segment| segment.measured_height);
     Some(TranscriptScrollInputAnchorDiagnostic {
         segment: transcript_frame_segment_diagnostic(&cursor.segment, Some(cursor.placement)),
-        segment_local_offset: pixels_diagnostic(cursor.local_offset),
+        segment_local_offset: pixels_diagnostic(cursor.effective_local_offset(measured_height)),
         absolute_rendered_offset: pixels_diagnostic(frame.absolute_offset_for_cursor(cursor)?),
     })
 }

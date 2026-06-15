@@ -4,11 +4,12 @@ mod transcript_viewport;
 
 use gpui::px;
 use transcript_viewport::{
-    TranscriptFrameSegment, TranscriptFrameSegmentKey, TranscriptSegmentMeasurementCache,
-    TranscriptSegmentMeasurementKey, TranscriptSegmentMeasurementQueue,
-    TranscriptSegmentMeasurementRevision, TranscriptStreamedNavigationFrame,
-    TranscriptViewportBoundary, TranscriptViewportChunkAnchor, TranscriptViewportFrame,
-    TranscriptViewportInvalidation, TranscriptViewportLiveAutoscroll, TranscriptViewportMode,
+    TranscriptFrameSegment, TranscriptFrameSegmentKey, TranscriptSegmentMeasurementAnchor,
+    TranscriptSegmentMeasurementCache, TranscriptSegmentMeasurementKey,
+    TranscriptSegmentMeasurementQueue, TranscriptSegmentMeasurementRevision,
+    TranscriptStreamedNavigationFrame, TranscriptViewportBoundary, TranscriptViewportChunkAnchor,
+    TranscriptViewportFrame, TranscriptViewportInvalidation, TranscriptViewportLiveAutoscroll,
+    TranscriptViewportLocalOffsetBasis, TranscriptViewportMode,
     TranscriptViewportNavigationDirection, TranscriptViewportPlacement,
     TranscriptViewportReduceOutcome, TranscriptViewportRowMutation, TranscriptViewportState,
     TranscriptViewportTurnAnchor, TranscriptViewportTurnTarget,
@@ -275,6 +276,28 @@ fn segment_measurement_commit_preserves_anchor_offset_for_changed_anchor_segment
         }
         other => panic!("expected ordinary viewport, got {other:?}"),
     }
+}
+
+#[test]
+fn segment_measurement_commit_recovers_trailing_anchor_baseline_without_previous_height() {
+    let segment = TranscriptFrameSegmentKey::ordinary_row(turn(1));
+    let key = measurement_key(segment.clone(), 10);
+    let mut queue = TranscriptSegmentMeasurementQueue::default();
+    let mut cache = TranscriptSegmentMeasurementCache::default();
+    let anchor = TranscriptSegmentMeasurementAnchor {
+        key: segment,
+        local_offset: px(96.0),
+        local_offset_basis: TranscriptViewportLocalOffsetBasis::Trailing {
+            distance_from_end: px(24.0),
+        },
+    };
+
+    queue.stage(key, px(200.0));
+    let commit = queue.commit_into(&mut cache, Some(&anchor));
+
+    assert_eq!(commit.changed.len(), 1);
+    assert_eq!(commit.changed[0].previous_height, None);
+    assert_eq!(commit.anchor_offset_correction, px(80.0));
 }
 
 #[test]

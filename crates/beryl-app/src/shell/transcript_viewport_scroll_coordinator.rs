@@ -234,11 +234,17 @@ pub(crate) fn sync_transcript_list_state_to_viewport_anchor(
     match viewport.mode() {
         TranscriptViewportMode::Empty => {}
         TranscriptViewportMode::Ordinary(anchor) => {
+            let local_offset = list_state
+                .measured_item_size(anchor.turn.turn_index)
+                .map(|size| size.height)
+                .map_or(anchor.local_offset, |height| {
+                    anchor.effective_local_offset(Some(height))
+                });
             scroll_transcript_turn_to_placement(
                 list_state,
                 anchor.turn.turn_index,
                 anchor.placement,
-                anchor.local_offset,
+                local_offset,
             );
         }
         TranscriptViewportMode::Streamed(anchor) => {
