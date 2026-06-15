@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
 
 use super::transcript_history::{
     TranscriptResidencyMeasuredTurnHeight, TranscriptResidencyStreamedTurnFill,
@@ -13,6 +13,10 @@ pub(super) struct TranscriptResidencyControllerFacts {
     pub(super) presentation_planning_range: Range<usize>,
     pub(super) source_visible_range: Range<usize>,
     pub(super) source_planning_range: Range<usize>,
+    pub(super) rendered_source_range: Range<usize>,
+    pub(super) leading_rendered_overscan_source_range: Range<usize>,
+    pub(super) trailing_rendered_overscan_source_range: Range<usize>,
+    pub(super) resident_boundary: TranscriptHistoryBoundaryState,
     pub(super) viewport_height: usize,
     pub(super) measured_turn_heights: Vec<TranscriptResidencyMeasuredTurnHeight>,
     pub(super) streamed_turn_fills: Vec<TranscriptResidencyStreamedTurnFill>,
@@ -27,6 +31,10 @@ pub(super) struct TranscriptResidencyControllerSignature {
     presentation_planning_range: Range<usize>,
     source_visible_range: Range<usize>,
     source_planning_range: Range<usize>,
+    rendered_source_range: Range<usize>,
+    leading_rendered_overscan_source_range: Range<usize>,
+    trailing_rendered_overscan_source_range: Range<usize>,
+    resident_boundary: TranscriptHistoryBoundaryState,
     viewport_height: usize,
     measured_turn_heights: Vec<TranscriptResidencyMeasuredTurnHeight>,
     streamed_turn_fills: Vec<TranscriptResidencyStreamedTurnFill>,
@@ -45,33 +53,43 @@ pub(super) struct TranscriptResidencyControllerUpdate {
     pub(super) released_content: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TranscriptResidencyFrameFacts {
+    pub(super) presentation_visible_range: Range<usize>,
+    pub(super) rendered_presentation_range: Range<usize>,
+    pub(super) source_visible_range: Range<usize>,
+    pub(super) rendered_source_range: Range<usize>,
+    pub(super) leading_rendered_overscan_source_range: Range<usize>,
+    pub(super) trailing_rendered_overscan_source_range: Range<usize>,
+    pub(super) resident_boundary: TranscriptHistoryBoundaryState,
+    pub(super) viewport_height: usize,
+    pub(super) measured_turn_heights: Vec<TranscriptResidencyMeasuredTurnHeight>,
+    pub(super) streamed_turn_fills: Vec<TranscriptResidencyStreamedTurnFill>,
+}
+
 impl ConversationSurfaceState {
     pub(super) fn invalidate_transcript_residency_controller(&mut self) {
         self.last_transcript_residency_controller_signature = None;
     }
 
-    pub(super) fn replace_transcript_streamed_residency_fill_facts<I>(&mut self, facts: I) -> bool
-    where
-        I: IntoIterator<Item = (String, TranscriptResidencyStreamedTurnFill)>,
-    {
-        let next = facts.into_iter().collect::<HashMap<_, _>>();
-        if self.transcript_streamed_residency_fill_facts == next {
+    pub(super) fn replace_transcript_residency_frame_facts(
+        &mut self,
+        facts: Option<TranscriptResidencyFrameFacts>,
+    ) -> bool {
+        if self.transcript_residency_frame_facts == facts {
             return false;
         }
-        self.transcript_streamed_residency_fill_facts = next;
+        self.transcript_residency_frame_facts = facts;
         self.invalidate_transcript_residency_controller();
         true
     }
 
-    fn transcript_streamed_residency_fill_facts_for_source_range(
+    pub(super) fn transcript_residency_boundary_for_source_range(
         &self,
         source_range: &Range<usize>,
-    ) -> Vec<TranscriptResidencyStreamedTurnFill> {
-        self.transcript_streamed_residency_fill_facts
-            .values()
-            .copied()
-            .filter(|fact| source_range.contains(&fact.source_position))
-            .collect()
+    ) -> TranscriptHistoryBoundaryState {
+        self.transcript_history_window
+            .boundary_state_for_visible_range(source_range)
     }
 
     pub(super) fn latest_transcript_residency_controller_facts(
@@ -86,19 +104,37 @@ impl ConversationSurfaceState {
         allow_request: bool,
         force: bool,
     ) -> TranscriptResidencyControllerUpdate {
-        if self.transcript_residency_controller_update_deferred(presentation_visible_range) {
+        let frame_facts = self.transcript_residency_frame_facts.clone();
+        let visible_range = frame_facts
+            .as_ref()
+            .map(|facts| facts.presentation_visible_range.clone())
+            .unwrap_or_else(|| presentation_visible_range.clone());
+        let viewport_height = frame_facts.as_ref().map_or_else(
+            || {
+                let height = self.transcript_list_state.viewport_bounds().size.height;
+                if height <= px(0.0) {
+                    0
+                } else {
+                    pixels_to_residency_units(height)
+                }
+            },
+            |facts| facts.viewport_height,
+        );
+        if self.transcript_residency_controller_update_deferred(&visible_range, viewport_height) {
             return TranscriptResidencyControllerUpdate::default();
         }
 
-        let presentation_planning_range =
-            self.transcript_residency_planning_presentation_range(presentation_visible_range);
-        let derived_estimates_changed =
-            self.sync_transcript_residency_derived_byte_estimates(&presentation_planning_range);
-        let facts = self.transcript_residency_controller_facts(
-            presentation_visible_range,
-            presentation_planning_range,
-            allow_request,
-        );
+        let facts = match frame_facts {
+            Some(frame_facts) => {
+                self.transcript_residency_controller_facts_from_frame(frame_facts, allow_request)
+            }
+            None => self.transcript_residency_controller_facts_from_list(
+                presentation_visible_range,
+                allow_request,
+            ),
+        };
+        let derived_estimates_changed = self
+            .sync_transcript_residency_derived_byte_estimates(&facts.presentation_planning_range);
         if !force
             && !derived_estimates_changed
             && self
@@ -155,26 +191,31 @@ impl ConversationSurfaceState {
     fn transcript_residency_controller_update_deferred(
         &self,
         presentation_visible_range: &Range<usize>,
+        viewport_height: usize,
     ) -> bool {
         self.staged_selected_thread_activation.is_some()
-            || self.transcript_residency_controller_viewport_unready(presentation_visible_range)
+            || self.transcript_residency_controller_viewport_unready(
+                presentation_visible_range,
+                viewport_height,
+            )
     }
 
     fn transcript_residency_controller_viewport_unready(
         &self,
         presentation_visible_range: &Range<usize>,
+        viewport_height: usize,
     ) -> bool {
         self.transcript_presentation.len() > 0
-            && (presentation_visible_range.is_empty()
-                || f32::from(self.transcript_list_state.viewport_bounds().size.height) <= 0.0)
+            && (presentation_visible_range.is_empty() || viewport_height == 0)
     }
 
-    fn transcript_residency_controller_facts(
+    fn transcript_residency_controller_facts_from_list(
         &self,
         presentation_visible_range: &Range<usize>,
-        presentation_planning_range: Range<usize>,
         request_allowed: bool,
     ) -> TranscriptResidencyControllerFacts {
+        let presentation_planning_range =
+            self.transcript_residency_planning_presentation_range(presentation_visible_range);
         let source_visible_range = self
             .transcript_presentation
             .source_range_for_presentation_range(presentation_visible_range);
@@ -199,8 +240,10 @@ impl ConversationSurfaceState {
                 })
             })
             .collect::<Vec<_>>();
-        let streamed_turn_fills =
-            self.transcript_streamed_residency_fill_facts_for_source_range(&source_planning_range);
+        let streamed_turn_fills = Vec::new();
+        let resident_boundary = self
+            .transcript_history_window
+            .boundary_state_for_visible_range(&source_visible_range);
         let active_turn_id = self.active_transcript_residency_turn_id();
         let residency_counts = self.transcript_history_window.residency_retained_counts();
         let signature = TranscriptResidencyControllerSignature {
@@ -209,6 +252,10 @@ impl ConversationSurfaceState {
             presentation_planning_range: presentation_planning_range.clone(),
             source_visible_range: source_visible_range.clone(),
             source_planning_range: source_planning_range.clone(),
+            rendered_source_range: source_visible_range.clone(),
+            leading_rendered_overscan_source_range: 0..0,
+            trailing_rendered_overscan_source_range: 0..0,
+            resident_boundary,
             viewport_height,
             measured_turn_heights: measured_turn_heights.clone(),
             streamed_turn_fills: streamed_turn_fills.clone(),
@@ -223,9 +270,87 @@ impl ConversationSurfaceState {
         TranscriptResidencyControllerFacts {
             presentation_visible_range: presentation_visible_range.clone(),
             presentation_planning_range,
-            source_visible_range,
+            source_visible_range: source_visible_range.clone(),
             source_planning_range,
+            rendered_source_range: source_visible_range,
+            leading_rendered_overscan_source_range: 0..0,
+            trailing_rendered_overscan_source_range: 0..0,
+            resident_boundary,
             viewport_height,
+            measured_turn_heights,
+            streamed_turn_fills,
+            active_turn_id,
+            signature,
+        }
+    }
+
+    fn transcript_residency_controller_facts_from_frame(
+        &self,
+        frame_facts: TranscriptResidencyFrameFacts,
+        request_allowed: bool,
+    ) -> TranscriptResidencyControllerFacts {
+        let policy_source_planning_range = self
+            .transcript_history_window
+            .source_planning_range_for_visible_range(
+                frame_facts.source_visible_range.clone(),
+                frame_facts.viewport_height,
+            );
+        let source_planning_range = union_ranges(
+            policy_source_planning_range,
+            frame_facts.rendered_source_range.clone(),
+        );
+        let presentation_planning_range = self
+            .transcript_presentation
+            .presentation_range_for_source_range(&source_planning_range);
+        let measured_turn_heights = frame_facts
+            .measured_turn_heights
+            .into_iter()
+            .filter(|height| source_planning_range.contains(&height.source_position))
+            .collect::<Vec<_>>();
+        let streamed_turn_fills = frame_facts
+            .streamed_turn_fills
+            .into_iter()
+            .filter(|fact| source_planning_range.contains(&fact.source_position))
+            .collect::<Vec<_>>();
+        let active_turn_id = self.active_transcript_residency_turn_id();
+        let residency_counts = self.transcript_history_window.residency_retained_counts();
+        let signature = TranscriptResidencyControllerSignature {
+            selected_thread_id: self.selected_thread_id().map(str::to_string),
+            presentation_visible_range: frame_facts.presentation_visible_range.clone(),
+            presentation_planning_range: presentation_planning_range.clone(),
+            source_visible_range: frame_facts.source_visible_range.clone(),
+            source_planning_range: source_planning_range.clone(),
+            rendered_source_range: frame_facts.rendered_source_range.clone(),
+            leading_rendered_overscan_source_range: frame_facts
+                .leading_rendered_overscan_source_range
+                .clone(),
+            trailing_rendered_overscan_source_range: frame_facts
+                .trailing_rendered_overscan_source_range
+                .clone(),
+            resident_boundary: frame_facts.resident_boundary,
+            viewport_height: frame_facts.viewport_height,
+            measured_turn_heights: measured_turn_heights.clone(),
+            streamed_turn_fills: streamed_turn_fills.clone(),
+            active_turn_id: active_turn_id.clone(),
+            residency_revision: self.transcript_history_window.residency_revision(),
+            resident_turn_count: residency_counts.resident_turns,
+            pinned_turn_count: residency_counts.pinned_turns,
+            indexed_turn_count: self.transcript_history_window.indexed_turn_count(),
+            staged_admission_pending: self.staged_transcript_residency_page.is_some(),
+            request_allowed,
+        };
+        TranscriptResidencyControllerFacts {
+            presentation_visible_range: frame_facts.presentation_visible_range,
+            presentation_planning_range,
+            source_visible_range: frame_facts.source_visible_range,
+            source_planning_range,
+            rendered_source_range: frame_facts.rendered_source_range,
+            leading_rendered_overscan_source_range: frame_facts
+                .leading_rendered_overscan_source_range,
+            trailing_rendered_overscan_source_range: frame_facts
+                .trailing_rendered_overscan_source_range,
+            resident_boundary: frame_facts.resident_boundary,
+            viewport_height: frame_facts.viewport_height,
             measured_turn_heights,
             streamed_turn_fills,
             active_turn_id,
@@ -310,4 +435,14 @@ fn requested_turn_count_for_plan(plan: &TranscriptResidencyTargetPlan) -> usize 
         .iter()
         .map(|range| range.len())
         .sum()
+}
+
+fn union_ranges(left: Range<usize>, right: Range<usize>) -> Range<usize> {
+    if left.is_empty() {
+        return right;
+    }
+    if right.is_empty() {
+        return left;
+    }
+    left.start.min(right.start)..left.end.max(right.end)
 }

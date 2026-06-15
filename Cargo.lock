@@ -544,6 +544,8 @@ dependencies = [
  "beryl-backend",
  "beryl-model",
  "clap",
+ "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]

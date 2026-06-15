@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/shell/execution_detail.rs"]
 mod execution_detail;
 

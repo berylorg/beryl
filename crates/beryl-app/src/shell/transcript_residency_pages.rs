@@ -486,8 +486,10 @@ impl ConversationSurfaceState {
         self.transcript_content_release_row_identities = row_identities;
         self.transcript_content_release_markdown_keys = markdown_keys;
         self.transcript_content_release_media_keys = media_keys;
-        self.transcript_streamed_residency_fill_facts.clear();
+        self.transcript_residency_frame_facts = None;
+        self.transcript_navigation_frame_snapshot = None;
         self.transcript_streamed_navigation_snapshot = None;
+        self.transcript_event_time_scroll.clear();
         self.last_transcript_content_scroll_signature = None;
         self.reconcile_transcript_branch_menu_target();
         self.reconcile_transcript_edit_mode();

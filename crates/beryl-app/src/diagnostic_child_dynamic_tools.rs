@@ -28,8 +28,9 @@ use crate::{
     },
     gui_control_dynamic_tools::{
         CLOSE_POPUPS_TOOL, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, MAX_SCROLL_REPEAT,
-        MAX_UI_VISIBLE_ROW_LIMIT, READ_UI_STATE_TOOL, SCROLL_TRANSCRIPT_TOOL, SWITCH_THREAD_TOOL,
-        SWITCH_WORKSPACE_TOOL, parse_gui_control_tool_request,
+        MAX_SCROLL_WHEEL_DELTA_PX, MAX_UI_VISIBLE_ROW_LIMIT, READ_UI_STATE_TOOL,
+        SCROLL_TRANSCRIPT_TOOL, SWITCH_THREAD_TOOL, SWITCH_WORKSPACE_TOOL,
+        parse_gui_control_tool_request,
     },
 };
 
@@ -501,9 +502,12 @@ fn gui_control_child_command(
         GuiControlToolRequest::SwitchThread(arguments) => {
             json!({ "threadId": arguments.thread_id })
         }
-        GuiControlToolRequest::ScrollTranscript(arguments) => {
-            json!({ "command": arguments.command, "repeat": arguments.repeat })
-        }
+        GuiControlToolRequest::ScrollTranscript(arguments) => json!({
+            "command": arguments.command,
+            "repeat": arguments.repeat,
+            "deltaY": arguments.delta_y,
+            "precise": arguments.precise,
+        }),
         GuiControlToolRequest::ClosePopups => json!({}),
     };
     Ok((command, params))
@@ -1136,13 +1140,24 @@ fn scroll_transcript_schema() -> Value {
         "properties": {
             "command": {
                 "type": "string",
-                "enum": ["top", "bottom", "page_up", "page_down"]
+                "enum": ["top", "bottom", "wheel"]
             },
             "repeat": {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": MAX_SCROLL_REPEAT,
                 "default": 1
+            },
+            "deltaY": {
+                "type": "number",
+                "minimum": -MAX_SCROLL_WHEEL_DELTA_PX,
+                "maximum": MAX_SCROLL_WHEEL_DELTA_PX,
+                "description": "Required for command=wheel. Positive values scroll up; negative values scroll down. Units are pixels for both wheel and precise modes."
+            },
+            "precise": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, synthesize a precise touchpad-style pixel delta. When false, synthesize a wheel delta with the same pixel magnitude."
             }
         },
         "required": ["command"],

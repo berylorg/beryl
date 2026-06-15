@@ -25,6 +25,7 @@ mod turn_user_media_units;
 use std::{
     cell::Cell,
     cell::RefCell,
+    collections::BTreeMap,
     collections::HashMap,
     collections::HashSet,
     collections::hash_map::DefaultHasher,
@@ -44,15 +45,18 @@ use gpui::{
     AnyElement, App, AsyncApp, Bounds, ClipboardItem, Context, DispatchPhase, Entity, FocusHandle,
     Focusable, Font, FontStyle, FontWeight, Image, KeyBinding, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, Pixels, Render, ScrollHandle,
-    ScrollWheelEvent, SharedString, Task, TextLayout, TextRun, WeakEntity, Window, anchored,
-    canvas, div, img, point, prelude::*, px,
+    ScrollWheelEvent, SharedString, Size, Task, TextLayout, TextRun, WeakEntity, Window, anchored,
+    canvas, div, img, point, prelude::*, px, size,
 };
 use tracing::{Level, debug};
 
 use crate::diagnostic_dynamic_tools::{
     MediaDiagnosticEvent, MediaDiagnosticLog, PresentationRangeDiagnostic, PreviewStateDiagnostic,
-    TranscriptFrameMetric, TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot,
-    TranscriptFrameRenderBudgetDiagnostic, TranscriptSemanticViewportDiagnostic,
+    TranscriptFrameAnchorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
+    TranscriptFrameMetricsSnapshot, TranscriptFrameRenderBudgetDiagnostic,
+    TranscriptRenderedFrameDiagnostic, TranscriptResidencyRequestDiagnostic,
+    TranscriptScrollInputDiagnostic, TranscriptScrollInputLog,
+    TranscriptSegmentMeasurementCommitDiagnostic, TranscriptSemanticViewportDiagnostic,
     VisibleMediaDiagnostics, VisibleMediaSnapshot, diagnostic_duration_micros,
 };
 use crate::shell::{
@@ -66,7 +70,10 @@ use crate::shell::{
     transcript_anchor::{self, TranscriptSubmitAnchorSnapshot},
     transcript_branch_menu_state::TranscriptImageMenuTarget,
     transcript_edit_mode_state::TranscriptEditModeSnapshot,
-    transcript_history::TranscriptResidencyStreamedTurnFill,
+    transcript_history::{
+        TranscriptHistoryBoundaryState, TranscriptResidencyMeasuredTurnHeight,
+        TranscriptResidencyStreamedTurnFill,
+    },
     transcript_image_preview::{
         TranscriptImagePreviewData, TranscriptImagePreviewUpdate,
         spawn_transcript_image_preview_worker,
@@ -83,24 +90,29 @@ use crate::shell::{
         TranscriptMediaLayoutInput, TranscriptMediaSizingInput, TranscriptMediaSource,
         transcript_media_layout_metrics, transcript_media_size,
     },
-    transcript_presentation::TranscriptActivityCaret,
+    transcript_presentation::{TranscriptActivityCaret, TranscriptPresentedRow},
     transcript_presentation::{
-        TranscriptRenderBudgetAdmission, TranscriptRenderBudgetPolicy,
-        TranscriptRenderChunkAdmissionDecision, TranscriptRowChunkRenderWindow,
-        transcript_frame_preload_range, transcript_frame_presentation_range,
+        TranscriptRenderBudgetAdmission, TranscriptRenderBudgetFallbackReason,
+        TranscriptRenderBudgetPolicy, TranscriptRenderChunkAdmissionDecision,
+        TranscriptRowChunkRenderWindow, transcript_frame_preload_range,
+        transcript_frame_presentation_range, transcript_render_window_admission,
     },
     transcript_quote_popup::{self, TranscriptQuotePopupState},
+    transcript_residency_controller::TranscriptResidencyFrameFacts,
     transcript_selection::{
         TranscriptSelectionState, TranscriptTextLineKey, TranscriptTextLineOrder,
         TranscriptTextPoint, VisibleTranscriptTextFrame, VisibleTranscriptTextLine,
         vertical_hit_candidate_range,
     },
     transcript_viewport::{
-        TranscriptStreamedNavigationFrame, TranscriptViewportChunkAnchor,
-        TranscriptViewportLiveAutoscroll, TranscriptViewportMode,
-        TranscriptViewportNavigationDirection, TranscriptViewportPlacement,
-        TranscriptViewportState, TranscriptViewportTurnAnchor, TranscriptViewportTurnTarget,
+        TranscriptFrameSegment, TranscriptFrameSegmentKey, TranscriptFrameSegmentKind,
+        TranscriptSegmentMeasurementCache, TranscriptSegmentMeasurementKey,
+        TranscriptSegmentMeasurementQueue, TranscriptSegmentMeasurementRevision,
+        TranscriptViewportChunkAnchor, TranscriptViewportFrame, TranscriptViewportLiveAutoscroll,
+        TranscriptViewportMode, TranscriptViewportNavigationDirection, TranscriptViewportPlacement,
+        TranscriptViewportState, TranscriptViewportTurnAnchor,
     },
+    transcript_viewport_scroll_coordinator::build_rendered_transcript_streamed_navigation_snapshot,
 };
 
 use self::code_panel_controls::TranscriptCodePanelState;
@@ -132,7 +144,7 @@ use self::{
     turn_media_units::{TranscriptMarkdownRenderUnit, markdown_render_units},
 };
 use super::super::virtual_list::{
-    ListContentAnchorResizePolicy, ListOffset, ListScrollPosition, ListState, list,
+    ListContentAnchorResizePolicy, ListOffset, ListScrollPosition, ListState,
 };
 use super::scrollbars::{ScrollbarVisibilityState, ScrollbarVisibilityUpdateCallback};
 use super::{
@@ -241,9 +253,18 @@ pub(crate) struct TranscriptPanel {
     media_preload: TranscriptMediaPreloadCoordinator,
     row_measurement_keys: HashMap<String, TranscriptRowMeasurementKey>,
     chunk_measurements: HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+    segment_measurement_cache: TranscriptSegmentMeasurementCache,
+    staged_segment_measurements: TranscriptSegmentMeasurementQueue,
+    staged_segment_measurement_targets:
+        HashMap<TranscriptSegmentMeasurementKey, TranscriptStagedSegmentMeasurementTarget>,
+    segment_measurement_commit_scheduled: bool,
+    segment_measurement_generation: u64,
+    segment_measurement_commit_sequence: u64,
+    latest_segment_measurement_commit: TranscriptSegmentMeasurementCommitDiagnostic,
     media_events: Rc<RefCell<MediaDiagnosticLog>>,
     visible_media: Rc<RefCell<VisibleMediaDiagnostics>>,
     frame_metrics: Rc<RefCell<TranscriptFrameMetricsLog>>,
+    scroll_inputs: Rc<RefCell<TranscriptScrollInputLog>>,
     markdown_cache_scope: Option<TranscriptMarkdownCacheScope>,
     stream_projection: Rc<RefCell<TranscriptStreamProjection>>,
     code_panel_scroll_handles: Rc<RefCell<HashMap<TranscriptCodePanelIdentity, ScrollHandle>>>,
@@ -275,6 +296,29 @@ pub(crate) struct TranscriptPanel {
     next_image_preview_request_id: u64,
     promoted_media: Option<TranscriptMediaRenderIdentity>,
     validated_image_menu_target: Option<TranscriptImageMenuTarget>,
+}
+
+enum TranscriptStagedSegmentMeasurementTarget {
+    ListRow {
+        generation: u64,
+        list_state: ListState,
+        row_index: usize,
+        row_identity: String,
+        row_key: TranscriptRowMeasurementKey,
+        measured_size: Size<Pixels>,
+    },
+    Chunk {
+        generation: u64,
+        chunk_key: TranscriptRowChunkMeasurementKey,
+    },
+}
+
+impl TranscriptStagedSegmentMeasurementTarget {
+    fn generation(&self) -> u64 {
+        match self {
+            Self::ListRow { generation, .. } | Self::Chunk { generation, .. } => *generation,
+        }
+    }
 }
 
 pub(crate) struct TranscriptPanelDiagnosticSnapshot {
@@ -574,10 +618,14 @@ pub(crate) struct TranscriptPanelSnapshot {
     pub transcript_viewport: TranscriptViewportState,
     pub live_scroll: Option<TranscriptLiveScrollEffectSnapshot>,
     pub live_scroll_preserves_anchor_offset: bool,
+    #[allow(dead_code)]
     pub older_history_loading: bool,
     pub residency_resident_turn_count: usize,
     pub residency_retained_bytes: usize,
+    pub residency_pending_requests: usize,
     pub residency_in_flight_requests: usize,
+    pub residency_last_requested_turns: usize,
+    pub residency_last_missing_transport_ranges: usize,
     pub residency_budget_reason: Option<String>,
     pub active_turn_source_pin_active: bool,
     pub active_turn_source_retained_bytes: usize,
@@ -617,9 +665,18 @@ impl TranscriptPanel {
             media_preload: TranscriptMediaPreloadCoordinator::default(),
             row_measurement_keys: HashMap::new(),
             chunk_measurements: HashMap::new(),
+            segment_measurement_cache: TranscriptSegmentMeasurementCache::default(),
+            staged_segment_measurements: TranscriptSegmentMeasurementQueue::default(),
+            staged_segment_measurement_targets: HashMap::new(),
+            segment_measurement_commit_scheduled: false,
+            segment_measurement_generation: 0,
+            segment_measurement_commit_sequence: 0,
+            latest_segment_measurement_commit:
+                TranscriptSegmentMeasurementCommitDiagnostic::default(),
             media_events: Rc::new(RefCell::new(MediaDiagnosticLog::default())),
             visible_media: Rc::new(RefCell::new(VisibleMediaDiagnostics::default())),
             frame_metrics: Rc::new(RefCell::new(TranscriptFrameMetricsLog::default())),
+            scroll_inputs: Rc::new(RefCell::new(TranscriptScrollInputLog::default())),
             markdown_cache_scope: None,
             stream_projection: Rc::new(RefCell::new(TranscriptStreamProjection::default())),
             code_panel_scroll_handles: Rc::new(RefCell::new(HashMap::new())),
@@ -665,12 +722,21 @@ impl TranscriptPanel {
             stream_projection_counts: self.stream_projection.borrow().retained_counts(),
             visible_media,
             media_events: self.media_events.borrow().snapshot(),
-            transcript_frame_metrics: self.frame_metrics.borrow().snapshot(),
+            transcript_frame_metrics: self.frame_metrics_snapshot(),
         }
     }
 
     pub(crate) fn frame_metrics_snapshot(&self) -> TranscriptFrameMetricsSnapshot {
-        self.frame_metrics.borrow().snapshot()
+        let mut snapshot = self.frame_metrics.borrow().snapshot();
+        snapshot.scroll_inputs = self.scroll_inputs.borrow().snapshot();
+        snapshot
+    }
+
+    pub(crate) fn record_scroll_input_diagnostic(
+        &mut self,
+        diagnostic: TranscriptScrollInputDiagnostic,
+    ) {
+        self.scroll_inputs.borrow_mut().record(diagnostic);
     }
 
     fn transcript_preview_diagnostic(&self) -> Option<PreviewStateDiagnostic> {
@@ -896,9 +962,9 @@ impl TranscriptPanel {
         self.media_preload.request_preload(request);
     }
 
-    fn report_transcript_streamed_residency_facts(
+    fn report_transcript_residency_frame_facts(
         &mut self,
-        visible_range: Range<usize>,
+        rendered_frame: &TranscriptViewportFrame,
         viewport_height: Pixels,
         transcript_viewport: &TranscriptViewportState,
         scroll_position: ListScrollPosition,
@@ -908,34 +974,23 @@ impl TranscriptPanel {
             .shell
             .read(cx)
             .conversation_surface()
-            .map(|surface| {
-                let turn_count = surface.transcript_presentation().len();
-                visible_range
-                    .clone()
-                    .filter_map(|index| {
-                        let row = surface.transcript_presentation().turn_at(index)?;
-                        let fact = streamed_residency_fill_fact_for_row(
-                            row.index,
-                            row.source_turn_index,
-                            row.identity.as_str(),
-                            row.model.as_ref(),
-                            &self.row_measurement_keys,
-                            &self.chunk_measurements,
-                            transcript_viewport,
-                            turn_count,
-                            scroll_position,
-                            viewport_height,
-                        )?;
-                        Some((row.identity.as_str().to_string(), fact))
-                    })
-                    .collect::<Vec<_>>()
+            .and_then(|surface| {
+                transcript_residency_frame_facts(
+                    surface,
+                    rendered_frame,
+                    viewport_height,
+                    transcript_viewport,
+                    scroll_position,
+                    &self.row_measurement_keys,
+                    &self.chunk_measurements,
+                )
             })
-            .unwrap_or_default();
+            .filter(|facts| !facts.source_visible_range.is_empty());
 
         self.shell.update(cx, |shell, _| {
-            shell.conversation_surface_mut().is_some_and(|surface| {
-                surface.replace_transcript_streamed_residency_fill_facts(facts)
-            })
+            shell
+                .conversation_surface_mut()
+                .is_some_and(|surface| surface.replace_transcript_residency_frame_facts(facts))
         })
     }
 
@@ -968,6 +1023,19 @@ impl TranscriptPanel {
         self.shell.update(cx, |shell, _| {
             shell.conversation_surface_mut().is_some_and(|surface| {
                 surface.replace_transcript_streamed_navigation_snapshot(snapshot)
+            })
+        })
+    }
+
+    fn report_transcript_navigation_frame_snapshot(
+        &mut self,
+        rendered_frame: &TranscriptViewportFrame,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let snapshot = (!rendered_frame.segments().is_empty()).then(|| rendered_frame.clone());
+        self.shell.update(cx, |shell, _| {
+            shell.conversation_surface_mut().is_some_and(|surface| {
+                surface.replace_transcript_navigation_frame_snapshot(snapshot)
             })
         })
     }
@@ -1471,35 +1539,234 @@ impl TranscriptPanel {
     fn clear_transcript_row_chunk_measurements(&mut self, row_identity: &str) {
         self.chunk_measurements
             .retain(|key, _| key.row_identity() != row_identity);
+        self.clear_transcript_segment_measurement_state();
     }
 
-    fn record_transcript_row_chunk_measurement(
+    fn clear_transcript_segment_measurement_state(&mut self) {
+        self.segment_measurement_generation = self.segment_measurement_generation.wrapping_add(1);
+        self.segment_measurement_cache.clear();
+        self.staged_segment_measurements.clear();
+        self.staged_segment_measurement_targets.clear();
+        self.latest_segment_measurement_commit =
+            TranscriptSegmentMeasurementCommitDiagnostic::default();
+    }
+
+    pub(super) fn stage_transcript_row_chunk_measurement(
         &mut self,
-        key: TranscriptRowChunkMeasurementKey,
+        chunk_key: TranscriptRowChunkMeasurementKey,
+        segment_key: TranscriptFrameSegmentKey,
         height: Pixels,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let height = height.max(px(0.0));
-        if self.chunk_measurements.get(&key) == Some(&height) {
+        let key = TranscriptSegmentMeasurementKey::new(
+            segment_key,
+            transcript_segment_measurement_revision_for(&chunk_key),
+        );
+        self.staged_segment_measurements.stage(key.clone(), height);
+        self.staged_segment_measurement_targets.insert(
+            key,
+            TranscriptStagedSegmentMeasurementTarget::Chunk {
+                generation: self.segment_measurement_generation,
+                chunk_key,
+            },
+        );
+        self.schedule_transcript_segment_measurement_commit(window, cx);
+    }
+
+    fn stage_transcript_frame_row_measurement(
+        &mut self,
+        row_index: usize,
+        row_identity: String,
+        row_key: TranscriptRowMeasurementKey,
+        segment_key: TranscriptFrameSegmentKey,
+        measured_size: Size<Pixels>,
+        list_state: ListState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = TranscriptSegmentMeasurementKey::new(
+            segment_key,
+            transcript_segment_measurement_revision_for(&row_key),
+        );
+        self.staged_segment_measurements
+            .stage(key.clone(), measured_size.height);
+        self.staged_segment_measurement_targets.insert(
+            key,
+            TranscriptStagedSegmentMeasurementTarget::ListRow {
+                generation: self.segment_measurement_generation,
+                list_state,
+                row_index,
+                row_identity,
+                row_key,
+                measured_size,
+            },
+        );
+        self.schedule_transcript_segment_measurement_commit(window, cx);
+    }
+
+    fn schedule_transcript_segment_measurement_commit(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.segment_measurement_commit_scheduled {
             return;
         }
-        let row_identity = key.row_identity().to_string();
-        self.chunk_measurements.insert(key, height);
-        let Some((list_state, row_index)) =
-            self.shell
-                .read(cx)
-                .conversation_surface()
-                .and_then(|surface| {
-                    surface
-                        .transcript_presentation()
-                        .row_index_for_identity(row_identity.as_str())
-                        .map(|row_index| (surface.transcript_list_state(), row_index))
-                })
-        else {
+        self.segment_measurement_commit_scheduled = true;
+        let entity = cx.entity();
+        window.defer(cx, move |window, cx| {
+            entity.update(cx, |view, cx| {
+                view.commit_staged_transcript_segment_measurements(window, cx);
+            });
+        });
+    }
+
+    fn commit_staged_transcript_segment_measurements(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.segment_measurement_commit_scheduled = false;
+        if self.staged_segment_measurements.is_empty() {
+            self.staged_segment_measurement_targets.clear();
             return;
+        }
+
+        let current_generation = self.segment_measurement_generation;
+        self.staged_segment_measurements.retain_keys(|key| {
+            self.staged_segment_measurement_targets
+                .get(key)
+                .is_some_and(|target| target.generation() == current_generation)
+        });
+        self.staged_segment_measurement_targets
+            .retain(|_, target| target.generation() == current_generation);
+        if self.staged_segment_measurements.is_empty() {
+            self.staged_segment_measurement_targets.clear();
+            return;
+        }
+
+        let anchor = self
+            .shell
+            .read(cx)
+            .conversation_surface()
+            .and_then(|surface| surface.transcript_viewport().segment_measurement_anchor());
+        let commit = self
+            .staged_segment_measurements
+            .commit_into(&mut self.segment_measurement_cache, anchor.as_ref());
+        let staged_count = commit.changed.len().saturating_add(commit.unchanged);
+        let changed_count = commit.changed.len();
+        let unchanged_count = commit.unchanged;
+        let anchor_correction_pixels = pixels_diagnostic(commit.anchor_offset_correction);
+        let targets = std::mem::take(&mut self.staged_segment_measurement_targets);
+        let mut changed = false;
+        let mut list_row_update_count = 0usize;
+        let mut chunk_update_count = 0usize;
+        let mut stale_target_count = targets.len().saturating_sub(staged_count);
+
+        for change in commit.changed {
+            let Some(target) = targets.get(&change.key) else {
+                stale_target_count = stale_target_count.saturating_add(1);
+                continue;
+            };
+            match target {
+                TranscriptStagedSegmentMeasurementTarget::ListRow {
+                    generation,
+                    list_state,
+                    row_index,
+                    row_identity,
+                    row_key,
+                    measured_size,
+                } => {
+                    if *generation != self.segment_measurement_generation {
+                        stale_target_count = stale_target_count.saturating_add(1);
+                        continue;
+                    }
+                    if self.row_measurement_keys.get(row_identity) != Some(row_key) {
+                        stale_target_count = stale_target_count.saturating_add(1);
+                        continue;
+                    }
+                    if list_state.record_measured_item_size(*row_index, *measured_size) {
+                        changed = true;
+                        list_row_update_count = list_row_update_count.saturating_add(1);
+                    }
+                }
+                TranscriptStagedSegmentMeasurementTarget::Chunk {
+                    generation,
+                    chunk_key,
+                } => {
+                    if *generation != self.segment_measurement_generation {
+                        stale_target_count = stale_target_count.saturating_add(1);
+                        continue;
+                    }
+                    let row_identity = chunk_key.row_identity().to_string();
+                    if self.row_measurement_keys.get(row_identity.as_str())
+                        != Some(&chunk_key.row_key)
+                    {
+                        stale_target_count = stale_target_count.saturating_add(1);
+                        continue;
+                    }
+                    let height = change.measured_height.max(px(0.0));
+                    if self.chunk_measurements.get(chunk_key) == Some(&height) {
+                        continue;
+                    }
+                    self.chunk_measurements.insert(chunk_key.clone(), height);
+                    if let Some((list_state, row_index)) = self
+                        .shell
+                        .read(cx)
+                        .conversation_surface()
+                        .and_then(|surface| {
+                            surface
+                                .transcript_presentation()
+                                .row_index_for_identity(row_identity.as_str())
+                                .map(|row_index| (surface.transcript_list_state(), row_index))
+                        })
+                    {
+                        list_state.invalidate_item_measurement(row_index);
+                    }
+                    changed = true;
+                    chunk_update_count = chunk_update_count.saturating_add(1);
+                }
+            }
+        }
+
+        let event_time_scroll_cleared = changed_count > 0
+            && self.shell.update(cx, |view, _| {
+                view.conversation_surface_mut()
+                    .is_some_and(|surface| surface.clear_transcript_event_time_scroll())
+            });
+        if event_time_scroll_cleared {
+            changed = true;
+        }
+
+        let anchor_correction_applied = self.shell.update(cx, |view, _| {
+            view.conversation_surface_mut().is_some_and(|surface| {
+                surface.apply_transcript_segment_measurement_anchor_correction(
+                    commit.anchor_offset_correction,
+                )
+            })
+        });
+        if anchor_correction_applied {
+            changed = true;
+        }
+        self.segment_measurement_commit_sequence =
+            self.segment_measurement_commit_sequence.saturating_add(1);
+        self.latest_segment_measurement_commit = TranscriptSegmentMeasurementCommitDiagnostic {
+            sequence: self.segment_measurement_commit_sequence,
+            staged_count,
+            changed_count,
+            unchanged_count,
+            list_row_update_count,
+            chunk_update_count,
+            stale_target_count,
+            anchor_correction_pixels,
+            anchor_correction_applied,
         };
-        list_state.invalidate_item_measurement(row_index);
-        cx.notify();
+
+        if changed {
+            cx.notify();
+        }
     }
 
     fn reconcile_transcript_row_measurement_keys(
@@ -2314,6 +2581,7 @@ impl TranscriptPanel {
         self.media_preload.clear();
         self.row_measurement_keys.clear();
         self.chunk_measurements.clear();
+        self.clear_transcript_segment_measurement_state();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
         self.clear_code_panel_interaction_state();
@@ -2340,6 +2608,7 @@ impl TranscriptPanel {
 
         self.handled_theme_revision = Some(revision);
         self.chunk_measurements.clear();
+        self.clear_transcript_segment_measurement_state();
         self.syntax_highlight_cache.borrow_mut().clear();
         self.code_panel_projection_cache.borrow_mut().clear();
         self.visible_text_frame.clear();
@@ -2369,6 +2638,7 @@ impl TranscriptPanel {
         self.media_preload.clear();
         self.row_measurement_keys.clear();
         self.chunk_measurements.clear();
+        self.clear_transcript_segment_measurement_state();
         self.release_evicted_media_images(evicted_images, cx);
         self.stream_projection.borrow_mut().clear();
         self.clear_code_panel_interaction_state();
@@ -2871,6 +3141,7 @@ impl Render for TranscriptPanel {
             snapshot.active_turn_source_retained_bytes,
             snapshot.active_turn_source_budget_max_bytes,
             snapshot.active_turn_source_budget_fallback_active,
+            self.latest_segment_measurement_commit.clone(),
             turn_count,
             snapshot.style_snapshot_micros,
             snapshot.composer_measurement_micros,
@@ -2900,6 +3171,58 @@ impl Render for TranscriptPanel {
         let chunk_measurements_for_render = Arc::new(self.chunk_measurements.clone());
         let transcript_viewport_for_render = snapshot.transcript_viewport.clone();
         let scroll_position_for_streamed_render = transcript_list_state.scroll_position();
+        let transcript_frame_viewport_height = {
+            let height = transcript_list_state.viewport_bounds().size.height;
+            if height > px(0.0) {
+                height
+            } else {
+                transcript_panel_height
+            }
+        };
+        let rendered_transcript_frame = shell
+            .read(cx)
+            .conversation_surface()
+            .map(|surface| {
+                transcript_viewport_frame_snapshot(
+                    surface,
+                    presentation_range.clone(),
+                    transcript_list_state.visible_range(),
+                    transcript_frame_viewport_height,
+                    &transcript_viewport_for_render,
+                    scroll_position_for_streamed_render,
+                    &transcript_list_state,
+                    &self.row_measurement_keys,
+                    &self.chunk_measurements,
+                )
+            })
+            .unwrap_or_default();
+        let transcript_frame_render_rows =
+            Arc::new(transcript_frame_render_rows(&rendered_transcript_frame));
+        let transcript_frame_scroll_offset = transcript_frame_render_scroll_offset(
+            &rendered_transcript_frame,
+            &transcript_viewport_for_render,
+            &transcript_list_state,
+            transcript_frame_viewport_height,
+        );
+        let rendered_frame_boundary = shell.read(cx).conversation_surface().and_then(|surface| {
+            transcript_residency_boundary_for_rendered_frame(surface, &rendered_transcript_frame)
+        });
+        if let Some(profiler) = profiler.as_ref() {
+            profiler.observe_frame_diagnostics(
+                rendered_frame_diagnostic(
+                    &rendered_transcript_frame,
+                    &transcript_viewport_for_render,
+                ),
+                transcript_frame_clamp_reasons(&rendered_transcript_frame, rendered_frame_boundary),
+                transcript_residency_request_diagnostic(
+                    snapshot.residency_pending_requests,
+                    snapshot.residency_in_flight_requests,
+                    snapshot.residency_last_requested_turns,
+                    snapshot.residency_last_missing_transport_ranges,
+                    rendered_frame_boundary,
+                ),
+            );
+        }
         div()
             .relative()
             .size_full()
@@ -3040,17 +3363,21 @@ impl Render for TranscriptPanel {
                                     .on_scroll_wheel({
                                         let shell = shell.clone();
                                         move |event, window, cx| {
-                                            let streamed = shell
+                                            let (streamed, rendered_frame) = shell
                                                 .read(cx)
                                                 .conversation_surface()
-                                                .and_then(|surface| {
+                                                .map(|surface| {
                                                     surface
-                                                        .current_transcript_streamed_navigation_snapshot()
-                                                        .cloned()
-                                                });
+                                                        .current_transcript_scroll_navigation_snapshots()
+                                                })
+                                                .unwrap_or_default();
                                             let consumed = shell.update(cx, |view, cx| {
                                                 view.apply_transcript_scroll_wheel(
-                                                    event, streamed, window, cx,
+                                                    event,
+                                                    streamed,
+                                                    rendered_frame,
+                                                    window,
+                                                    cx,
                                                 )
                                             });
                                             if consumed {
@@ -3103,6 +3430,8 @@ impl Render for TranscriptPanel {
                                             snapshot.transcript_reset_generation;
                                         let preload_transcript_viewport =
                                             transcript_viewport_for_render.clone();
+                                        let preload_rendered_transcript_frame =
+                                            rendered_transcript_frame.clone();
                                         let preload_scroll_position =
                                             scroll_position_for_streamed_render;
                                         let preload_workspace = workspace.clone();
@@ -3150,9 +3479,9 @@ impl Render for TranscriptPanel {
                                             entity.update(cx, |view, cx| {
                                                 view.finish_text_span_frame(viewport_bounds, cx);
                                                 view.report_transcript_media_preload_facts(request);
-                                                let streamed_facts_changed = view
-                                                    .report_transcript_streamed_residency_facts(
-                                                        visible_range.clone(),
+                                                let residency_frame_facts_changed = view
+                                                    .report_transcript_residency_frame_facts(
+                                                        &preload_rendered_transcript_frame,
                                                         viewport_bounds.size.height,
                                                         &preload_transcript_viewport,
                                                         preload_scroll_position,
@@ -3167,6 +3496,10 @@ impl Render for TranscriptPanel {
                                                         &transcript_list_state,
                                                         cx,
                                                     );
+                                                view.report_transcript_navigation_frame_snapshot(
+                                                    &preload_rendered_transcript_frame,
+                                                    cx,
+                                                );
                                                 let reset_followup_due = view
                                                     .take_transcript_reset_residency_followup(
                                                         preload_transcript_reset_generation,
@@ -3200,7 +3533,7 @@ impl Render for TranscriptPanel {
                                                         cx.notify();
                                                     }
                                                 }
-                                                if streamed_facts_changed
+                                                if residency_frame_facts_changed
                                                     || streamed_navigation_changed
                                                     || reset_followup_due
                                                 {
@@ -3276,23 +3609,27 @@ impl Render for TranscriptPanel {
                                         }
                                     })
                                     .child({
-                                        let row_shell = shell.clone();
-                                        let list_theme = theme.clone();
-                                        let list_row_measurement_keys =
+                                        let frame_rows = transcript_frame_render_rows.clone();
+                                        let frame_theme = theme.clone();
+                                        let frame_row_measurement_keys =
                                             row_measurement_keys_for_render.clone();
-                                        let list_chunk_measurements =
+                                        let frame_chunk_measurements =
                                             chunk_measurements_for_render.clone();
-                                        let list_transcript_viewport =
-                                            transcript_viewport_for_render.clone();
-                                        let list_rendered_code_panel_ids =
+                                        let frame_rendered_code_panel_ids =
                                             rendered_nested_code_panel_ids.clone();
-                                        list(transcript_list_state.clone(), move |index, row_context, _, cx| {
+                                        let frame_list_state = transcript_list_state.clone();
+                                        let frame_entity = entity.clone();
+                                        let frame_content_top =
+                                            px(0.0) - transcript_frame_scroll_offset;
+                                        let mut frame_children = Vec::new();
+                                        for frame_row in frame_rows.iter().cloned() {
                                             let row_started = Instant::now();
+                                            let index = frame_row.row_index;
                                             if index >= turn_count {
-                                                return div().into_any_element();
+                                                continue;
                                             }
 
-                                            let row = row_shell
+                                            let row = shell
                                                 .read(cx)
                                                 .conversation_surface()
                                                 .and_then(|surface| {
@@ -3301,20 +3638,22 @@ impl Render for TranscriptPanel {
                                                         .turn_at(index)
                                                 });
 
+                                            let Some(row) = row else {
+                                                continue;
+                                            };
+                                            debug_assert_eq!(row.index, index);
                                             let turn_text_chars = row
-                                                .as_ref()
-                                                .map_or(0, |row| row.turn.text_char_count());
-                                            let turn_item_count = row
-                                                .as_ref()
-                                                .map_or(0, |row| row.turn.item_count());
+                                                .turn
+                                                .text_char_count();
+                                            let turn_item_count = row.turn.item_count();
                                             let turn_terminal_fallback = row
-                                                .as_ref()
-                                                .and_then(|row| row.turn.terminal_fallback())
+                                                .turn
+                                                .terminal_fallback()
                                                 .map(|fallback| fallback.diagnostic_label());
                                             let row_identity_for_profile =
-                                                row.as_ref().map(|row| row.identity.as_str().to_string());
+                                                Some(row.identity.as_str().to_string());
                                             let workspace = workspace.clone();
-                                            let theme = list_theme.clone();
+                                            let theme = frame_theme.clone();
                                             let soft_wrapped_panel_keys =
                                                 soft_wrapped_panel_keys.clone();
                                             let resized_panel_heights =
@@ -3331,7 +3670,7 @@ impl Render for TranscriptPanel {
                                             let code_panel_projection_cache =
                                                 code_panel_projection_cache.clone();
                                             let rendered_code_panel_ids =
-                                                list_rendered_code_panel_ids.clone();
+                                                frame_rendered_code_panel_ids.clone();
                                             let code_layout = code_layout;
                                             let media_layout = media_layout;
                                             let markdown_context = markdown_context.clone();
@@ -3339,9 +3678,9 @@ impl Render for TranscriptPanel {
                                             let stream_projection_context =
                                                 stream_projection_context.clone();
                                             let row_measurement_keys =
-                                                list_row_measurement_keys.clone();
+                                                frame_row_measurement_keys.clone();
                                             let chunk_measurements =
-                                                list_chunk_measurements.clone();
+                                                frame_chunk_measurements.clone();
                                             let selection_order = Rc::new(Cell::new(
                                                 TranscriptTextLineOrder::row_start(index),
                                             ));
@@ -3353,93 +3692,112 @@ impl Render for TranscriptPanel {
                                             let activity_caret = activity_caret.clone();
                                             let transcript_edit_mode = transcript_edit_mode.clone();
                                             let activity_caret_opacity = activity_caret_opacity;
-                                            let element = row.map_or_else(
-                                                || div().into_any_element(),
-                                                |row| {
-                                                    debug_assert_eq!(row.index, index);
-                                                    let row_identity =
-                                                        row.identity.as_str().to_string();
-                                                    let row_measurement_key =
-                                                        row_measurement_keys.get(&row_identity).cloned();
-                                                    let measured_chunk_heights =
-                                                        row_measurement_key.as_ref().map(|key| {
-                                                            measured_chunk_heights_for(
-                                                                row.model
-                                                                    .chunk_presentation()
-                                                                    .chunks(),
-                                                                key,
-                                                                chunk_measurements.as_ref(),
-                                                            )
-                                                        });
-                                                    let streamed_render_anchor =
-                                                        streamed_render_anchor_for_row(
-                                                            &list_transcript_viewport,
-                                                            index,
-                                                            row_identity.as_str(),
-                                                            row.model
-                                                                .chunk_presentation()
-                                                                .chunks(),
-                                                            turn_count,
-                                                            scroll_position_for_streamed_render,
-                                                        );
-                                                    let media_context =
-                                                        media_context.for_row(row_identity.clone());
-                                                    let show_activity_caret =
-                                                        activity_caret.as_ref().is_some_and(
-                                                            |caret| {
-                                                                caret.row_index == index
-                                                                    && caret
-                                                                        .row_identity
-                                                                        .as_str()
-                                                                        == row_identity.as_str()
-                                                            },
-                                                        );
-                                                    let dimmed_for_edit = transcript_edit_mode
-                                                        .as_ref()
-                                                        .is_some_and(|edit| {
-                                                            edit.dims_row(
-                                                                row.turn.thread_id.as_deref(),
-                                                                row.source_turn_index,
-                                                            )
-                                                        });
-                                                    render_turn(
-                                                        index,
-                                                        &workspace,
-                                                        theme,
-                                                        row.turn,
-                                                        row.model,
-                                                        row_entity.clone(),
-                                                        row_identity,
-                                                        markdown_context,
-                                                        media_context,
-                                                        stream_projection_context,
-                                                        soft_wrapped_panel_keys,
-                                                        resized_panel_heights,
-                                                        code_panel_scroll_handles,
-                                                        code_panel_scrollbar_visibility,
-                                                        selected_nested_code_panel_id,
-                                                        theme_candidates,
-                                                        syntax_highlight_cache,
-                                                        code_panel_projection_cache,
-                                                        rendered_code_panel_ids,
-                                                        code_layout,
-                                                        media_layout,
-                                                        selection_order,
-                                                        narrative_copy_block_count,
-                                                        selection_render.clone(),
-                                                        show_activity_caret,
-                                                        dimmed_for_edit,
-                                                        activity_caret_opacity,
-                                                        row_context.viewport_height,
-                                                        streamed_render_anchor,
-                                                        row_measurement_key,
-                                                        measured_chunk_heights,
-                                                        profiler.clone(),
-                                                        cx,
+                                            let row_identity =
+                                                row.identity.as_str().to_string();
+                                            let row_measurement_key =
+                                                row_measurement_keys.get(&row_identity).cloned();
+                                            let frame_row_measurement_target =
+                                                row_measurement_key.clone().map(|row_key| {
+                                                    TranscriptFrameRowMeasurementTarget {
+                                                        row_index: index,
+                                                        row_identity: row_identity.clone(),
+                                                        row_key,
+                                                        segment_key:
+                                                            transcript_frame_row_measurement_segment_key(
+                                                                &row,
+                                                                &frame_row,
+                                                            ),
+                                                        list_state: frame_list_state.clone(),
+                                                    }
+                                                });
+                                            let measured_chunk_heights =
+                                                row_measurement_key.as_ref().map(|key| {
+                                                    measured_chunk_heights_for(
+                                                        row.model
+                                                            .chunk_presentation()
+                                                            .chunks(),
+                                                        key,
+                                                        chunk_measurements.as_ref(),
                                                     )
-                                                    .into_any_element()
-                                                },
-                                            );
+                                                });
+                                            let (
+                                                streamed_render_anchor,
+                                                streamed_chunk_range,
+                                                streamed_forced_fallbacks,
+                                            ) = match frame_row.kind {
+                                                TranscriptFrameRenderRowKind::Ordinary => {
+                                                    (None, None, Vec::new())
+                                                }
+                                                TranscriptFrameRenderRowKind::Streamed {
+                                                    chunk_range,
+                                                    anchor_chunk,
+                                                    placement,
+                                                    forced_fallbacks,
+                                                } => (
+                                                    Some(TranscriptRowStreamedRenderAnchor {
+                                                        chunk_index: anchor_chunk.chunk_index,
+                                                        placement,
+                                                    }),
+                                                    Some(chunk_range),
+                                                    forced_fallbacks,
+                                                ),
+                                            };
+                                            let media_context =
+                                                media_context.for_row(row_identity.clone());
+                                            let show_activity_caret =
+                                                activity_caret.as_ref().is_some_and(
+                                                    |caret| {
+                                                        caret.row_index == index
+                                                            && caret.row_identity.as_str()
+                                                                == row_identity.as_str()
+                                                    },
+                                                );
+                                            let dimmed_for_edit = transcript_edit_mode
+                                                .as_ref()
+                                                .is_some_and(|edit| {
+                                                    edit.dims_row(
+                                                        row.turn.thread_id.as_deref(),
+                                                        row.source_turn_index,
+                                                    )
+                                                });
+                                            let element = render_turn(
+                                                index,
+                                                &workspace,
+                                                theme,
+                                                row.turn,
+                                                row.model,
+                                                row_entity.clone(),
+                                                row_identity,
+                                                markdown_context,
+                                                media_context,
+                                                stream_projection_context,
+                                                soft_wrapped_panel_keys,
+                                                resized_panel_heights,
+                                                code_panel_scroll_handles,
+                                                code_panel_scrollbar_visibility,
+                                                selected_nested_code_panel_id,
+                                                theme_candidates,
+                                                syntax_highlight_cache,
+                                                code_panel_projection_cache,
+                                                rendered_code_panel_ids,
+                                                code_layout,
+                                                media_layout,
+                                                selection_order,
+                                                narrative_copy_block_count,
+                                                selection_render.clone(),
+                                                show_activity_caret,
+                                                dimmed_for_edit,
+                                                activity_caret_opacity,
+                                                transcript_frame_viewport_height,
+                                                streamed_render_anchor,
+                                                streamed_chunk_range,
+                                                streamed_forced_fallbacks,
+                                                row_measurement_key,
+                                                measured_chunk_heights,
+                                                profiler.clone(),
+                                                cx,
+                                            )
+                                            .into_any_element();
 
                                             if let Some(profiler) = profiler.as_ref() {
                                                 profiler.observe_turn(
@@ -3452,9 +3810,40 @@ impl Render for TranscriptPanel {
                                                 );
                                             }
 
-                                            element
-                                        })
-                                        .size_full()
+                                            frame_children.push(render_measured_transcript_frame_row(
+                                                frame_row_measurement_target,
+                                                frame_entity.clone(),
+                                                element,
+                                            ));
+                                        }
+
+                                        div()
+                                            .size_full()
+                                            .relative()
+                                            .overflow_hidden()
+                                            .child(
+                                                canvas(|bounds, _, _| bounds, {
+                                                    let frame_list_state = frame_list_state.clone();
+                                                    move |bounds, _, _, _| {
+                                                        frame_list_state
+                                                            .record_viewport_bounds(bounds);
+                                                    }
+                                                })
+                                                .absolute()
+                                                .top_0()
+                                                .left_0()
+                                                .size_full(),
+                                            )
+                                            .child(
+                                                div()
+                                                    .absolute()
+                                                    .top(frame_content_top)
+                                                    .left_0()
+                                                    .right_0()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .children(frame_children),
+                                            )
                                     });
                                 let bounds = transcript_list_state.viewport_bounds();
                                 if let Some(quote_popup) =
@@ -4371,6 +4760,557 @@ fn transcript_row_initial_narrative_copy_block_count(index: usize) -> usize {
     usize::from(index > 0)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TranscriptFrameRenderRow {
+    row_index: usize,
+    row_identity: Option<String>,
+    kind: TranscriptFrameRenderRowKind,
+}
+
+#[derive(Clone)]
+struct TranscriptFrameRowMeasurementTarget {
+    row_index: usize,
+    row_identity: String,
+    row_key: TranscriptRowMeasurementKey,
+    segment_key: TranscriptFrameSegmentKey,
+    list_state: ListState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TranscriptFrameRenderRowKind {
+    Ordinary,
+    Streamed {
+        chunk_range: Range<usize>,
+        anchor_chunk: TranscriptViewportChunkAnchor,
+        placement: TranscriptRowStreamedAnchorPlacement,
+        forced_fallbacks: Vec<(usize, TranscriptRenderBudgetFallbackReason)>,
+    },
+}
+
+impl TranscriptFrameRenderRow {
+    fn ordinary(turn: &TranscriptViewportTurnAnchor) -> Self {
+        Self {
+            row_index: turn.turn_index,
+            row_identity: turn.row_identity.clone(),
+            kind: TranscriptFrameRenderRowKind::Ordinary,
+        }
+    }
+
+    fn streamed(
+        turn: &TranscriptViewportTurnAnchor,
+        chunk: &TranscriptViewportChunkAnchor,
+        fallback: Option<TranscriptRenderBudgetFallbackReason>,
+    ) -> Self {
+        Self {
+            row_index: turn.turn_index,
+            row_identity: turn.row_identity.clone(),
+            kind: TranscriptFrameRenderRowKind::Streamed {
+                chunk_range: chunk.chunk_index..chunk.chunk_index.saturating_add(1),
+                anchor_chunk: chunk.clone(),
+                placement: TranscriptRowStreamedAnchorPlacement::Top,
+                forced_fallbacks: fallback
+                    .map(|reason| vec![(chunk.chunk_index, reason)])
+                    .unwrap_or_default(),
+            },
+        }
+    }
+
+    fn extend_streamed(
+        &mut self,
+        turn: &TranscriptViewportTurnAnchor,
+        chunk: &TranscriptViewportChunkAnchor,
+        fallback: Option<TranscriptRenderBudgetFallbackReason>,
+    ) -> bool {
+        let TranscriptFrameRenderRowKind::Streamed {
+            chunk_range,
+            forced_fallbacks,
+            ..
+        } = &mut self.kind
+        else {
+            return false;
+        };
+        if !transcript_frame_row_turn_matches(self.row_index, self.row_identity.as_deref(), turn)
+            || chunk_range.end != chunk.chunk_index
+        {
+            return false;
+        }
+
+        chunk_range.end = chunk.chunk_index.saturating_add(1);
+        if let Some(reason) = fallback {
+            forced_fallbacks.push((chunk.chunk_index, reason));
+        }
+        true
+    }
+}
+
+fn transcript_frame_render_rows(frame: &TranscriptViewportFrame) -> Vec<TranscriptFrameRenderRow> {
+    let mut rows = Vec::new();
+    for segment in frame.segments() {
+        match &segment.key.kind {
+            TranscriptFrameSegmentKind::OrdinaryRow
+            | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. } => {
+                rows.push(TranscriptFrameRenderRow::ordinary(&segment.key.turn));
+            }
+            TranscriptFrameSegmentKind::StreamedChunk { chunk } => {
+                if rows
+                    .last_mut()
+                    .is_some_and(|row| row.extend_streamed(&segment.key.turn, chunk, None))
+                {
+                    continue;
+                }
+                rows.push(TranscriptFrameRenderRow::streamed(
+                    &segment.key.turn,
+                    chunk,
+                    None,
+                ));
+            }
+            TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, reason } => {
+                let fallback = transcript_render_budget_fallback_reason_for_label(reason);
+                if rows
+                    .last_mut()
+                    .is_some_and(|row| row.extend_streamed(&segment.key.turn, chunk, fallback))
+                {
+                    continue;
+                }
+                rows.push(TranscriptFrameRenderRow::streamed(
+                    &segment.key.turn,
+                    chunk,
+                    fallback,
+                ));
+            }
+        }
+    }
+    rows
+}
+
+fn transcript_frame_row_measurement_segment_key(
+    row: &TranscriptPresentedRow,
+    frame_row: &TranscriptFrameRenderRow,
+) -> TranscriptFrameSegmentKey {
+    let turn = transcript_viewport_turn_anchor_for_row(row);
+    match &frame_row.kind {
+        TranscriptFrameRenderRowKind::Ordinary => TranscriptFrameSegmentKey::ordinary_row(turn),
+        TranscriptFrameRenderRowKind::Streamed {
+            anchor_chunk,
+            forced_fallbacks,
+            ..
+        } => forced_fallbacks
+            .iter()
+            .find(|(chunk_index, _)| *chunk_index == anchor_chunk.chunk_index)
+            .map(|(_, reason)| {
+                TranscriptFrameSegmentKey::render_budget_fallback_chunk(
+                    turn.clone(),
+                    anchor_chunk.clone(),
+                    reason.diagnostic_label(),
+                )
+            })
+            .unwrap_or_else(|| {
+                TranscriptFrameSegmentKey::streamed_chunk(turn, anchor_chunk.clone())
+            }),
+    }
+}
+
+fn transcript_render_budget_fallback_reason_for_label(
+    label: &str,
+) -> Option<TranscriptRenderBudgetFallbackReason> {
+    [
+        TranscriptRenderBudgetFallbackReason::ChunkCostExceedsLimit,
+        TranscriptRenderBudgetFallbackReason::FrameCostExceedsLimit,
+    ]
+    .into_iter()
+    .find(|reason| reason.diagnostic_label() == label)
+}
+
+fn transcript_frame_render_scroll_offset(
+    frame: &TranscriptViewportFrame,
+    viewport: &TranscriptViewportState,
+    list_state: &ListState,
+    viewport_height: Pixels,
+) -> Pixels {
+    match viewport.mode() {
+        TranscriptViewportMode::Streamed(anchor) => {
+            transcript_frame_offset_for_streamed_anchor(frame, anchor, viewport_height)
+                .or_else(|| {
+                    transcript_frame_offset_for_list_position(frame, list_state, viewport_height)
+                })
+                .unwrap_or(px(0.0))
+        }
+        TranscriptViewportMode::Ordinary(anchor) => {
+            transcript_frame_offset_for_ordinary_anchor(frame, anchor, viewport_height)
+                .or_else(|| {
+                    transcript_frame_offset_for_list_position(frame, list_state, viewport_height)
+                })
+                .unwrap_or(px(0.0))
+        }
+        TranscriptViewportMode::Empty => {
+            transcript_frame_offset_for_list_position(frame, list_state, viewport_height)
+                .unwrap_or(px(0.0))
+        }
+    }
+}
+
+fn transcript_frame_offset_for_ordinary_anchor(
+    frame: &TranscriptViewportFrame,
+    anchor: &crate::shell::transcript_viewport::TranscriptOrdinaryViewportAnchor,
+    viewport_height: Pixels,
+) -> Option<Pixels> {
+    let index = frame.segments().iter().position(|segment| {
+        transcript_frame_segment_turn_matches(segment, &anchor.turn)
+            && matches!(
+                segment.key.kind,
+                TranscriptFrameSegmentKind::OrdinaryRow
+                    | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. }
+            )
+    })?;
+    let top = transcript_frame_segment_top(frame, index);
+    let height = transcript_frame_segment_height(frame.segments().get(index)?);
+    let base = match anchor.placement {
+        TranscriptViewportPlacement::Top => top,
+        TranscriptViewportPlacement::Bottom => top + height - viewport_height,
+    };
+    Some(base + anchor.local_offset)
+}
+
+fn transcript_frame_offset_for_streamed_anchor(
+    frame: &TranscriptViewportFrame,
+    anchor: &crate::shell::transcript_viewport::TranscriptStreamedViewportAnchor,
+    viewport_height: Pixels,
+) -> Option<Pixels> {
+    let index = frame.segments().iter().position(|segment| {
+        transcript_frame_segment_turn_matches(segment, &anchor.turn)
+            && segment.key.streamed_chunk_anchor().is_some_and(|chunk| {
+                chunk.chunk_identity == anchor.anchor_chunk.chunk_identity
+                    || chunk.chunk_index == anchor.anchor_chunk.chunk_index
+            })
+    })?;
+    let top = transcript_frame_segment_top(frame, index);
+    let height = transcript_frame_segment_height(frame.segments().get(index)?);
+    let base = match anchor.placement {
+        TranscriptViewportPlacement::Top => top,
+        TranscriptViewportPlacement::Bottom => top + height - viewport_height,
+    };
+    Some(base + anchor.local_anchor_offset.unwrap_or(px(0.0)))
+}
+
+fn transcript_frame_offset_for_list_position(
+    frame: &TranscriptViewportFrame,
+    list_state: &ListState,
+    viewport_height: Pixels,
+) -> Option<Pixels> {
+    match list_state.scroll_position() {
+        ListScrollPosition::Bottom => {
+            Some((transcript_frame_measured_height(frame) - viewport_height).max(px(0.0)))
+        }
+        ListScrollPosition::VirtualTail {
+            offset_from_content_end,
+        } => Some(
+            (transcript_frame_measured_height(frame) - viewport_height).max(px(0.0))
+                + offset_from_content_end,
+        ),
+        ListScrollPosition::Content(offset) => {
+            let index = frame
+                .segments()
+                .iter()
+                .position(|segment| segment.key.turn.turn_index == offset.item_ix)?;
+            Some(transcript_frame_segment_top(frame, index) + offset.offset_in_item)
+        }
+    }
+}
+
+fn transcript_frame_local_scroll_range(
+    frame: &TranscriptViewportFrame,
+    viewport: &TranscriptViewportState,
+    list_state: &ListState,
+    viewport_height: Pixels,
+) -> (Pixels, Pixels) {
+    let visible_range = frame.visible_segment_range();
+    if visible_range.is_empty() || frame.segments().is_empty() {
+        return (px(0.0), px(0.0));
+    }
+
+    let visible_start = visible_range.start.min(frame.segments().len());
+    let visible_top = transcript_frame_segment_top(frame, visible_start);
+    let absolute_offset =
+        transcript_frame_render_scroll_offset(frame, viewport, list_state, viewport_height);
+    let measured_scroll_max = (transcript_frame_measured_height(frame) - viewport_height)
+        .max(px(0.0))
+        .max(absolute_offset);
+    (
+        (absolute_offset - visible_top).max(px(0.0)),
+        (measured_scroll_max - visible_top).max(px(0.0)),
+    )
+}
+
+fn transcript_frame_segment_turn_matches(
+    segment: &TranscriptFrameSegment,
+    turn: &TranscriptViewportTurnAnchor,
+) -> bool {
+    transcript_frame_row_turn_matches(
+        segment.key.turn.turn_index,
+        segment.key.turn.row_identity.as_deref(),
+        turn,
+    )
+}
+
+fn transcript_frame_row_turn_matches(
+    row_index: usize,
+    row_identity: Option<&str>,
+    turn: &TranscriptViewportTurnAnchor,
+) -> bool {
+    if let Some(turn_identity) = turn.row_identity.as_deref() {
+        return row_identity == Some(turn_identity);
+    }
+    row_index == turn.turn_index
+}
+
+fn transcript_frame_segment_top(frame: &TranscriptViewportFrame, index: usize) -> Pixels {
+    frame
+        .segments()
+        .iter()
+        .take(index)
+        .fold(px(0.0), |height, segment| {
+            height + transcript_frame_segment_height(segment)
+        })
+}
+
+fn transcript_frame_measured_height(frame: &TranscriptViewportFrame) -> Pixels {
+    frame.segments().iter().fold(px(0.0), |height, segment| {
+        height + transcript_frame_segment_height(segment)
+    })
+}
+
+fn transcript_frame_segment_height(segment: &TranscriptFrameSegment) -> Pixels {
+    segment.measured_height.unwrap_or(px(0.0)).max(px(0.0))
+}
+
+fn render_measured_transcript_frame_row(
+    measurement_target: Option<TranscriptFrameRowMeasurementTarget>,
+    entity: Entity<TranscriptPanel>,
+    child: AnyElement,
+) -> AnyElement {
+    div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .child(child)
+        .on_children_prepainted(move |children, window, cx| {
+            let Some(first) = children.first().copied() else {
+                return;
+            };
+            let mut left = first.left();
+            let mut right = first.right();
+            let mut top = first.top();
+            let mut bottom = first.bottom();
+            for child in children.iter().copied().skip(1) {
+                left = left.min(child.left());
+                right = right.max(child.right());
+                top = top.min(child.top());
+                bottom = bottom.max(child.bottom());
+            }
+            let measured_size = size((right - left).max(px(0.0)), (bottom - top).max(px(0.0)));
+            let Some(measurement_target) = measurement_target.clone() else {
+                return;
+            };
+            let entity = entity.clone();
+            window.defer(cx, move |window, cx| {
+                entity.update(cx, |view, cx| {
+                    view.stage_transcript_frame_row_measurement(
+                        measurement_target.row_index,
+                        measurement_target.row_identity,
+                        measurement_target.row_key,
+                        measurement_target.segment_key,
+                        measured_size,
+                        measurement_target.list_state,
+                        window,
+                        cx,
+                    );
+                });
+            });
+        })
+        .into_any_element()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn transcript_residency_frame_facts(
+    surface: &crate::shell::ConversationSurfaceState,
+    rendered_frame: &TranscriptViewportFrame,
+    viewport_height: Pixels,
+    transcript_viewport: &TranscriptViewportState,
+    scroll_position: ListScrollPosition,
+    row_measurement_keys: &HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+) -> Option<TranscriptResidencyFrameFacts> {
+    if viewport_height <= px(0.0) {
+        return None;
+    }
+
+    let visible_segment_range = rendered_frame.visible_segment_range();
+    let presentation_visible_range =
+        transcript_viewport_frame_presentation_range(rendered_frame, &visible_segment_range);
+    if presentation_visible_range.is_empty() {
+        return None;
+    }
+
+    let rendered_presentation_range = transcript_viewport_frame_presentation_range(
+        rendered_frame,
+        &(0..rendered_frame.segments().len()),
+    );
+    let source_visible_range = surface
+        .transcript_presentation()
+        .source_range_for_presentation_range(&presentation_visible_range);
+    let rendered_source_range = surface
+        .transcript_presentation()
+        .source_range_for_presentation_range(&rendered_presentation_range);
+    let leading_rendered_overscan_source_range = transcript_viewport_frame_source_range(
+        surface,
+        rendered_frame,
+        0..visible_segment_range.start,
+    );
+    let trailing_rendered_overscan_source_range = transcript_viewport_frame_source_range(
+        surface,
+        rendered_frame,
+        visible_segment_range.end..rendered_frame.segments().len(),
+    );
+    let measured_turn_heights = transcript_frame_measured_turn_heights(surface, rendered_frame);
+    let streamed_turn_fills = transcript_frame_streamed_turn_fills(
+        surface,
+        presentation_visible_range.clone(),
+        row_measurement_keys,
+        chunk_measurements,
+        transcript_viewport,
+        scroll_position,
+        viewport_height,
+    );
+    let resident_boundary =
+        surface.transcript_residency_boundary_for_source_range(&source_visible_range);
+
+    Some(TranscriptResidencyFrameFacts {
+        presentation_visible_range,
+        rendered_presentation_range,
+        source_visible_range,
+        rendered_source_range,
+        leading_rendered_overscan_source_range,
+        trailing_rendered_overscan_source_range,
+        resident_boundary,
+        viewport_height: transcript_residency_units_for_pixels(viewport_height),
+        measured_turn_heights,
+        streamed_turn_fills,
+    })
+}
+
+fn transcript_viewport_frame_source_range(
+    surface: &crate::shell::ConversationSurfaceState,
+    rendered_frame: &TranscriptViewportFrame,
+    segment_range: Range<usize>,
+) -> Range<usize> {
+    let presentation_range =
+        transcript_viewport_frame_presentation_range(rendered_frame, &segment_range);
+    surface
+        .transcript_presentation()
+        .source_range_for_presentation_range(&presentation_range)
+}
+
+fn transcript_viewport_frame_presentation_range(
+    rendered_frame: &TranscriptViewportFrame,
+    segment_range: &Range<usize>,
+) -> Range<usize> {
+    let start = segment_range.start.min(rendered_frame.segments().len());
+    let end = segment_range
+        .end
+        .min(rendered_frame.segments().len())
+        .max(start);
+    let mut first = None::<usize>;
+    let mut last = None::<usize>;
+
+    for segment in &rendered_frame.segments()[start..end] {
+        let row_index = segment.key.turn.turn_index;
+        first = Some(first.map_or(row_index, |current| current.min(row_index)));
+        last = Some(last.map_or(row_index, |current| current.max(row_index)));
+    }
+
+    match (first, last) {
+        (Some(first), Some(last)) => first..last.saturating_add(1),
+        _ => 0..0,
+    }
+}
+
+fn transcript_frame_measured_turn_heights(
+    surface: &crate::shell::ConversationSurfaceState,
+    rendered_frame: &TranscriptViewportFrame,
+) -> Vec<TranscriptResidencyMeasuredTurnHeight> {
+    let mut heights = BTreeMap::new();
+    for segment in rendered_frame.segments() {
+        if !matches!(
+            segment.key.kind,
+            TranscriptFrameSegmentKind::OrdinaryRow
+                | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. }
+        ) {
+            continue;
+        }
+        let Some(measured_height) = segment.measured_height else {
+            continue;
+        };
+        let Some(row) = surface
+            .transcript_presentation()
+            .turn_at(segment.key.turn.turn_index)
+        else {
+            continue;
+        };
+        heights.insert(
+            row.source_turn_index,
+            transcript_residency_units_for_pixels(measured_height),
+        );
+    }
+    heights
+        .into_iter()
+        .map(
+            |(source_position, measured_height)| TranscriptResidencyMeasuredTurnHeight {
+                source_position,
+                measured_height,
+            },
+        )
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn transcript_frame_streamed_turn_fills(
+    surface: &crate::shell::ConversationSurfaceState,
+    presentation_visible_range: Range<usize>,
+    row_measurement_keys: &HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+    transcript_viewport: &TranscriptViewportState,
+    scroll_position: ListScrollPosition,
+    viewport_height: Pixels,
+) -> Vec<TranscriptResidencyStreamedTurnFill> {
+    let turn_count = surface.transcript_presentation().len();
+    let mut fills = BTreeMap::new();
+    for index in presentation_visible_range {
+        let Some(row) = surface.transcript_presentation().turn_at(index) else {
+            continue;
+        };
+        let Some(fact) = streamed_residency_fill_fact_for_row(
+            row.index,
+            row.source_turn_index,
+            row.identity.as_str(),
+            row.model.as_ref(),
+            row_measurement_keys,
+            chunk_measurements,
+            transcript_viewport,
+            turn_count,
+            scroll_position,
+            viewport_height,
+        ) else {
+            continue;
+        };
+        fills.insert(row.source_turn_index, fact);
+    }
+    fills.into_values().collect()
+}
+
+fn transcript_residency_units_for_pixels(pixels: Pixels) -> usize {
+    f32::from(pixels).ceil().max(1.0) as usize
+}
+
 #[allow(clippy::too_many_arguments)]
 fn streamed_residency_fill_fact_for_row(
     row_index: usize,
@@ -4427,6 +5367,17 @@ fn transcript_streamed_navigation_snapshot(
     chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
 ) -> Option<TranscriptStreamedNavigationSnapshot> {
     let turn_count = surface.transcript_presentation().len();
+    let rendered_frame = transcript_viewport_frame_snapshot(
+        surface,
+        transcript_frame_presentation_range(transcript_list_state, turn_count),
+        visible_range.clone(),
+        viewport_height,
+        transcript_viewport,
+        scroll_position,
+        transcript_list_state,
+        row_measurement_keys,
+        chunk_measurements,
+    );
     let row_index = streamed_navigation_row_index(
         surface,
         visible_range,
@@ -4484,7 +5435,9 @@ fn transcript_streamed_navigation_snapshot(
         transcript_list_state,
         local_scroll_max,
     );
-    let frame = TranscriptStreamedNavigationFrame::new(
+    Some(build_rendered_transcript_streamed_navigation_snapshot(
+        row.index,
+        row.identity.as_str(),
         chunks.len(),
         render_window.range,
         first_rendered_chunk,
@@ -4493,28 +5446,165 @@ fn transcript_streamed_navigation_snapshot(
         next_chunk,
         local_scroll_offset,
         local_scroll_max,
+        rendered_frame,
+    ))
+}
+
+fn transcript_viewport_frame_snapshot(
+    surface: &crate::shell::ConversationSurfaceState,
+    frame_range: Range<usize>,
+    visible_range: Range<usize>,
+    viewport_height: Pixels,
+    transcript_viewport: &TranscriptViewportState,
+    scroll_position: ListScrollPosition,
+    transcript_list_state: &ListState,
+    row_measurement_keys: &HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+) -> TranscriptViewportFrame {
+    let turn_count = surface.transcript_presentation().len();
+    let mut segments = Vec::new();
+    let mut visible_start = None;
+    let mut visible_end = None;
+
+    for row_index in frame_range {
+        let Some(row) = surface.transcript_presentation().turn_at(row_index) else {
+            continue;
+        };
+        let row_segment_start = segments.len();
+        push_transcript_viewport_frame_segments_for_row(
+            &row,
+            turn_count,
+            viewport_height,
+            transcript_viewport,
+            scroll_position,
+            transcript_list_state,
+            row_measurement_keys,
+            chunk_measurements,
+            &mut segments,
+        );
+        let row_segment_end = segments.len();
+        if visible_range.contains(&row_index) && row_segment_end > row_segment_start {
+            visible_start.get_or_insert(row_segment_start);
+            visible_end = Some(row_segment_end);
+        }
+    }
+
+    let visible_segment_range = match (visible_start, visible_end) {
+        (Some(start), Some(end)) => start..end,
+        _ => 0..0,
+    };
+    let frame = TranscriptViewportFrame::new(segments, visible_segment_range, px(0.0), px(0.0));
+    let (local_scroll_offset, local_scroll_max) = transcript_frame_local_scroll_range(
+        &frame,
+        transcript_viewport,
+        transcript_list_state,
+        viewport_height,
     );
-    let turn = TranscriptViewportTurnAnchor::new(
+    frame.with_local_scroll_range(local_scroll_offset, local_scroll_max)
+}
+
+fn push_transcript_viewport_frame_segments_for_row(
+    row: &TranscriptPresentedRow,
+    turn_count: usize,
+    viewport_height: Pixels,
+    transcript_viewport: &TranscriptViewportState,
+    scroll_position: ListScrollPosition,
+    transcript_list_state: &ListState,
+    row_measurement_keys: &HashMap<String, TranscriptRowMeasurementKey>,
+    chunk_measurements: &HashMap<TranscriptRowChunkMeasurementKey, Pixels>,
+    segments: &mut Vec<TranscriptFrameSegment>,
+) {
+    let turn = transcript_viewport_turn_anchor_for_row(row);
+    let chunks = row.model.chunk_presentation().chunks();
+    if row.model.chunk_presentation().requires_chunking() && !chunks.is_empty() {
+        let measured_heights = row_measurement_keys
+            .get(row.identity.as_str())
+            .map_or_else(Vec::new, |row_key| {
+                measured_chunk_heights_for(chunks, row_key, chunk_measurements)
+            });
+        let measured_heights = if measured_heights.len() == chunks.len() {
+            measured_heights
+        } else {
+            vec![None; chunks.len()]
+        };
+        let Some(anchor) = streamed_render_anchor_for_row(
+            transcript_viewport,
+            row.index,
+            row.identity.as_str(),
+            chunks,
+            turn_count,
+            scroll_position,
+        ) else {
+            return;
+        };
+        let render_window = transcript_row_chunk_render_window(
+            chunks.len(),
+            measured_heights.as_slice(),
+            anchor,
+            viewport_height,
+        );
+        let admission = transcript_render_window_admission(
+            chunks,
+            render_window.range,
+            TranscriptRenderBudgetPolicy::default_frame(),
+        );
+        for chunk_admission in admission.chunks {
+            let Some(chunk) = chunks.get(chunk_admission.chunk_index) else {
+                continue;
+            };
+            let chunk_anchor = TranscriptViewportChunkAnchor::new(
+                chunk_admission.chunk_index,
+                chunk.identity.clone(),
+            );
+            let key = match chunk_admission.decision {
+                TranscriptRenderChunkAdmissionDecision::Render => {
+                    TranscriptFrameSegmentKey::streamed_chunk(turn.clone(), chunk_anchor)
+                }
+                TranscriptRenderChunkAdmissionDecision::Fallback(reason) => {
+                    TranscriptFrameSegmentKey::render_budget_fallback_chunk(
+                        turn.clone(),
+                        chunk_anchor,
+                        reason.diagnostic_label(),
+                    )
+                }
+            };
+            segments.push(
+                TranscriptFrameSegment::new(
+                    key,
+                    measured_heights
+                        .get(chunk_admission.chunk_index)
+                        .and_then(|height| *height),
+                )
+                .with_streamed_chunk_count(chunks.len()),
+            );
+        }
+        return;
+    }
+
+    let key = row.turn.terminal_fallback().map_or_else(
+        || TranscriptFrameSegmentKey::ordinary_row(turn.clone()),
+        |fallback| {
+            TranscriptFrameSegmentKey::resident_budget_fallback_row(
+                turn.clone(),
+                fallback.diagnostic_label(),
+            )
+        },
+    );
+    let measured_height = transcript_list_state
+        .measured_item_size(row.index)
+        .map(|size| size.height);
+    segments.push(TranscriptFrameSegment::new(key, measured_height));
+}
+
+fn transcript_viewport_turn_anchor_for_row(
+    row: &TranscriptPresentedRow,
+) -> TranscriptViewportTurnAnchor {
+    TranscriptViewportTurnAnchor::new(
         row.index,
         Some(row.identity.as_str().to_string()),
         row.turn.thread_id.clone(),
         row.turn.turn_id.clone(),
-    );
-    let anchor_chunk = chunks.get(anchor.chunk_index).map(|chunk| {
-        TranscriptViewportChunkAnchor::new(anchor.chunk_index, chunk.identity.clone())
-    })?;
-    let target = TranscriptViewportTurnTarget::streamed(
-        turn,
-        anchor_chunk,
-        chunks.len(),
-        transcript_viewport_placement_from_row_anchor(anchor.placement),
-    );
-    Some(TranscriptStreamedNavigationSnapshot {
-        row_index: row.index,
-        row_identity: row.identity.as_str().to_string(),
-        target,
-        frame,
-    })
+    )
 }
 
 fn streamed_navigation_row_index(
@@ -4532,6 +5622,9 @@ fn streamed_navigation_row_index(
             && visible_range.contains(&index)
         {
             return Some(index);
+        }
+        if anchor.turn.row_identity.is_some() {
+            return None;
         }
         if visible_range.contains(&anchor.turn.turn_index) {
             return Some(anchor.turn.turn_index);
@@ -4596,15 +5689,6 @@ fn streamed_navigation_local_scroll_offset(
     }
 }
 
-fn transcript_viewport_placement_from_row_anchor(
-    placement: TranscriptRowStreamedAnchorPlacement,
-) -> TranscriptViewportPlacement {
-    match placement {
-        TranscriptRowStreamedAnchorPlacement::Top => TranscriptViewportPlacement::Top,
-        TranscriptRowStreamedAnchorPlacement::Bottom => TranscriptViewportPlacement::Bottom,
-    }
-}
-
 fn streamed_render_anchor_for_row(
     transcript_viewport: &TranscriptViewportState,
     row_index: usize,
@@ -4618,8 +5702,7 @@ fn streamed_render_anchor_for_row(
     }
 
     if let TranscriptViewportMode::Streamed(anchor) = transcript_viewport.mode()
-        && (anchor.turn.row_identity.as_deref() == Some(row_identity)
-            || anchor.turn.turn_index == row_index)
+        && transcript_frame_row_turn_matches(row_index, Some(row_identity), &anchor.turn)
     {
         let chunk_index = chunks
             .get(anchor.anchor_chunk.chunk_index)
@@ -4693,16 +5776,35 @@ fn render_turn(
     activity_caret_opacity: f32,
     viewport_height: Pixels,
     streamed_render_anchor: Option<TranscriptRowStreamedRenderAnchor>,
+    streamed_chunk_range: Option<Range<usize>>,
+    streamed_forced_fallbacks: Vec<(usize, TranscriptRenderBudgetFallbackReason)>,
     row_measurement_key: Option<TranscriptRowMeasurementKey>,
     measured_chunk_heights: Option<Vec<Option<Pixels>>>,
     profiler: Option<Rc<TranscriptFrameProfile>>,
     cx: &mut gpui::App,
 ) -> AnyElement {
+    let turn_anchor = TranscriptViewportTurnAnchor::new(
+        index,
+        Some(row_identity.clone()),
+        turn.thread_id.clone(),
+        turn.turn_id.clone(),
+    );
     let chunk_render_state = row_measurement_key
         .zip(measured_chunk_heights)
         .zip(streamed_render_anchor)
         .map(|((row_key, measured_heights), anchor)| {
-            TranscriptRowChunkRenderState::new(row_key, measured_heights, anchor, entity.clone())
+            let mut state = TranscriptRowChunkRenderState::new(
+                row_key,
+                measured_heights,
+                anchor,
+                entity.clone(),
+                turn_anchor.clone(),
+            )
+            .with_forced_fallbacks(streamed_forced_fallbacks);
+            if let Some(range) = streamed_chunk_range {
+                state = state.with_explicit_chunk_range(range);
+            }
+            state
         });
     let row = div()
         .w_full()
@@ -4774,6 +5876,14 @@ fn render_turn(
 
 fn transcript_code_panel_button_font_weight(theme: &TranscriptTheme) -> FontWeight {
     theme.code_panel_body_text.font_weight()
+}
+
+fn transcript_segment_measurement_revision_for<T: Hash>(
+    key: &T,
+) -> TranscriptSegmentMeasurementRevision {
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    TranscriptSegmentMeasurementRevision::new(hasher.finish())
 }
 
 fn code_panel_owner_id_belongs_to_rows(owner_id: &str, row_identities: &HashSet<String>) -> bool {
@@ -4894,6 +6004,9 @@ struct TranscriptFrameProfile {
     total_item_count: Option<usize>,
     total_text_chars: Option<usize>,
     semantic_viewport: TranscriptSemanticViewportDiagnostic,
+    rendered_frame: RefCell<TranscriptRenderedFrameDiagnostic>,
+    clamp_reasons: RefCell<Vec<String>>,
+    residency_requests: RefCell<TranscriptResidencyRequestDiagnostic>,
     selected_thread_id: Option<String>,
     presentation_range: Range<usize>,
     visible_range: Range<usize>,
@@ -4907,6 +6020,7 @@ struct TranscriptFrameProfile {
     active_turn_source_retained_bytes: usize,
     active_turn_source_budget_max_bytes: usize,
     active_turn_source_budget_fallback_active: bool,
+    segment_measurement_commit: TranscriptSegmentMeasurementCommitDiagnostic,
     style_snapshot_micros: u64,
     composer_measurement_micros: u64,
     snapshot_micros: u64,
@@ -4953,6 +6067,7 @@ impl TranscriptFrameProfile {
         active_turn_source_retained_bytes: usize,
         active_turn_source_budget_max_bytes: usize,
         active_turn_source_budget_fallback_active: bool,
+        segment_measurement_commit: TranscriptSegmentMeasurementCommitDiagnostic,
         total_turns: usize,
         style_snapshot_micros: u64,
         composer_measurement_micros: u64,
@@ -4974,6 +6089,9 @@ impl TranscriptFrameProfile {
             total_item_count,
             total_text_chars,
             semantic_viewport,
+            rendered_frame: RefCell::new(TranscriptRenderedFrameDiagnostic::default()),
+            clamp_reasons: RefCell::new(Vec::new()),
+            residency_requests: RefCell::new(TranscriptResidencyRequestDiagnostic::default()),
             selected_thread_id,
             presentation_range,
             visible_range,
@@ -4987,6 +6105,7 @@ impl TranscriptFrameProfile {
             active_turn_source_retained_bytes,
             active_turn_source_budget_max_bytes,
             active_turn_source_budget_fallback_active,
+            segment_measurement_commit,
             style_snapshot_micros,
             composer_measurement_micros,
             snapshot_micros,
@@ -5141,6 +6260,17 @@ impl TranscriptFrameProfile {
             .set(self.total_media_preload.get().saturating_add(elapsed));
     }
 
+    fn observe_frame_diagnostics(
+        &self,
+        rendered_frame: TranscriptRenderedFrameDiagnostic,
+        clamp_reasons: Vec<String>,
+        residency_requests: TranscriptResidencyRequestDiagnostic,
+    ) {
+        *self.rendered_frame.borrow_mut() = rendered_frame;
+        *self.clamp_reasons.borrow_mut() = clamp_reasons;
+        *self.residency_requests.borrow_mut() = residency_requests;
+    }
+
     fn should_log_slow(&self) -> bool {
         let frame_elapsed = self.started_at.elapsed();
         frame_elapsed >= SLOW_TRANSCRIPT_FRAME_THRESHOLD
@@ -5154,6 +6284,7 @@ impl TranscriptFrameProfile {
             sequence: 0,
             selected_thread_id: self.selected_thread_id.clone(),
             semantic_viewport: self.semantic_viewport.clone(),
+            rendered_frame: self.rendered_frame.borrow().clone(),
             presentation_range: Some(range_diagnostic(&self.presentation_range)),
             visible_range: Some(range_diagnostic(&self.visible_range)),
             total_loaded_turn_count: self.total_turns,
@@ -5166,6 +6297,9 @@ impl TranscriptFrameProfile {
             residency_retained_bytes: self.residency_retained_bytes,
             residency_in_flight_requests: self.residency_in_flight_requests,
             residency_budget_reason: self.residency_budget_reason.clone(),
+            residency_requests: self.residency_requests.borrow().clone(),
+            clamp_reasons: self.clamp_reasons.borrow().clone(),
+            segment_measurement_commit: self.segment_measurement_commit.clone(),
             active_turn_source_pin_active: self.active_turn_source_pin_active,
             active_turn_source_retained_bytes: self.active_turn_source_retained_bytes,
             active_turn_source_budget_max_bytes: self.active_turn_source_budget_max_bytes,
@@ -5387,6 +6521,211 @@ fn semantic_viewport_diagnostic(
                 }),
         },
     }
+}
+
+fn rendered_frame_diagnostic(
+    frame: &TranscriptViewportFrame,
+    viewport: &TranscriptViewportState,
+) -> TranscriptRenderedFrameDiagnostic {
+    let total_segment_count = frame.segments().len();
+    let visible_segment_range = frame.visible_segment_range();
+    let visible_start = visible_segment_range.start.min(total_segment_count);
+    let visible_end = visible_segment_range.end.min(total_segment_count);
+    let visible_segment_count = visible_end.saturating_sub(visible_start);
+    let leading_overscan_segment_count = visible_start;
+    let trailing_overscan_segment_count = total_segment_count.saturating_sub(visible_end);
+    TranscriptRenderedFrameDiagnostic {
+        anchor: frame_anchor_diagnostic(frame, viewport),
+        total_segment_count,
+        visible_segment_count,
+        visible_segment_range: Some(PresentationRangeDiagnostic {
+            start: visible_start,
+            end: visible_end,
+        }),
+        overscan_segment_count: leading_overscan_segment_count
+            .saturating_add(trailing_overscan_segment_count),
+        leading_overscan_segment_count,
+        trailing_overscan_segment_count,
+        local_scroll_offset: pixels_diagnostic(frame.local_scroll_offset()),
+        local_scroll_max: pixels_diagnostic(frame.local_scroll_max()),
+    }
+}
+
+fn frame_anchor_diagnostic(
+    frame: &TranscriptViewportFrame,
+    viewport: &TranscriptViewportState,
+) -> Option<TranscriptFrameAnchorDiagnostic> {
+    let (segment, placement) = match viewport.mode() {
+        TranscriptViewportMode::Empty => (frame.first_visible_segment()?, None),
+        TranscriptViewportMode::Ordinary(anchor) => (
+            frame
+                .segments()
+                .iter()
+                .find(|segment| frame_segment_matches_ordinary_anchor(segment, anchor))
+                .or_else(|| frame.first_visible_segment())?,
+            Some(anchor.placement),
+        ),
+        TranscriptViewportMode::Streamed(anchor) => (
+            frame
+                .segments()
+                .iter()
+                .find(|segment| frame_segment_matches_streamed_anchor(segment, anchor))
+                .or_else(|| frame.first_visible_segment())?,
+            Some(anchor.placement),
+        ),
+    };
+    Some(segment_anchor_diagnostic(segment, placement))
+}
+
+fn frame_segment_matches_ordinary_anchor(
+    segment: &TranscriptFrameSegment,
+    anchor: &super::super::transcript_viewport::TranscriptOrdinaryViewportAnchor,
+) -> bool {
+    matches!(
+        segment.key.kind,
+        TranscriptFrameSegmentKind::OrdinaryRow
+            | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. }
+    ) && transcript_frame_row_turn_matches(
+        segment.key.turn.turn_index,
+        segment.key.turn.row_identity.as_deref(),
+        &anchor.turn,
+    )
+}
+
+fn frame_segment_matches_streamed_anchor(
+    segment: &TranscriptFrameSegment,
+    anchor: &super::super::transcript_viewport::TranscriptStreamedViewportAnchor,
+) -> bool {
+    let chunk = match &segment.key.kind {
+        TranscriptFrameSegmentKind::StreamedChunk { chunk }
+        | TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, .. } => chunk,
+        TranscriptFrameSegmentKind::OrdinaryRow
+        | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. } => return false,
+    };
+    transcript_frame_row_turn_matches(
+        segment.key.turn.turn_index,
+        segment.key.turn.row_identity.as_deref(),
+        &anchor.turn,
+    ) && (chunk.chunk_identity == anchor.anchor_chunk.chunk_identity
+        || chunk.chunk_index == anchor.anchor_chunk.chunk_index)
+}
+
+fn segment_anchor_diagnostic(
+    segment: &TranscriptFrameSegment,
+    placement: Option<TranscriptViewportPlacement>,
+) -> TranscriptFrameAnchorDiagnostic {
+    let (chunk_index, chunk_identity, fallback_reason) = match &segment.key.kind {
+        TranscriptFrameSegmentKind::OrdinaryRow => (None, None, None),
+        TranscriptFrameSegmentKind::StreamedChunk { chunk } => (
+            Some(chunk.chunk_index),
+            Some(chunk.chunk_identity.clone()),
+            None,
+        ),
+        TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, reason } => (
+            Some(chunk.chunk_index),
+            Some(chunk.chunk_identity.clone()),
+            Some(reason.clone()),
+        ),
+        TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { reason } => {
+            (None, None, Some(reason.clone()))
+        }
+    };
+    TranscriptFrameAnchorDiagnostic {
+        segment_kind: transcript_frame_segment_kind_label(&segment.key.kind).to_string(),
+        row_index: segment.key.turn.turn_index,
+        row_identity: segment.key.turn.row_identity.clone(),
+        chunk_index,
+        chunk_identity,
+        fallback_reason,
+        placement: placement
+            .map(transcript_viewport_placement_label)
+            .map(str::to_string),
+    }
+}
+
+fn transcript_frame_segment_kind_label(kind: &TranscriptFrameSegmentKind) -> &'static str {
+    match kind {
+        TranscriptFrameSegmentKind::OrdinaryRow => "ordinary_row",
+        TranscriptFrameSegmentKind::StreamedChunk { .. } => "streamed_chunk",
+        TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { .. } => {
+            "render_budget_fallback_chunk"
+        }
+        TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. } => {
+            "resident_budget_fallback_row"
+        }
+    }
+}
+
+fn transcript_residency_boundary_for_rendered_frame(
+    surface: &crate::shell::ConversationSurfaceState,
+    frame: &TranscriptViewportFrame,
+) -> Option<TranscriptHistoryBoundaryState> {
+    let visible_segment_range = frame.visible_segment_range();
+    let presentation_visible_range =
+        transcript_viewport_frame_presentation_range(frame, &visible_segment_range);
+    if presentation_visible_range.is_empty() {
+        return None;
+    }
+    let source_visible_range = surface
+        .transcript_presentation()
+        .source_range_for_presentation_range(&presentation_visible_range);
+    Some(surface.transcript_residency_boundary_for_source_range(&source_visible_range))
+}
+
+fn transcript_frame_clamp_reasons(
+    frame: &TranscriptViewportFrame,
+    resident_boundary: Option<TranscriptHistoryBoundaryState>,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    let total_segment_count = frame.segments().len();
+    let visible_segment_range = frame.visible_segment_range();
+    if total_segment_count > 0
+        && visible_segment_range.start == 0
+        && frame.local_scroll_offset() <= px(0.0)
+    {
+        reasons.push("frame_start".to_string());
+    }
+    if total_segment_count > 0
+        && visible_segment_range.end >= total_segment_count
+        && frame.local_scroll_offset() >= frame.local_scroll_max()
+    {
+        reasons.push("frame_end".to_string());
+    }
+    if let Some(boundary) = resident_boundary {
+        if boundary.can_request_older {
+            reasons.push("resident_start_requestable".to_string());
+        }
+        if boundary.released_page_near {
+            reasons.push("resident_released_page_near".to_string());
+        }
+        if boundary.loading_page {
+            reasons.push("resident_page_loading".to_string());
+        }
+    }
+    reasons
+}
+
+fn transcript_residency_request_diagnostic(
+    pending_page_requests: usize,
+    in_flight_page_requests: usize,
+    last_requested_turns: usize,
+    last_missing_transport_ranges: usize,
+    resident_boundary: Option<TranscriptHistoryBoundaryState>,
+) -> TranscriptResidencyRequestDiagnostic {
+    let resident_boundary = resident_boundary.unwrap_or_default();
+    TranscriptResidencyRequestDiagnostic {
+        pending_page_requests,
+        in_flight_page_requests,
+        last_requested_turns,
+        last_missing_transport_ranges,
+        boundary_can_request_older: resident_boundary.can_request_older,
+        boundary_released_page_near: resident_boundary.released_page_near,
+        boundary_loading_page: resident_boundary.loading_page,
+    }
+}
+
+fn pixels_diagnostic(pixels: Pixels) -> f64 {
+    f32::from(pixels) as f64
 }
 
 fn transcript_live_autoscroll_label(mode: TranscriptViewportLiveAutoscroll) -> &'static str {

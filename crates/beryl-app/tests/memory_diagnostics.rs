@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 

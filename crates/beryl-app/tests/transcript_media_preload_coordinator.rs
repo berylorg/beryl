@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/shell/render/transcript/media_preload/coordinator_state.rs"]
 mod coordinator_state;
 

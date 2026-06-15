@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/branch_bootstrap_core.rs"]
 mod branch_bootstrap_core;
 #[path = "../src/shell/transcript_markdown.rs"]

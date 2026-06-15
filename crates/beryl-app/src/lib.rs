@@ -48,6 +48,8 @@
 //! run_app(bootstrap);
 //! ```
 
+#![cfg_attr(test, allow(dead_code, unused_imports))]
+
 mod appearance;
 mod backend_failure;
 mod beryl_home_dir;

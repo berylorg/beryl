@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 pub use beryl_app::{
     ActiveThemeProjection, AppearanceSettings, BerylThemeProperty, BerylThemeRole,
     InstalledThemeId, StylePropertyValue, ThemeDefinition, ThemeDocument, ThemeDocumentError,

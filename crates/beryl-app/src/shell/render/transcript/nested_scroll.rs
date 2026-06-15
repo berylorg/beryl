@@ -6,6 +6,7 @@ pub(super) struct TranscriptNestedScrollOwnership {
 }
 
 impl TranscriptNestedScrollOwnership {
+    #[cfg(test)]
     pub(super) fn selected_panel_id(&self) -> Option<&str> {
         self.selected_panel_identity
             .as_ref()

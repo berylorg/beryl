@@ -102,6 +102,7 @@ impl TranscriptMediaAdmissionWindow {
         Self::from_turn_records(details.turns(), source_start)
     }
 
+    #[allow(private_interfaces)]
     pub(crate) fn from_turn_records(
         turns: &[std::sync::Arc<super::execution_detail::TurnExecutionRecord>],
         source_start: usize,

@@ -26,6 +26,7 @@ pub(crate) const SWITCH_WORKSPACE_COMMAND: &str = "switch_workspace";
 pub(crate) const SWITCH_THREAD_COMMAND: &str = "switch_thread";
 pub(crate) const SCROLL_TRANSCRIPT_COMMAND: &str = "scroll_transcript";
 pub(crate) const CLOSE_POPUPS_COMMAND: &str = "close_popups";
+pub(crate) const SEED_SCROLL_SMOKE_TRANSCRIPT_COMMAND: &str = "seed_scroll_smoke_transcript";
 
 pub(crate) const DIAGNOSTIC_CHILD_PROTOCOL_NAME: &str = "beryl_diagnostic_child";
 pub(crate) const DIAGNOSTIC_CHILD_PROTOCOL_VERSION: u64 = 1;
@@ -61,6 +62,7 @@ pub(crate) enum DiagnosticChildCommand {
     SwitchThread,
     ScrollTranscript,
     ClosePopups,
+    SeedScrollSmokeTranscript,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -149,6 +151,7 @@ impl DiagnosticChildCommand {
             Self::SwitchThread => SWITCH_THREAD_COMMAND,
             Self::ScrollTranscript => SCROLL_TRANSCRIPT_COMMAND,
             Self::ClosePopups => CLOSE_POPUPS_COMMAND,
+            Self::SeedScrollSmokeTranscript => SEED_SCROLL_SMOKE_TRANSCRIPT_COMMAND,
         }
     }
 }
@@ -178,6 +181,7 @@ impl TryFrom<&str> for DiagnosticChildCommand {
             SWITCH_THREAD_COMMAND => Ok(Self::SwitchThread),
             SCROLL_TRANSCRIPT_COMMAND => Ok(Self::ScrollTranscript),
             CLOSE_POPUPS_COMMAND => Ok(Self::ClosePopups),
+            SEED_SCROLL_SMOKE_TRANSCRIPT_COMMAND => Ok(Self::SeedScrollSmokeTranscript),
             command => Err(DiagnosticProtocolError::UnsupportedCommand {
                 command: command.to_string(),
             }),

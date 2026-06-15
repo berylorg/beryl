@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use std::{collections::HashMap, fs, sync::Arc, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};

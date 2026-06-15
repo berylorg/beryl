@@ -1,4 +1,4 @@
-use gpui::{AnyElement, ElementId, Pixels, ScrollHandle};
+use gpui::{AnyElement, ElementId, ScrollHandle};
 use gpui_scrollbar::{ScrollbarStyle, render_scroll_handle_scrollbar};
 
 use crate::shell::ShellRenderStyleSnapshot;
@@ -50,21 +50,4 @@ pub(super) fn render_div_scrollbar_with_owner_update(
         on_owner_update,
     );
     gpui_scrollbar::render_scrollbar(id, axis, beryl_scrollbar_style(), visibility, interaction)
-}
-
-pub(super) fn render_interactive_vertical_scrollbar(
-    id: impl Into<ElementId>,
-    _viewport_length: Pixels,
-    _overflow_length: Pixels,
-    _scroll_offset: Pixels,
-    visibility: ScrollbarVisibilityPolicy,
-    interaction: ScrollbarInteraction,
-) -> Option<AnyElement> {
-    gpui_scrollbar::render_scrollbar(
-        id,
-        ScrollbarAxis::Vertical,
-        beryl_scrollbar_style(),
-        visibility,
-        interaction,
-    )
 }

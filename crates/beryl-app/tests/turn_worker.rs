@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "support/tempdir.rs"]
 mod tempdir_support;
 

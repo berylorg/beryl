@@ -130,6 +130,7 @@ impl TranscriptEditTarget {
         }
     }
 
+    #[allow(private_interfaces)]
     pub(crate) fn from_presented_row(
         row: &TranscriptPresentedRow,
         turns: &[Arc<TurnExecutionRecord>],
@@ -141,6 +142,7 @@ impl TranscriptEditTarget {
         }
     }
 
+    #[allow(private_interfaces)]
     pub(crate) fn resolve_from_presented_row(
         row: &TranscriptPresentedRow,
         turns: &[Arc<TurnExecutionRecord>],

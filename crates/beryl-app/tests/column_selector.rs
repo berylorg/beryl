@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/shell/column_selector.rs"]
 mod column_selector;
 

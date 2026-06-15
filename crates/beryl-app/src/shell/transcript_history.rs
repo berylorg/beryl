@@ -105,6 +105,7 @@ pub(crate) enum TranscriptHistoryPageRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) struct TranscriptHistoryPageRelease {
     pub page_id: TranscriptHistoryPageId,
     pub range: Range<usize>,
@@ -239,6 +240,7 @@ impl TranscriptHistoryWindow {
             && self.loading_page.is_none()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn reset_residency_for_thread(&mut self, thread_id: impl Into<String>) {
         self.residency.reset_for_thread(thread_id);
     }
@@ -251,6 +253,7 @@ impl TranscriptHistoryWindow {
         self.residency.clear();
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_residency_policy(&mut self, policy: TranscriptResidencyPolicy) {
         self.residency.set_policy(policy);
     }
@@ -278,14 +281,17 @@ impl TranscriptHistoryWindow {
         self.residency.replace_pins(kind, turn_ids);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn pin_resident_turn(&mut self, turn_id: &str, kind: TranscriptResidencyPinKind) {
         self.residency.pin_turn(turn_id, kind);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn unpin_resident_turn(&mut self, turn_id: &str, kind: TranscriptResidencyPinKind) {
         self.residency.unpin_turn(turn_id, kind);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn release_unretained_resident_turns(
         &mut self,
         retention: &TranscriptResidencyRetention,
@@ -293,6 +299,7 @@ impl TranscriptHistoryWindow {
         self.residency.release_unretained_resident_turns(retention)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn release_resident_turns_by_id<I, S>(
         &mut self,
         turn_ids: I,
@@ -330,6 +337,7 @@ impl TranscriptHistoryWindow {
         self.residency.update_estimated_derived_bytes(estimates)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn retention_range_for_visible_range(
         &self,
         visible_range: Range<usize>,
@@ -352,6 +360,7 @@ impl TranscriptHistoryWindow {
         Some(cursor)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn begin_loading_page_for_visible_range(
         &mut self,
         visible_range: &Range<usize>,
@@ -562,6 +571,7 @@ impl TranscriptHistoryWindow {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn resident_turn_ids(&self) -> Vec<String> {
         self.residency.resident_turn_ids()
     }
@@ -570,6 +580,7 @@ impl TranscriptHistoryWindow {
         self.residency.pinned_turn_ids()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn indexed_turns(&self) -> Vec<TranscriptResidencyIndexedTurn> {
         self.residency.indexed_turns()
     }
@@ -597,6 +608,7 @@ impl TranscriptHistoryWindow {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn residency_target_plan<I>(
         &self,
         source_visible_range: Range<usize>,
@@ -616,6 +628,7 @@ impl TranscriptHistoryWindow {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn residency_target_plan_with_streamed_fill<I, J>(
         &self,
         source_visible_range: Range<usize>,
@@ -675,6 +688,7 @@ impl TranscriptHistoryWindow {
         plan
     }
 
+    #[allow(dead_code)]
     pub(crate) fn residency_target_plan_for_source_window<I>(
         &self,
         source_visible_range: Range<usize>,
@@ -920,6 +934,7 @@ impl TranscriptHistoryWindow {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn release_cold_pages(
         &mut self,
         visible_range: &Range<usize>,
@@ -930,6 +945,7 @@ impl TranscriptHistoryWindow {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn release_cold_pages_with_limit(
         &mut self,
         visible_range: &Range<usize>,
@@ -1079,6 +1095,7 @@ impl TranscriptHistoryWindow {
         id
     }
 
+    #[allow(dead_code)]
     fn prune_released_page_metadata(&mut self, visible_range: &Range<usize>) {
         let loading_page_id = match self.loading_page {
             Some(LoadingTranscriptHistoryPage::Released { page_id }) => Some(page_id),
@@ -1102,6 +1119,7 @@ impl TranscriptHistoryWindow {
         }
     }
 
+    #[allow(dead_code)]
     fn resident_page_turn_retention(&self) -> TranscriptResidencyRetention {
         let mut retention = TranscriptResidencyRetention::new();
         for page in &self.pages {
@@ -1131,6 +1149,7 @@ pub(crate) fn older_thread_history_page_options(
     initial_thread_history_page_options().with_cursor(cursor)
 }
 
+#[allow(dead_code)]
 pub(crate) fn thread_history_page_options(cursor: Option<&str>) -> ThreadTurnsListOptions {
     match cursor {
         Some(cursor) => initial_thread_history_page_options().with_cursor(cursor),
@@ -1189,6 +1208,7 @@ pub(crate) fn loaded_full_page_from_desc_response(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn initial_thread_activation_resident_turn_ids(
     page: &LoadedTranscriptHistoryPage,
 ) -> Vec<String> {
@@ -1215,6 +1235,7 @@ pub(crate) fn initial_thread_activation_turn_admission_plan(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn resident_turn_ids_for_page_window<I, S>(
     page: &LoadedTranscriptHistoryPage,
     visible_range: Range<usize>,
@@ -1280,6 +1301,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn sanitize_loaded_page_for_resident_turn_ids<I, S>(
     page: &LoadedTranscriptHistoryPage,
     resident_turn_ids: I,

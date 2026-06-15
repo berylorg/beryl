@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
@@ -46,7 +48,7 @@ fn gui_control_parser_clamps_scroll_repeat_to_schema_max() {
     let request = tool_request(
         SCROLL_TRANSCRIPT_TOOL,
         json!({
-            "command": "page_down",
+            "command": "bottom",
             "repeat": 99
         }),
     );
@@ -57,8 +59,45 @@ fn gui_control_parser_clamps_scroll_repeat_to_schema_max() {
         parsed,
         GuiControlToolRequest::ScrollTranscript(
             gui_control_dynamic_tools::ScrollTranscriptArguments {
-                command: ScrollTranscriptCommand::PageDown,
+                command: ScrollTranscriptCommand::Bottom,
                 repeat: 8,
+                delta_y: None,
+                precise: false,
+            }
+        )
+    );
+}
+
+#[test]
+fn gui_control_parser_requires_bounded_delta_for_wheel_scroll() {
+    let missing = parse_beryl_gui_control_dynamic_tool_request(&tool_request(
+        SCROLL_TRANSCRIPT_TOOL,
+        json!({ "command": "wheel" }),
+    ))
+    .unwrap_err();
+    assert_eq!(missing.kind(), "invalid_arguments");
+
+    let too_large = parse_beryl_gui_control_dynamic_tool_request(&tool_request(
+        SCROLL_TRANSCRIPT_TOOL,
+        json!({ "command": "wheel", "deltaY": 9999.0 }),
+    ))
+    .unwrap_err();
+    assert_eq!(too_large.kind(), "invalid_arguments");
+
+    let valid = parse_beryl_gui_control_dynamic_tool_request(&tool_request(
+        SCROLL_TRANSCRIPT_TOOL,
+        json!({ "command": "wheel", "deltaY": -42.5, "precise": true, "repeat": 3 }),
+    ))
+    .unwrap();
+
+    assert_eq!(
+        valid,
+        GuiControlToolRequest::ScrollTranscript(
+            gui_control_dynamic_tools::ScrollTranscriptArguments {
+                command: ScrollTranscriptCommand::Wheel,
+                repeat: 3,
+                delta_y: Some(-42.5),
+                precise: true,
             }
         )
     );

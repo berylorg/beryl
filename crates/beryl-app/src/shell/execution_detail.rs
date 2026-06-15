@@ -763,6 +763,7 @@ impl ExecutionDetailState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn release_history_range(&mut self, range: Range<usize>) -> Vec<HistoryTurnReplacement> {
         let end = range.end.min(self.turns.len());
         let start = range.start.min(end);
@@ -789,6 +790,7 @@ impl ExecutionDetailState {
         replacements
     }
 
+    #[allow(dead_code)]
     pub fn release_history_turns_by_id<I, S>(&mut self, turn_ids: I) -> Vec<HistoryTurnReplacement>
     where
         I: IntoIterator<Item = S>,

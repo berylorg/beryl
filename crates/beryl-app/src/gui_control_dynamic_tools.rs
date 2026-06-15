@@ -17,6 +17,7 @@ pub(crate) const SETTINGS_WINDOW_POPUP_CLOSE_REASON: &str = "settings_window_pop
 pub(crate) const MAX_UI_VISIBLE_ROW_LIMIT: usize = 64;
 pub(crate) const DEFAULT_UI_VISIBLE_ROW_LIMIT: usize = 32;
 pub(crate) const MAX_SCROLL_REPEAT: usize = 8;
+pub(crate) const MAX_SCROLL_WHEEL_DELTA_PX: f32 = 640.0;
 const MAX_CONTROL_STRING_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Serialize)]
@@ -281,6 +282,8 @@ pub(crate) struct ScrollTranscriptResult {
     pub status: String,
     pub command: ScrollTranscriptCommand,
     pub repeat: usize,
+    pub delta_y: Option<f32>,
+    pub precise: bool,
     pub message: Option<String>,
     pub ui_state: UiStateSnapshot,
 }
@@ -303,10 +306,12 @@ pub(crate) struct SwitchWorkspaceArguments {
     pub workspace_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ScrollTranscriptArguments {
     pub command: ScrollTranscriptCommand,
     pub repeat: usize,
+    pub delta_y: Option<f32>,
+    pub precise: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -314,11 +319,10 @@ pub(crate) struct ScrollTranscriptArguments {
 pub(crate) enum ScrollTranscriptCommand {
     Top,
     Bottom,
-    PageUp,
-    PageDown,
+    Wheel,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum GuiControlToolRequest {
     ReadUiState { visible_row_limit: usize },
     SwitchWorkspace(SwitchWorkspaceArguments),
@@ -376,10 +380,13 @@ pub(crate) fn parse_gui_control_tool_request(
         }
         SCROLL_TRANSCRIPT_TOOL => {
             let arguments = parse_arguments::<ScrollTranscriptSchemaArguments>(arguments)?;
+            let delta_y = validate_scroll_transcript_delta(arguments.command, arguments.delta_y)?;
             Ok(GuiControlToolRequest::ScrollTranscript(
                 ScrollTranscriptArguments {
                     command: arguments.command,
                     repeat: arguments.repeat.unwrap_or(1).clamp(1, MAX_SCROLL_REPEAT),
+                    delta_y,
+                    precise: arguments.precise.unwrap_or(false),
                 },
             ))
         }
@@ -479,6 +486,8 @@ struct SwitchThreadSchemaArguments {
 struct ScrollTranscriptSchemaArguments {
     command: ScrollTranscriptCommand,
     repeat: Option<usize>,
+    delta_y: Option<f32>,
+    precise: Option<bool>,
 }
 
 impl LimitedReadArguments {
@@ -490,6 +499,38 @@ impl LimitedReadArguments {
         }
         Ok(())
     }
+}
+
+fn validate_scroll_transcript_delta(
+    command: ScrollTranscriptCommand,
+    delta_y: Option<f32>,
+) -> Result<Option<f32>, GuiControlToolError> {
+    if command != ScrollTranscriptCommand::Wheel {
+        return Ok(None);
+    }
+    let Some(delta_y) = delta_y else {
+        return Err(GuiControlToolError::InvalidArguments {
+            detail: "deltaY is required for wheel transcript scrolling".to_string(),
+        });
+    };
+    if !delta_y.is_finite() {
+        return Err(GuiControlToolError::InvalidArguments {
+            detail: "deltaY must be finite".to_string(),
+        });
+    }
+    if delta_y == 0.0 {
+        return Err(GuiControlToolError::InvalidArguments {
+            detail: "deltaY must not be zero".to_string(),
+        });
+    }
+    if delta_y.abs() > MAX_SCROLL_WHEEL_DELTA_PX {
+        return Err(GuiControlToolError::InvalidArguments {
+            detail: format!(
+                "deltaY must be between -{MAX_SCROLL_WHEEL_DELTA_PX} and {MAX_SCROLL_WHEEL_DELTA_PX}"
+            ),
+        });
+    }
+    Ok(Some(delta_y))
 }
 
 fn bounded_non_empty_argument(

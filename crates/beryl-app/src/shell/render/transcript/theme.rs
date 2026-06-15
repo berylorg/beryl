@@ -30,6 +30,7 @@ pub(crate) struct TranscriptTheme {
     pub(crate) unsupported_fallback: TranscriptRoleStyle,
     pub(crate) activity_caret: TranscriptRoleStyle,
     pub(crate) selection: TranscriptRoleStyle,
+    #[allow(dead_code)]
     pub(crate) pending: TranscriptRoleStyle,
     pub(crate) unavailable: TranscriptRoleStyle,
     pub(crate) quote_popup: TranscriptRoleStyle,

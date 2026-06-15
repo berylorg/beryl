@@ -4,6 +4,7 @@ use beryl_backend::{GenericThreadItem, ThreadItem, TurnInfo, TurnItemsView};
 
 const OVERSIZED_TURN_FALLBACK_ITEM_TYPE: &str = "beryl.oversizedTurnFallback";
 
+#[allow(dead_code)]
 pub(crate) fn oversized_turn_fallback_marker(mut turn: TurnInfo) -> TurnInfo {
     let marker_id = oversized_turn_fallback_item_id(turn.id.as_str());
     turn.items_view = TurnItemsView::Summary;
@@ -38,6 +39,7 @@ pub(crate) fn is_oversized_turn_fallback_item(item: &ThreadItem) -> bool {
     )
 }
 
+#[allow(dead_code)]
 fn oversized_turn_fallback_item_id(turn_id: &str) -> String {
     format!("beryl:oversized-turn-fallback:{turn_id}")
 }

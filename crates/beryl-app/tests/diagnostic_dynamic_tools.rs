@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
@@ -21,12 +23,15 @@ use diagnostic_dynamic_tools::{
     READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
     SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
     SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
-    ThemeRoleNavigatorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
-    TranscriptFrameMetricsSnapshot, TranscriptFrameRenderBudgetDiagnostic,
-    TranscriptSemanticViewportDiagnostic, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
-    VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
-    dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
-    renderer_snapshot_with_shell_window,
+    ThemeRoleNavigatorDiagnostic, TranscriptFrameAnchorDiagnostic, TranscriptFrameMetric,
+    TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot,
+    TranscriptFrameRenderBudgetDiagnostic, TranscriptRenderedFrameDiagnostic,
+    TranscriptResidencyRequestDiagnostic, TranscriptScrollInputAnchorDiagnostic,
+    TranscriptScrollInputDiagnostic, TranscriptScrollInputLog,
+    TranscriptSegmentMeasurementCommitDiagnostic, TranscriptSemanticViewportDiagnostic,
+    VisibleMediaDiagnostics, VisibleMediaItemDiagnostic, VisibleMediaSnapshot,
+    beryl_diagnostic_dynamic_tool_specs, dispatch_beryl_diagnostic_dynamic_tool_call,
+    is_beryl_diagnostic_dynamic_tool, renderer_snapshot_with_shell_window,
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
@@ -135,6 +140,27 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
                 chunk_count: Some(64),
                 fill_direction: Some("down".to_string()),
             },
+            rendered_frame: TranscriptRenderedFrameDiagnostic {
+                anchor: Some(TranscriptFrameAnchorDiagnostic {
+                    segment_kind: "render_budget_fallback_chunk".to_string(),
+                    row_index: 3,
+                    row_identity: Some(format!("frame-row-{index}-{}", "f".repeat(700))),
+                    chunk_index: Some(9),
+                    chunk_identity: Some(format!("frame-chunk-{index}-{}", "g".repeat(700))),
+                    fallback_reason: Some("frame_cost_exceeds_limit".repeat(40)),
+                    placement: Some("top".to_string()),
+                }),
+                total_segment_count: 9,
+                visible_segment_count: 3,
+                visible_segment_range: Some(
+                    diagnostic_dynamic_tools::PresentationRangeDiagnostic { start: 4, end: 7 },
+                ),
+                overscan_segment_count: 6,
+                leading_overscan_segment_count: 4,
+                trailing_overscan_segment_count: 2,
+                local_scroll_offset: 12.5,
+                local_scroll_max: 40.0,
+            },
             presentation_range: None,
             visible_range: None,
             total_loaded_turn_count: 12,
@@ -147,6 +173,30 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
             residency_retained_bytes: 2048,
             residency_in_flight_requests: 1,
             residency_budget_reason: Some("resident_byte_limit".to_string()),
+            residency_requests: TranscriptResidencyRequestDiagnostic {
+                pending_page_requests: 1,
+                in_flight_page_requests: 1,
+                last_requested_turns: 4,
+                last_missing_transport_ranges: 2,
+                boundary_can_request_older: true,
+                boundary_released_page_near: false,
+                boundary_loading_page: true,
+            },
+            clamp_reasons: vec![
+                "resident_start_requestable".repeat(40),
+                "resident_page_loading".to_string(),
+            ],
+            segment_measurement_commit: TranscriptSegmentMeasurementCommitDiagnostic {
+                sequence: 7,
+                staged_count: 5,
+                changed_count: 3,
+                unchanged_count: 2,
+                list_row_update_count: 1,
+                chunk_update_count: 2,
+                stale_target_count: 1,
+                anchor_correction_pixels: 8.0,
+                anchor_correction_applied: true,
+            },
             active_turn_source_pin_active: true,
             active_turn_source_retained_bytes: 512,
             active_turn_source_budget_max_bytes: 4096,
@@ -250,6 +300,32 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
         payload["result"]["frames"][0]["semanticViewport"]["renderedChunkRange"]["start"],
         8
     );
+    assert_eq!(
+        payload["result"]["frames"][0]["renderedFrame"]["anchor"]["segmentKind"],
+        "render_budget_fallback_chunk"
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["renderedFrame"]["visibleSegmentRange"]["start"],
+        4
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["renderedFrame"]["overscanSegmentCount"],
+        6
+    );
+    assert!(
+        payload["result"]["frames"][0]["renderedFrame"]["anchor"]["rowIdentity"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
+    );
+    assert!(
+        payload["result"]["frames"][0]["renderedFrame"]["anchor"]["fallbackReason"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
+    );
     assert!(
         payload["result"]["frames"][0]["semanticViewport"]["anchorRowIdentity"]
             .as_str()
@@ -259,6 +335,33 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
     );
     assert!(
         payload["result"]["frames"][0]["semanticViewport"]["anchorChunkIdentity"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["residencyRequests"]["pendingPageRequests"],
+        1
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["residencyRequests"]["lastRequestedTurns"],
+        4
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["residencyRequests"]["boundaryCanRequestOlder"],
+        true
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["segmentMeasurementCommit"]["changedCount"],
+        3
+    );
+    assert_eq!(
+        payload["result"]["frames"][0]["segmentMeasurementCommit"]["anchorCorrectionApplied"],
+        true
+    );
+    assert!(
+        payload["result"]["frames"][0]["clampReasons"][0]
             .as_str()
             .unwrap()
             .len()
@@ -314,6 +417,124 @@ fn transcript_frame_metrics_are_content_free_bounded_and_dispatchable() {
     );
     assert_eq!(payload["result"]["frameCount"], 2);
     assert_eq!(payload["result"]["truncated"], true);
+    assert!(
+        payload["result"]
+            .to_string()
+            .find("assistant text")
+            .is_none()
+    );
+}
+
+#[test]
+fn transcript_scroll_input_diagnostics_are_content_free_bounded_and_check_continuity() {
+    let mut log = TranscriptScrollInputLog::default();
+
+    for index in 0..140 {
+        log.record(TranscriptScrollInputDiagnostic {
+            sequence: 0,
+            input_kind: "wheel".to_string(),
+            direction: "down".to_string(),
+            consumed: true,
+            changed: true,
+            requested_delta: 20.0,
+            consumed_delta: 20.0,
+            residual_delta: 0.0,
+            before_anchor: Some(scroll_input_anchor(index, 40.0)),
+            after_anchor: Some(scroll_input_anchor(index, 60.0)),
+            before_visible_segment_range: Some(
+                diagnostic_dynamic_tools::PresentationRangeDiagnostic { start: 2, end: 4 },
+            ),
+            after_visible_segment_range: Some(
+                diagnostic_dynamic_tools::PresentationRangeDiagnostic { start: 2, end: 4 },
+            ),
+            before_rendered_frame_range: Some(
+                diagnostic_dynamic_tools::PresentationRangeDiagnostic { start: 0, end: 6 },
+            ),
+            after_rendered_frame_range: Some(
+                diagnostic_dynamic_tools::PresentationRangeDiagnostic { start: 0, end: 6 },
+            ),
+            clamp_or_expansion_reason: Some("frame_expansion".repeat(40)),
+        });
+    }
+
+    let scroll_inputs = log.snapshot();
+    assert_eq!(scroll_inputs.events.len(), 128);
+    assert_eq!(scroll_inputs.event_count, 128);
+    assert_eq!(scroll_inputs.events.first().unwrap().sequence, 13);
+    assert!(scroll_inputs.events.iter().all(|event| {
+        event
+            .before_anchor
+            .as_ref()
+            .unwrap()
+            .segment
+            .row_identity
+            .as_ref()
+            .unwrap()
+            .len()
+            <= 512
+    }));
+    assert!(
+        scroll_inputs
+            .events
+            .iter()
+            .all(|event| event.preserves_absolute_offset_continuity(0.01))
+    );
+    assert_eq!(scroll_inputs.continuity_violation_count, 0);
+    assert_eq!(scroll_inputs.largest_continuity_error_px, Some(0.0));
+
+    let mut teleport = scroll_inputs.events[8].clone();
+    teleport
+        .after_anchor
+        .as_mut()
+        .unwrap()
+        .absolute_rendered_offset = 400.0;
+    assert!(!teleport.preserves_absolute_offset_continuity(0.01));
+
+    let mut snapshot = TranscriptFrameMetricsSnapshot::default();
+    snapshot.scroll_inputs = scroll_inputs;
+    let response = dispatch_beryl_diagnostic_dynamic_tool_call(
+        &diagnostic_tool_request(
+            READ_TRANSCRIPT_FRAME_METRICS_TOOL,
+            json!({ "afterSequence": 20, "limit": 2 }),
+        ),
+        DiagnosticToolSnapshot {
+            transcript_frame_metrics: snapshot,
+            ..diagnostic_snapshot(VisibleMediaSnapshot::default(), event_snapshot(0))
+        },
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(
+        payload["result"]["scrollInputs"]["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        payload["result"]["scrollInputs"]["events"][0]["sequence"],
+        21
+    );
+    assert_eq!(
+        payload["result"]["scrollInputs"]["events"][0]["beforeAnchor"]["segment"]["segmentKind"],
+        "ordinary_row"
+    );
+    assert_eq!(
+        payload["result"]["scrollInputs"]["continuityViolationCount"],
+        0
+    );
+    assert_eq!(
+        payload["result"]["scrollInputs"]["largestContinuityErrorPx"],
+        0.0
+    );
+    assert!(
+        payload["result"]["scrollInputs"]["events"][0]["clampOrExpansionReason"]
+            .as_str()
+            .unwrap()
+            .len()
+            <= 512
+    );
     assert!(
         payload["result"]
             .to_string()
@@ -1100,6 +1321,25 @@ fn diagnostic_snapshot(
         media_events,
         transcript_frame_metrics: TranscriptFrameMetricsSnapshot::default(),
         settings_window: SettingsWindowDiagnosticSnapshot::unavailable("not sampled in test"),
+    }
+}
+
+fn scroll_input_anchor(
+    index: usize,
+    absolute_rendered_offset: f64,
+) -> TranscriptScrollInputAnchorDiagnostic {
+    TranscriptScrollInputAnchorDiagnostic {
+        segment: TranscriptFrameAnchorDiagnostic {
+            segment_kind: "ordinary_row".to_string(),
+            row_index: index,
+            row_identity: Some(format!("row-{index}-{}", "r".repeat(700))),
+            chunk_index: None,
+            chunk_identity: None,
+            fallback_reason: None,
+            placement: Some("top".to_string()),
+        },
+        segment_local_offset: absolute_rendered_offset,
+        absolute_rendered_offset,
     }
 }
 

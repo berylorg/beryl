@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use beryl_model::{
     conversation::WorkspaceConversationState,
     workspace::{BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId},

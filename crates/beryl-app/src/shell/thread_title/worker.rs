@@ -87,6 +87,7 @@ fn run_thread_title_worker(
 }
 
 #[allow(dead_code)]
+#[allow(private_interfaces)]
 pub(crate) fn run_thread_title_attempt<B>(
     backend: &mut B,
     execution_target: &WorkspaceId,
@@ -107,6 +108,7 @@ where
     )
 }
 
+#[allow(private_interfaces)]
 pub(crate) fn run_thread_title_attempt_with_cancellation<B>(
     backend: &mut B,
     execution_target: &WorkspaceId,

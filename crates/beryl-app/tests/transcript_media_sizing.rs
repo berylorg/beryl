@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/shell/transcript_media.rs"]
 mod transcript_media;
 

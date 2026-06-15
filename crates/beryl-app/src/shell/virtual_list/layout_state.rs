@@ -358,7 +358,7 @@ impl StateInner {
         top_offset_changed
     }
 
-    fn replace_measured_item_size(&mut self, index: usize, size: Size<Pixels>) {
+    pub(crate) fn replace_measured_item_size(&mut self, index: usize, size: Size<Pixels>) {
         let mut old_items = self.items.cursor::<Count>(());
         let mut new_items = old_items.slice(&Count(index), Bias::Right);
         let Some(item) = old_items.item() else {

@@ -1,5 +1,7 @@
+#[cfg(test)]
 use gpui::px;
 
+#[cfg(test)]
 use super::virtual_list::{ListOffset, ListScrollPosition, ListState};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -8,6 +10,7 @@ pub(crate) enum TranscriptTurnJumpDirection {
     Down,
 }
 
+#[cfg(test)]
 pub(crate) fn transcript_turn_jump_target(
     list_state: &ListState,
     turn_count: usize,
@@ -28,6 +31,7 @@ pub(crate) fn transcript_turn_jump_target(
     }
 }
 
+#[cfg(test)]
 fn turn_jump_up_target(current: ListOffset, turn_count: usize) -> Option<ListScrollPosition> {
     if current.item_ix >= turn_count {
         return Some(turn_top(turn_count - 1));
@@ -38,6 +42,7 @@ fn turn_jump_up_target(current: ListOffset, turn_count: usize) -> Option<ListScr
     current.item_ix.checked_sub(1).map(turn_top)
 }
 
+#[cfg(test)]
 fn turn_jump_down_target(
     current: ListOffset,
     current_position: ListScrollPosition,
@@ -57,6 +62,7 @@ fn turn_jump_down_target(
     }
 }
 
+#[cfg(test)]
 fn turn_top(item_ix: usize) -> ListScrollPosition {
     ListScrollPosition::Content(ListOffset {
         item_ix,

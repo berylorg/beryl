@@ -1,4 +1,4 @@
-use std::{cell::Cell, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::Cell, ops::Range, rc::Rc, sync::Arc, time::Instant};
 
 use beryl_model::workspace::WorkspaceId;
 use gpui::{AnyElement, App, Entity, Pixels, div, prelude::*, px};
@@ -29,14 +29,18 @@ use super::{
 use crate::shell::execution_detail::{ExecutionItem, ReasoningDetail, TurnExecutionRecord};
 use crate::shell::transcript_markdown::TranscriptMarkdownCacheKey;
 use crate::shell::transcript_presentation::{
-    TranscriptRenderBudgetFallbackReason, TranscriptRenderBudgetPolicy,
-    TranscriptRenderChunkAdmissionDecision, TranscriptRowChunkMeasurementKey,
-    TranscriptRowChunkOwner, TranscriptRowMeasurementKey, TranscriptRowNarrativeUnit,
-    TranscriptRowPresentationModel, TranscriptRowRenderChunk, TranscriptRowStreamedRenderAnchor,
+    TranscriptRenderBudgetAdmission, TranscriptRenderBudgetFallbackReason,
+    TranscriptRenderBudgetPolicy, TranscriptRenderChunkAdmissionDecision,
+    TranscriptRowChunkMeasurementKey, TranscriptRowChunkOwner, TranscriptRowChunkRenderWindow,
+    TranscriptRowMeasurementKey, TranscriptRowNarrativeUnit, TranscriptRowPresentationModel,
+    TranscriptRowRenderChunk, TranscriptRowStreamedRenderAnchor,
     transcript_render_window_admission, transcript_row_chunk_render_window,
 };
 use crate::shell::transcript_selection::{
     TranscriptTextLineOrder, transcript_narrative_block_break_before,
+};
+use crate::shell::transcript_viewport::{
+    TranscriptFrameSegmentKey, TranscriptViewportChunkAnchor, TranscriptViewportTurnAnchor,
 };
 
 use super::TranscriptPanel;
@@ -47,6 +51,9 @@ pub(super) struct TranscriptRowChunkRenderState {
     measured_heights: Vec<Option<Pixels>>,
     anchor: TranscriptRowStreamedRenderAnchor,
     measurement_entity: Entity<TranscriptPanel>,
+    turn_anchor: TranscriptViewportTurnAnchor,
+    explicit_chunk_range: Option<Range<usize>>,
+    forced_fallbacks: Vec<(usize, TranscriptRenderBudgetFallbackReason)>,
 }
 
 impl TranscriptRowChunkRenderState {
@@ -55,13 +62,30 @@ impl TranscriptRowChunkRenderState {
         measured_heights: Vec<Option<Pixels>>,
         anchor: TranscriptRowStreamedRenderAnchor,
         measurement_entity: Entity<TranscriptPanel>,
+        turn_anchor: TranscriptViewportTurnAnchor,
     ) -> Self {
         Self {
             row_key,
             measured_heights,
             anchor,
             measurement_entity,
+            turn_anchor,
+            explicit_chunk_range: None,
+            forced_fallbacks: Vec::new(),
         }
+    }
+
+    pub(super) fn with_explicit_chunk_range(mut self, range: Range<usize>) -> Self {
+        self.explicit_chunk_range = Some(range);
+        self
+    }
+
+    pub(super) fn with_forced_fallbacks(
+        mut self,
+        fallbacks: Vec<(usize, TranscriptRenderBudgetFallbackReason)>,
+    ) -> Self {
+        self.forced_fallbacks = fallbacks;
+        self
     }
 }
 
@@ -283,14 +307,29 @@ fn render_turn_card_chunk_window(
 ) -> AnyElement {
     let chunks = row_model.chunk_presentation().chunks();
     let chunk_window_started = Instant::now();
-    let render_window = transcript_row_chunk_render_window(
-        chunks.len(),
-        chunk_render_state.measured_heights.as_slice(),
-        chunk_render_state.anchor.clone(),
-        viewport_height,
-    );
+    let render_window = chunk_render_state
+        .explicit_chunk_range
+        .clone()
+        .map(|range| {
+            transcript_row_explicit_chunk_render_window(
+                chunks.len(),
+                chunk_render_state.measured_heights.as_slice(),
+                chunk_render_state.anchor.clone(),
+                range,
+            )
+        })
+        .unwrap_or_else(|| {
+            transcript_row_chunk_render_window(
+                chunks.len(),
+                chunk_render_state.measured_heights.as_slice(),
+                chunk_render_state.anchor.clone(),
+                viewport_height,
+            )
+        });
     let policy = TranscriptRenderBudgetPolicy::default_frame();
-    let admission = transcript_render_window_admission(chunks, render_window.range.clone(), policy);
+    let mut admission =
+        transcript_render_window_admission(chunks, render_window.range.clone(), policy);
+    apply_forced_chunk_fallbacks(&mut admission, &chunk_render_state.forced_fallbacks);
     if let Some(profiler) = profiler.as_ref() {
         profiler.observe_chunk_window_admission(
             &render_window,
@@ -337,9 +376,26 @@ fn render_turn_card_chunk_window(
             }
         };
         let is_last_chunk = chunk_index.saturating_add(1) == chunks.len();
+        let segment_chunk = TranscriptViewportChunkAnchor::new(chunk_index, chunk.identity.clone());
+        let segment_key = match chunk_admission.decision {
+            TranscriptRenderChunkAdmissionDecision::Render => {
+                TranscriptFrameSegmentKey::streamed_chunk(
+                    chunk_render_state.turn_anchor.clone(),
+                    segment_chunk,
+                )
+            }
+            TranscriptRenderChunkAdmissionDecision::Fallback(reason) => {
+                TranscriptFrameSegmentKey::render_budget_fallback_chunk(
+                    chunk_render_state.turn_anchor.clone(),
+                    segment_chunk,
+                    reason.diagnostic_label(),
+                )
+            }
+        };
         children.push(render_measured_chunk(
             blocks,
             TranscriptRowChunkMeasurementKey::new(chunk_render_state.row_key.clone(), chunk),
+            segment_key,
             chunk_render_state.measurement_entity.clone(),
             !is_last_chunk,
         ));
@@ -358,9 +414,97 @@ fn render_turn_card_chunk_window(
         .into_any_element()
 }
 
+fn transcript_row_explicit_chunk_render_window(
+    chunk_count: usize,
+    measured_chunk_heights: &[Option<Pixels>],
+    anchor: TranscriptRowStreamedRenderAnchor,
+    range: Range<usize>,
+) -> TranscriptRowChunkRenderWindow {
+    if chunk_count == 0 {
+        return TranscriptRowChunkRenderWindow {
+            range: 0..0,
+            anchor_chunk_index: 0,
+            measured_rendered_height: px(0.0),
+            rendered_unknown_chunks: 0,
+            reached_start: true,
+            reached_end: true,
+        };
+    }
+
+    let anchor_chunk_index = anchor.chunk_index.min(chunk_count - 1);
+    let mut start = range.start.min(chunk_count);
+    let mut end = range.end.min(chunk_count).max(start);
+    if start == end {
+        start = anchor_chunk_index;
+        end = start.saturating_add(1).min(chunk_count);
+    }
+
+    let mut measured_rendered_height = px(0.0);
+    let mut rendered_unknown_chunks = 0usize;
+    for index in start..end {
+        match measured_chunk_heights
+            .get(index)
+            .and_then(|height| *height)
+            .map(|height| height.max(px(0.0)))
+        {
+            Some(height) => measured_rendered_height += height,
+            None => rendered_unknown_chunks = rendered_unknown_chunks.saturating_add(1),
+        }
+    }
+
+    TranscriptRowChunkRenderWindow {
+        range: start..end,
+        anchor_chunk_index,
+        measured_rendered_height,
+        rendered_unknown_chunks,
+        reached_start: start == 0,
+        reached_end: end >= chunk_count,
+    }
+}
+
+fn apply_forced_chunk_fallbacks(
+    admission: &mut TranscriptRenderBudgetAdmission,
+    forced_fallbacks: &[(usize, TranscriptRenderBudgetFallbackReason)],
+) {
+    if forced_fallbacks.is_empty() {
+        return;
+    }
+
+    for chunk in &mut admission.chunks {
+        if let Some((_, reason)) = forced_fallbacks
+            .iter()
+            .find(|(index, _)| *index == chunk.chunk_index)
+        {
+            chunk.decision = TranscriptRenderChunkAdmissionDecision::Fallback(*reason);
+        }
+    }
+
+    admission.rendered_chunks = 0;
+    admission.fallback_chunks = 0;
+    admission.rendered_cost_units = 0;
+    admission.fallback_cost_units = 0;
+    for chunk in &admission.chunks {
+        match chunk.decision {
+            TranscriptRenderChunkAdmissionDecision::Render => {
+                admission.rendered_chunks = admission.rendered_chunks.saturating_add(1);
+                admission.rendered_cost_units = admission
+                    .rendered_cost_units
+                    .saturating_add(chunk.cost_units);
+            }
+            TranscriptRenderChunkAdmissionDecision::Fallback(_) => {
+                admission.fallback_chunks = admission.fallback_chunks.saturating_add(1);
+                admission.fallback_cost_units = admission
+                    .fallback_cost_units
+                    .saturating_add(chunk.cost_units);
+            }
+        }
+    }
+}
+
 fn render_measured_chunk(
     blocks: Vec<AnyElement>,
     measurement_key: TranscriptRowChunkMeasurementKey,
+    segment_key: TranscriptFrameSegmentKey,
     measurement_entity: Entity<TranscriptPanel>,
     include_following_gap: bool,
 ) -> AnyElement {
@@ -385,10 +529,17 @@ fn render_measured_chunk(
             }
             let height = (bottom - top).max(px(0.0));
             let measurement_key = measurement_key.clone();
+            let segment_key = segment_key.clone();
             let measurement_entity = measurement_entity.clone();
-            window.defer(cx, move |_, cx| {
+            window.defer(cx, move |window, cx| {
                 measurement_entity.update(cx, |view, cx| {
-                    view.record_transcript_row_chunk_measurement(measurement_key, height, cx);
+                    view.stage_transcript_row_chunk_measurement(
+                        measurement_key,
+                        segment_key,
+                        height,
+                        window,
+                        cx,
+                    );
                 });
             });
         })

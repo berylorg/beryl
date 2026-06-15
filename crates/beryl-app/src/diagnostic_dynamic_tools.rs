@@ -31,6 +31,8 @@ pub(crate) const MAX_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
 const MAX_RENDERER_DIAGNOSTIC_WINDOWS: usize = 16;
 const MEDIA_EVENT_RING_CAPACITY: usize = 256;
 const TRANSCRIPT_FRAME_METRIC_RING_CAPACITY: usize = 128;
+const TRANSCRIPT_SCROLL_INPUT_RING_CAPACITY: usize = 128;
+const TRANSCRIPT_SCROLL_CONTINUITY_TOLERANCE_PX: f64 = 0.5;
 const MAX_DIAGNOSTIC_STRING_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Serialize)]
@@ -311,6 +313,7 @@ pub(crate) struct TranscriptFrameMetricsSnapshot {
     pub frame_count: usize,
     pub truncated: bool,
     pub next_sequence: u64,
+    pub scroll_inputs: TranscriptScrollInputSnapshot,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -397,6 +400,7 @@ pub(crate) struct TranscriptFrameMetric {
     pub sequence: u64,
     pub selected_thread_id: Option<String>,
     pub semantic_viewport: TranscriptSemanticViewportDiagnostic,
+    pub rendered_frame: TranscriptRenderedFrameDiagnostic,
     pub presentation_range: Option<PresentationRangeDiagnostic>,
     pub visible_range: Option<PresentationRangeDiagnostic>,
     pub total_loaded_turn_count: usize,
@@ -409,6 +413,9 @@ pub(crate) struct TranscriptFrameMetric {
     pub residency_retained_bytes: usize,
     pub residency_in_flight_requests: usize,
     pub residency_budget_reason: Option<String>,
+    pub residency_requests: TranscriptResidencyRequestDiagnostic,
+    pub clamp_reasons: Vec<String>,
+    pub segment_measurement_commit: TranscriptSegmentMeasurementCommitDiagnostic,
     pub active_turn_source_pin_active: bool,
     pub active_turn_source_retained_bytes: usize,
     pub active_turn_source_budget_max_bytes: usize,
@@ -444,6 +451,46 @@ pub(crate) struct TranscriptFrameMetric {
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptScrollInputSnapshot {
+    pub events: Vec<TranscriptScrollInputDiagnostic>,
+    pub event_count: usize,
+    pub truncated: bool,
+    pub next_sequence: u64,
+    pub continuity_tolerance_px: f64,
+    pub continuity_violation_count: usize,
+    pub largest_continuity_error_px: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptScrollInputDiagnostic {
+    pub sequence: u64,
+    pub input_kind: String,
+    pub direction: String,
+    pub consumed: bool,
+    pub changed: bool,
+    pub requested_delta: f64,
+    pub consumed_delta: f64,
+    pub residual_delta: f64,
+    pub before_anchor: Option<TranscriptScrollInputAnchorDiagnostic>,
+    pub after_anchor: Option<TranscriptScrollInputAnchorDiagnostic>,
+    pub before_visible_segment_range: Option<PresentationRangeDiagnostic>,
+    pub after_visible_segment_range: Option<PresentationRangeDiagnostic>,
+    pub before_rendered_frame_range: Option<PresentationRangeDiagnostic>,
+    pub after_rendered_frame_range: Option<PresentationRangeDiagnostic>,
+    pub clamp_or_expansion_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptScrollInputAnchorDiagnostic {
+    pub segment: TranscriptFrameAnchorDiagnostic,
+    pub segment_local_offset: f64,
+    pub absolute_rendered_offset: f64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct TranscriptSemanticViewportDiagnostic {
     pub viewport_mode: String,
     pub live_autoscroll: String,
@@ -455,6 +502,58 @@ pub(crate) struct TranscriptSemanticViewportDiagnostic {
     pub rendered_chunk_range: Option<PresentationRangeDiagnostic>,
     pub chunk_count: Option<usize>,
     pub fill_direction: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptRenderedFrameDiagnostic {
+    pub anchor: Option<TranscriptFrameAnchorDiagnostic>,
+    pub total_segment_count: usize,
+    pub visible_segment_count: usize,
+    pub visible_segment_range: Option<PresentationRangeDiagnostic>,
+    pub overscan_segment_count: usize,
+    pub leading_overscan_segment_count: usize,
+    pub trailing_overscan_segment_count: usize,
+    pub local_scroll_offset: f64,
+    pub local_scroll_max: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptFrameAnchorDiagnostic {
+    pub segment_kind: String,
+    pub row_index: usize,
+    pub row_identity: Option<String>,
+    pub chunk_index: Option<usize>,
+    pub chunk_identity: Option<String>,
+    pub fallback_reason: Option<String>,
+    pub placement: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptResidencyRequestDiagnostic {
+    pub pending_page_requests: usize,
+    pub in_flight_page_requests: usize,
+    pub last_requested_turns: usize,
+    pub last_missing_transport_ranges: usize,
+    pub boundary_can_request_older: bool,
+    pub boundary_released_page_near: bool,
+    pub boundary_loading_page: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptSegmentMeasurementCommitDiagnostic {
+    pub sequence: u64,
+    pub staged_count: usize,
+    pub changed_count: usize,
+    pub unchanged_count: usize,
+    pub list_row_update_count: usize,
+    pub chunk_update_count: usize,
+    pub stale_target_count: usize,
+    pub anchor_correction_pixels: f64,
+    pub anchor_correction_applied: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -476,6 +575,13 @@ pub(crate) struct TranscriptFrameRenderBudgetDiagnostic {
 pub(crate) struct TranscriptFrameMetricsLog {
     next_sequence: u64,
     frames: VecDeque<TranscriptFrameMetric>,
+    capacity: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TranscriptScrollInputLog {
+    next_sequence: u64,
+    events: VecDeque<TranscriptScrollInputDiagnostic>,
     capacity: usize,
 }
 
@@ -595,6 +701,16 @@ impl Default for TranscriptFrameMetricsLog {
     }
 }
 
+impl Default for TranscriptScrollInputLog {
+    fn default() -> Self {
+        Self {
+            next_sequence: 1,
+            events: VecDeque::with_capacity(TRANSCRIPT_SCROLL_INPUT_RING_CAPACITY),
+            capacity: TRANSCRIPT_SCROLL_INPUT_RING_CAPACITY,
+        }
+    }
+}
+
 impl MediaDiagnosticLog {
     pub fn record(&mut self, mut event: MediaDiagnosticEvent) {
         event.sequence = self.next_sequence;
@@ -633,7 +749,34 @@ impl TranscriptFrameMetricsLog {
             frame_count: self.frames.len(),
             truncated: false,
             next_sequence: self.next_sequence,
+            scroll_inputs: TranscriptScrollInputSnapshot::default(),
         }
+    }
+}
+
+impl TranscriptScrollInputLog {
+    pub(crate) fn record(&mut self, mut event: TranscriptScrollInputDiagnostic) {
+        event.sequence = self.next_sequence;
+        self.next_sequence = self.next_sequence.saturating_add(1);
+        event.truncate_strings();
+        if self.events.len() >= self.capacity {
+            self.events.pop_front();
+        }
+        self.events.push_back(event);
+    }
+
+    pub(crate) fn snapshot(&self) -> TranscriptScrollInputSnapshot {
+        let mut snapshot = TranscriptScrollInputSnapshot {
+            events: self.events.iter().cloned().collect(),
+            event_count: self.events.len(),
+            truncated: false,
+            next_sequence: self.next_sequence,
+            continuity_tolerance_px: TRANSCRIPT_SCROLL_CONTINUITY_TOLERANCE_PX,
+            continuity_violation_count: 0,
+            largest_continuity_error_px: None,
+        };
+        snapshot.recompute_continuity_summary();
+        snapshot
     }
 }
 
@@ -656,6 +799,7 @@ impl TranscriptFrameMetric {
             .take()
             .map(truncate_diagnostic_string);
         self.semantic_viewport.truncate_strings();
+        self.rendered_frame.truncate_strings();
         self.slowest_row_build_identity = self
             .slowest_row_build_identity
             .take()
@@ -668,9 +812,73 @@ impl TranscriptFrameMetric {
             .residency_budget_reason
             .take()
             .map(truncate_diagnostic_string);
+        for reason in &mut self.clamp_reasons {
+            *reason = truncate_diagnostic_string(std::mem::take(reason));
+        }
         self.dominant_cost_category =
             truncate_diagnostic_string(std::mem::take(&mut self.dominant_cost_category));
         self.render_budget.truncate_strings();
+    }
+}
+
+impl TranscriptScrollInputDiagnostic {
+    pub(crate) fn absolute_offset_delta_error(&self) -> Option<f64> {
+        let before = self.before_anchor.as_ref()?.absolute_rendered_offset;
+        let after = self.after_anchor.as_ref()?.absolute_rendered_offset;
+        let expected_after = match self.direction.as_str() {
+            "up" => before - self.consumed_delta,
+            "down" => before + self.consumed_delta,
+            _ => return None,
+        };
+        Some((after - expected_after).abs())
+    }
+
+    pub(crate) fn preserves_absolute_offset_continuity(&self, tolerance: f64) -> bool {
+        self.absolute_offset_delta_error()
+            .is_some_and(|error| error <= tolerance)
+    }
+
+    fn truncate_strings(&mut self) {
+        self.input_kind = truncate_diagnostic_string(std::mem::take(&mut self.input_kind));
+        self.direction = truncate_diagnostic_string(std::mem::take(&mut self.direction));
+        if let Some(anchor) = self.before_anchor.as_mut() {
+            anchor.truncate_strings();
+        }
+        if let Some(anchor) = self.after_anchor.as_mut() {
+            anchor.truncate_strings();
+        }
+        self.clamp_or_expansion_reason = self
+            .clamp_or_expansion_reason
+            .take()
+            .map(truncate_diagnostic_string);
+    }
+}
+
+impl TranscriptScrollInputSnapshot {
+    fn recompute_continuity_summary(&mut self) {
+        self.continuity_tolerance_px = TRANSCRIPT_SCROLL_CONTINUITY_TOLERANCE_PX;
+        self.continuity_violation_count = 0;
+        self.largest_continuity_error_px = None;
+        for event in &self.events {
+            let Some(error) = event.absolute_offset_delta_error() else {
+                continue;
+            };
+            self.largest_continuity_error_px = Some(
+                self.largest_continuity_error_px
+                    .map_or(error, |largest| largest.max(error)),
+            );
+            if !event
+                .preserves_absolute_offset_continuity(TRANSCRIPT_SCROLL_CONTINUITY_TOLERANCE_PX)
+            {
+                self.continuity_violation_count = self.continuity_violation_count.saturating_add(1);
+            }
+        }
+    }
+}
+
+impl TranscriptScrollInputAnchorDiagnostic {
+    fn truncate_strings(&mut self) {
+        self.segment.truncate_strings();
     }
 }
 
@@ -689,6 +897,24 @@ impl TranscriptSemanticViewportDiagnostic {
             .map(truncate_diagnostic_string);
         self.anchor_placement = self.anchor_placement.take().map(truncate_diagnostic_string);
         self.fill_direction = self.fill_direction.take().map(truncate_diagnostic_string);
+    }
+}
+
+impl TranscriptRenderedFrameDiagnostic {
+    fn truncate_strings(&mut self) {
+        if let Some(anchor) = self.anchor.as_mut() {
+            anchor.truncate_strings();
+        }
+    }
+}
+
+impl TranscriptFrameAnchorDiagnostic {
+    fn truncate_strings(&mut self) {
+        self.segment_kind = truncate_diagnostic_string(std::mem::take(&mut self.segment_kind));
+        self.row_identity = self.row_identity.take().map(truncate_diagnostic_string);
+        self.chunk_identity = self.chunk_identity.take().map(truncate_diagnostic_string);
+        self.fallback_reason = self.fallback_reason.take().map(truncate_diagnostic_string);
+        self.placement = self.placement.take().map(truncate_diagnostic_string);
     }
 }
 
@@ -1099,12 +1325,22 @@ pub(crate) fn transcript_frame_metrics_result(
         snapshot
             .frames
             .retain(|frame| frame.sequence > after_sequence);
+        snapshot
+            .scroll_inputs
+            .events
+            .retain(|event| event.sequence > after_sequence);
     }
     if snapshot.frames.len() > limit {
         snapshot.frames.truncate(limit);
         snapshot.truncated = true;
     }
     snapshot.frame_count = snapshot.frames.len();
+    if snapshot.scroll_inputs.events.len() > limit {
+        snapshot.scroll_inputs.events.truncate(limit);
+        snapshot.scroll_inputs.truncated = true;
+    }
+    snapshot.scroll_inputs.event_count = snapshot.scroll_inputs.events.len();
+    snapshot.scroll_inputs.recompute_continuity_summary();
     snapshot
 }
 

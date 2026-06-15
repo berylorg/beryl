@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::ops::Range;
+use std::{collections::HashMap, ops::Range};
 
 use gpui::{Pixels, px};
 
@@ -18,7 +18,7 @@ pub(crate) enum TranscriptViewportMode {
     Streamed(TranscriptStreamedViewportAnchor),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TranscriptViewportTurnAnchor {
     pub(crate) turn_index: usize,
     pub(crate) row_identity: Option<String>,
@@ -26,7 +26,7 @@ pub(crate) struct TranscriptViewportTurnAnchor {
     pub(crate) turn_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TranscriptViewportChunkAnchor {
     pub(crate) chunk_index: usize,
     pub(crate) chunk_identity: String,
@@ -62,6 +62,96 @@ pub(crate) enum TranscriptViewportNavigationDirection {
     Down,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct TranscriptFrameSegmentKey {
+    pub(crate) turn: TranscriptViewportTurnAnchor,
+    pub(crate) kind: TranscriptFrameSegmentKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum TranscriptFrameSegmentKind {
+    OrdinaryRow,
+    StreamedChunk {
+        chunk: TranscriptViewportChunkAnchor,
+    },
+    RenderBudgetFallbackChunk {
+        chunk: TranscriptViewportChunkAnchor,
+        reason: String,
+    },
+    ResidentBudgetFallbackRow {
+        reason: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptFrameSegment {
+    pub(crate) key: TranscriptFrameSegmentKey,
+    pub(crate) measured_height: Option<Pixels>,
+    pub(crate) streamed_chunk_count: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct TranscriptViewportFrame {
+    segments: Vec<TranscriptFrameSegment>,
+    visible_segment_range: Range<usize>,
+    local_scroll_offset: Pixels,
+    local_scroll_max: Pixels,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptViewportFrameReduction {
+    pub(crate) cursor: Option<TranscriptViewportScrollCursor>,
+    pub(crate) residual_delta: Pixels,
+    pub(crate) boundary: Option<TranscriptViewportBoundary>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptViewportScrollCursor {
+    pub(crate) segment: TranscriptFrameSegment,
+    pub(crate) local_offset: Pixels,
+    pub(crate) placement: TranscriptViewportPlacement,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct TranscriptSegmentMeasurementRevision(u64);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct TranscriptSegmentMeasurementKey {
+    pub(crate) segment: TranscriptFrameSegmentKey,
+    pub(crate) revision: TranscriptSegmentMeasurementRevision,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct TranscriptSegmentMeasurementQueue {
+    staged: HashMap<TranscriptSegmentMeasurementKey, Pixels>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct TranscriptSegmentMeasurementCache {
+    heights: HashMap<TranscriptSegmentMeasurementKey, Pixels>,
+    active_revisions: HashMap<TranscriptFrameSegmentKey, TranscriptSegmentMeasurementRevision>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct TranscriptSegmentMeasurementCommit {
+    pub(crate) changed: Vec<TranscriptSegmentMeasurementChange>,
+    pub(crate) unchanged: usize,
+    pub(crate) anchor_offset_correction: Pixels,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptSegmentMeasurementChange {
+    pub(crate) key: TranscriptSegmentMeasurementKey,
+    pub(crate) previous_height: Option<Pixels>,
+    pub(crate) measured_height: Pixels,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TranscriptSegmentMeasurementAnchor {
+    pub(crate) key: TranscriptFrameSegmentKey,
+    pub(crate) local_offset: Pixels,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum TranscriptViewportLiveAutoscroll {
     #[default]
@@ -90,6 +180,7 @@ pub(crate) struct TranscriptViewportScrollInput {
     pub(crate) direction: TranscriptViewportNavigationDirection,
     pub(crate) distance: Pixels,
     pub(crate) streamed_frame: Option<TranscriptStreamedNavigationFrame>,
+    pub(crate) rendered_frame: Option<TranscriptViewportFrame>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,7 +221,8 @@ pub(crate) enum TranscriptViewportTurnTargetKind {
 pub(crate) struct TranscriptViewportReduceOutcome {
     pub(crate) changed: bool,
     pub(crate) live_autoscroll_detached: bool,
-    pub(crate) local_scroll_offset: Option<Pixels>,
+    pub(crate) scroll_cursor: Option<TranscriptViewportScrollCursor>,
+    pub(crate) residual_delta: Option<Pixels>,
     pub(crate) semantic_refill: bool,
     pub(crate) ordinary_pixel_scroll: bool,
     pub(crate) boundary: Option<TranscriptViewportBoundary>,
@@ -179,6 +271,537 @@ impl TranscriptViewportChunkAnchor {
     }
 }
 
+impl TranscriptFrameSegmentKey {
+    pub(crate) fn ordinary_row(turn: TranscriptViewportTurnAnchor) -> Self {
+        Self {
+            turn,
+            kind: TranscriptFrameSegmentKind::OrdinaryRow,
+        }
+    }
+
+    pub(crate) fn streamed_chunk(
+        turn: TranscriptViewportTurnAnchor,
+        chunk: TranscriptViewportChunkAnchor,
+    ) -> Self {
+        Self {
+            turn,
+            kind: TranscriptFrameSegmentKind::StreamedChunk { chunk },
+        }
+    }
+
+    pub(crate) fn render_budget_fallback_chunk(
+        turn: TranscriptViewportTurnAnchor,
+        chunk: TranscriptViewportChunkAnchor,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            turn,
+            kind: TranscriptFrameSegmentKind::RenderBudgetFallbackChunk {
+                chunk,
+                reason: reason.into(),
+            },
+        }
+    }
+
+    pub(crate) fn resident_budget_fallback_row(
+        turn: TranscriptViewportTurnAnchor,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            turn,
+            kind: TranscriptFrameSegmentKind::ResidentBudgetFallbackRow {
+                reason: reason.into(),
+            },
+        }
+    }
+
+    pub(crate) fn streamed_chunk_anchor(&self) -> Option<&TranscriptViewportChunkAnchor> {
+        match &self.kind {
+            TranscriptFrameSegmentKind::StreamedChunk { chunk }
+            | TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, .. } => Some(chunk),
+            TranscriptFrameSegmentKind::OrdinaryRow
+            | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. } => None,
+        }
+    }
+}
+
+impl TranscriptFrameSegment {
+    pub(crate) fn new(key: TranscriptFrameSegmentKey, measured_height: Option<Pixels>) -> Self {
+        Self {
+            key,
+            measured_height: measured_height.map(|height| height.max(px(0.0))),
+            streamed_chunk_count: None,
+        }
+    }
+
+    pub(crate) fn with_streamed_chunk_count(mut self, chunk_count: usize) -> Self {
+        self.streamed_chunk_count = Some(chunk_count.max(1));
+        self
+    }
+}
+
+impl TranscriptViewportScrollCursor {
+    fn new(
+        segment: TranscriptFrameSegment,
+        local_offset: Pixels,
+        placement: TranscriptViewportPlacement,
+    ) -> Self {
+        Self {
+            segment,
+            local_offset: local_offset.max(px(0.0)),
+            placement,
+        }
+    }
+}
+
+impl TranscriptSegmentMeasurementRevision {
+    pub(crate) fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl TranscriptSegmentMeasurementKey {
+    pub(crate) fn new(
+        segment: TranscriptFrameSegmentKey,
+        revision: TranscriptSegmentMeasurementRevision,
+    ) -> Self {
+        Self { segment, revision }
+    }
+}
+
+impl TranscriptSegmentMeasurementQueue {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.staged.is_empty()
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.staged.clear();
+    }
+
+    pub(crate) fn retain_keys(
+        &mut self,
+        mut keep: impl FnMut(&TranscriptSegmentMeasurementKey) -> bool,
+    ) {
+        self.staged.retain(|key, _| keep(key));
+    }
+
+    pub(crate) fn stage(&mut self, key: TranscriptSegmentMeasurementKey, height: Pixels) {
+        self.staged.insert(key, height.max(px(0.0)));
+    }
+
+    pub(crate) fn commit_into(
+        &mut self,
+        cache: &mut TranscriptSegmentMeasurementCache,
+        anchor: Option<&TranscriptSegmentMeasurementAnchor>,
+    ) -> TranscriptSegmentMeasurementCommit {
+        let mut commit = TranscriptSegmentMeasurementCommit::default();
+        for (key, measured_height) in self.staged.drain() {
+            cache.retain_only_revision_for_segment(&key.segment, key.revision);
+            let previous_height = cache.heights.get(&key).copied();
+            if previous_height == Some(measured_height) {
+                commit.unchanged = commit.unchanged.saturating_add(1);
+                continue;
+            }
+
+            if let Some(anchor) = anchor
+                && anchor.key == key.segment
+                && anchor.local_offset > px(0.0)
+                && let Some(previous_height) = previous_height
+            {
+                commit.anchor_offset_correction += measured_height - previous_height;
+            }
+
+            cache.heights.insert(key.clone(), measured_height);
+            commit.changed.push(TranscriptSegmentMeasurementChange {
+                key,
+                previous_height,
+                measured_height,
+            });
+        }
+        commit
+    }
+}
+
+impl TranscriptSegmentMeasurementCache {
+    pub(crate) fn clear(&mut self) {
+        self.heights.clear();
+        self.active_revisions.clear();
+    }
+
+    pub(crate) fn height(&self, key: &TranscriptSegmentMeasurementKey) -> Option<Pixels> {
+        self.heights.get(key).copied()
+    }
+
+    fn retain_only_revision_for_segment(
+        &mut self,
+        segment: &TranscriptFrameSegmentKey,
+        revision: TranscriptSegmentMeasurementRevision,
+    ) {
+        let previous_revision = self.active_revisions.insert(segment.clone(), revision);
+        match previous_revision {
+            None => return,
+            Some(previous) if previous == revision => return,
+            Some(_) => {}
+        }
+        self.heights
+            .retain(|key, _| key.segment != *segment || key.revision == revision);
+    }
+}
+
+impl TranscriptViewportFrame {
+    pub(crate) fn new(
+        segments: Vec<TranscriptFrameSegment>,
+        visible_segment_range: Range<usize>,
+        local_scroll_offset: Pixels,
+        local_scroll_max: Pixels,
+    ) -> Self {
+        let visible_segment_range = clamp_segment_range(visible_segment_range, segments.len());
+        Self {
+            segments,
+            visible_segment_range,
+            local_scroll_offset: local_scroll_offset.max(px(0.0)),
+            local_scroll_max: local_scroll_max.max(px(0.0)),
+        }
+    }
+
+    pub(crate) fn segments(&self) -> &[TranscriptFrameSegment] {
+        &self.segments
+    }
+
+    pub(crate) fn visible_segment_range(&self) -> Range<usize> {
+        self.visible_segment_range.clone()
+    }
+
+    pub(crate) fn local_scroll_offset(&self) -> Pixels {
+        self.local_scroll_offset
+    }
+
+    pub(crate) fn local_scroll_max(&self) -> Pixels {
+        self.local_scroll_max
+    }
+
+    pub(crate) fn with_local_scroll_range(
+        mut self,
+        local_scroll_offset: Pixels,
+        local_scroll_max: Pixels,
+    ) -> Self {
+        self.local_scroll_offset = local_scroll_offset.max(px(0.0));
+        self.local_scroll_max = local_scroll_max.max(px(0.0));
+        self
+    }
+
+    pub(crate) fn with_event_time_scroll_cursor(
+        &self,
+        cursor: &TranscriptViewportScrollCursor,
+    ) -> Option<Self> {
+        let cursor_index = self
+            .segments
+            .iter()
+            .position(|segment| segment.key == cursor.segment.key)?;
+        let visible_range = if self.visible_segment_range.contains(&cursor_index) {
+            self.visible_segment_range.clone()
+        } else {
+            cursor_index..cursor_index.saturating_add(1)
+        };
+        let visible_top = self.segment_top(visible_range.start);
+        let cursor_top = self.segment_top(cursor_index);
+        let local_offset = (cursor_top - visible_top + cursor.local_offset).max(px(0.0));
+        let local_max = if self.visible_segment_range.contains(&cursor_index) {
+            self.local_scroll_max.max(local_offset)
+        } else {
+            let previous_visible_top = self.segment_top(self.visible_segment_range.start);
+            let previous_absolute_max = previous_visible_top + self.local_scroll_max;
+            let previous_rebased_max = (previous_absolute_max - visible_top).max(px(0.0));
+            let cursor_segment_height = self
+                .segments
+                .get(cursor_index)
+                .and_then(|segment| segment.measured_height)
+                .map(|height| height.max(px(0.0)))
+                .unwrap_or(cursor.local_offset);
+            let cursor_segment_bottom = cursor_top + cursor_segment_height;
+            let cursor_rebased_bottom = (cursor_segment_bottom - visible_top).max(px(0.0));
+            previous_rebased_max
+                .max(cursor_rebased_bottom)
+                .max(local_offset)
+        };
+
+        Some(Self::new(
+            self.segments.clone(),
+            visible_range,
+            local_offset,
+            local_max,
+        ))
+    }
+
+    pub(crate) fn first_visible_segment(&self) -> Option<&TranscriptFrameSegment> {
+        if self.visible_segment_range.is_empty() {
+            return None;
+        }
+        self.segments.get(self.visible_segment_range.start)
+    }
+
+    pub(crate) fn last_visible_segment(&self) -> Option<&TranscriptFrameSegment> {
+        if self.visible_segment_range.is_empty() {
+            return None;
+        }
+        self.visible_segment_range
+            .end
+            .checked_sub(1)
+            .and_then(|index| self.segments.get(index))
+    }
+
+    pub(crate) fn segment_before_visible(&self) -> Option<&TranscriptFrameSegment> {
+        if self.visible_segment_range.is_empty() {
+            return None;
+        }
+        self.visible_segment_range
+            .start
+            .checked_sub(1)
+            .and_then(|index| self.segments.get(index))
+    }
+
+    pub(crate) fn segment_after_visible(&self) -> Option<&TranscriptFrameSegment> {
+        if self.visible_segment_range.is_empty() {
+            return None;
+        }
+        self.segments.get(self.visible_segment_range.end)
+    }
+
+    pub(crate) fn adjacent_segment(
+        &self,
+        key: &TranscriptFrameSegmentKey,
+        direction: TranscriptViewportNavigationDirection,
+    ) -> Option<&TranscriptFrameSegment> {
+        let index = self
+            .segments
+            .iter()
+            .position(|segment| &segment.key == key)?;
+        match direction {
+            TranscriptViewportNavigationDirection::Up => index
+                .checked_sub(1)
+                .and_then(|index| self.segments.get(index)),
+            TranscriptViewportNavigationDirection::Down => self.segments.get(index + 1),
+        }
+    }
+
+    pub(crate) fn adjacent_streamed_chunk_at_visible_edge(
+        &self,
+        direction: TranscriptViewportNavigationDirection,
+        current_turn: &TranscriptViewportTurnAnchor,
+    ) -> Option<TranscriptViewportChunkAnchor> {
+        let segment = match direction {
+            TranscriptViewportNavigationDirection::Up => self.segment_before_visible(),
+            TranscriptViewportNavigationDirection::Down => self.segment_after_visible(),
+        }?;
+        if !transcript_frame_turn_matches(&segment.key.turn, current_turn) {
+            return None;
+        }
+        segment.key.streamed_chunk_anchor().cloned()
+    }
+
+    pub(crate) fn current_scroll_cursor(&self) -> Option<TranscriptViewportScrollCursor> {
+        self.scroll_cursor_for_visible_local_offset(self.local_scroll_offset)
+    }
+
+    pub(crate) fn absolute_offset_for_cursor(
+        &self,
+        cursor: &TranscriptViewportScrollCursor,
+    ) -> Option<Pixels> {
+        let index = self
+            .segments
+            .iter()
+            .position(|segment| segment.key == cursor.segment.key)?;
+        Some((self.segment_top(index) + cursor.local_offset).max(px(0.0)))
+    }
+
+    fn segment_top(&self, index: usize) -> Pixels {
+        self.segments
+            .iter()
+            .take(index.min(self.segments.len()))
+            .fold(px(0.0), |top, segment| {
+                top + segment.measured_height.unwrap_or(px(0.0)).max(px(0.0))
+            })
+    }
+
+    pub(crate) fn reduce_scroll_delta(
+        &self,
+        direction: TranscriptViewportNavigationDirection,
+        distance: Pixels,
+    ) -> TranscriptViewportFrameReduction {
+        let distance = distance.max(px(0.0));
+        let local_max = self.local_scroll_max.max(px(0.0));
+        let local_offset = self.local_scroll_offset.clamp(px(0.0), local_max);
+        let (edge_offset, local_available) = match direction {
+            TranscriptViewportNavigationDirection::Up => (px(0.0), local_offset),
+            TranscriptViewportNavigationDirection::Down => {
+                (local_max, (local_max - local_offset).max(px(0.0)))
+            }
+        };
+        let local_consumed = distance.min(local_available);
+        let mut next_offset = match direction {
+            TranscriptViewportNavigationDirection::Up => local_offset - local_consumed,
+            TranscriptViewportNavigationDirection::Down => local_offset + local_consumed,
+        };
+        let residual_after_local = distance - local_consumed;
+        if residual_after_local <= px(0.0) {
+            return TranscriptViewportFrameReduction {
+                cursor: (local_consumed > px(0.0))
+                    .then(|| self.scroll_cursor_for_visible_local_offset(next_offset))
+                    .flatten(),
+                residual_delta: px(0.0),
+                boundary: None,
+            };
+        }
+
+        next_offset = edge_offset;
+        let mut residual = residual_after_local;
+        let mut consumed_adjacent = px(0.0);
+        let mut hit_unknown_segment = false;
+
+        for (_, segment) in self.adjacent_segments_from_visible_edge(direction) {
+            let Some(height) = segment.measured_height.map(|height| height.max(px(0.0))) else {
+                hit_unknown_segment = true;
+                break;
+            };
+            if residual <= height {
+                consumed_adjacent += residual;
+                residual = px(0.0);
+                break;
+            }
+            consumed_adjacent += height;
+            residual -= height;
+        }
+
+        next_offset = match direction {
+            TranscriptViewportNavigationDirection::Up => next_offset - consumed_adjacent,
+            TranscriptViewportNavigationDirection::Down => next_offset + consumed_adjacent,
+        };
+        let boundary = (residual > px(0.0) && !hit_unknown_segment)
+            .then_some(boundary_for_direction(direction));
+        let consumed = (distance - residual.max(px(0.0))).max(px(0.0));
+
+        TranscriptViewportFrameReduction {
+            cursor: (consumed > px(0.0))
+                .then(|| self.scroll_cursor_for_visible_local_offset(next_offset))
+                .flatten(),
+            residual_delta: residual.max(px(0.0)),
+            boundary,
+        }
+    }
+
+    fn scroll_cursor_for_visible_local_offset(
+        &self,
+        offset: Pixels,
+    ) -> Option<TranscriptViewportScrollCursor> {
+        if self.visible_segment_range.is_empty() {
+            return None;
+        }
+        let visible_start = self.visible_segment_range.start.min(self.segments.len());
+        if offset < px(0.0) {
+            return self.scroll_cursor_before_visible_start(visible_start, px(0.0) - offset);
+        }
+        self.scroll_cursor_after_visible_start(visible_start, offset)
+    }
+
+    fn scroll_cursor_after_visible_start(
+        &self,
+        visible_start: usize,
+        mut offset: Pixels,
+    ) -> Option<TranscriptViewportScrollCursor> {
+        let mut index = visible_start;
+        while let Some(segment) = self.segments.get(index) {
+            let height = segment.measured_height.map(|height| height.max(px(0.0)));
+            let Some(height) = height else {
+                return index
+                    .checked_sub(1)
+                    .and_then(|previous| self.segments.get(previous))
+                    .and_then(|previous| {
+                        previous.measured_height.map(|height| {
+                            TranscriptViewportScrollCursor::new(
+                                previous.clone(),
+                                height,
+                                TranscriptViewportPlacement::Top,
+                            )
+                        })
+                    });
+            };
+            if height <= px(0.0) {
+                if offset <= px(0.0) {
+                    return Some(TranscriptViewportScrollCursor::new(
+                        segment.clone(),
+                        px(0.0),
+                        TranscriptViewportPlacement::Top,
+                    ));
+                }
+                index += 1;
+                continue;
+            }
+            if offset < height || index + 1 >= self.segments.len() {
+                return Some(TranscriptViewportScrollCursor::new(
+                    segment.clone(),
+                    offset.min(height),
+                    TranscriptViewportPlacement::Top,
+                ));
+            }
+            offset -= height;
+            index += 1;
+        }
+        None
+    }
+
+    fn scroll_cursor_before_visible_start(
+        &self,
+        visible_start: usize,
+        mut distance: Pixels,
+    ) -> Option<TranscriptViewportScrollCursor> {
+        let mut index = visible_start.checked_sub(1)?;
+        loop {
+            let segment = self.segments.get(index)?;
+            let height = segment.measured_height.map(|height| height.max(px(0.0)))?;
+            if distance <= height {
+                return Some(TranscriptViewportScrollCursor::new(
+                    segment.clone(),
+                    height - distance,
+                    TranscriptViewportPlacement::Top,
+                ));
+            }
+            distance -= height;
+            index = index.checked_sub(1)?;
+        }
+    }
+
+    fn adjacent_segments_from_visible_edge(
+        &self,
+        direction: TranscriptViewportNavigationDirection,
+    ) -> Vec<(usize, &TranscriptFrameSegment)> {
+        if self.visible_segment_range.is_empty() {
+            return Vec::new();
+        }
+        match direction {
+            TranscriptViewportNavigationDirection::Up => self.segments
+                [..self.visible_segment_range.start.min(self.segments.len())]
+                .iter()
+                .enumerate()
+                .rev()
+                .collect(),
+            TranscriptViewportNavigationDirection::Down => self.segments
+                [self.visible_segment_range.end.min(self.segments.len())..]
+                .iter()
+                .enumerate()
+                .map(|(offset, segment)| {
+                    (
+                        self.visible_segment_range
+                            .end
+                            .min(self.segments.len())
+                            .saturating_add(offset),
+                        segment,
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
 impl TranscriptViewportScrollInput {
     pub(crate) fn wheel(
         direction: TranscriptViewportNavigationDirection,
@@ -190,6 +813,7 @@ impl TranscriptViewportScrollInput {
             direction,
             distance,
             streamed_frame,
+            rendered_frame: None,
         }
     }
 
@@ -203,7 +827,13 @@ impl TranscriptViewportScrollInput {
             direction,
             distance,
             streamed_frame,
+            rendered_frame: None,
         }
+    }
+
+    pub(crate) fn with_rendered_frame(mut self, frame: TranscriptViewportFrame) -> Self {
+        self.rendered_frame = Some(frame);
+        self
     }
 }
 
@@ -243,6 +873,19 @@ impl TranscriptViewportState {
         };
     }
 
+    pub(crate) fn reset_to_tail_target(
+        &mut self,
+        target: Option<TranscriptViewportTurnTarget>,
+        turn_count: usize,
+    ) {
+        self.live_autoscroll = TranscriptViewportLiveAutoscroll::FollowingTail;
+        if let Some(target) = target {
+            self.anchor_turn_target(target);
+        } else {
+            self.reset_to_tail(turn_count);
+        }
+    }
+
     pub(crate) fn anchor_ordinary(
         &mut self,
         turn: TranscriptViewportTurnAnchor,
@@ -280,129 +923,74 @@ impl TranscriptViewportState {
             return outcome;
         }
 
-        match &mut self.mode {
-            TranscriptViewportMode::Empty => outcome,
-            TranscriptViewportMode::Ordinary(_) => {
-                outcome.changed = true;
-                outcome.ordinary_pixel_scroll = true;
-                outcome
-            }
-            TranscriptViewportMode::Streamed(anchor) => {
-                let Some(frame) = input.streamed_frame else {
-                    outcome.boundary = Some(boundary_for_direction(input.direction));
-                    return outcome;
-                };
-                outcome.changed |= anchor.reconcile_frame(&frame);
-                if apply_local_streamed_scroll(anchor, &frame, input.direction, input.distance)
-                    .map(|local_offset| {
-                        outcome.changed = true;
-                        outcome.local_scroll_offset = Some(local_offset);
-                    })
-                    .is_some()
-                {
-                    return outcome;
-                }
-
-                match input.direction {
-                    TranscriptViewportNavigationDirection::Up => {
-                        let Some(previous) = frame.previous_chunk else {
-                            outcome.boundary = Some(TranscriptViewportBoundary::Start);
-                            return outcome;
-                        };
-                        anchor.set_anchor_chunk(
-                            previous,
-                            TranscriptViewportPlacement::Top,
-                            TranscriptViewportNavigationDirection::Up,
-                        );
-                    }
-                    TranscriptViewportNavigationDirection::Down => {
-                        let Some(next) = frame.next_chunk else {
-                            outcome.boundary = Some(TranscriptViewportBoundary::End);
-                            return outcome;
-                        };
-                        anchor.set_anchor_chunk(
-                            next,
-                            TranscriptViewportPlacement::Bottom,
-                            TranscriptViewportNavigationDirection::Down,
-                        );
-                    }
-                }
-                outcome.changed = true;
-                outcome.semantic_refill = true;
-                outcome
-            }
+        if matches!(self.mode, TranscriptViewportMode::Empty) {
+            return outcome;
         }
+
+        let Some(rendered_frame) = input.rendered_frame.as_ref() else {
+            outcome.boundary = Some(boundary_for_direction(input.direction));
+            return outcome;
+        };
+        if let TranscriptViewportMode::Streamed(anchor) = &mut self.mode
+            && let Some(frame) = input.streamed_frame.as_ref()
+        {
+            outcome.changed |= anchor.reconcile_frame(frame);
+        }
+
+        let reduction = rendered_frame.reduce_scroll_delta(input.direction, input.distance);
+        if let Some(cursor) = reduction.cursor.as_ref() {
+            let same_segment = viewport_mode_matches_segment(&self.mode, &cursor.segment);
+            if same_segment {
+                outcome.changed |= apply_cursor_to_matching_viewport_mode(&mut self.mode, cursor);
+                outcome.ordinary_pixel_scroll |=
+                    matches!(self.mode, TranscriptViewportMode::Ordinary(_));
+            } else {
+                let next_mode = continuous_scroll_mode_for_frame_segment(
+                    &cursor.segment,
+                    cursor.placement,
+                    cursor.local_offset,
+                    input.direction,
+                );
+                outcome.changed |= self.mode != next_mode;
+                self.mode = next_mode;
+                outcome.semantic_refill = true;
+            }
+            outcome.scroll_cursor = Some(cursor.clone());
+        }
+        if reduction.residual_delta > px(0.0) {
+            outcome.residual_delta = Some(reduction.residual_delta);
+        }
+        if let Some(boundary) = reduction.boundary {
+            outcome.boundary = Some(boundary);
+        }
+        outcome
     }
 
-    pub(crate) fn apply_page(
+    pub(crate) fn apply_page_to_frame(
         &mut self,
         direction: TranscriptViewportNavigationDirection,
-        streamed_frame: Option<TranscriptStreamedNavigationFrame>,
+        frame: &TranscriptViewportFrame,
     ) -> TranscriptViewportReduceOutcome {
         let mut outcome = self.detach_live_autoscroll_for_manual_navigation();
-        match &mut self.mode {
-            TranscriptViewportMode::Empty => outcome,
-            TranscriptViewportMode::Ordinary(anchor) => {
-                anchor.placement = match direction {
-                    TranscriptViewportNavigationDirection::Up => TranscriptViewportPlacement::Top,
-                    TranscriptViewportNavigationDirection::Down => {
-                        TranscriptViewportPlacement::Bottom
-                    }
-                };
-                anchor.local_offset = px(0.0);
-                outcome.changed = true;
-                outcome.ordinary_pixel_scroll = true;
-                outcome
-            }
-            TranscriptViewportMode::Streamed(anchor) => {
-                let Some(frame) = streamed_frame else {
-                    outcome.boundary = Some(boundary_for_direction(direction));
-                    return outcome;
-                };
-                outcome.changed |= anchor.reconcile_frame(&frame);
-                match direction {
-                    TranscriptViewportNavigationDirection::Up => {
-                        let Some(first) = frame.first_rendered_chunk else {
-                            outcome.boundary = Some(TranscriptViewportBoundary::Start);
-                            return outcome;
-                        };
-                        if first.chunk_index == 0
-                            && anchor.anchor_chunk.chunk_index == 0
-                            && anchor.placement == TranscriptViewportPlacement::Top
-                        {
-                            outcome.boundary = Some(TranscriptViewportBoundary::Start);
-                            return outcome;
-                        }
-                        anchor.set_anchor_chunk(
-                            first,
-                            TranscriptViewportPlacement::Bottom,
-                            TranscriptViewportNavigationDirection::Up,
-                        );
-                    }
-                    TranscriptViewportNavigationDirection::Down => {
-                        let Some(last) = frame.last_rendered_chunk else {
-                            outcome.boundary = Some(TranscriptViewportBoundary::End);
-                            return outcome;
-                        };
-                        if last.chunk_index.saturating_add(1) >= frame.chunk_count
-                            && anchor.anchor_chunk.chunk_index == last.chunk_index
-                            && anchor.placement == TranscriptViewportPlacement::Bottom
-                        {
-                            outcome.boundary = Some(TranscriptViewportBoundary::End);
-                            return outcome;
-                        }
-                        anchor.set_anchor_chunk(
-                            last,
-                            TranscriptViewportPlacement::Top,
-                            TranscriptViewportNavigationDirection::Down,
-                        );
-                    }
-                }
-                outcome.changed = true;
-                outcome.semantic_refill = true;
-                outcome
-            }
+        let Some(selection) = explicit_page_frame_selection(&self.mode, direction, frame) else {
+            outcome.boundary = Some(boundary_for_direction(direction));
+            return outcome;
+        };
+
+        if selection.boundary {
+            outcome.boundary = Some(boundary_for_direction(direction));
+            return outcome;
         }
+
+        let next_mode = explicit_navigation_mode_for_frame_segment(
+            selection.segment,
+            selection.placement,
+            direction,
+        );
+        outcome.changed = self.mode != next_mode;
+        self.mode = next_mode;
+        outcome.semantic_refill = true;
+        outcome
     }
 
     pub(crate) fn apply_turn_jump(
@@ -448,6 +1036,60 @@ impl TranscriptViewportState {
                     semantic_refill: changed,
                     ..TranscriptViewportReduceOutcome::default()
                 }
+            }
+        }
+    }
+
+    pub(crate) fn segment_measurement_anchor(&self) -> Option<TranscriptSegmentMeasurementAnchor> {
+        match &self.mode {
+            TranscriptViewportMode::Empty => None,
+            TranscriptViewportMode::Ordinary(anchor) => Some(TranscriptSegmentMeasurementAnchor {
+                key: TranscriptFrameSegmentKey::ordinary_row(anchor.turn.clone()),
+                local_offset: anchor.local_offset,
+            }),
+            TranscriptViewportMode::Streamed(anchor) => Some(TranscriptSegmentMeasurementAnchor {
+                key: TranscriptFrameSegmentKey::streamed_chunk(
+                    anchor.turn.clone(),
+                    anchor.anchor_chunk.clone(),
+                ),
+                local_offset: anchor.local_anchor_offset.unwrap_or(px(0.0)),
+            }),
+        }
+    }
+
+    pub(crate) fn apply_segment_measurement_anchor_correction(
+        &mut self,
+        correction: Pixels,
+    ) -> bool {
+        if correction == px(0.0) {
+            return false;
+        }
+        match &mut self.mode {
+            TranscriptViewportMode::Empty => false,
+            TranscriptViewportMode::Ordinary(anchor) => {
+                if anchor.local_offset <= px(0.0) {
+                    return false;
+                }
+                let next = (anchor.local_offset + correction).max(px(0.0));
+                if next == anchor.local_offset {
+                    return false;
+                }
+                anchor.local_offset = next;
+                true
+            }
+            TranscriptViewportMode::Streamed(anchor) => {
+                let Some(offset) = anchor.local_anchor_offset.as_mut() else {
+                    return false;
+                };
+                if *offset <= px(0.0) {
+                    return false;
+                }
+                let next = (*offset + correction).max(px(0.0));
+                if next == *offset {
+                    return false;
+                }
+                *offset = next;
+                true
             }
         }
     }
@@ -579,45 +1221,180 @@ impl TranscriptStreamedViewportAnchor {
             || previous_range != self.rendered_chunk_range
             || previous_anchor_index != self.anchor_chunk.chunk_index
     }
+}
 
-    fn set_anchor_chunk(
-        &mut self,
-        chunk: TranscriptViewportChunkAnchor,
-        placement: TranscriptViewportPlacement,
-        direction: TranscriptViewportNavigationDirection,
-    ) {
-        let chunk_index = chunk.chunk_index.min(self.chunk_count.saturating_sub(1));
-        self.anchor_chunk = TranscriptViewportChunkAnchor {
-            chunk_index,
-            chunk_identity: chunk.chunk_identity,
-        };
-        self.rendered_chunk_range = chunk_index..chunk_index.saturating_add(1);
-        self.placement = placement;
-        self.local_anchor_offset = None;
-        self.last_navigation_direction = Some(direction);
+fn continuous_scroll_mode_for_frame_segment(
+    target: &TranscriptFrameSegment,
+    placement: TranscriptViewportPlacement,
+    local_offset: Pixels,
+    direction: TranscriptViewportNavigationDirection,
+) -> TranscriptViewportMode {
+    match &target.key.kind {
+        TranscriptFrameSegmentKind::StreamedChunk { chunk }
+        | TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, .. } => {
+            let chunk_count = target
+                .streamed_chunk_count
+                .unwrap_or_else(|| chunk.chunk_index.saturating_add(1).max(1));
+            let mut anchor = TranscriptStreamedViewportAnchor::new(
+                target.key.turn.clone(),
+                chunk.clone(),
+                chunk_count,
+                placement,
+            );
+            anchor.local_anchor_offset = Some(local_offset);
+            anchor.last_navigation_direction = Some(direction);
+            TranscriptViewportMode::Streamed(anchor)
+        }
+        TranscriptFrameSegmentKind::OrdinaryRow
+        | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. } => {
+            TranscriptViewportMode::Ordinary(TranscriptOrdinaryViewportAnchor {
+                turn: target.key.turn.clone(),
+                placement,
+                local_offset,
+            })
+        }
     }
 }
 
-fn apply_local_streamed_scroll(
-    anchor: &mut TranscriptStreamedViewportAnchor,
-    frame: &TranscriptStreamedNavigationFrame,
+fn apply_cursor_to_matching_viewport_mode(
+    mode: &mut TranscriptViewportMode,
+    cursor: &TranscriptViewportScrollCursor,
+) -> bool {
+    match mode {
+        TranscriptViewportMode::Ordinary(anchor) => {
+            let changed =
+                anchor.local_offset != cursor.local_offset || anchor.placement != cursor.placement;
+            anchor.local_offset = cursor.local_offset;
+            anchor.placement = cursor.placement;
+            changed
+        }
+        TranscriptViewportMode::Streamed(anchor) => {
+            let changed = anchor.local_anchor_offset != Some(cursor.local_offset)
+                || anchor.placement != cursor.placement;
+            anchor.local_anchor_offset = Some(cursor.local_offset);
+            anchor.placement = cursor.placement;
+            changed
+        }
+        TranscriptViewportMode::Empty => false,
+    }
+}
+
+struct ExplicitPageFrameSelection<'a> {
+    segment: &'a TranscriptFrameSegment,
+    placement: TranscriptViewportPlacement,
+    boundary: bool,
+}
+
+fn explicit_page_frame_selection<'a>(
+    current_mode: &TranscriptViewportMode,
     direction: TranscriptViewportNavigationDirection,
-    distance: Pixels,
-) -> Option<Pixels> {
-    let offset = frame.local_scroll_offset.max(px(0.0));
-    let max = frame.local_scroll_max.max(px(0.0));
+    frame: &'a TranscriptViewportFrame,
+) -> Option<ExplicitPageFrameSelection<'a>> {
+    let visible_range = frame.visible_segment_range();
+    if visible_range.is_empty() {
+        return None;
+    }
+
     match direction {
-        TranscriptViewportNavigationDirection::Up if offset > px(0.0) => {
-            let next = (offset - distance).max(px(0.0));
-            anchor.local_anchor_offset = Some(next);
-            Some(next)
+        TranscriptViewportNavigationDirection::Up => {
+            let index = visible_range.start;
+            let segment = frame.segments().get(index)?;
+            if index == 0 && viewport_mode_matches_segment(current_mode, segment) {
+                let current_placement = viewport_mode_placement(current_mode);
+                return Some(ExplicitPageFrameSelection {
+                    segment,
+                    placement: TranscriptViewportPlacement::Top,
+                    boundary: current_placement == Some(TranscriptViewportPlacement::Top),
+                });
+            }
+            Some(ExplicitPageFrameSelection {
+                segment,
+                placement: TranscriptViewportPlacement::Bottom,
+                boundary: false,
+            })
         }
-        TranscriptViewportNavigationDirection::Down if offset < max => {
-            let next = (offset + distance).min(max);
-            anchor.local_anchor_offset = Some(next);
-            Some(next)
+        TranscriptViewportNavigationDirection::Down => {
+            let index = visible_range.end.checked_sub(1)?;
+            let segment = frame.segments().get(index)?;
+            if index.saturating_add(1) >= frame.segments().len()
+                && viewport_mode_matches_segment(current_mode, segment)
+            {
+                let current_placement = viewport_mode_placement(current_mode);
+                return Some(ExplicitPageFrameSelection {
+                    segment,
+                    placement: TranscriptViewportPlacement::Bottom,
+                    boundary: current_placement == Some(TranscriptViewportPlacement::Bottom),
+                });
+            }
+            Some(ExplicitPageFrameSelection {
+                segment,
+                placement: TranscriptViewportPlacement::Top,
+                boundary: false,
+            })
         }
-        _ => None,
+    }
+}
+
+fn explicit_navigation_mode_for_frame_segment(
+    target: &TranscriptFrameSegment,
+    placement: TranscriptViewportPlacement,
+    direction: TranscriptViewportNavigationDirection,
+) -> TranscriptViewportMode {
+    match &target.key.kind {
+        TranscriptFrameSegmentKind::StreamedChunk { chunk }
+        | TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, .. } => {
+            let chunk_count = target
+                .streamed_chunk_count
+                .unwrap_or_else(|| chunk.chunk_index.saturating_add(1))
+                .max(1);
+            let mut anchor = TranscriptStreamedViewportAnchor::new(
+                target.key.turn.clone(),
+                chunk.clone(),
+                chunk_count,
+                placement,
+            );
+            anchor.last_navigation_direction = Some(direction);
+            TranscriptViewportMode::Streamed(anchor)
+        }
+        TranscriptFrameSegmentKind::OrdinaryRow
+        | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. } => {
+            TranscriptViewportMode::Ordinary(TranscriptOrdinaryViewportAnchor {
+                turn: target.key.turn.clone(),
+                placement,
+                local_offset: px(0.0),
+            })
+        }
+    }
+}
+
+fn viewport_mode_matches_segment(
+    mode: &TranscriptViewportMode,
+    segment: &TranscriptFrameSegment,
+) -> bool {
+    match (mode, &segment.key.kind) {
+        (
+            TranscriptViewportMode::Ordinary(anchor),
+            TranscriptFrameSegmentKind::OrdinaryRow
+            | TranscriptFrameSegmentKind::ResidentBudgetFallbackRow { .. },
+        ) => transcript_frame_turn_matches(&segment.key.turn, &anchor.turn),
+        (
+            TranscriptViewportMode::Streamed(anchor),
+            TranscriptFrameSegmentKind::StreamedChunk { chunk }
+            | TranscriptFrameSegmentKind::RenderBudgetFallbackChunk { chunk, .. },
+        ) => {
+            transcript_frame_turn_matches(&segment.key.turn, &anchor.turn)
+                && (chunk.chunk_identity == anchor.anchor_chunk.chunk_identity
+                    || chunk.chunk_index == anchor.anchor_chunk.chunk_index)
+        }
+        _ => false,
+    }
+}
+
+fn viewport_mode_placement(mode: &TranscriptViewportMode) -> Option<TranscriptViewportPlacement> {
+    match mode {
+        TranscriptViewportMode::Ordinary(anchor) => Some(anchor.placement),
+        TranscriptViewportMode::Streamed(anchor) => Some(anchor.placement),
+        TranscriptViewportMode::Empty => None,
     }
 }
 
@@ -639,4 +1416,27 @@ fn clamp_rendered_range(range: Range<usize>, chunk_count: usize) -> Range<usize>
     } else {
         start..end
     }
+}
+
+fn clamp_segment_range(range: Range<usize>, segment_count: usize) -> Range<usize> {
+    let start = range.start.min(segment_count);
+    let end = range.end.min(segment_count).max(start);
+    start..end
+}
+
+fn transcript_frame_turn_matches(
+    candidate: &TranscriptViewportTurnAnchor,
+    current: &TranscriptViewportTurnAnchor,
+) -> bool {
+    if candidate.row_identity.is_some() && current.row_identity.is_some() {
+        return candidate.row_identity == current.row_identity;
+    }
+    if candidate.thread_id.is_some()
+        && candidate.turn_id.is_some()
+        && current.thread_id.is_some()
+        && current.turn_id.is_some()
+    {
+        return candidate.thread_id == current.thread_id && candidate.turn_id == current.turn_id;
+    }
+    candidate.turn_index == current.turn_index
 }

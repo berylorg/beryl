@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use beryl_backend::{
     CommandExecutionItem, CommandExecutionStatus, ThreadItem, TurnInfo, TurnItemsView, TurnStatus,
     UserInput, UserMessageItem,

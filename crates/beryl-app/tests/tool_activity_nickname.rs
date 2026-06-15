@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use std::time::{Duration, Instant};
 
 #[path = "../src/shell/tool_activity_nickname.rs"]

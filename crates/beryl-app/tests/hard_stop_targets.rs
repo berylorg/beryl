@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/shell/hard_stop_targets.rs"]
 mod hard_stop_targets;
 #[path = "../src/shell/status_line.rs"]

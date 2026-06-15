@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 #![allow(dead_code)]
 
 #[path = "../src/shell/transcript_selection.rs"]

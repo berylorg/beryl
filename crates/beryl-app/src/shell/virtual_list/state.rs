@@ -400,6 +400,26 @@ impl ListState {
         None
     }
 
+    pub fn record_viewport_bounds(&self, bounds: Bounds<Pixels>) {
+        let state = &mut *self.0.borrow_mut();
+        state.last_layout_bounds = Some(bounds);
+        state.last_padding = Some(Edges::default());
+    }
+
+    pub fn record_measured_item_size(&self, ix: usize, size: Size<Pixels>) -> bool {
+        let old_size = self.measured_item_size(ix);
+        if old_size == Some(size) {
+            return false;
+        }
+
+        let mut state = self.0.borrow_mut();
+        state.replace_measured_item_size(ix, size);
+        if let Some(old_size) = old_size {
+            state.adjust_content_scroll_for_item_height_change(ix, old_size.height, size.height);
+        }
+        true
+    }
+
     /// Call this method when the user starts dragging the scrollbar.
     ///
     /// This will prevent the height reported to the scrollbar from changing during the drag

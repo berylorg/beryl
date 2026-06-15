@@ -325,20 +325,8 @@ fn schedule_media_load(
                 }
                 if result.display_changed {
                     let mut row_measure_invalidated = false;
-                    if let Some(row_identity) = row_identity.as_deref()
-                        && let Some((list_state, row_index)) = view
-                            .shell
-                            .read(cx)
-                            .conversation_surface()
-                            .and_then(|surface| {
-                                surface
-                                    .transcript_presentation()
-                                    .row_index_for_identity(row_identity)
-                                    .map(|row_index| (surface.transcript_list_state(), row_index))
-                            })
-                    {
-                        view.clear_transcript_row_chunk_measurements(row_identity);
-                        list_state.invalidate_item_measurement(row_index);
+                    if let Some(row_identity) = row_identity.as_deref() {
+                        view.invalidate_transcript_row_measurement(row_identity, cx);
                         row_measure_invalidated = true;
                     }
                     debug!(

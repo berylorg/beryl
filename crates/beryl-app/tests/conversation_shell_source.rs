@@ -1332,7 +1332,8 @@ fn transcript_prepaint_reports_render_facts_without_residency_requests() {
     assert!(!transcript_source.contains("begin_transcript_residency_update_for_scroll_event"));
     assert!(!transcript_source.contains("view.preload_transcript_media_range"));
     assert!(transcript_source.contains("view.report_transcript_media_preload_facts(request);"));
-    assert!(transcript_source.contains("report_transcript_streamed_residency_facts"));
+    assert!(transcript_source.contains("report_transcript_residency_frame_facts"));
+    assert!(transcript_source.contains("replace_transcript_residency_frame_facts"));
     assert!(transcript_source.contains("take_transcript_reset_residency_followup"));
     assert!(transcript_source.contains("view.begin_transcript_residency_update_for_current_view"));
     assert!(transcript_source.contains("window.defer(cx, move |window, cx|"));
@@ -1341,6 +1342,7 @@ fn transcript_prepaint_reports_render_facts_without_residency_requests() {
     assert!(transcript_source.contains("!visible_range.contains(index)"));
     assert!(!transcript_source.contains("spawn_thread_residency_page_worker"));
     assert!(!transcript_source.contains("begin_loading_page_for_residency_target_plan"));
+    assert!(!transcript_source.contains("release_resident_turn_payloads_for_plan"));
 }
 
 #[test]
@@ -1427,13 +1429,11 @@ fn streamed_media_readiness_invalidates_row_and_chunk_measurements() {
 
     assert!(schedule_body.contains("complete_load(completion)"));
     assert!(schedule_body.contains("if result.display_changed"));
-    assert!(schedule_body.contains("view.clear_transcript_row_chunk_measurements(row_identity);"));
-    assert!(schedule_body.contains("list_state.invalidate_item_measurement(row_index);"));
-    assert_order(
-        schedule_body,
-        "view.clear_transcript_row_chunk_measurements(row_identity);",
-        "list_state.invalidate_item_measurement(row_index);",
+    assert!(
+        schedule_body.contains("view.invalidate_transcript_row_measurement(row_identity, cx);")
     );
+    assert!(!schedule_body.contains("view.clear_transcript_row_chunk_measurements(row_identity);"));
+    assert!(!schedule_body.contains("list_state.invalidate_item_measurement(row_index);"));
 }
 
 #[test]
@@ -1467,14 +1467,15 @@ fn huge_turn_render_uses_chunk_metadata_without_fixed_spacers() {
     assert!(card_body.contains("render_turn_card_chunk_window"));
     assert!(card_body.contains("viewport_height"));
     assert!(turn_blocks_source.contains("transcript_row_chunk_render_window"));
-    assert!(turn_blocks_source.contains("record_transcript_row_chunk_measurement"));
+    assert!(turn_blocks_source.contains("stage_transcript_row_chunk_measurement"));
+    assert!(!turn_blocks_source.contains("record_transcript_row_chunk_measurement"));
     assert!(measured_chunk_body.contains(".on_children_prepainted(move |children, window, cx|"));
     assert!(measured_chunk_body.contains("window.defer(cx"));
     assert!(!measured_chunk_body.contains("invalidate_item_measurement"));
     assert_order(
         measured_chunk_body,
         "window.defer(cx",
-        "view.record_transcript_row_chunk_measurement",
+        "view.stage_transcript_row_chunk_measurement",
     );
     assert!(turn_blocks_source.contains("TranscriptRowStreamedRenderAnchor"));
     assert!(!turn_blocks_source.contains("row_scroll_offset"));
@@ -1562,6 +1563,7 @@ fn streamed_code_panel_state_and_nested_scrollbars_remain_row_owned() {
         include_str!("../src/shell/render/transcript/code_panel_controls.rs"),
         "pub(super) fn scroll_chrome",
     );
+    let render_body = rust_function_body(transcript_source, "fn render(&mut self");
 
     assert!(transcript_source.contains("HashSet<TranscriptCodePanelIdentity>"));
     assert!(transcript_source.contains("HashMap<TranscriptCodePanelIdentity, ScrollHandle>"));
@@ -1583,6 +1585,8 @@ fn streamed_code_panel_state_and_nested_scrollbars_remain_row_owned() {
     assert!(code_panel_source.contains("CodePanelScrollChrome"));
     assert!(code_panel_scrolling_source.contains("render_div_scrollbar_with_owner_update"));
     assert!(code_panel_scrolling_source.contains("code_panel_stops_scroll_wheel_propagation"));
+    assert!(render_body.contains("selected_nested_code_panel_id.is_some()"));
+    assert!(render_body.contains("view.scroll_selected_nested_code_panel("));
     assert!(!conversation_render_source.contains("transcript-scrollbar"));
     assert!(!transcript_source.contains("render_interactive_vertical_scrollbar("));
 }
@@ -1893,11 +1897,19 @@ fn transcript_history_load_and_unload_paths_log_turn_counts() {
 fn transcript_scroll_routes_boundary_work_through_residency_controller() {
     let shell_source = include_str!("../src/shell.rs");
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let viewport_source = include_str!("../src/shell/transcript_viewport.rs");
     let viewport_navigation_source = include_str!("../src/shell/transcript_viewport_navigation.rs");
+    let viewport_scroll_coordinator_source =
+        include_str!("../src/shell/transcript_viewport_scroll_coordinator.rs");
     let conversation_render_source = include_str!("../src/shell/render/conversation.rs");
+    let gui_control_source = include_str!("../src/gui_control_dynamic_tools.rs");
     let scroll_body = rust_function_body(shell_source, "fn apply_transcript_scroll_command");
     let scroll_event_body = rust_function_body(shell_source, "fn note_transcript_scroll_event");
     let turn_jump_body = rust_function_body(shell_source, "fn jump_transcript_turn(");
+    let turn_jump_target_body = rust_function_body(
+        viewport_navigation_source,
+        "pub(super) fn transcript_viewport_turn_jump_target_for_frame",
+    );
     let scrollbar_activity_body = rust_function_body(shell_source, "fn note_scrollbar_activity");
     let notify_scrollbar_region_body =
         rust_function_body(shell_source, "fn notify_scrollbar_region");
@@ -1920,29 +1932,92 @@ fn transcript_scroll_routes_boundary_work_through_residency_controller() {
     assert!(scroll_event_body.contains("self.notify_transcript_panel(cx);"));
     assert!(!scroll_event_body.contains("self.note_transcript_scroll(true, window, cx);"));
     assert!(shell_source.contains("last_transcript_content_scroll_signature"));
+    assert!(shell_source.contains("transcript_navigation_frame_snapshot"));
+    assert!(shell_source.contains("transcript_event_time_scroll"));
+    assert!(shell_source.contains("mod transcript_viewport_scroll_coordinator;"));
     assert!(viewport_navigation_source.contains("boundary_state_for_visible_range"));
-    assert!(viewport_navigation_source.contains(".apply_scroll("));
-    assert!(viewport_navigation_source.contains(".apply_page("));
+    assert!(viewport_scroll_coordinator_source.contains(".apply_scroll("));
     assert!(viewport_navigation_source.contains(".apply_turn_jump("));
+    assert!(!viewport_navigation_source.contains("apply_transcript_viewport_page"));
     assert!(!viewport_navigation_source.contains("streamed_frame_can_consume"));
     let viewport_scroll_body = rust_function_body(
         viewport_navigation_source,
         "fn apply_transcript_viewport_scroll",
     );
+    let coordinator_scroll_body = rust_function_body(
+        viewport_scroll_coordinator_source,
+        "pub(crate) fn apply_transcript_viewport_scroll",
+    );
+    let viewport_apply_scroll_body =
+        rust_function_body(viewport_source, "pub(crate) fn apply_scroll");
+    assert!(viewport_scroll_body.contains("apply_coordinated_transcript_viewport_scroll("));
+    assert!(!viewport_scroll_body.contains("TranscriptViewportScrollInput::wheel"));
+    assert!(!viewport_scroll_body.contains(".apply_turn_jump("));
     assert_order(
-        viewport_scroll_body,
+        coordinator_scroll_body,
         "let input = match kind",
-        "let outcome = self.transcript_viewport.apply_scroll(input);",
+        "let outcome = viewport.apply_scroll(input);",
     );
-    assert!(viewport_scroll_body.contains("Some(streamed.frame)"));
+    assert_order(
+        viewport_apply_scroll_body,
+        "let mut outcome = self.detach_live_autoscroll_for_manual_navigation();",
+        "let reduction = rendered_frame.reduce_scroll_delta(input.direction, input.distance);",
+    );
+    assert!(coordinator_scroll_body.contains("snapshot.frame.clone()"));
+    assert!(coordinator_scroll_body.contains(".with_rendered_frame(rendered_frame.clone())"));
+    assert!(coordinator_scroll_body.contains("let streamed = streamed.filter"));
+    assert!(coordinator_scroll_body.contains("event_time_rendered_frame"));
+    assert!(coordinator_scroll_body.contains("blocked_direction"));
+    assert!(coordinator_scroll_body.contains("scroll_cursor"));
+    assert!(coordinator_scroll_body.contains("residual_delta"));
+    assert!(coordinator_scroll_body.contains("boundary"));
+    assert!(!coordinator_scroll_body.contains(".apply_turn_jump("));
+    assert!(!viewport_scroll_body.contains("scroll_transcript_streamed_row_to_placement"));
+    assert!(viewport_apply_scroll_body.contains("rendered_frame.reduce_scroll_delta"));
+    assert!(!viewport_apply_scroll_body.contains("previous_chunk"));
+    assert!(!viewport_apply_scroll_body.contains("next_chunk"));
     let viewport_reduce_body = rust_function_body(
-        viewport_navigation_source,
-        "fn apply_transcript_viewport_reduce_outcome",
+        viewport_scroll_coordinator_source,
+        "pub(crate) fn apply_transcript_viewport_reduce_outcome",
     );
+    assert!(viewport_reduce_body.contains("outcome.scroll_cursor"));
     assert!(viewport_reduce_body.contains("outcome.live_autoscroll_detached"));
+    assert!(viewport_reduce_body.contains("outcome.boundary.is_some()"));
     assert!(transcript_source.contains("view.apply_transcript_scroll_wheel("));
-    assert!(scroll_body.contains("surface.apply_transcript_viewport_page"));
+    assert!(transcript_source.contains("report_transcript_navigation_frame_snapshot"));
+    assert!(transcript_source.contains("fn transcript_frame_local_scroll_range"));
+    assert!(transcript_source.contains("transcript_frame_render_scroll_offset("));
+    let streamed_snapshot_body = rust_function_body(
+        transcript_source,
+        "fn transcript_streamed_navigation_snapshot",
+    );
+    let streamed_snapshot_builder_body = rust_function_body(
+        viewport_scroll_coordinator_source,
+        "pub(crate) fn build_rendered_transcript_streamed_navigation_snapshot",
+    );
+    assert!(
+        streamed_snapshot_body.contains("build_rendered_transcript_streamed_navigation_snapshot")
+    );
+    assert!(streamed_snapshot_builder_body.contains("TranscriptStreamedNavigationFrame::new"));
+    assert!(streamed_snapshot_builder_body.contains("TranscriptStreamedNavigationSnapshot::new"));
+    assert!(
+        !streamed_snapshot_body
+            .contains("with_local_scroll_range(local_scroll_offset, local_scroll_max)")
+    );
+    assert!(
+        !streamed_snapshot_builder_body
+            .contains("with_local_scroll_range(row_local_scroll_offset, row_local_scroll_max)")
+    );
+    assert!(!transcript_source.contains("logical_scroll_top().offset_in_item"));
+    assert!(!scroll_body.contains("surface.apply_transcript_viewport_page"));
+    assert!(!gui_control_source.contains("PageUp"));
+    assert!(!gui_control_source.contains("PageDown"));
+    assert!(!gui_control_source.contains("page_up"));
+    assert!(!gui_control_source.contains("page_down"));
+    assert!(!scroll_body.contains("list_state.scroll_by"));
     assert!(turn_jump_body.contains("apply_transcript_viewport_turn_jump"));
+    assert!(turn_jump_body.contains("transcript_viewport_turn_jump_target_for_frame"));
+    assert!(!turn_jump_body.contains("transcript_turn_jump_target"));
     assert!(!conversation_render_source.contains("transcript-scrollbar"));
     assert!(!conversation_render_source.contains("note_transcript_scrollbar_owner_update"));
     assert!(!conversation_render_source.contains("ScrollbarRegion::Transcript"));
@@ -1954,49 +2029,111 @@ fn transcript_scroll_routes_boundary_work_through_residency_controller() {
     assert!(surface_scroll_body.contains("if is_scrolled {"));
     assert!(surface_scroll_body.contains("self.release_transcript_submit_anchor()"));
     assert!(transcript_source.contains(".on_scroll_wheel({"));
+    assert!(transcript_source.contains("current_transcript_scroll_navigation_snapshots()"));
+    assert!(viewport_navigation_source.contains("diagnostic_transcript_scroll_wheel_event("));
+    assert!(shell_source.contains("apply_transcript_wheel_command("));
+    assert!(viewport_navigation_source.contains("self.apply_transcript_scroll_wheel("));
+    let diagnostic_wheel_body = rust_function_body(
+        viewport_navigation_source,
+        "fn apply_transcript_wheel_command",
+    );
+    assert!(diagnostic_wheel_body.contains("current_transcript_scroll_navigation_snapshots()"));
+    assert!(diagnostic_wheel_body.contains("diagnostic_transcript_scroll_wheel_event("));
+    assert!(diagnostic_wheel_body.contains("self.apply_transcript_scroll_wheel("));
+    assert!(!diagnostic_wheel_body.contains("apply_transcript_viewport_turn_jump"));
+    assert!(!diagnostic_wheel_body.contains("reset_transcript_viewport_to_tail_anchor"));
+    assert!(!diagnostic_wheel_body.contains("scroll_to_position(ListScrollPosition::Bottom"));
+    assert!(turn_jump_target_body.contains("current_transcript_navigation_frame_snapshot()?"));
     assert!(transcript_source.contains("view.release_transcript_submit_anchor(cx);"));
     assert!(!transcript_source.contains("view.note_scrollbar_activity("));
+    assert!(!transcript_source.contains("fallback_list_state.scroll_by"));
 }
 
 #[test]
-fn transcript_row_renderer_uses_layout_context_without_reentrant_list_state_reads() {
+fn transcript_region_renders_from_frame_rows_without_outer_list_renderer() {
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
     let render_body = rust_function_body(transcript_source, "fn render(&mut self");
-    let list_start = render_body
-        .find("list(transcript_list_state.clone(), move |index, row_context, _, cx| {")
-        .expect("missing transcript list row renderer");
-    let list_region = &render_body[list_start..];
-    let list_end = list_region
-        .find("\n                                        })\n                                        .size_full()")
-        .expect("missing transcript list row renderer end");
-    let row_renderer_body = &list_region[..list_end];
+    let frame_start = render_body
+        .find("let rendered_transcript_frame = shell")
+        .expect("missing transcript rendered-frame snapshot");
+    let frame_region = &render_body[frame_start..];
 
+    assert!(!render_body.contains("list(transcript_list_state.clone()"));
+    assert!(frame_region.contains("transcript_viewport_frame_snapshot("));
+    assert!(frame_region.contains("transcript_frame_render_rows(&rendered_transcript_frame)"));
+    assert!(frame_region.contains("for frame_row in frame_rows.iter().cloned()"));
+    assert!(frame_region.contains("TranscriptFrameRenderRowKind::Streamed"));
+    assert!(frame_region.contains("streamed_chunk_range"));
+    assert!(frame_region.contains("streamed_forced_fallbacks"));
+    assert!(frame_region.contains("render_measured_transcript_frame_row("));
+    assert!(frame_region.contains("row_entity.clone()"));
+    assert!(frame_region.contains("record_viewport_bounds(bounds)"));
+    assert!(!frame_region.contains("fallback_list_state.scroll_by"));
+    assert!(!frame_region.contains(".scroll_by(px(0.0) - delta.y)"));
     assert!(!render_body.contains("list_row_scroll_top"));
     assert!(!render_body.contains("list_row_viewport_height"));
-    assert!(!row_renderer_body.contains("logical_scroll_top()"));
-    assert!(!row_renderer_body.contains("viewport_bounds()"));
-    assert!(!row_renderer_body.contains("row_context.scroll_offset_in_item"));
-    assert!(row_renderer_body.contains("row_context.viewport_height"));
-    assert!(row_renderer_body.contains("streamed_render_anchor_for_row"));
+    assert!(!frame_region.contains("row_context.scroll_offset_in_item"));
+    assert!(!frame_region.contains("row_context.viewport_height"));
+}
+
+#[test]
+fn segment_measurement_callbacks_stage_and_commit_deferred() {
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
+    let turn_blocks_source = include_str!("../src/shell/render/transcript/turn_blocks.rs");
+
+    let frame_row_body =
+        rust_function_body(transcript_source, "fn render_measured_transcript_frame_row");
+    let measured_chunk_body = rust_function_body(turn_blocks_source, "fn render_measured_chunk");
+    let stage_frame_row_body = rust_function_body(
+        transcript_source,
+        "fn stage_transcript_frame_row_measurement",
+    );
+    let stage_chunk_body = rust_function_body(
+        transcript_source,
+        "pub(super) fn stage_transcript_row_chunk_measurement",
+    );
+    let schedule_body = rust_function_body(
+        transcript_source,
+        "fn schedule_transcript_segment_measurement_commit",
+    );
+    let commit_body = rust_function_body(
+        transcript_source,
+        "fn commit_staged_transcript_segment_measurements",
+    );
+
+    assert!(frame_row_body.contains("window.defer(cx"));
+    assert!(frame_row_body.contains("stage_transcript_frame_row_measurement"));
+    assert!(!frame_row_body.contains("record_measured_item_size"));
+    assert!(!frame_row_body.contains("invalidate_item_measurement"));
+    assert!(measured_chunk_body.contains("window.defer(cx"));
+    assert!(measured_chunk_body.contains("stage_transcript_row_chunk_measurement"));
+    assert!(!measured_chunk_body.contains("record_transcript_row_chunk_measurement"));
+    assert!(!measured_chunk_body.contains("invalidate_item_measurement"));
+
+    assert!(stage_frame_row_body.contains("staged_segment_measurements"));
+    assert!(stage_frame_row_body.contains("schedule_transcript_segment_measurement_commit"));
+    assert!(stage_chunk_body.contains("staged_segment_measurements"));
+    assert!(stage_chunk_body.contains("schedule_transcript_segment_measurement_commit"));
+    assert!(!stage_frame_row_body.contains("record_measured_item_size"));
+    assert!(!stage_chunk_body.contains("invalidate_item_measurement"));
+
+    assert!(schedule_body.contains("window.defer(cx"));
+    assert!(schedule_body.contains("commit_staged_transcript_segment_measurements"));
+    assert!(commit_body.contains("commit_into(&mut self.segment_measurement_cache"));
+    assert!(commit_body.contains("list_state.record_measured_item_size"));
+    assert!(commit_body.contains("list_state.invalidate_item_measurement"));
+    assert!(commit_body.contains("apply_transcript_segment_measurement_anchor_correction"));
 }
 
 #[test]
 fn transcript_row_renderer_uses_row_local_selection_and_copy_counters() {
     let transcript_source = include_str!("../src/shell/render/transcript.rs");
     let render_body = rust_function_body(transcript_source, "fn render(&mut self");
-    let list_start = render_body
-        .find("list(transcript_list_state.clone(), move |index, row_context, _, cx| {")
-        .expect("missing transcript list row renderer");
-    let list_region = &render_body[list_start..];
-    let list_end = list_region
-        .find("\n                                        })\n                                        .size_full()")
-        .expect("missing transcript list row renderer end");
-    let row_renderer_body = &list_region[..list_end];
 
     assert!(!render_body.contains("let selection_order = Rc::new(Cell::new(0usize));"));
     assert!(!render_body.contains("let narrative_copy_block_count = Rc::new(Cell::new(0usize));"));
-    assert!(row_renderer_body.contains("TranscriptTextLineOrder::row_start(index)"));
-    assert!(row_renderer_body.contains("transcript_row_initial_narrative_copy_block_count"));
+    assert!(render_body.contains("TranscriptTextLineOrder::row_start(index)"));
+    assert!(render_body.contains("transcript_row_initial_narrative_copy_block_count"));
 }
 
 #[test]
@@ -2039,7 +2176,7 @@ fn transcript_residency_page_worker_stages_before_publication() {
     );
     let controller_facts_body = rust_function_body(
         controller_source,
-        "fn transcript_residency_controller_facts",
+        "fn transcript_residency_controller_facts_from_frame",
     );
     let poll_body = rust_function_body(shell_source, "fn poll_thread_history_page_updates");
     let worker_finish_body =
@@ -2082,9 +2219,8 @@ fn transcript_residency_page_worker_stages_before_publication() {
     );
     assert!(controller_facts_body.contains("request_allowed"));
     assert!(controller_facts_body.contains("source_planning_range_for_visible_range"));
-    assert!(
-        controller_facts_body.contains("transcript_streamed_residency_fill_facts_for_source_range")
-    );
+    assert!(controller_facts_body.contains(".streamed_turn_fills"));
+    assert!(controller_facts_body.contains("frame_facts.rendered_source_range"));
     assert!(controller_request_body.contains("begin_loading_page_for_residency_target_plan"));
     assert!(controller_request_body.contains("note_transcript_residency_request_started"));
     assert_order(
@@ -2137,15 +2273,22 @@ fn transcript_residency_page_worker_stages_before_publication() {
 #[test]
 fn transcript_residency_controller_gathers_bounded_scroll_facts() {
     let controller_source = include_str!("../src/shell/transcript_residency_controller.rs");
+    let transcript_source = include_str!("../src/shell/render/transcript.rs");
     let history_source = include_str!("../src/shell/transcript_history.rs");
     let begin_body = rust_function_body(
         controller_source,
         "pub(super) fn begin_transcript_residency_controller_update",
     );
-    let facts_body = rust_function_body(
+    let frame_facts_body = rust_function_body(
         controller_source,
-        "fn transcript_residency_controller_facts",
+        "fn transcript_residency_controller_facts_from_frame",
     );
+    let fallback_facts_body = rust_function_body(
+        controller_source,
+        "fn transcript_residency_controller_facts_from_list",
+    );
+    let render_facts_body =
+        rust_function_body(transcript_source, "fn transcript_residency_frame_facts");
     let planning_range_body = rust_function_body(
         controller_source,
         "fn transcript_residency_planning_presentation_range",
@@ -2155,23 +2298,32 @@ fn transcript_residency_controller_gathers_bounded_scroll_facts() {
         "pub(crate) fn residency_target_plan_for_source_window_with_streamed_fill",
     );
 
-    assert!(begin_body.contains("transcript_residency_planning_presentation_range"));
+    assert!(begin_body.contains("self.transcript_residency_frame_facts.clone()"));
+    assert!(begin_body.contains("transcript_residency_controller_facts_from_frame"));
+    assert!(begin_body.contains("transcript_residency_controller_facts_from_list"));
     assert!(begin_body.contains("sync_transcript_residency_derived_byte_estimates"));
     assert!(begin_body.contains("residency_target_plan_for_source_window"));
     assert!(begin_body.contains("streamed_turn_fills"));
+    assert!(fallback_facts_body.contains("transcript_residency_planning_presentation_range"));
     assert!(planning_range_body.contains("range_with_vertical_margin"));
-    assert!(facts_body.contains("presentation_range_for_source_range"));
-    assert!(facts_body.contains("source_planning_range_for_visible_range"));
-    assert!(facts_body.contains("transcript_streamed_residency_fill_facts_for_source_range"));
+    assert!(frame_facts_body.contains("frame_facts.source_visible_range"));
+    assert!(frame_facts_body.contains("frame_facts.rendered_source_range"));
+    assert!(frame_facts_body.contains(".streamed_turn_fills"));
+    assert!(frame_facts_body.contains("source_planning_range_for_visible_range"));
+    assert!(render_facts_body.contains("visible_segment_range"));
+    assert!(render_facts_body.contains("leading_rendered_overscan_source_range"));
+    assert!(render_facts_body.contains("trailing_rendered_overscan_source_range"));
+    assert!(render_facts_body.contains("streamed_turn_fills"));
     assert!(controller_source.contains("derived_byte_estimates_by_turn_id_for_range"));
     assert!(controller_source.contains("TranscriptResidencyStreamedTurnFill"));
+    assert!(controller_source.contains("TranscriptResidencyFrameFacts"));
     assert!(history_source.contains("source_range_with_turn_margins"));
     assert!(history_source.contains("source_planning_range_for_visible_range"));
     assert!(!controller_source.contains("derived_byte_estimates_by_turn_id()"));
-    assert!(!facts_body.contains("0..self.transcript_presentation.len()"));
-    assert!(!facts_body.contains("resident_turn_ids()"));
-    assert!(!facts_body.contains("pinned_turn_ids()"));
-    assert!(!facts_body.contains("indexed_turns().len()"));
+    assert!(!frame_facts_body.contains("0..self.transcript_presentation.len()"));
+    assert!(!frame_facts_body.contains("resident_turn_ids()"));
+    assert!(!frame_facts_body.contains("pinned_turn_ids()"));
+    assert!(!frame_facts_body.contains("indexed_turns().len()"));
     assert!(bounded_plan_body.contains("indexed_turns_for_source_range_and_required"));
     assert!(bounded_plan_body.contains("cached_pinned_turn_ids"));
     assert!(!bounded_plan_body.contains("unpinned_resident_turns_outside_source_range"));
@@ -2200,7 +2352,12 @@ fn transcript_residency_controller_defers_until_activation_viewport_is_authorita
     assert_order(
         begin_body,
         "transcript_residency_controller_update_deferred",
-        "transcript_residency_planning_presentation_range",
+        "transcript_residency_controller_facts_from_frame",
+    );
+    assert_order(
+        begin_body,
+        "transcript_residency_controller_update_deferred",
+        "transcript_residency_controller_facts_from_list",
     );
     assert_order(
         begin_body,
@@ -2221,7 +2378,7 @@ fn transcript_residency_controller_defers_until_activation_viewport_is_authorita
     assert!(deferred_body.contains("transcript_residency_controller_viewport_unready"));
     assert!(viewport_body.contains("self.transcript_presentation.len() > 0"));
     assert!(viewport_body.contains("presentation_visible_range.is_empty()"));
-    assert!(viewport_body.contains("viewport_bounds().size.height"));
+    assert!(viewport_body.contains("viewport_height == 0"));
 }
 
 #[test]

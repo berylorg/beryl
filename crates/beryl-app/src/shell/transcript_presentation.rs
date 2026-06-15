@@ -93,6 +93,7 @@ pub(crate) struct TranscriptPresentedRow {
     pub(crate) index: usize,
     pub(crate) identity: TranscriptRowIdentity,
     pub(crate) source_turn_index: usize,
+    #[allow(private_interfaces)]
     pub(crate) turn: Arc<TurnExecutionRecord>,
     pub(crate) model: Arc<TranscriptRowPresentationModel>,
 }

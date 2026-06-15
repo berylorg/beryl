@@ -394,6 +394,7 @@ mod composer_submission;
 mod composer_submit;
 mod context_compaction;
 mod developer_instructions;
+mod diagnostic_fixtures;
 mod diagnostics;
 mod discovery;
 mod dynamic_settings;
@@ -491,6 +492,7 @@ mod transcript_stream_invalidation;
 mod transcript_thread_links;
 mod transcript_viewport;
 mod transcript_viewport_navigation;
+mod transcript_viewport_scroll_coordinator;
 mod turn_steering;
 mod turn_stop;
 mod turn_view;
@@ -619,7 +621,6 @@ use transcript_edit_commit_worker::TranscriptEditCommitUpdate;
 use transcript_history::{
     LoadedTranscriptHistoryPage, THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBoundaryState,
     TranscriptHistoryPageRequest, TranscriptHistoryWindow, TranscriptResidencyPinKind,
-    TranscriptResidencyStreamedTurnFill,
 };
 use transcript_live_scroll::{
     TranscriptFinalAnchor, TranscriptLiveScrollEffectSnapshot, TranscriptLiveScrollState,
@@ -628,18 +629,20 @@ use transcript_live_scroll::{
 use transcript_presentation::{TranscriptActivityCaret, TranscriptPresentationState};
 use transcript_residency_controller::{
     TranscriptResidencyControllerFacts, TranscriptResidencyControllerSignature,
+    TranscriptResidencyFrameFacts,
 };
 use transcript_residency_pages::{
     PendingTranscriptResidencyPageRequest, StagedTranscriptResidencyPageAdmission,
 };
 use transcript_residency_pins::TranscriptResidencyDiagnostics;
-use transcript_scroll::{TranscriptTurnJumpDirection, transcript_turn_jump_target};
+use transcript_scroll::TranscriptTurnJumpDirection;
 use transcript_stream_invalidation::TranscriptStreamInvalidations;
 use transcript_viewport::{
-    TranscriptViewportNavigationDirection, TranscriptViewportPlacement, TranscriptViewportState,
+    TranscriptViewportFrame, TranscriptViewportPlacement, TranscriptViewportState,
 };
 use transcript_viewport_navigation::TranscriptContentScrollSignature;
 pub(crate) use transcript_viewport_navigation::TranscriptStreamedNavigationSnapshot;
+use transcript_viewport_scroll_coordinator::TranscriptEventTimeScrollState;
 use turn_steering::{
     SteeringInputFragment, TurnSteeringOutcome, TurnSteeringUpdate, spawn_turn_steering_worker,
 };
@@ -1428,6 +1431,8 @@ struct TranscriptResidencyFrameDiagnostic {
     resident_turn_count: usize,
     retained_bytes: usize,
     in_flight_requests: usize,
+    last_requested_turns: usize,
+    last_missing_transport_ranges: usize,
     budget_reason: Option<String>,
 }
 
@@ -1456,8 +1461,10 @@ struct ConversationSurfaceState {
     transcript_content_release_markdown_keys: Vec<String>,
     transcript_content_release_media_keys: Vec<String>,
     last_transcript_content_scroll_signature: Option<TranscriptContentScrollSignature>,
-    transcript_streamed_residency_fill_facts: HashMap<String, TranscriptResidencyStreamedTurnFill>,
+    transcript_residency_frame_facts: Option<TranscriptResidencyFrameFacts>,
+    transcript_navigation_frame_snapshot: Option<TranscriptViewportFrame>,
     transcript_streamed_navigation_snapshot: Option<TranscriptStreamedNavigationSnapshot>,
+    transcript_event_time_scroll: TranscriptEventTimeScrollState,
     transcript_residency_controller_facts: Option<TranscriptResidencyControllerFacts>,
     last_transcript_residency_controller_signature: Option<TranscriptResidencyControllerSignature>,
     invalidated_stream_turns: TranscriptStreamInvalidations,
@@ -2102,8 +2109,10 @@ impl ConversationSurfaceState {
             transcript_content_release_markdown_keys: Vec::new(),
             transcript_content_release_media_keys: Vec::new(),
             last_transcript_content_scroll_signature: None,
-            transcript_streamed_residency_fill_facts: HashMap::new(),
+            transcript_residency_frame_facts: None,
+            transcript_navigation_frame_snapshot: None,
             transcript_streamed_navigation_snapshot: None,
+            transcript_event_time_scroll: TranscriptEventTimeScrollState::default(),
             transcript_residency_controller_facts: None,
             last_transcript_residency_controller_signature: None,
             invalidated_stream_turns: TranscriptStreamInvalidations::default(),
@@ -2769,6 +2778,10 @@ impl ConversationSurfaceState {
                 .resident_bytes
                 .saturating_add(residency.index_metadata_bytes),
             in_flight_requests: residency.in_flight_requests,
+            last_requested_turns: self.transcript_residency_diagnostics.last_requested_turns,
+            last_missing_transport_ranges: self
+                .transcript_residency_diagnostics
+                .last_missing_transport_ranges,
             budget_reason: Some(residency.budget_reason.label().to_string()),
         }
     }
@@ -2992,12 +3005,12 @@ impl ConversationSurfaceState {
             last_transcript_content_scroll_signature: self
                 .last_transcript_content_scroll_signature
                 .clone(),
-            transcript_streamed_residency_fill_facts: self
-                .transcript_streamed_residency_fill_facts
-                .clone(),
+            transcript_residency_frame_facts: self.transcript_residency_frame_facts.clone(),
+            transcript_navigation_frame_snapshot: self.transcript_navigation_frame_snapshot.clone(),
             transcript_streamed_navigation_snapshot: self
                 .transcript_streamed_navigation_snapshot
                 .clone(),
+            transcript_event_time_scroll: self.transcript_event_time_scroll.clone(),
             transcript_residency_controller_facts: self
                 .transcript_residency_controller_facts
                 .clone(),
@@ -3387,8 +3400,10 @@ impl ConversationSurfaceState {
         self.transcript_content_release_markdown_keys.clear();
         self.transcript_content_release_media_keys.clear();
         self.last_transcript_content_scroll_signature = None;
-        self.transcript_streamed_residency_fill_facts.clear();
+        self.transcript_residency_frame_facts = None;
+        self.transcript_navigation_frame_snapshot = None;
         self.transcript_streamed_navigation_snapshot = None;
+        self.transcript_event_time_scroll.clear();
         self.transcript_residency_controller_facts = None;
         self.invalidate_transcript_residency_controller();
         self.invalidated_stream_turns.clear();
@@ -11883,21 +11898,9 @@ impl ShellView {
         let mut viewport_changed = false;
         let scroll_event = self.conversation_surface_mut().and_then(|surface| {
             let list_state = surface.transcript_list_state();
-            let turn_count = surface.transcript_presentation().len();
-            let Some(target) = transcript_turn_jump_target(&list_state, turn_count, direction)
-            else {
-                return None;
-            };
-
-            let viewport_target =
-                surface.transcript_viewport_turn_target_for_scroll_position(&target);
-            if let Some(viewport_target) = viewport_target {
-                let application =
-                    surface.apply_transcript_viewport_turn_jump(viewport_target, target);
-                viewport_changed |= application.changed;
-            } else {
-                list_state.scroll_to_position(target);
-            }
+            let target = surface.transcript_viewport_turn_jump_target_for_frame(direction)?;
+            let application = surface.apply_transcript_viewport_turn_jump(target);
+            viewport_changed |= application.changed;
             surface.release_transcript_submit_anchor();
             let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
             Some(ListScrollEvent {
@@ -13903,6 +13906,12 @@ impl ShellView {
                     )),
                 }
             }
+            DiagnosticChildCommand::SeedScrollSmokeTranscript => {
+                parse_diagnostic_target_arguments::<EmptyDiagnosticTargetArguments>(
+                    request.params(),
+                )?;
+                Ok(self.handle_seed_scroll_smoke_transcript_tool_result(window, cx))
+            }
         }
     }
 
@@ -14752,7 +14761,9 @@ impl ShellView {
     ) -> ScrollTranscriptResult {
         let command = arguments.command;
         let repeat = arguments.repeat;
-        let result = self.apply_transcript_scroll_command(command, repeat, window, cx);
+        let delta_y = arguments.delta_y;
+        let precise = arguments.precise;
+        let result = self.apply_transcript_scroll_command(arguments, window, cx);
         let (status, message) = match result {
             Ok(()) => ("applied".to_string(), None),
             Err(message) => ("unavailable".to_string(), Some(message)),
@@ -14761,17 +14772,21 @@ impl ShellView {
             status,
             command,
             repeat,
+            delta_y,
+            precise,
             message,
             ui_state: self.ui_state_snapshot(cx, DEFAULT_UI_VISIBLE_ROW_LIMIT),
         }
     }
     fn apply_transcript_scroll_command(
         &mut self,
-        command: ScrollTranscriptCommand,
-        repeat: usize,
+        arguments: ScrollTranscriptArguments,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if arguments.command == ScrollTranscriptCommand::Wheel {
+            return self.apply_transcript_wheel_command(arguments, window, cx);
+        }
         let Some(surface) = self.conversation_surface_mut() else {
             return Err("Beryl has no active conversation surface.".to_string());
         };
@@ -14781,61 +14796,24 @@ impl ShellView {
             return Err("The selected transcript has no rows to scroll.".to_string());
         }
 
-        match command {
+        match arguments.command {
             ScrollTranscriptCommand::Top => {
-                list_state.scroll_to_position(ListScrollPosition::Content(ListOffset {
-                    item_ix: 0,
-                    offset_in_item: px(0.0),
-                }));
                 if let Some(target) = surface
                     .transcript_viewport_turn_target_for_row(0, TranscriptViewportPlacement::Top)
                 {
-                    surface.transcript_viewport.apply_turn_jump(Some(target));
+                    surface.apply_transcript_viewport_turn_jump(target);
                 }
                 surface.release_transcript_submit_anchor();
                 surface.set_transcript_user_scrolled(true);
             }
             ScrollTranscriptCommand::Bottom => {
+                surface.reset_transcript_viewport_to_tail_anchor();
                 list_state.scroll_to_position(ListScrollPosition::Bottom);
-                surface.transcript_viewport.reset_to_tail(item_count);
                 surface.release_transcript_submit_anchor();
                 surface.set_transcript_user_scrolled(false);
             }
-            ScrollTranscriptCommand::PageUp | ScrollTranscriptCommand::PageDown => {
-                let viewport_height = list_state.viewport_bounds().size.height;
-                if viewport_height <= px(0.0) {
-                    return Err(
-                        "The transcript viewport has not been measured yet, so page scrolling is unavailable."
-                            .to_string(),
-                    );
-                }
-                let direction = match command {
-                    ScrollTranscriptCommand::PageUp => -1.0_f32,
-                    ScrollTranscriptCommand::PageDown => 1.0_f32,
-                    ScrollTranscriptCommand::Top | ScrollTranscriptCommand::Bottom => 0.0,
-                };
-                for _ in 0..repeat {
-                    let semantic_direction = match command {
-                        ScrollTranscriptCommand::PageUp => {
-                            TranscriptViewportNavigationDirection::Up
-                        }
-                        ScrollTranscriptCommand::PageDown => {
-                            TranscriptViewportNavigationDirection::Down
-                        }
-                        ScrollTranscriptCommand::Top | ScrollTranscriptCommand::Bottom => {
-                            unreachable!("page branch handles only page commands")
-                        }
-                    };
-                    let semantic = surface.apply_transcript_viewport_page(semantic_direction);
-                    if semantic.consumed {
-                        surface.release_transcript_submit_anchor();
-                    } else {
-                        list_state.scroll_by(viewport_height * direction);
-                    }
-                }
-                surface.release_transcript_submit_anchor();
-                let at_bottom = matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
-                surface.set_transcript_user_scrolled(!at_bottom);
+            ScrollTranscriptCommand::Wheel => {
+                unreachable!("wheel commands return before semantic scrolling")
             }
         }
         let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
@@ -14847,6 +14825,7 @@ impl ShellView {
         self.note_transcript_scroll_event(&event, window, cx);
         Ok(())
     }
+
     fn handle_close_popups_tool_result(&mut self, cx: &mut Context<Self>) -> ClosePopupsResult {
         let mut closed = Vec::new();
 

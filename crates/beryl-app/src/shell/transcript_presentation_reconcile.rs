@@ -55,6 +55,9 @@ impl ConversationSurfaceState {
         &mut self,
         mutation: TranscriptPresentationMutation,
     ) {
+        if !matches!(mutation, TranscriptPresentationMutation::Unchanged) {
+            self.transcript_event_time_scroll.clear();
+        }
         match mutation {
             TranscriptPresentationMutation::Unchanged => {}
             TranscriptPresentationMutation::Replaced { index } => {

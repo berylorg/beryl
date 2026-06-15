@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 #![allow(dead_code, private_interfaces)]
 
 use std::time::Duration;
@@ -1054,6 +1055,132 @@ fn history_window_streamed_tail_fill_suppresses_indexed_previous_turn_request() 
 
     assert_eq!(plan.desired_full_turn_ids, vec!["turn_9"]);
     assert!(plan.missing_transport_ranges.is_empty());
+    assert!(plan.diagnostics.viewport_margin_satisfied);
+}
+
+#[test]
+fn frame_fact_clamp_at_resident_start_requests_older_history() {
+    let page = loaded_history_page(
+        vec![turn("turn_0"), turn("turn_1"), turn("turn_2")],
+        Some("older_cursor"),
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(0),
+    );
+
+    let plan = window.residency_target_plan_for_source_window(
+        0..1,
+        0..1,
+        96,
+        [TranscriptResidencyMeasuredTurnHeight {
+            source_position: 0,
+            measured_height: 96,
+        }],
+        None,
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_0"]);
+    assert!(plan.missing_transport_ranges.is_empty());
+    assert_eq!(
+        window.begin_loading_page_for_residency_target_plan(&plan, &(0..1)),
+        Some(TranscriptHistoryPageRequest::Older {
+            cursor: "older_cursor".to_string(),
+        })
+    );
+}
+
+#[test]
+fn frame_fact_trailing_margin_restores_indexed_turns_while_detached_from_tail() {
+    let page = loaded_history_page(
+        (0..6)
+            .map(|index| {
+                let view = if index <= 2 {
+                    TurnItemsView::Full
+                } else {
+                    TurnItemsView::NotLoaded
+                };
+                turn_with_items_view(&format!("turn_{index}"), view)
+            })
+            .collect(),
+        None,
+        None,
+    );
+    let mut window = TranscriptHistoryWindow::from_latest_page(&page);
+    window.bind_residency_to_thread("thread_a");
+    window.set_residency_policy(
+        TranscriptResidencyPolicy::new()
+            .with_leading_viewport_margins(0)
+            .with_trailing_viewport_margins(2),
+    );
+
+    let source_planning_range = window.source_planning_range_for_visible_range(2..3, 96);
+    let plan = window.residency_target_plan_for_source_window(
+        2..3,
+        source_planning_range,
+        96,
+        [TranscriptResidencyMeasuredTurnHeight {
+            source_position: 2,
+            measured_height: 96,
+        }],
+        None,
+    );
+
+    assert_eq!(
+        plan.desired_full_turn_ids,
+        vec!["turn_2", "turn_3", "turn_4"]
+    );
+    assert_eq!(plan.missing_transport_ranges, vec![3..5]);
+    assert!(matches!(
+        window.begin_loading_page_for_residency_target_plan(&plan, &(2..3)),
+        Some(TranscriptHistoryPageRequest::Indexed { cursor: None, .. })
+    ));
+}
+
+#[test]
+fn frame_fact_small_ordinary_rows_accumulate_until_margin_is_satisfied() {
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(
+            TranscriptResidencyViewport::new(5..6, 100),
+            planner_turns(6, 40, 10, false),
+        )
+        .with_policy(
+            TranscriptResidencyTargetPolicy::new()
+                .with_leading_viewport_margins(2)
+                .with_trailing_viewport_margins(0),
+        ),
+    );
+
+    assert_eq!(
+        plan.desired_full_turn_ids,
+        vec!["turn_5", "turn_4", "turn_3", "turn_2", "turn_1", "turn_0"]
+    );
+    assert_eq!(plan.missing_transport_ranges, vec![0..6]);
+    assert!(plan.diagnostics.viewport_margin_satisfied);
+}
+
+#[test]
+fn frame_fact_streamed_turn_can_satisfy_both_viewport_margins() {
+    let mut turns = planner_turns(7, 100, 10, false);
+    turns[3] = turns[3]
+        .clone()
+        .with_streamed_margin_satisfaction(true, true);
+
+    let plan = plan_transcript_residency_target(
+        TranscriptResidencyTargetInput::new(TranscriptResidencyViewport::new(3..4, 100), turns)
+            .with_policy(
+                TranscriptResidencyTargetPolicy::new()
+                    .with_leading_viewport_margins(2)
+                    .with_trailing_viewport_margins(2),
+            ),
+    );
+
+    assert_eq!(plan.desired_full_turn_ids, vec!["turn_3"]);
+    assert_eq!(plan.missing_transport_ranges, vec![3..4]);
     assert!(plan.diagnostics.viewport_margin_satisfied);
 }
 

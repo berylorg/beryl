@@ -38,7 +38,13 @@ impl ShellView {
                     older_history_loading: ready.surface.older_history_loading(),
                     residency_resident_turn_count: residency.resident_turn_count,
                     residency_retained_bytes: residency.retained_bytes,
+                    residency_pending_requests: usize::from(
+                        self.thread_history_page_receiver.is_some(),
+                    ),
                     residency_in_flight_requests: residency.in_flight_requests,
+                    residency_last_requested_turns: residency.last_requested_turns,
+                    residency_last_missing_transport_ranges: residency
+                        .last_missing_transport_ranges,
                     residency_budget_reason: residency.budget_reason,
                     active_turn_source_pin_active: active_source_pin.active,
                     active_turn_source_retained_bytes: active_source_pin.retained_bytes,
@@ -95,7 +101,13 @@ impl ShellView {
                     older_history_loading: unavailable.surface.older_history_loading(),
                     residency_resident_turn_count: residency.resident_turn_count,
                     residency_retained_bytes: residency.retained_bytes,
+                    residency_pending_requests: usize::from(
+                        self.thread_history_page_receiver.is_some(),
+                    ),
                     residency_in_flight_requests: residency.in_flight_requests,
+                    residency_last_requested_turns: residency.last_requested_turns,
+                    residency_last_missing_transport_ranges: residency
+                        .last_missing_transport_ranges,
                     residency_budget_reason: residency.budget_reason,
                     active_turn_source_pin_active: active_source_pin.active,
                     active_turn_source_retained_bytes: active_source_pin.retained_bytes,
@@ -154,7 +166,13 @@ impl ShellView {
                     older_history_loading: surface.older_history_loading(),
                     residency_resident_turn_count: residency.resident_turn_count,
                     residency_retained_bytes: residency.retained_bytes,
+                    residency_pending_requests: usize::from(
+                        self.thread_history_page_receiver.is_some(),
+                    ),
                     residency_in_flight_requests: residency.in_flight_requests,
+                    residency_last_requested_turns: residency.last_requested_turns,
+                    residency_last_missing_transport_ranges: residency
+                        .last_missing_transport_ranges,
                     residency_budget_reason: residency.budget_reason,
                     active_turn_source_pin_active: active_source_pin.active,
                     active_turn_source_retained_bytes: active_source_pin.retained_bytes,

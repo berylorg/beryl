@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "support/tempdir.rs"]
 mod tempdir_support;
 
@@ -442,7 +444,7 @@ fn diagnostic_child_control_params_are_normalized_before_protocol_request() {
     );
     let scroll_request = tool_request(
         DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
-        json!({ "command": "page_down", "repeat": 99 }),
+        json!({ "command": "bottom", "repeat": 99 }),
     );
 
     let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
@@ -460,6 +462,44 @@ fn diagnostic_child_control_params_are_normalized_before_protocol_request() {
     assert!(response.success);
     assert_eq!(payload["result"]["command"], "scroll_transcript");
     assert_eq!(payload["result"]["params"]["repeat"], 8);
+
+    child.close().unwrap();
+    root.close().unwrap();
+}
+
+#[test]
+fn diagnostic_child_scroll_transcript_forwards_wheel_delta() {
+    let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
+    let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
+    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let mut supervisor = DiagnosticChildSupervisor::default();
+    let start_request = tool_request(
+        DIAGNOSTIC_CHILD_START_TOOL,
+        json!({ "berylHomeDir": child.path().display().to_string() }),
+    );
+    let scroll_request = tool_request(
+        DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
+        json!({ "command": "wheel", "deltaY": -64.0, "precise": true, "repeat": 3 }),
+    );
+
+    let _ = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &start_request,
+    );
+    let response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
+        &mut supervisor,
+        &supervisor_home,
+        &scroll_request,
+    );
+    let payload = response_json(&response);
+
+    assert!(response.success);
+    assert_eq!(payload["result"]["command"], "scroll_transcript");
+    assert_eq!(payload["result"]["params"]["command"], "wheel");
+    assert_eq!(payload["result"]["params"]["deltaY"], -64.0);
+    assert_eq!(payload["result"]["params"]["precise"], true);
+    assert_eq!(payload["result"]["params"]["repeat"], 3);
 
     child.close().unwrap();
     root.close().unwrap();

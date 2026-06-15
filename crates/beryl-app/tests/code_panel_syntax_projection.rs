@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 #[path = "../src/shell/layout.rs"]
 pub(crate) mod layout;
 
