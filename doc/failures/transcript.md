@@ -116,3 +116,12 @@
 - Why it failed: `List::prepaint` holds the virtual-list `StateInner` `RefCell` mutably while prepainting child row elements. The chunk measurement callback re-entered `ListState::invalidate_item_measurement` for the same list before that borrow was released.
 - Course correction: streamed chunk measurement callbacks defer measurement application until after child prepaint, then changed measurements may invalidate the row for the next frame.
 - Affected tests: keep a source guard proving `render_measured_chunk` uses `window.defer` before calling `record_transcript_row_chunk_measurement`.
+
+## Mechanical Archive Before Shell Boundary Replacement
+
+- Scope: Syndic-to-renderer architectural rework Phase 2.
+- Invalid assumption: legacy transcript source could be moved under `doc/rework/syndic-to-renderer/old-crates/` after adding a small compile stub.
+- Evidence: source audit found direct dependencies from `ShellView`, `ConversationSurfaceState`, selected-thread activation, diagnostics, render theme construction, and integration tests to legacy transcript module names and data types.
+- Why it failed: preserving the old names as no-op shells would be an adapter-shaped compatibility layer and would keep obsolete models in the live architecture.
+- Course correction: first introduce a new shell-facing `syndic_transcript` surface and move live callers to target-state host, presentation, residency, and diagnostic contracts. Archive old transcript source only after the live module tree no longer imports old transcript modules.
+- Affected plan: `doc/plan.md` Phase 2 remains `wip` and `doc/rework/syndic-to-renderer/REWORK.md` tracks the replacement boundary and obsolete-test retirement before source archiving.

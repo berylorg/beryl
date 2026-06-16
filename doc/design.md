@@ -20,6 +20,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - `doc/product-features.md` is a navigational index rather than the authority for detailed product behavior.
 - `doc/ui.md` owns shared reusable UI mechanics, window rules, widgets, and scroll contracts that are not specific to one product feature.
 - `doc/input-hotkeys.md` owns shared baseline text-input behavior. Feature-specific field behavior belongs in the owning feature doc.
+- Active architectural reworks are tracked under `doc/rework/<name>/REWORK.md`. Rework trackers record archived reference material, cutover boundaries, and exhaustive migration checklists; target-state design authority remains in the normal root, feature, and package design paths.
 
 ## Feature Design Entry Points
 
@@ -28,7 +29,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Conversation thread selection, activation, inventory, binding, branch/edit workflows, automatic thread-title generation, and user-initiated thread-title updates are defined in `doc/features/conversation-threads/design.md`.
 - Threaded decision workflows that bind checklist items to decision child branches, parent handoff turns, resolution outcomes, and child cleanup are defined in `doc/features/threaded-decisions/design.md`.
 - Composer behavior, draft submission, image input, input queues, composer history, quote insertion, and developer-instructions injection on user turns are defined in `doc/features/composer/design.md`.
-- Transcript rendering, Markdown, media, selection, quote harvesting, turn context menus, history pagination, and transcript scroll anchoring are defined in `doc/features/transcript/design.md`.
+- Syndic-backed transcript rendering, resident transcript presentation data, media, selection, quote harvesting, turn context menus, and transcript scroll anchoring are defined in `doc/features/transcript/design.md`.
 - Status line behavior, model/reasoning controls, context/rate-limit display, context compaction controls, and turn stop controls are defined in `doc/features/status-line/design.md`.
 - Activity panel behavior and activity projection are defined in `doc/features/activity-panel/design.md`.
 - Semantic graph, graph overlay, primitive graph tools, graph provenance, and markdown/thread refs are defined in `doc/features/semantic-graph/design.md`.
