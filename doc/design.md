@@ -34,6 +34,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Semantic graph, graph overlay, primitive graph tools, graph provenance, and markdown/thread refs are defined in `doc/features/semantic-graph/design.md`.
 - Graph upkeep, graph upkeep instructions, AI-assisted graph maintenance, on-demand source-ref repair, and graph-upkeep write policy are defined in `doc/features/graph-upkeep/design.md`.
 - Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches are defined in `doc/features/semantic-search/design.md`.
+- Syndic durable conversation concepts, turn DAGs, references, projections, and Codex-like agent-layer compatibility constraints are defined in `doc/features/syndic/design.md`.
 - Settings window shell, settings rows, settings persistence, and settings dynamic tools are defined in `doc/features/settings/design.md`.
 - Appearance themes, theme repository, Themes settings page, theme candidate code panels, theme dynamic tools, and theme editor authority are defined in `doc/features/theming/design.md`.
 - Surface notices, turn-error notices, end-turn sounds, and attention-trigger behavior are defined in `doc/features/notifications/design.md`.

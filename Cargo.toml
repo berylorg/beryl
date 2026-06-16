@@ -4,6 +4,7 @@ members = [
     "crates/beryl-app",
     "crates/beryl-backend",
     "crates/beryl-model",
+    "crates/syndic-storage",
 ]
 resolver = "3"
 
@@ -21,6 +22,7 @@ beryl-backend = { path = "crates/beryl-backend" }
 beryl-model = { path = "crates/beryl-model" }
 clap = { version = "4.6.1", features = ["derive"] }
 deunicode = "1.6.2"
+fjall = "3.1.5"
 getrandom = "0.4.2"
 hex = "0.4.3"
 gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "fabbb607f5aff9e69ef6f09d423c5264bee4c9a8", default-features = false, features = ["windows-manifest"] }

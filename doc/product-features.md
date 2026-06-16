@@ -15,6 +15,7 @@ Authoritative feature design entry points:
 - Semantic graph, toolbar graph toggle, graph overlay, primitive graph tools, graph refs, and provenance: `doc/features/semantic-graph/design.md`
 - Graph upkeep, graph upkeep instructions, AI-assisted graph maintenance, on-demand source-ref repair, and graph-upkeep write policy: `doc/features/graph-upkeep/design.md`
 - Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches: `doc/features/semantic-search/design.md`
+- Syndic durable conversation concepts, turn DAGs, references, projections, and Codex-like agent-layer compatibility constraints: `doc/features/syndic/design.md`
 - Settings window shell, settings rows, settings persistence, and settings dynamic tools: `doc/features/settings/design.md`
 - Appearance themes, theme repository, Themes settings page, theme candidate code panels, theme dynamic tools, and theme editor: `doc/features/theming/design.md`
 - Surface notices, turn-error notices, end-turn sounds, and attention-trigger behavior: `doc/features/notifications/design.md`
