@@ -1,6 +1,6 @@
 ---
 name: implementation-planning
-description: Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; derive edge cases from design docs; track readiness and resumable milestones; record blockers; and follow stop-after-phase and review-after-completion rules.
+description: Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; derive edge cases from design docs; keep phases narrowly scoped; track readiness and resumable milestones; record blockers; respect other active planning authorities; and follow stop-after-phase and review-after-completion rules.
 ---
 
 # Implementation Planning
@@ -26,17 +26,29 @@ When non-empty, `doc/plan.md` must contain:
 
 Track readiness and the latest resumable milestone so later sessions can continue correctly.
 
+If another active skill or project authority constrains planning scope, inputs, sequencing, or continuation, reflect those constraints in `doc/plan.md` without redefining that authority's file format or domain-specific workflow.
+
 ## Planning Workflow
 
-1. Read the controlling root, feature, parent, package, API, and design docs.
+1. Read the controlling feature, system, package or subproject, API, rework, and design docs, plus any project-declared root or parent authority docs.
 2. Stop if the requested work contradicts design authority.
 3. Define scope from the authoritative docs.
-4. Split implementation into coherent phases.
+4. Split implementation into small coherent phases.
 5. Mark the active phase `wip`; leave future phases `pending`.
 6. Include phase tasks, edge cases, verification, and resumable milestone details.
 7. Before stopping on a blocker, write the issue into the relevant phase.
 
-All hacks, migration adapters, and workarounds require explicit operator approval before they appear in the plan or code.
+Hacks, migration adapters, and untracked workarounds require explicit operator approval before they appear in the plan or code.
+
+If another active skill or project authority explicitly allows a constrained exception, that specific allowance takes priority over the generic workaround rule. The plan may include that exception only with the stated constraints, verification, and completion condition.
+
+## Phase Sizing
+
+Each phase should contain one hard task at a time, or one tightly coupled task cluster that cannot be verified sensibly if split smaller.
+
+Do not pack multiple hard tasks into a single phase just because they share a feature, package, or milestone. If a phase would require broad investigation, multiple independent code paths, or several verification strategies, split it.
+
+When another active skill or project authority limits the current planning window, keep phases inside that window.
 
 ## Edge-Case Checklist
 
@@ -61,6 +73,7 @@ When executing the plan:
 - In absence of more specific instructions, stop after one phase is finished.
 - If a phase cannot be completed, record the blocking issue in that phase before stopping.
 - When a phase is finished and later phases remain, stop according to the project's continuation policy.
+- When all phases in the current plan are finished, follow any continuation rules from other active skills or project authorities before declaring the plan complete.
 
 ## Completion Review
 
@@ -68,5 +81,4 @@ When all phases are finished and the changes touched authoritative docs or code,
 
 If the reviewer finds issues that need fixing, plan that work in `doc/plan.md` before implementing the fixes.
 
-When all phases are complete, leave `doc/plan.md` empty unless the project declares another archival convention.
-
+When all phases are complete and no active skill or project authority requires continuation, leave `doc/plan.md` empty unless the project declares another archival convention.

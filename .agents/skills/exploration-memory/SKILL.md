@@ -21,7 +21,7 @@ Use one path segment per source-native identity token. If a token contains files
 
 For package-manager or build-system-resolved dependencies, use the registry or resolver authority rather than the upstream source repository:
 
-- `doc/memory/crates.io/<crate>/<version>/<investigation-slug>.md`
+- `doc/memory/npm/<package>/<version>/<investigation-slug>.md`
 - `doc/memory/maven-central/<group-id>/<artifact-id>/<version>/<investigation-slug>.md`
 
 For public VCS repositories, use a generic host and repository path shape:

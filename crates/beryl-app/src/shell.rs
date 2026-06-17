@@ -377,9 +377,6 @@ mod composer_draft;
 mod composer_history;
 mod composer_image_assets;
 mod composer_image_delivery;
-mod composer_image_label_scan;
-mod composer_image_label_sync;
-mod composer_image_labels;
 mod composer_input_chrome;
 mod composer_measurement;
 mod composer_submission;
@@ -388,11 +385,9 @@ mod context_compaction;
 mod developer_instructions;
 mod diagnostic_fixtures;
 mod diagnostics;
-mod discovery;
 mod dynamic_settings;
 mod dynamic_theme;
 mod dynamic_theme_worker;
-mod execution_detail;
 mod graph;
 mod graph_link_menu;
 mod graph_link_menu_state;
@@ -415,7 +410,6 @@ mod pending_turn_input;
 mod platform_attention;
 mod render;
 mod render_theme;
-mod selected_thread_activation;
 mod semantic_thread_start;
 mod settings;
 mod status_line;
@@ -477,15 +471,9 @@ use composer_image_assets::{ComposerImageAssetUpdate, spawn_composer_image_asset
 use composer_image_delivery::{
     ComposerImageDeliveryUpdate, PreparedComposerDraft, spawn_composer_image_delivery_worker,
 };
-use composer_image_label_sync::{ComposerImageLabelScanTask, ComposerImageLabelValidationTask};
-use composer_image_labels::{ComposerImageLabelState, ComposerImagePasteReadiness};
 use composer_measurement::{ComposerInputMeasurementCache, ComposerInputMeasurementKey};
 use composer_submission::prepared_composer_draft_fragment;
 use composer_submit::accepted_composer_draft;
-use discovery::WorkspaceOpenCancellation;
-use execution_detail::{
-    ActiveTurnIdentity, ExecutionDetailState, TurnExecutionStatus, UserInputFragment,
-};
 use graph::{
     GraphColumnKey, GraphCommitApplication, GraphMutationCommitUpdate, GraphMutationUpdate,
     GraphOptimisticMutation, GraphOverlayState, OptimisticGraphMutationId,
@@ -516,10 +504,6 @@ use pending_turn_input::{
     PendingTurnInputSubmissionPlan,
 };
 use platform_attention::PlatformAttentionMonitor;
-use selected_thread_activation::{
-    ActivationPreparer, PendingThreadActivation, PublishedSelectedThreadActivation,
-    SelectedThreadActivationSource, StagedSelectedThreadActivation,
-};
 use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, StatusLineTurnView,

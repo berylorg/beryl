@@ -11,6 +11,12 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 
 # Decisions
 
+## Implementation References
+
+- CAS-live Syndic submission admission, capture durability, and incomplete-history behavior are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
+- Syndic turn ownership, transcript-view provenance, and durable image-marker evidence are defined in `doc/systems/syndic-conversation-history/design.md`.
+- Backend runtime availability and protocol capability boundaries are defined in `doc/systems/backend-runtime/design.md`.
+
 ## Composer Surface
 
 - The user input panel is pinned above the status line inside the conversation column.
@@ -38,16 +44,17 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 - Pasted images are stored as durable Beryl image assets under workspace-local state for backend submission, composer preview, accepted transcript markers, retries, and preview after restart.
 - Image labels are correctness-critical model-visible data, because CAS image input records do not carry Beryl's GUI-owned label and Beryl sends labels as adjacent text.
 - Image labels are allocated from selected-thread or pending-new-thread reserved-label state as `A`, `B`, `C`, continuing spreadsheet-style when needed.
-- The reserved label floor is seeded from validated backend history plus accepted fragments, queued fragments, and retry state. Active draft image markers reserve their labels only while at least one marker occurrence remains in the draft.
-- Labels remain stable while a draft marker, accepted fragment, queued fragment, or retry state exists. Removing the final active marker for a draft-only image releases that label when the image has not been accepted, queued, retried, or observed in backend history.
-- Removing one active draft label does not rename later active draft labels. A later paste may fill the released gap only when no active marker, accepted fragment, queued fragment, retry state, or reliable backend-history evidence still reserves that label.
-- Beryl must never allocate a label that overlaps a same-thread image label it has reliable evidence may have existed. When current history is uncertain, sparse or gapped labels are preferable to reuse; Beryl should only avoid gaps when exact validated history makes doing so safe.
+- The reserved label floor is seeded from the owning conversation-history boundary plus accepted fragments, queued fragments, and retry state. Active draft image markers reserve their labels only while at least one marker occurrence remains in the draft.
+- Labels remain stable while a draft marker, accepted fragment, queued fragment, or retry state exists. Removing the final active marker for a draft-only image releases that label when the image has not been accepted, queued, retried, or observed in the owning conversation-history boundary.
+- Removing one active draft label does not rename later active draft labels. A later paste may fill the released gap only when no active marker, accepted fragment, queued fragment, retry state, or reliable owning-history evidence still reserves that label.
+- Beryl must never allocate a label that overlaps a same-thread image label it has reliable evidence may have existed. When current history is uncertain, sparse or gapped labels are preferable to reuse; Beryl should only avoid gaps when exact validated owning-history data makes doing so safe.
 - Multiple markers may show the same label only when they reference the same pasted image payload.
 - The compact visual marker such as `[A]` is presentation. It is not submitted as literal user-authored text.
 - On submission, Beryl sends the original image once at the first ordered marker occurrence and inserts generated label text such as `Image A:` immediately before that image record. Later marker occurrences for the same image serialize as generated text references such as `[Image A]`.
-- Existing-thread image paste is unavailable until Beryl knows prior image labels well enough to allocate without colliding with older history. GUI-local caches may accelerate this check, but they are not authoritative unless validated against the current backend-owned thread history.
-- Thread histories are owned by CAS, not by Beryl. Other CAS clients can append to or mutate a thread, and Beryl must treat thread-label caches keyed only by thread id as stale until a backend history frontier check proves they are still safe.
-- When a backend thread is loaded or selected, Beryl should proactively validate or synchronize that thread's image-label cache in the background so image paste is usually ready before the user invokes it.
+- Existing-thread image paste is unavailable until Beryl knows prior image labels well enough to allocate without colliding with older history. GUI-local caches may accelerate this check, but they are not authoritative unless validated against the current owning conversation-history boundary.
+- Captured transcript histories are owned by Syndic, while CAS remains the live execution and policy owner. Other CAS clients can append to or mutate a thread, and Beryl must treat thread-label caches keyed only by thread id as stale until an owning-history frontier check proves they are still safe.
+- After Syndic capture cutover, composer image-label authority for the selected transcript must not be populated by querying CAS historical transcript APIs. Missing or incomplete Syndic history keeps image paste unavailable or produces an explicit incomplete-history state.
+- When a conversation thread is loaded or selected, Beryl should proactively validate or synchronize that thread's image-label cache in the background so image paste is usually ready before the user invokes it.
 - Image-label readiness gates only operations that create or move image markers into a label scope. Ordinary text input remains available while label synchronization is pending.
 - Beryl does not insert unresolved image-marker placeholders into the composer. An image marker must have its final label before it enters the draft, because unlabeled atoms would make submission, undo, copy/cut, edit mode, and scan-failure behavior correctness-critical.
 - Composer image marker atoms are indivisible draft positions for caret movement, selection, deletion, cut, paste, undo, and redo.
@@ -71,6 +78,11 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 
 - When a non-empty draft is accepted for submission, it clears immediately and appears in the transcript as one distinct user input fragment.
 - Rejected submissions, including empty drafts, backend-unavailable targets, storage failures, path-preparation failures, or serialization failures, keep the draft intact and report the rejection.
+- For CAS-live Syndic-captured threads, acceptance requires a durable Syndic admission record or crash-recoverable ingestion journal entry before the draft clears, transcript projection mutates, backend delivery queue state changes, or image-label protected state advances.
+- If the current Syndic path has a valid CAS projection binding, an accepted new user turn is delivered through ordinary CAS turn start behavior.
+- If the current Syndic path has a stale or unbound CAS projection binding, accepted execution must first obtain a fresh CAS projection through the CAS-live Syndic system boundary.
+- Once CAS accepts a live turn, the accepted user input for that turn is no longer editable on the Syndic side. The user may stop, delete, branch after completion, or create later replacement work according to the conversation-thread contract.
+- Deleting the active live turn aborts execution and removes the partial turn from transcript history rather than preserving it as a durable partial response.
 - Image path preparation validates the durable GUI-owned image asset at the path readable by the GUI process while separately preparing the runtime-readable backend `localImage.path` used by app-server.
 - Each accepted composer send-and-clear event remains a distinct user input fragment, even when multiple fragments belong to one backend turn.
 - If no backend thread is active and the user submits from the workspace screen, Beryl creates a new persistent Codex thread through the current primary member and activates it.

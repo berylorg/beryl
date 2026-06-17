@@ -1,10 +1,20 @@
-# Syndic Codex-Like Agent Layer
+# Goals
 
-This supplemental feature doc captures the constraint baseline for a Codex-derived or Codex-like local agent layer that Beryl could talk to instead of stock Codex App Server.
+Define the constraint baseline for a Codex-derived or Codex-compatible local agent layer that Beryl could talk to instead of stock Codex App Server.
 
-It is an engineering checklist, not legal advice. It is authoritative for the constraints such a layer must preserve before adding Beryl-specific storage, projection, media, scheduling, or protocol improvements, but it is not an implementation plan and does not authorize replacing Codex App Server by itself.
+Preserve Codex-compatible auth, policy, safety, event, execution, and history behavior before Beryl can rely on a replacement live execution provider.
 
-# Non-Negotiable Functionality For Compliance
+## Non-goals
+
+- Replacing Codex App Server in the current Beryl runtime.
+- Authorizing use of undocumented OpenAI or ChatGPT backend endpoints outside a preserved Codex-compatible runtime path.
+- Providing legal advice.
+
+# Decisions
+
+This system doc is an engineering checklist. It is authoritative for the constraints such a layer must preserve before adding Beryl-specific storage, projection, media, scheduling, or protocol improvements, but it is not an implementation plan and does not authorize replacing Codex App Server by itself.
+
+## Non-Negotiable Functionality For Compliance
 
 ## Official Auth Modes
 

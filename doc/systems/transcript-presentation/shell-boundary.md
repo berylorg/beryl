@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the normative shell-facing boundary for the Syndic-backed transcript presentation stack.
+This is the normative system boundary for the shell-facing Syndic-backed transcript presentation stack.
 
 It defines the target surface that Beryl shell code uses during transcript activation, rendering, scrolling, diagnostics, selection, quote, menus, and media actions. It does not define Syndic storage, durable history, provider internals, or migration phases.
 

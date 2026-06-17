@@ -1,6 +1,6 @@
 # Syndic Concepts
 
-This supplemental feature doc captures the current model for Syndic's conversation, branching, item, and reference concepts.
+This supplemental system doc captures the current model for Syndic's conversation, branching, item, and reference concepts.
 
 It is authoritative for current Syndic vocabulary and accepted model statements. Sections that explicitly say TBD, unresolved, or open question record non-final issues rather than locked behavior.
 
@@ -8,7 +8,11 @@ It is authoritative for current Syndic vocabulary and accepted model statements.
 
 Syndic models conversation history as a directed acyclic graph of turns.
 
-A turn is one user input and the agent response produced from that input.
+Most turns are one user input and the agent response produced from that input.
+
+Syndic may also record provider-operation turns when the execution provider exposes a turn identity or turn-scoped operational item for work that is not ordinary user input, such as context compaction.
+
+Provider-operation turns participate in the turn DAG as ownership roots, but transcript projections may hide or collapse them when they are not parent transcript narrative.
 
 Every turn has either one parent turn or no parent. A turn with no parent is a root turn.
 
@@ -17,6 +21,8 @@ The parent chain of a turn defines the conversation context that should be repla
 When a turn has more than one child, that is a branch point. Each child represents an alternate continuation from the same prior context.
 
 The graph shape is closer to source-control history than to a flat chat log. The stable object is the turn graph; user-visible threads are views over that graph.
+
+Provider events update turn-owned items, status, metadata, resources, and projections. They do not create, remove, or restore graph parent edges unless an explicit Syndic graph operation authorizes that topology change.
 
 # Threads
 
@@ -34,7 +40,9 @@ Thread-scoped DAG view-flattening is TBD. A thread that starts at `B` might even
 
 Each turn contains an ordered sequence of lightweight items.
 
-The initial item is the user's input for that turn.
+The initial item for an ordinary user turn is the user's input for that turn.
+
+Provider-operation turns may instead start with an operation item, such as a context-compaction item.
 
 Response items can include narrative commentary, final answers, tool activity, command activity, errors, token accounting, and references to generated or attached items.
 
@@ -183,6 +191,22 @@ Markdown block projections are one such derived projection.
 
 They should be rebuildable from canonical provider messages.
 
+# Derived Lineage
+
+Editing a prior user input has two supported lineage shapes.
+
+If the user keeps the original thread intact, Syndic records a new branch turn whose parent is the edited turn's parent. The new branch does not inherit the original edited turn's descendants.
+
+If the user chooses replacement editing, Syndic detaches the target turn from its selected-path parent and records one replacement turn from the edited input at that parent.
+
+Syndic does not support an edit shape that deletes the edited turn and reconnects its original descendants to the edited turn's parent.
+
+The detached target and its descendants remain durable Syndic turns. They may become an isolated graph, or they may remain reachable through another thread view or branch reference.
+
+Syndic does not physically delete detached turns, items, resources, or projections during this rework. The database may grow with isolated unreferenced graphs until a later garbage-collection design is approved.
+
+Retry and regenerate are not Beryl product features. Users ask for another attempt by sending another normal input.
+
 # Open Questions
 
 Thread-scoped DAG view-flattening needs refinement.
@@ -192,7 +216,5 @@ The `syndic://` namespace needs rules for uniqueness, alias conflicts, permissio
 The exact `syndic://kind/<id>` versus `syndic:///kind/<id>` URI grammar needs to be decided before implementation.
 
 Markdown projection thresholds need to be defined for paragraph chunking, code block externalization, and table externalization.
-
-The model for edits, rollbacks, compaction, and summarization needs to specify how derived turns relate to earlier turns.
 
 The context builder needs a precise policy for when reference metadata, file text, previews, snapshots, or full bytes are included in a model request.

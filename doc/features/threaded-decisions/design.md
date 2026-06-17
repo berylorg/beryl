@@ -13,6 +13,12 @@ Let users explore nontrivial itemized decisions in dedicated child conversation 
 
 # Decisions
 
+## Implementation References
+
+- CAS projection bindings and storage-backed transcript preparation for captured histories are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
+- Durable transcript provenance for parent and child turns is defined in `doc/systems/syndic-conversation-history/design.md`.
+- Backend runtime capability probing and backend-unavailable behavior are defined in `doc/systems/backend-runtime/design.md` and `doc/features/backend-runtime-recovery/design.md`.
+
 ## Product Workflow
 
 A threaded decision is a workflow binding between one decision checklist-item semantic node, one parent conversation thread, and at most one active decision-making child thread.
@@ -89,7 +95,7 @@ Archive failure does not roll back the handoff or checklist update. Beryl record
 
 Archive retry must not assume backend archive is idempotent. If a retry receives an archive error but exact backend evidence shows the thread is already archived, Beryl may treat the child branch as closed and clear the retry warning.
 
-Opening closed decision branches uses app-server exact-id archived-thread reads when the backend supports them. For the current CAS target contract, transcript pages are still loaded through `thread/turns/list` with `itemsView`: Beryl may retain `notLoaded` turn-index pages for non-rendered planning and must prepare resident full-detail transcript windows through bounded `full` requests before exposing scrollable transcript content. Beryl opens a closed decision branch as a read-only transcript with composer disabled.
+Opening closed decision branches uses app-server exact-id archived-thread reads when the backend supports them. After the CAS-live Syndic capture cutover, read-only transcript content for captured closed branches is prepared through the Syndic transcript provider rather than CAS paginated history. CAS `thread/turns/list` with `itemsView` remains only a legacy or transitional compatibility path for uncaptured closed branches with explicit incomplete-history presentation. Beryl opens a closed decision branch as a read-only transcript with composer disabled.
 
 If Beryl uses `thread/resume` to inspect or load an archived branch, it must still force closed-branch read-only UI state. Returned idle status is not permission to make the closed branch writable or visible through normal thread selection. Beryl must not call `thread/unarchive` for ordinary thread-ref activation of a closed decision branch; explicit unarchive belongs to a later repair or reopening design.
 

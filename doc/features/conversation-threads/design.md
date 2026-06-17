@@ -1,20 +1,31 @@
 # Goals
 
-Let users create, resume, branch, edit, title, navigate between, and select backend-owned Codex conversation threads from a Beryl workspace while preserving exact runtime/member bindings and keeping backend history ownership in `codex app-server`.
+Let users create, resume, branch, edit, title, navigate between, and select Codex-executed conversation threads from a Beryl workspace while preserving exact runtime/member bindings and keeping captured transcript history owned by Syndic.
 
 ## Non-goals
 
-- Copying backend conversation history into Beryl-owned durable thread records.
+- Copying Codex App Server historical transcript reads into GUI-local durable thread records.
+- Querying Codex App Server historical transcript APIs as the selected transcript source after Syndic capture cutover.
 - Emulating app-server fork, rollback, resume, or naming primitives in GUI-local state.
 - Silently rebinding a thread to another runtime, member, or backend process.
 - Automatically generating names for externally created conversation threads without an explicit user action.
 
 # Decisions
 
+## Implementation References
+
+- CAS projection bindings, stale/unbound projection behavior, fresh materialization, and Syndic graph-action reflection are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
+- Durable captured transcript history and transcript-view provenance are defined in `doc/systems/syndic-conversation-history/design.md`.
+- Transcript presentation residency and context-menu provenance surfaces are defined in `doc/systems/transcript-presentation/design.md`.
+- Backend runtime capability probing and backend-unavailable behavior are defined in `doc/systems/backend-runtime/design.md` and `doc/features/backend-runtime-recovery/design.md`.
+
 ## Thread Ownership And Binding
 
-- A conversation thread is backend-owned Codex state with its own message history and execution stream.
+- A conversation thread has backend-owned Codex execution state, runtime binding, and live event stream.
+- Syndic owns durable rendered transcript history for turns captured through the Beryl live ingestion boundary.
 - Beryl owns GUI-local metadata for thread display, binding, selection, status, and workspace association.
+- Threads whose CAS projection is stale or unbound remain browsable from Syndic-captured history when that history is complete enough for the selected view.
+- Stale or unbound CAS projection state does not force immediate backend thread creation. Backend execution is required only when the user starts or resumes work that needs a live model turn.
 - New standalone threads use the active workspace's current primary workspace member as their execution root.
 - Existing threads may change bound workspace member or runtime only through an explicit rebind decision. Beryl never silently hops an existing thread to another execution context.
 - Existing-thread activation resumes the selected backend thread by exact thread id. It must not enumerate all backend threads first, guess an alternate thread, or fall back to another runtime target.
@@ -119,7 +130,10 @@ Let users create, resume, branch, edit, title, navigate between, and select back
 
 ## Thread Editing
 
-- Thread editing is a user-initiated source-thread rewrite flow over backend history. It is not an in-place mutation of an existing turn id.
+- Thread editing is a user-initiated source-thread rewrite flow over CAS-owned execution history and Syndic-captured transcript state. It is not an in-place mutation of an existing turn id.
+- Keeping the original thread intact is a branch workflow from the edited turn's parent, not an in-place edit of the original turn.
+- Replacement editing removes the selected turn and its descendants from the current thread view by detaching the selected turn from its selected-path parent, then starts one replacement turn from the edited input at that parent.
+- Beryl does not support an edit operation that creates a replacement turn while deleting the original edited turn and reconnecting the original descendants to the edited turn's parent.
 - `Edit message` is enabled only when app-server rollback is available, Beryl can identify the target backend turn id, reconstruct non-empty user input, compute an exact trailing user-turn rollback count including the target turn, and prove the selected thread is idle with a current loaded tail.
 - Transcript-originated edit actions consume the context-menu target provided by the transcript feature. The action is unavailable unless the target has stable provenance and enough resident source data to reconstruct the editable user input and prove the rollback scope.
 - The turn context menu keeps `Edit message` visible as a disabled row when editing is unavailable for a clicked turn row. Its tooltip names the closest internal Beryl gate or target-resolution reason, such as missing rollback capability, current-tail unknown, pending selected-thread work, source-thread mismatch, unreconstructable input, missing image metadata, or unprovable rollback scope.
@@ -128,15 +142,15 @@ Let users create, resume, branch, edit, title, navigate between, and select back
 - Edit mode is presentation-only until commit. It must not mutate backend history, workspace state, transcript persistence, semantic graph state, image assets, or activity records.
 - `Escape` cancels edit mode through the composer command path after higher-priority popups have handled the key. Canceling removes dimming without clearing or changing the composer draft.
 - Submitting a non-empty edit draft first performs ordinary local draft validation and backend input preparation. If validation fails, edit mode remains active and the draft remains intact.
-- After validation succeeds, edit commit rolls back the selected backend thread by the exact trailing user-turn count, resets visible transcript state from the rollback response, and starts a replacement backend turn from the current draft.
+- After validation succeeds, edit commit rolls back the selected backend thread by the exact trailing user-turn count, records the truncation through the owning Syndic history boundary, resets visible transcript state from that boundary, and starts a replacement backend turn from the current draft.
 - If selection changes while edit commit is in flight, rollback and replacement responses remain scoped to the original target thread and must not apply to unrelated visible transcripts.
-- If rollback succeeds but replacement start or delivery fails, the discarded tail remains deleted. Beryl keeps the draft intact and reports the failure.
+- If rollback succeeds but replacement start or delivery fails, the detached tail remains absent from the current thread view. Beryl keeps the draft intact and reports the failure.
 - Thread editing does not revert filesystem changes, semantic graph/checklist-item mutations, workspace state, thread title metadata, durable image assets, or other non-history side effects produced by discarded turns.
 
 ## Backend Requirements
 
-- Thread activation depends on exact resume by thread id and bounded paginated history reads.
-- Branching depends on app-server fork, rollback, turn-start, and exact reopen/read primitives. When unavailable, Beryl must not emulate branching by copying backend history locally.
-- Editing depends on app-server rollback and turn-start primitives. When unavailable or when exact rollback scope cannot be proven, Beryl must not emulate editing locally.
+- Thread activation depends on exact resume by thread id plus a storage-backed Syndic transcript provider for captured history.
+- Branching depends on app-server fork, rollback, turn-start, and exact reopen primitives plus resident Syndic provenance for the source turn. When unavailable, Beryl must not emulate branching by copying backend history locally.
+- Editing depends on app-server rollback and turn-start primitives plus resident Syndic provenance for the target turn. When unavailable or when exact rollback scope cannot be proven, Beryl must not emulate editing locally.
 - On-demand title updates depend on app-server ephemeral-thread creation, turn-start, turn-stream observation, maintenance-thread cleanup, and `thread/name/set`. When those primitives or a backend client for the exact target runtime are unavailable, Beryl must not emulate retitling through GUI-local title metadata.
 - Thread selector and link-thread menus must render from inventory snapshots and stay responsive while refresh or activation work is pending.

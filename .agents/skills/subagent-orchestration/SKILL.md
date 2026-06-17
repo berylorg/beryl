@@ -30,7 +30,7 @@ Broad work includes:
 The main thread may inspect narrowly when needed to orchestrate or verify:
 
 - Read global or workspace instruction files.
-- Read root/shared planning or design files the main thread owns or must update, including `doc/plan.md` and parent `doc/design.md` files.
+- Read shared planning or design files the main thread owns or must update, including `doc/plan.md`, relevant system docs, and project-declared root or parent authority docs.
 - Check manifests, file names, or directory layout to scope delegation.
 - Read a short cited snippet to verify a handoff.
 - Inspect diffs for changes the orchestrator must integrate.
@@ -78,4 +78,3 @@ Require concise handoffs with:
 - Unresolved questions, risks, and blockers.
 
 Reject broad transcript dumps, unrelated source excerpts, and vague summaries as insufficient.
-

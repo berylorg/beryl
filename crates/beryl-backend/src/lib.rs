@@ -24,34 +24,6 @@
 //! ```
 //!
 //! ```no_run
-//! # use std::time::Duration;
-//! # use beryl_backend::{
-//! #     ManagedBackendSession, ThreadTurnsListOptions, TurnItemsView,
-//! # };
-//! # fn load_visible_turn_items(
-//! #     session: &mut ManagedBackendSession,
-//! #     thread_id: &str,
-//! # ) -> Result<(), Box<dyn std::error::Error>> {
-//! let timeout = Duration::from_secs(30);
-//! let page_options = ThreadTurnsListOptions::page(80)
-//!     .with_items_view(TurnItemsView::NotLoaded);
-//! let page = session.list_thread_turns(thread_id, &page_options, timeout)?;
-//!
-//! if let Some(turn) = page.data.first() {
-//!     let detail_options = ThreadTurnsListOptions::page(1)
-//!         .with_items_view(TurnItemsView::Full);
-//!     let detail_page = session.list_thread_turns(thread_id, &detail_options, timeout)?;
-//!     let _items = detail_page
-//!         .data
-//!         .into_iter()
-//!         .find(|detail_turn| detail_turn.id == turn.id)
-//!         .map(|detail_turn| detail_turn.items);
-//! }
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use beryl_backend::BackendLaunchSpec;
 //! use beryl_model::workspace::WorkspaceId;
@@ -72,12 +44,10 @@ mod dynamic_tool;
 mod hard_stop;
 mod managed_process;
 mod protocol;
-mod response_sanitizer;
 mod server;
 mod session;
 mod thread_archive;
 mod thread_branch;
-mod thread_history;
 mod turn;
 mod websocket_transport;
 
@@ -128,11 +98,6 @@ pub use thread_archive::{
 pub use thread_branch::{
     ThreadBranchCapabilities, ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult,
     ThreadBranchCapabilityReport, ThreadForkOptions, ThreadForkResponse, ThreadRollbackResponse,
-};
-pub use thread_history::{
-    ThreadHistoryCapabilities, ThreadHistoryCapabilityProbe, ThreadHistoryCapabilityProbeResult,
-    ThreadHistoryCapabilityReport, ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse,
-    ThreadResumeOptions, ThreadTurnsListOptions, ThreadTurnsListResponse,
 };
 pub use turn::{
     AccountRateLimitsResponse, ActiveTurnNotSteerable, AgentMessageItem, ApprovalRequest,

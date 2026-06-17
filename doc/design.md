@@ -14,33 +14,41 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 
 ## Documentation Authority
 
-- Root `doc/design.md` owns cross-feature, cross-package, and shared architecture decisions for this workspace project.
-- Feature-owned product behavior, UI contracts, state ownership, persistence, async behavior, failure behavior, and cross-package implementation architecture are defined in `doc/features/<feature>/design.md`.
+- Root `doc/design.md` owns project-level goals, non-goals, and global constraints for this workspace project.
+- Feature-owned product behavior, UI contracts, user-visible state, async behavior, and failure behavior are defined in `doc/features/<feature>/design.md`.
+- System-owned internal cross-feature and cross-package architecture is defined in `doc/systems/<system>/design.md`.
 - Package `doc/design.md` files own package public boundary contracts and must not duplicate or contradict feature contracts.
 - `doc/product-features.md` is a navigational index rather than the authority for detailed product behavior.
 - `doc/ui.md` owns shared reusable UI mechanics, window rules, widgets, and scroll contracts that are not specific to one product feature.
 - `doc/input-hotkeys.md` owns shared baseline text-input behavior. Feature-specific field behavior belongs in the owning feature doc.
-- Active architectural reworks are tracked under `doc/rework/<name>/REWORK.md`. Rework trackers record archived reference material, cutover boundaries, and exhaustive migration checklists; target-state design authority remains in the normal root, feature, and package design paths.
+- Active architectural reworks are tracked under `doc/rework/<name>/REWORK.md`. Rework trackers record archived reference material, cutover boundaries, and exhaustive replacement checklists; target-state design authority remains in the normal feature, system, and package design paths.
 
 ## Feature Design Entry Points
 
 - Workspace startup, workspace identity, workspace picker, runtime environments, workspace members, and workspace persistence are defined in `doc/features/workspaces/design.md`.
-- Backend runtime availability, managed app-server lifecycle, capability probing, backend-unavailable states, and connection-loss recovery are defined in `doc/features/backend-runtime-recovery/design.md`.
+- Backend-unavailable states and user-visible connection-loss recovery are defined in `doc/features/backend-runtime-recovery/design.md`.
 - Conversation thread selection, activation, inventory, binding, branch/edit workflows, automatic thread-title generation, and user-initiated thread-title updates are defined in `doc/features/conversation-threads/design.md`.
 - Threaded decision workflows that bind checklist items to decision child branches, parent handoff turns, resolution outcomes, and child cleanup are defined in `doc/features/threaded-decisions/design.md`.
 - Composer behavior, draft submission, image input, input queues, composer history, quote insertion, and developer-instructions injection on user turns are defined in `doc/features/composer/design.md`.
-- Syndic-backed transcript rendering, resident transcript presentation data, media, selection, quote harvesting, turn context menus, and transcript scroll anchoring are defined in `doc/features/transcript/design.md`.
+- Transcript rendering, visible Markdown behavior, media, selection, quote harvesting, turn context menus, and transcript scroll anchoring are defined in `doc/features/transcript/design.md`.
 - Status line behavior, model/reasoning controls, context/rate-limit display, context compaction controls, and turn stop controls are defined in `doc/features/status-line/design.md`.
 - Activity panel behavior and activity projection are defined in `doc/features/activity-panel/design.md`.
 - Semantic graph, graph overlay, primitive graph tools, graph provenance, and markdown/thread refs are defined in `doc/features/semantic-graph/design.md`.
 - Graph upkeep, graph upkeep instructions, AI-assisted graph maintenance, on-demand source-ref repair, and graph-upkeep write policy are defined in `doc/features/graph-upkeep/design.md`.
 - Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches are defined in `doc/features/semantic-search/design.md`.
-- Syndic durable conversation concepts, turn DAGs, references, projections, and Codex-like agent-layer compatibility constraints are defined in `doc/features/syndic/design.md`.
 - Settings window shell, settings rows, settings persistence, and settings dynamic tools are defined in `doc/features/settings/design.md`.
 - Appearance themes, theme repository, Themes settings page, theme candidate code panels, theme dynamic tools, and theme editor authority are defined in `doc/features/theming/design.md`.
 - Surface notices, turn-error notices, end-turn sounds, and attention-trigger behavior are defined in `doc/features/notifications/design.md`.
 - AI lifecycle yield tool behavior is defined in `doc/features/lifecycle-yield/design.md`.
 - Supervisor diagnostics and diagnostic child control are defined in `doc/features/diagnostics/design.md`.
+
+## System Design Entry Points
+
+- Syndic durable conversation history, turn DAGs, references, projections, resources, and replay are defined in `doc/systems/syndic-conversation-history/design.md`.
+- CAS-live Syndic transcript capture, CAS projection bindings, graph-action reflection, durable ingestion of live app-server turn streams, and storage-backed transcript history reads are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
+- Backend runtime launch, listener security, managed app-server lifecycle, capability probing, connection recovery, and protocol ownership are defined in `doc/systems/backend-runtime/design.md`.
+- Transcript presentation internals, residency, renderer demand, shell host boundary, resource admission, diagnostics, and scroll-controller architecture are defined in `doc/systems/transcript-presentation/design.md`.
+- Codex-compatible replacement-agent constraints are defined in `doc/systems/codex-compatible-agent-layer/design.md`.
 
 ## Implementation Technology
 
@@ -58,14 +66,15 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 ## Backend Boundary
 
 - For the current app-server-backed runtime, agent execution, conversation event streams, and Codex-owned state flow through `codex app-server`.
+- For the CAS-live Syndic transcript path, agent execution and policy-sensitive behavior still flow through `codex app-server`, while Beryl captures accepted live turn events into Syndic durable storage for transcript history.
 - Beryl integrates with `codex app-server` as an out-of-process GUI client rather than by directly linking Codex internal crates.
 - Beryl does not bundle or install Codex.
 - Beryl may own narrow GUI-side orchestration using app-server protocol primitives when the app-server protocol does not expose a direct GUI-needed helper.
 - Cross-boundary communication uses the app-server contract rather than direct access to backend storage, process memory, or implementation internals.
-- Syndic-backed transcript presentation consumes Syndic data only through the Beryl-facing provider and residency boundaries defined by the Syndic and transcript feature docs. GPUI render code must not reach through to durable storage, backend process memory, or implementation internals.
+- Syndic-backed transcript presentation consumes Syndic data only through the Beryl-facing provider and residency boundaries defined by the Syndic history and transcript presentation system docs. GPUI render code must not reach through to durable storage, backend process memory, or implementation internals.
 - Authentication, session storage, agent execution, subagents, configuration, skills, MCP state, and other non-UI agent behavior remain backend-owned.
-- App-server conversation thread contents and execution event streams remain backend-owned.
-- Beryl may launch and manage app-server processes in V1, but backend process ownership, runtime-target availability, loopback WebSocket auth, capability probing, and recovery behavior are defined by the backend runtime recovery feature.
+- App-server live execution event streams remain backend-owned until Beryl captures them. Captured transcript history is Syndic-owned durable state and must not be repopulated from app-server historical transcript reads after the Syndic capture cutover.
+- Beryl may launch and manage app-server processes in V1, but backend process ownership, runtime-target availability, loopback WebSocket auth, capability probing, and recovery behavior are defined by the backend runtime system and recovery feature.
 
 ## Codex App Server Version Invariant
 
@@ -74,12 +83,12 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - If a configured app-server does not satisfy the required target contract, Beryl must surface backend incompatibility and stop the affected backend-dependent behavior instead of silently falling back to an older schema.
 - For this target, Beryl validates the app-server version from the `initialize` response userAgent product token that CAS generates as `beryl/<app-server-version>`. Beryl's `clientInfo.version` is the GUI client version echoed later in that userAgent string and is not the CAS version.
 - Upgrading Beryl to a different Codex App Server version requires updating this invariant, the supporting Codex App Server memory notes under `doc/memory/topic/codex-app-server/`, and affected feature docs or tests as one migration. The migration should replace the old single contract rather than layer a new contract beside it.
-- For transcript history in the current 0.137.0 target, Beryl's supported contract is `thread/turns/list` with `itemsView`. Beryl must not rely on `thread/turns/items/list` for this version, because local 0.137.0 advertises that method but returns runtime unsupported.
+- For transcript history in the current 0.137.0 target, Beryl's selected-transcript target is CAS live event capture into Syndic and storage-backed Syndic projection reads as defined by `doc/systems/cas-live-syndic-transcript/design.md`. CAS `thread/turns/list` with `itemsView` remains legacy or transitional compatibility only, and Beryl must not rely on `thread/turns/items/list` because local 0.137.0 advertises that method but returns runtime unsupported.
 
 ## Responsibility Split
 
 - The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, default-runtime selection, runtime-bound workspace-member registrations, semantic graph state, GUI-local thread refs, thread-title display precedence, automatic and user-initiated thread-title orchestration, derived member-thread inventory snapshots, GUI-local settings, installed themes, and GUI-local persistence.
-- Conversation-history authority remains with the owning history boundary: Codex App Server for app-server-backed histories, and Syndic only for histories explicitly defined by Syndic feature and storage contracts. Beryl rendering, branch/edit UI, titles, and thread links operate through that authority instead of becoming a separate durable history owner.
+- Conversation-history authority remains with the owning history boundary: Syndic for CAS-live histories captured through the Syndic system and storage contracts, and Codex App Server only for backend-owned histories that have not been cut over to Syndic. Beryl rendering, branch/edit UI, titles, and thread links operate through that authority instead of becoming a separate durable history owner.
 - Conversation thread editing mutates backend conversation history only. It must not present or assume rollback of filesystem changes, semantic graph/checklist-item mutations, workspace state, thread-title metadata, durable image assets, in-memory activity records, or other non-history side effects.
 - Deleting or retitling a Beryl workspace changes only GUI-owned workspace state and must not delete or mutate backend-owned Codex thread history.
 - Deleting semantic graph nodes changes only GUI-owned semantic graph state and must not delete or mutate backend-owned Codex thread history.
@@ -107,7 +116,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Workspace-scoped GUI-local state must use an embedded pure-Rust storage engine.
 - The design does not require multiple GUI instances to perform concurrent writes to the same workspace-scoped state store, because one GUI instance owns one workspace at a time.
 - Mutable GUI-local cursors such as active workspace selection, active thread selection, window state, and splitter positions may use last-write-wins semantics across GUI instances.
-- Backend-owned conversation contents and execution history do not move into GUI-local settings or GUI-local state storage.
+- Captured transcript history moves into Syndic storage only through the Syndic system and storage contracts. Backend-owned conversation contents and execution history must not move into GUI-local settings or unrelated GUI-local state storage.
 - Resident transcript presentation data, including resident Syndic data used by the transcript renderer, is a bounded GUI-side projection of the selected conversation-history authority and is not durable history.
 - Derived projections and caches are not authoritative when they can be rebuilt from backend data plus GUI-local metadata.
 

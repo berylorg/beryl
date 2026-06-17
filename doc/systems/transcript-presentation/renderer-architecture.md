@@ -6,7 +6,7 @@ This is a supplemental target-state architecture note for Beryl's transcript pre
 
 It is not the authoritative durable conversation model. Syndic owns canonical history, transcript views over the turn DAG, Markdown and block projections, resource references, and range-readable heavy resources.
 
-The authoritative feature contracts remain `doc/features/syndic/design.md` and `doc/features/transcript/design.md`. This note records the renderer-side shape those contracts imply.
+The authoritative contracts remain `doc/features/transcript/design.md`, `doc/systems/syndic-conversation-history/design.md`, and `doc/systems/transcript-presentation/design.md`. This note records the renderer-side shape those contracts imply.
 
 ## Goals
 

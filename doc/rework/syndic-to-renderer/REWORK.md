@@ -3,10 +3,11 @@
 Read these target-state docs before working on this rework:
 
 - `doc/features/transcript/design.md`
-- `doc/features/transcript/renderer-architecture.md`
-- `doc/features/transcript/shell-boundary.md`
-- `doc/features/syndic/design.md`
-- `doc/features/syndic/concepts.md`
+- `doc/systems/transcript-presentation/design.md`
+- `doc/systems/transcript-presentation/renderer-architecture.md`
+- `doc/systems/transcript-presentation/shell-boundary.md`
+- `doc/systems/syndic-conversation-history/design.md`
+- `doc/systems/syndic-conversation-history/concepts.md`
 - `crates/syndic-storage/doc/design.md`
 
 # Cutover Boundary
@@ -137,7 +138,7 @@ Updated docs:
 Docs intentionally unchanged:
 
 - `doc/features/activity-panel/design.md`: already defines activity as transient operational presentation outside durable transcript narrative and prohibits synchronous backend rendering reads.
-- Media actions have no separate feature doc. The target behavior remains owned by `doc/features/transcript/design.md` and `doc/features/transcript/shell-boundary.md`.
+- Media actions have no separate feature doc. The visible target behavior remains owned by `doc/features/transcript/design.md`, while host and resource-demand boundaries are owned by `doc/systems/transcript-presentation/shell-boundary.md`.
 
 ## Checkpoint 1 Review Decision
 
