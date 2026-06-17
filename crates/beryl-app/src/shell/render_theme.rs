@@ -6,7 +6,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use gpui::rgb;
 
-use super::render;
 use button::button_theme_from_styles;
 pub(super) use button::{ChromeButtonStateTheme, ChromeButtonTheme};
 pub(super) use frame::ShellRenderFrame;
@@ -24,7 +23,6 @@ pub(super) struct ShellRenderThemeCache {
 pub(super) struct ShellRenderStyleSnapshot {
     revision: u64,
     role_styles: Arc<HashMap<crate::BerylThemeRole, ShellRoleStyle>>,
-    transcript_theme: Arc<render::transcript::TranscriptTheme>,
     general_ui_background: gpui::Rgba,
     general_ui_foreground: gpui::Rgba,
     toolbar_background: gpui::Rgba,
@@ -53,10 +51,8 @@ pub(super) struct ShellRenderStyleSnapshot {
 impl ShellRenderThemeCache {
     pub(super) fn new(projection: crate::ActiveThemeProjection) -> Self {
         let role_styles = Arc::new(shell_role_styles(&projection));
-        let transcript_theme = Arc::new(render::transcript::TranscriptTheme::from_active_theme(
-            &projection,
-        ));
-        let style_snapshot = ShellRenderStyleSnapshot::new(role_styles, transcript_theme);
+        let style_snapshot =
+            ShellRenderStyleSnapshot::new(role_styles, projection.style_revision());
         Self {
             projection,
             style_snapshot,
@@ -71,7 +67,7 @@ impl ShellRenderThemeCache {
 impl ShellRenderStyleSnapshot {
     fn new(
         role_styles: Arc<HashMap<crate::BerylThemeRole, ShellRoleStyle>>,
-        transcript_theme: Arc<render::transcript::TranscriptTheme>,
+        revision: u64,
     ) -> Self {
         let primary_button_theme = button_theme_from_styles(
             &role_styles,
@@ -93,7 +89,7 @@ impl ShellRenderStyleSnapshot {
         );
 
         Self {
-            revision: transcript_theme.revision(),
+            revision,
             general_ui_background: style_background(
                 &role_styles,
                 crate::BerylThemeRole::AppWindow,
@@ -198,12 +194,7 @@ impl ShellRenderStyleSnapshot {
                 0x94a3b8,
             ),
             role_styles,
-            transcript_theme,
         }
-    }
-
-    pub(super) fn transcript_theme(&self) -> Arc<render::transcript::TranscriptTheme> {
-        self.transcript_theme.clone()
     }
 
     pub(super) fn revision(&self) -> u64 {

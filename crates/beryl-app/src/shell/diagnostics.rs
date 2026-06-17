@@ -9,7 +9,7 @@ use crate::diagnostic_dynamic_tools::{
     ThemeEditorModelDiagnostic, ThemeRoleNavigatorDiagnostic, bounded_diagnostic_string,
     renderer_snapshot_with_shell_window,
 };
-use crate::gui_control_dynamic_tools::{VisibleTranscriptRowDiagnostic, bounded_control_string};
+use crate::gui_control_dynamic_tools::VisibleTranscriptRowDiagnostic;
 use crate::memory_diagnostics::{self, RetainedStateSnapshot};
 
 use super::{
@@ -23,20 +23,8 @@ pub(super) fn visible_transcript_rows(
     visible_range: Range<usize>,
     limit: usize,
 ) -> (Vec<VisibleTranscriptRowDiagnostic>, bool) {
-    let mut rows = Vec::new();
-    for index in visible_range.clone().take(limit) {
-        if let Some(row) = surface.transcript_presentation().turn_at(index) {
-            rows.push(VisibleTranscriptRowDiagnostic {
-                row_index: row.index,
-                row_identity: bounded_control_string(row.identity.as_str().to_string()),
-                source_turn_index: row.source_turn_index,
-                item_count: row.turn.item_count(),
-                text_chars: row.turn.text_char_count(),
-            });
-        }
-    }
-    let truncated = visible_range.len() > rows.len();
-    (rows, truncated)
+    let _ = (surface, visible_range, limit);
+    (Vec::new(), false)
 }
 
 pub(super) fn selected_runtime_target(state: &ShellState) -> Option<RuntimeTargetDiagnostic> {
@@ -67,11 +55,8 @@ impl ShellView {
             self.decision_child_progress_receiver.is_some(),
             self.decision_resolution_graph_receiver.is_some(),
             self.decision_archive_receiver.is_some(),
-            self.transcript_branch_receiver.is_some(),
-            self.transcript_edit_commit_receiver.is_some(),
             self.member_thread_inventory_receiver.is_some(),
             self.thread_activation_receiver.is_some(),
-            self.thread_history_page_receiver.is_some(),
             self.composer_image_label_validation_receiver.is_some(),
             self.composer_image_label_scan_receiver.is_some(),
             self.composer_image_asset_receiver.is_some(),
@@ -101,7 +86,6 @@ impl ShellView {
             self.decision_archive_receiver.is_some(),
             self.member_thread_inventory_receiver.is_some(),
             self.thread_activation_receiver.is_some(),
-            self.thread_history_page_receiver.is_some(),
             self.composer_image_label_validation_receiver.is_some(),
             self.composer_image_label_scan_receiver.is_some(),
             self.turn_receiver.is_some(),
@@ -132,10 +116,7 @@ impl ShellView {
         snapshot.backend_event_queue_estimate = Some(backend_client_connection_estimate);
         snapshot.backend_client_connection_estimate = Some(backend_client_connection_estimate);
         snapshot.turn_steering_receivers = Some(self.turn_steering_receivers.len());
-        let pending_transcript_residency_requests =
-            usize::from(self.thread_history_page_receiver.is_some());
-        snapshot.transcript_residency_pending_requests =
-            Some(pending_transcript_residency_requests);
+        snapshot.transcript_residency_pending_requests = Some(0);
         snapshot.composer_draft_text_bytes = Some(composer_draft.display_text_bytes);
         snapshot.composer_draft_images = Some(composer_draft.image_count);
         snapshot.composer_draft_image_bytes = Some(composer_draft.image_bytes);

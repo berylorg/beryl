@@ -163,7 +163,6 @@ impl ShellView {
                 self.graph_thread_start_receiver.is_some(),
             )
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
         {
@@ -367,7 +366,6 @@ impl ShellView {
                     if let Some(known_threads) = known_threads.as_ref() {
                         surface.replace_known_threads(known_threads.clone(), &summary.id);
                     }
-                    surface.load_thread_history(&thread);
                     surface.set_thread_session_metadata(session_metadata);
                 }
                 self.finish_graph_mutation_update(GraphMutationUpdate::Commit(graph_commit));

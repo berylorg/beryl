@@ -100,8 +100,10 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 ## External Draft Insertion
 
 - Beryl remembers the latest draft insertion point so transcript quote actions can insert text even while the transcript has focus.
+- Transcript quote actions provide composer-owned insertion requests through the transcript feature's quote payload contract. A quote payload is valid only when the transcript feature derived it from rendered resident transcript records with stable provenance and geometry.
 - Transcript quote insertion updates the draft buffer, saved insertion position, and undo history through the same shared editing semantics as ordinary edits.
 - Quote insertion must not change the system clipboard and does not force keyboard focus into the composer.
+- Quote insertion is unavailable when the transcript feature cannot provide a current quote payload. The composer must not synthesize quote text from backend history, legacy transcript caches, stale projections, or nonresident transcript ranges.
 
 ## Developer Instructions On User Turns
 

@@ -11,8 +11,6 @@ mod scrollbars;
 mod startup;
 mod status_operation;
 mod thread_selector;
-pub(super) mod transcript;
-mod transcript_branch_menu;
 mod workspace_picker;
 mod workspace_picker_row_menu;
 

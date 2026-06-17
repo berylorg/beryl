@@ -6,18 +6,41 @@ use std::{
 };
 
 use beryl_backend::{
-    ManagedBackendClientConnector, SortDirection, ThreadTurnsListOptions, TurnInfo, TurnItemsView,
+    ManagedBackendClientConnector, ManagedBackendSession, SortDirection, ThreadTurnsListOptions,
+    ThreadTurnsListResponse, TurnInfo, TurnItemsView,
 };
 
-use super::{
-    composer_image_labels::{
-        ComposerImageLabelHistoryFrontier, ComposerImageLabelHistoryFrontierBuilder,
-        ComposerImageLabelObservations,
-    },
-    transcript_history::{THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend},
+use super::composer_image_labels::{
+    ComposerImageLabelHistoryFrontier, ComposerImageLabelHistoryFrontierBuilder,
+    ComposerImageLabelObservations,
 };
 
 const COMPOSER_IMAGE_LABEL_SCAN_MAX_PAGES: usize = 512;
+const COMPOSER_IMAGE_LABEL_PAGE_LIMIT: u32 = 80;
+
+pub(crate) trait ComposerImageLabelHistoryBackend {
+    type Error: fmt::Display;
+
+    fn list_thread_turns(
+        &mut self,
+        thread_id: &str,
+        options: &ThreadTurnsListOptions,
+        timeout: Duration,
+    ) -> Result<ThreadTurnsListResponse, Self::Error>;
+}
+
+impl ComposerImageLabelHistoryBackend for ManagedBackendSession {
+    type Error = beryl_backend::ManagedBackendError;
+
+    fn list_thread_turns(
+        &mut self,
+        thread_id: &str,
+        options: &ThreadTurnsListOptions,
+        timeout: Duration,
+    ) -> Result<ThreadTurnsListResponse, Self::Error> {
+        ManagedBackendSession::list_thread_turns(self, thread_id, options, timeout)
+    }
+}
 
 pub(super) enum ComposerImageLabelScanUpdate {
     Finished(ComposerImageLabelScanOutcome),
@@ -159,7 +182,7 @@ pub(crate) fn scan_composer_image_labels<B>(
     timeout: Duration,
 ) -> Result<ComposerImageLabelScanResult, ComposerImageLabelScanError<B::Error>>
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     scan_composer_image_labels_for_plan(
         backend,
@@ -177,7 +200,7 @@ pub(crate) fn scan_composer_image_labels_with_page_limit<B>(
     page_limit: usize,
 ) -> Result<ComposerImageLabelScanResult, ComposerImageLabelScanError<B::Error>>
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     scan_composer_image_labels_for_plan_with_page_limit(
         backend,
@@ -195,7 +218,7 @@ pub(crate) fn scan_composer_image_labels_for_plan<B>(
     timeout: Duration,
 ) -> Result<ComposerImageLabelScanResult, ComposerImageLabelScanError<B::Error>>
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     scan_composer_image_labels_for_plan_with_page_limit(
         backend,
@@ -214,7 +237,7 @@ pub(crate) fn scan_composer_image_labels_for_plan_with_page_limit<B>(
     page_limit: usize,
 ) -> Result<ComposerImageLabelScanResult, ComposerImageLabelScanError<B::Error>>
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     match plan {
         ComposerImageLabelScanPlan::FullCurrentHistory => {
@@ -243,7 +266,7 @@ fn scan_full_composer_image_label_history<B>(
     page_limit: usize,
 ) -> Result<ComposerImageLabelScanResult, ComposerImageLabelScanError<B::Error>>
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     let mut observations = ComposerImageLabelObservations::default();
     let mut frontier = ComposerImageLabelHistoryFrontierBuilder::default();
@@ -286,7 +309,7 @@ fn scan_append_only_composer_image_label_suffix<B>(
     validated_frontier: ComposerImageLabelHistoryFrontier,
 ) -> Result<ComposerImageLabelScanResult, ComposerImageLabelScanError<B::Error>>
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     let Some(previous_newest_turn_id) = previous_newest_turn_id else {
         return scan_full_composer_image_label_history(backend, thread_id, timeout, page_limit);
@@ -353,7 +376,7 @@ pub(crate) fn validate_composer_image_label_frontier<B>(
     ComposerImageLabelFrontierValidationError<B::Error>,
 >
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     validate_composer_image_label_frontier_with_page_limit(
         backend,
@@ -375,7 +398,7 @@ pub(crate) fn validate_composer_image_label_frontier_with_page_limit<B>(
     ComposerImageLabelFrontierValidationError<B::Error>,
 >
 where
-    B: TranscriptHistoryBackend,
+    B: ComposerImageLabelHistoryBackend,
 {
     let mut validator = ComposerImageLabelFrontierValidator::new(cached_frontier);
     let mut pages_scanned = 0usize;
@@ -426,7 +449,7 @@ fn ensure_validation_page_is_not_loaded<E>(
 pub(crate) fn composer_image_label_scan_page_options(
     cursor: Option<&str>,
 ) -> ThreadTurnsListOptions {
-    let options = ThreadTurnsListOptions::page(THREAD_HISTORY_PAGE_LIMIT)
+    let options = ThreadTurnsListOptions::page(COMPOSER_IMAGE_LABEL_PAGE_LIMIT)
         .with_sort_direction(SortDirection::Desc)
         .with_items_view(TurnItemsView::Full);
     match cursor {
@@ -438,7 +461,7 @@ pub(crate) fn composer_image_label_scan_page_options(
 pub(crate) fn composer_image_label_frontier_validation_page_options(
     cursor: Option<&str>,
 ) -> ThreadTurnsListOptions {
-    let options = ThreadTurnsListOptions::page(THREAD_HISTORY_PAGE_LIMIT)
+    let options = ThreadTurnsListOptions::page(COMPOSER_IMAGE_LABEL_PAGE_LIMIT)
         .with_sort_direction(SortDirection::Desc)
         .with_items_view(TurnItemsView::NotLoaded);
     match cursor {

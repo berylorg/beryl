@@ -65,17 +65,6 @@ mod shell {
     pub(super) mod thread_selection;
     #[path = "../../src/shell/thread_title.rs"]
     pub(super) mod thread_title;
-    pub(super) mod transcript_branch_core {
-        #[derive(Clone, Debug)]
-        pub(crate) struct ForegroundTranscriptBranchStart;
-
-        #[derive(Clone, Debug)]
-        pub(crate) enum ForegroundTranscriptBranchPublication {}
-    }
-    #[path = "../../src/shell/transcript_history.rs"]
-    pub(super) mod transcript_history;
-    #[path = "../../src/shell/transcript_image_sources.rs"]
-    pub(super) mod transcript_image_sources;
     #[path = "../../src/shell/turn_worker.rs"]
     pub(super) mod turn_worker;
 }

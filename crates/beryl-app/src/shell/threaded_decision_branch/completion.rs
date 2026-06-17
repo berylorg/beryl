@@ -61,7 +61,7 @@ impl ShellView {
             let workspace_id = loaded.workspace.id().clone();
             let mut candidate_workspace_state = loaded.workspace_state.clone();
             let mut candidate_threaded_decision_state = loaded.threaded_decision_state.clone();
-            match register_transcript_branch_thread(
+            match register_decision_branch_thread(
                 &mut candidate_workspace_state,
                 &parent_thread_id,
                 &job.branch_point_turn_id,
@@ -266,12 +266,13 @@ impl ShellView {
                 self.resume_parent_after_decision_branch(parent_thread_id.as_str(), window, cx);
             }
             DecisionBranchActivation::SwitchTo => {
-                self.activate_transcript_branch(
-                    workspace_id,
-                    workspace_state,
-                    execution_target,
-                    branch_thread_id,
-                    &summary,
+                let _ = self.activate_thread_selector_target(
+                    super::super::thread_selector::ThreadSelectorActivationTarget {
+                        thread_id: branch_thread_id,
+                        label: summary.name.clone().unwrap_or_else(|| summary.id.clone()),
+                        execution_target,
+                    },
+                    super::super::thread_navigation::ThreadNavigationActivationSource::NonHistory,
                     window,
                     cx,
                 );
@@ -356,4 +357,74 @@ impl ShellView {
             ));
         }
     }
+}
+
+fn register_decision_branch_thread(
+    workspace_state: &mut beryl_model::conversation::WorkspaceConversationState,
+    source_thread_id: &ConversationThreadId,
+    source_turn_id: &ConversationTurnId,
+    branch_summary: &ThreadSummary,
+    bootstrap_turn_id: Option<ConversationTurnId>,
+) -> Result<(WorkspaceId, bool), String> {
+    let source_thread = workspace_state
+        .thread_registration(source_thread_id)
+        .ok_or_else(|| {
+            format!(
+                "Beryl could not register the branch because source thread {} is no longer registered in this workspace.",
+                source_thread_id.as_str()
+            )
+        })?;
+    let execution_target = source_thread.execution_target().clone();
+    let member_binding = source_thread.member_binding().cloned();
+    let copied_source_name =
+        copied_source_backend_name(source_thread.backend_name(), branch_summary);
+
+    if branch_summary.cwd.as_path() != execution_target.canonical_path() {
+        return Err(format!(
+            "Beryl forked thread {}, but it records working directory {} instead of the source thread workspace member {}.",
+            branch_summary.id,
+            branch_summary.cwd.display(),
+            execution_target.canonical_path().display()
+        ));
+    }
+
+    let mut registered_thread = beryl_model::conversation::RegisteredConversationThread::new(
+        ConversationThreadId::new(branch_summary.id.clone()),
+        execution_target.clone(),
+        branch_summary.preview.clone(),
+        if copied_source_name.is_some() {
+            None
+        } else {
+            branch_summary.name.clone()
+        },
+        branch_summary.created_at,
+        branch_summary.updated_at,
+    )
+    .with_beryl_created()
+    .with_branch_parent_thread_id(source_thread_id.clone())
+    .with_transcript_branch_bootstrap(source_turn_id.clone(), bootstrap_turn_id);
+    if copied_source_name.is_some() {
+        registered_thread =
+            registered_thread.with_ignored_backend_name_for_automatic_title(copied_source_name);
+    }
+    if let Some(binding) = member_binding {
+        registered_thread = registered_thread.with_member_binding(binding);
+    }
+
+    let changed = workspace_state.remember_thread(registered_thread);
+    Ok((execution_target, changed))
+}
+
+fn copied_source_backend_name(
+    source_backend_name: Option<&str>,
+    branch_summary: &ThreadSummary,
+) -> Option<String> {
+    let source_backend_name = normalized_backend_name(source_backend_name)?;
+    let branch_backend_name = normalized_backend_name(branch_summary.name.as_deref())?;
+    (branch_backend_name == source_backend_name).then(|| branch_backend_name.to_string())
+}
+
+fn normalized_backend_name(name: Option<&str>) -> Option<&str> {
+    let name = name?.trim();
+    (!name.is_empty()).then_some(name)
 }

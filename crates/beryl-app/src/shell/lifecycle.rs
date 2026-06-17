@@ -5,15 +5,14 @@ use beryl_model::conversation::RegisteredConversationThread;
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::SemanticGraph;
 use beryl_model::workspace::WorkspaceId;
+use gpui::Context;
 
-use super::selected_thread_activation::{ActivationPreparer, SelectedThreadInitialViewportPolicy};
-use super::transcript_residency_pages::PendingTranscriptResidencyPageRequest;
+use super::selected_thread_activation::ActivationPreparer;
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
     OpenWorkspaceFailure, OpenedWorkspace, RetryTarget, ShellState, ShellView, SurfaceNotice,
-    ThreadActivationFinish, ThreadHistoryPageOutcome, TurnCompletionSoundCandidate,
-    WorkspaceSurfaceSeed,
+    ThreadActivationFinish, TurnCompletionSoundCandidate, WorkspaceSurfaceSeed,
 };
 use crate::backend_failure::{
     json_rpc_error_detail, non_empty_user_text, source_chain_detail, truncate_user_detail,
@@ -26,6 +25,7 @@ impl ShellView {
     pub(super) fn finish_workspace_open(
         &mut self,
         result: Result<OpenedWorkspace, OpenWorkspaceFailure>,
+        cx: &mut Context<Self>,
     ) {
         let (
             attempt,
@@ -104,6 +104,7 @@ impl ShellView {
                 );
                 let inventory_workspace_id = loaded_workspace.workspace.id().clone();
                 let inventory_workspace_state = loaded_workspace.workspace_state.clone();
+                let refreshing_preserved_surface = preserved_surface.is_some();
                 let (mut surface, synchronous_publication) = match preserved_surface {
                     Some(mut surface) => {
                         let published_activation = surface.refresh_after_backend_reopen(
@@ -112,8 +113,6 @@ impl ShellView {
                             known_threads.clone(),
                             opened.hard_stop_capabilities.clone(),
                             opened.selected_thread_history,
-                            opened.selected_thread_history_window,
-                            opened.selected_thread_image_resolver,
                             active_thread_id.clone(),
                             opened.selected_thread_session_metadata,
                             opened.surface_notice,
@@ -131,8 +130,6 @@ impl ShellView {
                         known_threads.clone(),
                         opened.hard_stop_capabilities.clone(),
                         opened.selected_thread_history,
-                        opened.selected_thread_history_window,
-                        opened.selected_thread_image_resolver,
                         active_thread_id.clone(),
                         opened.selected_thread_session_metadata,
                         opened.surface_notice,
@@ -191,7 +188,22 @@ impl ShellView {
                     .retained_state_if_enabled(|| self.retained_state_snapshot())
                     .log();
                 if let Some(publication) = synchronous_publication {
-                    self.finish_published_selected_thread_activation(publication);
+                    self.finish_published_selected_thread_activation(publication, cx);
+                } else {
+                    let source = if refreshing_preserved_surface {
+                        super::syndic_transcript::TranscriptActivationSource::BackendReopen
+                    } else {
+                        super::syndic_transcript::TranscriptActivationSource::StartupRestore
+                    };
+                    let selected_thread_id = self
+                        .conversation_surface()
+                        .and_then(ConversationSurfaceState::selected_thread_id)
+                        .map(str::to_string);
+                    self.begin_transcript_host_activation_for_optional_thread(
+                        selected_thread_id.as_deref(),
+                        source,
+                        cx,
+                    );
                 }
                 self.update_workspace_state_for_opened_target(
                     &opened.execution_target,
@@ -256,6 +268,15 @@ impl ShellView {
                         availability,
                         surface,
                     });
+                    let selected_thread_id = self
+                        .conversation_surface()
+                        .and_then(ConversationSurfaceState::selected_thread_id)
+                        .map(str::to_string);
+                    self.begin_transcript_host_activation_for_optional_thread(
+                        selected_thread_id.as_deref(),
+                        super::syndic_transcript::TranscriptActivationSource::BackendReopen,
+                        cx,
+                    );
                     if threaded_decision_state_changed {
                         self.persist_current_threaded_decision_state();
                     }
@@ -377,13 +398,9 @@ impl ShellView {
                 None
             }
             TurnWorkerOutcome::Failed { message } => {
-                let foreground_branch_failed = self.foreground_transcript_branch.is_some();
                 let sound_candidate = self
                     .conversation_surface_mut()
                     .and_then(|surface| surface.finish_turn_failure(message.clone()));
-                if foreground_branch_failed {
-                    self.finish_failed_foreground_transcript_branch(message.clone());
-                }
 
                 self.block_if_backend_process_dead(
                     "Managed backend disconnected during turn execution",
@@ -398,14 +415,13 @@ impl ShellView {
     pub(super) fn finish_thread_activation_worker(
         &mut self,
         outcome: ThreadActivationOutcome,
+        cx: &mut Context<Self>,
     ) -> ThreadActivationFinish {
         match outcome {
             ThreadActivationOutcome::Activated {
                 execution_target,
                 thread,
                 session_metadata,
-                history_window,
-                image_resolver,
             } => {
                 let ui_finish_started = Instant::now();
                 let summary = thread.summary();
@@ -449,11 +465,8 @@ impl ShellView {
                     surface.stage_selected_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
                         thread,
-                        history_window,
-                        image_resolver,
                         Some(session_metadata),
                         activation_source,
-                        SelectedThreadInitialViewportPolicy::Tail,
                     ));
                     published_activation = surface.publish_staged_selected_thread_activation();
                     debug!(
@@ -475,7 +488,7 @@ impl ShellView {
                     );
                 }
                 let published_thread_id = published_activation.map(|publication| {
-                    self.finish_published_selected_thread_activation(publication)
+                    self.finish_published_selected_thread_activation(publication, cx)
                 });
                 debug!(
                     thread_id = summary.id.as_str(),
@@ -519,76 +532,11 @@ impl ShellView {
         }
     }
 
-    pub(super) fn finish_thread_history_page_worker(
-        &mut self,
-        outcome: ThreadHistoryPageOutcome,
-        pending_request: Option<PendingTranscriptResidencyPageRequest>,
-    ) {
-        match outcome {
-            ThreadHistoryPageOutcome::Loaded {
-                thread_id,
-                request: page_request,
-                page,
-                image_resolver,
-            } => {
-                if let Some(surface) = self.conversation_surface_mut() {
-                    let selected_thread_matches =
-                        surface.selected_thread_id() == Some(thread_id.as_str());
-                    let request_ticket = pending_request.filter(|ticket| {
-                        ticket.thread_id() == thread_id.as_str()
-                            && ticket.request() == &page_request
-                    });
-                    if let Some(request_ticket) = request_ticket {
-                        if surface.stage_loading_thread_history_page(
-                            request_ticket,
-                            page,
-                            image_resolver,
-                        ) {
-                            surface.publish_staged_thread_history_page();
-                        } else if selected_thread_matches {
-                            surface.finish_loading_older_history_failure();
-                        }
-                    } else if selected_thread_matches {
-                        surface.finish_loading_older_history_failure();
-                    }
-                }
-            }
-            ThreadHistoryPageOutcome::Failed { thread_id, message } => {
-                let request_matches_thread = pending_request
-                    .as_ref()
-                    .is_some_and(|ticket| ticket.thread_id() == thread_id.as_str());
-                if let Some(surface) = self.conversation_surface_mut() {
-                    let selected_thread_matches =
-                        surface.selected_thread_id() == Some(thread_id.as_str());
-                    if request_matches_thread && selected_thread_matches {
-                        surface.finish_loading_older_history_failure();
-                        surface.set_notice(SurfaceNotice::new(
-                            "Thread history load failed",
-                            message.clone(),
-                        ));
-                    }
-                }
-
-                self.block_if_backend_process_dead(
-                    "Managed backend disconnected during thread history loading",
-                    "The backend process for the selected workspace exited before Beryl could load older thread history.",
-                    &message,
-                );
-            }
-        }
-    }
-
     pub(super) fn handle_turn_worker_stopped(&mut self) -> Option<TurnCompletionSoundCandidate> {
         let message = "Beryl lost the background task that was streaming the active turn.";
-        let foreground_branch_failed = self.foreground_transcript_branch.is_some();
         let sound_candidate = self
             .conversation_surface_mut()
             .and_then(|surface| surface.finish_turn_failure(message));
-        if foreground_branch_failed {
-            self.finish_failed_foreground_transcript_branch(
-                "Beryl lost the background task that was foregrounding the branch.",
-            );
-        }
 
         self.block_if_backend_process_dead(
             "Turn execution stopped unexpectedly",
@@ -674,8 +622,6 @@ fn seed_backend_unavailable_surface(
         known_threads,
         HardStopCapabilities::default(),
         None,
-        None,
-        Default::default(),
         selected_thread_id,
         None,
         None,

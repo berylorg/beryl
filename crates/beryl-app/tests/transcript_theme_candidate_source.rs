@@ -1,99 +1,134 @@
-#[test]
-fn beryl_theme_candidates_are_normal_code_blocks_with_extra_header_actions() {
-    let controls_source = include_str!("../src/shell/render/transcript/code_panel_controls.rs");
-    let block_source = include_str!("../src/shell/render/transcript/block_markdown.rs");
-    let code_panel_source = include_str!("../src/shell/render/code_panel.rs");
+const SHELL_SOURCE: &str = include_str!("../src/shell.rs");
+const SYNDIC_TRANSCRIPT_PANEL_SOURCE: &str =
+    include_str!("../src/shell/syndic_transcript/panel.rs");
+const SYNDIC_TRANSCRIPT_COMMAND_SOURCE: &str =
+    include_str!("../src/shell/syndic_transcript/command.rs");
 
-    assert!(controls_source.contains("is_theme_candidate_language(syntax_label)"));
-    assert!(controls_source.contains("\"theme-preview\""));
-    assert!(controls_source.contains("\"theme-preview-stop\""));
-    assert!(controls_source.contains("\"theme-install\""));
-    assert!(controls_source.contains("self.soft_wrap_action(panel_id)"));
-    assert!(controls_source.contains("source_revision.copy_source()"));
-    assert!(block_source.contains("code_panel_controls.header("));
-    assert!(block_source.contains("code_panel_source_revision(code)"));
-    assert!(block_source.contains("code.header_copy_source()"));
-    assert!(block_source.contains("labeled_code_block("));
-    assert!(code_panel_source.contains("pub(crate) type CodePanelHeaderActionCallback"));
-    assert!(code_panel_source.contains("Arc<dyn Fn(&mut Window, &mut App)>"));
+#[test]
+fn transcript_theme_candidate_controls_are_not_visible_host_compatibility_shims() {
+    assert!(SHELL_SOURCE.contains("theme_repository_store()"));
+    assert!(SHELL_SOURCE.contains("spawn_theme_candidate_install_worker"));
+    assert!(SHELL_SOURCE.contains("record_theme_repository_snapshot"));
+
+    for source in [SHELL_SOURCE, SYNDIC_TRANSCRIPT_PANEL_SOURCE] {
+        assert!(!source.contains("ThemeCandidateRow"));
+        assert!(!source.contains("ThemeOfferRow"));
+        assert!(!source.contains("ThemeCandidatePanelSnapshot"));
+    }
+
+    assert!(!SYNDIC_TRANSCRIPT_PANEL_SOURCE.contains("preview_transcript_theme_candidate"));
+    assert!(!SYNDIC_TRANSCRIPT_PANEL_SOURCE.contains("stop_transcript_theme_candidate_preview"));
+    assert!(!SYNDIC_TRANSCRIPT_PANEL_SOURCE.contains("prompt_install_transcript_theme_candidate"));
 }
 
 #[test]
-fn code_panel_actions_and_syntax_use_displayed_source_revision() {
-    let controls_source = include_str!("../src/shell/render/transcript/code_panel_controls.rs");
-    let block_source = include_str!("../src/shell/render/transcript/block_markdown.rs");
-
-    assert!(controls_source.contains("CodePanelSourceRevision"));
-    assert!(controls_source.contains("source_revision.copy_source()"));
+fn empty_resident_host_reports_transcript_commands_unavailable() {
+    assert!(SYNDIC_TRANSCRIPT_PANEL_SOURCE.contains("unavailable_command(&self"));
+    assert!(SYNDIC_TRANSCRIPT_COMMAND_SOURCE.contains("Unavailable(DisabledTranscriptCommand)"));
+    assert!(SYNDIC_TRANSCRIPT_COMMAND_SOURCE.contains("Self::Unavailable"));
     assert!(
-        controls_source.contains("source_revision.and_then(CodePanelSourceRevision::syntax_label)")
+        SYNDIC_TRANSCRIPT_COMMAND_SOURCE
+            .contains("resident transcript data is not available for this command")
     );
-    assert!(
-        block_source.contains("let display_source_revision = display_projection.source_revision;")
+}
+
+#[test]
+fn live_shell_transcript_commands_route_through_resident_boundaries() {
+    let quote_body = rust_function_body(SHELL_SOURCE, "fn insert_transcript_quote_into_draft");
+    let copy_body = rust_function_body(SHELL_SOURCE, "fn copy_transcript_selection_action");
+    let context_menu_body = rust_function_body(
+        SHELL_SOURCE,
+        "fn open_transcript_context_menu_from_resident_target",
     );
-    assert!(block_source.contains("let display_revision = display_source_revision.as_ref();"));
-    assert!(block_source.contains("code_panel_controls.header(&panel_id, display_revision)"));
-    assert!(block_source.contains("code_panel_controls.display_projection(&panel_id"));
-    assert!(block_source.contains("code_panel_controls.syntax_highlight(\n            &panel_id,"));
-    assert!(block_source.contains("revision.display_source()"));
-    assert!(block_source.contains("revision.syntax_label()"));
-    assert!(block_source.contains("display_projection_input"));
-    assert!(!block_source.contains(
-        "code_panel_controls.header(\n        panel_id.as_str(),\n        code.language.as_deref(),"
-    ));
+    let edit_body = rust_function_body(SHELL_SOURCE, "fn edit_resident_context_target_from_panel");
+    let branch_body =
+        rust_function_body(SHELL_SOURCE, "fn branch_resident_context_target_from_panel");
+    let preview_body = rust_function_body(
+        SHELL_SOURCE,
+        "fn preview_resident_transcript_media_from_panel",
+    );
+    let media_copy_body =
+        rust_function_body(SHELL_SOURCE, "fn copy_resident_transcript_media_from_panel");
+    let media_copy_write_body = rust_function_body(
+        SHELL_SOURCE,
+        "fn write_resident_media_copy_payload_to_clipboard",
+    );
+    let media_save_body =
+        rust_function_body(SHELL_SOURCE, "fn save_resident_transcript_media_to_path");
+    let media_save_write_body =
+        rust_function_body(SHELL_SOURCE, "fn write_resident_media_save_payload_to_path");
+    let scroll_body = rust_function_body(SHELL_SOURCE, "fn apply_transcript_scroll_command");
+
+    assert!(quote_body.contains("unavailable_command(\"quote_transcript_selection\")"));
+    assert!(quote_body.contains(".resident_quote_payload()"));
+    assert!(quote_body.contains("payload.quoted_markdown"));
+    assert!(quote_body.contains("replace_selected_text(&quoted_markdown"));
+    assert!(!quote_body.contains("transcript_quote::quote_insertion_for_draft"));
+    assert!(copy_body.contains("unavailable_command(\"copy_transcript_selection\")"));
+    assert!(copy_body.contains(".resident_copy_payload()"));
+    assert!(!copy_body.contains("transcript_quote::quote_insertion_for_draft"));
+    assert!(context_menu_body.contains(".resident_context_menu_command_target()"));
+    assert!(context_menu_body.contains("unavailable_command(\"open_transcript_context_menu\")"));
+    assert!(!context_menu_body.contains("transcript_branch"));
+    assert!(!context_menu_body.contains("transcript_edit"));
+    assert!(edit_body.contains(".resident_context_menu_command_target()"));
+    assert!(edit_body.contains("ResidentEditCommandTarget::from_context_menu_command_target"));
+    assert!(edit_body.contains("unavailable_command(\"edit_resident_context_target\")"));
+    assert!(!edit_body.contains("transcript_edit"));
+    assert!(branch_body.contains(".resident_context_menu_command_target()"));
+    assert!(branch_body.contains("ResidentBranchCommandTarget::from_context_menu_command_target"));
+    assert!(branch_body.contains("unavailable_command(\"branch_resident_context_target\")"));
+    assert!(!branch_body.contains("transcript_branch"));
+    assert!(preview_body.contains(".resident_media_preview_command_target()"));
+    assert!(preview_body.contains("ResidentMediaPreviewCommandTarget::Targeted(payload)"));
+    assert!(preview_body.contains("unavailable_command(\"preview_resident_transcript_media\")"));
+    assert!(!preview_body.contains(".resident_media_action_payload()"));
+    assert!(!preview_body.contains("transcript_image"));
+    assert!(media_copy_body.contains(".resident_media_copy_command_target()"));
+    assert!(media_copy_body.contains("ResidentMediaCopyCommandTarget::Targeted(payload)"));
+    assert!(media_copy_body.contains("unavailable_command(\"copy_resident_transcript_media\")"));
+    assert!(media_copy_write_body.contains("ClipboardItem::new_image(&image)"));
+    assert!(media_copy_write_body.contains("Image::from_bytes(format, payload.bytes().to_vec())"));
+    assert!(!media_copy_body.contains(".resident_media_action_payload()"));
+    assert!(!media_copy_write_body.contains("read_from_clipboard"));
+    assert!(media_save_body.contains(".resident_media_save_command_target()"));
+    assert!(media_save_body.contains("ResidentMediaSaveCommandTarget::Targeted(payload)"));
+    assert!(media_save_body.contains("unavailable_command(\"save_resident_transcript_media\")"));
+    assert!(media_save_write_body.contains("payload.complete()"));
+    assert!(media_save_write_body.contains("fs::write(destination.path(), payload.bytes())"));
+    assert!(!media_save_body.contains(".resident_media_action_payload()"));
+    assert!(!media_save_write_body.contains("read_from_clipboard"));
+    assert!(!media_save_write_body.contains("Image::from_bytes"));
+    assert!(scroll_body.contains("ScrollTranscriptCommand::Wheel"));
+    assert!(scroll_body.contains("panel.manual_scroll_delta("));
+    assert!(scroll_body.contains("let manual_delta_px = -delta_y;"));
+    assert!(!scroll_body.contains("apply_transcript_wheel_command"));
+    assert!(!scroll_body.contains("transcript_presentation().len()"));
 }
 
-#[test]
-fn transcript_snapshots_carry_panel_state_without_synthetic_theme_offer_rows() {
-    let transcript_source = include_str!("../src/shell/render/transcript.rs");
-    let shell_source = include_str!("../src/shell.rs");
-    let transcript_panel_snapshot_source =
-        include_str!("../src/shell/transcript_panel_snapshot.rs");
+fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
+    let signature_index = source
+        .find(function_signature)
+        .unwrap_or_else(|| panic!("missing function {function_signature}"));
+    let after_signature = &source[signature_index..];
+    let open_offset = after_signature
+        .find('{')
+        .unwrap_or_else(|| panic!("missing body for function {function_signature}"));
+    let body_start = signature_index + open_offset;
+    let mut depth = 0usize;
 
-    assert!(transcript_source.contains("theme_candidates: ThemeCandidatePanelSnapshot"));
-    assert!(transcript_source.contains("theme_candidates: Arc<ThemeCandidatePanelSnapshot>"));
-    assert!(transcript_panel_snapshot_source.contains("self.theme_candidate_state.snapshot()"));
-    assert!(!transcript_source.contains("ThemeCandidateRow"));
-    assert!(!transcript_source.contains("ThemeOfferRow"));
-    assert!(!shell_source.contains("ThemeCandidateRow"));
-    assert!(!transcript_panel_snapshot_source.contains("ThemeCandidateRow"));
-    assert!(!shell_source.contains("ThemeOfferRow"));
-    assert!(!transcript_panel_snapshot_source.contains("ThemeOfferRow"));
-}
+    for (offset, character) in source[body_start..].char_indices() {
+        match character {
+            '{' => depth = depth.saturating_add(1),
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return &source[body_start..body_start + offset + character.len_utf8()];
+                }
+            }
+            _ => {}
+        }
+    }
 
-#[test]
-fn theme_candidate_panel_actions_defer_shell_updates_out_of_transcript_panel_update() {
-    let transcript_source = include_str!("../src/shell/render/transcript.rs");
-
-    assert!(transcript_source.contains(
-        "cx.defer(move |cx| {\n            shell.update(cx, |shell, cx| {\n                shell.preview_transcript_theme_candidate"
-    ));
-    assert!(transcript_source.contains(
-        "cx.defer(move |cx| {\n            shell.update(cx, |shell, cx| {\n                shell.stop_transcript_theme_candidate_preview"
-    ));
-    assert!(transcript_source.contains(
-        "window.defer(cx, move |window, cx| {\n            shell.update(cx, |shell, cx| {\n                shell.prompt_install_transcript_theme_candidate"
-    ));
-    assert!(!transcript_source.contains(
-        "self.shell.update(cx, |shell, cx| {\n            shell.preview_transcript_theme_candidate"
-    ));
-    assert!(!transcript_source.contains(
-        "self.shell.update(cx, |shell, cx| {\n            shell.stop_transcript_theme_candidate_preview"
-    ));
-}
-
-#[test]
-fn install_theme_candidate_prompts_before_starting_repository_worker() {
-    let shell_source = include_str!("../src/shell.rs");
-    let prompt_index = shell_source
-        .find("window.prompt(")
-        .expect("theme candidate install should prompt the operator");
-    let begin_index = shell_source
-        .find("begin_theme_candidate_install")
-        .expect("theme candidate install should use the repository worker");
-
-    assert!(prompt_index < begin_index);
-    assert!(shell_source.contains("theme_repository_store()"));
-    assert!(shell_source.contains("spawn_theme_candidate_install_worker"));
-    assert!(shell_source.contains("record_theme_repository_snapshot"));
+    panic!("unterminated body for function {function_signature}");
 }

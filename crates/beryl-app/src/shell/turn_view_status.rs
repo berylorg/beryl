@@ -1,11 +1,27 @@
 use super::{
     ConversationSurfaceState,
     status_line::{self, CancellableActiveTurn, SelectedTurnHardStopTargets, StatusLineTurnView},
-    turn_view::transcript_turn_numbering_snapshot,
+    syndic_transcript::ResidentTranscriptStatusFacts,
 };
 
 impl ConversationSurfaceState {
     pub(super) fn status_line_projection(&self) -> status_line::StatusLineProjection {
+        self.status_line_projection_with_turn_view(StatusLineTurnView::unknown())
+    }
+
+    pub(super) fn status_line_projection_with_transcript_facts(
+        &self,
+        transcript_status_facts: &ResidentTranscriptStatusFacts,
+    ) -> status_line::StatusLineProjection {
+        self.status_line_projection_with_turn_view(
+            self.status_line_turn_view(transcript_status_facts),
+        )
+    }
+
+    fn status_line_projection_with_turn_view(
+        &self,
+        turn_view: StatusLineTurnView,
+    ) -> status_line::StatusLineProjection {
         let cancellable_active_turn = self.status_line_turn_operation_target();
         let hard_stop_targets =
             self.status_line_hard_stop_targets_for(cancellable_active_turn.as_ref());
@@ -18,12 +34,17 @@ impl ConversationSurfaceState {
                 cancellable_active_turn,
                 hard_stop_targets,
             )
-            .with_turn_view(self.status_line_turn_view())
+            .with_turn_view(turn_view)
     }
 
-    fn status_line_turn_view(&self) -> StatusLineTurnView {
-        let snapshot = self.transcript_turn_numbering_snapshot();
-        StatusLineTurnView::new(snapshot.current(), snapshot.total())
+    fn status_line_turn_view(
+        &self,
+        transcript_status_facts: &ResidentTranscriptStatusFacts,
+    ) -> StatusLineTurnView {
+        StatusLineTurnView::new(
+            transcript_status_facts.turn_view.current,
+            transcript_status_facts.turn_view.total,
+        )
     }
 
     pub(super) fn status_line_turn_operation_target(&self) -> Option<CancellableActiveTurn> {
@@ -53,19 +74,6 @@ impl ConversationSurfaceState {
         status_line::status_line_context_operation_available(
             self.selected_thread_id(),
             self.selected_thread_status.as_ref(),
-        )
-    }
-
-    pub(super) fn transcript_turn_numbering_snapshot(
-        &self,
-    ) -> super::turn_view::TranscriptTurnNumberingSnapshot {
-        transcript_turn_numbering_snapshot(
-            self.selected_thread_id(),
-            &self.execution_details,
-            &self.transcript_history_window,
-            &self.transcript_presentation,
-            &self.transcript_viewport,
-            &self.transcript_list_state,
         )
     }
 }

@@ -26,15 +26,10 @@ use beryl_backend::{
 use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 use tracing::{debug, info, warn};
 
-use super::execution_detail::{TranscriptImagePathResolver, UserInputFragment};
+use super::execution_detail::UserInputFragment;
 use super::graph::GraphMutationUpdate;
 use super::thread_activation::{ExistingThreadActivationError, ThreadActivationLoader};
 use super::thread_title::{ThreadTitleCandidate, TurnThreadTitleMode};
-use super::transcript_branch_core::{
-    ForegroundTranscriptBranchPublication, ForegroundTranscriptBranchStart,
-};
-use super::transcript_history::TranscriptHistoryWindow;
-use super::transcript_image_sources::transcript_image_path_resolver_for_workspace_assets;
 use crate::memory_diagnostics::MemoryMilestone;
 use crate::{
     BerylWorkspacePersistence, WorkspaceGraphToolService,
@@ -89,8 +84,6 @@ pub(super) enum ThreadActivationOutcome {
         execution_target: WorkspaceId,
         thread: ThreadInfo,
         session_metadata: ThreadSessionMetadata,
-        history_window: TranscriptHistoryWindow,
-        image_resolver: TranscriptImagePathResolver,
     },
     RequiresRebind {
         detail: String,
@@ -111,8 +104,6 @@ pub(super) enum TurnWorkerUpdate {
         candidate: ThreadTitleCandidate,
         title_mode: TurnThreadTitleMode,
     },
-    ForegroundTranscriptBranchStarted(ForegroundTranscriptBranchStart),
-    ForegroundTranscriptBranchPublicationFinished(ForegroundTranscriptBranchPublication),
     GraphMutationFinished(GraphMutationUpdate),
     LifecycleYieldAccepted(AcceptedLifecycleYield),
     Event(TurnStreamEvent),
@@ -374,7 +365,6 @@ pub(super) fn spawn_turn_worker(
 }
 
 pub(super) fn spawn_thread_activation_worker(
-    persistence: BerylWorkspacePersistence,
     connector: ManagedBackendClientConnector,
     beryl_workspace_id: BerylWorkspaceId,
     workspace: WorkspaceId,
@@ -385,7 +375,6 @@ pub(super) fn spawn_thread_activation_worker(
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         run_thread_activation_worker(
-            persistence,
             connector,
             beryl_workspace_id,
             workspace,
@@ -740,7 +729,6 @@ where
 }
 
 fn run_thread_activation_worker(
-    persistence: BerylWorkspacePersistence,
     connector: ManagedBackendClientConnector,
     beryl_workspace_id: BerylWorkspaceId,
     workspace: WorkspaceId,
@@ -790,16 +778,6 @@ fn run_thread_activation_worker(
         .log();
 
     let activation_started = Instant::now();
-    if let Err(error) = session.probe_thread_history_capabilities(timeout) {
-        let _ = sender.send(ThreadActivationUpdate::Finished(
-            ThreadActivationOutcome::Failed {
-                message: format!(
-                    "Beryl could not verify the required transcript history contract: {error}"
-                ),
-            },
-        ));
-        return;
-    }
     match ThreadActivationLoader::load_existing_thread(
         &mut session,
         &workspace,
@@ -808,82 +786,25 @@ fn run_thread_activation_worker(
         timeout,
     ) {
         Ok(activation) => {
-            let history_turn_count = activation.thread.turns.len();
-            let history_item_count = activation
-                .thread
-                .turns
-                .iter()
-                .map(|turn| turn.items.len())
-                .sum::<usize>();
-            let history_generated_image_count = activation
-                .thread
-                .turns
-                .iter()
-                .flat_map(|turn| turn.items.iter())
-                .filter(|item| matches!(item, beryl_backend::ThreadItem::ImageGeneration(_)))
-                .count();
-            MemoryMilestone::new("thread_activation_worker_loaded_history")
-                .workspace_id(beryl_workspace_id.as_str())
-                .runtime(workspace.runtime_mode().display_name())
-                .thread_id(thread_id.as_str())
-                .history_counts(
-                    history_turn_count,
-                    history_item_count,
-                    history_generated_image_count,
-                )
-                .log();
             debug!(
                 thread_id = thread_id.as_str(),
                 backend_activation_ms = elapsed_ms(activation_started.elapsed()),
                 "thread activation worker received backend activation"
             );
-            let resolver_started = Instant::now();
-            let image_resolver = match transcript_image_path_resolver_for_workspace_assets(
-                &persistence,
-                &beryl_workspace_id,
-                workspace.runtime_mode(),
-            ) {
-                Ok(resolver) => resolver,
-                Err(error) => {
-                    warn!(
-                        workspace_id = beryl_workspace_id.as_str(),
-                        error = %error,
-                        "failed to prepare transcript image source resolver during thread activation"
-                    );
-                    TranscriptImagePathResolver::default()
-                }
-            };
-            debug!(
-                thread_id = thread_id.as_str(),
-                image_resolver_prepare_ms = elapsed_ms(resolver_started.elapsed()),
-                worker_total_ms = elapsed_ms(worker_started.elapsed()),
-                "thread activation worker prepared image resolver"
-            );
             MemoryMilestone::new("thread_activation_worker_done")
                 .workspace_id(beryl_workspace_id.as_str())
                 .runtime(workspace.runtime_mode().display_name())
                 .thread_id(thread_id.as_str())
-                .history_counts(
-                    history_turn_count,
-                    history_item_count,
-                    history_generated_image_count,
-                )
                 .log();
             info!(
                 thread_id = thread_id.as_str(),
-                resident_turns = history_turn_count,
-                resident_items = history_item_count,
-                generated_images = history_generated_image_count,
-                image_resolver_prepare_ms = elapsed_ms(resolver_started.elapsed()),
-                "Prepared selected-thread activation worker result"
+                "Prepared selected-thread activation worker metadata"
             );
             let _ = sender.send(ThreadActivationUpdate::Finished(
                 ThreadActivationOutcome::Activated {
                     execution_target: workspace,
                     thread: activation.thread,
                     session_metadata: activation.session_metadata,
-                    history_window: activation.history_window,
-                    image_resolver,
                 },
             ));
         }

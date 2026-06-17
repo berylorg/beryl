@@ -254,8 +254,6 @@ impl ShellView {
         if self.member_thread_inventory_receiver.is_some()
             || self.workspace_receiver.is_some()
             || self.thread_activation_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.thread_history_page_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
             || self.workspace_picker_action_receiver.is_some()

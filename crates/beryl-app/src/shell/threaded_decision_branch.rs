@@ -52,7 +52,6 @@ use super::{
     graph::{GraphOptimisticMutation, OptimisticGraphMutationId},
     thread_title::ThreadTitleCandidate,
     token_usage_snapshot,
-    transcript_branch_core::register_transcript_branch_thread,
 };
 
 mod actions;

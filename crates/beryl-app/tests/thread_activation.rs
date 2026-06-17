@@ -1,11 +1,8 @@
-#![allow(dead_code, unused_imports)]
+#![allow(dead_code)]
 
 use std::time::Duration;
 
-use beryl_backend::{
-    AgentMessageItem, ImageGenerationItem, ProtocolPhase, ThreadItem, ThreadSessionResponse,
-    ThreadTurnsListOptions, ThreadTurnsListResponse, TurnInfo, TurnItemsView, TurnStatus,
-};
+use beryl_backend::{ThreadItem, ThreadSessionResponse, TurnInfo, TurnItemsView, TurnStatus};
 use beryl_model::workspace::WorkspaceId;
 use serde_json::json;
 
@@ -18,28 +15,20 @@ mod shell {
     #[allow(dead_code)]
     #[path = "../../src/shell/thread_selection.rs"]
     pub(super) mod thread_selection;
-    #[path = "../../src/shell/transcript_history.rs"]
-    pub(super) mod transcript_history;
 }
 
 use shell::thread_activation::{
     ExistingThreadActivationBackend, ExistingThreadActivationError, ThreadActivationLoader,
 };
-use shell::transcript_history::{
-    THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBackend, initial_thread_resident_page_options,
-};
 
 #[test]
-fn direct_activation_uses_metadata_resume_and_bounded_resident_turn_page() {
+fn direct_activation_resumes_metadata_without_loading_turn_history() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\alpha"),
-        Ok(ThreadTurnsListResponse {
-            data: vec![turn("turn_3"), turn("turn_2")],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: None,
-        }),
-    );
+    let mut backend = FakeActivationBackend::ok(thread_response(
+        "thread_a",
+        r"C:\work\alpha",
+        vec![not_loaded_turn("turn_1")],
+    ));
 
     let activation = ThreadActivationLoader::load_existing_thread(
         &mut backend,
@@ -51,201 +40,24 @@ fn direct_activation_uses_metadata_resume_and_bounded_resident_turn_page() {
     .unwrap();
 
     assert_eq!(backend.resume_calls, vec!["thread_a"]);
-    assert_eq!(backend.turn_calls.len(), 1);
-    assert_eq!(backend.turn_calls[0].0, "thread_a");
-    assert_eq!(
-        backend.turn_calls[0].1,
-        initial_thread_resident_page_options()
-    );
     assert_eq!(
         activation.session_metadata.model.as_deref(),
         Some("gpt-5.4")
     );
-    assert!(activation.history_window.has_older_pages());
-    assert_eq!(activation.thread.turns[0].id, "turn_2");
-    assert_eq!(activation.thread.turns[1].id, "turn_3");
-    assert_eq!(activation.thread.turns[0].items_view, TurnItemsView::Full);
-    assert!(!activation.thread.turns[0].items.is_empty());
-    assert_eq!(
-        activation
-            .history_window
-            .residency_retained_counts()
-            .resident_turns,
-        2
-    );
-}
-
-#[test]
-fn direct_activation_sanitizes_full_transport_page_outside_initial_tail_window() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\alpha"),
-        Ok(ThreadTurnsListResponse {
-            data: (0..40)
-                .rev()
-                .map(|index| turn(&format!("turn_{index}")))
-                .collect(),
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: None,
-        }),
-    );
-
-    let activation = ThreadActivationLoader::load_existing_thread(
-        &mut backend,
-        &execution_target,
-        "thread_a",
-        "Thread A",
-        Duration::from_secs(5),
-    )
-    .unwrap();
-
-    assert_eq!(
-        backend.turn_calls[0].1,
-        initial_thread_resident_page_options()
-    );
-    assert_eq!(activation.thread.turns.len(), 40);
-    assert_eq!(activation.thread.turns[0].id, "turn_0");
+    assert_eq!(activation.thread.summary().id, "thread_a");
+    assert_eq!(activation.thread.turns.len(), 1);
     assert_eq!(
         activation.thread.turns[0].items_view,
         TurnItemsView::NotLoaded
     );
     assert!(activation.thread.turns[0].items.is_empty());
-    assert_eq!(activation.thread.turns[39].id, "turn_39");
-    assert_eq!(activation.thread.turns[39].items_view, TurnItemsView::Full);
-    assert!(!activation.thread.turns[39].items.is_empty());
-    assert_eq!(
-        activation
-            .history_window
-            .residency_retained_counts()
-            .resident_turns,
-        32
-    );
-    assert_eq!(
-        activation
-            .history_window
-            .residency_retained_counts()
-            .nonresident_turns,
-        8
-    );
-}
-
-#[test]
-fn direct_activation_keeps_generated_image_items_in_resident_page() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\alpha"),
-        Ok(ThreadTurnsListResponse {
-            data: vec![
-                generated_image_turn("turn_3", "image_3", r"C:\work\alpha\generated-3.png"),
-                turn("turn_2"),
-            ],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: None,
-        }),
-    );
-
-    let activation = ThreadActivationLoader::load_existing_thread(
-        &mut backend,
-        &execution_target,
-        "thread_a",
-        "Thread A",
-        Duration::from_secs(5),
-    )
-    .unwrap();
-
-    assert_eq!(activation.thread.turns[0].id, "turn_2");
-    assert_eq!(activation.thread.turns[1].id, "turn_3");
-    assert_eq!(activation.thread.turns[1].items_view, TurnItemsView::Full);
-    assert!(matches!(
-        activation.thread.turns[1].items.first(),
-        Some(ThreadItem::ImageGeneration(_))
-    ));
-    assert!(activation.history_window.has_older_pages());
-}
-
-#[test]
-fn direct_activation_requests_full_latest_turn_page() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\alpha"),
-        Ok(ThreadTurnsListResponse {
-            data: vec![turn("turn_3")],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: None,
-        }),
-    );
-
-    let activation = ThreadActivationLoader::load_existing_thread(
-        &mut backend,
-        &execution_target,
-        "thread_a",
-        "Thread A",
-        Duration::from_secs(5),
-    )
-    .unwrap();
-
-    assert_eq!(backend.turn_calls.len(), 1);
-    assert_eq!(
-        backend.turn_calls[0].1,
-        initial_thread_resident_page_options()
-    );
-    assert_eq!(
-        backend.turn_calls[0].1.items_view,
-        Some(TurnItemsView::Full)
-    );
-    assert_eq!(activation.thread.turns[0].items_view, TurnItemsView::Full);
-    assert!(!activation.thread.turns[0].items.is_empty());
-}
-
-#[test]
-fn direct_activation_rejects_non_full_resident_page_response() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\alpha"),
-        Ok(ThreadTurnsListResponse {
-            data: vec![turn_with_items_view("turn_3", TurnItemsView::NotLoaded)],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: None,
-        }),
-    );
-
-    let error = ThreadActivationLoader::load_existing_thread(
-        &mut backend,
-        &execution_target,
-        "thread_a",
-        "Thread A",
-        Duration::from_secs(5),
-    )
-    .unwrap_err();
-
-    match error {
-        ExistingThreadActivationError::Failed { message } => {
-            assert!(message.contains("resident transcript history"));
-            assert!(message.contains("turn_3"));
-            assert!(message.contains("NotLoaded"));
-        }
-        ExistingThreadActivationError::RequiresRebind { detail } => {
-            panic!("expected resident page validation failure, got rebind: {detail}");
-        }
-    }
-    assert_eq!(backend.turn_calls.len(), 1);
-    assert_eq!(
-        backend.turn_calls[0].1.items_view,
-        Some(TurnItemsView::Full)
-    );
 }
 
 #[test]
 fn direct_activation_rejects_cwd_mismatch_as_rebind() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\beta"),
-        Ok(ThreadTurnsListResponse {
-            data: Vec::new(),
-            next_cursor: None,
-            backwards_cursor: None,
-        }),
-    );
+    let mut backend =
+        FakeActivationBackend::ok(thread_response("thread_a", r"C:\work\beta", Vec::new()));
 
     let error = ThreadActivationLoader::load_existing_thread(
         &mut backend,
@@ -267,16 +79,13 @@ fn direct_activation_rejects_cwd_mismatch_as_rebind() {
             panic!("expected rebind error, got failure: {message}");
         }
     }
-    assert!(backend.turn_calls.is_empty());
+    assert_eq!(backend.resume_calls, vec!["thread_a"]);
 }
 
 #[test]
-fn direct_activation_fails_when_initial_history_page_cannot_load() {
+fn direct_activation_resume_error_is_reported_as_rebind_requirement() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\alpha");
-    let mut backend = FakeActivationBackend::new(
-        thread_response("thread_a", r"C:\work\alpha"),
-        Err("page unavailable".to_string()),
-    );
+    let mut backend = FakeActivationBackend::err("missing thread");
 
     let error = ThreadActivationLoader::load_existing_thread(
         &mut backend,
@@ -288,52 +97,41 @@ fn direct_activation_fails_when_initial_history_page_cannot_load() {
     .unwrap_err();
 
     match error {
-        ExistingThreadActivationError::Failed { message } => {
-            assert!(message.contains("page unavailable"));
-        }
         ExistingThreadActivationError::RequiresRebind { detail } => {
-            panic!("expected page-load failure, got rebind: {detail}");
+            assert!(detail.contains("Thread A"));
+            assert!(detail.contains("missing thread"));
+        }
+        ExistingThreadActivationError::Failed { message } => {
+            panic!("expected rebind error, got failure: {message}");
         }
     }
     assert_eq!(backend.resume_calls, vec!["thread_a"]);
-    assert_eq!(backend.turn_calls.len(), 1);
-}
-
-#[test]
-fn initial_resident_page_options_request_latest_bounded_full_page() {
-    let options = initial_thread_resident_page_options();
-
-    assert_eq!(options.limit, Some(THREAD_HISTORY_PAGE_LIMIT));
-    assert_eq!(
-        options.sort_direction,
-        Some(beryl_backend::SortDirection::Desc)
-    );
-    assert_eq!(options.cursor, None);
-    assert_eq!(options.items_view, Some(TurnItemsView::Full));
 }
 
 struct FakeActivationBackend {
-    resume_response: Option<ThreadSessionResponse>,
-    turn_response: Result<ThreadTurnsListResponse, String>,
+    resume_response: Option<Result<ThreadSessionResponse, String>>,
     resume_calls: Vec<String>,
-    turn_calls: Vec<(String, ThreadTurnsListOptions)>,
 }
 
 impl FakeActivationBackend {
-    fn new(
-        resume_response: ThreadSessionResponse,
-        turn_response: Result<ThreadTurnsListResponse, String>,
-    ) -> Self {
+    fn ok(response: ThreadSessionResponse) -> Self {
         Self {
-            resume_response: Some(resume_response),
-            turn_response,
+            resume_response: Some(Ok(response)),
             resume_calls: Vec::new(),
-            turn_calls: Vec::new(),
+        }
+    }
+
+    fn err(message: &str) -> Self {
+        Self {
+            resume_response: Some(Err(message.to_string())),
+            resume_calls: Vec::new(),
         }
     }
 }
 
 impl ExistingThreadActivationBackend for FakeActivationBackend {
+    type Error = String;
+
     fn resume_thread_metadata(
         &mut self,
         thread_id: &str,
@@ -342,26 +140,11 @@ impl ExistingThreadActivationBackend for FakeActivationBackend {
         self.resume_calls.push(thread_id.to_string());
         self.resume_response
             .take()
-            .ok_or_else(|| "resume called more than once".to_string())
+            .expect("resume should be called once")
     }
 }
 
-impl TranscriptHistoryBackend for FakeActivationBackend {
-    type Error = String;
-
-    fn list_thread_turns(
-        &mut self,
-        thread_id: &str,
-        options: &ThreadTurnsListOptions,
-        _: Duration,
-    ) -> Result<ThreadTurnsListResponse, Self::Error> {
-        self.turn_calls
-            .push((thread_id.to_string(), options.clone()));
-        self.turn_response.clone()
-    }
-}
-
-fn thread_response(thread_id: &str, cwd: &str) -> ThreadSessionResponse {
+fn thread_response(thread_id: &str, cwd: &str, turns: Vec<TurnInfo>) -> ThreadSessionResponse {
     serde_json::from_value(json!({
         "model": "gpt-5.4",
         "modelProvider": "openai",
@@ -378,47 +161,19 @@ fn thread_response(thread_id: &str, cwd: &str) -> ThreadSessionResponse {
                 "type": "active",
                 "activeFlags": ["waitingOnUserInput"]
             },
-            "turns": [],
+            "turns": turns,
             "updatedAt": 2
         }
     }))
     .unwrap()
 }
 
-fn turn(id: &str) -> TurnInfo {
-    turn_with_items_view(id, TurnItemsView::Full)
-}
-
-fn turn_with_items_view(id: &str, items_view: TurnItemsView) -> TurnInfo {
+fn not_loaded_turn(id: &str) -> TurnInfo {
     TurnInfo {
         id: id.to_string(),
         status: TurnStatus::Completed,
-        items_view,
-        items: if items_view == TurnItemsView::Full {
-            vec![ThreadItem::AgentMessage(AgentMessageItem {
-                id: format!("{id}_message"),
-                phase: Some(ProtocolPhase::FinalAnswer),
-                text: format!("Answer for {id}"),
-            })]
-        } else {
-            Vec::new()
-        },
-        error: None,
-    }
-}
-
-fn generated_image_turn(id: &str, image_id: &str, saved_path: &str) -> TurnInfo {
-    TurnInfo {
-        id: id.to_string(),
-        status: TurnStatus::Completed,
-        items_view: TurnItemsView::Full,
-        items: vec![ThreadItem::ImageGeneration(ImageGenerationItem {
-            id: image_id.to_string(),
-            status: Some("completed".to_string()),
-            revised_prompt: Some("A generated activation image".to_string()),
-            result: None,
-            saved_path: Some(saved_path.to_string()),
-        })],
+        items_view: TurnItemsView::NotLoaded,
+        items: Vec::<ThreadItem>::new(),
         error: None,
     }
 }

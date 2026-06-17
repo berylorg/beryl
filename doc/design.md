@@ -57,13 +57,14 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 
 ## Backend Boundary
 
-- Agent execution, transcript history, and Codex-owned state flow through `codex app-server`.
+- For the current app-server-backed runtime, agent execution, conversation event streams, and Codex-owned state flow through `codex app-server`.
 - Beryl integrates with `codex app-server` as an out-of-process GUI client rather than by directly linking Codex internal crates.
 - Beryl does not bundle or install Codex.
 - Beryl may own narrow GUI-side orchestration using app-server protocol primitives when the app-server protocol does not expose a direct GUI-needed helper.
 - Cross-boundary communication uses the app-server contract rather than direct access to backend storage, process memory, or implementation internals.
+- Syndic-backed transcript presentation consumes Syndic data only through the Beryl-facing provider and residency boundaries defined by the Syndic and transcript feature docs. GPUI render code must not reach through to durable storage, backend process memory, or implementation internals.
 - Authentication, session storage, agent execution, subagents, configuration, skills, MCP state, and other non-UI agent behavior remain backend-owned.
-- Backend conversation thread contents and execution event streams remain backend-owned.
+- App-server conversation thread contents and execution event streams remain backend-owned.
 - Beryl may launch and manage app-server processes in V1, but backend process ownership, runtime-target availability, loopback WebSocket auth, capability probing, and recovery behavior are defined by the backend runtime recovery feature.
 
 ## Codex App Server Version Invariant
@@ -78,7 +79,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 ## Responsibility Split
 
 - The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, default-runtime selection, runtime-bound workspace-member registrations, semantic graph state, GUI-local thread refs, thread-title display precedence, automatic and user-initiated thread-title orchestration, derived member-thread inventory snapshots, GUI-local settings, installed themes, and GUI-local persistence.
-- Backend conversation history remains backend-owned even when Beryl renders, branches, edits, titles, or links threads.
+- Conversation-history authority remains with the owning history boundary: Codex App Server for app-server-backed histories, and Syndic only for histories explicitly defined by Syndic feature and storage contracts. Beryl rendering, branch/edit UI, titles, and thread links operate through that authority instead of becoming a separate durable history owner.
 - Conversation thread editing mutates backend conversation history only. It must not present or assume rollback of filesystem changes, semantic graph/checklist-item mutations, workspace state, thread-title metadata, durable image assets, in-memory activity records, or other non-history side effects.
 - Deleting or retitling a Beryl workspace changes only GUI-owned workspace state and must not delete or mutate backend-owned Codex thread history.
 - Deleting semantic graph nodes changes only GUI-owned semantic graph state and must not delete or mutate backend-owned Codex thread history.
@@ -107,7 +108,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - The design does not require multiple GUI instances to perform concurrent writes to the same workspace-scoped state store, because one GUI instance owns one workspace at a time.
 - Mutable GUI-local cursors such as active workspace selection, active thread selection, window state, and splitter positions may use last-write-wins semantics across GUI instances.
 - Backend-owned conversation contents and execution history do not move into GUI-local settings or GUI-local state storage.
-- Paged transcript data is a transient projection of backend-owned conversation history.
+- Resident transcript presentation data, including resident Syndic data used by the transcript renderer, is a bounded GUI-side projection of the selected conversation-history authority and is not durable history.
 - Derived projections and caches are not authoritative when they can be rebuilt from backend data plus GUI-local metadata.
 
 ## Responsiveness And Performance

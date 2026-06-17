@@ -13,8 +13,8 @@ use beryl_backend::{
 };
 use tracing::debug;
 
-#[path = "transcript_fallback.rs"]
-mod transcript_fallback;
+#[path = "execution_detail/history_fallback.rs"]
+mod history_fallback;
 #[path = "execution_detail/transcript_images.rs"]
 mod transcript_images;
 #[allow(unused_imports)]
@@ -1516,7 +1516,7 @@ impl TurnExecutionRecord {
         image_resolver: &TranscriptImagePathResolver,
         _partial_turns_may_be_incomplete: bool,
     ) -> Self {
-        if transcript_fallback::is_oversized_turn_fallback_marker(turn) {
+        if history_fallback::is_oversized_turn_fallback_marker(turn) {
             return Self::oversized_history_fallback(thread_id, turn);
         }
 

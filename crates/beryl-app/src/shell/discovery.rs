@@ -24,13 +24,11 @@ use crate::memory_diagnostics::MemoryMilestone;
 use crate::{WorkspaceGraphRevision, WorkspaceGraphStateSnapshot};
 
 use super::backend_availability::{BackendUnavailable, BackendUnavailableKind};
-use super::execution_detail::TranscriptImagePathResolver;
 use super::lifecycle::blocked_state_for_error;
 use super::thread_activation::{ExistingThreadActivationError, ThreadActivationLoader};
 use super::thread_selection::{
     KnownThreadSelection, ThreadSelectionRequest, resolve_known_thread_selection,
 };
-use super::transcript_image_sources::transcript_image_path_resolver_for_workspace_assets;
 use super::workspace_members::{
     WorkspaceTargetResolutionError, reconcile_workspace_member_availability,
     resolve_primary_execution_target, validate_primary_execution_target_selection,
@@ -304,8 +302,6 @@ pub(super) fn open_workspace_worker(
             }
             let selected_thread_history = load_selected_thread_history(
                 &mut session,
-                &workspace_persistence,
-                &workspace_id,
                 &execution_target,
                 &known_threads,
                 &thread_selection,
@@ -351,8 +347,6 @@ pub(super) fn open_workspace_worker(
                 known_threads,
                 selected_thread_id: selected_thread_history.selected_thread_id,
                 selected_thread_history: selected_thread_history.thread_history,
-                selected_thread_history_window: selected_thread_history.thread_history_window,
-                selected_thread_image_resolver: selected_thread_history.image_resolver,
                 selected_thread_session_metadata: selected_thread_history.thread_session_metadata,
                 surface_notice: selected_thread_history.surface_notice,
                 graph: surface_seed.graph,
@@ -468,8 +462,6 @@ fn load_workspace_threads(
 
 fn load_selected_thread_history(
     session: &mut ManagedBackendSession,
-    persistence: &BerylWorkspacePersistence,
-    workspace_id: &BerylWorkspaceId,
     execution_target: &WorkspaceId,
     known_threads: &[ThreadSummary],
     thread_selection: &ThreadSelectionRequest,
@@ -486,31 +478,21 @@ fn load_selected_thread_history(
             Ok(activation) => SelectedThreadHistory {
                 selected_thread_id: Some(thread_id.clone()),
                 thread_session_metadata: Some(activation.session_metadata),
-                image_resolver: selected_thread_image_resolver(
-                    persistence,
-                    workspace_id,
-                    execution_target,
-                ),
                 thread_history: Some(activation.thread),
-                thread_history_window: Some(activation.history_window),
                 surface_notice: None,
             },
             Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
                 SelectedThreadHistory {
                     selected_thread_id: None,
                     thread_session_metadata: None,
-                    image_resolver: TranscriptImagePathResolver::default(),
                     thread_history: None,
-                    thread_history_window: None,
                     surface_notice: Some(SurfaceNotice::new("Thread requires rebind", detail)),
                 }
             }
             Err(ExistingThreadActivationError::Failed { message }) => SelectedThreadHistory {
                 selected_thread_id: None,
                 thread_session_metadata: None,
-                image_resolver: TranscriptImagePathResolver::default(),
                 thread_history: None,
-                thread_history_window: None,
                 surface_notice: Some(SurfaceNotice::new("Thread activation failed", message)),
             },
         };
@@ -536,13 +518,7 @@ fn load_selected_thread_history(
                 Ok(activation) => SelectedThreadHistory {
                     selected_thread_id: Some(thread_id),
                     thread_session_metadata: Some(activation.session_metadata),
-                    image_resolver: selected_thread_image_resolver(
-                        persistence,
-                        workspace_id,
-                        execution_target,
-                    ),
                     thread_history: Some(activation.thread),
-                    thread_history_window: Some(activation.history_window),
                     surface_notice: None,
                 },
                 Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
@@ -555,9 +531,7 @@ fn load_selected_thread_history(
                     SelectedThreadHistory {
                         selected_thread_id: (!strict).then_some(thread_id),
                         thread_session_metadata: None,
-                        image_resolver: TranscriptImagePathResolver::default(),
                         thread_history: None,
-                        thread_history_window: None,
                         surface_notice: strict
                             .then(|| SurfaceNotice::new("Thread requires rebind", detail)),
                     }
@@ -572,9 +546,7 @@ fn load_selected_thread_history(
                     SelectedThreadHistory {
                         selected_thread_id: (!strict).then_some(thread_id),
                         thread_session_metadata: None,
-                        image_resolver: TranscriptImagePathResolver::default(),
                         thread_history: None,
-                        thread_history_window: None,
                         surface_notice: strict
                             .then(|| SurfaceNotice::new("Thread activation failed", message)),
                     }
@@ -584,42 +556,16 @@ fn load_selected_thread_history(
         KnownThreadSelection::None => SelectedThreadHistory {
             selected_thread_id: None,
             thread_session_metadata: None,
-            image_resolver: TranscriptImagePathResolver::default(),
             thread_history: None,
-            thread_history_window: None,
             surface_notice: None,
         },
-    }
-}
-
-fn selected_thread_image_resolver(
-    persistence: &BerylWorkspacePersistence,
-    workspace_id: &BerylWorkspaceId,
-    execution_target: &WorkspaceId,
-) -> TranscriptImagePathResolver {
-    match transcript_image_path_resolver_for_workspace_assets(
-        persistence,
-        workspace_id,
-        execution_target.runtime_mode(),
-    ) {
-        Ok(resolver) => resolver,
-        Err(error) => {
-            warn!(
-                workspace_id = workspace_id.as_str(),
-                error = %error,
-                "failed to prepare transcript image source resolver for selected thread"
-            );
-            TranscriptImagePathResolver::default()
-        }
     }
 }
 
 struct SelectedThreadHistory {
     selected_thread_id: Option<String>,
     thread_session_metadata: Option<beryl_backend::ThreadSessionMetadata>,
-    image_resolver: TranscriptImagePathResolver,
     thread_history: Option<ThreadInfo>,
-    thread_history_window: Option<super::transcript_history::TranscriptHistoryWindow>,
     surface_notice: Option<SurfaceNotice>,
 }
 

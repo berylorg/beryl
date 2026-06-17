@@ -1,27 +1,20 @@
 use std::time::{Duration, Instant};
 
-use beryl_backend::{ThreadInfo, ThreadSummary};
+use beryl_backend::{ThreadStatus, ThreadSummary};
 use beryl_model::workspace::WorkspaceId;
+use tracing::debug;
 
-use crate::gui_control_dynamic_tools::{
-    PendingActivationPresentabilityUiState, PendingActivationUiState,
-};
+use crate::gui_control_dynamic_tools::PendingActivationUiState;
 
 mod preparation;
-mod publisher;
 
 pub(super) use preparation::{ActivationPreparer, StagedSelectedThreadActivation};
 
-use publisher::SelectedThreadPublisher;
-
-use super::execution_detail::TranscriptImagePathResolver;
 use super::thread_navigation::ThreadNavigationActivationSource;
-use super::transcript_history::TranscriptHistoryWindow;
 use super::{ConversationSurfaceState, ShellView};
 
 const PENDING_THREAD_ACTIVATION_INITIAL_PROGRESS: f32 = 0.06;
 const PENDING_THREAD_ACTIVATION_WORKER_PROGRESS_CAP: f32 = 0.45;
-const PENDING_THREAD_ACTIVATION_STAGED_PROGRESS_BASE: f32 = 0.60;
 const PENDING_THREAD_ACTIVATION_PUBLICATION_PROGRESS_CAP: f32 = 0.96;
 const PENDING_THREAD_ACTIVATION_PROGRESS_FILL_DURATION: Duration = Duration::from_millis(1800);
 const PENDING_THREAD_ACTIVATION_PROGRESS_EPSILON: f32 = 0.002;
@@ -70,9 +63,6 @@ pub(super) struct PublishedSelectedThreadActivation {
     pub(super) execution_target: WorkspaceId,
     pub(super) source: SelectedThreadActivationSource,
     pub(super) activated_idle: bool,
-    pub(super) history_turn_count: usize,
-    pub(super) history_item_count: usize,
-    pub(super) history_generated_image_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,11 +70,6 @@ pub(super) enum SelectedThreadActivationSource {
     StartupRestore,
     BackendReopenRefresh,
     Explicit(ThreadNavigationActivationSource),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SelectedThreadInitialViewportPolicy {
-    Tail,
 }
 
 impl ConversationSurfaceState {
@@ -104,7 +89,7 @@ impl ConversationSurfaceState {
             progress: PENDING_THREAD_ACTIVATION_INITIAL_PROGRESS,
         });
         self.staged_selected_thread_activation = None;
-        self.clear_transcript_residency_page_admission();
+        self.clear_transcript_shell_transient_state();
         self.notices.clear_all();
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
@@ -140,20 +125,6 @@ impl ConversationSurfaceState {
 
         let pending = self.pending_thread_activation.as_ref();
         let staged = self.staged_selected_thread_activation.as_ref();
-        let presentability = staged.map(|staged| {
-            let summary = staged.presentability.summary();
-            PendingActivationPresentabilityUiState {
-                row_count: summary.row_count,
-                presentable_rows: summary.presentable_rows,
-                missing_full_detail_rows: summary.missing_full_detail_rows,
-                markdown_plan_pending_rows: summary.markdown_plan_pending_rows,
-                completed_media_pending_rows: summary.completed_media_pending_rows,
-                terminal_fallback_media_items: summary.terminal_fallback_media_items,
-                live_pending_placeholder_items: summary.live_pending_placeholder_items,
-                structural_readiness_settled: staged.presentability.structural_readiness_settled(),
-                presentable: staged.presentability.is_presentable(),
-            }
-        });
         Some(PendingActivationUiState {
             pending_label: pending.map(|pending| pending.label.clone()),
             pending_thread_id: pending.map(|pending| pending.thread_id.clone()),
@@ -164,7 +135,7 @@ impl ConversationSurfaceState {
             ready_for_publication: staged
                 .map(StagedSelectedThreadActivation::is_ready_for_publication),
             progress_cap: self.pending_thread_activation_progress_cap(),
-            presentability,
+            presentability: None,
             media_admission: None,
             prepublication_preparation: None,
         })
@@ -209,30 +180,52 @@ impl ConversationSurfaceState {
     pub(super) fn publish_staged_selected_thread_activation(
         &mut self,
     ) -> Option<PublishedSelectedThreadActivation> {
-        SelectedThreadPublisher::try_publish(self)
-    }
+        let staged = self.staged_selected_thread_activation.as_ref()?;
+        if !staged.is_ready_for_publication() {
+            debug!(
+                thread_id = staged.thread.summary().id.as_str(),
+                "selected-thread activation remains staged pending publication"
+            );
+            return None;
+        }
 
-    pub(super) fn load_thread_history(&mut self, thread: &ThreadInfo) {
-        self.load_thread_history_window(
-            thread,
-            TranscriptHistoryWindow::default(),
-            &TranscriptImagePathResolver::default(),
-        );
-    }
+        let staged = self.staged_selected_thread_activation.take()?;
+        let summary = staged.thread.summary();
+        let source = staged.source;
+        let execution_target = staged.execution_target.clone();
+        let activated_idle = matches!(staged.thread.status, ThreadStatus::Idle);
 
-    pub(super) fn load_thread_history_window(
-        &mut self,
-        thread: &ThreadInfo,
-        history_window: TranscriptHistoryWindow,
-        image_resolver: &TranscriptImagePathResolver,
-    ) {
-        publisher::publish_history_window(
-            self,
-            thread,
-            history_window,
-            image_resolver,
-            SelectedThreadInitialViewportPolicy::Tail,
+        self.upsert_selected_thread(summary.clone());
+        self.selected_thread_status = Some(staged.thread.status.clone());
+        self.sync_thread_selector_active_thread();
+        self.hard_stop_targets.clear_all();
+        self.status_line.clear_session_metadata();
+        self.execution_details.reset();
+        self.clear_transcript_shell_transient_state();
+        self.pending_thread_activation = None;
+        self.staged_selected_thread_activation = None;
+        self.context_compaction_thread_id = None;
+        self.close_transcript_branch_menu();
+        self.cancel_transcript_edit_mode();
+        self.pending_turn_input_queue = None;
+        self.pending_active_turn_steering_queue = None;
+        self.notices.clear_all();
+        if let Some(metadata) = staged.session_metadata {
+            self.set_thread_session_metadata(metadata);
+        }
+
+        debug!(
+            thread_id = summary.id.as_str(),
+            runtime = execution_target.runtime_mode().display_name(),
+            activation_source = ?source,
+            "published selected-thread activation without legacy transcript history"
         );
+        Some(PublishedSelectedThreadActivation {
+            summary,
+            execution_target,
+            source,
+            activated_idle,
+        })
     }
 }
 

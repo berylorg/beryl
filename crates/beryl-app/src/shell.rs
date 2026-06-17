@@ -1,9 +1,10 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
+    fs,
     hash::{Hash, Hasher},
     ops::Range,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{
         Arc, Mutex,
@@ -20,9 +21,9 @@ use beryl_backend::{
     TurnStartOptions, list_wsl_distros,
 };
 use beryl_model::conversation::{
-    BranchThreadTitleRetitleState, ConversationThreadId, ConversationThreadTokenUsageSnapshot,
-    ConversationTurnId, PrimaryWorkspaceMember, RegisteredConversationThread,
-    WorkspaceConversationState,
+    BranchThreadTitleRetitleState, ConversationThreadId, ConversationThreadTitleSource,
+    ConversationThreadTokenUsageSnapshot, ConversationTurnId, PrimaryWorkspaceMember,
+    RegisteredConversationThread, WorkspaceConversationState,
 };
 use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId, ThreadRefId};
 use beryl_model::threaded_decision::{ThreadedDecisionRecordId, ThreadedDecisionState};
@@ -30,10 +31,10 @@ use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId, WorkspaceMemberId,
 };
 use gpui::{
-    App, Application, AsyncApp, Bounds, ClipboardItem, Context, Entity, Image, KeyBinding,
-    KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions,
-    Pixels, Point, PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent, WeakEntity, Window,
-    WindowBounds, WindowOptions, prelude::*, px, size,
+    App, Application, AsyncApp, Bounds, ClipboardItem, Context, Entity, Image, ImageFormat,
+    KeyBinding, KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    PathPromptOptions, Pixels, Point, PromptButton, PromptLevel, ScrollHandle, ScrollWheelEvent,
+    WeakEntity, Window, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 use gpui_scrollbar::{
     ScrollbarVisibilityPolicy, ScrollbarVisibilityState, ScrollbarVisibilityUpdateCallback,
@@ -260,27 +261,11 @@ fn ui_range_diagnostic(range: &Range<usize>) -> UiRangeDiagnostic {
     }
 }
 
-fn transcript_scroll_position_diagnostic(
-    position: ListScrollPosition,
-) -> TranscriptScrollPositionDiagnostic {
-    match position {
-        ListScrollPosition::Bottom => TranscriptScrollPositionDiagnostic {
-            kind: "bottom".to_string(),
-            item_index: None,
-            offset_px: None,
-        },
-        ListScrollPosition::Content(offset) => TranscriptScrollPositionDiagnostic {
-            kind: "content".to_string(),
-            item_index: Some(offset.item_ix),
-            offset_px: Some(f64::from(f32::from(offset.offset_in_item))),
-        },
-        ListScrollPosition::VirtualTail {
-            offset_from_content_end,
-        } => TranscriptScrollPositionDiagnostic {
-            kind: "virtual_tail".to_string(),
-            item_index: None,
-            offset_px: Some(f64::from(f32::from(offset_from_content_end))),
-        },
+fn transcript_scroll_position_diagnostic() -> TranscriptScrollPositionDiagnostic {
+    TranscriptScrollPositionDiagnostic {
+        kind: "bottom".to_string(),
+        item_index: None,
+        offset_px: None,
     }
 }
 
@@ -370,6 +355,13 @@ gpui::actions!(
     beryl_shell,
     [
         SubmitComposer,
+        CopyTranscriptSelection,
+        OpenTranscriptContextMenu,
+        EditResidentContextTarget,
+        BranchResidentContextTarget,
+        PreviewResidentTranscriptMedia,
+        CopyResidentTranscriptMedia,
+        SaveResidentTranscriptMedia,
         JumpTranscriptTurnUp,
         JumpTranscriptTurnDown,
         BrowseComposerHistoryPrevious,
@@ -432,11 +424,12 @@ mod status_operation_state;
 mod surface_accessors;
 mod surface_notice;
 #[allow(dead_code)]
+mod syndic_transcript;
+#[allow(dead_code)]
 mod syntax_highlighting;
 mod theme_candidates;
 mod thread_activation;
 mod thread_helpers;
-mod thread_history_worker;
 #[allow(dead_code)]
 mod thread_navigation;
 mod thread_navigation_actions;
@@ -450,52 +443,8 @@ mod threaded_decision_resolution;
 mod token_usage_snapshot;
 mod tool_activity;
 mod tool_activity_nickname;
-mod transcript_anchor;
-mod transcript_branch_core;
-mod transcript_branch_menu;
-mod transcript_branch_menu_state;
-mod transcript_branch_worker;
-mod transcript_edit_commit;
-mod transcript_edit_commit_worker;
-mod transcript_edit_menu_state;
-mod transcript_edit_mode;
-mod transcript_edit_mode_state;
-mod transcript_history;
-mod transcript_image_menu_actions;
-mod transcript_image_preview;
-mod transcript_image_sources;
-mod transcript_live_scroll;
-mod transcript_live_scroll_detection;
-#[allow(dead_code)]
-mod transcript_markdown;
-#[allow(dead_code)]
-mod transcript_media;
-mod transcript_media_admission;
-mod transcript_media_runs;
-mod transcript_panel_snapshot;
-mod transcript_prepublication_preparation;
-mod transcript_presentability;
-mod transcript_presentation;
-mod transcript_presentation_reconcile;
-mod transcript_projection;
-#[allow(dead_code)]
-mod transcript_quote;
-mod transcript_quote_popup;
-mod transcript_residency_controller;
-mod transcript_residency_logging;
-mod transcript_residency_pages;
-mod transcript_residency_pins;
-mod transcript_scroll;
-#[allow(dead_code)]
-mod transcript_selection;
-mod transcript_stream_invalidation;
-mod transcript_thread_links;
-mod transcript_viewport;
-mod transcript_viewport_navigation;
-mod transcript_viewport_scroll_coordinator;
 mod turn_steering;
 mod turn_stop;
-mod turn_view;
 mod turn_view_status;
 mod turn_worker;
 #[allow(dead_code)]
@@ -535,8 +484,7 @@ use composer_submission::prepared_composer_draft_fragment;
 use composer_submit::accepted_composer_draft;
 use discovery::WorkspaceOpenCancellation;
 use execution_detail::{
-    ActiveTurnIdentity, ExecutionDetailState, TranscriptImagePathResolver, TurnExecutionStatus,
-    UserInputFragment,
+    ActiveTurnIdentity, ExecutionDetailState, TurnExecutionStatus, UserInputFragment,
 };
 use graph::{
     GraphColumnKey, GraphCommitApplication, GraphMutationCommitUpdate, GraphMutationUpdate,
@@ -570,8 +518,7 @@ use pending_turn_input::{
 use platform_attention::PlatformAttentionMonitor;
 use selected_thread_activation::{
     ActivationPreparer, PendingThreadActivation, PublishedSelectedThreadActivation,
-    SelectedThreadActivationSource, SelectedThreadInitialViewportPolicy,
-    StagedSelectedThreadActivation,
+    SelectedThreadActivationSource, StagedSelectedThreadActivation,
 };
 use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
@@ -587,9 +534,6 @@ use surface_notice::{
 use thread_helpers::{
     first_real_branch_user_input_fragment_text, normalized_thread_name,
     registered_thread_from_summary,
-};
-use thread_history_worker::{
-    ThreadHistoryPageOutcome, ThreadHistoryPageUpdate, spawn_thread_residency_page_worker,
 };
 pub(super) use thread_navigation::ThreadNavigationActivationSource;
 use thread_navigation::{PendingThreadNavigationActivation, ThreadNavigationHistory};
@@ -613,36 +557,6 @@ use tool_activity_nickname::{
     ToolActivityNicknameOutcome, ToolActivityNicknamePoll, ToolActivityNicknameResolutionTarget,
     ToolActivityNicknameResolver,
 };
-use transcript_anchor::{
-    TranscriptSubmitAnchor, TranscriptSubmitAnchorSnapshot, transcript_list_item_count,
-};
-use transcript_branch_worker::TranscriptBranchUpdate;
-use transcript_edit_commit_worker::TranscriptEditCommitUpdate;
-use transcript_history::{
-    LoadedTranscriptHistoryPage, THREAD_HISTORY_PAGE_LIMIT, TranscriptHistoryBoundaryState,
-    TranscriptHistoryPageRequest, TranscriptHistoryWindow, TranscriptResidencyPinKind,
-};
-use transcript_live_scroll::{
-    TranscriptFinalAnchor, TranscriptLiveScrollEffectSnapshot, TranscriptLiveScrollState,
-    TranscriptNarrativeAnchor,
-};
-use transcript_presentation::{TranscriptActivityCaret, TranscriptPresentationState};
-use transcript_residency_controller::{
-    TranscriptResidencyControllerFacts, TranscriptResidencyControllerSignature,
-    TranscriptResidencyFrameFacts,
-};
-use transcript_residency_pages::{
-    PendingTranscriptResidencyPageRequest, StagedTranscriptResidencyPageAdmission,
-};
-use transcript_residency_pins::TranscriptResidencyDiagnostics;
-use transcript_scroll::TranscriptTurnJumpDirection;
-use transcript_stream_invalidation::TranscriptStreamInvalidations;
-use transcript_viewport::{
-    TranscriptViewportFrame, TranscriptViewportPlacement, TranscriptViewportState,
-};
-use transcript_viewport_navigation::TranscriptContentScrollSignature;
-pub(crate) use transcript_viewport_navigation::TranscriptStreamedNavigationSnapshot;
-use transcript_viewport_scroll_coordinator::TranscriptEventTimeScrollState;
 use turn_steering::{
     SteeringInputFragment, TurnSteeringOutcome, TurnSteeringUpdate, spawn_turn_steering_worker,
 };
@@ -652,7 +566,6 @@ use turn_worker::{
     TurnWorkerUpdate, shell_dynamic_tool_request_channel, spawn_thread_activation_worker,
     spawn_turn_worker,
 };
-use virtual_list::{ListAlignment, ListOffset, ListScrollEvent, ListScrollPosition, ListState};
 use workspace_members::{
     WorkspaceMemberAttachRequest, apply_primary_execution_target_selection,
     apply_workspace_member_attachment, apply_workspace_member_detach,
@@ -723,7 +636,6 @@ fn run_app_with_diagnostic_target(
     application.run(move |cx: &mut App| {
         MemoryMilestone::new("gpui_run_closure_start").log();
         crate::text_input::bind_keys(cx);
-        render::transcript::bind_keys(cx);
         cx.bind_keys([
             KeyBinding::new("enter", SubmitComposer, Some(COMPOSER_KEY_CONTEXT)),
             KeyBinding::new("ctrl-up", JumpTranscriptTurnUp, Some(COMPOSER_KEY_CONTEXT)),
@@ -741,6 +653,11 @@ fn run_app_with_diagnostic_target(
                 "alt-down",
                 BrowseComposerHistoryNext,
                 Some(COMPOSER_KEY_CONTEXT),
+            ),
+            KeyBinding::new(
+                "ctrl-c",
+                CopyTranscriptSelection,
+                Some(syndic_transcript::SYNDIC_TRANSCRIPT_KEY_CONTEXT),
             ),
         ]);
         let bounds = Bounds::centered(None, size(px(1040.0), px(760.0)), cx);
@@ -892,15 +809,10 @@ pub(super) struct ShellView {
     pending_decision_branch_jobs: VecDeque<QueuedDecisionBranchJob>,
     pending_decision_resolution_jobs: VecDeque<QueuedDecisionResolutionJob>,
     pending_decision_archive_jobs: VecDeque<QueuedDecisionArchiveJob>,
-    transcript_branch_receiver: Option<Receiver<TranscriptBranchUpdate>>,
-    foreground_transcript_branch: Option<transcript_branch_core::ForegroundTranscriptBranchState>,
-    transcript_edit_commit_receiver: Option<Receiver<TranscriptEditCommitUpdate>>,
     member_thread_inventory_receiver: Option<Receiver<MemberThreadInventoryUpdate>>,
     thread_activation_receiver: Option<Receiver<ThreadActivationUpdate>>,
     pending_thread_navigation_activation: Option<PendingThreadNavigationActivation>,
     thread_navigation_histories: HashMap<BerylWorkspaceId, ThreadNavigationHistory>,
-    thread_history_page_receiver: Option<Receiver<ThreadHistoryPageUpdate>>,
-    pending_thread_history_page_request: Option<PendingTranscriptResidencyPageRequest>,
     composer_image_label_validation_receiver: Option<ComposerImageLabelValidationTask>,
     composer_image_label_scan_receiver: Option<ComposerImageLabelScanTask>,
     composer_image_asset_receiver: Option<Receiver<ComposerImageAssetUpdate>>,
@@ -908,7 +820,6 @@ pub(super) struct ShellView {
     shell_tool_receiver: Option<Receiver<ShellDynamicToolRequest>>,
     diagnostic_target_receiver: Option<Receiver<DiagnosticTargetShellRequest>>,
     diagnostic_child_supervisor: Arc<Mutex<DiagnosticChildSupervisor>>,
-    transcript_edit_replacement_turn: Option<TranscriptEditReplacementTurnState>,
     turn_steering_receivers: Vec<TurnSteeringTask>,
     composer_image_delivery_receiver: Option<Receiver<ComposerImageDeliveryUpdate>>,
     thread_title_receivers: Vec<ThreadTitleTask>,
@@ -945,7 +856,7 @@ pub(super) struct ShellView {
     composer_clipboard: ComposerClipboardStore,
     pending_composer_image_asset_paste: Option<PendingComposerImageAssetPaste>,
     composer_image_popup: Option<ComposerImagePopupState>,
-    transcript_panel: Entity<render::transcript::TranscriptPanel>,
+    transcript_panel: Entity<syndic_transcript::SyndicTranscriptPanel>,
     startup_scroll_handle: ScrollHandle,
     scrollbar_visibility: HashMap<ScrollbarRegion, ScrollbarVisibilityState>,
     next_attempt: u32,
@@ -1417,32 +1328,12 @@ struct ActiveTurnSteeringTarget {
     turn_id: Option<String>,
 }
 
-struct TranscriptEditReplacementTurnState {
-    workspace_id: BerylWorkspaceId,
-    execution_target: WorkspaceId,
-    thread_id: String,
-    accepted_draft: AcceptedComposerDraft,
-    composer_cleared: bool,
-    turn_started: bool,
-}
-
-#[derive(Clone, Debug)]
-struct TranscriptResidencyFrameDiagnostic {
-    resident_turn_count: usize,
-    retained_bytes: usize,
-    in_flight_requests: usize,
-    last_requested_turns: usize,
-    last_missing_transport_ranges: usize,
-    budget_reason: Option<String>,
-}
-
 #[derive(Clone)]
 struct ConversationSurfaceState {
     known_threads: Vec<ThreadSummary>,
     selected_thread: Option<usize>,
     selected_thread_status: Option<ThreadStatus>,
     execution_details: ExecutionDetailState,
-    transcript_presentation: TranscriptPresentationState,
     tool_activity: ToolActivityProjection,
     hard_stop_targets: HardStopTargetProjection,
     lifecycle_yields: LifecycleYieldState,
@@ -1450,28 +1341,9 @@ struct ConversationSurfaceState {
     tool_activity_panel_height: Pixels,
     status_line: StatusLineState,
     status_line_operations: StatusLineOperationState,
-    transcript_live_scroll: TranscriptLiveScrollState,
-    transcript_viewport: TranscriptViewportState,
     transcript_user_scrolled: bool,
-    transcript_history_window: TranscriptHistoryWindow,
-    transcript_residency_diagnostics: TranscriptResidencyDiagnostics,
-    transcript_reset_generation: u64,
-    transcript_content_release_generation: u64,
-    transcript_content_release_row_identities: Vec<String>,
-    transcript_content_release_markdown_keys: Vec<String>,
-    transcript_content_release_media_keys: Vec<String>,
-    last_transcript_content_scroll_signature: Option<TranscriptContentScrollSignature>,
-    transcript_residency_frame_facts: Option<TranscriptResidencyFrameFacts>,
-    transcript_navigation_frame_snapshot: Option<TranscriptViewportFrame>,
-    transcript_streamed_navigation_snapshot: Option<TranscriptStreamedNavigationSnapshot>,
-    transcript_event_time_scroll: TranscriptEventTimeScrollState,
-    transcript_residency_controller_facts: Option<TranscriptResidencyControllerFacts>,
-    last_transcript_residency_controller_signature: Option<TranscriptResidencyControllerSignature>,
-    invalidated_stream_turns: TranscriptStreamInvalidations,
     pending_thread_activation: Option<PendingThreadActivation>,
     staged_selected_thread_activation: Option<StagedSelectedThreadActivation>,
-    staged_transcript_residency_page: Option<StagedTranscriptResidencyPageAdmission>,
-    transcript_residency_page_cancellation_generation: u64,
     context_compaction_thread_id: Option<String>,
     composer_image_labels: ComposerImageLabelState,
     pending_new_thread_label_scope_id: u64,
@@ -1482,12 +1354,9 @@ struct ConversationSurfaceState {
     pending_active_turn_steering_queue:
         Option<PendingActiveTurnSteeringQueue<SteeringInputFragment>>,
     notices: SurfaceNoticeQueue,
-    transcript_list_state: ListState,
     graph_overlay: GraphOverlayState,
     thread_selector: ThreadSelectorState,
     graph_thread_link_menu: graph_link_menu::GraphThreadLinkMenuState,
-    transcript_branch_menu: transcript_branch_menu_state::TranscriptBranchMenuState,
-    transcript_edit_mode: Option<transcript_edit_mode_state::TranscriptEditModeState>,
     member_thread_inventory: MemberThreadInventoryState,
     graph_column_selector_scroll: ColumnSelectorScrollState<GraphColumnKey>,
     thread_column_selector_scroll: ColumnSelectorScrollState<ThreadSelectorColumnKey>,
@@ -1661,8 +1530,6 @@ struct OpenedWorkspace {
     known_threads: Vec<ThreadSummary>,
     selected_thread_id: Option<String>,
     selected_thread_history: Option<ThreadInfo>,
-    selected_thread_history_window: Option<TranscriptHistoryWindow>,
-    selected_thread_image_resolver: TranscriptImagePathResolver,
     selected_thread_session_metadata: Option<ThreadSessionMetadata>,
     surface_notice: Option<SurfaceNotice>,
     graph: SemanticGraph,
@@ -2070,8 +1937,6 @@ impl ConversationSurfaceState {
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
         selected_thread_history: Option<ThreadInfo>,
-        selected_thread_history_window: Option<TranscriptHistoryWindow>,
-        selected_thread_image_resolver: TranscriptImagePathResolver,
         selected_thread_id: Option<String>,
         selected_thread_session_metadata: Option<ThreadSessionMetadata>,
         notice: Option<SurfaceNotice>,
@@ -2086,7 +1951,6 @@ impl ConversationSurfaceState {
             selected_thread: None,
             selected_thread_status: None,
             execution_details: ExecutionDetailState::default(),
-            transcript_presentation: TranscriptPresentationState::default(),
             tool_activity: ToolActivityProjection::default(),
             hard_stop_targets: {
                 let mut projection = HardStopTargetProjection::default();
@@ -2098,28 +1962,9 @@ impl ConversationSurfaceState {
             tool_activity_panel_height: px(workspace_ui_state.tool_activity_panel_height_px()),
             status_line: StatusLineState::default(),
             status_line_operations: StatusLineOperationState::default(),
-            transcript_live_scroll: TranscriptLiveScrollState::inactive(),
-            transcript_viewport: TranscriptViewportState::default(),
             transcript_user_scrolled: false,
-            transcript_history_window: TranscriptHistoryWindow::default(),
-            transcript_residency_diagnostics: TranscriptResidencyDiagnostics::default(),
-            transcript_reset_generation: 0,
-            transcript_content_release_generation: 0,
-            transcript_content_release_row_identities: Vec::new(),
-            transcript_content_release_markdown_keys: Vec::new(),
-            transcript_content_release_media_keys: Vec::new(),
-            last_transcript_content_scroll_signature: None,
-            transcript_residency_frame_facts: None,
-            transcript_navigation_frame_snapshot: None,
-            transcript_streamed_navigation_snapshot: None,
-            transcript_event_time_scroll: TranscriptEventTimeScrollState::default(),
-            transcript_residency_controller_facts: None,
-            last_transcript_residency_controller_signature: None,
-            invalidated_stream_turns: TranscriptStreamInvalidations::default(),
             pending_thread_activation: None,
             staged_selected_thread_activation: None,
-            staged_transcript_residency_page: None,
-            transcript_residency_page_cancellation_generation: 0,
             context_compaction_thread_id: None,
             composer_image_labels: ComposerImageLabelState::default(),
             pending_new_thread_label_scope_id: 0,
@@ -2129,13 +1974,9 @@ impl ConversationSurfaceState {
             pending_turn_input_queue: None,
             pending_active_turn_steering_queue: None,
             notices: SurfaceNoticeQueue::from_initial(notice),
-            transcript_list_state: ListState::new(0, ListAlignment::Bottom, px(320.0)),
             graph_overlay: GraphOverlayState::new(graph, graph_revision, graph_warning),
             thread_selector: ThreadSelectorState::default(),
             graph_thread_link_menu: graph_link_menu::GraphThreadLinkMenuState::default(),
-            transcript_branch_menu:
-                transcript_branch_menu_state::TranscriptBranchMenuState::default(),
-            transcript_edit_mode: None,
             member_thread_inventory: MemberThreadInventoryState::new(workspace_id, workspace_state),
             graph_column_selector_scroll: ColumnSelectorScrollState::new(),
             thread_column_selector_scroll: ColumnSelectorScrollState::new(),
@@ -2152,11 +1993,8 @@ impl ConversationSurfaceState {
             state.stage_selected_thread_activation(ActivationPreparer::prepare(
                 execution_target,
                 thread,
-                selected_thread_history_window.unwrap_or_default(),
-                selected_thread_image_resolver,
                 selected_thread_session_metadata,
                 SelectedThreadActivationSource::StartupRestore,
-                SelectedThreadInitialViewportPolicy::Tail,
             ));
             state.publish_staged_selected_thread_activation()
         } else if let Some(thread_id) = selected_thread_id {
@@ -2272,20 +2110,9 @@ impl ConversationSurfaceState {
         )
     }
 
-    fn transcript_presentation(&self) -> &TranscriptPresentationState {
-        &self.transcript_presentation
-    }
-
-    fn transcript_viewport(&self) -> &TranscriptViewportState {
-        &self.transcript_viewport
-    }
-
     fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
         let transcript = self.execution_details.retained_counts();
         let active_source_pin = self.execution_details.active_turn_source_pin_snapshot();
-        let residency = self.transcript_history_window.residency_retained_counts();
-        let presentation = self.transcript_presentation.retained_counts();
-        let history = self.transcript_history_window.retained_counts();
         let activity = self.tool_activity.retained_counts();
         let graph = self.graph_overlay.retained_counts();
         let inventory = self.member_thread_inventory.snapshot().retained_counts();
@@ -2321,13 +2148,6 @@ impl ConversationSurfaceState {
             retained_payload_bytes_lower_bound: Some(
                 transcript
                     .payload_bytes
-                    .saturating_add(residency.resident_bytes)
-                    .saturating_add(residency.index_metadata_bytes)
-                    .saturating_add(presentation.text_bytes)
-                    .saturating_add(presentation.identity_bytes)
-                    .saturating_add(presentation.anchor_bytes)
-                    .saturating_add(presentation.derived_bytes)
-                    .saturating_add(history.metadata_bytes)
                     .saturating_add(activity.payload_bytes)
                     .saturating_add(graph.payload_bytes)
                     .saturating_add(inventory.payload_bytes)
@@ -2341,86 +2161,6 @@ impl ConversationSurfaceState {
             ),
             loaded_transcript_turns: Some(transcript.turns),
             loaded_transcript_items: Some(transcript.items),
-            transcript_residency_index_turns: Some(residency.index_turns),
-            transcript_residency_nonresident_turns: Some(residency.nonresident_turns),
-            transcript_residency_resident_turns: Some(residency.resident_turns),
-            transcript_residency_pinned_turns: Some(residency.pinned_turns),
-            transcript_residency_oversized_fallback_turns: Some(residency.oversized_fallback_turns),
-            transcript_residency_retained_items: Some(residency.retained_item_count),
-            transcript_residency_desired_turns: Some(
-                self.transcript_residency_diagnostics.last_desired_turns,
-            ),
-            transcript_residency_desired_bytes: Some(
-                self.transcript_residency_diagnostics.last_desired_bytes,
-            ),
-            transcript_residency_last_requested_turns: Some(
-                self.transcript_residency_diagnostics.last_requested_turns,
-            ),
-            transcript_residency_last_transport_turns: Some(
-                self.transcript_residency_diagnostics.last_transport_turns,
-            ),
-            transcript_residency_last_transport_payload_bytes: Some(
-                self.transcript_residency_diagnostics
-                    .last_transport_payload_bytes,
-            ),
-            transcript_residency_staged_admission_turns: Some(
-                self.transcript_residency_diagnostics.staged_admission_turns,
-            ),
-            transcript_residency_last_admitted_turns: Some(
-                self.transcript_residency_diagnostics.last_admitted_turns,
-            ),
-            transcript_residency_last_admitted_payload_bytes: Some(
-                self.transcript_residency_diagnostics
-                    .last_admitted_payload_bytes,
-            ),
-            transcript_residency_last_released_turns: Some(
-                self.transcript_residency_diagnostics.last_released_turns,
-            ),
-            transcript_residency_in_flight_requests: Some(residency.in_flight_requests),
-            transcript_residency_resident_payload_bytes: Some(residency.resident_payload_bytes),
-            transcript_residency_resident_derived_bytes: Some(residency.resident_derived_bytes),
-            transcript_residency_resident_bytes: Some(residency.resident_bytes),
-            transcript_residency_index_metadata_bytes: Some(residency.index_metadata_bytes),
-            transcript_residency_total_bytes_estimate: Some(
-                residency
-                    .resident_bytes
-                    .saturating_add(residency.index_metadata_bytes),
-            ),
-            transcript_residency_policy_max_turns: Some(residency.max_resident_turns),
-            transcript_residency_policy_max_bytes: Some(residency.max_resident_bytes),
-            transcript_residency_policy_max_in_flight_requests: Some(
-                residency.max_in_flight_requests,
-            ),
-            transcript_residency_policy_leading_viewport_margins: Some(
-                residency.leading_viewport_margins,
-            ),
-            transcript_residency_policy_trailing_viewport_margins: Some(
-                residency.trailing_viewport_margins,
-            ),
-            transcript_residency_policy_cold_release_hysteresis_viewports: Some(
-                residency.cold_release_hysteresis_viewports,
-            ),
-            transcript_residency_policy_max_resident_pages: Some(residency.max_resident_pages),
-            transcript_residency_policy_max_released_pages: Some(residency.max_released_pages),
-            transcript_residency_policy_request_priority: Some(residency.request_priority.label()),
-            transcript_residency_budget_reason: Some(residency.budget_reason.label()),
-            transcript_residency_last_target_margin_satisfied: Some(
-                self.transcript_residency_diagnostics
-                    .last_target_margin_satisfied,
-            ),
-            transcript_residency_last_target_window_shrunk_by_budget: Some(
-                self.transcript_residency_diagnostics
-                    .last_target_window_shrunk_by_budget,
-            ),
-            transcript_residency_last_target_budget_reason: Some(
-                self.transcript_residency_diagnostics
-                    .last_target_budget_reason
-                    .label(),
-            ),
-            transcript_residency_last_oversized_fallback_turns: Some(
-                self.transcript_residency_diagnostics
-                    .last_oversized_fallback_turns,
-            ),
             loaded_transcript_text_bytes: Some(transcript.text_bytes),
             transcript_user_fragments: Some(transcript.user_fragments),
             transcript_user_fragment_text_bytes: Some(transcript.user_fragment_text_bytes),
@@ -2446,23 +2186,6 @@ impl ConversationSurfaceState {
             ),
             transcript_error_bytes: Some(transcript.error_bytes),
             transcript_identity_bytes: Some(transcript.identity_bytes),
-            presentation_rows: Some(presentation.rows),
-            presentation_items: Some(presentation.items),
-            presentation_text_bytes: Some(presentation.text_bytes),
-            presentation_identity_bytes: Some(presentation.identity_bytes),
-            presentation_anchor_bytes: Some(presentation.anchor_bytes),
-            presentation_derived_bytes: Some(presentation.derived_bytes),
-            presentation_markdown_source_bytes: Some(presentation.markdown_source_bytes),
-            presentation_media_descriptors: Some(presentation.media_descriptors),
-            history_pages: Some(history.pages),
-            history_resident_pages: Some(history.resident_pages),
-            history_released_pages: Some(history.released_pages),
-            history_loading_pages: Some(history.loading_pages),
-            history_pinned_pages: Some(history.pinned_pages),
-            history_turn_ids: Some(history.turn_ids),
-            history_turn_id_bytes: Some(history.turn_id_bytes),
-            history_cursor_bytes: Some(history.cursor_bytes),
-            history_metadata_bytes: Some(history.metadata_bytes),
             activity_records: Some(activity.records),
             activity_rows: Some(activity.rows),
             activity_visible_thread_indexes: Some(activity.visible_thread_indexes),
@@ -2508,11 +2231,6 @@ impl ConversationSurfaceState {
             pending_steering_bytes: Some(pending_steering_bytes),
             ..RetainedStateSnapshot::default()
         }
-    }
-
-    fn transcript_activity_caret(&self) -> Option<TranscriptActivityCaret> {
-        self.transcript_presentation
-            .activity_caret_for_source_turn(self.execution_details.working_turn_index())
     }
 
     #[allow(dead_code)]
@@ -2751,76 +2469,28 @@ impl ConversationSurfaceState {
         known_thread_changed || inventory_changed
     }
 
-    fn transcript_list_state(&self) -> ListState {
-        self.transcript_list_state.clone()
-    }
-
-    fn transcript_live_scroll_effect_snapshot(&self) -> Option<TranscriptLiveScrollEffectSnapshot> {
-        self.transcript_live_scroll.effect_snapshot()
-    }
-
-    fn transcript_live_scroll_preserves_anchor_offset(&self) -> bool {
-        self.transcript_user_scrolled
-            || self
-                .transcript_live_scroll
-                .preserves_content_anchor_offset()
-    }
-
-    fn older_history_loading(&self) -> bool {
-        self.transcript_history_window.is_loading_older()
-    }
-
-    fn transcript_residency_frame_diagnostic(&self) -> TranscriptResidencyFrameDiagnostic {
-        let residency = self.transcript_history_window.residency_retained_counts();
-        TranscriptResidencyFrameDiagnostic {
-            resident_turn_count: residency.resident_turns,
-            retained_bytes: residency
-                .resident_bytes
-                .saturating_add(residency.index_metadata_bytes),
-            in_flight_requests: residency.in_flight_requests,
-            last_requested_turns: self.transcript_residency_diagnostics.last_requested_turns,
-            last_missing_transport_ranges: self
-                .transcript_residency_diagnostics
-                .last_missing_transport_ranges,
-            budget_reason: Some(residency.budget_reason.label().to_string()),
-        }
-    }
-
     fn active_turn_source_pin_snapshot(&self) -> execution_detail::ActiveTurnSourcePinSnapshot {
         self.execution_details.active_turn_source_pin_snapshot()
     }
 
-    fn transcript_content_release_generation(&self) -> u64 {
-        self.transcript_content_release_generation
+    fn clear_transcript_shell_transient_state(&mut self) {
+        self.transcript_user_scrolled = false;
     }
 
-    fn transcript_reset_generation(&self) -> u64 {
-        self.transcript_reset_generation
+    fn close_transcript_branch_menu(&mut self) -> bool {
+        false
     }
 
-    fn transcript_content_release_row_identities(&self) -> &[String] {
-        &self.transcript_content_release_row_identities
+    fn transcript_branch_menu_open(&self) -> bool {
+        false
     }
 
-    fn transcript_content_release_markdown_keys(&self) -> &[String] {
-        &self.transcript_content_release_markdown_keys
+    fn cancel_transcript_edit_mode(&mut self) -> bool {
+        false
     }
 
-    fn transcript_content_release_media_keys(&self) -> &[String] {
-        &self.transcript_content_release_media_keys
-    }
-
-    fn set_transcript_user_scrolled(&mut self, is_scrolled: bool) -> bool {
-        let released_anchor = if is_scrolled {
-            self.release_transcript_submit_anchor()
-        } else {
-            false
-        };
-        if self.transcript_user_scrolled == is_scrolled {
-            return released_anchor;
-        }
-        self.transcript_user_scrolled = is_scrolled;
-        true
+    fn transcript_edit_mode_active(&self) -> bool {
+        false
     }
 
     fn transcript_width(&self) -> Pixels {
@@ -2888,68 +2558,9 @@ impl ConversationSurfaceState {
         self.thread_column_selector_scroll.horizontal_handle()
     }
 
-    fn release_transcript_submit_anchor(&mut self) -> bool {
-        self.transcript_live_scroll.detach_for_manual_scroll()
-    }
-
-    fn mark_prompt_reread_applied(&mut self, anchor: &TranscriptSubmitAnchorSnapshot) -> bool {
-        self.transcript_live_scroll
-            .mark_prompt_reread_applied(anchor)
-    }
-
-    fn mark_commentary_follow_applied(&mut self, anchor: &TranscriptNarrativeAnchor) -> bool {
-        self.transcript_live_scroll
-            .mark_commentary_follow_applied(anchor)
-    }
-
-    fn mark_final_start_applied(
-        &mut self,
-        anchor: &TranscriptFinalAnchor,
-        applied_scroll_offset: Pixels,
-    ) -> bool {
-        self.transcript_live_scroll
-            .mark_final_start_applied(anchor, applied_scroll_offset)
-    }
-
-    fn shift_transcript_anchor(&mut self, amount: usize) {
-        self.transcript_live_scroll.shift_turn_index(amount);
-    }
-
-    fn transcript_submit_anchor_for_presentation_index(
-        &self,
-        presentation_index: usize,
-        fragment_index: usize,
-        user_input: String,
-    ) -> TranscriptSubmitAnchor {
-        let row_identity = self
-            .transcript_presentation
-            .row_identity(presentation_index)
-            .map(|identity| identity.as_str().to_string());
-        TranscriptSubmitAnchor::new(presentation_index, row_identity, fragment_index, user_input)
-    }
-
     fn scroll_to_turn_id(&mut self, thread_id: &str, turn_id: &str) -> bool {
-        if self.selected_thread_id() != Some(thread_id) {
-            return false;
-        }
-
-        let Some(source_turn_index) = self.execution_details.turns().iter().position(|turn| {
-            turn.thread_id.as_deref() == Some(thread_id) && turn.turn_id.as_deref() == Some(turn_id)
-        }) else {
-            return false;
-        };
-        let Some(presentation_index) = self
-            .transcript_presentation
-            .presentation_index_for_source_turn(source_turn_index)
-        else {
-            return false;
-        };
-
-        self.transcript_list_state
-            .scroll_to_reveal_item(presentation_index);
-        self.release_transcript_submit_anchor();
-        self.set_transcript_user_scrolled(true);
-        true
+        let _ = (thread_id, turn_id);
+        false
     }
 
     fn graph_column_scroll_handle(&self, column_index: usize) -> Option<ScrollHandle> {
@@ -2978,7 +2589,6 @@ impl ConversationSurfaceState {
             selected_thread: self.selected_thread,
             selected_thread_status: self.selected_thread_status.clone(),
             execution_details: self.execution_details.clone(),
-            transcript_presentation: self.transcript_presentation.clone(),
             tool_activity: self.tool_activity.clone(),
             hard_stop_targets: self.hard_stop_targets.clone(),
             lifecycle_yields: self.lifecycle_yields.clone(),
@@ -2986,43 +2596,9 @@ impl ConversationSurfaceState {
             tool_activity_panel_height: self.tool_activity_panel_height,
             status_line: self.status_line.clone(),
             status_line_operations: self.status_line_operations.clone(),
-            transcript_live_scroll: self.transcript_live_scroll.clone(),
-            transcript_viewport: self.transcript_viewport.clone(),
             transcript_user_scrolled: self.transcript_user_scrolled,
-            transcript_history_window: self.transcript_history_window.clone(),
-            transcript_residency_diagnostics: self.transcript_residency_diagnostics.clone(),
-            transcript_reset_generation: self.transcript_reset_generation,
-            transcript_content_release_generation: self.transcript_content_release_generation,
-            transcript_content_release_row_identities: self
-                .transcript_content_release_row_identities
-                .clone(),
-            transcript_content_release_markdown_keys: self
-                .transcript_content_release_markdown_keys
-                .clone(),
-            transcript_content_release_media_keys: self
-                .transcript_content_release_media_keys
-                .clone(),
-            last_transcript_content_scroll_signature: self
-                .last_transcript_content_scroll_signature
-                .clone(),
-            transcript_residency_frame_facts: self.transcript_residency_frame_facts.clone(),
-            transcript_navigation_frame_snapshot: self.transcript_navigation_frame_snapshot.clone(),
-            transcript_streamed_navigation_snapshot: self
-                .transcript_streamed_navigation_snapshot
-                .clone(),
-            transcript_event_time_scroll: self.transcript_event_time_scroll.clone(),
-            transcript_residency_controller_facts: self
-                .transcript_residency_controller_facts
-                .clone(),
-            last_transcript_residency_controller_signature: self
-                .last_transcript_residency_controller_signature
-                .clone(),
-            invalidated_stream_turns: self.invalidated_stream_turns.clone(),
             pending_thread_activation: self.pending_thread_activation.clone(),
             staged_selected_thread_activation: self.staged_selected_thread_activation.clone(),
-            staged_transcript_residency_page: self.staged_transcript_residency_page.clone(),
-            transcript_residency_page_cancellation_generation: self
-                .transcript_residency_page_cancellation_generation,
             context_compaction_thread_id: self.context_compaction_thread_id.clone(),
             composer_image_labels: self.composer_image_labels.clone(),
             pending_new_thread_label_scope_id: self.pending_new_thread_label_scope_id,
@@ -3034,12 +2610,9 @@ impl ConversationSurfaceState {
             pending_turn_input_queue: self.pending_turn_input_queue.clone(),
             pending_active_turn_steering_queue: self.pending_active_turn_steering_queue.clone(),
             notices: self.notices.clone(),
-            transcript_list_state: self.transcript_list_state.clone(),
             graph_overlay: self.graph_overlay.clone(),
             thread_selector: self.thread_selector.clone(),
             graph_thread_link_menu: self.graph_thread_link_menu.clone(),
-            transcript_branch_menu: self.transcript_branch_menu.clone(),
-            transcript_edit_mode: self.transcript_edit_mode.clone(),
             member_thread_inventory: self.member_thread_inventory.clone(),
             graph_column_selector_scroll: self.graph_column_selector_scroll.clone(),
             thread_column_selector_scroll: self.thread_column_selector_scroll.clone(),
@@ -3076,8 +2649,6 @@ impl ConversationSurfaceState {
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
         selected_thread_history: Option<ThreadInfo>,
-        selected_thread_history_window: Option<TranscriptHistoryWindow>,
-        selected_thread_image_resolver: TranscriptImagePathResolver,
         selected_thread_id: Option<String>,
         selected_thread_session_metadata: Option<ThreadSessionMetadata>,
         notice: Option<SurfaceNotice>,
@@ -3099,11 +2670,8 @@ impl ConversationSurfaceState {
                     self.stage_selected_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
                         thread,
-                        selected_thread_history_window.unwrap_or_default(),
-                        selected_thread_image_resolver,
                         selected_thread_session_metadata,
                         SelectedThreadActivationSource::BackendReopenRefresh,
-                        SelectedThreadInitialViewportPolicy::Tail,
                     ));
                     let published_activation = self.publish_staged_selected_thread_activation();
                     (published_activation.is_none(), published_activation)
@@ -3153,7 +2721,7 @@ impl ConversationSurfaceState {
         if !preserve_staged_selected_thread_activation {
             self.staged_selected_thread_activation = None;
         }
-        self.clear_transcript_residency_page_admission();
+        self.clear_transcript_shell_transient_state();
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
         self.finish_graph_mutation(graph, graph_revision, graph_warning);
@@ -3385,31 +2953,12 @@ impl ConversationSurfaceState {
         self.selected_thread_status = None;
         self.sync_thread_selector_active_thread();
         self.execution_details.reset();
-        self.transcript_presentation.clear();
         self.hard_stop_targets.clear_all();
         self.status_line.clear_session_metadata();
         self.status_line.clear_pending_new_thread_defaults();
-        self.transcript_live_scroll.clear_inactive();
-        self.transcript_user_scrolled = false;
-        self.transcript_history_window = TranscriptHistoryWindow::default();
-        self.transcript_history_window.clear_residency();
-        self.transcript_residency_diagnostics = TranscriptResidencyDiagnostics::default();
-        self.transcript_reset_generation = self.transcript_reset_generation.saturating_add(1);
-        self.transcript_content_release_generation = 0;
-        self.transcript_content_release_row_identities.clear();
-        self.transcript_content_release_markdown_keys.clear();
-        self.transcript_content_release_media_keys.clear();
-        self.last_transcript_content_scroll_signature = None;
-        self.transcript_residency_frame_facts = None;
-        self.transcript_navigation_frame_snapshot = None;
-        self.transcript_streamed_navigation_snapshot = None;
-        self.transcript_event_time_scroll.clear();
-        self.transcript_residency_controller_facts = None;
-        self.invalidate_transcript_residency_controller();
-        self.invalidated_stream_turns.clear();
+        self.clear_transcript_shell_transient_state();
         self.pending_thread_activation = None;
         self.staged_selected_thread_activation = None;
-        self.clear_transcript_residency_page_admission();
         self.context_compaction_thread_id = None;
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
@@ -3421,8 +2970,6 @@ impl ConversationSurfaceState {
         self.pending_turn_input_queue = None;
         self.pending_active_turn_steering_queue = None;
         self.notices.clear_all();
-        self.transcript_list_state.reset(0);
-        self.transcript_viewport.clear();
     }
 
     fn begin_turn(&mut self, user_input: UserInputFragment) {
@@ -3439,25 +2986,10 @@ impl ConversationSurfaceState {
         thread_id: Option<String>,
         user_input: UserInputFragment,
     ) {
-        let anchor_text = user_input.text.clone();
         self.observe_composer_image_labels_in_fragment(&user_input);
-        let turn_index = self
-            .execution_details
+        self.execution_details
             .begin_turn_with_thread_fragments(thread_id.clone(), vec![user_input]);
-        let presentation_index = self
-            .execution_details
-            .turns()
-            .get(turn_index)
-            .cloned()
-            .and_then(|turn| self.append_transcript_presentation_turn(turn_index, turn));
-        if let Some(index) = presentation_index {
-            let anchor =
-                self.transcript_submit_anchor_for_presentation_index(index, 0, anchor_text);
-            self.transcript_live_scroll.start_prompt_reread(anchor);
-        } else {
-            self.transcript_live_scroll.clear_inactive();
-        }
-        self.transcript_user_scrolled = false;
+        self.clear_transcript_shell_transient_state();
         self.notices.clear_all();
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
@@ -3467,7 +2999,6 @@ impl ConversationSurfaceState {
                 active_flags: Vec::new(),
             });
         }
-        self.sync_transcript_residency_ui_pins();
     }
 
     fn selected_active_turn_steering_target(&self) -> Option<ActiveTurnSteeringTarget> {
@@ -3529,18 +3060,7 @@ impl ConversationSurfaceState {
         self.observe_composer_image_labels_in_thread_fragment(&target.thread_id, &user_input);
         self.execution_details
             .append_user_input_fragment(target.turn_index, user_input)?;
-        if let Some(turn) = self
-            .execution_details
-            .turns()
-            .get(target.turn_index)
-            .cloned()
-        {
-            self.replace_transcript_presentation_turn(target.turn_index, turn)
-                .row_index();
-        }
-        self.transcript_live_scroll.preserve_for_steering();
         self.notices.clear_all();
-        self.sync_transcript_residency_ui_pins();
         Some(steering_fragment)
     }
 
@@ -3708,9 +3228,7 @@ impl ConversationSurfaceState {
             .execution_details
             .remove_user_input_fragments(&removals);
         for turn_index in affected_turns {
-            if let Some(turn) = self.execution_details.turns().get(turn_index) {
-                self.replace_transcript_presentation_turn(turn_index, turn.clone());
-            }
+            let _ = turn_index;
         }
 
         true
@@ -3724,7 +3242,6 @@ impl ConversationSurfaceState {
         turn_options: TurnStartOptions,
         user_input: UserInputFragment,
     ) -> bool {
-        let anchor_text = user_input.text.clone();
         let observed_thread_id = thread_id.clone();
         let observed_user_input = user_input.clone();
         let queued = match PendingTurnInputQueue::submission_plan(
@@ -3782,28 +3299,9 @@ impl ConversationSurfaceState {
             &observed_user_input,
         );
 
-        let presentation_index = self
-            .execution_details
-            .turns()
-            .get(turn_index)
-            .cloned()
-            .and_then(|turn| {
-                self.replace_transcript_presentation_turn(turn_index, turn)
-                    .row_index()
-            });
-        if let Some(index) = presentation_index {
-            let anchor = self.transcript_submit_anchor_for_presentation_index(
-                index,
-                fragment_index,
-                anchor_text,
-            );
-            self.transcript_live_scroll.start_prompt_reread(anchor);
-        } else {
-            self.transcript_live_scroll.clear_inactive();
-        }
+        let _ = (turn_index, fragment_index);
         self.transcript_user_scrolled = false;
         self.notices.clear_all();
-        self.sync_transcript_residency_ui_pins();
         true
     }
 
@@ -3874,16 +3372,16 @@ impl ConversationSurfaceState {
         thread_id: &str,
         turn_ids: impl IntoIterator<Item = String>,
     ) {
-        self.invalidated_stream_turns
-            .invalidate_turns(thread_id, turn_ids);
+        let _ = thread_id;
+        let _ = turn_ids.into_iter().count();
     }
 
     fn stream_event_targets_invalidated_turn(
         &self,
         event: &beryl_backend::TurnStreamEvent,
     ) -> bool {
-        self.invalidated_stream_turns
-            .event_targets_invalidated_turn(event)
+        let _ = event;
+        false
     }
 
     fn fail_pending_turn_input_queue_for_thread(
@@ -3903,10 +3401,6 @@ impl ConversationSurfaceState {
         event: beryl_backend::TurnStreamEvent,
         execution_target: Option<&WorkspaceId>,
     ) -> AppliedStreamEvent {
-        if self.stream_event_targets_invalidated_turn(&event) {
-            return AppliedStreamEvent::default();
-        }
-
         let terminal_turn = match &event {
             beryl_backend::TurnStreamEvent::TurnCompleted { thread_id, turn }
                 if turn.is_terminal() =>
@@ -3970,17 +3464,6 @@ impl ConversationSurfaceState {
         if let Some(notice) = turn_error_notice {
             self.set_notice(notice);
         }
-        let replaced_row_index = self
-            .execution_details
-            .turns()
-            .get(turn_index)
-            .cloned()
-            .and_then(|turn| {
-                self.replace_transcript_presentation_turn(turn_index, turn)
-                    .row_index()
-            });
-        self.reconcile_transcript_live_scroll_for_row(replaced_row_index);
-        self.sync_transcript_residency_ui_pins();
         let suppresses_ordinary_end_turn_sound = lifecycle_yield
             .as_ref()
             .is_some_and(TerminalLifecycleYield::suppresses_ordinary_end_turn_sound);
@@ -4023,10 +3506,7 @@ impl ConversationSurfaceState {
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
             self.mark_selected_turn_finished_idle(&thread_id);
         }
-        if let Some(turn) = self.execution_details.turns().get(turn_index).cloned() {
-            self.replace_transcript_presentation_turn(turn_index, turn);
-        }
-        self.sync_transcript_residency_ui_pins();
+        let _ = turn_index;
         active_turn
             .map(|active| TurnCompletionSoundCandidate::new(active.thread_id, active.turn_id))
     }
@@ -4261,34 +3741,112 @@ impl ConversationSurfaceState {
     }
 
     fn transcript_list_item_count(&self) -> usize {
-        transcript_list_item_count(self.transcript_presentation.len())
+        0
     }
 }
 
 impl ShellView {
+    fn begin_transcript_host_activation_for_thread(
+        &mut self,
+        thread_id: &str,
+        source: syndic_transcript::TranscriptActivationSource,
+        cx: &mut Context<Self>,
+    ) {
+        let seed = syndic_transcript::TranscriptActivationSeed::new(
+            Self::transcript_view_id_for_thread(thread_id),
+            source,
+            syndic_transcript::TranscriptActivationPlacement::Tail,
+        );
+        self.transcript_panel.update(cx, |panel, _| {
+            let _ = panel.begin_activation(seed);
+        });
+    }
+
+    fn begin_transcript_host_activation_for_optional_thread(
+        &mut self,
+        thread_id: Option<&str>,
+        source: syndic_transcript::TranscriptActivationSource,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(thread_id) = thread_id {
+            self.begin_transcript_host_activation_for_thread(thread_id, source, cx);
+        } else {
+            self.begin_unavailable_transcript_host_activation(source, cx);
+        }
+    }
+
+    fn begin_unavailable_transcript_host_activation(
+        &mut self,
+        source: syndic_transcript::TranscriptActivationSource,
+        cx: &mut Context<Self>,
+    ) {
+        let seed = syndic_transcript::TranscriptActivationSeed::unavailable(
+            source,
+            syndic_transcript::TranscriptActivationPlacement::Tail,
+        );
+        self.transcript_panel.update(cx, |panel, _| {
+            let _ = panel.begin_activation(seed);
+        });
+    }
+
+    fn transcript_activation_source_for_thread_navigation(
+        source: ThreadNavigationActivationSource,
+    ) -> syndic_transcript::TranscriptActivationSource {
+        match source {
+            ThreadNavigationActivationSource::ThreadSelector => {
+                syndic_transcript::TranscriptActivationSource::ThreadSelector
+            }
+            ThreadNavigationActivationSource::TranscriptThreadLink
+            | ThreadNavigationActivationSource::BranchBreadcrumb
+            | ThreadNavigationActivationSource::BackwardNavigation
+            | ThreadNavigationActivationSource::ForwardNavigation
+            | ThreadNavigationActivationSource::NonHistory => {
+                syndic_transcript::TranscriptActivationSource::ThreadGraph
+            }
+        }
+    }
+
+    fn transcript_activation_source_for_selected_thread(
+        source: SelectedThreadActivationSource,
+    ) -> syndic_transcript::TranscriptActivationSource {
+        match source {
+            SelectedThreadActivationSource::StartupRestore => {
+                syndic_transcript::TranscriptActivationSource::StartupRestore
+            }
+            SelectedThreadActivationSource::BackendReopenRefresh => {
+                syndic_transcript::TranscriptActivationSource::BackendReopen
+            }
+            SelectedThreadActivationSource::Explicit(source) => {
+                Self::transcript_activation_source_for_thread_navigation(source)
+            }
+        }
+    }
+
+    fn transcript_view_id_for_thread(thread_id: &str) -> syndic_transcript::TranscriptViewId {
+        syndic_transcript::TranscriptViewId(thread_id.to_string())
+    }
+
     fn finish_published_selected_thread_activation(
         &mut self,
         publication: PublishedSelectedThreadActivation,
+        cx: &mut Context<Self>,
     ) -> String {
         let PublishedSelectedThreadActivation {
             summary,
             execution_target,
             source,
             activated_idle,
-            history_turn_count,
-            history_item_count,
-            history_generated_image_count,
         } = publication;
         if let ShellState::Ready(ready) = &mut self.state {
             ready.execution_target = execution_target.clone();
         }
+        self.begin_transcript_host_activation_for_thread(
+            summary.id.as_str(),
+            Self::transcript_activation_source_for_selected_thread(source),
+            cx,
+        );
         MemoryMilestone::new("thread_activation_ui_applied")
             .thread_id(summary.id.as_str())
-            .history_counts(
-                history_turn_count,
-                history_item_count,
-                history_generated_image_count,
-            )
             .retained_state_if_enabled(|| self.retained_state_snapshot())
             .log();
         if activated_idle {
@@ -4425,8 +3983,7 @@ impl ShellView {
                 cx,
             )
         });
-        let transcript_panel =
-            cx.new(|cx| render::transcript::TranscriptPanel::new(shell_entity.clone(), cx));
+        let transcript_panel = cx.new(|cx| syndic_transcript::SyndicTranscriptPanel::new(cx));
         let workspace_persistence_queue = spawn_workspace_persistence_worker(
             app_state
                 .as_ref()
@@ -4475,15 +4032,10 @@ impl ShellView {
             pending_decision_branch_jobs: VecDeque::new(),
             pending_decision_resolution_jobs: VecDeque::new(),
             pending_decision_archive_jobs: VecDeque::new(),
-            transcript_branch_receiver: None,
-            foreground_transcript_branch: None,
-            transcript_edit_commit_receiver: None,
             member_thread_inventory_receiver: None,
             thread_activation_receiver: None,
             pending_thread_navigation_activation: None,
             thread_navigation_histories: HashMap::new(),
-            thread_history_page_receiver: None,
-            pending_thread_history_page_request: None,
             composer_image_label_validation_receiver: None,
             composer_image_label_scan_receiver: None,
             composer_image_asset_receiver: None,
@@ -4491,7 +4043,6 @@ impl ShellView {
             shell_tool_receiver: None,
             diagnostic_target_receiver,
             diagnostic_child_supervisor: Arc::new(Mutex::new(DiagnosticChildSupervisor::default())),
-            transcript_edit_replacement_turn: None,
             turn_steering_receivers: Vec::new(),
             composer_image_delivery_receiver: None,
             thread_title_receivers: Vec::new(),
@@ -4815,19 +4366,13 @@ impl ShellView {
         self.pending_decision_branch_jobs.clear();
         self.pending_decision_resolution_jobs.clear();
         self.pending_decision_archive_jobs.clear();
-        self.transcript_branch_receiver = None;
-        self.foreground_transcript_branch = None;
-        self.transcript_edit_commit_receiver = None;
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
-        self.thread_history_page_receiver = None;
-        self.pending_thread_history_page_request = None;
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.composer_image_asset_receiver = None;
         self.pending_composer_image_asset_paste = None;
         self.turn_receiver = None;
-        self.transcript_edit_replacement_turn = None;
         self.turn_steering_receivers.clear();
         self.status_operation_receiver = None;
         self.pending_lifecycle_phase_continue = None;
@@ -4868,17 +4413,11 @@ impl ShellView {
         self.pending_decision_branch_jobs.clear();
         self.pending_decision_resolution_jobs.clear();
         self.pending_decision_archive_jobs.clear();
-        self.transcript_branch_receiver = None;
-        self.foreground_transcript_branch = None;
-        self.transcript_edit_commit_receiver = None;
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
-        self.thread_history_page_receiver = None;
-        self.pending_thread_history_page_request = None;
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.turn_receiver = None;
-        self.transcript_edit_replacement_turn = None;
         self.turn_steering_receivers.clear();
         self.status_operation_receiver = None;
         self.pending_lifecycle_phase_continue = None;
@@ -5091,16 +4630,11 @@ impl ShellView {
         self.pending_decision_branch_jobs.clear();
         self.pending_decision_resolution_jobs.clear();
         self.pending_decision_archive_jobs.clear();
-        self.transcript_branch_receiver = None;
-        self.transcript_edit_commit_receiver = None;
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
-        self.thread_history_page_receiver = None;
-        self.pending_thread_history_page_request = None;
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.turn_receiver = None;
-        self.transcript_edit_replacement_turn = None;
         self.turn_steering_receivers.clear();
         self.cancel_thread_title_workers();
         self.status_operation_receiver = None;
@@ -5212,11 +4746,8 @@ impl ShellView {
             || !self.pending_decision_branch_jobs.is_empty()
             || !self.pending_decision_resolution_jobs.is_empty()
             || !self.pending_decision_archive_jobs.is_empty()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.member_thread_inventory_receiver.is_some()
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.composer_image_label_validation_receiver.is_some()
             || self.composer_image_label_scan_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
@@ -5283,17 +4814,14 @@ impl ShellView {
                 || self.decision_child_progress_receiver.is_some()
                 || self.decision_resolution_graph_receiver.is_some()
                 || self.decision_archive_receiver.is_some(),
-            transcript_work: self.transcript_branch_receiver.is_some()
-                || !self.pending_decision_branch_jobs.is_empty()
+            transcript_work: !self.pending_decision_branch_jobs.is_empty()
                 || !self.pending_decision_resolution_jobs.is_empty()
                 || !self.pending_decision_archive_jobs.is_empty()
                 || self
                     .decision_resolution_parent_activation_record_id
                     .is_some()
                 || self.pending_decision_handoff_turn.is_some()
-                || self.transcript_edit_commit_receiver.is_some()
                 || self.selected_thread_activation_pending()
-                || self.thread_history_page_receiver.is_some()
                 || self.turn_receiver.is_some()
                 || !self.turn_steering_receivers.is_empty()
                 || !self.thread_title_receivers.is_empty()
@@ -5335,19 +4863,16 @@ impl ShellView {
         let mut updated = false;
 
         updated |= self.poll_discovery_updates(window, cx);
-        updated |= self.poll_workspace_updates(window);
+        updated |= self.poll_workspace_updates(window, cx);
         updated |= self.poll_graph_updates();
         updated |= self.poll_graph_thread_start_updates();
         updated |= self.poll_decision_branch_start_updates(window, cx);
         updated |= self.poll_decision_child_progress_updates();
         updated |= self.poll_decision_resolution_graph_updates(window, cx);
         updated |= self.poll_decision_archive_updates();
-        updated |= self.poll_transcript_branch_updates(window, cx);
-        updated |= self.poll_transcript_edit_commit_updates(window, cx);
         updated |= self.poll_member_thread_inventory_updates();
         updated |= self.poll_pending_thread_activation_progress();
         updated |= self.poll_thread_activation_updates(window, cx);
-        updated |= self.poll_thread_history_page_updates();
         updated |= self.poll_composer_image_label_validation_updates(window, cx);
         updated |= self.poll_composer_image_label_scan_updates();
         updated |= self.poll_composer_image_asset_updates(window, cx);
@@ -5558,7 +5083,7 @@ impl ShellView {
         updated
     }
 
-    fn poll_workspace_updates(&mut self, window: &mut Window) -> bool {
+    fn poll_workspace_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(receiver) = self.workspace_receiver.as_ref() else {
             return false;
         };
@@ -5597,7 +5122,7 @@ impl ShellView {
                             "Close Beryl if you want to stop here.".to_string(),
                         ],
                         backend_unavailable: None,
-                    }));
+                    }), cx);
                     updated = true;
                     break;
                 }
@@ -5642,7 +5167,7 @@ impl ShellView {
                 WorkspaceUpdate::Finished(result) => {
                     self.workspace_receiver = None;
                     self.workspace_open_cancellation = None;
-                    self.finish_workspace_open(result);
+                    self.finish_workspace_open(result, cx);
                     updated = true;
                     break;
                 }
@@ -5693,7 +5218,7 @@ impl ShellView {
         match receiver.try_recv() {
             Ok(ThreadActivationUpdate::Finished(outcome)) => {
                 self.thread_activation_receiver = None;
-                let activation_finish = self.finish_thread_activation_worker(outcome);
+                let activation_finish = self.finish_thread_activation_worker(outcome, cx);
                 updated = true;
                 match activation_finish {
                     ThreadActivationFinish::Published(thread_id) => {
@@ -5726,37 +5251,6 @@ impl ShellView {
             .is_some_and(|surface| surface.poll_pending_thread_activation_progress(Instant::now()))
     }
 
-    fn poll_thread_history_page_updates(&mut self) -> bool {
-        let Some(receiver) = self.thread_history_page_receiver.as_ref() else {
-            return false;
-        };
-
-        let mut updated = false;
-        match receiver.try_recv() {
-            Ok(ThreadHistoryPageUpdate::Finished(outcome)) => {
-                self.thread_history_page_receiver = None;
-                let request = self.pending_thread_history_page_request.take();
-                self.finish_thread_history_page_worker(outcome, request);
-                updated = true;
-            }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                self.thread_history_page_receiver = None;
-                self.pending_thread_history_page_request = None;
-                if let Some(surface) = self.conversation_surface_mut() {
-                    surface.finish_loading_older_history_failure();
-                    surface.set_notice(SurfaceNotice::new(
-                        "Thread history load failed",
-                        "Beryl lost the background task that was loading older thread history.",
-                    ));
-                }
-                updated = true;
-            }
-        }
-
-        updated
-    }
-
     fn poll_turn_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let mut updated = false;
         let poll_started_at = Instant::now();
@@ -5780,21 +5274,11 @@ impl ShellView {
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    let edit_replacement_failed_before_start = self
-                        .transcript_edit_replacement_turn
-                        .as_ref()
-                        .is_some_and(|replacement| !replacement.turn_started);
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
                     self.pending_lifecycle_phase_continue = None;
                     self.cancel_pending_decision_handoff_turn_after_worker_stop();
                     let sound_candidate = self.handle_turn_worker_stopped();
-                    self.finish_transcript_edit_replacement_turn(
-                        edit_replacement_failed_before_start,
-                        Some("Beryl lost the background task that was starting the replacement turn."),
-                        window,
-                        cx,
-                    );
                     if let Some(candidate) = sound_candidate {
                         self.play_end_turn_sound_if_attention_triggered(candidate, window, cx);
                     }
@@ -5850,12 +5334,6 @@ impl ShellView {
                         title_mode,
                     );
                 }
-                TurnWorkerUpdate::ForegroundTranscriptBranchStarted(start) => {
-                    updated |= self.begin_foreground_transcript_branch(start, cx);
-                }
-                TurnWorkerUpdate::ForegroundTranscriptBranchPublicationFinished(publication) => {
-                    updated |= self.finish_foreground_transcript_branch_publication(publication);
-                }
                 TurnWorkerUpdate::GraphMutationFinished(update) => {
                     updated |= self.finish_graph_mutation_update(update);
                 }
@@ -5863,13 +5341,6 @@ impl ShellView {
                     if let Some(surface) = self.conversation_surface_mut() {
                         updated |= surface.record_lifecycle_yield(yielded);
                     }
-                }
-                TurnWorkerUpdate::Event(event)
-                    if self.conversation_surface().is_some_and(|surface| {
-                        surface.stream_event_targets_invalidated_turn(&event)
-                    }) =>
-                {
-                    updated = true;
                 }
                 TurnWorkerUpdate::Event(beryl_backend::TurnStreamEvent::TokenUsageUpdated {
                     thread_id,
@@ -5911,13 +5382,9 @@ impl ShellView {
                         }
                         _ => None,
                     };
-                    let suppress_bootstrap_title_candidate =
-                        self.foreground_transcript_branch_event_is_bootstrap_terminal(&event);
+                    let suppress_bootstrap_title_candidate = false;
                     let mut applied_stream_event = AppliedStreamEvent::default();
                     let mut pending_steering = None;
-                    if let Some((thread_id, _)) = started_turn.as_ref() {
-                        self.note_transcript_edit_replacement_turn_started(thread_id, cx);
-                    }
                     if let Some((thread_id, turn_id)) = started_turn.as_ref() {
                         updated |= self.note_decision_child_turn_started(thread_id, turn_id, cx);
                     }
@@ -5989,11 +5456,6 @@ impl ShellView {
                         TurnWorkerOutcome::Failed { message } => Some(message.clone()),
                         TurnWorkerOutcome::Finished { .. } => None,
                     };
-                    let edit_replacement_failed_before_start = failure_message.is_some()
-                        && self
-                            .transcript_edit_replacement_turn
-                            .as_ref()
-                            .is_some_and(|replacement| !replacement.turn_started);
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
                     if failure_message.is_some() {
@@ -6003,12 +5465,6 @@ impl ShellView {
                     if failure_message.is_some() {
                         self.pending_lifecycle_phase_continue = None;
                     }
-                    self.finish_transcript_edit_replacement_turn(
-                        edit_replacement_failed_before_start,
-                        failure_message.as_deref(),
-                        window,
-                        cx,
-                    );
                     if let Some(thread_id) = pending_thread_id {
                         if self.has_queued_decision_branch_jobs_for_parent(&thread_id) {
                             self.begin_next_ready_queued_decision_branch(window, cx);
@@ -6398,6 +5854,17 @@ impl ShellView {
         };
 
         self.begin_branch_thread_retitle_from_candidate(execution_target, candidate)
+    }
+
+    fn thread_has_manual_gui_title(&self, thread_id: &str) -> bool {
+        self.workspace_shell_state()
+            .and_then(|loaded| {
+                loaded
+                    .workspace_state
+                    .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+            })
+            .and_then(|thread| thread.gui_title())
+            .is_some_and(|title| title.source() == ConversationThreadTitleSource::Manual)
     }
 
     fn repair_missing_thread_title_for_thread(
@@ -7480,181 +6947,6 @@ impl ShellView {
         self.note_scrollbar_activity(ScrollbarRegion::Startup, window, cx);
     }
 
-    fn release_transcript_submit_anchor(&mut self, cx: &mut Context<Self>) {
-        let released = self
-            .conversation_surface_mut()
-            .is_some_and(ConversationSurfaceState::release_transcript_submit_anchor);
-        if released {
-            self.notify_transcript_panel(cx);
-            cx.notify();
-        }
-    }
-
-    fn mark_prompt_reread_applied(
-        &mut self,
-        anchor: &TranscriptSubmitAnchorSnapshot,
-        cx: &mut Context<Self>,
-    ) {
-        let changed = self
-            .conversation_surface_mut()
-            .is_some_and(|surface| surface.mark_prompt_reread_applied(anchor));
-        if changed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
-        }
-    }
-
-    fn mark_commentary_follow_applied(
-        &mut self,
-        anchor: &TranscriptNarrativeAnchor,
-        cx: &mut Context<Self>,
-    ) {
-        let changed = self
-            .conversation_surface_mut()
-            .is_some_and(|surface| surface.mark_commentary_follow_applied(anchor));
-        if changed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
-        }
-    }
-
-    fn mark_final_start_applied(
-        &mut self,
-        anchor: &TranscriptFinalAnchor,
-        applied_scroll_offset: Pixels,
-        cx: &mut Context<Self>,
-    ) {
-        let changed = self
-            .conversation_surface_mut()
-            .is_some_and(|surface| surface.mark_final_start_applied(anchor, applied_scroll_offset));
-        if changed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
-        }
-    }
-
-    fn note_transcript_scroll(
-        &mut self,
-        is_scrolled: bool,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> bool {
-        self.conversation_surface_mut()
-            .is_some_and(|surface| surface.set_transcript_user_scrolled(is_scrolled))
-    }
-
-    fn note_transcript_scroll_event(
-        &mut self,
-        event: &ListScrollEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let scroll_state_changed = self.note_transcript_scroll(event.is_scrolled, window, cx);
-        let content_signature_changed = self
-            .conversation_surface_mut()
-            .is_some_and(|surface| surface.note_transcript_content_scroll_signature(event));
-        if scroll_state_changed || content_signature_changed {
-            self.notify_transcript_panel(cx);
-        }
-        self.begin_transcript_residency_update_for_scroll_event(event, window, cx);
-    }
-
-    fn begin_transcript_residency_update_for_scroll_event(
-        &mut self,
-        event: &ListScrollEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let request_dependencies_available = self.backend_client_connector().is_some()
-            && self.workspace_persistence_for_worker().is_some()
-            && matches!(self.state, ShellState::Ready(_));
-        let allow_request = self.thread_history_page_receiver.is_none()
-            && self.workspace_receiver.is_none()
-            && self.graph_thread_start_receiver.is_none()
-            && self.transcript_branch_receiver.is_none()
-            && self.transcript_edit_commit_receiver.is_none()
-            && self.thread_activation_receiver.is_none()
-            && self.status_operation_receiver.is_none()
-            && self.turn_receiver.is_none()
-            && self.turn_steering_receivers.is_empty()
-            && request_dependencies_available;
-        let Some(controller_update) = self.conversation_surface_mut().map(|surface| {
-            surface.begin_transcript_residency_controller_update(
-                &event.visible_range,
-                allow_request,
-                false,
-            )
-        }) else {
-            return;
-        };
-        if controller_update.released_content {
-            self.notify_transcript_panel(cx);
-        }
-        let Some(request_ticket) = controller_update.request else {
-            return;
-        };
-        let Some(connector) = self.backend_client_connector() else {
-            return;
-        };
-        let Some((workspace_id, runtime_mode)) = (match &self.state {
-            ShellState::Ready(ready) => Some((
-                ready.loaded_workspace.workspace.id().clone(),
-                ready.execution_target.runtime_mode().clone(),
-            )),
-            ShellState::BackendUnavailable(_)
-            | ShellState::WorkspaceIdle(_)
-            | ShellState::WorkspaceLoaded(_)
-            | ShellState::Blocked(_)
-            | ShellState::Discovering(_)
-            | ShellState::Picker(_)
-            | ShellState::Opening(_) => None,
-        }) else {
-            return;
-        };
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface.cancel_transcript_edit_mode();
-        }
-        let Some(persistence) = self.workspace_persistence_for_worker() else {
-            self.pending_thread_history_page_request = None;
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.finish_loading_older_history_failure();
-            }
-            return;
-        };
-
-        let thread_id = request_ticket.thread_id().to_string();
-        let request = request_ticket.request().clone();
-        self.pending_thread_history_page_request = Some(request_ticket);
-        self.thread_history_page_receiver = Some(spawn_thread_residency_page_worker(
-            persistence,
-            connector,
-            workspace_id,
-            runtime_mode,
-            thread_id,
-            request,
-            self.bootstrap.probe_timeout(),
-        ));
-        self.schedule_poll_if_needed(window, cx);
-        self.notify_transcript_panel(cx);
-    }
-
-    fn begin_transcript_residency_update_for_current_view(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(surface) = self.conversation_surface() else {
-            return;
-        };
-        let list_state = surface.transcript_list_state();
-        let event = ListScrollEvent {
-            visible_range: list_state.visible_range(),
-            count: list_state.item_count(),
-            is_scrolled: !matches!(list_state.scroll_position(), ListScrollPosition::Bottom),
-        };
-        self.begin_transcript_residency_update_for_scroll_event(&event, window, cx);
-    }
-
     fn note_workspace_picker_scrollbar_motion(
         &mut self,
         _: &MouseMoveEvent,
@@ -8192,8 +7484,8 @@ impl ShellView {
         let reason = workspace_picker::workspace_picker_transition_path_disabled_reason(
             path,
             workspace_picker::WorkspacePickerTransitionBlockers {
-                edit_rollback_work: self.transcript_edit_commit_receiver.is_some(),
-                edit_replacement_work: self.transcript_edit_replacement_turn.is_some(),
+                edit_rollback_work: false,
+                edit_replacement_work: false,
             },
         );
         let Some(reason) = reason else {
@@ -9864,10 +9156,7 @@ impl ShellView {
     ) -> ThreadActivationStart {
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
@@ -9924,6 +9213,8 @@ impl ShellView {
         let thread_id = target.thread_id.as_str().to_string();
         let label = target.label;
         let execution_target = target.execution_target;
+        let transcript_activation_source =
+            Self::transcript_activation_source_for_thread_navigation(source);
 
         if let Some(block) = self.known_backend_unavailable_block_for_target(&execution_target) {
             if let Some(surface) = self.conversation_surface_mut() {
@@ -9941,6 +9232,11 @@ impl ShellView {
 
         let connector = self.backend_client_connector_for_execution_target(&execution_target);
         if current_execution_target != execution_target && connector.is_none() {
+            self.begin_transcript_host_activation_for_thread(
+                thread_id.as_str(),
+                transcript_activation_source,
+                cx,
+            );
             self.begin_open_target_with_thread_selection_and_intent(
                 RetryTarget::Workspace(execution_target),
                 thread_selection,
@@ -9990,14 +9286,6 @@ impl ShellView {
                 message,
             };
         };
-        let Some(persistence) = self.workspace_persistence_for_worker() else {
-            return ThreadActivationStart::Rejected {
-                kind: "not_ready",
-                message: "Beryl has no workspace persistence handle for thread activation."
-                    .to_string(),
-            };
-        };
-
         self.pending_thread_navigation_activation = pending_navigation;
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
@@ -10009,6 +9297,11 @@ impl ShellView {
             );
             surface.close_thread_selector();
         }
+        self.begin_transcript_host_activation_for_thread(
+            thread_id.as_str(),
+            transcript_activation_source,
+            cx,
+        );
         MemoryMilestone::new("thread_activation_start")
             .workspace_id(beryl_workspace_id.as_str())
             .runtime(execution_target.runtime_mode().display_name())
@@ -10025,7 +9318,6 @@ impl ShellView {
         let worker_spawn_started = Instant::now();
         let thread_id_for_log = thread_id.clone();
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
-            persistence,
             connector,
             beryl_workspace_id,
             execution_target,
@@ -10056,10 +9348,7 @@ impl ShellView {
     ) {
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
@@ -10145,6 +9434,11 @@ impl ShellView {
 
         let connector = self.backend_client_connector_for_execution_target(&execution_target);
         if current_execution_target != execution_target && connector.is_none() {
+            self.begin_transcript_host_activation_for_thread(
+                thread_id.as_str(),
+                syndic_transcript::TranscriptActivationSource::ThreadGraph,
+                cx,
+            );
             self.begin_open_target_with_thread_selection(
                 RetryTarget::Workspace(execution_target),
                 ThreadSelectionRequest::exact(thread_id, label),
@@ -10186,17 +9480,6 @@ impl ShellView {
         else {
             return;
         };
-        let Some(persistence) = self.workspace_persistence_for_worker() else {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation unavailable",
-                    "Beryl has no workspace persistence handle for thread activation.",
-                ));
-                cx.notify();
-            }
-            return;
-        };
-
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
             surface.begin_thread_activation(
@@ -10206,6 +9489,11 @@ impl ShellView {
                 label.clone(),
             );
         }
+        self.begin_transcript_host_activation_for_thread(
+            thread_id.as_str(),
+            syndic_transcript::TranscriptActivationSource::ThreadGraph,
+            cx,
+        );
         MemoryMilestone::new("thread_activation_start")
             .runtime(execution_target.runtime_mode().display_name())
             .thread_id(thread_id.as_str())
@@ -10225,7 +9513,6 @@ impl ShellView {
         let worker_spawn_started = Instant::now();
         let thread_id_for_log = thread_id.clone();
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
-            persistence,
             connector,
             beryl_workspace_id,
             execution_target,
@@ -10852,13 +10139,10 @@ impl ShellView {
 
     fn start_new_thread(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
             || self.status_operation_receiver.is_some()
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
         {
             return;
@@ -10883,6 +10167,10 @@ impl ShellView {
         }
 
         if updated {
+            self.begin_unavailable_transcript_host_activation(
+                syndic_transcript::TranscriptActivationSource::NewThread,
+                cx,
+            );
             self.notify_transcript_panel(cx);
             cx.notify();
         }
@@ -10912,6 +10200,343 @@ impl ShellView {
         }
 
         self.queue_turn_from_composer(Some(window), cx);
+    }
+
+    fn copy_transcript_selection_action(
+        &mut self,
+        _: &CopyTranscriptSelection,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let payload = match self.transcript_panel.read(cx).resident_copy_payload() {
+            Ok(payload) => payload,
+            Err(_) => {
+                self.transcript_panel
+                    .read(cx)
+                    .unavailable_command("copy_transcript_selection");
+                return;
+            }
+        };
+
+        let Some(text) = Self::transcript_clipboard_text_from_resident_payload(payload) else {
+            self.transcript_panel
+                .read(cx)
+                .unavailable_command("copy_transcript_selection");
+            return;
+        };
+
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+
+    fn transcript_clipboard_text_from_resident_payload(
+        payload: syndic_transcript::ResidentTranscriptCopyPayload,
+    ) -> Option<String> {
+        let markdown = payload.markdown;
+        if !markdown.is_empty() {
+            return Some(markdown);
+        }
+
+        payload.plain_text
+    }
+
+    fn open_transcript_context_menu_action(
+        &mut self,
+        _: &OpenTranscriptContextMenu,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let _ = self.open_transcript_context_menu_from_resident_target(cx);
+    }
+
+    fn open_transcript_context_menu_from_resident_target(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        match self
+            .transcript_panel
+            .read(cx)
+            .resident_context_menu_command_target()
+        {
+            syndic_transcript::ResidentContextMenuCommandTarget::Targeted(target) => {
+                Self::accept_resident_transcript_context_menu_target(target)
+            }
+            syndic_transcript::ResidentContextMenuCommandTarget::Unavailable(_) => self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("open_transcript_context_menu"),
+        }
+    }
+
+    fn accept_resident_transcript_context_menu_target(
+        target: syndic_transcript::ResidentTranscriptContextMenuTarget,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let _record_ids = target.record_ids();
+        syndic_transcript::TranscriptCommandResult::NoOp
+    }
+
+    fn edit_resident_context_target_action(
+        &mut self,
+        _: &EditResidentContextTarget,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let _ = self.edit_resident_context_target_from_panel(cx);
+    }
+
+    fn edit_resident_context_target_from_panel(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let target = syndic_transcript::ResidentEditCommandTarget::from_context_menu_command_target(
+            self.transcript_panel
+                .read(cx)
+                .resident_context_menu_command_target(),
+        );
+        match target {
+            syndic_transcript::ResidentEditCommandTarget::Targeted(target) => {
+                Self::accept_resident_edit_target(target)
+            }
+            syndic_transcript::ResidentEditCommandTarget::Unavailable(_) => self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("edit_resident_context_target"),
+        }
+    }
+
+    fn accept_resident_edit_target(
+        target: syndic_transcript::ResidentEditActionTarget,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let _record_ids = target.record_ids();
+        syndic_transcript::TranscriptCommandResult::NoOp
+    }
+
+    fn branch_resident_context_target_action(
+        &mut self,
+        _: &BranchResidentContextTarget,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let _ = self.branch_resident_context_target_from_panel(cx);
+    }
+
+    fn branch_resident_context_target_from_panel(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let target =
+            syndic_transcript::ResidentBranchCommandTarget::from_context_menu_command_target(
+                self.transcript_panel
+                    .read(cx)
+                    .resident_context_menu_command_target(),
+            );
+        match target {
+            syndic_transcript::ResidentBranchCommandTarget::Targeted(target) => {
+                Self::accept_resident_branch_target(target)
+            }
+            syndic_transcript::ResidentBranchCommandTarget::Unavailable(_) => self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("branch_resident_context_target"),
+        }
+    }
+
+    fn accept_resident_branch_target(
+        target: syndic_transcript::ResidentBranchActionTarget,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let _record_ids = target.record_ids();
+        syndic_transcript::TranscriptCommandResult::NoOp
+    }
+
+    fn preview_resident_transcript_media_action(
+        &mut self,
+        _: &PreviewResidentTranscriptMedia,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let _ = self.preview_resident_transcript_media_from_panel(cx);
+    }
+
+    fn preview_resident_transcript_media_from_panel(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        match self
+            .transcript_panel
+            .read(cx)
+            .resident_media_preview_command_target()
+        {
+            syndic_transcript::ResidentMediaPreviewCommandTarget::Targeted(payload) => {
+                Self::accept_resident_media_preview_payload(payload)
+            }
+            syndic_transcript::ResidentMediaPreviewCommandTarget::Unavailable(_) => self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("preview_resident_transcript_media"),
+        }
+    }
+
+    fn accept_resident_media_preview_payload(
+        payload: syndic_transcript::ResidentMediaPreviewCommandPayload,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let _record_ids = payload.record_ids();
+        let _preview_range = payload.range();
+        let _preview_byte_len = payload.byte_len();
+        syndic_transcript::TranscriptCommandResult::NoOp
+    }
+
+    fn copy_resident_transcript_media_action(
+        &mut self,
+        _: &CopyResidentTranscriptMedia,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let _ = self.copy_resident_transcript_media_from_panel(cx);
+    }
+
+    fn copy_resident_transcript_media_from_panel(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        match self
+            .transcript_panel
+            .read(cx)
+            .resident_media_copy_command_target()
+        {
+            syndic_transcript::ResidentMediaCopyCommandTarget::Targeted(payload) => {
+                self.write_resident_media_copy_payload_to_clipboard(payload, cx)
+            }
+            syndic_transcript::ResidentMediaCopyCommandTarget::Unavailable(_) => self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("copy_resident_transcript_media"),
+        }
+    }
+
+    fn write_resident_media_copy_payload_to_clipboard(
+        &mut self,
+        payload: syndic_transcript::ResidentMediaCopyCommandPayload,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let Some(format) = Self::resident_media_copy_image_format(&payload) else {
+            return self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("copy_resident_transcript_media");
+        };
+        if !payload.complete() {
+            return self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("copy_resident_transcript_media");
+        }
+
+        let _record_ids = payload.record_ids();
+        let _copy_range = payload.range();
+        let _copy_byte_len = payload.byte_len();
+        let image = Image::from_bytes(format, payload.bytes().to_vec());
+        cx.write_to_clipboard(ClipboardItem::new_image(&image));
+        syndic_transcript::TranscriptCommandResult::NoOp
+    }
+
+    fn resident_media_copy_image_format(
+        payload: &syndic_transcript::ResidentMediaCopyCommandPayload,
+    ) -> Option<ImageFormat> {
+        payload.media_type().and_then(ImageFormat::from_mime_type)
+    }
+
+    fn save_resident_transcript_media_action(
+        &mut self,
+        _: &SaveResidentTranscriptMedia,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let _ = self.save_resident_transcript_media_without_destination(cx);
+    }
+
+    fn save_resident_transcript_media_without_destination(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        self.transcript_panel
+            .read(cx)
+            .unavailable_command("save_resident_transcript_media")
+    }
+
+    fn save_resident_transcript_media_to_path(
+        &mut self,
+        destination: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        let Some(destination) = Self::resident_media_save_destination(destination) else {
+            return self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("save_resident_transcript_media");
+        };
+
+        match self
+            .transcript_panel
+            .read(cx)
+            .resident_media_save_command_target()
+        {
+            syndic_transcript::ResidentMediaSaveCommandTarget::Targeted(payload) => {
+                self.write_resident_media_save_payload_to_path(payload, destination, cx)
+            }
+            syndic_transcript::ResidentMediaSaveCommandTarget::Unavailable(_) => self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("save_resident_transcript_media"),
+        }
+    }
+
+    fn write_resident_media_save_payload_to_path(
+        &mut self,
+        payload: syndic_transcript::ResidentMediaSaveCommandPayload,
+        destination: syndic_transcript::ResidentMediaSaveDestination,
+        cx: &mut Context<Self>,
+    ) -> syndic_transcript::TranscriptCommandResult {
+        if !payload.complete() {
+            return self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("save_resident_transcript_media");
+        }
+
+        let _record_ids = payload.record_ids();
+        let _resource_id = payload.resource_id();
+        let _save_range = payload.range();
+        let _save_byte_len = payload.byte_len();
+        let _save_media_type = payload.media_type();
+        if fs::write(destination.path(), payload.bytes()).is_err() {
+            return self
+                .transcript_panel
+                .read(cx)
+                .unavailable_command("save_resident_transcript_media");
+        }
+
+        syndic_transcript::TranscriptCommandResult::NoOp
+    }
+
+    fn resident_media_save_destination(
+        destination: PathBuf,
+    ) -> Option<syndic_transcript::ResidentMediaSaveDestination> {
+        let destination = syndic_transcript::ResidentMediaSaveDestination::new(destination).ok()?;
+        if !Self::resident_media_save_destination_path_is_safe(destination.path()) {
+            return None;
+        }
+
+        Some(destination)
+    }
+
+    fn resident_media_save_destination_path_is_safe(destination: &Path) -> bool {
+        if destination.exists() || destination.is_dir() {
+            return false;
+        }
+
+        match destination.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.is_dir(),
+            _ => true,
+        }
     }
 
     fn copy_composer_selection_action(
@@ -11732,26 +11357,34 @@ impl ShellView {
 
     fn insert_transcript_quote_into_draft(
         &mut self,
-        selected_text: &str,
+        _selected_text: &str,
         cx: &mut Context<Self>,
     ) -> bool {
-        let (draft, cursor_offset) = {
-            let input = self.conversation_input.read(cx);
-            (input.text().to_string(), input.cursor_offset())
+        let payload = match self.transcript_panel.read(cx).resident_quote_payload() {
+            Ok(payload) => payload,
+            Err(_) => {
+                self.transcript_panel
+                    .read(cx)
+                    .unavailable_command("quote_transcript_selection");
+                return false;
+            }
         };
-        let Some(insertion) =
-            transcript_quote::quote_insertion_for_draft(&draft, cursor_offset, selected_text)
-        else {
+        let quoted_markdown = payload.quoted_markdown;
+        if quoted_markdown.is_empty() {
+            self.transcript_panel
+                .read(cx)
+                .unavailable_command("quote_transcript_selection");
             return false;
-        };
+        }
 
-        let inserted = self.conversation_input.update(cx, |input, cx| {
-            input.insert_text_at_offset(insertion.insertion_offset, &insertion.inserted_text, cx)
+        let changed = self.conversation_input.update(cx, |input, cx| {
+            input.replace_selected_text(&quoted_markdown, cx)
         });
-        if inserted {
+        self.sync_composer_draft_from_input(cx);
+        if changed {
             cx.notify();
         }
-        inserted
+        changed
     }
 
     fn browse_composer_history_previous_action(
@@ -11781,7 +11414,7 @@ impl ShellView {
         if self.conversation_input.read(cx).has_marked_text()
             || self
                 .conversation_surface()
-                .is_some_and(|surface| surface.transcript_edit_mode().is_some())
+                .is_some_and(|surface| surface.transcript_edit_mode_active())
         {
             return;
         }
@@ -11877,7 +11510,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.jump_transcript_turn(TranscriptTurnJumpDirection::Up, window, cx);
+        self.jump_transcript_turn("up", window, cx);
     }
 
     fn jump_transcript_turn_down_action(
@@ -11886,37 +11519,19 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.jump_transcript_turn(TranscriptTurnJumpDirection::Down, window, cx);
+        self.jump_transcript_turn("down", window, cx);
     }
 
     fn jump_transcript_turn(
         &mut self,
-        direction: TranscriptTurnJumpDirection,
+        direction: &'static str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut viewport_changed = false;
-        let scroll_event = self.conversation_surface_mut().and_then(|surface| {
-            let list_state = surface.transcript_list_state();
-            let target = surface.transcript_viewport_turn_jump_target_for_frame(direction)?;
-            let application = surface.apply_transcript_viewport_turn_jump(target);
-            viewport_changed |= application.changed;
-            surface.release_transcript_submit_anchor();
-            let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
-            Some(ListScrollEvent {
-                visible_range: list_state.visible_range(),
-                count: list_state.item_count(),
-                is_scrolled,
-            })
-        });
-
-        if let Some(event) = scroll_event {
-            self.note_transcript_scroll_event(&event, window, cx);
-        }
-        if viewport_changed {
-            self.notify_transcript_panel(cx);
-            cx.notify();
-        }
+        let _ = (direction, window);
+        self.transcript_panel
+            .read(cx)
+            .unavailable_command("jump_transcript_turn");
     }
 
     fn queue_turn_from_composer(
@@ -11925,8 +11540,6 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.selected_thread_activation_pending()
             || self.composer_image_asset_receiver.is_some()
             || self.composer_image_delivery_receiver.is_some()
@@ -11956,18 +11569,12 @@ impl ShellView {
                 return false;
             }
         }
-        if self.queue_transcript_edit_commit_from_composer(&accepted_draft, cx) {
-            return true;
-        }
         if accepted_draft.contains_images() {
             if self.status_operation_receiver.is_some()
                 && !self.conversation_surface().is_some_and(|surface| {
                     surface.selected_thread_context_compaction_id().is_some()
                 })
             {
-                return false;
-            }
-            if self.thread_history_page_receiver.is_some() {
                 return false;
             }
             if self.begin_composer_image_delivery(accepted_draft) {
@@ -12024,10 +11631,6 @@ impl ShellView {
         }
 
         if self.status_operation_receiver.is_some() {
-            return false;
-        }
-
-        if self.thread_history_page_receiver.is_some() {
             return false;
         }
 
@@ -12416,10 +12019,7 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.status_operation_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
-        {
+        if self.status_operation_receiver.is_some() {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
                     "Lifecycle continuation unavailable",
@@ -13087,26 +12687,7 @@ impl ShellView {
             return false;
         };
 
-        let scroll_event = self.conversation_surface_mut().and_then(|surface| {
-            if !surface.scroll_to_turn_id(
-                pending.parent_thread_id.as_str(),
-                pending.handoff_turn_id.as_str(),
-            ) {
-                return None;
-            }
-
-            let list_state = surface.transcript_list_state();
-            let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
-            Some(ListScrollEvent {
-                visible_range: list_state.visible_range(),
-                count: list_state.item_count(),
-                is_scrolled,
-            })
-        });
-        if let Some(event) = scroll_event {
-            self.note_transcript_scroll_event(&event, window, cx);
-            return true;
-        }
+        let _ = window;
 
         if let Some(surface) = self.conversation_surface_mut() {
             surface.set_notice(SurfaceNotice::new(
@@ -14112,31 +13693,31 @@ impl ShellView {
     }
 
     fn transcript_ui_state(&self, visible_row_limit: usize) -> TranscriptUiState {
-        let Some(surface) = self.conversation_surface() else {
-            return TranscriptUiState::default();
-        };
-        let list_state = surface.transcript_list_state();
-        let item_count = surface.transcript_presentation().len();
-        let visible_range = clamp_ui_range(list_state.visible_range(), item_count);
-        let presentation_range = clamp_ui_range(list_state.presentation_range(), item_count);
-        let (visible_rows, visible_rows_truncated) =
-            diagnostics::visible_transcript_rows(surface, visible_range.clone(), visible_row_limit);
+        let _ = visible_row_limit;
+        let visible_range = 0..0;
+        let presentation_range = 0..0;
 
         TranscriptUiState {
-            item_count,
+            item_count: 0,
             visible_range: Some(ui_range_diagnostic(&visible_range)),
             presentation_range: Some(ui_range_diagnostic(&presentation_range)),
-            scroll_position: transcript_scroll_position_diagnostic(list_state.scroll_position()),
-            user_scrolled: surface.transcript_user_scrolled,
-            pending_thread_activation_label: surface
-                .pending_thread_activation_label()
-                .map(str::to_string)
+            scroll_position: transcript_scroll_position_diagnostic(),
+            user_scrolled: false,
+            pending_thread_activation_label: self
+                .conversation_surface()
+                .and_then(|surface| {
+                    surface
+                        .pending_thread_activation_label()
+                        .map(str::to_string)
+                })
                 .map(bounded_control_string),
-            pending_thread_activation_progress: surface.pending_thread_activation_progress(),
-            older_history_loading: surface.older_history_loading(),
-            visible_row_count: visible_range.len(),
-            visible_rows,
-            visible_rows_truncated,
+            pending_thread_activation_progress: self
+                .conversation_surface()
+                .and_then(ConversationSurfaceState::pending_thread_activation_progress),
+            older_history_loading: false,
+            visible_row_count: 0,
+            visible_rows: Vec::new(),
+            visible_rows_truncated: false,
         }
     }
 
@@ -14180,7 +13761,7 @@ impl ShellView {
             graph_thread_link_menu_open: surface
                 .is_some_and(|surface| surface.graph_thread_link_menu().is_open()),
             transcript_branch_menu_open: surface
-                .is_some_and(|surface| surface.transcript_branch_menu().is_open()),
+                .is_some_and(|surface| surface.transcript_branch_menu_open()),
             status_line_operations_open: surface
                 .is_some_and(|surface| surface.status_line_operations().is_open()),
             composer_image_popup_open: self.composer_image_popup.is_some(),
@@ -14530,13 +14111,10 @@ impl ShellView {
             return Err((block.kind, block.message));
         }
         if self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
             || self.status_operation_receiver.is_some()
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
         {
             return Err((
@@ -14551,6 +14129,10 @@ impl ShellView {
         if let Some(surface) = self.conversation_surface_mut() {
             surface.start_new_thread();
         }
+        self.begin_unavailable_transcript_host_activation(
+            syndic_transcript::TranscriptActivationSource::NewThread,
+            cx,
+        );
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         if cleared_active_thread {
@@ -14607,8 +14189,8 @@ impl ShellView {
         if let Some(reason) = workspace_picker::workspace_picker_transition_path_disabled_reason(
             workspace_picker::WorkspacePickerTransitionPath::SwitchWorkspace,
             workspace_picker::WorkspacePickerTransitionBlockers {
-                edit_rollback_work: self.transcript_edit_commit_receiver.is_some(),
-                edit_replacement_work: self.transcript_edit_replacement_turn.is_some(),
+                edit_rollback_work: false,
+                edit_replacement_work: false,
             },
         ) {
             return Err(("unsafe_state", reason.to_string()));
@@ -14784,46 +14366,30 @@ impl ShellView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        if arguments.command == ScrollTranscriptCommand::Wheel {
-            return self.apply_transcript_wheel_command(arguments, window, cx);
-        }
-        let Some(surface) = self.conversation_surface_mut() else {
-            return Err("Beryl has no active conversation surface.".to_string());
-        };
-        let list_state = surface.transcript_list_state();
-        let item_count = surface.transcript_presentation().len();
-        if item_count == 0 {
-            return Err("The selected transcript has no rows to scroll.".to_string());
-        }
-
         match arguments.command {
-            ScrollTranscriptCommand::Top => {
-                if let Some(target) = surface
-                    .transcript_viewport_turn_target_for_row(0, TranscriptViewportPlacement::Top)
-                {
-                    surface.apply_transcript_viewport_turn_jump(target);
-                }
-                surface.release_transcript_submit_anchor();
-                surface.set_transcript_user_scrolled(true);
-            }
-            ScrollTranscriptCommand::Bottom => {
-                surface.reset_transcript_viewport_to_tail_anchor();
-                list_state.scroll_to_position(ListScrollPosition::Bottom);
-                surface.release_transcript_submit_anchor();
-                surface.set_transcript_user_scrolled(false);
-            }
             ScrollTranscriptCommand::Wheel => {
-                unreachable!("wheel commands return before semantic scrolling")
+                let Some(delta_y) = arguments.delta_y else {
+                    return Err("Wheel transcript scrolling requires deltaY.".to_string());
+                };
+                let viewport_height_px = f32::from(window.viewport_size().height);
+                let manual_delta_px = -delta_y;
+                self.transcript_panel.update(cx, |panel, cx| {
+                    for _ in 0..arguments.repeat {
+                        let _ = panel.manual_scroll_delta(viewport_height_px, manual_delta_px, cx);
+                    }
+                });
+                Ok(())
+            }
+            ScrollTranscriptCommand::Top | ScrollTranscriptCommand::Bottom => {
+                self.transcript_panel
+                    .read(cx)
+                    .unavailable_command("scroll_transcript");
+                Err(
+                    "Explicit transcript navigation is not ported to the resident host yet."
+                        .to_string(),
+                )
             }
         }
-        let is_scrolled = !matches!(list_state.scroll_position(), ListScrollPosition::Bottom);
-        let event = ListScrollEvent {
-            visible_range: list_state.visible_range(),
-            count: list_state.item_count(),
-            is_scrolled,
-        };
-        self.note_transcript_scroll_event(&event, window, cx);
-        Ok(())
     }
 
     fn handle_close_popups_tool_result(&mut self, cx: &mut Context<Self>) -> ClosePopupsResult {
@@ -14873,7 +14439,7 @@ impl ShellView {
                 surface.graph_thread_link_menu_mut().close();
                 closed.push("graph_thread_link_menu".to_string());
             }
-            if surface.transcript_branch_menu().is_open() {
+            if surface.transcript_branch_menu_open() {
                 surface.close_transcript_branch_menu();
                 closed.push("transcript_branch_menu".to_string());
             }

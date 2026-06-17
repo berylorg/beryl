@@ -320,7 +320,6 @@ impl ShellView {
             && self.workspace_receiver.is_none()
             && self.graph_thread_start_receiver.is_none()
             && self.thread_activation_receiver.is_none()
-            && self.thread_history_page_receiver.is_none()
             && self.turn_receiver.is_none()
             && self.hard_stop_receiver.is_none()
     }

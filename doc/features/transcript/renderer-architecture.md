@@ -40,7 +40,7 @@ Presentation data turns resident Syndic data into Beryl render records. It owns 
 
 The scroll controller owns the semantic anchor, realized frame window, manual pixel scroll integration, autoscroll state, explicit navigation placement, anchor rebasing, and missing-content clamp behavior.
 
-The renderer constructs GPUI elements only from the current resident presentation snapshot. It never calls Syndic or `syndic-storage` directly. It may report viewport facts, measured geometry, visible ranges, adjacent-range demand, resource-range demand, and obsolete resident ranges to the residency controller.
+The renderer constructs GPUI elements only from the current resident presentation snapshot. It never calls Syndic or `syndic-storage` directly. It may report viewport facts, measured geometry, visible ranges, adjacent-range demand, resource-range demand, and obsolete resident ranges to transcript residency.
 
 Nested code, table, and media widgets render from resident resource slices and report range demand through the same residency channel. They do not fetch storage directly.
 
@@ -121,7 +121,7 @@ Visual fallbacks remain necessary when content cannot be admitted or rendered wi
 
 ## Geometry And Remeasurement
 
-The renderer does not need to know chunk heights before realization. It does need measured geometry for realized records.
+The renderer does not need to know chunk heights ahead of realization. It does need measured geometry for realized records.
 
 Geometry can change because of resource readiness, widget mode changes, font or theme changes, viewport width changes, chrome height changes, fallback replacement, or projection revision changes.
 

@@ -226,10 +226,7 @@ impl ShellView {
     fn thread_activation_busy_message(&self) -> Option<String> {
         (self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
-            || self.transcript_branch_receiver.is_some()
-            || self.transcript_edit_commit_receiver.is_some()
             || self.selected_thread_activation_pending()
-            || self.thread_history_page_receiver.is_some()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty())

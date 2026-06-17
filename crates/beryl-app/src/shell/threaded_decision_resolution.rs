@@ -251,7 +251,6 @@ impl ShellView {
         if self.turn_receiver.is_some()
             || self.selected_thread_activation_pending()
             || self.status_operation_receiver.is_some()
-            || self.thread_history_page_receiver.is_some()
         {
             return false;
         }
@@ -419,9 +418,6 @@ impl ShellView {
             }
             return true;
         };
-        let Some(persistence) = self.workspace_persistence_for_worker() else {
-            return false;
-        };
         let Some(beryl_workspace_id) = self
             .loaded_workspace()
             .map(|loaded| loaded.workspace.id().clone())
@@ -437,11 +433,15 @@ impl ShellView {
                 label.clone(),
             );
         }
+        self.begin_transcript_host_activation_for_thread(
+            parent_thread_id.as_str(),
+            super::syndic_transcript::TranscriptActivationSource::ThreadGraph,
+            cx,
+        );
         self.composer_image_label_validation_receiver = None;
         self.composer_image_label_scan_receiver = None;
         self.decision_resolution_parent_activation_record_id = Some(record.record_id().clone());
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
-            persistence,
             connector,
             beryl_workspace_id,
             execution_target,

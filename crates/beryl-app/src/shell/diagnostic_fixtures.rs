@@ -14,10 +14,9 @@ use crate::{WorkspaceGraphRevision, WorkspaceUiState};
 
 use super::{
     BackendAvailabilityRecord, BackendUnavailable, BackendUnavailableState,
-    ConversationSurfaceState, LoadedWorkspaceState, ShellState, ShellView, TranscriptHistoryWindow,
-    backend_availability::BackendUnavailableKind, execution_detail::TranscriptImagePathResolver,
-    token_usage_snapshot, workspace_members::apply_primary_execution_target_selection,
-    workspace_picker,
+    ConversationSurfaceState, LoadedWorkspaceState, ShellState, ShellView,
+    backend_availability::BackendUnavailableKind, token_usage_snapshot,
+    workspace_members::apply_primary_execution_target_selection, workspace_picker,
 };
 
 const SCROLL_SMOKE_WORKSPACE_ID: &str = "diagnostic_scroll_smoke";
@@ -79,8 +78,6 @@ impl ShellView {
             known_threads,
             HardStopCapabilities::default(),
             Some(thread),
-            Some(TranscriptHistoryWindow::default()),
-            TranscriptImagePathResolver::default(),
             Some(selected_thread_id.clone()),
             None,
             None,
@@ -88,7 +85,6 @@ impl ShellView {
             WorkspaceGraphRevision::default(),
             None,
         );
-        let presentation_rows = surface.transcript_presentation().len();
 
         self.state = ShellState::BackendUnavailable(BackendUnavailableState {
             attempt,
@@ -105,7 +101,7 @@ impl ShellView {
             "fixture": "scroll_smoke_transcript",
             "selectedThreadId": selected_thread_id,
             "turnCount": turn_count,
-            "presentationRows": presentation_rows,
+            "presentationRows": 0,
             "published": published.is_some(),
         })
     }

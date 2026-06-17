@@ -14,20 +14,17 @@ mod shell {
     pub(super) mod composer_image_label_scan;
     #[path = "../../src/shell/composer_image_labels.rs"]
     pub(super) mod composer_image_labels;
-    #[path = "../../src/shell/transcript_history.rs"]
-    pub(super) mod transcript_history;
 }
 
 use shell::composer_image_label_scan::{
     ComposerImageLabelFrontierValidationError, ComposerImageLabelFrontierValidationOutcome,
-    ComposerImageLabelScanError, ComposerImageLabelScanPlan,
+    ComposerImageLabelHistoryBackend, ComposerImageLabelScanError, ComposerImageLabelScanPlan,
     composer_image_label_frontier_validation_page_options, composer_image_label_scan_page_options,
     scan_composer_image_labels, scan_composer_image_labels_for_plan,
     scan_composer_image_labels_with_page_limit, validate_composer_image_label_frontier,
     validate_composer_image_label_frontier_with_page_limit,
 };
 use shell::composer_image_labels::ComposerImageLabelHistoryFrontier;
-use shell::transcript_history::TranscriptHistoryBackend;
 
 #[test]
 fn scan_reads_all_pages_and_returns_label_observations() {
@@ -533,7 +530,7 @@ impl FakeScanBackend {
     }
 }
 
-impl TranscriptHistoryBackend for FakeScanBackend {
+impl ComposerImageLabelHistoryBackend for FakeScanBackend {
     type Error = String;
 
     fn list_thread_turns(

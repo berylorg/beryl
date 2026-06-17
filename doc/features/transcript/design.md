@@ -17,6 +17,8 @@ Keep durable conversation history, Markdown/block projection, resource reference
 
 - `renderer-architecture.md` is the supplemental transcript renderer architecture for the Syndic-backed target state.
 - The renderer architecture supplement is normative for transcript residency, presentation data, realized frame windows, renderer demand reporting, scrolling, geometry, selection, and nested-widget boundaries.
+- `shell-boundary.md` is the supplemental shell-facing transcript host boundary for the Syndic-backed target state.
+- The shell-boundary supplement is normative for the state, inputs, outputs, demand facts, diagnostics, and invariants exposed between Beryl shell code and the transcript presentation stack.
 - This feature entry point owns the user-visible transcript behavior and cross-layer Beryl presentation contract. Syndic feature docs own the durable conversation model and projection source semantics.
 
 ## Transcript Model

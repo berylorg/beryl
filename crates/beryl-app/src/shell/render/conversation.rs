@@ -7,6 +7,7 @@ use gpui::{
 };
 
 use crate::BerylThemeRole;
+use crate::shell::syndic_transcript::SyndicTranscriptPanel;
 use crate::text_input::SingleLineInput;
 use crate::{
     shell::{
@@ -20,9 +21,7 @@ use crate::{
         status_line::{StatusLineCellValueSegment, StatusLineCellValueSegmentKind},
         tool_activity::ToolActivityRowStatus,
     },
-    thread_strip_breadcrumbs::{
-        ThreadStripBreadcrumbSegment, TransientBranchParent, thread_strip_breadcrumb_trail,
-    },
+    thread_strip_breadcrumbs::{ThreadStripBreadcrumbSegment, thread_strip_breadcrumb_trail},
 };
 
 use super::common::{
@@ -36,10 +35,6 @@ use super::graph_overlay::{render_graph_overlay, render_graph_overlay_listeners}
 use super::scrollbars::{ScrollbarAxis, render_themed_div_scrollbar};
 use super::status_operation::{render_status_operation_listeners, render_status_operation_popup};
 use super::thread_selector::{render_thread_selector_listeners, render_thread_selector_overlay};
-use super::transcript::TranscriptPanel;
-use super::transcript_branch_menu::{
-    render_transcript_branch_menu, render_transcript_branch_menu_listeners,
-};
 use super::workspace_picker::{
     render_workspace_picker_button, render_workspace_picker_listeners,
     render_workspace_picker_overlay,
@@ -48,7 +43,7 @@ use super::workspace_picker::{
 pub(super) fn render_ready_shell(
     shell: &ShellRenderFrame<'_>,
     ready: &ReadyState,
-    transcript_panel: &Entity<TranscriptPanel>,
+    transcript_panel: &Entity<SyndicTranscriptPanel>,
     wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -79,7 +74,7 @@ pub(super) fn render_ready_shell(
 pub(super) fn render_backend_unavailable_shell(
     shell: &ShellRenderFrame<'_>,
     unavailable: &BackendUnavailableState,
-    transcript_panel: &Entity<TranscriptPanel>,
+    transcript_panel: &Entity<SyndicTranscriptPanel>,
     wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -418,7 +413,7 @@ pub(super) fn render_loaded_workspace_shell(
 pub(super) fn render_blocked_shell(
     shell: &ShellRenderFrame<'_>,
     blocked: &BlockedState,
-    transcript_panel: &Entity<TranscriptPanel>,
+    transcript_panel: &Entity<SyndicTranscriptPanel>,
     wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -498,7 +493,7 @@ fn render_workspace_surface(
     _process_id: Option<u32>,
     _backend_label: &str,
     surface: &ConversationSurfaceState,
-    transcript_panel: &Entity<TranscriptPanel>,
+    transcript_panel: &Entity<SyndicTranscriptPanel>,
     _wsl_distro_input: &Entity<SingleLineInput>,
     workspace_picker_filter_input: &Entity<SingleLineInput>,
     workspace_rename_input: &Entity<SingleLineInput>,
@@ -612,15 +607,13 @@ fn render_workspace_surface(
         workspace_body = workspace_body.child(overlay);
     }
 
-    let status_line = render_status_line(
-        shell,
-        if backend_controls_disabled.is_some() {
-            StatusLineProjection::unknown()
-        } else {
-            surface.status_line_projection()
-        },
-        cx,
-    );
+    let status_line_projection = if backend_controls_disabled.is_some() {
+        StatusLineProjection::unknown()
+    } else {
+        let transcript_status_facts = transcript_panel.read(cx).status_facts();
+        surface.status_line_projection_with_transcript_facts(&transcript_status_facts)
+    };
+    let status_line = render_status_line(shell, status_line_projection, cx);
 
     let mut body = div()
         .size_full()
@@ -714,13 +707,6 @@ fn render_workspace_surface(
         }
     }
 
-    if surface.transcript_branch_menu().is_open() {
-        body = body.child(render_transcript_branch_menu_listeners(cx));
-        if let Some(menu) = render_transcript_branch_menu(shell, surface, cx) {
-            body = body.child(menu);
-        }
-    }
-
     if surface.thread_selector().is_open() && thread_selector_controls_disabled.is_none() {
         body = body.child(render_thread_selector_listeners(cx));
         if let Some(overlay) =
@@ -759,40 +745,7 @@ fn render_workspace_surface(
         }
     }
 
-    if surface.transcript_edit_mode().is_some() {
-        body = body.child(render_transcript_edit_mode_listeners(cx));
-    }
-
     body.into_any_element()
-}
-
-fn render_transcript_edit_mode_listeners(cx: &mut Context<ShellView>) -> impl IntoElement {
-    let entity = cx.entity();
-
-    canvas(
-        |_, _, _| (),
-        move |_, _, window, _| {
-            window.on_key_event({
-                let entity = entity.clone();
-                move |event: &KeyDownEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble {
-                        return;
-                    }
-
-                    let handled = entity.update(cx, |view, cx| {
-                        view.handle_transcript_edit_mode_key_down(event, window, cx)
-                    });
-                    if handled {
-                        cx.stop_propagation();
-                    }
-                }
-            });
-        },
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
 }
 
 fn render_surface_notice(
@@ -1175,46 +1128,19 @@ fn selected_thread_title_label(
 }
 
 fn toolbar_branch_breadcrumb_segments(
-    shell: &ShellRenderFrame<'_>,
+    _shell: &ShellRenderFrame<'_>,
     workspace_state: &beryl_model::conversation::WorkspaceConversationState,
     surface: &ConversationSurfaceState,
     selected_label: &str,
 ) -> Option<Vec<ThreadStripBreadcrumbSegment>> {
     let selected_thread_id = surface.selected_thread_id();
-    let transient_branch_parent = shell
-        .foreground_transcript_branch
-        .as_ref()
-        .and_then(|branch| {
-            let branch_thread_id = branch.branch_thread_id()?;
-            (selected_thread_id == Some(branch_thread_id.as_str())).then(|| {
-                (
-                    branch_thread_id.clone(),
-                    beryl_model::conversation::ConversationThreadId::new(
-                        branch.source_thread_id().to_string(),
-                    ),
-                )
-            })
-        });
-    let transient_branch_parent =
-        transient_branch_parent
-            .as_ref()
-            .map(
-                |(child_thread_id, parent_thread_id)| TransientBranchParent {
-                    child_thread_id,
-                    parent_thread_id,
-                },
-            );
-    let segments = thread_strip_breadcrumb_trail(
-        workspace_state,
-        selected_thread_id,
-        selected_label,
-        transient_branch_parent,
-    )?
-    .segments()
-    .iter()
-    .filter(|segment| !segment.active())
-    .cloned()
-    .collect::<Vec<_>>();
+    let segments =
+        thread_strip_breadcrumb_trail(workspace_state, selected_thread_id, selected_label, None)?
+            .segments()
+            .iter()
+            .filter(|segment| !segment.active())
+            .cloned()
+            .collect::<Vec<_>>();
 
     (!segments.is_empty()).then_some(segments)
 }
@@ -1876,7 +1802,7 @@ fn thread_strip_action(
 
 fn render_split_surface(
     shell: &ShellRenderFrame<'_>,
-    transcript_panel: &Entity<TranscriptPanel>,
+    transcript_panel: &Entity<SyndicTranscriptPanel>,
     surface: &ConversationSurfaceState,
     conversation_input: &Entity<SingleLineInput>,
     composer_measurement: &layout::ComposerInputMeasurement,
@@ -1939,8 +1865,8 @@ fn render_split_surface(
 fn render_left_panel(
     _shell: &ShellRenderFrame<'_>,
     _surface: &ConversationSurfaceState,
-    transcript_panel: &Entity<TranscriptPanel>,
-    _cx: &mut Context<ShellView>,
+    transcript_panel: &Entity<SyndicTranscriptPanel>,
+    cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
     let cached_root = div();
     let cached_style = cached_root.size_full().min_h(px(0.0)).style().clone();
@@ -1949,6 +1875,13 @@ fn render_left_panel(
         .relative()
         .size_full()
         .min_h(px(0.0))
+        .on_action(cx.listener(ShellView::copy_transcript_selection_action))
+        .on_action(cx.listener(ShellView::open_transcript_context_menu_action))
+        .on_action(cx.listener(ShellView::edit_resident_context_target_action))
+        .on_action(cx.listener(ShellView::branch_resident_context_target_action))
+        .on_action(cx.listener(ShellView::preview_resident_transcript_media_action))
+        .on_action(cx.listener(ShellView::copy_resident_transcript_media_action))
+        .on_action(cx.listener(ShellView::save_resident_transcript_media_action))
         .child(AnyView::from(transcript_panel.clone()).cached(cached_style))
 }
 
@@ -2227,7 +2160,7 @@ fn measure_composer_input(
         window.scale_factor(),
         shell.style().revision(),
         enabled,
-        surface.transcript_edit_mode().is_some(),
+        false,
     );
 
     let measurement_started = Instant::now();

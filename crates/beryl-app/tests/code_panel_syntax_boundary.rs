@@ -7,8 +7,6 @@ mod shell {
 
 #[path = "../src/shell/render/code_panel_syntax.rs"]
 mod code_panel_syntax;
-#[path = "../src/shell/transcript_markdown.rs"]
-mod transcript_markdown;
 
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
@@ -112,8 +110,7 @@ fn shared_code_panel_syntax_boundary_routes_markdown_aliases_for_non_transcript_
 #[test]
 fn shared_code_panel_syntax_boundary_routes_registered_languages_for_all_panel_owner_shapes() {
     let cache = Rc::new(RefCell::new(SyntaxHighlightCache::new(32, 4096)));
-    let transcript_owner =
-        transcript_markdown::markdown_code_panel_id("row-a", "item:answer", "b0");
+    let transcript_owner = "transcript-code-panel:row-a:item:answer:b0";
 
     let cases: &[(&str, &str, SyntaxLanguage, &[SyntaxTokenRole])] = &[
         (
