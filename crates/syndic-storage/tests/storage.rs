@@ -30,6 +30,8 @@ fn conversation(view_id: &ThreadViewId, revision: ProviderRevision) -> Conversat
     ConversationRecord {
         id: ConversationId::from("conversation"),
         view_id: view_id.clone(),
+        parent_view_id: None,
+        branch_source_turn_id: None,
         title: Some("Captured transcript".to_string()),
         created_at_ms: 1,
         updated_at_ms: 2,
@@ -48,6 +50,8 @@ fn conversation_with_source(
     ConversationRecord {
         id: ConversationId::from(id),
         view_id: view_id.clone(),
+        parent_view_id: None,
+        branch_source_turn_id: None,
         title: None,
         created_at_ms: 1,
         updated_at_ms: 2,
@@ -316,6 +320,147 @@ fn conversation_view_lookup_returns_history_state_for_provider_reads() -> Result
             .conversation_by_view(&ThreadViewId::from("uncaptured-view"))?
             .is_none()
     );
+
+    Ok(())
+}
+
+#[test]
+fn conversation_view_summary_reads_bounded_history_facts() -> Result<()> {
+    let (_dir, store) = open_store()?;
+    let view_id = ThreadViewId::from("view-summary");
+    let parent_view_id = ThreadViewId::from("view-parent");
+    let revision = ProviderRevision(7);
+    let turn_id = TurnId::from("turn-1");
+    let event_id = SourceEventId::from("event-0");
+    let item_id = ItemId::from("item-1");
+    let mut conversation = conversation(&view_id, revision);
+    conversation.parent_view_id = Some(parent_view_id.clone());
+    conversation.branch_source_turn_id = Some(turn_id.clone());
+    conversation.title = Some(" Summary title ".to_string());
+    conversation.updated_at_ms = 44;
+
+    let mut batch = SyndicWriteBatch::new()
+        .put_conversation(conversation)
+        .put_turn(turn(&view_id, TurnStatus::Completed))
+        .put_source_event(source_event(0))
+        .put_item(item(&turn_id, &event_id));
+    for position in [10, 20] {
+        batch = batch
+            .put_projection(projection(&view_id, &turn_id, &item_id, position, revision))
+            .put_view_record(view_record(&view_id, &turn_id, &item_id, position));
+    }
+    store.commit(
+        batch.put_cas_projection_binding(CasProjectionBindingRecord {
+            id: CasProjectionBindingId::from("binding-summary"),
+            view_id: view_id.clone(),
+            binding_revision: 3,
+            selected_path_revision: revision,
+            selected_path_digest: Some("summary-digest".to_string()),
+            established_at_ms: 45,
+            status: CasProjectionBindingStatus::Valid {
+                runtime_target: "host-windows".to_string(),
+                cas_thread_id: "cas-thread-summary".to_string(),
+                lineage_proof: "summary-proof".to_string(),
+            },
+        }),
+    )?;
+
+    let summary = store
+        .conversation_view_summary(&view_id)?
+        .expect("summary should exist");
+    assert_eq!(
+        summary.conversation_id,
+        ConversationId::from("conversation")
+    );
+    assert_eq!(summary.view_id, view_id);
+    assert_eq!(summary.updated_at_ms, 44);
+    assert_eq!(summary.current_revision, revision);
+    assert_eq!(summary.history_state, HistoryState::Complete);
+    assert_eq!(
+        summary.title_candidates,
+        vec![ConversationTitleCandidate {
+            title: "Summary title".to_string(),
+            source: ConversationTitleCandidateSource::ConversationRecord
+        }]
+    );
+    assert_eq!(
+        summary.branch,
+        Some(ConversationViewBranchSummary {
+            parent_view_id,
+            source_turn_id: Some(turn_id.clone())
+        })
+    );
+    let latest = summary
+        .latest_transcript_record
+        .expect("summary should include latest transcript record");
+    assert_eq!(latest.position, TranscriptViewPosition(20));
+    assert_eq!(latest.turn_id, Some(turn_id));
+    assert_eq!(latest.item_id, Some(item_id));
+    assert_eq!(
+        summary
+            .cas_projection_binding
+            .expect("summary should include binding")
+            .binding_revision,
+        3
+    );
+
+    let summaries =
+        store.conversation_view_summaries(&[ThreadViewId::from("missing"), view_id.clone()], 2)?;
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].view_id, view_id);
+    assert!(matches!(
+        store.conversation_view_summaries(&[ThreadViewId::from("a"), ThreadViewId::from("b")], 1),
+        Err(StorageError::LimitExceeded {
+            requested: 2,
+            max: 1
+        })
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn cas_projection_binding_by_view_keeps_latest_binding_revision() -> Result<()> {
+    let (_dir, store) = open_store()?;
+    let view_id = ThreadViewId::from("view-binding-index");
+    store.commit(
+        SyndicWriteBatch::new().put_conversation(conversation(&view_id, ProviderRevision(1))),
+    )?;
+
+    let newest = CasProjectionBindingRecord {
+        id: CasProjectionBindingId::from("binding-newest"),
+        view_id: view_id.clone(),
+        binding_revision: 3,
+        selected_path_revision: ProviderRevision(1),
+        selected_path_digest: Some("newest".to_string()),
+        established_at_ms: 30,
+        status: CasProjectionBindingStatus::Valid {
+            runtime_target: "host-windows".to_string(),
+            cas_thread_id: "cas-thread-newest".to_string(),
+            lineage_proof: "newest-proof".to_string(),
+        },
+    };
+    let stale_late_write = CasProjectionBindingRecord {
+        id: CasProjectionBindingId::from("binding-stale-late-write"),
+        view_id: view_id.clone(),
+        binding_revision: 2,
+        selected_path_revision: ProviderRevision(1),
+        selected_path_digest: Some("stale".to_string()),
+        established_at_ms: 20,
+        status: CasProjectionBindingStatus::Stale {
+            old_cas_thread_id: Some("cas-thread-old".to_string()),
+            reason: "older write arrived after newer binding".to_string(),
+        },
+    };
+
+    store.commit(SyndicWriteBatch::new().put_cas_projection_binding(newest))?;
+    store.commit(SyndicWriteBatch::new().put_cas_projection_binding(stale_late_write))?;
+
+    let indexed = store
+        .cas_projection_binding_by_view(&view_id)?
+        .expect("latest binding should be indexed by view");
+    assert_eq!(indexed.id, CasProjectionBindingId::from("binding-newest"));
+    assert_eq!(indexed.binding_revision, 3);
 
     Ok(())
 }

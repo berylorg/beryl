@@ -61,11 +61,17 @@ impl WorkspaceConversationState {
 
     pub fn active_thread_registration(&self) -> Option<&RegisteredConversationThread> {
         let active_thread = self.active_thread.as_ref()?;
-        self.thread_registration(active_thread)
+        self.catalog_thread_registration(active_thread)
     }
 
     pub fn threads(&self) -> &[RegisteredConversationThread] {
         &self.threads
+    }
+
+    pub fn catalog_threads(&self) -> impl Iterator<Item = &RegisteredConversationThread> {
+        self.threads
+            .iter()
+            .filter(|thread| thread.visible_in_catalog())
     }
 
     pub fn thread_registration(
@@ -75,6 +81,14 @@ impl WorkspaceConversationState {
         self.threads
             .iter()
             .find(|thread| thread.thread_id() == thread_id)
+    }
+
+    pub fn catalog_thread_registration(
+        &self,
+        thread_id: &ConversationThreadId,
+    ) -> Option<&RegisteredConversationThread> {
+        self.thread_registration(thread_id)
+            .filter(|thread| thread.visible_in_catalog())
     }
 
     pub fn thread_token_usage_snapshot(
@@ -305,21 +319,19 @@ impl WorkspaceConversationState {
             .position(|candidate| candidate.thread_id() == thread.thread_id())
         {
             let existing = &self.threads[index];
-            let existing_ignored_backend_name =
-                existing.ignored_backend_name_for_automatic_title.clone();
-            if existing
-                .ignored_backend_name_for_automatic_title()
-                .is_some_and(|ignored| thread.backend_name() == Some(ignored))
-            {
-                thread.backend_name = None;
-            }
-            if existing.gui_title.as_ref().is_some_and(|title| {
-                title.source() != ConversationThreadTitleSource::BackendMetadata
-            }) {
+            if existing.gui_title.is_some() {
                 thread.gui_title.clone_from(&existing.gui_title);
             }
-            if thread.backend_name().is_none() && existing.backend_name().is_some() {
-                thread.backend_name.clone_from(&existing.backend_name);
+            if thread.syndic_conversation_id.is_none() {
+                thread
+                    .syndic_conversation_id
+                    .clone_from(&existing.syndic_conversation_id);
+            }
+            if thread.syndic_view_id.is_none() {
+                thread.syndic_view_id.clone_from(&existing.syndic_view_id);
+            }
+            if thread.catalog_status == ConversationCatalogStatus::Visible {
+                thread.catalog_status = existing.catalog_status;
             }
             if existing.member_binding.is_some() {
                 thread.member_binding.clone_from(&existing.member_binding);
@@ -353,11 +365,6 @@ impl WorkspaceConversationState {
             if thread.branch_title_retitle_state == BranchThreadTitleRetitleState::NotBranch {
                 thread.branch_title_retitle_state = existing.branch_title_retitle_state;
             }
-            if thread.backend_name().is_some() {
-                thread.ignored_backend_name_for_automatic_title = None;
-            } else if thread.ignored_backend_name_for_automatic_title().is_none() {
-                thread.ignored_backend_name_for_automatic_title = existing_ignored_backend_name;
-            }
             thread.automatic_title_generation_state = merged_title_generation_state(
                 existing.automatic_title_generation_state,
                 thread.automatic_title_generation_state,
@@ -384,9 +391,21 @@ impl WorkspaceConversationState {
         &mut self,
         thread_id: &ConversationThreadId,
     ) -> Option<&RegisteredConversationThread> {
-        let active_thread_id = self.thread_registration(thread_id)?.thread_id().clone();
+        let active_thread_id = self
+            .catalog_thread_registration(thread_id)?
+            .thread_id()
+            .clone();
         self.active_thread = Some(active_thread_id);
         self.thread_registration(thread_id)
+    }
+
+    pub fn normalize_active_thread_after_deserialize(&mut self) {
+        let Some(active_thread) = self.active_thread.as_ref().cloned() else {
+            return;
+        };
+        if self.catalog_thread_registration(&active_thread).is_none() {
+            self.active_thread = None;
+        }
     }
 
     pub fn set_thread_generated_title_if_absent(
@@ -400,6 +419,19 @@ impl WorkspaceConversationState {
                 thread_id: thread_id.clone(),
             })?
             .set_generated_title_if_absent(title, recorded_at_millis)
+    }
+
+    pub fn set_thread_generated_title(
+        &mut self,
+        thread_id: &ConversationThreadId,
+        title: impl Into<String>,
+        recorded_at_millis: u64,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        self.thread_registration_mut(thread_id)
+            .ok_or_else(|| WorkspaceConversationStateError::MissingThread {
+                thread_id: thread_id.clone(),
+            })?
+            .set_generated_title(title, recorded_at_millis)
     }
 
     pub fn thread_automatic_title_generation_eligible(
@@ -504,34 +536,6 @@ impl WorkspaceConversationState {
                 thread_id: thread_id.clone(),
             })?
             .set_manual_title(title, recorded_at_millis)
-    }
-
-    pub fn set_thread_backend_name(
-        &mut self,
-        thread_id: &ConversationThreadId,
-        backend_name: Option<String>,
-    ) -> Result<bool, WorkspaceConversationStateError> {
-        let changed = self
-            .thread_registration_mut(thread_id)
-            .ok_or_else(|| WorkspaceConversationStateError::MissingThread {
-                thread_id: thread_id.clone(),
-            })?
-            .set_backend_name(backend_name);
-        Ok(changed)
-    }
-
-    pub fn set_authoritative_thread_backend_name(
-        &mut self,
-        thread_id: &ConversationThreadId,
-        backend_name: Option<String>,
-    ) -> Result<bool, WorkspaceConversationStateError> {
-        let changed = self
-            .thread_registration_mut(thread_id)
-            .ok_or_else(|| WorkspaceConversationStateError::MissingThread {
-                thread_id: thread_id.clone(),
-            })?
-            .set_authoritative_backend_name(backend_name);
-        Ok(changed)
     }
 
     pub fn record_thread_token_usage_snapshot(

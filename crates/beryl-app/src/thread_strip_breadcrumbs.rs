@@ -1,13 +1,11 @@
 use std::collections::HashSet;
 
 use beryl_model::{
-    conversation::{
-        ConversationThreadId, RegisteredConversationThread, WorkspaceConversationState,
-    },
+    conversation::{ConversationThreadId, SyndicConversationViewId, WorkspaceConversationState},
     workspace::WorkspaceId,
 };
 
-use crate::member_thread_inventory::resolved_thread_title;
+use crate::member_thread_inventory::{MemberThreadInventorySnapshot, MemberThreadInventoryThread};
 
 const MAX_THREAD_STRIP_BREADCRUMB_DEPTH: usize = 16;
 
@@ -19,6 +17,7 @@ pub(crate) struct ThreadStripBreadcrumbTrail {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ThreadStripBreadcrumbSegment {
     thread_id: ConversationThreadId,
+    syndic_view_id: SyndicConversationViewId,
     label: String,
     execution_target: Option<WorkspaceId>,
     disabled_reason: Option<String>,
@@ -40,6 +39,10 @@ impl ThreadStripBreadcrumbTrail {
 impl ThreadStripBreadcrumbSegment {
     pub(crate) fn thread_id(&self) -> &ConversationThreadId {
         &self.thread_id
+    }
+
+    pub(crate) fn syndic_view_id(&self) -> &SyndicConversationViewId {
+        &self.syndic_view_id
     }
 
     pub(crate) fn label(&self) -> &str {
@@ -65,6 +68,7 @@ impl ThreadStripBreadcrumbSegment {
 
 pub(crate) fn thread_strip_breadcrumb_trail(
     workspace_state: &WorkspaceConversationState,
+    catalog_snapshot: &MemberThreadInventorySnapshot,
     selected_thread_id: Option<&str>,
     active_label: &str,
     transient_parent: Option<TransientBranchParent<'_>>,
@@ -76,7 +80,7 @@ pub(crate) fn thread_strip_breadcrumb_trail(
 
     let selected_thread_id = ConversationThreadId::new(selected_thread_id.to_string());
     let first_parent =
-        parent_thread_id_for_child(workspace_state, &selected_thread_id, transient_parent)?;
+        parent_thread_id_for_child(catalog_snapshot, &selected_thread_id, transient_parent)?;
     if first_parent == selected_thread_id {
         return None;
     }
@@ -91,15 +95,10 @@ pub(crate) fn thread_strip_breadcrumb_trail(
             break;
         }
 
-        let parent_registration = workspace_state.thread_registration(&parent_id);
-        ancestor_segments.push(parent_segment(
-            workspace_state,
-            &parent_id,
-            parent_registration,
-        ));
+        let parent_row = catalog_thread_row(catalog_snapshot, &parent_id);
+        ancestor_segments.push(parent_segment(workspace_state, &parent_id, parent_row));
 
-        let Some(next_parent_id) =
-            parent_registration.and_then(RegisteredConversationThread::branch_parent_thread_id)
+        let Some(next_parent_id) = parent_row.and_then(MemberThreadInventoryThread::forked_from_id)
         else {
             break;
         };
@@ -116,6 +115,7 @@ pub(crate) fn thread_strip_breadcrumb_trail(
     ancestor_segments.reverse();
     ancestor_segments.push(ThreadStripBreadcrumbSegment {
         thread_id: selected_thread_id,
+        syndic_view_id: SyndicConversationViewId::new(String::new()),
         label: active_label.to_string(),
         execution_target: None,
         disabled_reason: None,
@@ -128,7 +128,7 @@ pub(crate) fn thread_strip_breadcrumb_trail(
 }
 
 fn parent_thread_id_for_child(
-    workspace_state: &WorkspaceConversationState,
+    catalog_snapshot: &MemberThreadInventorySnapshot,
     child_thread_id: &ConversationThreadId,
     transient_parent: Option<TransientBranchParent<'_>>,
 ) -> Option<ConversationThreadId> {
@@ -138,20 +138,20 @@ fn parent_thread_id_for_child(
         return Some(parent.parent_thread_id.clone());
     }
 
-    workspace_state
-        .thread_registration(child_thread_id)
-        .and_then(RegisteredConversationThread::branch_parent_thread_id)
+    catalog_thread_row(catalog_snapshot, child_thread_id)
+        .and_then(MemberThreadInventoryThread::forked_from_id)
         .cloned()
 }
 
 fn parent_segment(
     workspace_state: &WorkspaceConversationState,
     parent_thread_id: &ConversationThreadId,
-    parent: Option<&RegisteredConversationThread>,
+    parent: Option<&MemberThreadInventoryThread>,
 ) -> ThreadStripBreadcrumbSegment {
     let Some(parent) = parent else {
         return ThreadStripBreadcrumbSegment {
             thread_id: parent_thread_id.clone(),
+            syndic_view_id: SyndicConversationViewId::new(String::new()),
             label: "Parent unavailable".to_string(),
             execution_target: None,
             disabled_reason: Some("The parent thread is no longer registered.".to_string()),
@@ -159,27 +159,34 @@ fn parent_segment(
         };
     };
 
-    let label = resolved_thread_title(
-        workspace_state,
-        parent_thread_id,
-        parent.execution_target(),
-        parent.preview(),
-        parent.backend_name(),
-        parent.created_at_millis(),
-        parent.updated_at_millis(),
-    );
-    let disabled_reason = parent.rebind_required().map(|requirement| {
-        format!(
-            "The parent thread requires rebind before it can be opened: {}",
-            requirement.detail()
-        )
-    });
+    let label = parent.title().to_string();
+    let disabled_reason = workspace_state
+        .thread_registration(parent_thread_id)
+        .and_then(|registration| registration.rebind_required())
+        .map(|requirement| {
+            format!(
+                "The parent thread requires rebind before it can be opened: {}",
+                requirement.detail()
+            )
+        });
 
     ThreadStripBreadcrumbSegment {
         thread_id: parent_thread_id.clone(),
+        syndic_view_id: parent.syndic_view_id().clone(),
         label,
         execution_target: Some(parent.execution_target().clone()),
         disabled_reason,
         active: false,
     }
+}
+
+fn catalog_thread_row<'a>(
+    snapshot: &'a MemberThreadInventorySnapshot,
+    thread_id: &ConversationThreadId,
+) -> Option<&'a MemberThreadInventoryThread> {
+    snapshot
+        .groups()
+        .iter()
+        .flat_map(|group| group.threads())
+        .find(|thread| thread.thread_id() == thread_id)
 }

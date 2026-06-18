@@ -573,7 +573,6 @@ fn sample_workspace_state() -> WorkspaceConversationState {
         ConversationThreadId::new("thread_1"),
         execution_target.clone(),
         "Item thread preview",
-        Some("Item thread".to_string()),
         11,
         12,
     ));
@@ -581,7 +580,6 @@ fn sample_workspace_state() -> WorkspaceConversationState {
         ConversationThreadId::new("thread_sibling"),
         execution_target,
         "Sibling thread preview",
-        Some("Sibling thread".to_string()),
         13,
         14,
     ));

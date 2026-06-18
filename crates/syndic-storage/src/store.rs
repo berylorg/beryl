@@ -4,16 +4,20 @@ use fjall::{Database, Keyspace, KeyspaceCreateOptions, PersistMode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-    ByteRange, CanonicalItemRecord, CasProjectionBindingRecord, CommitSummary, ConversationRecord,
+    ByteRange, CanonicalItemRecord, CasProjectionBindingRecord, CasProjectionBindingSummary,
+    CommitSummary, ConversationRecord, ConversationTitleCandidate,
+    ConversationTitleCandidateSource, ConversationViewBranchSummary, ConversationViewSummary,
     CursorId, CursorRecord, ProjectionRecord, ProviderRevision, RecoveryMarkerRecord, ResourceId,
     ResourceMetadataRecord, ResourceRangeResponse, ResourceRecord, ResourceState, Result,
     SourceEventPayload, SourceEventRecord, StorageError, SyndicWriteBatch, SyndicWriteOperation,
     ThreadViewId, TranscriptPage, TranscriptPageAnchor, TranscriptPageDirection,
-    TranscriptViewPosition, TranscriptViewRecord, TranscriptViewRecordId, TurnId, TurnRecord, keys,
+    TranscriptViewPosition, TranscriptViewRecord, TranscriptViewRecordId,
+    TranscriptViewRecordSummary, TurnId, TurnRecord, keys,
 };
 
 pub const MAX_TRANSCRIPT_PAGE_LIMIT: usize = 1_024;
 pub const MAX_SOURCE_EVENT_READ_LIMIT: usize = 4_096;
+pub const MAX_CONVERSATION_SUMMARY_READ_LIMIT: usize = 1_024;
 pub const MAX_SOURCE_EVENT_PAYLOAD_BYTES: usize = 64 * 1_024;
 pub const MAX_RESOURCE_RANGE_BYTES: u64 = 1024 * 1024;
 
@@ -49,6 +53,7 @@ pub struct SyndicStore {
     cursors: Keyspace,
     recovery_markers: Keyspace,
     cas_projection_bindings: Keyspace,
+    cas_projection_binding_views: Keyspace,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -80,6 +85,7 @@ impl SyndicStore {
             cursors: open_keyspace(&db, "cursors")?,
             recovery_markers: open_keyspace(&db, "recovery_markers")?,
             cas_projection_bindings: open_keyspace(&db, "cas_projection_bindings")?,
+            cas_projection_binding_views: open_keyspace(&db, "cas_projection_binding_views")?,
             db,
             sync_after_commit: options.sync_after_commit,
         })
@@ -94,6 +100,7 @@ impl SyndicStore {
         let mut source_event_next_sequences = HashMap::new();
         let mut pending_source_event_ids = HashMap::new();
         let mut pending_source_event_sequences = HashMap::new();
+        let mut pending_binding_view_revisions = HashMap::new();
 
         for operation in batch.operations {
             match operation {
@@ -235,6 +242,17 @@ impl SyndicStore {
                         &record.view_id,
                         record.selected_path_revision,
                     )?;
+                    if self.should_index_binding_for_view(
+                        &record,
+                        &mut pending_binding_view_revisions,
+                    )? {
+                        put_json(
+                            &mut raw,
+                            &self.cas_projection_binding_views,
+                            keys::cas_projection_binding_view_key(&record.view_id),
+                            &record.id,
+                        )?;
+                    }
                 }
             }
         }
@@ -316,6 +334,47 @@ impl SyndicStore {
             &self.cas_projection_bindings,
             keys::cas_projection_binding_key(id),
         )
+    }
+
+    pub fn cas_projection_binding_by_view(
+        &self,
+        view_id: &ThreadViewId,
+    ) -> Result<Option<CasProjectionBindingRecord>> {
+        view_id.validate()?;
+        let id: Option<crate::CasProjectionBindingId> = get_json(
+            &self.cas_projection_binding_views,
+            keys::cas_projection_binding_view_key(view_id),
+        )?;
+        id.map(|id| self.cas_projection_binding(&id))
+            .transpose()
+            .map(Option::flatten)
+    }
+
+    pub fn conversation_view_summary(
+        &self,
+        view_id: &ThreadViewId,
+    ) -> Result<Option<ConversationViewSummary>> {
+        view_id.validate()?;
+        self.conversation_by_view(view_id)?
+            .map(|conversation| self.summary_for_conversation(conversation))
+            .transpose()
+    }
+
+    pub fn conversation_view_summaries(
+        &self,
+        view_ids: &[ThreadViewId],
+        limit: usize,
+    ) -> Result<Vec<ConversationViewSummary>> {
+        ensure_limit(limit, MAX_CONVERSATION_SUMMARY_READ_LIMIT)?;
+        ensure_limit(view_ids.len(), limit)?;
+
+        let mut summaries = Vec::with_capacity(view_ids.len());
+        for view_id in view_ids {
+            if let Some(summary) = self.conversation_view_summary(view_id)? {
+                summaries.push(summary);
+            }
+        }
+        Ok(summaries)
     }
 
     pub fn current_revision(&self, view_id: &ThreadViewId) -> Result<ProviderRevision> {
@@ -733,6 +792,78 @@ impl SyndicStore {
         let prefix = keys::transcript_view_prefix(view_id);
         Ok(self.view_records.prefix(prefix).next().is_none())
     }
+
+    fn summary_for_conversation(
+        &self,
+        conversation: ConversationRecord,
+    ) -> Result<ConversationViewSummary> {
+        let latest_transcript_record = self
+            .read_view_backward(&conversation.view_id, &TranscriptPageAnchor::End, 1)?
+            .into_iter()
+            .next()
+            .map(transcript_record_summary);
+        let cas_projection_binding = self
+            .cas_projection_binding_by_view(&conversation.view_id)?
+            .map(cas_projection_binding_summary);
+        let title_candidates = conversation
+            .title
+            .as_deref()
+            .and_then(|title| non_empty_trimmed(Some(title)))
+            .map(|title| {
+                vec![ConversationTitleCandidate {
+                    title: title.to_string(),
+                    source: ConversationTitleCandidateSource::ConversationRecord,
+                }]
+            })
+            .unwrap_or_default();
+        let branch = conversation.parent_view_id.clone().map(|parent_view_id| {
+            ConversationViewBranchSummary {
+                parent_view_id,
+                source_turn_id: conversation.branch_source_turn_id.clone(),
+            }
+        });
+
+        Ok(ConversationViewSummary {
+            conversation_id: conversation.id,
+            view_id: conversation.view_id,
+            created_at_ms: conversation.created_at_ms,
+            updated_at_ms: conversation.updated_at_ms,
+            current_revision: conversation.current_revision,
+            source: conversation.source,
+            history_state: conversation.history_state,
+            title_candidates,
+            branch,
+            latest_transcript_record,
+            cas_projection_binding,
+        })
+    }
+
+    fn should_index_binding_for_view(
+        &self,
+        record: &CasProjectionBindingRecord,
+        pending_binding_view_revisions: &mut HashMap<ThreadViewId, u64>,
+    ) -> Result<bool> {
+        if let Some(pending_revision) = pending_binding_view_revisions.get(&record.view_id)
+            && record.binding_revision < *pending_revision
+        {
+            return Ok(false);
+        }
+
+        let existing_revision =
+            if let Some(pending_revision) = pending_binding_view_revisions.get(&record.view_id) {
+                *pending_revision
+            } else {
+                self.cas_projection_binding_by_view(&record.view_id)?
+                    .map_or(0, |binding| binding.binding_revision)
+            };
+
+        if record.binding_revision < existing_revision {
+            return Ok(false);
+        }
+
+        pending_binding_view_revisions.insert(record.view_id.clone(), record.binding_revision);
+        Ok(true)
+    }
 }
 
 fn open_keyspace(db: &Database, name: &str) -> Result<Keyspace> {
@@ -763,6 +894,35 @@ fn get_json<T: DeserializeOwned>(keyspace: &Keyspace, key: Vec<u8>) -> Result<Op
 fn decode_guard<T: DeserializeOwned>(guard: fjall::Guard) -> Result<T> {
     let value = guard.value()?;
     Ok(serde_json::from_slice(value.as_ref())?)
+}
+
+fn transcript_record_summary(record: TranscriptViewRecord) -> TranscriptViewRecordSummary {
+    TranscriptViewRecordSummary {
+        id: record.id,
+        position: record.position,
+        narrative_kind: record.narrative_kind,
+        turn_id: record.provenance.turn_id,
+        item_id: record.provenance.item_id,
+        projection_id: record.projection_id,
+    }
+}
+
+fn cas_projection_binding_summary(
+    record: CasProjectionBindingRecord,
+) -> CasProjectionBindingSummary {
+    CasProjectionBindingSummary {
+        id: record.id,
+        binding_revision: record.binding_revision,
+        selected_path_revision: record.selected_path_revision,
+        selected_path_digest: record.selected_path_digest,
+        established_at_ms: record.established_at_ms,
+        status: record.status,
+    }
+}
+
+fn non_empty_trimmed(value: Option<&str>) -> Option<&str> {
+    let value = value?.trim();
+    (!value.is_empty()).then_some(value)
 }
 
 fn put_revision(

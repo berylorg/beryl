@@ -1,6 +1,7 @@
 use beryl_model::{
+    conversation::SyndicConversationViewId,
     threaded_decision::{ThreadedDecisionRecord, ThreadedDecisionRecordId, ThreadedDecisionStatus},
-    workspace::BerylWorkspaceId,
+    workspace::{BerylWorkspaceId, WorkspaceId},
 };
 
 use crate::{
@@ -77,25 +78,23 @@ impl ShellView {
     pub(in crate::shell) fn parent_thread_activation_details(
         &self,
         record: &ThreadedDecisionRecord,
-    ) -> Option<(beryl_model::workspace::WorkspaceId, String, bool)> {
+    ) -> Option<(WorkspaceId, String, bool, SyndicConversationViewId)> {
         let loaded = self.loaded_workspace()?;
         let registration = loaded
             .workspace_state
-            .thread_registration(record.parent_thread_id())?;
+            .catalog_thread_registration(record.parent_thread_id())?;
+        let syndic_view_id = registration.syndic_view_id()?.clone();
         let execution_target = registration.execution_target().clone();
-        let title = resolved_thread_title(
-            &loaded.workspace_state,
-            record.parent_thread_id(),
-            &execution_target,
-            registration.preview(),
-            registration.backend_name(),
-            registration.created_at_millis(),
-            registration.updated_at_millis(),
-        );
+        let title = resolved_thread_title(&loaded.workspace_state, record.parent_thread_id());
         let automatic_title_generation_allowed = loaded
             .workspace_state
             .thread_automatic_title_generation_eligible(record.parent_thread_id());
-        Some((execution_target, title, automatic_title_generation_allowed))
+        Some((
+            execution_target,
+            title,
+            automatic_title_generation_allowed,
+            syndic_view_id,
+        ))
     }
 
     pub(in crate::shell) fn normalized_parent_handoff_message(

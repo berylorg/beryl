@@ -49,7 +49,7 @@ fn seed_store(history_state: HistoryState, backend_input: Vec<UserInput>) -> tem
     let dir = tempfile::tempdir().expect("temp dir should be created");
     let store =
         SyndicStore::open(dir.path(), StoreOpenOptions::default()).expect("store should open");
-    let view_id = ThreadViewId::from("thread-1");
+    let view_id = ThreadViewId::from("view-1");
     let turn_id = TurnId::from("turn-1");
     let event_id = SourceEventId::from("event-1");
     let item_id = ItemId::from("item-1");
@@ -62,6 +62,8 @@ fn seed_store(history_state: HistoryState, backend_input: Vec<UserInput>) -> tem
                 .put_conversation(ConversationRecord {
                     id: ConversationId::from("conversation-1"),
                     view_id: view_id.clone(),
+                    parent_view_id: None,
+                    branch_source_turn_id: None,
                     title: Some("captured".to_string()),
                     created_at_ms: 1,
                     updated_at_ms: 2,
@@ -149,7 +151,7 @@ fn syndic_frontier_scan_discovers_labels_from_captured_backend_input() {
 
     let labels = composer_image_label_frontier_worker::scan_composer_image_label_frontier(
         dir.path(),
-        "thread-1",
+        "view-1",
     )
     .expect("complete captured history should scan");
 
@@ -168,7 +170,7 @@ fn syndic_frontier_scan_rejects_incomplete_history() {
 
     let error = composer_image_label_frontier_worker::scan_composer_image_label_frontier(
         dir.path(),
-        "thread-1",
+        "view-1",
     )
     .expect_err("incomplete captured history must not unblock image labels");
 

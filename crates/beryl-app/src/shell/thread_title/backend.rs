@@ -28,13 +28,6 @@ pub(crate) trait ThreadTitleBackend {
         idle_timeout: Duration,
     ) -> Result<Option<TurnStreamEvent>, Self::Error>;
 
-    fn set_thread_name(
-        &mut self,
-        thread_id: &str,
-        name: &str,
-        timeout: Duration,
-    ) -> Result<(), Self::Error>;
-
     fn unsubscribe_thread(
         &mut self,
         thread_id: &str,
@@ -69,15 +62,6 @@ impl ThreadTitleBackend for ManagedBackendSession {
         idle_timeout: Duration,
     ) -> Result<Option<TurnStreamEvent>, Self::Error> {
         ManagedBackendSession::next_turn_stream_event(self, idle_timeout)
-    }
-
-    fn set_thread_name(
-        &mut self,
-        thread_id: &str,
-        name: &str,
-        timeout: Duration,
-    ) -> Result<(), Self::Error> {
-        ManagedBackendSession::set_thread_name(self, thread_id, name, timeout)
     }
 
     fn unsubscribe_thread(

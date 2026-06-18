@@ -1317,7 +1317,6 @@ fn workspace_state_with_snapshot(
         thread_id.clone(),
         execution_target,
         "Preview",
-        None,
         1,
         2,
     ));

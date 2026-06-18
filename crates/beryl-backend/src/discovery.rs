@@ -2,44 +2,9 @@ use std::{
     io,
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
 };
 
-use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use thiserror::Error;
-
-use crate::{BackendLaunchSpec, ManagedBackendSession, ThreadSummary};
-
-const DEFAULT_WSL_DISCOVERY_CWD: &str = "/";
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RuntimeDiscoveryReport {
-    runtime_mode: RuntimeMode,
-    status: RuntimeDiscoveryStatus,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RuntimeDiscoveryStatus {
-    Available {
-        workspaces: Vec<DiscoveredWorkspace>,
-    },
-    Unavailable {
-        reason: String,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DiscoveredWorkspace {
-    workspace: WorkspaceId,
-    threads: Vec<DiscoveredWorkspaceThread>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DiscoveredWorkspaceThread {
-    id: String,
-    preview: String,
-    updated_at: i64,
-}
 
 #[derive(Debug, Error)]
 pub enum RuntimeDiscoveryError {
@@ -76,27 +41,6 @@ pub enum WorkspacePathError {
     InvalidWslCanonicalPathEncoding { distro_name: String },
     #[error("wsl.exe returned an empty canonical path for {path} in distro {distro_name}")]
     EmptyWslCanonicalPath { distro_name: String, path: String },
-}
-
-pub fn discover_host_runtime(
-    launch_cwd: impl Into<PathBuf>,
-    timeout: Duration,
-) -> RuntimeDiscoveryReport {
-    discover_runtime(RuntimeMode::HostWindows, launch_cwd.into(), timeout)
-}
-
-pub fn discover_wsl_runtime(
-    distro_name: impl Into<String>,
-    timeout: Duration,
-) -> RuntimeDiscoveryReport {
-    let distro_name = distro_name.into();
-    discover_runtime(
-        RuntimeMode::WslLinux {
-            distro_name: distro_name.clone(),
-        },
-        PathBuf::from(DEFAULT_WSL_DISCOVERY_CWD),
-        timeout,
-    )
 }
 
 pub fn list_wsl_distros() -> Result<Vec<String>, RuntimeDiscoveryError> {
@@ -227,113 +171,6 @@ pub fn strip_windows_extended_prefix(path: PathBuf) -> PathBuf {
     }
 
     path
-}
-
-impl RuntimeDiscoveryReport {
-    pub fn unavailable(runtime_mode: RuntimeMode, reason: impl Into<String>) -> Self {
-        Self {
-            runtime_mode,
-            status: RuntimeDiscoveryStatus::Unavailable {
-                reason: reason.into(),
-            },
-        }
-    }
-
-    pub fn runtime_mode(&self) -> &RuntimeMode {
-        &self.runtime_mode
-    }
-
-    pub fn status(&self) -> &RuntimeDiscoveryStatus {
-        &self.status
-    }
-}
-
-impl DiscoveredWorkspace {
-    pub fn workspace(&self) -> &WorkspaceId {
-        &self.workspace
-    }
-
-    pub fn threads(&self) -> &[DiscoveredWorkspaceThread] {
-        &self.threads
-    }
-}
-
-impl DiscoveredWorkspaceThread {
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn preview(&self) -> &str {
-        &self.preview
-    }
-
-    pub fn updated_at(&self) -> i64 {
-        self.updated_at
-    }
-}
-
-fn discover_runtime(
-    runtime_mode: RuntimeMode,
-    launch_cwd: PathBuf,
-    timeout: Duration,
-) -> RuntimeDiscoveryReport {
-    let launch_spec = BackendLaunchSpec::managed_stdio(runtime_mode.clone(), launch_cwd);
-    let status = match ManagedBackendSession::launch_and_probe(launch_spec, timeout) {
-        Ok((mut session, _report)) => match session.list_threads(timeout) {
-            Ok(threads) => RuntimeDiscoveryStatus::Available {
-                workspaces: group_threads_by_workspace(runtime_mode.clone(), threads),
-            },
-            Err(error) => RuntimeDiscoveryStatus::Unavailable {
-                reason: error.to_string(),
-            },
-        },
-        Err(error) => RuntimeDiscoveryStatus::Unavailable {
-            reason: error.to_string(),
-        },
-    };
-
-    RuntimeDiscoveryReport {
-        runtime_mode,
-        status,
-    }
-}
-
-fn group_threads_by_workspace(
-    runtime_mode: RuntimeMode,
-    mut threads: Vec<ThreadSummary>,
-) -> Vec<DiscoveredWorkspace> {
-    threads.sort_by(|left, right| {
-        right
-            .updated_at
-            .cmp(&left.updated_at)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-
-    let mut workspaces = Vec::<DiscoveredWorkspace>::new();
-    for thread in threads {
-        if let Some(existing) = workspaces
-            .iter_mut()
-            .find(|workspace| workspace.workspace.canonical_path() == thread.cwd)
-        {
-            existing.threads.push(DiscoveredWorkspaceThread {
-                id: thread.id,
-                preview: thread.preview,
-                updated_at: thread.updated_at,
-            });
-            continue;
-        }
-
-        workspaces.push(DiscoveredWorkspace {
-            workspace: WorkspaceId::from_parts(runtime_mode.clone(), thread.cwd),
-            threads: vec![DiscoveredWorkspaceThread {
-                id: thread.id,
-                preview: thread.preview,
-                updated_at: thread.updated_at,
-            }],
-        });
-    }
-
-    workspaces
 }
 
 fn decode_wsl_output(bytes: &[u8]) -> Result<String, RuntimeDiscoveryError> {

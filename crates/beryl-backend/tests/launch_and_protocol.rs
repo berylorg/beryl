@@ -14,10 +14,9 @@ use beryl_backend::{
     ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession,
     ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
     ModelListOptions, ModelListResponse, NonSteerableTurnKind, REQUIRED_CODEX_APP_SERVER_VERSION,
-    SortDirection, ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
-    ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey,
-    ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput,
-    active_turn_not_steerable_error,
+    ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
+    ThreadLoadedListResponse, ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus,
+    TurnStreamEvent, UserInput, active_turn_not_steerable_error,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
@@ -385,7 +384,7 @@ fn websocket_client_initializes_routes_responses_and_buffers_notifications() {
 
         let request = read_json(&mut socket);
         assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/list"));
+        assert_eq!(request["method"], json!("config/read"));
         socket
             .send(Message::text(
                 json!({
@@ -405,8 +404,8 @@ fn websocket_client_initializes_routes_responses_and_buffers_notifications() {
                     "jsonrpc": "2.0",
                     "id": 2,
                     "result": {
-                        "data": []
-                    }
+                    "config": {}
+                }
                 })
                 .to_string(),
             ))
@@ -422,9 +421,9 @@ fn websocket_client_initializes_routes_responses_and_buffers_notifications() {
     .unwrap();
 
     let response = client
-        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .read_config(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap();
-    assert!(response.data.is_empty());
+    assert_eq!(response.config.model, None);
 
     let event = client
         .next_turn_stream_event(Duration::from_millis(10))
@@ -1281,7 +1280,7 @@ fn websocket_dynamic_tool_call_request_defers_while_waiting_for_response() {
 
         let request = read_json(&mut socket);
         assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/list"));
+        assert_eq!(request["method"], json!("config/read"));
         socket
             .send(Message::text(
                 json!({
@@ -1305,8 +1304,8 @@ fn websocket_dynamic_tool_call_request_defers_while_waiting_for_response() {
                     "jsonrpc": "2.0",
                     "id": 2,
                     "result": {
-                        "data": []
-                    }
+                    "config": {}
+                }
                 })
                 .to_string(),
             ))
@@ -1322,9 +1321,9 @@ fn websocket_dynamic_tool_call_request_defers_while_waiting_for_response() {
     .unwrap();
 
     let response = client
-        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .read_config(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap();
-    assert!(response.data.is_empty());
+    assert_eq!(response.config.model, None);
 
     let event = client
         .next_turn_stream_event(Duration::from_secs(2))
@@ -1346,7 +1345,7 @@ fn websocket_notification_defers_while_waiting_for_response() {
 
         let request = read_json(&mut socket);
         assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/list"));
+        assert_eq!(request["method"], json!("config/read"));
         socket
             .send(Message::text(
                 json!({
@@ -1366,8 +1365,8 @@ fn websocket_notification_defers_while_waiting_for_response() {
                     "jsonrpc": "2.0",
                     "id": 2,
                     "result": {
-                        "data": []
-                    }
+                    "config": {}
+                }
                 })
                 .to_string(),
             ))
@@ -1383,9 +1382,9 @@ fn websocket_notification_defers_while_waiting_for_response() {
     .unwrap();
 
     let response = client
-        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .read_config(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap();
-    assert!(response.data.is_empty());
+    assert_eq!(response.config.model, None);
 
     let event = client
         .next_turn_stream_event(Duration::from_secs(2))
@@ -2262,23 +2261,6 @@ fn compatibility_probe_responses_deserialize_from_observed_shapes() {
     }))
     .unwrap();
 
-    let thread_list: ThreadListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "id": "thread_123",
-                "cwd": "C:/work/beryl",
-                "preview": "hello world",
-                "createdAt": 1,
-                "updatedAt": 2,
-                "modelProvider": "openai",
-                "ephemeral": false
-            }
-        ],
-        "nextCursor": "cursor_1",
-        "backwardsCursor": "cursor_0"
-    }))
-    .unwrap();
-
     let loaded_threads: ThreadLoadedListResponse = serde_json::from_value(json!({
         "data": ["thread_123"],
         "nextCursor": null
@@ -2332,10 +2314,6 @@ fn compatibility_probe_responses_deserialize_from_observed_shapes() {
     .unwrap();
 
     assert_eq!(initialize.codex_home, "C:/Users/example/.codex");
-    assert_eq!(thread_list.data.len(), 1);
-    assert_eq!(thread_list.data[0].preview, "hello world");
-    assert_eq!(thread_list.next_cursor.as_deref(), Some("cursor_1"));
-    assert_eq!(thread_list.backwards_cursor.as_deref(), Some("cursor_0"));
     assert_eq!(loaded_threads.data, vec!["thread_123".to_string()]);
     assert_eq!(loaded_threads.next_cursor, None);
     assert_eq!(models.data.len(), 1);
@@ -2426,58 +2404,6 @@ fn model_list_deserializes_reasoning_effort_maps() {
 }
 
 #[test]
-fn thread_list_options_serialize_filter_sort_and_page_controls() {
-    let options = ThreadListOptions::page(25)
-        .with_cursor("cursor_1")
-        .with_cwd(PathBuf::from("C:/work/beryl"))
-        .updated_descending();
-
-    assert_eq!(
-        serde_json::to_value(options).unwrap(),
-        json!({
-            "cursor": "cursor_1",
-            "limit": 25,
-            "cwd": ["C:/work/beryl"],
-            "sortKey": "updated_at",
-            "sortDirection": "desc"
-        })
-    );
-
-    assert_eq!(
-        serde_json::to_value(ThreadListOptions {
-            sort_key: Some(ThreadSortKey::CreatedAt),
-            sort_direction: Some(SortDirection::Asc),
-            ..ThreadListOptions::default()
-        })
-        .unwrap(),
-        json!({
-            "sortKey": "created_at",
-            "sortDirection": "asc"
-        })
-    );
-
-    assert_eq!(
-        serde_json::to_value(ThreadListOptions::page(10).archived()).unwrap(),
-        json!({
-            "limit": 10,
-            "archived": true
-        })
-    );
-
-    assert_eq!(
-        serde_json::to_value(ThreadListOptions::default().non_archived()).unwrap(),
-        json!({
-            "archived": false
-        })
-    );
-
-    assert_eq!(
-        serde_json::to_value(ThreadListOptions::default()).unwrap(),
-        json!({})
-    );
-}
-
-#[test]
 fn model_list_options_serialize_page_and_hidden_controls() {
     let options = ModelListOptions::page(25)
         .with_cursor("model_cursor")
@@ -2538,11 +2464,8 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         &[
             CompatibilityProbe::ConfigRead,
             CompatibilityProbe::ModelList,
-            CompatibilityProbe::ThreadList,
             CompatibilityProbe::ThreadCompactStart,
             CompatibilityProbe::ThreadLoadedList,
-            CompatibilityProbe::ThreadNameSet,
-            CompatibilityProbe::ThreadRead,
             CompatibilityProbe::ThreadResumeMetadata,
             CompatibilityProbe::ThreadUnsubscribe,
             CompatibilityProbe::TurnInterrupt,
@@ -2558,11 +2481,8 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
         vec![
             "config/read",
             "model/list",
-            "thread/list",
             "thread/compact/start",
             "thread/loaded/list",
-            "thread/name/set",
-            "thread/read",
             "thread/resume",
             "thread/unsubscribe",
             "turn/interrupt",
@@ -2693,14 +2613,14 @@ fn managed_backend_startup_progress_exposes_ordered_operator_steps() {
 
     let progress = ManagedBackendStartupProgress::new(
         ManagedBackendStartupStage::VerifyRequiredMethods,
-        Some("thread/list".to_string()),
+        Some("config/read".to_string()),
     );
 
     assert_eq!(
         progress.stage(),
         ManagedBackendStartupStage::VerifyRequiredMethods
     );
-    assert_eq!(progress.detail(), Some("thread/list"));
+    assert_eq!(progress.detail(), Some("config/read"));
 }
 
 fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpec {

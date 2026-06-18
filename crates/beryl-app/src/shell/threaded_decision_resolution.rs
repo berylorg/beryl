@@ -256,8 +256,12 @@ impl ShellView {
             return false;
         }
 
-        let Some((execution_target, parent_label, automatic_title_generation_allowed)) =
-            self.parent_thread_activation_details(&record)
+        let Some((
+            execution_target,
+            parent_label,
+            automatic_title_generation_allowed,
+            parent_syndic_view_id,
+        )) = self.parent_thread_activation_details(&record)
         else {
             self.remove_queued_decision_resolution_job(&job.record_id);
             if let Some(surface) = self.conversation_surface_mut() {
@@ -278,6 +282,7 @@ impl ShellView {
                 job,
                 record,
                 execution_target,
+                parent_syndic_view_id.as_str().to_string(),
                 parent_label,
                 window,
                 cx,
@@ -428,21 +433,11 @@ impl ShellView {
         job: QueuedDecisionResolutionJob,
         record: ThreadedDecisionRecord,
         execution_target: WorkspaceId,
+        syndic_view_id: String,
         label: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(connector) = self.backend_client_connector_for_execution_target(&execution_target)
-        else {
-            self.remove_queued_decision_resolution_job(&job.record_id);
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Decision handoff unavailable",
-                    "Beryl does not have an active managed backend for the bound parent thread.",
-                ));
-            }
-            return true;
-        };
         let Some(beryl_workspace_id) = self
             .loaded_workspace()
             .map(|loaded| loaded.workspace.id().clone())
@@ -473,13 +468,12 @@ impl ShellView {
         let syndic_storage_dir =
             workspace_persistence.workspace_syndic_storage_dir(&beryl_workspace_id);
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
-            connector,
             beryl_workspace_id,
             syndic_storage_dir,
             execution_target,
             parent_thread_id,
+            syndic_view_id,
             label,
-            self.bootstrap.probe_timeout(),
         ));
         self.schedule_poll_if_needed(window, cx);
         cx.notify();

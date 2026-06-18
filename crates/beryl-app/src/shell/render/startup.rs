@@ -102,23 +102,11 @@ pub(super) fn render_startup_shell(
 }
 
 pub(super) fn workspace_choice_origin(choice: &WorkspaceChoice) -> String {
-    match (
-        choice.thread_count > 0,
-        choice.remembered_rank.is_some(),
-        choice.last_opened,
-    ) {
-        (true, true, true) => {
-            "discovered thread history, remembered startup metadata, last opened".to_string()
-        }
-        (true, true, false) => {
-            "discovered thread history and remembered startup metadata".to_string()
-        }
-        (true, false, true) => "discovered thread history and last opened".to_string(),
-        (false, true, true) => "remembered startup metadata and last opened".to_string(),
-        (true, false, false) => "discovered thread history".to_string(),
-        (false, true, false) => "remembered startup metadata".to_string(),
-        (false, false, true) => "last opened workspace".to_string(),
-        (false, false, false) => "workspace selection".to_string(),
+    match (choice.remembered_rank.is_some(), choice.last_opened) {
+        (true, true) => "remembered startup metadata and last opened".to_string(),
+        (true, false) => "remembered startup metadata".to_string(),
+        (false, true) => "last opened workspace".to_string(),
+        (false, false) => "workspace selection".to_string(),
     }
 }
 
@@ -169,7 +157,7 @@ fn render_picker(
             div()
                 .text_sm()
                 .text_color(shell.surface_foreground())
-                .child("Select one discovered workspace or open a new workspace explicitly. Once you open one, this Beryl window stays bound to that workspace until you close it."),
+                .child("Select one known workspace or open a new workspace explicitly. Once you open one, this Beryl window stays bound to that workspace until you close it."),
         );
 
     if let Some(notice) = &picker.notice {
@@ -182,7 +170,7 @@ fn render_picker(
     if !picker.model.choices.is_empty() {
         body = body.child(section_label(shell, "Known Workspaces"));
         for (index, choice) in picker.model.choices.iter().enumerate() {
-            let mut card_body = div()
+            let card_body = div()
                 .flex()
                 .flex_col()
                 .gap_2()
@@ -196,17 +184,6 @@ fn render_picker(
                     "Known by",
                     &workspace_choice_origin(choice),
                 ));
-
-            if choice.thread_count > 0 {
-                card_body = card_body.child(info_line(
-                    shell,
-                    "Discovered threads",
-                    &choice.thread_count.to_string(),
-                ));
-            }
-            if let Some(preview) = &choice.latest_preview {
-                card_body = card_body.child(info_line(shell, "Latest preview", preview));
-            }
 
             let workspace = choice.workspace.clone();
             body = body.child(card(

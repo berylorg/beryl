@@ -66,6 +66,10 @@ pub struct ExternalSourceMetadata {
 pub struct ConversationRecord {
     pub id: ConversationId,
     pub view_id: ThreadViewId,
+    #[serde(default)]
+    pub parent_view_id: Option<ThreadViewId>,
+    #[serde(default)]
+    pub branch_source_turn_id: Option<TurnId>,
     pub title: Option<String>,
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
@@ -97,6 +101,58 @@ pub enum HistoryIncompleteReason {
     ProjectionStale,
     ResourceMissing,
     Other(String),
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ConversationViewSummary {
+    pub conversation_id: ConversationId,
+    pub view_id: ThreadViewId,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+    pub current_revision: ProviderRevision,
+    pub source: Option<ExternalSourceMetadata>,
+    pub history_state: HistoryState,
+    pub title_candidates: Vec<ConversationTitleCandidate>,
+    pub branch: Option<ConversationViewBranchSummary>,
+    pub latest_transcript_record: Option<TranscriptViewRecordSummary>,
+    pub cas_projection_binding: Option<CasProjectionBindingSummary>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ConversationTitleCandidate {
+    pub title: String,
+    pub source: ConversationTitleCandidateSource,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ConversationTitleCandidateSource {
+    ConversationRecord,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ConversationViewBranchSummary {
+    pub parent_view_id: ThreadViewId,
+    pub source_turn_id: Option<TurnId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TranscriptViewRecordSummary {
+    pub id: TranscriptViewRecordId,
+    pub position: TranscriptViewPosition,
+    pub narrative_kind: TranscriptNarrativeKind,
+    pub turn_id: Option<TurnId>,
+    pub item_id: Option<ItemId>,
+    pub projection_id: ProjectionRecordId,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CasProjectionBindingSummary {
+    pub id: CasProjectionBindingId,
+    pub binding_revision: u64,
+    pub selected_path_revision: ProviderRevision,
+    pub selected_path_digest: Option<String>,
+    pub established_at_ms: u64,
+    pub status: CasProjectionBindingStatus,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

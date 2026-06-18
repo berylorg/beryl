@@ -1165,10 +1165,6 @@ impl ShellView {
             TurnStreamEvent::AccountRateLimitsUpdated { rate_limits } => {
                 updated | self.apply_account_rate_limits_update(rate_limits)
             }
-            TurnStreamEvent::ThreadNameUpdated {
-                thread_id,
-                thread_name,
-            } => updated | self.apply_thread_name_update(thread_id, thread_name),
             event => {
                 let execution_target = match &self.state {
                     ShellState::Ready(ready) => Some(ready.execution_target.clone()),

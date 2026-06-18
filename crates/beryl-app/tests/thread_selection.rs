@@ -1,10 +1,8 @@
 #![allow(dead_code, unused_imports)]
 
-use std::path::PathBuf;
-
-use beryl_backend::ThreadSummary;
 use beryl_model::conversation::{
-    ConversationThreadId, RegisteredConversationThread, WorkspaceConversationState,
+    ConversationThreadId, RegisteredConversationThread, SyndicConversationId,
+    SyndicConversationViewId, WorkspaceConversationState,
 };
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::{
@@ -16,44 +14,7 @@ use beryl_model::workspace::WorkspaceId;
 #[path = "../src/shell/thread_selection.rs"]
 mod thread_selection;
 
-use thread_selection::{
-    GraphThreadRefAvailability, KnownThreadSelection, ThreadSelectionRequest,
-    graph_thread_ref_availability, resolve_known_thread_selection,
-};
-
-#[test]
-fn exact_thread_selection_is_not_resolved_from_known_inventory() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let known_threads = vec![sample_thread("thread_a"), sample_thread("thread_b")];
-
-    let selection = resolve_known_thread_selection(
-        &known_threads,
-        &execution_target,
-        &ThreadSelectionRequest::exact("thread_b", "Release review"),
-    );
-
-    assert_eq!(selection, KnownThreadSelection::None);
-}
-
-#[test]
-fn preferred_thread_selection_can_fall_back_to_the_first_known_thread() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let known_threads = vec![sample_thread("thread_a"), sample_thread("thread_b")];
-
-    let selection = resolve_known_thread_selection(
-        &known_threads,
-        &execution_target,
-        &ThreadSelectionRequest::RestorePreferred(Some("missing_thread".to_string())),
-    );
-
-    assert_eq!(
-        selection,
-        KnownThreadSelection::Selected {
-            thread_id: "thread_a".to_string(),
-            strict: false,
-        }
-    );
-}
+use thread_selection::{GraphThreadRefAvailability, graph_thread_ref_availability};
 
 #[test]
 fn graph_thread_ref_is_openable_when_target_is_in_workspace_scope() {
@@ -62,11 +23,49 @@ fn graph_thread_ref_is_openable_when_target_is_in_workspace_scope() {
     workspace_state
         .designate_primary_execution_target(&execution_target)
         .unwrap();
+    workspace_state.remember_thread(registered_thread(
+        "thread_a",
+        execution_target.clone(),
+        "Preview",
+    ));
     let thread_ref = sample_thread_ref(&execution_target);
 
     assert_eq!(
         graph_thread_ref_availability(&workspace_state, &thread_ref, None),
         GraphThreadRefAvailability::Openable
+    );
+}
+
+#[test]
+fn graph_thread_ref_is_invalid_without_syndic_view_registration() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let mut workspace_state = WorkspaceConversationState::default();
+    workspace_state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    workspace_state.remember_thread(RegisteredConversationThread::new(
+        ConversationThreadId::new("thread_a"),
+        execution_target.clone(),
+        "Preview",
+        1,
+        2,
+    ));
+    let thread_ref = sample_thread_ref(&execution_target);
+
+    let availability = graph_thread_ref_availability(&workspace_state, &thread_ref, None);
+
+    assert!(matches!(
+        availability,
+        GraphThreadRefAvailability::Invalid {
+            notice_title: "Thread link unavailable",
+            ..
+        }
+    ));
+    assert!(
+        availability
+            .detail()
+            .unwrap()
+            .contains("not registered as a workspace Syndic conversation view")
     );
 }
 
@@ -108,7 +107,6 @@ fn graph_thread_ref_rebind_requirement_takes_precedence_over_scope() {
         thread_id.clone(),
         execution_target.clone(),
         "Preview",
-        Some("Thread A".to_string()),
         1,
         2,
     ));
@@ -142,6 +140,11 @@ fn graph_thread_ref_implicit_home_scope_requires_exact_home_target() {
     workspace_state
         .select_runtime(beryl_model::workspace::RuntimeMode::HostWindows)
         .unwrap();
+    workspace_state.remember_thread(registered_thread(
+        "thread_a",
+        home_target.clone(),
+        "Home preview",
+    ));
 
     let missing_ref = sample_thread_ref(&missing_member_target);
     let home_ref = sample_thread_ref(&home_target);
@@ -168,13 +171,10 @@ fn graph_thread_ref_opens_after_implicit_home_rebind_restoration() {
     workspace_state
         .select_runtime(beryl_model::workspace::RuntimeMode::HostWindows)
         .unwrap();
-    workspace_state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
+    workspace_state.remember_thread(registered_thread(
+        thread_id.as_str(),
         home_target.clone(),
         "Home preview",
-        None,
-        1,
-        2,
     ));
     workspace_state
         .attach_execution_target(&explicit_target)
@@ -204,24 +204,27 @@ fn graph_thread_ref_opens_after_implicit_home_rebind_restoration() {
     );
 }
 
-fn sample_thread(id: &str) -> ThreadSummary {
-    ThreadSummary {
-        id: id.to_string(),
-        forked_from_id: None,
-        cwd: PathBuf::from(r"C:\work\beryl"),
-        preview: format!("Preview for {id}"),
-        name: Some(format!("Thread {id}")),
-        agent_nickname: None,
-        path: None,
-        created_at: 1,
-        updated_at: 2,
-        model_provider: "openai".to_string(),
-        ephemeral: false,
-    }
-}
-
 fn sample_thread_ref(execution_target: &WorkspaceId) -> ThreadRef {
     sample_thread_ref_with_thread(execution_target, ConversationThreadId::new("thread_a"))
+}
+
+fn registered_thread(
+    thread_id: impl Into<String>,
+    execution_target: WorkspaceId,
+    preview: impl Into<String>,
+) -> RegisteredConversationThread {
+    let thread_id = thread_id.into();
+    RegisteredConversationThread::new(
+        ConversationThreadId::new(thread_id.clone()),
+        execution_target,
+        preview,
+        1,
+        2,
+    )
+    .with_syndic_view_registration(
+        SyndicConversationId::new(format!("conversation:test:{thread_id}")),
+        SyndicConversationViewId::new(format!("view:test:{thread_id}")),
+    )
 }
 
 fn sample_thread_ref_with_thread(

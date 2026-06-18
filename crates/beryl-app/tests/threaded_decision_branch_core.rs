@@ -90,7 +90,6 @@ fn decision_branch_graph_patch_sets_item_kind_and_thread_ref() {
         &item_id,
         ConversationThreadId::new("child_thread"),
         WorkspaceId::host_windows(r"C:\work\beryl"),
-        Some("Child decision"),
         &provenance,
     )
     .expect("checklist item should produce decision branch graph patch");
@@ -109,6 +108,7 @@ fn decision_branch_graph_patch_sets_item_kind_and_thread_ref() {
     let refs = graph.thread_refs_for_node(&item_id).collect::<Vec<_>>();
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].thread_id().as_str(), "child_thread");
+    assert_eq!(refs[0].label(), "Decision branch");
 }
 
 #[test]

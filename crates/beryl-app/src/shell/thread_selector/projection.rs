@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use beryl_model::{conversation::ConversationThreadId, workspace::WorkspaceId};
+use beryl_model::{
+    conversation::{ConversationThreadId, SyndicConversationViewId},
+    workspace::WorkspaceId,
+};
 
 use crate::member_thread_inventory::{
     MemberThreadInventoryGroup, MemberThreadInventoryMemberKey, MemberThreadInventorySnapshot,
@@ -19,6 +22,7 @@ pub(crate) struct ThreadSelectorProjection {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ThreadSelectorProjectionThread {
     thread_id: ConversationThreadId,
+    syndic_view_id: SyndicConversationViewId,
     title: String,
     execution_target: WorkspaceId,
     created_at_millis: i64,
@@ -167,6 +171,10 @@ impl ThreadSelectorProjection {
 impl ThreadSelectorProjectionThread {
     pub(crate) fn thread_id(&self) -> &ConversationThreadId {
         &self.thread_id
+    }
+
+    pub(crate) fn syndic_view_id(&self) -> &SyndicConversationViewId {
+        &self.syndic_view_id
     }
 
     pub(crate) fn title(&self) -> &str {
@@ -328,6 +336,7 @@ impl ThreadSelectorProjectionThread {
     fn new(thread: &MemberThreadInventoryThread) -> Self {
         Self {
             thread_id: thread.thread_id().clone(),
+            syndic_view_id: thread.syndic_view_id().clone(),
             title: thread.title().to_string(),
             execution_target: thread.execution_target().clone(),
             created_at_millis: thread.created_at_millis(),

@@ -13,8 +13,8 @@ use beryl_backend::{ThreadTokenUsage, TokenUsageBreakdown};
 use beryl_model::conversation::{
     ConversationThreadId, ConversationThreadMemberBinding, ConversationThreadTitleSource,
     ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown, ConversationTurnId,
-    PrimaryWorkspaceMember, RegisteredConversationThread, ThreadAutomaticTitleGenerationState,
-    WorkspaceConversationState,
+    PrimaryWorkspaceMember, RegisteredConversationThread, SyndicConversationId,
+    SyndicConversationViewId, ThreadAutomaticTitleGenerationState, WorkspaceConversationState,
 };
 use beryl_model::workspace::{
     BerylWorkspaceId, BerylWorkspaceManifest, BerylWorkspaceTitleSource, RuntimeMode, WorkspaceId,
@@ -29,6 +29,27 @@ const WORKSPACE_METADATA_TABLE: TableDefinition<&str, &[u8]> =
 const WORKSPACE_CONVERSATION_STATE_KEY: &str = "conversation_state";
 const WORKSPACE_UI_STATE_KEY: &str = "ui_state";
 
+fn registered_thread(
+    thread_id: impl Into<String>,
+    execution_target: WorkspaceId,
+    preview: impl Into<String>,
+    created_at_millis: i64,
+    updated_at_millis: i64,
+) -> RegisteredConversationThread {
+    let thread_id = thread_id.into();
+    RegisteredConversationThread::new(
+        ConversationThreadId::new(thread_id.clone()),
+        execution_target,
+        preview,
+        created_at_millis,
+        updated_at_millis,
+    )
+    .with_syndic_view_registration(
+        SyndicConversationId::new(format!("conversation:test:{thread_id}")),
+        SyndicConversationViewId::new(format!("view:test:{thread_id}")),
+    )
+}
+
 #[test]
 fn workspace_state_roundtrips_runtime_members_and_active_thread() {
     let root = unique_temp_dir();
@@ -37,11 +58,10 @@ fn workspace_state_roundtrips_runtime_members_and_active_thread() {
     let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Graphics Learning", 42);
     let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
     let mut state = WorkspaceConversationState::default();
-    let thread = RegisteredConversationThread::new(
-        ConversationThreadId::new("thread_1"),
+    let thread = registered_thread(
+        "thread_1",
         execution_target.clone(),
         "Explain the renderer",
-        Some("Renderer".to_string()),
         1,
         2,
     );
@@ -62,7 +82,15 @@ fn workspace_state_roundtrips_runtime_members_and_active_thread() {
     let loaded_thread = loaded
         .thread_registration(&ConversationThreadId::new("thread_1"))
         .unwrap();
-    assert_eq!(loaded_thread.title(), Some("Renderer"));
+    assert_eq!(loaded_thread.title(), None);
+    assert_eq!(
+        loaded_thread.syndic_conversation_id().map(|id| id.as_str()),
+        Some("conversation:test:thread_1")
+    );
+    assert_eq!(
+        loaded_thread.syndic_view_id().map(|id| id.as_str()),
+        Some("view:test:thread_1")
+    );
     assert!(loaded_thread.gui_title().is_none());
     assert!(matches!(
         loaded_thread.member_binding(),
@@ -182,11 +210,10 @@ fn active_thread_state_persists_only_after_successful_activation_update() {
     state
         .designate_primary_execution_target(&execution_target)
         .unwrap();
-    state.remember_thread(RegisteredConversationThread::new(
-        thread_a.clone(),
+    state.remember_thread(registered_thread(
+        thread_a.as_str(),
         execution_target.clone(),
         "Active preview",
-        Some("Active".to_string()),
         1,
         2,
     ));
@@ -206,11 +233,10 @@ fn active_thread_state_persists_only_after_successful_activation_update() {
     let failed_attempt = persistence.load_workspace_state(&workspace_id).unwrap();
     assert_eq!(failed_attempt.active_thread(), Some(&thread_a));
 
-    state.remember_thread(RegisteredConversationThread::new(
-        thread_b.clone(),
+    state.remember_thread(registered_thread(
+        thread_b.as_str(),
         execution_target,
         "Selected preview",
-        Some("Selected".to_string()),
         3,
         4,
     ));
@@ -341,7 +367,6 @@ fn workspace_title_change_moves_conversation_ui_and_image_asset_state() {
         ConversationThreadId::new("thread_1"),
         execution_target.clone(),
         "Inspect renderer",
-        Some("Renderer".to_string()),
         10,
         11,
     );
@@ -425,7 +450,6 @@ fn gui_owned_thread_titles_and_rebind_requirement_roundtrip_in_workspace_state()
         generated_thread_id.clone(),
         execution_target.clone(),
         "Generated preview",
-        None,
         1,
         2,
     ));
@@ -433,7 +457,6 @@ fn gui_owned_thread_titles_and_rebind_requirement_roundtrip_in_workspace_state()
         manual_thread_id.clone(),
         execution_target,
         "Manual preview",
-        Some("Backend title".to_string()),
         3,
         4,
     ));
@@ -465,7 +488,6 @@ fn gui_owned_thread_titles_and_rebind_requirement_roundtrip_in_workspace_state()
         generated.gui_title().unwrap().source(),
         ConversationThreadTitleSource::FirstCompletedTurn
     );
-    assert_eq!(manual.backend_name(), Some("Backend title"));
     assert_eq!(manual.title(), Some("Manual title"));
     assert_eq!(
         manual.gui_title().unwrap().source(),
@@ -498,7 +520,6 @@ fn beryl_created_thread_title_generation_state_roundtrips_as_repairable_after_re
             beryl_thread_id.clone(),
             execution_target.clone(),
             "",
-            None,
             1,
             2,
         )
@@ -508,7 +529,6 @@ fn beryl_created_thread_title_generation_state_roundtrips_as_repairable_after_re
         external_thread_id.clone(),
         execution_target.clone(),
         "",
-        None,
         3,
         4,
     ));
@@ -526,7 +546,6 @@ fn beryl_created_thread_title_generation_state_roundtrips_as_repairable_after_re
         beryl_thread_id.clone(),
         execution_target,
         "Refreshed preview",
-        None,
         5,
         6,
     ));
@@ -593,55 +612,11 @@ fn legacy_attempted_thread_title_generation_state_loads_as_repairable() {
 }
 
 #[test]
-fn suppressed_automatic_thread_title_backend_name_roundtrips() {
+fn generated_thread_title_roundtrips_without_backend_metadata() {
     let root = unique_temp_dir();
     let persistence = BerylWorkspacePersistence::new(&root);
-    let workspace_id = BerylWorkspaceId::new("suppressed_thread_title_name").unwrap();
-    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Suppressed Titles", 42);
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new("thread_branch");
-    let mut state = WorkspaceConversationState::default();
-
-    state
-        .designate_primary_execution_target(&execution_target)
-        .unwrap();
-    state.remember_thread(
-        RegisteredConversationThread::new(
-            thread_id.clone(),
-            execution_target,
-            "Branch preview",
-            None,
-            1,
-            2,
-        )
-        .with_beryl_created()
-        .with_ignored_backend_name_for_automatic_title(Some("Source title".to_string())),
-    );
-
-    persistence.save_workspace_manifest(&manifest).unwrap();
-    persistence
-        .save_workspace_state(&workspace_id, &state)
-        .unwrap();
-
-    let loaded = persistence.load_workspace_state(&workspace_id).unwrap();
-    let thread = loaded.thread_registration(&thread_id).unwrap();
-
-    assert_eq!(thread.backend_name(), None);
-    assert_eq!(
-        thread.ignored_backend_name_for_automatic_title(),
-        Some("Source title")
-    );
-    assert!(loaded.thread_automatic_title_generation_eligible(&thread_id));
-
-    root.close().unwrap();
-}
-
-#[test]
-fn backend_thread_name_snapshot_roundtrips_separately_from_generated_fallback() {
-    let root = unique_temp_dir();
-    let persistence = BerylWorkspacePersistence::new(&root);
-    let workspace_id = BerylWorkspaceId::new("thread_names").unwrap();
-    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Thread Names", 42);
+    let workspace_id = BerylWorkspaceId::new("thread_titles").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Thread Titles", 42);
     let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
     let thread_id = ConversationThreadId::new("thread_generated");
     let mut state = WorkspaceConversationState::default();
@@ -653,17 +628,12 @@ fn backend_thread_name_snapshot_roundtrips_separately_from_generated_fallback() 
         thread_id.clone(),
         execution_target,
         "Generated preview",
-        None,
         1,
         2,
     ));
     state
         .set_thread_generated_title_if_absent(&thread_id, "Generated title", 3)
         .unwrap();
-    state
-        .set_thread_backend_name(&thread_id, Some("Backend title".to_string()))
-        .unwrap();
-
     persistence.save_workspace_manifest(&manifest).unwrap();
     persistence
         .save_workspace_state(&workspace_id, &state)
@@ -674,8 +644,7 @@ fn backend_thread_name_snapshot_roundtrips_separately_from_generated_fallback() 
         .thread_registration(&thread_id)
         .expect("thread should roundtrip");
 
-    assert_eq!(thread.backend_name(), Some("Backend title"));
-    assert_eq!(thread.title(), Some("Backend title"));
+    assert_eq!(thread.title(), Some("Generated title"));
     assert_eq!(
         thread.gui_title().unwrap().source(),
         ConversationThreadTitleSource::FirstCompletedTurn
@@ -703,7 +672,6 @@ fn token_usage_snapshots_record_replace_and_roundtrip_in_workspace_state() {
         thread_id.clone(),
         execution_target,
         "Usage preview",
-        None,
         1,
         2,
     ));
@@ -759,7 +727,6 @@ fn token_usage_notification_snapshot_persists_without_touching_workspace_manifes
         thread_id.clone(),
         execution_target,
         "Usage preview",
-        None,
         1,
         2,
     ));

@@ -44,13 +44,6 @@ fn title_worker_publishes_generated_title_without_foreground_gate() {
             title: "Improve Thread Titles".to_string()
         }
     );
-    assert_eq!(
-        backend.set_names,
-        vec![(
-            "target_thread".to_string(),
-            "Improve Thread Titles".to_string()
-        )]
-    );
     assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
 }
 
@@ -68,7 +61,6 @@ fn title_worker_times_out_and_cleans_up() {
     );
 
     assert!(matches!(result, ThreadTitleResult::Failed { .. }));
-    assert!(backend.set_names.is_empty());
     assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
 }
 
@@ -86,29 +78,6 @@ fn title_worker_fails_when_generation_turn_fails() {
     );
 
     assert!(matches!(result, ThreadTitleResult::Failed { .. }));
-    assert!(backend.set_names.is_empty());
-    assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
-}
-
-#[test]
-fn title_worker_reports_name_setting_failure() {
-    let candidate = candidate();
-    let mut backend = FakeTitleBackend::with_turn(completed_title_turn("Useful Title"));
-    backend.set_name_error = Some("name set failed".to_string());
-
-    let result = run_thread_title_attempt(
-        &mut backend,
-        &workspace(),
-        candidate,
-        Duration::from_secs(1),
-        Duration::from_secs(1),
-    );
-
-    assert!(matches!(result, ThreadTitleResult::Failed { .. }));
-    assert_eq!(
-        backend.set_names,
-        vec![("target_thread".to_string(), "Useful Title".to_string())]
-    );
     assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
 }
 
@@ -131,12 +100,11 @@ fn title_worker_skips_backend_work_when_cancelled_before_start() {
     assert_eq!(result, ThreadTitleResult::Cancelled);
     assert_eq!(backend.started_threads, 0);
     assert_eq!(backend.started_turns, 0);
-    assert!(backend.set_names.is_empty());
     assert!(backend.unsubscribed.is_empty());
 }
 
 #[test]
-fn title_worker_cancellation_while_generation_in_progress_skips_name_setting() {
+fn title_worker_cancellation_while_generation_in_progress_cleans_up() {
     let candidate = candidate();
     let cancellation = ThreadTitleCancellation::new();
     let cancellation_signal = cancellation.clone();
@@ -158,36 +126,6 @@ fn title_worker_cancellation_while_generation_in_progress_skips_name_setting() {
     cancel_thread.join().unwrap();
 
     assert_eq!(result, ThreadTitleResult::Cancelled);
-    assert!(backend.set_names.is_empty());
-    assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
-}
-
-#[test]
-fn title_worker_keeps_applied_result_when_cancelled_during_name_setting() {
-    let candidate = candidate();
-    let cancellation = ThreadTitleCancellation::new();
-    let mut backend = FakeTitleBackend::with_turn(completed_title_turn("Useful Title"));
-    backend.cancel_on_set_name = Some(cancellation.clone());
-
-    let result = run_thread_title_attempt_with_cancellation(
-        &mut backend,
-        &workspace(),
-        candidate,
-        cancellation,
-        Duration::from_secs(1),
-        Duration::from_secs(1),
-    );
-
-    assert_eq!(
-        result,
-        ThreadTitleResult::Applied {
-            title: "Useful Title".to_string()
-        }
-    );
-    assert_eq!(
-        backend.set_names,
-        vec![("target_thread".to_string(), "Useful Title".to_string())]
-    );
     assert_eq!(backend.unsubscribed, vec!["maintenance_thread".to_string()]);
 }
 
@@ -251,7 +189,6 @@ fn repair_candidate_prefers_earliest_known_input_over_later_fallback() {
     let candidate = thread_title_repair_candidate(
         "target_thread",
         true,
-        None,
         false,
         Some("First submitted prompt"),
         Some("Later repair turn"),
@@ -267,7 +204,6 @@ fn repair_candidate_uses_activation_loaded_input_without_turn_fallback() {
     let candidate = thread_title_repair_candidate(
         "target_thread",
         true,
-        None,
         false,
         Some("Loaded history prompt"),
         None,
@@ -283,7 +219,6 @@ fn repair_candidate_uses_later_fallback_when_no_earlier_input_is_known() {
     let candidate = thread_title_repair_candidate(
         "target_thread",
         true,
-        None,
         false,
         None,
         Some("Later repair turn"),
@@ -331,39 +266,26 @@ fn selected_turn_title_candidate_uses_selected_turn_prompt() {
 #[test]
 fn repair_candidate_respects_title_and_task_guards() {
     assert!(
-        thread_title_repair_candidate("target_thread", false, None, false, Some("Prompt"), None,)
+        thread_title_repair_candidate("target_thread", false, false, Some("Prompt"), None,)
             .is_none()
     );
     assert!(
-        thread_title_repair_candidate(
-            "target_thread",
-            true,
-            Some("Named thread"),
-            false,
-            Some("Prompt"),
-            None,
-        )
-        .is_none()
+        thread_title_repair_candidate("target_thread", true, false, Some("Prompt"), None,)
+            .is_some()
     );
     assert!(
-        thread_title_repair_candidate("target_thread", true, None, true, Some("Prompt"), None,)
-            .is_none()
+        thread_title_repair_candidate("target_thread", true, true, Some("Prompt"), None,).is_none()
     );
-    assert!(
-        thread_title_repair_candidate("target_thread", true, None, false, None, None).is_none()
-    );
+    assert!(thread_title_repair_candidate("target_thread", true, false, None, None).is_none());
 }
 
 struct FakeTitleBackend {
     turn_response: TurnStartResponse,
     events: VecDeque<Result<Option<TurnStreamEvent>, String>>,
-    set_name_error: Option<String>,
-    cancel_on_set_name: Option<ThreadTitleCancellation>,
     empty_poll_delay: Duration,
     expected_prompt_tag: &'static str,
     started_threads: usize,
     started_turns: usize,
-    set_names: Vec<(String, String)>,
     unsubscribed: Vec<String>,
 }
 
@@ -372,13 +294,10 @@ impl FakeTitleBackend {
         Self {
             turn_response,
             events: VecDeque::new(),
-            set_name_error: None,
-            cancel_on_set_name: None,
             empty_poll_delay: Duration::ZERO,
             expected_prompt_tag: "<first_user_message>",
             started_threads: 0,
             started_turns: 0,
-            set_names: Vec::new(),
             unsubscribed: Vec::new(),
         }
     }
@@ -433,24 +352,6 @@ impl ThreadTitleBackend for FakeTitleBackend {
             thread::sleep(self.empty_poll_delay.min(idle_timeout));
             Ok(None)
         })
-    }
-
-    fn set_thread_name(
-        &mut self,
-        thread_id: &str,
-        name: &str,
-        _: Duration,
-    ) -> Result<(), Self::Error> {
-        self.set_names
-            .push((thread_id.to_string(), name.to_string()));
-        if let Some(cancellation) = &self.cancel_on_set_name {
-            cancellation.cancel();
-        }
-        if let Some(error) = &self.set_name_error {
-            Err(error.clone())
-        } else {
-            Ok(())
-        }
     }
 
     fn unsubscribe_thread(

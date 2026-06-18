@@ -879,7 +879,7 @@ impl ToolActivityProjection {
         if !self.is_observed_subagent_thread(&thread.id) {
             changed |= self.note_agent_label(
                 thread.id.as_str(),
-                thread.name.as_deref().or(Some(thread.preview.as_str())),
+                Some(thread.preview.as_str()),
                 AgentLabelPriority::ThreadDisplayLabel,
             );
         }

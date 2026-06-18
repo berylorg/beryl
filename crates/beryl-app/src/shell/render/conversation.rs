@@ -1134,13 +1134,18 @@ fn toolbar_branch_breadcrumb_segments(
     selected_label: &str,
 ) -> Option<Vec<ThreadStripBreadcrumbSegment>> {
     let selected_thread_id = surface.selected_thread_id();
-    let segments =
-        thread_strip_breadcrumb_trail(workspace_state, selected_thread_id, selected_label, None)?
-            .segments()
-            .iter()
-            .filter(|segment| !segment.active())
-            .cloned()
-            .collect::<Vec<_>>();
+    let segments = thread_strip_breadcrumb_trail(
+        workspace_state,
+        surface.member_thread_inventory().snapshot(),
+        selected_thread_id,
+        selected_label,
+        None,
+    )?
+    .segments()
+    .iter()
+    .filter(|segment| !segment.active())
+    .cloned()
+    .collect::<Vec<_>>();
 
     (!segments.is_empty()).then_some(segments)
 }
@@ -1458,6 +1463,7 @@ fn render_toolbar_parent_breadcrumb(
             .execution_target()
             .map(|execution_target| ThreadSelectorActivationTarget {
                 thread_id: breadcrumb.thread_id().clone(),
+                syndic_view_id: breadcrumb.syndic_view_id().clone(),
                 label: label.clone(),
                 execution_target: execution_target.clone(),
             })

@@ -3,12 +3,11 @@ use std::path::PathBuf;
 use beryl_backend::{
     AccountRateLimitsResponse, DynamicToolCallOutputContentItem, DynamicToolCallResponse,
     JsonRpcError, NonSteerableTurnKind, ProtocolPhase, ThreadForkResponse, ThreadItem,
-    ThreadListResponse, ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus,
-    ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStartOptions,
-    TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
-    active_turn_not_steerable_error, parse_approval_request, parse_dynamic_tool_call_request,
-    parse_turn_stream_event,
+    ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus, ThreadUnsubscribeResponse,
+    ThreadUnsubscribeStatus, ToolActivityEvent, ToolActivityFileChangeSummary,
+    ToolActivityLifecycle, ToolActivitySource, TurnStartOptions, TurnStartResponse, TurnStatus,
+    TurnSteerResponse, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
+    parse_approval_request, parse_dynamic_tool_call_request, parse_turn_stream_event,
 };
 use serde_json::{Value, json};
 
@@ -239,170 +238,6 @@ fn thread_session_response_derives_agent_nickname_from_subagent_source_metadata(
     assert_eq!(
         response.thread.summary().agent_nickname.as_deref(),
         Some("Gauss")
-    );
-}
-
-#[test]
-fn thread_list_response_preserves_agent_nickname_metadata() {
-    let response: ThreadListResponse = serde_json::from_value(json!({
-        "data": [{
-            "agentNickname": "Hooke",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Subagent work",
-            "updatedAt": 2
-        }],
-        "nextCursor": null
-    }))
-    .unwrap();
-
-    assert_eq!(response.data[0].id, "thread_child");
-    assert_eq!(response.data[0].agent_nickname.as_deref(), Some("Hooke"));
-}
-
-#[test]
-fn thread_list_response_derives_agent_nickname_from_subagent_source_metadata() {
-    let response: ThreadListResponse = serde_json::from_value(json!({
-        "data": [{
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Subagent work",
-            "source": {
-                "subAgent": {
-                    "thread_spawn": {
-                        "agent_nickname": "Gauss",
-                        "agent_role": "explorer",
-                        "depth": 1,
-                        "parent_thread_id": "thread_parent"
-                    }
-                }
-            },
-            "updatedAt": 2
-        }],
-        "nextCursor": null
-    }))
-    .unwrap();
-
-    assert_eq!(response.data[0].id, "thread_child");
-    assert_eq!(response.data[0].agent_nickname.as_deref(), Some("Gauss"));
-}
-
-#[test]
-fn thread_list_response_preserves_fork_parent_metadata() {
-    let response: ThreadListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "createdAt": 1,
-                "cwd": "C:/work/beryl",
-                "ephemeral": false,
-                "id": "thread_parent",
-                "modelProvider": "openai",
-                "preview": "Parent work",
-                "updatedAt": 2
-            },
-            {
-                "createdAt": 3,
-                "cwd": "C:/work/beryl",
-                "ephemeral": false,
-                "forkedFromId": "thread_parent",
-                "id": "thread_child",
-                "modelProvider": "openai",
-                "preview": "Child work",
-                "updatedAt": 4
-            }
-        ],
-        "nextCursor": null
-    }))
-    .unwrap();
-
-    assert_eq!(response.data[0].forked_from_id, None);
-    assert_eq!(response.data[1].id, "thread_child");
-    assert_eq!(
-        response.data[1].forked_from_id.as_deref(),
-        Some("thread_parent")
-    );
-}
-
-#[test]
-fn thread_list_response_treats_malformed_fork_parent_metadata_as_absent() {
-    let response: ThreadListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "createdAt": 1,
-                "cwd": "C:/work/beryl",
-                "ephemeral": false,
-                "forkedFromId": {"id": "thread_parent"},
-                "id": "thread_child",
-                "modelProvider": "openai",
-                "preview": "Child work",
-                "updatedAt": 2
-            },
-            {
-                "createdAt": 3,
-                "cwd": "C:/work/beryl",
-                "ephemeral": false,
-                "forkedFromId": 42,
-                "id": "thread_other_child",
-                "modelProvider": "openai",
-                "preview": "Other child work",
-                "updatedAt": 4
-            }
-        ],
-        "nextCursor": null
-    }))
-    .unwrap();
-
-    assert_eq!(response.data[0].forked_from_id, None);
-    assert_eq!(response.data[1].forked_from_id, None);
-}
-
-#[test]
-fn thread_session_response_can_supply_fork_parent_when_list_row_is_null() {
-    let list_response: ThreadListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "createdAt": 1,
-                "cwd": "C:/work/beryl",
-                "ephemeral": false,
-                "forkedFromId": null,
-                "id": "thread_child",
-                "modelProvider": "openai",
-                "preview": "Child work",
-                "updatedAt": 2
-            }
-        ]
-    }))
-    .unwrap();
-    let read_response: ThreadSessionResponse = serde_json::from_value(json!({
-        "thread": {
-            "cliVersion": "0.128.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "forkedFromId": "thread_parent",
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Child work",
-            "source": "appServer",
-            "status": {
-                "type": "notLoaded"
-            },
-            "turns": [],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    assert_eq!(list_response.data[0].forked_from_id, None);
-    assert_eq!(
-        read_response.thread.summary().forked_from_id.as_deref(),
-        Some("thread_parent")
     );
 }
 

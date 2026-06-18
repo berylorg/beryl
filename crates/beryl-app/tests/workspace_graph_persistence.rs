@@ -53,7 +53,6 @@ fn graph_state_roundtrips_without_clobbering_conversation_state() {
         ConversationThreadId::new("thread_1"),
         execution_target.clone(),
         "Inspect graph state",
-        Some("Graph".to_string()),
         1,
         2,
     );
@@ -184,7 +183,6 @@ fn thread_selector_activation_state_update_does_not_mutate_semantic_graph_thread
         selector_thread_id.clone(),
         execution_target,
         "Selector preview",
-        Some("Selector thread".to_string()),
         10,
         11,
     ));

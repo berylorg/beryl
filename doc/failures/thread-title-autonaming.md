@@ -22,7 +22,7 @@ After GUI-local fallback generation shipped, recent Beryl-created threads receiv
 
 The invalid assumption was that a local best-effort fallback would be acceptable until app-server produced a better backend name. Further schema and source inspection showed app-server exposes no direct title-generation request or standalone non-history model call, so waiting for an app-server-generated title will not solve Beryl-created thread naming.
 
-The course adjustment is to make automatic thread naming a Beryl-owned maintenance workflow: use a centralized app-server ephemeral thread path to ask the model for a short title, create a fresh maintenance thread for each title attempt, clean it up after the attempt terminates, keep that maintenance thread out of every user-visible thread inventory and activation path, and publish the accepted title to the target thread through `thread/name/set`.
+The then-current course adjustment was to make automatic thread naming a Beryl-owned maintenance workflow: use a centralized app-server ephemeral thread path to ask the model for a short title, create a fresh maintenance thread for each title attempt, clean it up after the attempt terminates, keep that maintenance thread out of every user-visible thread inventory and activation path, and publish the accepted title to the target thread through `thread/name/set`. The 2026-06-18 workspace-plus-Syndic catalog rework superseded the publication step.
 
 ## 2026-05-02: Publication was coupled to foreground turn completion
 
@@ -32,4 +32,12 @@ The first invalid assumption was that publishing the generated title should wait
 
 The second invalid assumption was that title eligibility only needed to be emitted from the pending new-thread submit path. Beryl can create an unnamed backend thread before the first user prompt through graph or checklist start flows; the later first prompt then runs against an already selected thread and can miss the automatic-title trigger.
 
-The course adjustment is to make eligibility depend on Beryl ownership, missing manual/backend title, first submitted prompt, and known backend thread id. Title generation and `thread/name/set` publication run on the background maintenance connection without waiting for the target turn's first assistant response or terminal state. Manual GUI-local titles and existing backend-provided names still take precedence, stale worker results must still be ignored, and failed title generation or failed backend name setting remain the only automatic-title failures that leave the thread untitled.
+The then-current course adjustment was to make eligibility depend on Beryl ownership, missing manual/backend title, first submitted prompt, and known backend thread id. Title generation and `thread/name/set` publication ran on the background maintenance connection without waiting for the target turn's first assistant response or terminal state. The 2026-06-18 workspace-plus-Syndic catalog rework superseded the backend-name precedence, publication, and failure semantics described here.
+
+## 2026-06-18: CAS thread-name publication is obsolete under workspace-plus-Syndic catalog authority
+
+The workspace-plus-Syndic thread catalog rework invalidated the remaining backend-name publication step. Completion review showed automatic title generation still publishing accepted titles through CAS `thread/name/set`, and backend-name metadata could still suppress Beryl-generated titles in some paths.
+
+That contradicted the target authority split in `doc/features/conversation-threads/design.md`: accepted title authority is Beryl workspace title metadata, while CAS thread names and live thread-name notifications are not selector, restore, or title authority.
+
+The course correction is to keep the maintenance turn only as the live model worker, persist accepted titles as generated workspace title metadata, refresh catalog rows from workspace-plus-Syndic state, and remove automatic-title coupling to backend-name metadata. CAS `thread/name/set` is not part of the title workflow.

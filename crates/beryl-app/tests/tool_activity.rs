@@ -1430,7 +1430,7 @@ fn projection_keeps_subagent_read_metadata_unresolved_when_nickname_is_absent() 
 }
 
 #[test]
-fn projection_does_not_suffix_non_subagent_display_labels_with_model_metadata() {
+fn projection_ignores_non_subagent_cas_name_with_model_metadata() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
         &started("thread_main", "turn_main", command_item("cmd_1")),
@@ -1442,11 +1442,11 @@ fn projection_does_not_suffix_non_subagent_display_labels_with_model_metadata() 
     projection.apply_thread_read_metadata([&metadata]);
 
     let row = row_for_activity(&projection, "dir");
-    assert_eq!(row.agent_label, "Research");
+    assert_eq!(row.agent_label, "thread_main preview");
 }
 
 #[test]
-fn projection_uses_thread_summary_display_label_for_non_subagent_when_nickname_is_absent() {
+fn projection_uses_thread_summary_preview_for_non_subagent_when_nickname_is_absent() {
     let mut projection = ToolActivityProjection::default();
     projection.apply_stream_event(
         &started("thread_child", "turn_child", command_item("cmd_1")),
@@ -1462,7 +1462,7 @@ fn projection_uses_thread_summary_display_label_for_non_subagent_when_nickname_i
         .iter()
         .find(|row| row.tool_display_value == "dir")
         .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "Research");
+    assert_eq!(child_row.agent_label, "thread_child preview");
 
     let child_summary = thread_summary("thread_child", Some("Hooke"));
     projection.apply_thread_summary_agent_labels([&child_summary]);

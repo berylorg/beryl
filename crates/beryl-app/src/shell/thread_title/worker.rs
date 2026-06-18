@@ -412,24 +412,8 @@ impl ThreadTitleAttempt {
             return ThreadTitleResult::Cancelled;
         }
 
-        match backend.set_thread_name(self.candidate.target_thread_id(), &title, request_timeout) {
-            Ok(()) => {
-                self.cleanup(backend, request_timeout);
-                ThreadTitleResult::Applied { title }
-            }
-            Err(error) => {
-                warn!(
-                    thread_id = self.candidate.target_thread_id(),
-                    maintenance_thread_id = self.maintenance_thread_id.as_str(),
-                    error = %error,
-                    "failed to publish generated backend thread title"
-                );
-                self.cleanup(backend, request_timeout);
-                ThreadTitleResult::Failed {
-                    message: format!("Beryl could not publish the generated thread title: {error}"),
-                }
-            }
-        }
+        self.cleanup(backend, request_timeout);
+        ThreadTitleResult::Applied { title }
     }
 
     fn generated_title(&self) -> Option<String> {

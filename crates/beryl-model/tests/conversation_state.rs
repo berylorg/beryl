@@ -1,8 +1,9 @@
 use beryl_model::conversation::{
-    BranchThreadTitleRetitleState, ConversationThreadId, ConversationThreadMemberBinding,
-    ConversationThreadTitleSource, ConversationThreadTokenUsageSnapshot,
-    ConversationTokenUsageBreakdown, ConversationTurnId, PrimaryWorkspaceMember,
-    RegisteredConversationThread, ThreadAutomaticTitleGenerationState, WorkspaceConversationState,
+    BranchThreadTitleRetitleState, ConversationCatalogStatus, ConversationThreadId,
+    ConversationThreadMemberBinding, ConversationThreadTitleSource,
+    ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown, ConversationTurnId,
+    PrimaryWorkspaceMember, RegisteredConversationThread, SyndicConversationId,
+    SyndicConversationViewId, ThreadAutomaticTitleGenerationState, WorkspaceConversationState,
     WorkspaceConversationStateError,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId, WorkspaceMemberAvailability};
@@ -261,7 +262,6 @@ fn remember_thread_keeps_threads_sorted_by_recent_activity() {
         ConversationThreadId::new("thread_old"),
         execution_target.clone(),
         "Old thread",
-        None,
         1,
         2,
     );
@@ -269,7 +269,6 @@ fn remember_thread_keeps_threads_sorted_by_recent_activity() {
         ConversationThreadId::new("thread_new"),
         execution_target,
         "New thread",
-        None,
         3,
         4,
     );
@@ -287,190 +286,105 @@ fn remember_thread_keeps_threads_sorted_by_recent_activity() {
 }
 
 #[test]
-fn remembered_thread_records_backend_name_snapshot_from_backend_metadata() {
+fn catalog_threads_require_syndic_view_registration() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread = RegisteredConversationThread::new(
-        ConversationThreadId::new("thread_named"),
-        execution_target,
-        "Named thread",
-        Some("Release notes".to_string()),
-        7,
-        8,
-    );
-
-    assert_eq!(thread.backend_name(), Some("Release notes"));
-    assert_eq!(thread.title(), Some("Release notes"));
-    assert!(thread.gui_title().is_none());
-}
-
-#[test]
-fn remembering_existing_thread_preserves_backend_name_snapshot_from_stale_summary() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new("thread_named");
+    let unregistered_id = ConversationThreadId::new("cas_only_thread");
+    let registered_id = ConversationThreadId::new("registered_thread");
     let mut state = WorkspaceConversationState::default();
 
     state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
+        unregistered_id.clone(),
         execution_target.clone(),
-        "Named preview",
-        Some("Release notes".to_string()),
-        7,
-        8,
+        "CAS-only preview",
+        1,
+        2,
     ));
-
-    assert!(state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
-        execution_target,
-        "Stale unnamed preview",
-        None,
-        7,
-        9,
-    )));
-
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), Some("Release notes"));
-    assert_eq!(thread.title(), Some("Release notes"));
-    assert_eq!(thread.preview(), "Stale unnamed preview");
-
-    assert!(state.set_thread_backend_name(&thread_id, None).unwrap());
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), None);
-    assert_eq!(thread.title(), None);
-}
-
-#[test]
-fn remembering_existing_thread_ignores_suppressed_automatic_title_backend_name() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new("thread_branch");
-    let mut state = WorkspaceConversationState::default();
-
     state.remember_thread(
         RegisteredConversationThread::new(
-            thread_id.clone(),
-            execution_target.clone(),
-            "Branch preview",
-            None,
-            1,
-            2,
-        )
-        .with_beryl_created()
-        .with_ignored_backend_name_for_automatic_title(Some("Source title".to_string())),
-    );
-    state
-        .mark_thread_automatic_title_generation_started(&thread_id)
-        .unwrap();
-
-    assert!(state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
-        execution_target,
-        "Refreshed branch preview",
-        Some("Source title".to_string()),
-        3,
-        4,
-    )));
-
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), None);
-    assert_eq!(
-        thread.ignored_backend_name_for_automatic_title(),
-        Some("Source title")
-    );
-    assert_eq!(
-        thread.automatic_title_generation_state(),
-        ThreadAutomaticTitleGenerationState::InFlight
-    );
-}
-
-#[test]
-fn remembering_existing_thread_accepts_distinct_backend_name_after_suppression() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new("thread_branch");
-    let mut state = WorkspaceConversationState::default();
-
-    state.remember_thread(
-        RegisteredConversationThread::new(
-            thread_id.clone(),
-            execution_target.clone(),
-            "Branch preview",
-            None,
-            1,
-            2,
-        )
-        .with_beryl_created()
-        .with_ignored_backend_name_for_automatic_title(Some("Source title".to_string())),
-    );
-    state
-        .mark_thread_automatic_title_generation_started(&thread_id)
-        .unwrap();
-
-    assert!(state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
-        execution_target,
-        "Refreshed branch preview",
-        Some("Generated branch title".to_string()),
-        3,
-        4,
-    )));
-
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), Some("Generated branch title"));
-    assert_eq!(thread.ignored_backend_name_for_automatic_title(), None);
-    assert_eq!(
-        thread.automatic_title_generation_state(),
-        ThreadAutomaticTitleGenerationState::Applied
-    );
-}
-
-#[test]
-fn backend_name_update_ignores_suppressed_automatic_title_backend_name_unless_authoritative() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new("thread_branch");
-    let mut state = WorkspaceConversationState::default();
-
-    state.remember_thread(
-        RegisteredConversationThread::new(
-            thread_id.clone(),
+            registered_id.clone(),
             execution_target,
-            "Branch preview",
-            None,
-            1,
-            2,
+            "Registered preview",
+            3,
+            4,
         )
-        .with_beryl_created()
-        .with_ignored_backend_name_for_automatic_title(Some("Source title".to_string())),
-    );
-    state
-        .mark_thread_automatic_title_generation_started(&thread_id)
-        .unwrap();
-
-    assert!(
-        !state
-            .set_thread_backend_name(&thread_id, Some("Source title".to_string()))
-            .unwrap()
-    );
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), None);
-    assert_eq!(
-        thread.ignored_backend_name_for_automatic_title(),
-        Some("Source title")
-    );
-    assert_eq!(
-        thread.automatic_title_generation_state(),
-        ThreadAutomaticTitleGenerationState::InFlight
+        .with_syndic_view_registration(
+            SyndicConversationId::new("conversation:workspace:registered_thread"),
+            SyndicConversationViewId::new("view:workspace:registered_thread"),
+        ),
     );
 
+    assert!(state.thread_registration(&unregistered_id).is_some());
     assert!(
         state
-            .set_authoritative_thread_backend_name(&thread_id, Some("Source title".to_string()))
-            .unwrap()
+            .catalog_thread_registration(&unregistered_id)
+            .is_none()
     );
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), Some("Source title"));
-    assert_eq!(thread.ignored_backend_name_for_automatic_title(), None);
     assert_eq!(
-        thread.automatic_title_generation_state(),
-        ThreadAutomaticTitleGenerationState::Applied
+        state
+            .catalog_threads()
+            .map(|thread| thread.thread_id().as_str())
+            .collect::<Vec<_>>(),
+        vec!["registered_thread"]
     );
+}
+
+#[test]
+fn activate_thread_requires_syndic_view_registration() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let unregistered_id = ConversationThreadId::new("cas_only_thread");
+    let registered_id = ConversationThreadId::new("registered_thread");
+    let mut state = WorkspaceConversationState::default();
+
+    state.remember_thread(RegisteredConversationThread::new(
+        unregistered_id.clone(),
+        execution_target.clone(),
+        "CAS-only preview",
+        1,
+        2,
+    ));
+    state.remember_thread(
+        RegisteredConversationThread::new(
+            registered_id.clone(),
+            execution_target,
+            "Registered preview",
+            3,
+            4,
+        )
+        .with_syndic_view_registration(
+            SyndicConversationId::new("conversation:workspace:registered_thread"),
+            SyndicConversationViewId::new("view:workspace:registered_thread"),
+        ),
+    );
+
+    assert!(state.activate_thread(&unregistered_id).is_none());
+    assert!(state.active_thread().is_none());
+    assert!(state.activate_thread(&registered_id).is_some());
+    assert_eq!(state.active_thread(), Some(&registered_id));
+}
+
+#[test]
+fn archived_syndic_view_registration_is_not_catalog_visible() {
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let thread_id = ConversationThreadId::new("registered_thread");
+    let mut thread = RegisteredConversationThread::new(
+        thread_id.clone(),
+        execution_target,
+        "Registered preview",
+        3,
+        4,
+    )
+    .with_syndic_view_registration(
+        SyndicConversationId::new("conversation:workspace:registered_thread"),
+        SyndicConversationViewId::new("view:workspace:registered_thread"),
+    );
+    assert!(thread.set_catalog_status(ConversationCatalogStatus::Archived));
+    let mut state = WorkspaceConversationState::default();
+
+    state.remember_thread(thread);
+
+    assert!(state.thread_registration(&thread_id).is_some());
+    assert!(state.catalog_thread_registration(&thread_id).is_none());
+    assert!(state.catalog_threads().next().is_none());
 }
 
 #[test]
@@ -482,7 +396,6 @@ fn generated_thread_title_is_persisted_without_overwriting_existing_title() {
         ConversationThreadId::new("thread_1"),
         execution_target,
         "Preview",
-        None,
         1,
         2,
     ));
@@ -517,7 +430,7 @@ fn generated_thread_title_is_persisted_without_overwriting_existing_title() {
 }
 
 #[test]
-fn generated_thread_title_is_not_set_when_backend_name_exists() {
+fn generated_thread_title_is_set_without_backend_metadata_authority() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
     let thread_id = ConversationThreadId::new("thread_1");
     let mut state = WorkspaceConversationState::default();
@@ -525,60 +438,26 @@ fn generated_thread_title_is_not_set_when_backend_name_exists() {
         thread_id.clone(),
         execution_target,
         "Preview",
-        Some("Backend title".to_string()),
         1,
         2,
     ));
 
     assert!(
-        !state
+        state
             .set_thread_generated_title_if_absent(&thread_id, "Generated title", 9)
             .unwrap()
     );
 
     let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.title(), Some("Backend title"));
-    assert!(thread.gui_title().is_none());
-}
-
-#[test]
-fn backend_thread_name_updates_override_generated_fallback_without_overwriting_it() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new("thread_1");
-    let mut state = WorkspaceConversationState::default();
-    state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
-        execution_target,
-        "Preview",
-        None,
-        1,
-        2,
-    ));
-    state
-        .set_thread_generated_title_if_absent(&thread_id, "Generated title", 9)
-        .unwrap();
-
-    assert!(
-        state
-            .set_thread_backend_name(&thread_id, Some(" Backend title ".to_string()))
-            .unwrap()
-    );
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), Some("Backend title"));
-    assert_eq!(thread.title(), Some("Backend title"));
+    assert_eq!(thread.title(), Some("Generated title"));
     assert_eq!(
         thread.gui_title().unwrap().source(),
         ConversationThreadTitleSource::FirstCompletedTurn
     );
-
-    assert!(state.set_thread_backend_name(&thread_id, None).unwrap());
-    let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), None);
-    assert_eq!(thread.title(), Some("Generated title"));
 }
 
 #[test]
-fn backend_thread_name_updates_do_not_override_manual_title() {
+fn generated_thread_title_replacement_respects_manual_precedence() {
     let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
     let thread_id = ConversationThreadId::new("thread_1");
     let mut state = WorkspaceConversationState::default();
@@ -586,22 +465,35 @@ fn backend_thread_name_updates_do_not_override_manual_title() {
         thread_id.clone(),
         execution_target,
         "Preview",
-        Some("Initial backend".to_string()),
         1,
         2,
     ));
-    state
-        .set_thread_manual_title(&thread_id, "Manual title", 9)
-        .unwrap();
 
     assert!(
         state
-            .set_thread_backend_name(&thread_id, Some("Updated backend".to_string()))
+            .set_thread_generated_title_if_absent(&thread_id, "Initial generated title", 9)
             .unwrap()
     );
-
+    assert!(
+        state
+            .set_thread_generated_title(&thread_id, "Replacement generated title", 10)
+            .unwrap()
+    );
     let thread = state.thread_registration(&thread_id).unwrap();
-    assert_eq!(thread.backend_name(), Some("Updated backend"));
+    assert_eq!(thread.title(), Some("Replacement generated title"));
+    assert_eq!(thread.gui_title().unwrap().recorded_at_millis(), 10);
+
+    assert!(
+        state
+            .set_thread_manual_title(&thread_id, "Manual title", 11)
+            .unwrap()
+    );
+    assert!(
+        !state
+            .set_thread_generated_title(&thread_id, "Ignored generated title", 12)
+            .unwrap()
+    );
+    let thread = state.thread_registration(&thread_id).unwrap();
     assert_eq!(thread.title(), Some("Manual title"));
     assert_eq!(
         thread.gui_title().unwrap().source(),
@@ -615,15 +507,8 @@ fn automatic_thread_title_generation_lifecycle_distinguishes_retryable_and_termi
     let thread_id = ConversationThreadId::new("thread_title");
     let mut state = WorkspaceConversationState::default();
     state.remember_thread(
-        RegisteredConversationThread::new(
-            thread_id.clone(),
-            execution_target,
-            "Preview",
-            None,
-            1,
-            2,
-        )
-        .with_beryl_created(),
+        RegisteredConversationThread::new(thread_id.clone(), execution_target, "Preview", 1, 2)
+            .with_beryl_created(),
     );
 
     let thread = state.thread_registration(&thread_id).unwrap();
@@ -667,30 +552,23 @@ fn automatic_thread_title_generation_lifecycle_distinguishes_retryable_and_termi
             .mark_thread_automatic_title_generation_started(&thread_id)
             .unwrap()
     );
-    assert!(
-        state
-            .set_thread_backend_name(&thread_id, Some(" Backend title ".to_string()))
-            .unwrap()
-    );
     let thread = state.thread_registration(&thread_id).unwrap();
     assert_eq!(
         thread.automatic_title_generation_state(),
-        ThreadAutomaticTitleGenerationState::Applied
+        ThreadAutomaticTitleGenerationState::InFlight
     );
     assert!(!state.thread_automatic_title_generation_eligible(&thread_id));
     assert!(
-        !state
+        state
             .mark_thread_automatic_title_generation_abandoned(&thread_id)
             .unwrap()
     );
-
-    assert!(state.set_thread_backend_name(&thread_id, None).unwrap());
     let thread = state.thread_registration(&thread_id).unwrap();
     assert_eq!(
         thread.automatic_title_generation_state(),
-        ThreadAutomaticTitleGenerationState::Applied
+        ThreadAutomaticTitleGenerationState::Abandoned
     );
-    assert!(!state.thread_automatic_title_generation_eligible(&thread_id));
+    assert!(state.thread_automatic_title_generation_eligible(&thread_id));
 }
 
 #[test]
@@ -707,7 +585,6 @@ fn transcript_branch_bootstrap_metadata_and_retitle_state_survive_thread_refresh
             thread_id.clone(),
             execution_target.clone(),
             "Branch preview",
-            None,
             1,
             2,
         )
@@ -743,7 +620,6 @@ fn transcript_branch_bootstrap_metadata_and_retitle_state_survive_thread_refresh
         thread_id.clone(),
         execution_target,
         "Refreshed preview",
-        None,
         10,
         20,
     ));
@@ -778,7 +654,6 @@ fn thread_token_usage_snapshot_is_recorded_and_replaced_by_thread_id() {
         thread_id.clone(),
         execution_target,
         "Preview",
-        None,
         1,
         2,
     ));
@@ -826,7 +701,6 @@ fn remembering_existing_thread_preserves_gui_title_binding_and_rebind_requiremen
         thread_id.clone(),
         execution_target.clone(),
         "Initial preview",
-        None,
         1,
         2,
     ));
@@ -844,14 +718,12 @@ fn remembering_existing_thread_preserves_gui_title_binding_and_rebind_requiremen
         thread_id.clone(),
         execution_target,
         "Updated preview",
-        Some("Backend title".to_string()),
         1,
         9,
     ));
 
     let thread = state.thread_registration(&thread_id).unwrap();
     assert_eq!(thread.preview(), "Updated preview");
-    assert_eq!(thread.backend_name(), Some("Backend title"));
     assert_eq!(thread.title(), Some("Manual title"));
     assert_eq!(
         thread.gui_title().unwrap().source(),
@@ -895,6 +767,8 @@ fn legacy_thread_records_without_token_usage_snapshot_deserialize() {
         .unwrap();
 
     assert!(thread.token_usage_snapshot().is_none());
+    assert_eq!(state.active_thread(), None);
+    assert!(state.active_thread_registration().is_none());
 }
 
 #[test]
@@ -939,7 +813,6 @@ fn runtime_change_without_explicit_members_marks_implicit_threads_rebind_require
         thread_id.clone(),
         home_target,
         "Home preview",
-        None,
         1,
         2,
     ));
@@ -978,7 +851,6 @@ fn remembering_thread_binds_it_to_matching_explicit_member() {
         ConversationThreadId::new("thread_1"),
         execution_target,
         "Preview",
-        None,
         1,
         2,
     ));
@@ -1007,7 +879,6 @@ fn detaching_bound_member_marks_thread_rebind_required() {
         ConversationThreadId::new("thread_1"),
         execution_target,
         "Preview",
-        None,
         1,
         2,
     ));
@@ -1040,7 +911,6 @@ fn returning_unavailable_member_restores_matching_thread_binding() {
         thread_id.clone(),
         execution_target.clone(),
         "Preview",
-        None,
         1,
         2,
     ));
@@ -1081,7 +951,6 @@ fn reattaching_same_target_after_detach_restores_matching_thread_binding() {
         thread_id.clone(),
         execution_target.clone(),
         "Preview",
-        None,
         1,
         2,
     ));
@@ -1130,7 +999,6 @@ fn attaching_first_explicit_member_marks_implicit_home_threads_rebind_required()
         ConversationThreadId::new("thread_home"),
         home_target,
         "Home preview",
-        None,
         1,
         2,
     ));
@@ -1158,7 +1026,6 @@ fn implicit_home_threads_restore_when_home_fallback_returns() {
         thread_id.clone(),
         home_target.clone(),
         "Home preview",
-        None,
         1,
         2,
     ));

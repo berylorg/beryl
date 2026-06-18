@@ -83,6 +83,7 @@ impl<'de> Deserialize<'de> for WorkspaceConversationState {
             active_thread: wire.active_thread,
         };
         state.normalize_unavailable_primary_after_deserialize();
+        state.normalize_active_thread_after_deserialize();
         Ok(state)
     }
 }

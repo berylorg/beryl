@@ -11,6 +11,7 @@ impl ShellView {
             DecisionBranchStartOutcome::Started {
                 job,
                 thread_summary,
+                syndic_registration,
                 bootstrap_turn_id,
                 graph_patch,
                 graph_revision,
@@ -18,6 +19,7 @@ impl ShellView {
             } => self.finish_successful_decision_branch(
                 job,
                 thread_summary,
+                syndic_registration,
                 bootstrap_turn_id,
                 graph_patch,
                 graph_revision,
@@ -37,6 +39,7 @@ impl ShellView {
         &mut self,
         job: QueuedDecisionBranchJob,
         summary: ThreadSummary,
+        syndic_registration: syndic_ingestion::SyndicConversationRegistration,
         bootstrap_turn_id: Option<ConversationTurnId>,
         graph_patch: SemanticGraphPatch,
         graph_revision: WorkspaceGraphRevision,
@@ -66,6 +69,7 @@ impl ShellView {
                 &parent_thread_id,
                 &job.branch_point_turn_id,
                 &summary,
+                &syndic_registration,
                 bootstrap_turn_id.clone(),
             ) {
                 Ok((execution_target, touched_manifest)) => {
@@ -266,16 +270,36 @@ impl ShellView {
                 self.resume_parent_after_decision_branch(parent_thread_id.as_str(), window, cx);
             }
             DecisionBranchActivation::SwitchTo => {
-                let _ = self.activate_thread_selector_target(
-                    super::super::thread_selector::ThreadSelectorActivationTarget {
-                        thread_id: branch_thread_id,
-                        label: summary.name.clone().unwrap_or_else(|| summary.id.clone()),
-                        execution_target,
-                    },
-                    super::super::thread_navigation::ThreadNavigationActivationSource::NonHistory,
-                    window,
-                    cx,
-                );
+                let syndic_view_id = self
+                    .loaded_workspace()
+                    .and_then(|loaded| {
+                        loaded
+                            .workspace_state
+                            .catalog_thread_registration(&branch_thread_id)
+                    })
+                    .and_then(|registration| registration.syndic_view_id().cloned());
+                if let Some(syndic_view_id) = syndic_view_id {
+                    let label = crate::member_thread_inventory::resolved_thread_title(
+                        &workspace_state,
+                        &branch_thread_id,
+                    );
+                    let _ = self.activate_thread_selector_target(
+                        super::super::thread_selector::ThreadSelectorActivationTarget {
+                            thread_id: branch_thread_id,
+                            syndic_view_id,
+                            label,
+                            execution_target,
+                        },
+                        super::super::thread_navigation::ThreadNavigationActivationSource::NonHistory,
+                        window,
+                        cx,
+                    );
+                } else if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Decision branch created",
+                        "Beryl created the decision branch, but workspace publication lost its Syndic view registration before activation.",
+                    ));
+                }
             }
         }
     }
@@ -364,6 +388,7 @@ fn register_decision_branch_thread(
     source_thread_id: &ConversationThreadId,
     source_turn_id: &ConversationTurnId,
     branch_summary: &ThreadSummary,
+    syndic_registration: &syndic_ingestion::SyndicConversationRegistration,
     bootstrap_turn_id: Option<ConversationTurnId>,
 ) -> Result<(WorkspaceId, bool), String> {
     let source_thread = workspace_state
@@ -376,8 +401,6 @@ fn register_decision_branch_thread(
         })?;
     let execution_target = source_thread.execution_target().clone();
     let member_binding = source_thread.member_binding().cloned();
-    let copied_source_name =
-        copied_source_backend_name(source_thread.backend_name(), branch_summary);
 
     if branch_summary.cwd.as_path() != execution_target.canonical_path() {
         return Err(format!(
@@ -392,39 +415,20 @@ fn register_decision_branch_thread(
         ConversationThreadId::new(branch_summary.id.clone()),
         execution_target.clone(),
         branch_summary.preview.clone(),
-        if copied_source_name.is_some() {
-            None
-        } else {
-            branch_summary.name.clone()
-        },
         branch_summary.created_at,
         branch_summary.updated_at,
     )
     .with_beryl_created()
+    .with_syndic_view_registration(
+        SyndicConversationId::new(syndic_registration.conversation_id().as_str().to_string()),
+        SyndicConversationViewId::new(syndic_registration.view_id().as_str().to_string()),
+    )
     .with_branch_parent_thread_id(source_thread_id.clone())
     .with_transcript_branch_bootstrap(source_turn_id.clone(), bootstrap_turn_id);
-    if copied_source_name.is_some() {
-        registered_thread =
-            registered_thread.with_ignored_backend_name_for_automatic_title(copied_source_name);
-    }
     if let Some(binding) = member_binding {
         registered_thread = registered_thread.with_member_binding(binding);
     }
 
     let changed = workspace_state.remember_thread(registered_thread);
     Ok((execution_target, changed))
-}
-
-fn copied_source_backend_name(
-    source_backend_name: Option<&str>,
-    branch_summary: &ThreadSummary,
-) -> Option<String> {
-    let source_backend_name = normalized_backend_name(source_backend_name)?;
-    let branch_backend_name = normalized_backend_name(branch_summary.name.as_deref())?;
-    (branch_backend_name == source_backend_name).then(|| branch_backend_name.to_string())
-}
-
-fn normalized_backend_name(name: Option<&str>) -> Option<&str> {
-    let name = name?.trim();
-    (!name.is_empty()).then_some(name)
 }

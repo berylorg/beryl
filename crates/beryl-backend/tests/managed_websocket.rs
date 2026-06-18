@@ -8,7 +8,7 @@ use std::{
 
 use beryl_backend::{
     BackendLaunchSpec, BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendSession,
-    REQUIRED_CODEX_APP_SERVER_VERSION, ThreadListOptions, ThreadStatus, TurnStreamEvent,
+    REQUIRED_CODEX_APP_SERVER_VERSION, ThreadStatus, TurnStreamEvent,
 };
 use beryl_model::workspace::RuntimeMode;
 use serde_json::{Value, json};
@@ -166,7 +166,7 @@ fn managed_websocket_rejects_pending_notification_count_overflow() {
 
         let request = read_json(&mut socket);
         assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/list"));
+        assert_eq!(request["method"], json!("config/read"));
 
         for index in 0..1025 {
             send_notification(
@@ -183,7 +183,7 @@ fn managed_websocket_rejects_pending_notification_count_overflow() {
                 "jsonrpc": "2.0",
                 "id": 2,
                 "result": {
-                    "data": []
+                    "config": {}
                 }
             })
             .to_string(),
@@ -192,7 +192,7 @@ fn managed_websocket_rejects_pending_notification_count_overflow() {
 
     let mut client = connect_test_client(&endpoint);
     let error = client
-        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .read_config(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap_err();
 
     assert_bounded_resource(error, "pending message queue count", 1024);
@@ -210,7 +210,7 @@ fn managed_websocket_rejects_pending_notification_byte_overflow() {
 
         let request = read_json(&mut socket);
         assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/list"));
+        assert_eq!(request["method"], json!("config/read"));
 
         send_notification(
             &mut socket,
@@ -226,7 +226,7 @@ fn managed_websocket_rejects_pending_notification_byte_overflow() {
                 "jsonrpc": "2.0",
                 "id": 2,
                 "result": {
-                    "data": []
+                    "config": {}
                 }
             })
             .to_string(),
@@ -235,7 +235,7 @@ fn managed_websocket_rejects_pending_notification_byte_overflow() {
 
     let mut client = connect_test_client(&endpoint);
     let error = client
-        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .read_config(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap_err();
 
     assert_bounded_resource(error, "pending message queue byte budget", 16 * 1024 * 1024);
@@ -253,7 +253,7 @@ fn managed_websocket_rejects_deferred_dynamic_tool_request_overflow() {
 
         let request = read_json(&mut socket);
         assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/list"));
+        assert_eq!(request["method"], json!("config/read"));
 
         for index in 0..65 {
             socket
@@ -280,7 +280,7 @@ fn managed_websocket_rejects_deferred_dynamic_tool_request_overflow() {
                 "jsonrpc": "2.0",
                 "id": 2,
                 "result": {
-                    "data": []
+                    "config": {}
                 }
             })
             .to_string(),
@@ -289,7 +289,7 @@ fn managed_websocket_rejects_deferred_dynamic_tool_request_overflow() {
 
     let mut client = connect_test_client(&endpoint);
     let error = client
-        .list_thread_page(&ThreadListOptions::page(1), Duration::from_secs(2))
+        .read_config(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap_err();
 
     assert_bounded_resource(error, "dynamic tool-call request queue count", 64);

@@ -1,7 +1,10 @@
 #[cfg(test)]
 use std::collections::HashSet;
 
-use beryl_model::{conversation::ConversationThreadId, workspace::WorkspaceId};
+use beryl_model::{
+    conversation::{ConversationThreadId, SyndicConversationViewId},
+    workspace::WorkspaceId,
+};
 use gpui::{Bounds, Pixels, Point};
 
 #[cfg(test)]
@@ -59,6 +62,7 @@ pub(crate) struct ThreadSelectorThreadRowState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ThreadSelectorActivationTarget {
     pub(crate) thread_id: ConversationThreadId,
+    pub(crate) syndic_view_id: SyndicConversationViewId,
     pub(crate) label: String,
     pub(crate) execution_target: WorkspaceId,
 }
@@ -239,6 +243,7 @@ impl ThreadSelectorState {
             .thread(member_key, thread_id)
             .map(|thread| ThreadSelectorActivationTarget {
                 thread_id: thread.thread_id().clone(),
+                syndic_view_id: thread.syndic_view_id().clone(),
                 label: thread.title().to_string(),
                 execution_target: thread.execution_target().clone(),
             })

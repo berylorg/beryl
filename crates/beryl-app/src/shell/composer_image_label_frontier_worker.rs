@@ -54,12 +54,13 @@ impl ComposerImageLabelFrontierTask {
 pub(crate) fn spawn_composer_image_label_frontier_worker(
     storage_dir: PathBuf,
     thread_id: String,
+    syndic_view_id: String,
     expected_updated_at: i64,
 ) -> ComposerImageLabelFrontierTask {
     let (sender, receiver) = mpsc::channel();
     let task_thread_id = thread_id.clone();
     thread::spawn(move || {
-        let outcome = match scan_composer_image_label_frontier(&storage_dir, &thread_id) {
+        let outcome = match scan_composer_image_label_frontier(&storage_dir, &syndic_view_id) {
             Ok(labels) => ComposerImageLabelFrontierOutcome::Ready { labels },
             Err(message) => ComposerImageLabelFrontierOutcome::Unavailable { message },
         };
@@ -78,11 +79,11 @@ pub(crate) fn spawn_composer_image_label_frontier_worker(
 
 pub(crate) fn scan_composer_image_label_frontier(
     storage_dir: &Path,
-    thread_id: &str,
+    syndic_view_id: &str,
 ) -> Result<Vec<String>, String> {
     let store = SyndicStore::open(storage_dir, StoreOpenOptions::default())
         .map_err(|error| format!("Syndic image-label frontier storage is unavailable: {error}"))?;
-    let view_id = ThreadViewId::from(thread_id.to_string());
+    let view_id = ThreadViewId::from(syndic_view_id.to_string());
     let conversation = store
         .conversation_by_view(&view_id)
         .map_err(|error| format!("Syndic image-label frontier lookup failed: {error}"))?

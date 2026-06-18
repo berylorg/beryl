@@ -48,8 +48,7 @@ Own Beryl's integration boundary with `codex app-server`.
 - WebSocket transport code must not know JSON-RPC method names, request ids, transcript item schemas, generated-image fields, or backend normalization types.
 - The JSON-RPC session layer owns request id allocation, outstanding-method correlation, notification buffering, response routing, initialize handshake behavior, compatibility probing, and session-level cancellation semantics.
 - Existing typed backend normalization remains the caller-facing boundary after transport reads and JSON-RPC routing complete.
-- Thread-list normalization is not a Beryl shell catalog, selector, restore, title, or workspace membership authority. Live GUI code must not depend on it to discover user-visible threads.
-- Thread-list requests are outside the live GUI shell boundary unless a separate non-catalog diagnostic boundary explicitly owns them.
+- This crate does not expose Codex App Server thread-list normalization as a live public boundary. Beryl workspace catalogs, selectors, restore paths, titles, and workspace membership are workspace-plus-Syndic responsibilities, not backend-discovered thread rows.
 - Thread-start normalization exposes app-server ephemeral-thread support as an explicit backend protocol capability without deciding which GUI workflows may use it.
 - Thread resume normalization may attach to an exact CAS projection for live execution or control, but it is not selected-thread activation or catalog proof.
 - Thread read normalization is not a Beryl shell catalog, selector, restore, title, or workspace membership authority. Live GUI code must not use metadata-only reads to populate user-visible thread lists.

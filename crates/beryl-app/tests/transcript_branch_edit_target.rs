@@ -155,6 +155,8 @@ fn seed_store_at(storage_dir: &Path, history_state: HistoryState) {
     let mut batch = SyndicWriteBatch::new().put_conversation(ConversationRecord {
         id: conversation_id.clone(),
         view_id: view_id.clone(),
+        parent_view_id: None,
+        branch_source_turn_id: None,
         title: Some("captured".to_string()),
         created_at_ms: 1,
         updated_at_ms: 4,
@@ -291,17 +293,14 @@ fn resident_branch_and_edit_proofs_read_complete_syndic_history() {
         &branch,
         "host-windows",
         "cas-thread-branch",
-        Some("branched"),
     )
     .expect("branch prefix should materialize into a new Syndic view");
+    let branch_view_id = ThreadViewId::from("view:workspace-1:cas:cas-thread-branch");
     assert_eq!(
         materialization.conversation_id,
         ConversationId::from("conversation:workspace-1:cas:cas-thread-branch")
     );
-    assert_eq!(
-        materialization.view_id,
-        ThreadViewId::from("cas-thread-branch")
-    );
+    assert_eq!(materialization.view_id, branch_view_id);
     assert_eq!(materialization.copied_view_records, 2);
     let store = SyndicStore::open(dir.path(), StoreOpenOptions::default())
         .expect("store should reopen after branch materialization");
@@ -313,17 +312,22 @@ fn resident_branch_and_edit_proofs_read_complete_syndic_history() {
         )
         .expect("branch conversation lookup should succeed")
         .expect("branch conversation should be indexed by CAS thread");
-    assert_eq!(
-        branch_conversation.view_id,
-        ThreadViewId::from("cas-thread-branch")
-    );
+    assert_eq!(branch_conversation.view_id, branch_view_id);
     assert!(matches!(
         branch_conversation.history_state,
         HistoryState::Complete
     ));
+    let branch_summary = store
+        .conversation_view_summary(&branch_view_id)
+        .expect("branch summary should read")
+        .expect("branch summary should exist");
+    assert!(
+        branch_summary.title_candidates.is_empty(),
+        "CAS branch metadata must not become a Syndic title candidate"
+    );
     let branch_page = store
         .read_transcript_page(
-            &ThreadViewId::from("cas-thread-branch"),
+            &branch_view_id,
             TranscriptPageAnchor::Start,
             TranscriptPageDirection::Forward,
             10,
@@ -346,16 +350,15 @@ fn resident_branch_and_edit_proofs_read_complete_syndic_history() {
         .projection(&branch_page.records[1].projection_id)
         .expect("branch projection lookup should succeed")
         .expect("branch projection should exist");
-    assert_eq!(
-        branch_projection.provenance.view_id,
-        ThreadViewId::from("cas-thread-branch")
-    );
+    assert_eq!(branch_projection.provenance.view_id, branch_view_id);
     assert_eq!(
         branch_projection.provenance.position,
         Some(TranscriptViewPosition(1))
     );
     let branch_binding = store
-        .cas_projection_binding(&CasProjectionBindingId::from("binding:cas-thread-branch"))
+        .cas_projection_binding(&CasProjectionBindingId::from(format!(
+            "binding:{branch_view_id}"
+        )))
         .expect("branch binding lookup should succeed")
         .expect("branch materialization should bind the CAS projection");
     assert!(matches!(
@@ -515,6 +518,14 @@ fn resident_branch_worker_materializes_prefix_then_runs_cas_branch_bootstrap() {
         .expect("branch conversation lookup should succeed")
         .expect("branch worker should bind branch conversation");
     assert!(matches!(conversation.history_state, HistoryState::Complete));
+    let summary = store
+        .conversation_view_summary(&conversation.view_id)
+        .expect("branch summary should read")
+        .expect("branch summary should exist");
+    assert!(
+        summary.title_candidates.is_empty(),
+        "CAS branch metadata name must not become a Syndic title candidate"
+    );
     let page = store
         .read_transcript_page(
             &conversation.view_id,

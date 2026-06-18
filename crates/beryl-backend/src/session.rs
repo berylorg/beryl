@@ -25,14 +25,13 @@ use crate::{
     ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
     ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadBranchCapabilities,
     ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport,
-    ThreadForkOptions, ThreadForkResponse, ThreadListResponse, ThreadLoadedListResponse,
-    ThreadReadMetadata, ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions,
-    ThreadSummary, ThreadUnarchiveResponse, ThreadUnsubscribeResponse, TurnStartOptions,
-    TurnStartResponse, TurnSteerResponse, TurnStreamEvent, UserInput,
+    ThreadForkOptions, ThreadForkResponse, ThreadLoadedListResponse, ThreadReadMetadata,
+    ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions, ThreadSummary,
+    ThreadUnarchiveResponse, ThreadUnsubscribeResponse, TurnStartOptions, TurnStartResponse,
+    TurnSteerResponse, TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
     managed_process::SupervisedBackendProcess,
-    protocol::{SortDirection, ThreadListOptions, ThreadSortKey},
     thread_archive::{THREAD_ARCHIVE_CAPABILITY_PROBES, ThreadArchiveParams},
     thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
     thread_metadata::{ThreadReadMetadataParams, ThreadResumeMetadataParams},
@@ -469,13 +468,6 @@ impl ManagedBackendSession {
         !self.child_exited()
     }
 
-    pub fn list_threads(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<Vec<ThreadSummary>, ManagedBackendError> {
-        self.list_threads_with_options(ThreadListOptions::page(100), timeout)
-    }
-
     pub fn list_models(
         &mut self,
         timeout: Duration,
@@ -525,35 +517,6 @@ impl ManagedBackendSession {
         timeout: Duration,
     ) -> Result<ModelListResponse, ManagedBackendError> {
         self.request("model/list", options, timeout)
-    }
-
-    pub fn list_threads_with_options(
-        &mut self,
-        mut options: ThreadListOptions,
-        timeout: Duration,
-    ) -> Result<Vec<ThreadSummary>, ManagedBackendError> {
-        let mut threads = Vec::new();
-
-        loop {
-            let response = self.list_thread_page(&options, timeout)?;
-            threads.extend(response.data);
-
-            if response.next_cursor.is_none() {
-                break;
-            }
-
-            options.cursor = response.next_cursor;
-        }
-
-        Ok(threads)
-    }
-
-    pub fn list_thread_page(
-        &mut self,
-        options: &ThreadListOptions,
-        timeout: Duration,
-    ) -> Result<ThreadListResponse, ManagedBackendError> {
-        self.request("thread/list", options, timeout)
     }
 
     pub fn start_thread(
@@ -756,20 +719,6 @@ impl ManagedBackendSession {
             &TurnSteerParams::input(thread_id, expected_turn_id, input),
             timeout,
         )
-    }
-
-    pub fn set_thread_name(
-        &mut self,
-        thread_id: &str,
-        name: &str,
-        timeout: Duration,
-    ) -> Result<(), ManagedBackendError> {
-        let _: EmptyResponse = self.request(
-            "thread/name/set",
-            &ThreadSetNameParams::new(thread_id, name),
-            timeout,
-        )?;
-        Ok(())
     }
 
     pub fn compact_thread(
@@ -1256,19 +1205,6 @@ impl ManagedBackendSession {
                     .list_models_with_options(ModelListOptions::page(100), timeout)
                     .map(|models| Some(ProbeMethodData::ModelList(models)));
             }
-            CompatibilityProbe::ThreadList => {
-                let _: ThreadListResponse = self.request(
-                    probe.method(),
-                    &ThreadListProbeParams {
-                        cursor: None,
-                        limit: Some(1),
-                        cwd: Vec::new(),
-                        sort_key: Some(ThreadSortKey::UpdatedAt),
-                        sort_direction: Some(SortDirection::Desc),
-                    },
-                    timeout,
-                )?;
-            }
             CompatibilityProbe::ThreadCompactStart => {
                 self.probe_request_accepts_method(
                     probe.method(),
@@ -1280,20 +1216,6 @@ impl ManagedBackendSession {
                 let _: ThreadLoadedListResponse = self.request(
                     probe.method(),
                     &ThreadLoadedListProbeParams { limit: Some(1) },
-                    timeout,
-                )?;
-            }
-            CompatibilityProbe::ThreadNameSet => {
-                self.probe_request_accepts_method(
-                    probe.method(),
-                    &ThreadSetNameParams::new(PROBE_THREAD_ID, "Beryl compatibility probe"),
-                    timeout,
-                )?;
-            }
-            CompatibilityProbe::ThreadRead => {
-                self.probe_request_accepts_method(
-                    probe.method(),
-                    &ThreadReadMetadataParams::new(PROBE_THREAD_ID),
                     timeout,
                 )?;
             }
@@ -2112,36 +2034,9 @@ impl InitializeCapabilities {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ThreadListProbeParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cursor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    limit: Option<u32>,
-    cwd: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sort_key: Option<ThreadSortKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sort_direction: Option<SortDirection>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct ThreadLoadedListProbeParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     limit: Option<u32>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ThreadSetNameParams<'a> {
-    thread_id: &'a str,
-    name: &'a str,
-}
-
-impl<'a> ThreadSetNameParams<'a> {
-    fn new(thread_id: &'a str, name: &'a str) -> Self {
-        Self { thread_id, name }
-    }
 }
 
 #[derive(Serialize)]

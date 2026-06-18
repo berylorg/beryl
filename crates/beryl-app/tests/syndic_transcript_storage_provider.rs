@@ -40,6 +40,8 @@ fn conversation(
     storage::ConversationRecord {
         id: storage::ConversationId::from(format!("conversation-{}", view_id)),
         view_id: view_id.clone(),
+        parent_view_id: None,
+        branch_source_turn_id: None,
         title: None,
         created_at_ms: 1,
         updated_at_ms: 2,

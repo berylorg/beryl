@@ -66,10 +66,8 @@ pub use command::{
     BackendWebSocketConfig, BackendWebSocketEndpoint,
 };
 pub use discovery::{
-    DiscoveredWorkspace, DiscoveredWorkspaceThread, RuntimeDiscoveryError, RuntimeDiscoveryReport,
-    RuntimeDiscoveryStatus, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_home_path,
-    canonicalize_wsl_path, discover_host_runtime, discover_wsl_runtime, list_wsl_distros,
-    strip_windows_extended_prefix,
+    RuntimeDiscoveryError, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_home_path,
+    canonicalize_wsl_path, list_wsl_distros, strip_windows_extended_prefix,
 };
 pub use dynamic_tool::{
     DynamicToolCallOutputContentItem, DynamicToolCallRequest, DynamicToolCallResponse,
@@ -83,8 +81,7 @@ pub use protocol::{
     BackendConfigDefaults, BackendEvent, CompatibilityError, CompatibilityProbe,
     CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse, InitializeResponse, JsonRpcError,
     ModelInfo, ModelListOptions, ModelListResponse, ProtocolPhase,
-    REQUIRED_CODEX_APP_SERVER_VERSION, SortDirection, ThreadListOptions, ThreadListResponse,
-    ThreadLoadedListResponse, ThreadSortKey, ThreadSummary,
+    REQUIRED_CODEX_APP_SERVER_VERSION, ThreadLoadedListResponse, ThreadSummary,
 };
 pub use server::{ManagedBackendClientConnector, ManagedBackendServer};
 pub use session::{

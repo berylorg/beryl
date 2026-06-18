@@ -17,13 +17,14 @@ use std::{
 use beryl_backend::{
     DynamicToolCallRequest, HardStopCapabilities, ManagedBackendClientConnector,
     ManagedBackendProbeReport, ManagedBackendServer, ManagedBackendStartupProgress,
-    ManagedBackendStartupStage, ThreadInfo, ThreadSessionMetadata, ThreadStatus, ThreadSummary,
+    ManagedBackendStartupStage, ThreadSessionMetadata, ThreadStatus, ThreadSummary,
     TurnStartOptions, list_wsl_distros,
 };
 use beryl_model::conversation::{
     BranchThreadTitleRetitleState, ConversationThreadId, ConversationThreadTitleSource,
     ConversationThreadTokenUsageSnapshot, ConversationTurnId, PrimaryWorkspaceMember,
-    RegisteredConversationThread, WorkspaceConversationState,
+    RegisteredConversationThread, SyndicConversationId, SyndicConversationViewId,
+    WorkspaceConversationState,
 };
 use beryl_model::semantic_graph::{SemanticGraph, SemanticNodeId, SoftLinkId, ThreadRefId};
 use beryl_model::threaded_decision::{ThreadedDecisionRecordId, ThreadedDecisionState};
@@ -302,21 +303,6 @@ fn selected_thread_state_diagnostic_label(surface: &ConversationSurfaceState) ->
     }
 }
 
-fn copied_resident_branch_backend_name(
-    source_backend_name: Option<&str>,
-    branch_summary: &ThreadSummary,
-) -> Option<String> {
-    let source_backend_name = normalized_resident_branch_backend_name(source_backend_name)?;
-    let branch_backend_name =
-        normalized_resident_branch_backend_name(branch_summary.name.as_deref())?;
-    (branch_backend_name == source_backend_name).then(|| branch_backend_name.to_string())
-}
-
-fn normalized_resident_branch_backend_name(name: Option<&str>) -> Option<&str> {
-    let name = name?.trim();
-    (!name.is_empty()).then_some(name)
-}
-
 fn thread_status_diagnostic_label(status: &ThreadStatus) -> &'static str {
     match status {
         ThreadStatus::NotLoaded => "not_loaded",
@@ -520,7 +506,6 @@ use lifecycle_continuation::{
     PhaseContinueRequest, pending_turn_queue_should_wait_for_compaction, phase_continue_request,
 };
 use lifecycle_yield::{LifecycleYieldState, TerminalLifecycleYield};
-use member_thread_inventory::MemberThreadInventoryUpdate;
 use notification_policy::{
     BerylWindowFocusState, NotificationCandidateKind, NotificationPlaybackRequest,
     NotificationPolicyDecision,
@@ -554,15 +539,10 @@ use thread_activation::{
     SelectedThreadActivationSource, StagedSelectedThreadActivation,
     prepare_storage_backed_transcript_activation,
 };
-use thread_helpers::{
-    first_real_branch_user_input_fragment_text, normalized_thread_name,
-    registered_thread_from_summary,
-};
+use thread_helpers::{first_real_branch_user_input_fragment_text, registered_thread_from_summary};
 pub(super) use thread_navigation::ThreadNavigationActivationSource;
 use thread_navigation::{PendingThreadNavigationActivation, ThreadNavigationHistory};
-use thread_selection::{
-    ThreadSelectionRequest, exact_thread_selection_request, graph_thread_ref_availability,
-};
+use thread_selection::{ThreadSelectionRequest, graph_thread_ref_availability};
 use thread_selector::{
     ThreadSelectorActivationTarget, ThreadSelectorColumnKey, ThreadSelectorState,
 };
@@ -835,7 +815,8 @@ pub(super) struct ShellView {
     pending_decision_branch_jobs: VecDeque<QueuedDecisionBranchJob>,
     pending_decision_resolution_jobs: VecDeque<QueuedDecisionResolutionJob>,
     pending_decision_archive_jobs: VecDeque<QueuedDecisionArchiveJob>,
-    member_thread_inventory_receiver: Option<Receiver<MemberThreadInventoryUpdate>>,
+    member_thread_inventory_receiver:
+        Option<Receiver<member_thread_inventory::MemberThreadInventoryRefreshUpdate>>,
     thread_activation_receiver: Option<Receiver<ThreadActivationUpdate>>,
     pending_thread_navigation_activation: Option<PendingThreadNavigationActivation>,
     thread_navigation_histories: HashMap<BerylWorkspaceId, ThreadNavigationHistory>,
@@ -1186,9 +1167,6 @@ struct PickerModel {
 #[allow(dead_code)]
 struct WorkspaceChoice {
     workspace: WorkspaceId,
-    thread_count: usize,
-    latest_preview: Option<String>,
-    latest_updated_at: Option<i64>,
     remembered_rank: Option<usize>,
     last_opened: bool,
 }
@@ -1562,7 +1540,8 @@ struct OpenedWorkspace {
     hard_stop_capabilities: HardStopCapabilities,
     known_threads: Vec<ThreadSummary>,
     selected_thread_id: Option<String>,
-    selected_thread_metadata: Option<ThreadInfo>,
+    selected_thread_summary: Option<ThreadSummary>,
+    selected_thread_status: Option<ThreadStatus>,
     selected_thread_session_metadata: Option<ThreadSessionMetadata>,
     selected_thread_transcript_activation: Option<syndic_transcript::PreparedTranscriptActivation>,
     surface_notice: Option<SurfaceNotice>,
@@ -1970,7 +1949,8 @@ impl ConversationSurfaceState {
         workspace_ui_state: &WorkspaceUiState,
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
-        selected_thread_metadata: Option<ThreadInfo>,
+        selected_thread_summary: Option<ThreadSummary>,
+        selected_thread_status: Option<ThreadStatus>,
         selected_thread_id: Option<String>,
         selected_thread_session_metadata: Option<ThreadSessionMetadata>,
         selected_thread_transcript_activation: Option<
@@ -2027,10 +2007,11 @@ impl ConversationSurfaceState {
             graph_overlay_drag: None,
             tool_activity_panel_drag: None,
         };
-        let published_activation = if let Some(thread) = selected_thread_metadata {
+        let published_activation = if let Some(summary) = selected_thread_summary {
             state.stage_thread_activation(ActivationPreparer::prepare(
                 execution_target,
-                thread,
+                summary,
+                selected_thread_status.unwrap_or(ThreadStatus::Idle),
                 selected_thread_session_metadata,
                 SelectedThreadActivationSource::StartupRestore,
                 selected_thread_transcript_activation.unwrap_or_else(|| {
@@ -2128,20 +2109,22 @@ impl ConversationSurfaceState {
     fn selected_thread_display_label(
         &self,
         workspace_state: &WorkspaceConversationState,
-        execution_target: &WorkspaceId,
+        _execution_target: &WorkspaceId,
     ) -> Option<String> {
         let thread = self.selected_thread()?;
         let thread_id = ConversationThreadId::new(thread.id.clone());
-        let backend_name = normalized_thread_name(thread.name.as_deref());
-        Some(resolved_thread_title(
-            workspace_state,
-            &thread_id,
-            execution_target,
-            &thread.preview,
-            backend_name.as_deref(),
-            thread.created_at,
-            thread.updated_at,
-        ))
+        if let Some(title) = self
+            .member_thread_inventory
+            .snapshot()
+            .groups()
+            .iter()
+            .flat_map(|group| group.threads())
+            .find(|candidate| candidate.thread_id() == &thread_id)
+            .map(|candidate| candidate.title().to_string())
+        {
+            return Some(title);
+        }
+        Some(resolved_thread_title(workspace_state, &thread_id))
     }
 
     fn apply_known_thread_agent_labels(&mut self) -> bool {
@@ -2485,33 +2468,6 @@ impl ConversationSurfaceState {
             .apply_token_usage_snapshot(known_thread, thread_id, snapshot)
     }
 
-    fn apply_thread_name_update(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-        thread_id: &ConversationThreadId,
-        thread_name: Option<&str>,
-    ) -> bool {
-        let thread_name = normalized_thread_name(thread_name);
-        let mut known_thread_changed = false;
-        for thread in &mut self.known_threads {
-            if thread.id == thread_id.as_str() && thread.name != thread_name {
-                thread.name.clone_from(&thread_name);
-                known_thread_changed = true;
-            }
-        }
-
-        let inventory_changed = self.member_thread_inventory.update_thread_backend_name(
-            workspace_state,
-            thread_id,
-            thread_name.as_deref(),
-        );
-        if inventory_changed {
-            self.reconcile_thread_selector_state();
-        }
-
-        known_thread_changed || inventory_changed
-    }
-
     fn active_turn_source_pin_snapshot(&self) -> ActiveTurnSourcePinSnapshot {
         self.active_turn_state.active_turn_source_pin_snapshot()
     }
@@ -2702,7 +2658,8 @@ impl ConversationSurfaceState {
         workspace_state: &WorkspaceConversationState,
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
-        selected_thread_metadata: Option<ThreadInfo>,
+        selected_thread_summary: Option<ThreadSummary>,
+        selected_thread_status: Option<ThreadStatus>,
         selected_thread_id: Option<String>,
         selected_thread_session_metadata: Option<ThreadSessionMetadata>,
         selected_thread_transcript_activation: Option<
@@ -2721,12 +2678,13 @@ impl ConversationSurfaceState {
         });
         let known_threads = bounded_known_threads(known_threads, known_thread_pin.iter().cloned());
         let (preserve_staged_thread_activation, published_activation) =
-            match selected_thread_metadata {
-                Some(thread) => {
+            match selected_thread_summary {
+                Some(summary) => {
                     self.known_threads = known_threads;
                     self.stage_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
-                        thread,
+                        summary,
+                        selected_thread_status.unwrap_or(ThreadStatus::Idle),
                         selected_thread_session_metadata,
                         SelectedThreadActivationSource::BackendReopenRefresh,
                         selected_thread_transcript_activation.unwrap_or_else(|| {
@@ -3902,9 +3860,21 @@ impl ShellView {
         source: syndic_transcript::TranscriptActivationSource,
         cx: &mut Context<Self>,
     ) {
+        let view_id = self
+            .loaded_workspace()
+            .and_then(|loaded| {
+                loaded
+                    .workspace_state
+                    .catalog_thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+            })
+            .and_then(|registration| registration.syndic_view_id())
+            .map(|view_id| view_id.as_str().to_string());
         let prepared = self
             .selected_workspace_resident_store_dir()
-            .map(|storage_dir| prepare_storage_backed_transcript_activation(storage_dir, thread_id))
+            .zip(view_id)
+            .map(|(storage_dir, view_id)| {
+                prepare_storage_backed_transcript_activation(storage_dir, &view_id)
+            })
             .unwrap_or_else(|| {
                 syndic_transcript::PreparedTranscriptActivation::unavailable(
                     syndic_transcript::TranscriptActivationPlacement::Tail,
@@ -3993,6 +3963,9 @@ impl ShellView {
         if let ShellState::Ready(ready) = &mut self.state {
             ready.execution_target = execution_target.clone();
         }
+        if let ShellState::BackendUnavailable(unavailable) = &mut self.state {
+            unavailable.execution_target = execution_target.clone();
+        }
         self.transcript_panel.update(cx, |panel, _| {
             let _ = panel.apply_prepared_activation(
                 prepared_transcript,
@@ -4016,6 +3989,7 @@ impl ShellView {
             &summary,
             false,
             !read_only_decision_branch,
+            None,
         );
         self.hydrate_selected_thread_token_usage_snapshot();
         self.mark_member_thread_inventory_refresh_needed();
@@ -5406,6 +5380,8 @@ impl ShellView {
                 title_seed,
                 execution_target,
                 thread_summary,
+                syndic_conversation_id,
+                syndic_view_id,
                 bootstrap_turn_id,
             } => self.finish_successful_resident_branch(
                 source_thread_id,
@@ -5413,6 +5389,8 @@ impl ShellView {
                 title_seed,
                 execution_target,
                 thread_summary,
+                syndic_conversation_id,
+                syndic_view_id,
                 bootstrap_turn_id,
                 window,
                 cx,
@@ -5446,12 +5424,14 @@ impl ShellView {
         title_seed: String,
         execution_target: WorkspaceId,
         summary: ThreadSummary,
+        syndic_conversation_id: String,
+        syndic_view_id: String,
         bootstrap_turn_id: ConversationTurnId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let branch_thread_id = ConversationThreadId::new(summary.id.clone());
-        let registration = {
+        let (registration, activation_label) = {
             let Some(loaded) = self.workspace_shell_state_mut() else {
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.set_notice(SurfaceNotice::new(
@@ -5506,31 +5486,27 @@ impl ShellView {
                 return;
             }
             let member_binding = source_thread.member_binding().cloned();
-            let copied_source_name =
-                copied_resident_branch_backend_name(source_thread.backend_name(), &summary);
             let mut registered_thread = RegisteredConversationThread::new(
                 branch_thread_id.clone(),
                 execution_target.clone(),
                 summary.preview.clone(),
-                if copied_source_name.is_some() {
-                    None
-                } else {
-                    summary.name.clone()
-                },
                 summary.created_at,
                 summary.updated_at,
             )
             .with_beryl_created()
+            .with_syndic_view_registration(
+                SyndicConversationId::new(syndic_conversation_id.clone()),
+                SyndicConversationViewId::new(syndic_view_id.clone()),
+            )
             .with_branch_parent_thread_id(source_thread_id.clone())
             .with_transcript_branch_bootstrap(source_turn_id, Some(bootstrap_turn_id.clone()));
-            if let Some(copied_source_name) = copied_source_name {
-                registered_thread = registered_thread
-                    .with_ignored_backend_name_for_automatic_title(Some(copied_source_name));
-            }
             if let Some(member_binding) = member_binding {
                 registered_thread = registered_thread.with_member_binding(member_binding);
             }
-            loaded.workspace_state.remember_thread(registered_thread)
+            let registration = loaded.workspace_state.remember_thread(registered_thread);
+            let activation_label =
+                resolved_thread_title(&loaded.workspace_state, &branch_thread_id);
+            (registration, activation_label)
         };
 
         if registration {
@@ -5545,7 +5521,8 @@ impl ShellView {
         let _ = self.activate_thread_selector_target(
             thread_selector::ThreadSelectorActivationTarget {
                 thread_id: branch_thread_id,
-                label: summary.name.clone().unwrap_or_else(|| summary.id.clone()),
+                syndic_view_id: SyndicConversationViewId::new(syndic_view_id),
+                label: activation_label,
                 execution_target,
             },
             thread_navigation::ThreadNavigationActivationSource::NonHistory,
@@ -5639,15 +5616,10 @@ impl ShellView {
             match update {
                 TurnWorkerUpdate::ThreadActivated {
                     execution_target,
-                    mut thread,
+                    thread,
                     session_metadata,
+                    syndic_admission,
                 } => {
-                    if self.thread_ignores_backend_name_for_automatic_title(
-                        &thread.id,
-                        thread.name.as_deref(),
-                    ) {
-                        thread.name = None;
-                    }
                     if let ShellState::Ready(ready) = &mut self.state {
                         ready.execution_target = execution_target.clone();
                     }
@@ -5666,6 +5638,12 @@ impl ShellView {
                         &execution_target,
                         &thread,
                         activated_new_thread,
+                        syndic_admission.as_ref().map(|admission| {
+                            (
+                                admission.conversation_id().as_str(),
+                                admission.view_id().as_str(),
+                            )
+                        }),
                     );
                     if activated_new_thread {
                         self.mark_member_thread_inventory_refresh_needed();
@@ -5720,12 +5698,6 @@ impl ShellView {
                     beryl_backend::TurnStreamEvent::AccountRateLimitsUpdated { rate_limits },
                 ) => {
                     updated |= self.apply_account_rate_limits_update(rate_limits);
-                }
-                TurnWorkerUpdate::Event(beryl_backend::TurnStreamEvent::ThreadNameUpdated {
-                    thread_id,
-                    thread_name,
-                }) => {
-                    updated |= self.apply_thread_name_update(thread_id, thread_name);
                 }
                 TurnWorkerUpdate::Event(event) => {
                     let refresh_inventory_for_event = matches!(
@@ -6207,11 +6179,11 @@ impl ShellView {
     }
 
     fn repair_selected_thread_title_if_needed(&mut self, execution_target: WorkspaceId) -> bool {
-        let Some((thread_id, backend_name)) = self.selected_thread_title_repair_metadata() else {
+        let Some(thread_id) = self.selected_thread_title_repair_metadata() else {
             return false;
         };
 
-        self.repair_missing_thread_title_for_thread(execution_target, thread_id, backend_name, None)
+        self.repair_missing_thread_title_for_thread(execution_target, thread_id, None)
     }
 
     fn repair_thread_title_from_candidate(
@@ -6223,7 +6195,6 @@ impl ShellView {
         self.repair_missing_thread_title_for_thread(
             execution_target,
             thread_id,
-            None,
             Some(candidate.user_input().to_string()),
         )
     }
@@ -6319,29 +6290,15 @@ impl ShellView {
         &mut self,
         execution_target: WorkspaceId,
         thread_id: String,
-        backend_name: Option<String>,
         fallback_user_input: Option<String>,
     ) -> bool {
         let mut updated = false;
         let title_task_active = self.thread_title_task_active_for_thread(&thread_id);
-        let backend_name_for_guard = if self
-            .thread_ignores_backend_name_for_automatic_title(&thread_id, backend_name.as_deref())
-        {
-            None
-        } else {
-            backend_name.clone()
-        };
-        if let Some(backend_name) = backend_name_for_guard.clone() {
-            if !title_task_active {
-                updated |= self.apply_thread_name_update(thread_id.clone(), Some(backend_name));
-            }
-        }
 
         let known_user_input = self.earliest_known_user_input_for_thread(&thread_id);
         let Some(candidate) = thread_title::thread_title_repair_candidate(
             &thread_id,
             self.thread_title_generation_can_start(&thread_id),
-            backend_name_for_guard.as_deref(),
             title_task_active,
             known_user_input.as_deref(),
             fallback_user_input.as_deref(),
@@ -6412,12 +6369,9 @@ impl ShellView {
         }
     }
 
-    fn selected_thread_title_repair_metadata(&self) -> Option<(String, Option<String>)> {
+    fn selected_thread_title_repair_metadata(&self) -> Option<String> {
         let thread = self.conversation_surface()?.selected_thread()?;
-        Some((
-            thread.id.clone(),
-            normalized_thread_name(thread.name.as_deref()),
-        ))
+        Some(thread.id.clone())
     }
 
     fn earliest_known_user_input_for_thread(&self, thread_id: &str) -> Option<String> {
@@ -6456,17 +6410,6 @@ impl ShellView {
 
     fn thread_title_worker_capacity_available(&self) -> bool {
         self.thread_title_worker_count() < thread_title::MAX_THREAD_TITLE_WORKERS
-    }
-
-    fn thread_ignores_backend_name_for_automatic_title(
-        &self,
-        thread_id: &str,
-        backend_name: Option<&str>,
-    ) -> bool {
-        let thread_id = ConversationThreadId::new(thread_id.to_string());
-        self.workspace_shell_state()
-            .and_then(|loaded| loaded.workspace_state.thread_registration(&thread_id))
-            .is_some_and(|thread| thread.ignores_backend_name_for_automatic_title(backend_name))
     }
 
     fn begin_thread_title_generation(
@@ -6663,7 +6606,7 @@ impl ShellView {
     fn finish_thread_title_update(&mut self, thread_id: String, result: ThreadTitleResult) -> bool {
         let mut updated = match result {
             ThreadTitleResult::Applied { title } => {
-                let _ = self.apply_authoritative_thread_name_update(thread_id.clone(), Some(title));
+                self.apply_generated_thread_title(thread_id.as_str(), title, false, true);
                 self.mark_member_thread_inventory_refresh_needed();
                 true
             }
@@ -6694,7 +6637,7 @@ impl ShellView {
     ) -> bool {
         match result {
             ThreadTitleResult::Applied { title } => {
-                let _ = self.apply_authoritative_thread_name_update(thread_id.clone(), Some(title));
+                self.apply_generated_thread_title(thread_id.as_str(), title, true, false);
                 self.mark_member_thread_inventory_refresh_needed();
                 self.mark_branch_thread_title_retitle_finished(&thread_id);
                 true
@@ -6717,6 +6660,76 @@ impl ShellView {
                     )
             }
         }
+    }
+
+    fn apply_generated_thread_title(
+        &mut self,
+        thread_id: &str,
+        title: String,
+        replace_existing_generated: bool,
+        mark_automatic_generation_applied: bool,
+    ) -> bool {
+        let thread_id = ConversationThreadId::new(thread_id.to_string());
+        let recorded_at_millis = token_usage_snapshot::current_unix_millis();
+        let changed = {
+            let Some(loaded) = self.workspace_shell_state_mut() else {
+                return false;
+            };
+
+            let title_result = if replace_existing_generated {
+                loaded.workspace_state.set_thread_generated_title(
+                    &thread_id,
+                    title,
+                    recorded_at_millis,
+                )
+            } else {
+                loaded.workspace_state.set_thread_generated_title_if_absent(
+                    &thread_id,
+                    title,
+                    recorded_at_millis,
+                )
+            };
+            let title_changed = match title_result {
+                Ok(changed) => changed,
+                Err(error) => {
+                    warn!(
+                        thread_id = thread_id.as_str(),
+                        error = %error,
+                        "could not persist generated thread title"
+                    );
+                    return false;
+                }
+            };
+
+            let lifecycle_changed = if mark_automatic_generation_applied {
+                match loaded
+                    .workspace_state
+                    .mark_thread_automatic_title_generation_applied(&thread_id)
+                {
+                    Ok(changed) => changed,
+                    Err(error) => {
+                        warn!(
+                            thread_id = thread_id.as_str(),
+                            error = %error,
+                            "could not record automatic thread-title generation application"
+                        );
+                        false
+                    }
+                }
+            } else {
+                false
+            };
+
+            title_changed || lifecycle_changed
+        };
+
+        if changed {
+            self.persist_current_workspace_state(true);
+            self.apply_member_thread_inventory_event(
+                MemberThreadInventoryEvent::InventoryContentsChanged,
+            );
+        }
+        changed
     }
 
     fn mark_thread_title_generation_started(&mut self, thread_id: &str) -> bool {
@@ -6928,81 +6941,6 @@ impl ShellView {
                 false
             }
         }
-    }
-
-    fn apply_thread_name_update(&mut self, thread_id: String, thread_name: Option<String>) -> bool {
-        self.apply_thread_name_update_from_source(thread_id, thread_name, false)
-    }
-
-    fn apply_authoritative_thread_name_update(
-        &mut self,
-        thread_id: String,
-        thread_name: Option<String>,
-    ) -> bool {
-        self.apply_thread_name_update_from_source(thread_id, thread_name, true)
-    }
-
-    fn apply_thread_name_update_from_source(
-        &mut self,
-        thread_id: String,
-        thread_name: Option<String>,
-        authoritative: bool,
-    ) -> bool {
-        let thread_id = ConversationThreadId::new(thread_id);
-        let mut thread_name = normalized_thread_name(thread_name.as_deref());
-        if !authoritative
-            && self.thread_ignores_backend_name_for_automatic_title(
-                thread_id.as_str(),
-                thread_name.as_deref(),
-            )
-        {
-            thread_name = None;
-        }
-        let title_task_changed = thread_name
-            .is_some()
-            .then(|| self.cancel_thread_title_workers_for_thread(thread_id.as_str()))
-            .unwrap_or(false);
-        let workspace_update = self.workspace_shell_state_mut().map(|loaded| {
-            let result = if authoritative {
-                loaded
-                    .workspace_state
-                    .set_authoritative_thread_backend_name(&thread_id, thread_name.clone())
-            } else {
-                loaded
-                    .workspace_state
-                    .set_thread_backend_name(&thread_id, thread_name.clone())
-            };
-            let changed = match result {
-                Ok(changed) => changed,
-                Err(error) => {
-                    warn!(
-                        thread_id = thread_id.as_str(),
-                        error = %error,
-                        "received backend thread-name update for an unregistered thread"
-                    );
-                    false
-                }
-            };
-            (changed, loaded.workspace_state.clone())
-        });
-
-        let Some((workspace_changed, workspace_state)) = workspace_update else {
-            return false;
-        };
-        if workspace_changed {
-            self.persist_current_workspace_state(true);
-        }
-
-        let surface_changed = self.conversation_surface_mut().is_some_and(|surface| {
-            surface.apply_thread_name_update(&workspace_state, &thread_id, thread_name.as_deref())
-        });
-        if workspace_changed || surface_changed {
-            self.apply_member_thread_inventory_event(
-                MemberThreadInventoryEvent::InventoryContentsChanged,
-            );
-        }
-
-        title_task_changed || workspace_changed || surface_changed
     }
 
     fn record_token_usage_update_snapshot(
@@ -9657,40 +9595,10 @@ impl ShellView {
 
         let pending_navigation =
             self.pending_thread_navigation_activation_for_target(source, &target);
-        let thread_selection = exact_thread_selection_request(&target.thread_id, &target.label);
         let thread_id = target.thread_id.as_str().to_string();
+        let syndic_view_id = target.syndic_view_id.as_str().to_string();
         let label = target.label;
         let execution_target = target.execution_target;
-        if let Some(block) = self.known_backend_unavailable_block_for_target(&execution_target) {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation unavailable",
-                    block.message.clone(),
-                ));
-                cx.notify();
-            }
-            return ThreadActivationStart::Rejected {
-                kind: block.kind,
-                message: block.message,
-            };
-        }
-
-        let connector = self.backend_client_connector_for_execution_target(&execution_target);
-        if current_execution_target != execution_target && connector.is_none() {
-            self.begin_open_target_with_thread_selection_and_intent(
-                RetryTarget::Workspace(execution_target),
-                thread_selection,
-                WorkspaceOpenIntent::ThreadSelectorActivation,
-                window,
-                cx,
-            );
-            if self.workspace_receiver.is_some() {
-                self.pending_thread_navigation_activation = pending_navigation;
-            } else {
-                self.discard_pending_thread_navigation_activation();
-            }
-            return ThreadActivationStart::Started;
-        }
 
         if current_execution_target == execution_target
             && self
@@ -9705,27 +9613,6 @@ impl ShellView {
             }
             return ThreadActivationStart::AlreadySelected;
         }
-
-        let Some(connector) = connector else {
-            let message = self
-                .backend_required_target_block(&execution_target)
-                .map(|block| block.message)
-                .unwrap_or_else(|| {
-                    "Beryl does not have an active managed backend for this execution target."
-                        .to_string()
-                });
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation unavailable",
-                    message.clone(),
-                ));
-                cx.notify();
-            }
-            return ThreadActivationStart::Rejected {
-                kind: "backend_unavailable",
-                message,
-            };
-        };
         let Some(workspace_persistence) = self.workspace_persistence_for_worker() else {
             let message =
                 "Beryl cannot prepare Syndic transcript storage for thread activation.".to_string();
@@ -9769,13 +9656,12 @@ impl ShellView {
         let syndic_storage_dir =
             workspace_persistence.workspace_syndic_storage_dir(&beryl_workspace_id);
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
-            connector,
             beryl_workspace_id,
             syndic_storage_dir,
             execution_target,
             thread_id,
+            syndic_view_id,
             label,
-            self.bootstrap.probe_timeout(),
         ));
         debug!(
             thread_id = thread_id_for_log.as_str(),
@@ -9792,8 +9678,8 @@ impl ShellView {
         &mut self,
         thread_ref_id: ThreadRefId,
         thread_id: String,
-        execution_target: WorkspaceId,
-        label: String,
+        _execution_target: WorkspaceId,
+        _label: String,
         _: &gpui::ClickEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -9808,7 +9694,7 @@ impl ShellView {
             return;
         }
 
-        let (current_execution_target, availability) = match &self.state {
+        let availability = match &self.state {
             ShellState::Ready(ready) => {
                 let Some(thread_ref) = ready
                     .surface
@@ -9818,16 +9704,13 @@ impl ShellView {
                 else {
                     return;
                 };
-                (
-                    ready.execution_target.clone(),
-                    graph_thread_ref_availability(
-                        &ready.loaded_workspace.workspace_state,
-                        thread_ref,
-                        ready
-                            .loaded_workspace
-                            .resolved_implicit_home_execution_target()
-                            .as_ref(),
-                    ),
+                graph_thread_ref_availability(
+                    &ready.loaded_workspace.workspace_state,
+                    thread_ref,
+                    ready
+                        .loaded_workspace
+                        .resolved_implicit_home_execution_target()
+                        .as_ref(),
                 )
             }
             ShellState::BackendUnavailable(unavailable) => {
@@ -9839,16 +9722,13 @@ impl ShellView {
                 else {
                     return;
                 };
-                (
-                    unavailable.execution_target.clone(),
-                    graph_thread_ref_availability(
-                        &unavailable.loaded_workspace.workspace_state,
-                        thread_ref,
-                        unavailable
-                            .loaded_workspace
-                            .resolved_implicit_home_execution_target()
-                            .as_ref(),
-                    ),
+                graph_thread_ref_availability(
+                    &unavailable.loaded_workspace.workspace_state,
+                    thread_ref,
+                    unavailable
+                        .loaded_workspace
+                        .resolved_implicit_home_execution_target()
+                        .as_ref(),
                 )
             }
             ShellState::Discovering(_)
@@ -9873,115 +9753,24 @@ impl ShellView {
             return;
         }
 
-        if let Some(block) = self.known_backend_unavailable_block_for_target(&execution_target) {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation unavailable",
-                    block.message,
-                ));
-                cx.notify();
-            }
-            return;
-        }
-
-        let connector = self.backend_client_connector_for_execution_target(&execution_target);
-        if current_execution_target != execution_target && connector.is_none() {
-            self.begin_open_target_with_thread_selection(
-                RetryTarget::Workspace(execution_target),
-                ThreadSelectionRequest::exact(thread_id, label),
-                window,
-                cx,
-            );
-            return;
-        }
-
-        if self
-            .conversation_surface()
-            .and_then(ConversationSurfaceState::selected_thread_id)
-            == Some(thread_id.as_str())
+        let target = match self
+            .activated_link_thread_target(&ConversationThreadId::new(thread_id.clone()))
         {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.clear_notice();
-                cx.notify();
+            Ok(target) => target,
+            Err((notice_title, detail)) => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(notice_title, detail));
+                    cx.notify();
+                }
+                return;
             }
-            return;
-        }
-
-        let Some(connector) = connector else {
-            let message = self
-                .backend_required_target_block(&execution_target)
-                .map(|block| block.message)
-                .unwrap_or_else(|| {
-                    "Beryl does not have an active managed backend for this execution target."
-                        .to_string()
-                });
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new("Thread activation unavailable", message));
-                cx.notify();
-            }
-            return;
         };
-        let Some(beryl_workspace_id) = self
-            .loaded_workspace()
-            .map(|loaded| loaded.workspace.id().clone())
-        else {
-            return;
-        };
-        let Some(workspace_persistence) = self.workspace_persistence_for_worker() else {
-            if let Some(surface) = self.conversation_surface_mut() {
-                surface.set_notice(SurfaceNotice::new(
-                    "Thread activation unavailable",
-                    "Beryl cannot prepare Syndic transcript storage for thread activation.",
-                ));
-                cx.notify();
-            }
-            return;
-        };
-        let activation_ui_started = Instant::now();
-        if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_thread_activation(
-                thread_id.clone(),
-                execution_target.clone(),
-                ThreadNavigationActivationSource::NonHistory,
-                label.clone(),
-            );
-        }
-        MemoryMilestone::new("thread_activation_start")
-            .runtime(execution_target.runtime_mode().display_name())
-            .thread_id(thread_id.as_str())
-            .log();
-        debug!(
-            thread_id = thread_id.as_str(),
-            pending_visible_ms = elapsed_ms(activation_ui_started.elapsed()),
-            "thread activation pending state set from graph"
+        let _ = self.activate_thread_selector_target(
+            target,
+            ThreadNavigationActivationSource::NonHistory,
+            window,
+            cx,
         );
-        self.composer_image_label_frontier_receiver = None;
-        self.notify_transcript_panel(cx);
-        MemoryMilestone::new("thread_activation_workspace_resolved")
-            .workspace_id(beryl_workspace_id.as_str())
-            .thread_id(thread_id.as_str())
-            .log();
-        let worker_spawn_started = Instant::now();
-        let thread_id_for_log = thread_id.clone();
-        let syndic_storage_dir =
-            workspace_persistence.workspace_syndic_storage_dir(&beryl_workspace_id);
-        self.thread_activation_receiver = Some(spawn_thread_activation_worker(
-            connector,
-            beryl_workspace_id,
-            syndic_storage_dir,
-            execution_target,
-            thread_id,
-            label,
-            self.bootstrap.probe_timeout(),
-        ));
-        debug!(
-            thread_id = thread_id_for_log.as_str(),
-            worker_spawn_ms = elapsed_ms(worker_spawn_started.elapsed()),
-            activation_ui_enqueue_total_ms = elapsed_ms(activation_ui_started.elapsed()),
-            "thread activation worker spawned from graph"
-        );
-        self.schedule_poll_if_needed(window, cx);
-        cx.notify();
     }
 
     fn toggle_graph_node_expansion(
@@ -10889,14 +10678,16 @@ impl ShellView {
                                     "branch_resident_context_target",
                                 );
                             };
+                            let selected_thread_id = selected_thread.id.clone();
+                            let parent_thread_title = Some(resolved_thread_title(
+                                &ready.loaded_workspace.workspace_state,
+                                &ConversationThreadId::new(selected_thread_id.clone()),
+                            ));
                             (
                                 ready.loaded_workspace.workspace.id().clone(),
                                 ready.execution_target.clone(),
-                                selected_thread.id.clone(),
-                                selected_thread
-                                    .name
-                                    .clone()
-                                    .or_else(|| Some(selected_thread.id.clone())),
+                                selected_thread_id,
+                                parent_thread_title,
                             )
                         }
                         ShellState::BackendUnavailable(unavailable) => {
@@ -10913,14 +10704,16 @@ impl ShellView {
                                     &unavailable.surface,
                                 )
                                 .unwrap_or_else(|| unavailable.execution_target.clone());
+                            let selected_thread_id = selected_thread.id.clone();
+                            let parent_thread_title = Some(resolved_thread_title(
+                                &unavailable.loaded_workspace.workspace_state,
+                                &ConversationThreadId::new(selected_thread_id.clone()),
+                            ));
                             (
                                 unavailable.loaded_workspace.workspace.id().clone(),
                                 execution_target,
-                                selected_thread.id.clone(),
-                                selected_thread
-                                    .name
-                                    .clone()
-                                    .or_else(|| Some(selected_thread.id.clone())),
+                                selected_thread_id,
+                                parent_thread_title,
                             )
                         }
                         ShellState::Discovering(_)
@@ -13667,7 +13460,7 @@ impl ShellView {
     ) -> Option<WorkspaceId> {
         loaded
             .workspace_state
-            .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+            .catalog_thread_registration(&ConversationThreadId::new(thread_id.to_string()))
             .map(|thread| thread.execution_target().clone())
     }
 
@@ -13815,8 +13608,8 @@ impl ShellView {
     }
 
     fn thread_selection_for_open_target(&self, target: &RetryTarget) -> ThreadSelectionRequest {
-        if let Some((thread_id, label)) = self.recovery_thread_for_target(target) {
-            return ThreadSelectionRequest::exact(thread_id, label);
+        if let Some((thread_id, syndic_view_id, label)) = self.recovery_thread_for_target(target) {
+            return ThreadSelectionRequest::exact(thread_id, syndic_view_id, label);
         }
 
         let preferred_thread_id = match target {
@@ -13825,14 +13618,14 @@ impl ShellView {
             }
             RetryTarget::WorkspacePrimary => self
                 .workspace_shell_state()
-                .and_then(|loaded| loaded.workspace_state.active_thread())
-                .map(|thread_id| thread_id.as_str().to_string()),
+                .and_then(|loaded| loaded.workspace_state.active_thread_registration())
+                .map(|thread| thread.thread_id().as_str().to_string()),
             RetryTarget::Startup | RetryTarget::HostPath(_) | RetryTarget::WslPath { .. } => None,
         };
         ThreadSelectionRequest::RestorePreferred(preferred_thread_id)
     }
 
-    fn recovery_thread_for_target(&self, target: &RetryTarget) -> Option<(String, String)> {
+    fn recovery_thread_for_target(&self, target: &RetryTarget) -> Option<(String, String, String)> {
         let RetryTarget::Workspace(execution_target) = target else {
             return None;
         };
@@ -13850,16 +13643,15 @@ impl ShellView {
             .as_ref()
             .map(|loaded| &loaded.workspace_state);
         blocked.surface.as_ref().and_then(|surface| {
+            let workspace_state = workspace_state?;
             let thread = surface.selected_thread()?;
-            let label = workspace_state
-                .and_then(|workspace_state| {
-                    surface.selected_thread_display_label(workspace_state, execution_target)
-                })
-                .unwrap_or_else(|| {
-                    normalized_thread_name(thread.name.as_deref())
-                        .unwrap_or_else(|| "Untitled thread".to_string())
-                });
-            Some((thread.id.clone(), label))
+            let thread_id = ConversationThreadId::new(thread.id.clone());
+            let registration = workspace_state.catalog_thread_registration(&thread_id)?;
+            let syndic_view_id = registration.syndic_view_id()?.as_str().to_string();
+            let label = surface
+                .selected_thread_display_label(workspace_state, execution_target)
+                .unwrap_or_else(|| resolved_thread_title(workspace_state, &thread_id));
+            Some((thread.id.clone(), syndic_view_id, label))
         })
     }
 
@@ -13890,35 +13682,14 @@ impl ShellView {
             .map(ConversationSurfaceState::snapshot_for_backend_reopen)
     }
 
-    fn remember_known_threads_for_target(
-        &mut self,
-        execution_target: &WorkspaceId,
-        known_threads: &[ThreadSummary],
-    ) -> bool {
-        let Some(loaded) = self.workspace_shell_state_mut() else {
-            return false;
-        };
-
-        let mut touched_manifest = false;
-        for summary in known_threads {
-            touched_manifest |= loaded
-                .workspace_state
-                .remember_thread(registered_thread_from_summary(execution_target, summary));
-        }
-
-        touched_manifest
-    }
-
     fn update_workspace_state_for_opened_target(
         &mut self,
-        execution_target: &WorkspaceId,
-        known_threads: &[ThreadSummary],
+        _execution_target: &WorkspaceId,
+        _known_threads: &[ThreadSummary],
         active_thread_id: Option<&str>,
         workspace_backend_state_changed: bool,
     ) {
         let mut should_persist = false;
-        let thread_registry_changed =
-            self.remember_known_threads_for_target(execution_target, known_threads);
 
         let active_thread_is_read_only_decision_branch = active_thread_id
             .is_some_and(|thread_id| self.thread_is_read_only_decision_branch(thread_id));
@@ -13934,11 +13705,9 @@ impl ShellView {
             }
         }
 
-        should_persist |= thread_registry_changed || workspace_backend_state_changed;
+        should_persist |= workspace_backend_state_changed;
         if should_persist {
-            self.persist_current_workspace_state(
-                thread_registry_changed || workspace_backend_state_changed,
-            );
+            self.persist_current_workspace_state(workspace_backend_state_changed);
         }
     }
 
@@ -13947,8 +13716,15 @@ impl ShellView {
         execution_target: &WorkspaceId,
         summary: &ThreadSummary,
         beryl_created: bool,
+        syndic_registration: Option<(&str, &str)>,
     ) {
-        self.remember_thread_summary(execution_target, summary, beryl_created, true);
+        self.remember_thread_summary(
+            execution_target,
+            summary,
+            beryl_created,
+            true,
+            syndic_registration,
+        );
     }
 
     fn remember_thread_summary(
@@ -13957,16 +13733,18 @@ impl ShellView {
         summary: &ThreadSummary,
         beryl_created: bool,
         activate: bool,
+        syndic_registration: Option<(&str, &str)>,
     ) {
-        let ignored_backend_name = self
-            .thread_ignores_backend_name_for_automatic_title(&summary.id, summary.name.as_deref());
         let Some(loaded) = self.workspace_shell_state_mut() else {
             return;
         };
 
         let mut registered_thread = registered_thread_from_summary(execution_target, summary);
-        if ignored_backend_name {
-            registered_thread.set_backend_name(None);
+        if let Some((conversation_id, view_id)) = syndic_registration {
+            registered_thread = registered_thread.with_syndic_view_registration(
+                SyndicConversationId::new(conversation_id.to_string()),
+                SyndicConversationViewId::new(view_id.to_string()),
+            );
         }
         if beryl_created {
             registered_thread = registered_thread.with_beryl_created();
@@ -15311,6 +15089,7 @@ impl ShellView {
                 if thread.thread_id() == &requested {
                     matches.push(ThreadSelectorActivationTarget {
                         thread_id: requested.clone(),
+                        syndic_view_id: thread.syndic_view_id().clone(),
                         label: thread.title().to_string(),
                         execution_target: thread.execution_target().clone(),
                     });

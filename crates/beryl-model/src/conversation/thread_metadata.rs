@@ -4,7 +4,6 @@ use crate::workspace::{RuntimeMode, WorkspaceId, WorkspaceMemberId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConversationThreadTitleSource {
-    BackendMetadata,
     FirstCompletedTurn,
     Manual,
 }

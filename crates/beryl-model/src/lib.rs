@@ -14,6 +14,9 @@
 //! and branch first-real-turn retitle state so GUI orchestration can keep
 //! backend-owned branch history durable without treating Beryl-authored
 //! bootstrap turns as user exploration.
+//! Workspace conversation registrations carry Syndic conversation/view ids for
+//! catalog-visible rows and workspace-owned title metadata; backend names are
+//! not retained as workspace registration authority.
 //! CAS projection graph-action classification is kept as pure data so storage
 //! and shell orchestration can agree on reflection outcomes without calling the
 //! backend while classifying a graph mutation.
@@ -27,7 +30,7 @@
 //! use beryl_model::conversation::{
 //!     ConversationThreadId, ConversationThreadTokenUsageSnapshot,
 //!     ConversationTokenUsageBreakdown, ConversationTurnId, RegisteredConversationThread,
-//!     WorkspaceConversationState,
+//!     SyndicConversationId, SyndicConversationViewId, WorkspaceConversationState,
 //! };
 //! use beryl_model::provenance::{MutationProvenance, MutationSource};
 //! use beryl_model::semantic_graph::{
@@ -49,9 +52,11 @@
 //!     ConversationThreadId::new("thread_1"),
 //!     execution_target.clone(),
 //!     "Explain the renderer",
-//!     Some("Renderer".to_string()),
-//!     1,
 //!     2,
+//! )
+//! .with_syndic_view_registration(
+//!     SyndicConversationId::new("conversation:workspace:thread_1"),
+//!     SyndicConversationViewId::new("view:workspace:thread_1"),
 //! );
 //! conversation
 //!     .select_default_runtime(execution_target.runtime_mode().clone())

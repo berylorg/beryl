@@ -64,6 +64,10 @@ pub(crate) fn cas_projection_binding_key(id: &CasProjectionBindingId) -> Vec<u8>
     simple_id_key(id.as_str())
 }
 
+pub(crate) fn cas_projection_binding_view_key(view_id: &ThreadViewId) -> Vec<u8> {
+    simple_id_key(view_id.as_str())
+}
+
 pub(crate) fn revision_key(view_id: &ThreadViewId) -> Vec<u8> {
     simple_id_key(view_id.as_str())
 }

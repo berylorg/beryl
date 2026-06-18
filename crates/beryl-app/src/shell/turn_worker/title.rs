@@ -4,12 +4,11 @@ pub(super) fn automatic_thread_title_candidate(
     thread_id: &str,
     user_input: &str,
     title_mode: TurnThreadTitleMode,
-    backend_thread_name: Option<&str>,
 ) -> Option<ThreadTitleCandidate> {
     match title_mode {
         TurnThreadTitleMode::Disabled => None,
         TurnThreadTitleMode::AutomaticIfMissing => {
-            if !automatic_thread_title_generation_is_eligible(true, backend_thread_name) {
+            if !automatic_thread_title_generation_is_eligible(true) {
                 return None;
             }
 
@@ -23,13 +22,6 @@ pub(super) fn automatic_thread_title_candidate(
 
 pub(crate) fn automatic_thread_title_generation_is_eligible(
     automatic_title_generation_allowed: bool,
-    backend_thread_name: Option<&str>,
 ) -> bool {
     automatic_title_generation_allowed
-        && normalized_backend_thread_name(backend_thread_name).is_none()
-}
-
-fn normalized_backend_thread_name(name: Option<&str>) -> Option<&str> {
-    let name = name?.trim();
-    (!name.is_empty()).then_some(name)
 }

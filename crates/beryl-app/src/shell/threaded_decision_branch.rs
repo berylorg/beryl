@@ -6,10 +6,12 @@ use std::{
 
 use beryl_backend::{
     DynamicToolCallRequest, DynamicToolCallResponse, ManagedBackendClientConnector, ThreadStatus,
-    ThreadSummary,
+    ThreadSummary, TurnInfo, TurnStatus, TurnStreamEvent,
 };
 use beryl_model::{
-    conversation::{ConversationThreadId, ConversationTurnId},
+    conversation::{
+        ConversationThreadId, ConversationTurnId, SyndicConversationId, SyndicConversationViewId,
+    },
     provenance::{MutationProvenance, MutationSource},
     semantic_graph::{SemanticGraph, SemanticGraphPatch, SemanticNodeId},
     threaded_decision::{
@@ -22,9 +24,13 @@ use gpui::{Context, Window};
 use tracing::warn;
 
 use crate::{
-    GraphPatchWriteRequest, WorkspaceGraphRevision, WorkspaceGraphToolService,
+    BerylWorkspacePersistence, GraphPatchWriteRequest, WorkspaceGraphRevision,
+    WorkspaceGraphToolService,
     branch_bootstrap_core::{
-        BranchBootstrapMessageInput, branch_bootstrap_message, start_branch_bootstrap_turn,
+        BranchBootstrapBackend, BranchBootstrapMessageInput,
+        bootstrap_dynamic_tool_unavailable_response, branch_bootstrap_message,
+        prove_branch_thread_durable_with_bootstrap_turn, start_branch_bootstrap_turn_only,
+        turn_has_visible_bootstrap_message,
     },
     threaded_decision_branch_core::{
         DecisionBranchStartGate, QueuedDecisionBranchRunBlocker, QueuedDecisionBranchRunGate,
@@ -50,8 +56,10 @@ use super::{
     },
     graph::{GraphMutationCommitUpdate, GraphMutationFailureUpdate, GraphMutationUpdate},
     graph::{GraphOptimisticMutation, OptimisticGraphMutationId},
+    syndic_ingestion::{self, SyndicLiveTurnIngestor},
     thread_title::ThreadTitleCandidate,
     token_usage_snapshot,
+    turn_input::UserInputFragment,
 };
 
 mod actions;
@@ -84,6 +92,7 @@ pub(super) struct QueuedDecisionBranchJob {
     parent_thread_id: ConversationThreadId,
     parent_thread_title: Option<String>,
     parent_thread_summary: Option<String>,
+    parent_syndic_view_id: SyndicConversationViewId,
     branch_point_turn_id: ConversationTurnId,
     parent_context_source: Option<String>,
     execution_target: WorkspaceId,
@@ -115,6 +124,7 @@ enum DecisionBranchStartOutcome {
     Started {
         job: QueuedDecisionBranchJob,
         thread_summary: ThreadSummary,
+        syndic_registration: syndic_ingestion::SyndicConversationRegistration,
         bootstrap_turn_id: Option<ConversationTurnId>,
         graph_patch: SemanticGraphPatch,
         graph_revision: WorkspaceGraphRevision,
@@ -131,6 +141,7 @@ struct DecisionBranchPoint {
     parent_thread_id: ConversationThreadId,
     parent_thread_title: Option<String>,
     parent_thread_summary: Option<String>,
+    parent_syndic_view_id: SyndicConversationViewId,
     branch_point_turn_id: ConversationTurnId,
     parent_context_source: Option<String>,
     execution_target: WorkspaceId,

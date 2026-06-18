@@ -70,7 +70,7 @@ Every active rework tracker must include:
 
 - `# Target Docs`: shortcut links to the authoritative target docs this rework depends on.
 - `# Cutover Boundary`: what current live code may depend on during the incomplete rework, which subproject or local boundaries are intentionally jagged, where temporary build or runtime gaps are expected, and which cutover shims are allowed.
-- `# Checklist`: exhaustive replacement state, split into named checkpoints. Each checkpoint includes done, remaining, blocked, and verification items plus a clear condition for reaching the next checkpoint.
+- `# Checklist`: exhaustive replacement state, split into named checkpoints. Each checkpoint includes done, remaining, blocked, and verification items plus a clear condition for reaching the next checkpoint. Prefixes each item with `[ ]` to signify completion.
 
 Add these sections when useful:
 

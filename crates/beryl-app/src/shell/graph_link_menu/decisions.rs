@@ -363,18 +363,14 @@ impl ShellView {
             .workspace_state
             .thread_registration(thread_id)
             .ok_or_else(|| "The bound conversation thread is no longer registered.".to_string())?;
+        let syndic_view_id = registration.syndic_view_id().cloned().ok_or_else(|| {
+            "The bound conversation thread is missing its Syndic view registration.".to_string()
+        })?;
         let execution_target = registration.execution_target().clone();
-        let label = resolved_thread_title(
-            &loaded.workspace_state,
-            thread_id,
-            &execution_target,
-            registration.preview(),
-            registration.backend_name(),
-            registration.created_at_millis(),
-            registration.updated_at_millis(),
-        );
+        let label = resolved_thread_title(&loaded.workspace_state, thread_id);
         Ok(ThreadSelectorActivationTarget {
             thread_id: thread_id.clone(),
+            syndic_view_id,
             label: if label.trim().is_empty() {
                 fallback_label.to_string()
             } else {

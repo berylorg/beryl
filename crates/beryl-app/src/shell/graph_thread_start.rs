@@ -5,8 +5,7 @@ use std::{
 };
 
 use beryl_backend::{
-    ManagedBackendClientConnector, ManagedBackendSession, ThreadInfo, ThreadSessionMetadata,
-    ThreadSummary,
+    ManagedBackendClientConnector, ThreadInfo, ThreadSessionMetadata, ThreadSummary,
 };
 use beryl_model::{
     conversation::ConversationThreadId,
@@ -27,6 +26,7 @@ use super::{
     graph::{GraphOptimisticMutation, OptimisticGraphMutationId},
     graph_node_action_policy::graph_node_delete_blocked_by_graph_work,
     semantic_thread_start::{SemanticThreadStartSource, start_semantic_backend_thread},
+    syndic_ingestion,
     workspace_members::resolve_new_thread_execution_target,
 };
 
@@ -71,6 +71,7 @@ pub(super) enum GraphThreadStartOutcome {
         execution_target: WorkspaceId,
         thread: ThreadInfo,
         session_metadata: ThreadSessionMetadata,
+        syndic_registration: syndic_ingestion::SyndicConversationRegistration,
         known_threads: Option<Vec<ThreadSummary>>,
         graph_commit: GraphMutationCommitUpdate,
     },
@@ -355,6 +356,7 @@ impl ShellView {
                 execution_target,
                 thread,
                 session_metadata,
+                syndic_registration,
                 known_threads,
                 graph_commit,
             } => {
@@ -377,7 +379,15 @@ impl ShellView {
                         false,
                     );
                 }
-                self.remember_active_thread_summary(&execution_target, &summary, true);
+                self.remember_active_thread_summary(
+                    &execution_target,
+                    &summary,
+                    true,
+                    Some((
+                        syndic_registration.conversation_id().as_str(),
+                        syndic_registration.view_id().as_str(),
+                    )),
+                );
                 self.mark_member_thread_inventory_refresh_needed();
             }
             GraphThreadStartOutcome::Failed {
@@ -490,6 +500,25 @@ fn run_graph_thread_start(
     let session_metadata = started.session_metadata;
     let thread = started.thread;
     let summary = thread.summary();
+    let syndic_registration = match syndic_ingestion::register_empty_cas_thread_view(
+        &persistence,
+        &workspace_id,
+        &execution_target,
+        &summary.id,
+        summary.created_at,
+        summary.updated_at,
+    ) {
+        Ok(registration) => registration,
+        Err(error) => {
+            return failed_graph_thread_start(
+                &workspace_id,
+                format!(
+                    "Beryl created Codex thread {} but could not register its Syndic view: {error}",
+                    summary.id
+                ),
+            );
+        }
+    };
     let thread_id = ConversationThreadId::new(summary.id.clone());
     let request = match build_graph_started_thread_ref_request(
         source,
@@ -499,7 +528,6 @@ fn run_graph_thread_start(
         &node_id,
         thread_id,
         execution_target.clone(),
-        summary.name.as_deref(),
     ) {
         Some(request) => request,
         None => {
@@ -537,12 +565,12 @@ fn run_graph_thread_start(
         }
     };
 
-    let known_threads = refresh_workspace_threads(&mut session, &execution_target, timeout);
     GraphThreadStartOutcome::Started {
         execution_target,
         thread,
         session_metadata,
-        known_threads,
+        syndic_registration,
+        known_threads: None,
         graph_commit: GraphMutationCommitUpdate::new(
             commit,
             "The semantic graph already contained the new thread attachment.",
@@ -583,15 +611,13 @@ pub(super) fn build_graph_started_thread_ref_request(
     node_id: &SemanticNodeId,
     thread_id: ConversationThreadId,
     execution_target: WorkspaceId,
-    title: Option<&str>,
 ) -> Option<ThreadRefUpsertRequest> {
-    let label = thread_ref_label(title);
     let thread_ref = ThreadRefDraft::new(
         next_thread_ref_id(graph, node_id, &thread_id),
         node_id.clone(),
         thread_id,
         execution_target,
-        label,
+        thread_ref_label(),
     );
     let provenance = MutationProvenance::new(
         "operator",
@@ -621,28 +647,8 @@ fn persist_graph_started_thread_ref(
     Ok(response.commit)
 }
 
-fn refresh_workspace_threads(
-    session: &mut ManagedBackendSession,
-    execution_target: &WorkspaceId,
-    timeout: Duration,
-) -> Option<Vec<ThreadSummary>> {
-    let mut threads = session.list_threads(timeout).ok()?;
-    threads.retain(|thread| thread.cwd == execution_target.canonical_path());
-    threads.sort_by(|left, right| {
-        right
-            .updated_at
-            .cmp(&left.updated_at)
-            .then_with(|| right.created_at.cmp(&left.created_at))
-    });
-    Some(threads)
-}
-
-fn thread_ref_label(title: Option<&str>) -> String {
-    title
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or(UNTITLED_THREAD_LABEL)
-        .to_string()
+fn thread_ref_label() -> String {
+    UNTITLED_THREAD_LABEL.to_string()
 }
 
 fn next_thread_ref_id(

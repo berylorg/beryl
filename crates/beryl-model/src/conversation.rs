@@ -20,17 +20,25 @@ pub struct ConversationThreadId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
+pub struct SyndicConversationId(String);
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SyndicConversationViewId(String);
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ConversationTurnId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegisteredConversationThread {
     thread_id: ConversationThreadId,
+    #[serde(default)]
+    syndic_conversation_id: Option<SyndicConversationId>,
+    #[serde(default)]
+    syndic_view_id: Option<SyndicConversationViewId>,
     execution_target: WorkspaceId,
     preview: String,
-    #[serde(default, alias = "title")]
-    backend_name: Option<String>,
-    #[serde(default)]
-    ignored_backend_name_for_automatic_title: Option<String>,
     #[serde(default)]
     gui_title: Option<ConversationThreadTitle>,
     #[serde(default)]
@@ -49,6 +57,8 @@ pub struct RegisteredConversationThread {
     branch_bootstrap_turn_id: Option<ConversationTurnId>,
     #[serde(default)]
     branch_title_retitle_state: BranchThreadTitleRetitleState,
+    #[serde(default)]
+    catalog_status: ConversationCatalogStatus,
     #[serde(
         default,
         rename = "automatic_title_generation_state",
@@ -58,6 +68,14 @@ pub struct RegisteredConversationThread {
     automatic_title_generation_state: ThreadAutomaticTitleGenerationState,
     created_at_millis: i64,
     updated_at_millis: i64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationCatalogStatus {
+    #[default]
+    Visible,
+    Archived,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +152,26 @@ impl ConversationThreadId {
     }
 }
 
+impl SyndicConversationId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl SyndicConversationViewId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl ConversationTurnId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -149,16 +187,15 @@ impl RegisteredConversationThread {
         thread_id: ConversationThreadId,
         execution_target: WorkspaceId,
         preview: impl Into<String>,
-        backend_name: Option<String>,
         created_at_millis: i64,
         updated_at_millis: i64,
     ) -> Self {
         Self {
             thread_id,
+            syndic_conversation_id: None,
+            syndic_view_id: None,
             execution_target,
             preview: preview.into(),
-            backend_name: normalize_optional_title(backend_name),
-            ignored_backend_name_for_automatic_title: None,
             gui_title: None,
             member_binding: None,
             rebind_required: None,
@@ -168,6 +205,7 @@ impl RegisteredConversationThread {
             branch_source_turn_id: None,
             branch_bootstrap_turn_id: None,
             branch_title_retitle_state: BranchThreadTitleRetitleState::NotBranch,
+            catalog_status: ConversationCatalogStatus::Visible,
             automatic_title_generation_state: ThreadAutomaticTitleGenerationState::NotStarted,
             created_at_millis,
             updated_at_millis,
@@ -178,6 +216,27 @@ impl RegisteredConversationThread {
         &self.thread_id
     }
 
+    pub fn syndic_conversation_id(&self) -> Option<&SyndicConversationId> {
+        self.syndic_conversation_id.as_ref()
+    }
+
+    pub fn syndic_view_id(&self) -> Option<&SyndicConversationViewId> {
+        self.syndic_view_id.as_ref()
+    }
+
+    pub fn has_syndic_view_registration(&self) -> bool {
+        self.syndic_conversation_id.is_some() && self.syndic_view_id.is_some()
+    }
+
+    pub fn catalog_status(&self) -> ConversationCatalogStatus {
+        self.catalog_status
+    }
+
+    pub fn visible_in_catalog(&self) -> bool {
+        self.has_syndic_view_registration()
+            && matches!(self.catalog_status, ConversationCatalogStatus::Visible)
+    }
+
     pub fn execution_target(&self) -> &WorkspaceId {
         &self.execution_target
     }
@@ -186,24 +245,8 @@ impl RegisteredConversationThread {
         &self.preview
     }
 
-    pub fn backend_name(&self) -> Option<&str> {
-        non_empty_trimmed(self.backend_name.as_deref())
-    }
-
     pub fn title(&self) -> Option<&str> {
-        self.manual_title()
-            .or_else(|| self.backend_name())
-            .or_else(|| self.generated_title())
-            .or_else(|| self.legacy_backend_metadata_title())
-    }
-
-    pub fn title_with_backend_name<'a>(&'a self, backend_name: Option<&'a str>) -> Option<&'a str> {
-        let backend_name = self.unsuppressed_backend_name(backend_name);
-        self.manual_title()
-            .or(backend_name)
-            .or_else(|| self.backend_name())
-            .or_else(|| self.generated_title())
-            .or_else(|| self.legacy_backend_metadata_title())
+        self.manual_title().or_else(|| self.generated_title())
     }
 
     pub fn gui_title(&self) -> Option<&ConversationThreadTitle> {
@@ -276,26 +319,18 @@ impl RegisteredConversationThread {
             && self.title().is_none()
     }
 
-    pub fn ignored_backend_name_for_automatic_title(&self) -> Option<&str> {
-        non_empty_trimmed(self.ignored_backend_name_for_automatic_title.as_deref())
-    }
-
-    pub fn ignores_backend_name_for_automatic_title(&self, backend_name: Option<&str>) -> bool {
-        self.ignored_backend_name_for_automatic_title()
-            .is_some_and(|ignored| non_empty_trimmed(backend_name) == Some(ignored))
-    }
-
-    pub fn with_ignored_backend_name_for_automatic_title(
+    pub fn with_syndic_view_registration(
         mut self,
-        backend_name: Option<String>,
+        conversation_id: SyndicConversationId,
+        view_id: SyndicConversationViewId,
     ) -> Self {
-        self.ignored_backend_name_for_automatic_title = normalize_optional_title(backend_name);
+        self.syndic_conversation_id = Some(conversation_id);
+        self.syndic_view_id = Some(view_id);
         self
     }
 
     pub fn with_beryl_created(mut self) -> Self {
         self.beryl_created = true;
-        self.apply_existing_backend_name_to_title_generation_state();
         self
     }
 
@@ -320,13 +355,35 @@ impl RegisteredConversationThread {
         self
     }
 
+    pub fn set_syndic_view_registration(
+        &mut self,
+        conversation_id: SyndicConversationId,
+        view_id: SyndicConversationViewId,
+    ) -> bool {
+        let changed = self.syndic_conversation_id.as_ref() != Some(&conversation_id)
+            || self.syndic_view_id.as_ref() != Some(&view_id);
+        if changed {
+            self.syndic_conversation_id = Some(conversation_id);
+            self.syndic_view_id = Some(view_id);
+        }
+        changed
+    }
+
+    pub fn set_catalog_status(&mut self, status: ConversationCatalogStatus) -> bool {
+        if self.catalog_status == status {
+            return false;
+        }
+
+        self.catalog_status = status;
+        true
+    }
+
     pub fn mark_beryl_created(&mut self) -> bool {
         if self.beryl_created {
             return false;
         }
 
         self.beryl_created = true;
-        self.apply_existing_backend_name_to_title_generation_state();
         true
     }
 
@@ -353,14 +410,11 @@ impl RegisteredConversationThread {
     }
 
     pub fn mark_automatic_title_generation_applied(&mut self) -> bool {
-        if self.automatic_title_generation_state == ThreadAutomaticTitleGenerationState::Applied
-            && self.ignored_backend_name_for_automatic_title.is_none()
-        {
+        if self.automatic_title_generation_state == ThreadAutomaticTitleGenerationState::Applied {
             return false;
         }
 
         self.automatic_title_generation_state = ThreadAutomaticTitleGenerationState::Applied;
-        self.ignored_backend_name_for_automatic_title = None;
         true
     }
 
@@ -399,47 +453,6 @@ impl RegisteredConversationThread {
         true
     }
 
-    pub fn set_backend_name(&mut self, backend_name: Option<String>) -> bool {
-        self.set_backend_name_from_source(backend_name, false)
-    }
-
-    pub fn set_authoritative_backend_name(&mut self, backend_name: Option<String>) -> bool {
-        self.set_backend_name_from_source(backend_name, true)
-    }
-
-    fn set_backend_name_from_source(
-        &mut self,
-        backend_name: Option<String>,
-        authoritative: bool,
-    ) -> bool {
-        let mut backend_name = normalize_optional_title(backend_name);
-        if !authoritative && self.ignores_backend_name_for_automatic_title(backend_name.as_deref())
-        {
-            backend_name = None;
-        }
-        let backend_name_changed = self.backend_name != backend_name;
-        if backend_name_changed {
-            self.backend_name = backend_name;
-        }
-
-        let title_generation_state_changed = if self.backend_name().is_some() {
-            self.mark_automatic_title_generation_applied()
-        } else {
-            false
-        };
-        if !backend_name_changed && !title_generation_state_changed {
-            return false;
-        }
-        if self
-            .gui_title
-            .as_ref()
-            .is_some_and(|title| title.source() == ConversationThreadTitleSource::BackendMetadata)
-        {
-            self.gui_title = None;
-        }
-        true
-    }
-
     pub fn set_manual_title(
         &mut self,
         title: impl Into<String>,
@@ -456,7 +469,6 @@ impl RegisteredConversationThread {
         }
 
         self.gui_title = Some(title);
-        self.ignored_backend_name_for_automatic_title = None;
         Ok(true)
     }
 
@@ -477,7 +489,29 @@ impl RegisteredConversationThread {
             )
             .ok_or(WorkspaceConversationStateError::EmptyThreadTitle)?,
         );
-        self.ignored_backend_name_for_automatic_title = None;
+        Ok(true)
+    }
+
+    pub fn set_generated_title(
+        &mut self,
+        title: impl Into<String>,
+        recorded_at_millis: u64,
+    ) -> Result<bool, WorkspaceConversationStateError> {
+        if self.manual_title().is_some() {
+            return Ok(false);
+        }
+
+        let title = ConversationThreadTitle::new(
+            title,
+            ConversationThreadTitleSource::FirstCompletedTurn,
+            recorded_at_millis,
+        )
+        .ok_or(WorkspaceConversationStateError::EmptyThreadTitle)?;
+        if self.gui_title.as_ref() == Some(&title) {
+            return Ok(false);
+        }
+
+        self.gui_title = Some(title);
         Ok(true)
     }
 
@@ -489,35 +523,10 @@ impl RegisteredConversationThread {
         self.title_from_gui_source(ConversationThreadTitleSource::FirstCompletedTurn)
     }
 
-    fn legacy_backend_metadata_title(&self) -> Option<&str> {
-        self.title_from_gui_source(ConversationThreadTitleSource::BackendMetadata)
-    }
-
     fn title_from_gui_source(&self, source: ConversationThreadTitleSource) -> Option<&str> {
         let title = self.gui_title.as_ref()?;
         (title.source() == source).then_some(title.text())
     }
-
-    fn apply_existing_backend_name_to_title_generation_state(&mut self) {
-        if self.backend_name().is_some() {
-            self.mark_automatic_title_generation_applied();
-        }
-    }
-
-    fn unsuppressed_backend_name<'a>(&self, backend_name: Option<&'a str>) -> Option<&'a str> {
-        if self.ignores_backend_name_for_automatic_title(backend_name) {
-            None
-        } else {
-            non_empty_trimmed(backend_name)
-        }
-    }
-}
-
-fn normalize_optional_title(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let value = value.trim().to_string();
-        (!value.is_empty()).then_some(value)
-    })
 }
 
 fn deserialize_thread_automatic_title_generation_state<'de, D>(
@@ -541,9 +550,4 @@ where
         WireState::LegacyAttempted(false) => Ok(ThreadAutomaticTitleGenerationState::NotStarted),
         WireState::LegacyAttempted(true) => Ok(ThreadAutomaticTitleGenerationState::Abandoned),
     }
-}
-
-fn non_empty_trimmed(value: Option<&str>) -> Option<&str> {
-    let value = value?.trim();
-    (!value.is_empty()).then_some(value)
 }

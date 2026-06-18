@@ -92,9 +92,9 @@ impl ShellView {
                 let workspace_id_for_log = loaded_workspace.workspace.id().as_str().to_string();
                 let active_thread_id = opened.selected_thread_id.clone().or_else(|| {
                     opened
-                        .selected_thread_metadata
+                        .selected_thread_summary
                         .as_ref()
-                        .map(|thread| thread.summary().id)
+                        .map(|thread| thread.id.clone())
                 });
                 let thread_navigation_activation_thread_id = active_thread_id.clone();
                 let mut known_threads = opened.known_threads.clone();
@@ -112,7 +112,8 @@ impl ShellView {
                             &inventory_workspace_state,
                             known_threads.clone(),
                             opened.hard_stop_capabilities.clone(),
-                            opened.selected_thread_metadata,
+                            opened.selected_thread_summary,
+                            opened.selected_thread_status,
                             active_thread_id.clone(),
                             opened.selected_thread_session_metadata,
                             opened.selected_thread_transcript_activation,
@@ -130,7 +131,8 @@ impl ShellView {
                         &loaded_workspace.workspace_ui_state,
                         known_threads.clone(),
                         opened.hard_stop_capabilities.clone(),
-                        opened.selected_thread_metadata,
+                        opened.selected_thread_summary,
+                        opened.selected_thread_status,
                         active_thread_id.clone(),
                         opened.selected_thread_session_metadata,
                         opened.selected_thread_transcript_activation,
@@ -422,13 +424,12 @@ impl ShellView {
         match outcome {
             ThreadActivationOutcome::Activated {
                 execution_target,
-                thread,
+                summary,
+                status,
                 session_metadata,
                 prepared_transcript,
             } => {
                 let ui_finish_started = Instant::now();
-                let summary = thread.summary();
-                let metadata_turn_count = thread.turns.len();
                 let Some(activation_source) = self.conversation_surface().and_then(|surface| {
                     surface.pending_thread_activation_source(summary.id.as_str(), &execution_target)
                 }) else {
@@ -448,23 +449,22 @@ impl ShellView {
                         .log();
                     surface.stage_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
-                        thread,
-                        Some(session_metadata),
+                        summary.clone(),
+                        status,
+                        session_metadata,
                         activation_source,
                         prepared_transcript,
                     ));
                     published_activation = surface.publish_staged_thread_activation();
                     debug!(
                         thread_id = summary.id.as_str(),
-                        metadata_turn_count,
                         activation_application_ms =
                             super::elapsed_ms(activation_apply_started.elapsed()),
                         published = published_activation.is_some(),
-                        "staged selected-thread activation metadata and prepared transcript for conversation surface"
+                        "staged selected-thread activation summary and prepared transcript for conversation surface"
                     );
                     info!(
                         thread_id = summary.id.as_str(),
-                        metadata_turn_count,
                         published = published_activation.is_some(),
                         "Staged selected-thread activation result"
                     );
@@ -479,18 +479,6 @@ impl ShellView {
                 published_thread_id
                     .map(ThreadActivationFinish::Published)
                     .unwrap_or(ThreadActivationFinish::Staged)
-            }
-            ThreadActivationOutcome::RequiresRebind { detail } => {
-                self.discard_pending_thread_navigation_activation();
-                MemoryMilestone::new("thread_activation_requires_rebind").log();
-                if let Some(surface) = self.conversation_surface_mut() {
-                    surface.clear_pending_thread_activation();
-                    surface.set_notice(SurfaceNotice::new("Thread requires rebind", detail));
-                }
-                self.apply_member_thread_inventory_event(
-                    MemberThreadInventoryEvent::InventoryContentsChanged,
-                );
-                ThreadActivationFinish::Failed
             }
             ThreadActivationOutcome::Failed { message } => {
                 self.discard_pending_thread_navigation_activation();
@@ -603,6 +591,7 @@ fn seed_backend_unavailable_surface(
         known_threads,
         HardStopCapabilities::default(),
         None,
+        None,
         selected_thread_id,
         None,
         None,
@@ -658,7 +647,7 @@ fn thread_summary_from_registration(thread: &RegisteredConversationThread) -> Th
             .map(|thread_id| thread_id.as_str().to_string()),
         cwd: thread.execution_target().canonical_path().to_path_buf(),
         preview: thread.preview().to_string(),
-        name: thread.backend_name().map(str::to_string),
+        name: thread.title().map(str::to_string),
         agent_nickname: None,
         path: None,
         created_at: thread.created_at_millis(),

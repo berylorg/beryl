@@ -4,9 +4,7 @@ use std::{
     time::Duration,
 };
 
-use beryl_backend::{
-    ManagedBackendClientConnector, ManagedBackendError, ManagedBackendSession, ThreadListOptions,
-};
+use beryl_backend::ManagedBackendClientConnector;
 use beryl_model::{
     conversation::ConversationThreadId,
     provenance::{MutationProvenance, MutationSource},
@@ -378,41 +376,14 @@ fn run_decision_archive_worker(
 
     match session.archive_thread(target.child_thread_id.as_str(), timeout) {
         Ok(()) => archive_succeeded(target.record_id, target.child_thread_id),
-        Err(error) => {
-            if archived_inventory_contains_thread(
-                &mut session,
-                &target.execution_target,
-                &target.child_thread_id,
-                timeout,
-            )
-            .unwrap_or(false)
-            {
-                return archive_succeeded(target.record_id, target.child_thread_id);
-            }
-            archive_failed(
-                target.record_id,
-                format!(
-                    "Beryl could not close decision branch {}: {error}",
-                    target.child_thread_id.as_str()
-                ),
-            )
-        }
+        Err(error) => archive_failed(
+            target.record_id,
+            format!(
+                "Beryl could not close decision branch {}: {error}",
+                target.child_thread_id.as_str()
+            ),
+        ),
     }
-}
-
-fn archived_inventory_contains_thread(
-    session: &mut ManagedBackendSession,
-    execution_target: &WorkspaceId,
-    thread_id: &ConversationThreadId,
-    timeout: Duration,
-) -> Result<bool, ManagedBackendError> {
-    let threads = session.list_threads_with_options(
-        ThreadListOptions::page(100)
-            .archived()
-            .with_cwd(execution_target.canonical_path().to_path_buf()),
-        timeout,
-    )?;
-    Ok(threads.iter().any(|thread| thread.id == thread_id.as_str()))
 }
 
 fn archive_succeeded(

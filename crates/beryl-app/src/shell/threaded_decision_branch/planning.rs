@@ -52,6 +52,7 @@ impl ShellView {
             parent_thread_id: branch_point.parent_thread_id,
             parent_thread_title: branch_point.parent_thread_title,
             parent_thread_summary: branch_point.parent_thread_summary,
+            parent_syndic_view_id: branch_point.parent_syndic_view_id,
             branch_point_turn_id: branch_point.branch_point_turn_id,
             parent_context_source: branch_point.parent_context_source,
             execution_target: branch_point.execution_target,
@@ -140,6 +141,7 @@ impl ShellView {
                 parent_thread_id: branch_point.parent_thread_id,
                 parent_thread_title: branch_point.parent_thread_title,
                 parent_thread_summary: branch_point.parent_thread_summary,
+                parent_syndic_view_id: branch_point.parent_syndic_view_id,
                 branch_point_turn_id: branch_point.branch_point_turn_id,
                 parent_context_source: branch_point.parent_context_source,
                 execution_target: branch_point.execution_target,
@@ -181,6 +183,7 @@ impl ShellView {
                 loaded
                     .workspace_state
                     .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+                    .and_then(|registration| registration.syndic_view_id())
                     .is_some()
             })
         }) {
@@ -291,6 +294,7 @@ impl ShellView {
                     loaded
                         .workspace_state
                         .thread_registration(&ConversationThreadId::new(thread_id.to_string()))
+                        .and_then(|registration| registration.syndic_view_id())
                         .is_some()
                 })
             }),
@@ -331,6 +335,8 @@ impl ShellView {
         let parent_thread_summary = parent_registration
             .map(|thread| thread.preview().trim().to_string())
             .filter(|summary| !summary.is_empty());
+        let parent_syndic_view_id =
+            parent_registration.and_then(|thread| thread.syndic_view_id().cloned())?;
 
         if let Some(active) = surface.active_turn_state.active_turn_identity()
             && active
@@ -343,6 +349,7 @@ impl ShellView {
                 parent_thread_id: ConversationThreadId::new(parent_thread_id),
                 parent_thread_title,
                 parent_thread_summary,
+                parent_syndic_view_id: parent_syndic_view_id.clone(),
                 branch_point_turn_id: ConversationTurnId::new(turn_id),
                 parent_context_source: surface
                     .active_turn_state
@@ -377,6 +384,7 @@ impl ShellView {
             parent_thread_id: ConversationThreadId::new(parent_thread_id),
             parent_thread_title,
             parent_thread_summary,
+            parent_syndic_view_id,
             branch_point_turn_id: ConversationTurnId::new(turn.turn_id.clone()?),
             parent_context_source: parent_context_source_for_turn(turn),
             execution_target,

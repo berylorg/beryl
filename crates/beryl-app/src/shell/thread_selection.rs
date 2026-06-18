@@ -1,18 +1,17 @@
-use beryl_backend::ThreadSummary;
-use beryl_model::conversation::{ConversationThreadId, WorkspaceConversationState};
+use beryl_model::conversation::{
+    ConversationThreadId, SyndicConversationViewId, WorkspaceConversationState,
+};
 use beryl_model::semantic_graph::ThreadRef;
 use beryl_model::workspace::WorkspaceId;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ThreadSelectionRequest {
     RestorePreferred(Option<String>),
-    Exact { thread_id: String, label: String },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum KnownThreadSelection {
-    Selected { thread_id: String, strict: bool },
-    None,
+    Exact {
+        thread_id: String,
+        syndic_view_id: String,
+        label: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,9 +25,14 @@ pub(crate) enum GraphThreadRefAvailability {
 }
 
 impl ThreadSelectionRequest {
-    pub(super) fn exact(thread_id: impl Into<String>, label: impl Into<String>) -> Self {
+    pub(super) fn exact(
+        thread_id: impl Into<String>,
+        syndic_view_id: impl Into<String>,
+        label: impl Into<String>,
+    ) -> Self {
         Self::Exact {
             thread_id: thread_id.into(),
+            syndic_view_id: syndic_view_id.into(),
             label: label.into(),
         }
     }
@@ -63,9 +67,10 @@ impl GraphThreadRefAvailability {
 
 pub(super) fn exact_thread_selection_request(
     thread_id: &ConversationThreadId,
+    syndic_view_id: &SyndicConversationViewId,
     label: &str,
 ) -> ThreadSelectionRequest {
-    ThreadSelectionRequest::exact(thread_id.as_str(), label)
+    ThreadSelectionRequest::exact(thread_id.as_str(), syndic_view_id.as_str(), label)
 }
 
 pub(crate) fn graph_thread_ref_availability(
@@ -106,40 +111,25 @@ pub(crate) fn graph_thread_ref_availability(
         };
     }
 
-    GraphThreadRefAvailability::Openable
-}
-
-pub(super) fn resolve_known_thread_selection(
-    known_threads: &[ThreadSummary],
-    _execution_target: &WorkspaceId,
-    selection: &ThreadSelectionRequest,
-) -> KnownThreadSelection {
-    match selection {
-        ThreadSelectionRequest::RestorePreferred(Some(thread_id)) => known_threads
-            .iter()
-            .find(|thread| thread.id == *thread_id)
-            .map(|thread| KnownThreadSelection::Selected {
-                thread_id: thread.id.clone(),
-                strict: false,
-            })
-            .unwrap_or_else(|| {
-                known_threads
-                    .first()
-                    .map(|thread| KnownThreadSelection::Selected {
-                        thread_id: thread.id.clone(),
-                        strict: false,
-                    })
-                    .unwrap_or(KnownThreadSelection::None)
-            }),
-        ThreadSelectionRequest::RestorePreferred(None) => known_threads
-            .first()
-            .map(|thread| KnownThreadSelection::Selected {
-                thread_id: thread.id.clone(),
-                strict: false,
-            })
-            .unwrap_or(KnownThreadSelection::None),
-        ThreadSelectionRequest::Exact { .. } => KnownThreadSelection::None,
+    if workspace_state
+        .catalog_thread_registration(thread_ref.thread_id())
+        .is_none()
+    {
+        let reason =
+            "The recorded thread is not registered as a workspace Syndic conversation view."
+                .to_string();
+        return GraphThreadRefAvailability::Invalid {
+            notice_title: "Thread link unavailable",
+            detail: thread_rebind_detail(
+                thread_ref.label(),
+                thread_ref.execution_target(),
+                &reason,
+            ),
+            reason,
+        };
     }
+
+    GraphThreadRefAvailability::Openable
 }
 
 pub(crate) fn thread_rebind_detail(

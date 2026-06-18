@@ -44,28 +44,45 @@ impl ShellView {
                     ),
                 )
             })?;
+        if let Some(requirement) = registration.rebind_required() {
+            return Err((
+                "Thread requires rebind",
+                thread_rebind_detail(
+                    &resolved_thread_title(&loaded.workspace_state, thread_id),
+                    registration.execution_target(),
+                    requirement.detail(),
+                ),
+            ));
+        }
+
+        let registration = loaded
+            .workspace_state
+            .catalog_thread_registration(thread_id)
+            .ok_or_else(|| {
+                (
+                    "Thread link unavailable",
+                    format!(
+                        "Beryl cannot activate thread link {} because the thread is not registered as a workspace Syndic conversation view.",
+                        thread_id.as_str()
+                    ),
+                )
+            })?;
         let execution_target = registration.execution_target().clone();
-        let label = resolved_thread_title(
-            &loaded.workspace_state,
-            thread_id,
-            &execution_target,
-            registration.preview(),
-            registration.backend_name(),
-            registration.created_at_millis(),
-            registration.updated_at_millis(),
-        );
+        let Some(syndic_view_id) = registration.syndic_view_id().cloned() else {
+            return Err((
+                "Thread link unavailable",
+                format!(
+                    "Beryl cannot activate thread link {} because the thread is missing its registered Syndic view id.",
+                    thread_id.as_str()
+                ),
+            ));
+        };
+        let label = resolved_thread_title(&loaded.workspace_state, thread_id);
         let label = if label.trim().is_empty() {
             "Linked thread".to_string()
         } else {
             label
         };
-
-        if let Some(requirement) = registration.rebind_required() {
-            return Err((
-                "Thread requires rebind",
-                thread_rebind_detail(&label, &execution_target, requirement.detail()),
-            ));
-        }
 
         let implicit_home_target = loaded.resolved_implicit_home_execution_target();
         if !loaded
@@ -84,6 +101,7 @@ impl ShellView {
 
         Ok(ThreadSelectorActivationTarget {
             thread_id: thread_id.clone(),
+            syndic_view_id,
             label,
             execution_target,
         })
@@ -100,8 +118,14 @@ impl ShellView {
             .conversation_surface()
             .and_then(ConversationSurfaceState::selected_thread_id)?;
         let thread_id = ConversationThreadId::new(selected_thread_id.to_string());
-        let registration = loaded.workspace_state.thread_registration(&thread_id)?;
-        ThreadNavigationEntry::new(thread_id, registration.execution_target().clone())
+        let registration = loaded
+            .workspace_state
+            .catalog_thread_registration(&thread_id)?;
+        ThreadNavigationEntry::new(
+            thread_id,
+            registration.syndic_view_id()?.clone(),
+            registration.execution_target().clone(),
+        )
     }
 
     pub(super) fn pending_thread_navigation_activation_for_target(
@@ -110,8 +134,11 @@ impl ShellView {
         target: &ThreadSelectorActivationTarget,
     ) -> Option<PendingThreadNavigationActivation> {
         let workspace_id = self.loaded_workspace()?.workspace.id().clone();
-        let target =
-            ThreadNavigationEntry::new(target.thread_id.clone(), target.execution_target.clone())?;
+        let target = ThreadNavigationEntry::new(
+            target.thread_id.clone(),
+            target.syndic_view_id.clone(),
+            target.execution_target.clone(),
+        )?;
         PendingThreadNavigationActivation::new(
             workspace_id,
             source,
@@ -125,6 +152,16 @@ impl ShellView {
         entry: &ThreadNavigationEntry,
     ) -> Result<ThreadSelectorActivationTarget, (&'static str, String)> {
         let target = self.activated_link_thread_target(entry.thread_id())?;
+        if &target.syndic_view_id != entry.syndic_view_id() {
+            return Err((
+                "Thread link unavailable",
+                thread_rebind_detail(
+                    &target.label,
+                    entry.execution_target(),
+                    "The recorded navigation target no longer matches the registered Syndic view.",
+                ),
+            ));
+        }
         if &target.execution_target != entry.execution_target() {
             return Err((
                 "Thread link unavailable",

@@ -143,11 +143,13 @@ fn zero_bound_keeps_current_but_no_history_targets() {
 fn entries_include_exact_execution_target_identity() {
     let host_entry = ThreadNavigationEntry::from_thread_id(
         "thread_a",
+        "view_host_a",
         WorkspaceId::host_windows(r"C:\work\beryl"),
     )
     .unwrap();
     let wsl_entry = ThreadNavigationEntry::from_thread_id(
         "thread_a",
+        "view_wsl_a",
         WorkspaceId::wsl_linux("Ubuntu", "/work/beryl"),
     )
     .unwrap();
@@ -345,7 +347,8 @@ fn entry(thread_id: &str) -> ThreadNavigationEntry {
 }
 
 fn entry_on(thread_id: &str, execution_target: WorkspaceId) -> ThreadNavigationEntry {
-    ThreadNavigationEntry::from_thread_id(thread_id, execution_target).unwrap()
+    ThreadNavigationEntry::from_thread_id(thread_id, format!("view:{thread_id}"), execution_target)
+        .unwrap()
 }
 
 fn pending(

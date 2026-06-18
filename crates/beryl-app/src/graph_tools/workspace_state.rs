@@ -71,8 +71,6 @@ pub struct WorkspaceThreadMetadataSnapshot {
     pub execution_target: ExecutionTargetId,
     pub preview: String,
     #[serde(default)]
-    pub backend_name: Option<String>,
-    #[serde(default)]
     pub title: Option<ConversationThreadTitle>,
     #[serde(default)]
     pub member_binding: Option<ConversationThreadMemberBinding>,
@@ -105,7 +103,6 @@ impl WorkspaceThreadMetadataSnapshot {
             thread_id: thread.thread_id().clone(),
             execution_target: thread.execution_target().clone(),
             preview: thread.preview().to_string(),
-            backend_name: thread.backend_name().map(str::to_string),
             title: thread.gui_title().cloned(),
             member_binding: thread.member_binding().cloned(),
             rebind_required: thread.rebind_required().cloned(),
@@ -126,8 +123,7 @@ fn workspace_state_snapshot(
         primary_member: workspace_primary_member_snapshot(state),
         available_members: workspace_available_member_snapshots(state),
         threads: state
-            .threads()
-            .iter()
+            .catalog_threads()
             .map(|thread| {
                 WorkspaceThreadMetadataSnapshot::from_registered_thread(
                     thread,

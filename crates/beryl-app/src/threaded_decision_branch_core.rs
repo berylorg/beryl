@@ -184,7 +184,6 @@ pub(crate) fn decision_branch_graph_patch(
     checklist_item_id: &SemanticNodeId,
     child_thread_id: ConversationThreadId,
     execution_target: WorkspaceId,
-    label: Option<&str>,
     provenance: &MutationProvenance,
 ) -> Option<(ThreadRefDraft, SemanticGraphPatch)> {
     let node = graph.node(checklist_item_id)?;
@@ -197,7 +196,7 @@ pub(crate) fn decision_branch_graph_patch(
         checklist_item_id.clone(),
         child_thread_id,
         execution_target,
-        thread_ref_label(label),
+        thread_ref_label(),
     );
     let patch = SemanticGraphPatch::new(vec![
         SemanticGraphPatchOp::SetChecklistItemKind {
@@ -383,12 +382,8 @@ impl std::fmt::Display for TopicDecisionItemPlanError {
 
 impl std::error::Error for TopicDecisionItemPlanError {}
 
-fn thread_ref_label(title: Option<&str>) -> String {
-    title
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or(UNTITLED_DECISION_BRANCH_LABEL)
-        .to_string()
+fn thread_ref_label() -> String {
+    UNTITLED_DECISION_BRANCH_LABEL.to_string()
 }
 
 fn next_thread_ref_id(

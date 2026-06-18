@@ -185,7 +185,6 @@ pub(super) fn materialize_resident_branch_prefix(
     proof: &ResidentBranchProof,
     runtime_target: &str,
     branch_thread_id: &str,
-    title: Option<&str>,
 ) -> Result<ResidentBranchMaterialization, ResidentBranchEditProofError> {
     let store = SyndicStore::open(storage_dir, StoreOpenOptions::default())
         .map_err(|error| ResidentBranchEditProofError::StorageUnavailable(error.to_string()))?;
@@ -223,7 +222,7 @@ pub(super) fn materialize_resident_branch_prefix(
     let conversation_id = ConversationId::from(format!(
         "conversation:{workspace_id}:cas:{branch_thread_id}"
     ));
-    let branch_view_id = ThreadViewId::from(branch_thread_id.to_string());
+    let branch_view_id = ThreadViewId::from(format!("view:{workspace_id}:cas:{branch_thread_id}"));
     let revision = syndic_storage::ProviderRevision(1);
     let source = Some(syndic_storage::ExternalSourceMetadata {
         provider: CAS_PROVIDER.to_string(),
@@ -236,10 +235,9 @@ pub(super) fn materialize_resident_branch_prefix(
     let mut batch = SyndicWriteBatch::new().put_conversation(ConversationRecord {
         id: conversation_id.clone(),
         view_id: branch_view_id.clone(),
-        title: title
-            .map(str::trim)
-            .filter(|title| !title.is_empty())
-            .map(str::to_string),
+        parent_view_id: Some(proof.source_view_id.clone()),
+        branch_source_turn_id: Some(proof.target_turn_id.clone()),
+        title: None,
         created_at_ms: now,
         updated_at_ms: now,
         current_revision: revision,

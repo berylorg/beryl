@@ -36,11 +36,8 @@ pub struct InitializeResponse {
 pub enum CompatibilityProbe {
     ConfigRead,
     ModelList,
-    ThreadList,
     ThreadCompactStart,
     ThreadLoadedList,
-    ThreadNameSet,
-    ThreadRead,
     ThreadResumeMetadata,
     ThreadUnsubscribe,
     TurnInterrupt,
@@ -52,11 +49,8 @@ impl CompatibilityProbe {
         match self {
             Self::ConfigRead => "config/read",
             Self::ModelList => "model/list",
-            Self::ThreadList => "thread/list",
             Self::ThreadCompactStart => "thread/compact/start",
             Self::ThreadLoadedList => "thread/loaded/list",
-            Self::ThreadNameSet => "thread/name/set",
-            Self::ThreadRead => "thread/read",
             Self::ThreadResumeMetadata => "thread/resume",
             Self::ThreadUnsubscribe => "thread/unsubscribe",
             Self::TurnInterrupt => "turn/interrupt",
@@ -68,11 +62,8 @@ impl CompatibilityProbe {
 const REQUIRED_COMPATIBILITY_PROBES: &[CompatibilityProbe] = &[
     CompatibilityProbe::ConfigRead,
     CompatibilityProbe::ModelList,
-    CompatibilityProbe::ThreadList,
     CompatibilityProbe::ThreadCompactStart,
     CompatibilityProbe::ThreadLoadedList,
-    CompatibilityProbe::ThreadNameSet,
-    CompatibilityProbe::ThreadRead,
     CompatibilityProbe::ThreadResumeMetadata,
     CompatibilityProbe::ThreadUnsubscribe,
     CompatibilityProbe::TurnInterrupt,
@@ -267,16 +258,6 @@ pub enum CompatibilityError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadListResponse {
-    pub data: Vec<ThreadSummary>,
-    #[serde(default)]
-    pub next_cursor: Option<String>,
-    #[serde(default)]
-    pub backwards_cursor: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModelListResponse {
     pub data: Vec<ModelInfo>,
     #[serde(default)]
@@ -435,81 +416,6 @@ pub struct ConfigReadOptions {
     pub cwd: Option<PathBuf>,
     #[serde(skip_serializing_if = "is_false")]
     pub include_layers: bool,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadListOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cursor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub archived: Option<bool>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub cwd: Vec<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sort_key: Option<ThreadSortKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sort_direction: Option<SortDirection>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SortDirection {
-    Asc,
-    Desc,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ThreadSortKey {
-    CreatedAt,
-    UpdatedAt,
-}
-
-impl ThreadListOptions {
-    pub fn page(limit: u32) -> Self {
-        Self {
-            limit: Some(limit),
-            ..Self::default()
-        }
-    }
-
-    pub fn with_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.cursor = Some(cursor.into());
-        self
-    }
-
-    pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
-        self.cwd.push(cwd.into());
-        self
-    }
-
-    pub fn with_cwds<I, P>(mut self, cwds: I) -> Self
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<PathBuf>,
-    {
-        self.cwd.extend(cwds.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn archived(mut self) -> Self {
-        self.archived = Some(true);
-        self
-    }
-
-    pub fn non_archived(mut self) -> Self {
-        self.archived = Some(false);
-        self
-    }
-
-    pub fn updated_descending(mut self) -> Self {
-        self.sort_key = Some(ThreadSortKey::UpdatedAt);
-        self.sort_direction = Some(SortDirection::Desc);
-        self
-    }
 }
 
 impl ModelListOptions {

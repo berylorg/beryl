@@ -84,6 +84,8 @@ pub(super) enum ResidentBranchOutcome {
         title_seed: String,
         execution_target: WorkspaceId,
         thread_summary: ThreadSummary,
+        syndic_conversation_id: String,
+        syndic_view_id: String,
         bootstrap_turn_id: ConversationTurnId,
     },
     Failed {
@@ -224,13 +226,12 @@ where
     }
 
     let runtime_target = execution_target.runtime_mode().display_name().to_string();
-    resident_branch_edit::materialize_resident_branch_prefix(
+    let branch_materialization = resident_branch_edit::materialize_resident_branch_prefix(
         &syndic_storage_dir,
         workspace_id.as_str(),
         proof,
         &runtime_target,
         &branch_thread_id,
-        branch_summary.name.as_deref(),
     )
     .map_err(|error| {
         format!(
@@ -326,6 +327,8 @@ where
         title_seed: proof.title_seed.clone(),
         execution_target: execution_target.clone(),
         thread_summary: durable_summary,
+        syndic_conversation_id: branch_materialization.conversation_id.to_string(),
+        syndic_view_id: branch_materialization.view_id.to_string(),
         bootstrap_turn_id,
     })
 }

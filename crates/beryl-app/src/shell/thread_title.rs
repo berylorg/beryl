@@ -166,15 +166,11 @@ pub(crate) fn title_generation_turn_options() -> TurnStartOptions {
 pub(super) fn thread_title_repair_candidate(
     target_thread_id: &str,
     automatic_title_generation_allowed: bool,
-    backend_thread_name: Option<&str>,
     title_task_active: bool,
     earliest_known_user_input: Option<&str>,
     fallback_user_input: Option<&str>,
 ) -> Option<ThreadTitleCandidate> {
-    if title_task_active
-        || !automatic_title_generation_allowed
-        || normalized_backend_thread_name(backend_thread_name).is_some()
-    {
+    if title_task_active || !automatic_title_generation_allowed {
         return None;
     }
 
@@ -216,11 +212,6 @@ Return only the title.\n\n\
 
 fn truncate_for_prompt(input: &str) -> String {
     input.chars().take(TITLE_PROMPT_INPUT_LIMIT).collect()
-}
-
-fn normalized_backend_thread_name(name: Option<&str>) -> Option<&str> {
-    let name = name?.trim();
-    (!name.is_empty()).then_some(name)
 }
 
 fn accepted_title(text: &str) -> Option<String> {

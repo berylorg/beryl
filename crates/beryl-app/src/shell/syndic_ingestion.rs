@@ -53,6 +53,12 @@ pub(super) struct SyndicTurnIdentity {
     runtime_target: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SyndicConversationRegistration {
+    conversation_id: ConversationId,
+    view_id: ThreadViewId,
+}
+
 #[derive(Debug)]
 pub(super) enum SyndicIngestionError {
     CreateStorageDir {
@@ -61,6 +67,10 @@ pub(super) enum SyndicIngestionError {
     },
     Storage(syndic_storage::StorageError),
     Workspace(WorkspacePersistenceError),
+    ConversationRegistrationConflict {
+        cas_thread_id: String,
+        detail: String,
+    },
     MissingConversation {
         id: ConversationId,
     },
@@ -81,6 +91,13 @@ impl std::fmt::Display for SyndicIngestionError {
             }
             Self::Storage(error) => write!(formatter, "{error}"),
             Self::Workspace(error) => write!(formatter, "{error}"),
+            Self::ConversationRegistrationConflict {
+                cas_thread_id,
+                detail,
+            } => write!(
+                formatter,
+                "Syndic conversation registration for CAS thread {cas_thread_id} conflicts with the requested branch metadata: {detail}"
+            ),
             Self::MissingConversation { id } => {
                 write!(formatter, "missing admitted Syndic conversation {id}")
             }
@@ -141,6 +158,8 @@ pub(super) fn admit_user_turn(
         .put_conversation(ConversationRecord {
             id: resolved.conversation_id.clone(),
             view_id: resolved.view_id.clone(),
+            parent_view_id: resolved.parent_view_id,
+            branch_source_turn_id: resolved.branch_source_turn_id,
             title: resolved.title,
             created_at_ms: resolved.created_at_ms,
             updated_at_ms: now,
@@ -223,6 +242,137 @@ pub(super) fn admit_user_turn(
         next_sequence,
         next_position,
         first_user_item_id,
+    })
+}
+
+pub(super) fn register_empty_cas_thread_view(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
+    execution_target: &WorkspaceId,
+    cas_thread_id: &str,
+    created_at_millis: i64,
+    updated_at_millis: i64,
+) -> Result<SyndicConversationRegistration, SyndicIngestionError> {
+    register_cas_thread_view(
+        persistence,
+        workspace_id,
+        execution_target,
+        cas_thread_id,
+        created_at_millis,
+        updated_at_millis,
+        None,
+        None,
+        "workspace-registration",
+        "empty-cas-thread",
+    )
+}
+
+pub(super) fn register_cas_branch_thread_view(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
+    execution_target: &WorkspaceId,
+    cas_thread_id: &str,
+    created_at_millis: i64,
+    updated_at_millis: i64,
+    parent_view_id: &str,
+    branch_source_turn_id: &str,
+) -> Result<SyndicConversationRegistration, SyndicIngestionError> {
+    register_cas_thread_view(
+        persistence,
+        workspace_id,
+        execution_target,
+        cas_thread_id,
+        created_at_millis,
+        updated_at_millis,
+        Some(ThreadViewId::from(parent_view_id.to_string())),
+        Some(TurnId::from(branch_source_turn_id.to_string())),
+        "workspace-branch-registration",
+        "branch-cas-thread",
+    )
+}
+
+fn register_cas_thread_view(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
+    execution_target: &WorkspaceId,
+    cas_thread_id: &str,
+    created_at_millis: i64,
+    updated_at_millis: i64,
+    parent_view_id: Option<ThreadViewId>,
+    branch_source_turn_id: Option<TurnId>,
+    source_detail: &'static str,
+    lineage_proof_prefix: &'static str,
+) -> Result<SyndicConversationRegistration, SyndicIngestionError> {
+    let storage_dir = persistence.workspace_syndic_storage_dir(workspace_id);
+    ensure_storage_dir(&storage_dir)?;
+    let store = SyndicStore::open(&storage_dir, StoreOpenOptions::default())?;
+    let runtime_target = runtime_target_id(execution_target);
+    if let Some(existing) =
+        store.conversation_by_external_thread(CAS_PROVIDER, Some(&runtime_target), cas_thread_id)?
+    {
+        if existing.parent_view_id != parent_view_id
+            || existing.branch_source_turn_id != branch_source_turn_id
+        {
+            return Err(SyndicIngestionError::ConversationRegistrationConflict {
+                cas_thread_id: cas_thread_id.to_string(),
+                detail: "existing conversation parentage does not match the requested registration"
+                    .to_string(),
+            });
+        }
+        return Ok(SyndicConversationRegistration::from_conversation(existing));
+    }
+
+    let now = token_usage_snapshot::current_unix_millis();
+    let created_at_ms = non_negative_millis_or_now(created_at_millis, now);
+    let updated_at_ms = non_negative_millis_or_now(updated_at_millis, now);
+    let conversation_id = ConversationId::from(format!(
+        "conversation:{}:cas:{}",
+        workspace_id.as_str(),
+        cas_thread_id
+    ));
+    let view_id = ThreadViewId::from(format!(
+        "view:{}:cas:{}",
+        workspace_id.as_str(),
+        cas_thread_id
+    ));
+    let binding_id = CasProjectionBindingId::from(format!("binding:{view_id}"));
+    store.commit(
+        SyndicWriteBatch::new()
+            .put_conversation(ConversationRecord {
+                id: conversation_id.clone(),
+                view_id: view_id.clone(),
+                parent_view_id,
+                branch_source_turn_id,
+                title: None,
+                created_at_ms,
+                updated_at_ms,
+                current_revision: ProviderRevision(0),
+                source: Some(source_metadata(
+                    &runtime_target,
+                    Some(cas_thread_id),
+                    None,
+                    None,
+                    Some(source_detail),
+                )),
+                history_state: HistoryState::Complete,
+            })
+            .put_cas_projection_binding(CasProjectionBindingRecord {
+                id: binding_id,
+                view_id: view_id.clone(),
+                binding_revision: 1,
+                selected_path_revision: ProviderRevision(0),
+                selected_path_digest: Some("empty".to_string()),
+                established_at_ms: now,
+                status: CasProjectionBindingStatus::Valid {
+                    runtime_target,
+                    cas_thread_id: cas_thread_id.to_string(),
+                    lineage_proof: format!("{lineage_proof_prefix}:{cas_thread_id}"),
+                },
+            }),
+    )?;
+    Ok(SyndicConversationRegistration {
+        conversation_id,
+        view_id,
     })
 }
 
@@ -391,6 +541,14 @@ fn admit_additional_user_fragment_with_marker_clear(
 }
 
 impl SyndicTurnAdmission {
+    pub(super) fn conversation_id(&self) -> &ConversationId {
+        &self.conversation_id
+    }
+
+    pub(super) fn view_id(&self) -> &ThreadViewId {
+        &self.view_id
+    }
+
     pub(super) fn identity(&self) -> SyndicTurnIdentity {
         SyndicTurnIdentity {
             storage_dir: self.storage_dir.clone(),
@@ -402,9 +560,28 @@ impl SyndicTurnAdmission {
     }
 }
 
+impl SyndicConversationRegistration {
+    fn from_conversation(conversation: ConversationRecord) -> Self {
+        Self {
+            conversation_id: conversation.id,
+            view_id: conversation.view_id,
+        }
+    }
+
+    pub(super) fn conversation_id(&self) -> &ConversationId {
+        &self.conversation_id
+    }
+
+    pub(super) fn view_id(&self) -> &ThreadViewId {
+        &self.view_id
+    }
+}
+
 struct ResolvedConversation {
     conversation_id: ConversationId,
     view_id: ThreadViewId,
+    parent_view_id: Option<ThreadViewId>,
+    branch_source_turn_id: Option<TurnId>,
     title: Option<String>,
     created_at_ms: u64,
     current_revision: ProviderRevision,
@@ -432,6 +609,8 @@ fn resolve_conversation(
         return Ok(ResolvedConversation {
             conversation_id: existing.id,
             view_id: existing.view_id,
+            parent_view_id: existing.parent_view_id,
+            branch_source_turn_id: existing.branch_source_turn_id,
             title: existing.title,
             created_at_ms: existing.created_at_ms,
             current_revision: existing.current_revision,
@@ -459,6 +638,8 @@ fn resolve_conversation(
     Ok(ResolvedConversation {
         conversation_id,
         view_id,
+        parent_view_id: None,
+        branch_source_turn_id: None,
         title: None,
         created_at_ms: now,
         current_revision: ProviderRevision(0),
@@ -482,6 +663,13 @@ fn next_transcript_position(
         .last()
         .map(|record| record.position.next().0)
         .unwrap_or_default())
+}
+
+fn non_negative_millis_or_now(value: i64, now: u64) -> u64 {
+    u64::try_from(value)
+        .ok()
+        .filter(|value| *value > 0)
+        .unwrap_or(now)
 }
 
 fn user_fragment_records(

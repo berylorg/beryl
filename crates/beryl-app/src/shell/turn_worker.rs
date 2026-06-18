@@ -21,7 +21,7 @@ mod title;
 
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallRequest, DynamicToolCallResponse,
-    ManagedBackendClientConnector, ManagedBackendSession, ThreadInfo, ThreadRollbackResponse,
+    ManagedBackendClientConnector, ManagedBackendSession, ThreadRollbackResponse,
     ThreadSessionMetadata, ThreadStatus, ThreadSummary, TurnStartOptions, TurnStreamEvent,
 };
 use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
@@ -30,10 +30,7 @@ use tracing::{debug, info, warn};
 use super::graph::GraphMutationUpdate;
 use super::resident_branch_edit;
 use super::syndic_ingestion::{self, SyndicLiveTurnIngestor, SyndicTurnAdmission};
-use super::thread_activation::{
-    ExistingThreadActivationError, ThreadActivationLoader,
-    prepare_storage_backed_transcript_activation,
-};
+use super::thread_activation::prepare_storage_backed_transcript_activation;
 use super::thread_title::{ThreadTitleCandidate, TurnThreadTitleMode};
 use super::turn_input::UserInputFragment;
 use crate::memory_diagnostics::MemoryMilestone;
@@ -88,12 +85,10 @@ pub(super) enum ThreadActivationUpdate {
 pub(super) enum ThreadActivationOutcome {
     Activated {
         execution_target: WorkspaceId,
-        thread: ThreadInfo,
-        session_metadata: ThreadSessionMetadata,
+        summary: ThreadSummary,
+        status: ThreadStatus,
+        session_metadata: Option<ThreadSessionMetadata>,
         prepared_transcript: super::syndic_transcript::PreparedTranscriptActivation,
-    },
-    RequiresRebind {
-        detail: String,
     },
     Failed {
         message: String,
@@ -105,6 +100,7 @@ pub(super) enum TurnWorkerUpdate {
         execution_target: WorkspaceId,
         thread: ThreadSummary,
         session_metadata: ThreadSessionMetadata,
+        syndic_admission: Option<SyndicTurnAdmission>,
     },
     ThreadTitleEligible {
         execution_target: WorkspaceId,
@@ -442,24 +438,22 @@ pub(super) fn spawn_turn_worker_with_pre_start(
 }
 
 pub(super) fn spawn_thread_activation_worker(
-    connector: ManagedBackendClientConnector,
     beryl_workspace_id: BerylWorkspaceId,
     syndic_storage_dir: PathBuf,
     workspace: WorkspaceId,
     thread_id: String,
+    syndic_view_id: String,
     label: String,
-    timeout: Duration,
 ) -> Receiver<ThreadActivationUpdate> {
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         run_thread_activation_worker(
-            connector,
             beryl_workspace_id,
             syndic_storage_dir,
             workspace,
             thread_id,
+            syndic_view_id,
             label,
-            timeout,
             sender,
         )
     });
@@ -540,6 +534,7 @@ fn run_turn_worker(
             execution_target: workspace.clone(),
             thread: activation.summary.clone(),
             session_metadata: activation.session_metadata.clone(),
+            syndic_admission: syndic_admission.clone(),
         },
     )
     .is_err()
@@ -652,7 +647,6 @@ fn run_turn_worker(
             .map(|fragment| fragment.text.as_str())
             .unwrap_or_default(),
         title_mode,
-        activation.summary.name.as_deref(),
     ) {
         if send_turn_worker_update(
             &sender,
@@ -839,26 +833,14 @@ pub(super) fn backend_input_for_user_input_fragments(
 #[cfg(test)]
 pub(crate) fn automatic_thread_title_generation_is_eligible(
     automatic_title_generation_allowed: bool,
-    backend_thread_name: Option<&str>,
 ) -> bool {
-    title::automatic_thread_title_generation_is_eligible(
-        automatic_title_generation_allowed,
-        backend_thread_name,
-    )
+    title::automatic_thread_title_generation_is_eligible(automatic_title_generation_allowed)
 }
 
 #[cfg(test)]
-pub(crate) fn thread_title_candidate_available_for_mode(
-    title_mode: TurnThreadTitleMode,
-    backend_thread_name: Option<&str>,
-) -> bool {
-    title::automatic_thread_title_candidate(
-        "thread_id",
-        "First real branch prompt",
-        title_mode,
-        backend_thread_name,
-    )
-    .is_some()
+pub(crate) fn thread_title_candidate_available_for_mode(title_mode: TurnThreadTitleMode) -> bool {
+    title::automatic_thread_title_candidate("thread_id", "First real branch prompt", title_mode)
+        .is_some()
 }
 
 pub(crate) fn handle_beryl_dynamic_tool_call(
@@ -1000,13 +982,12 @@ where
 }
 
 fn run_thread_activation_worker(
-    connector: ManagedBackendClientConnector,
     beryl_workspace_id: BerylWorkspaceId,
     syndic_storage_dir: PathBuf,
     workspace: WorkspaceId,
     thread_id: String,
+    syndic_view_id: String,
     label: String,
-    timeout: Duration,
     sender: Sender<ThreadActivationUpdate>,
 ) {
     let worker_started = Instant::now();
@@ -1015,108 +996,46 @@ fn run_thread_activation_worker(
         .runtime(workspace.runtime_mode().display_name())
         .thread_id(thread_id.as_str())
         .log();
-    let connect_started = Instant::now();
-    let mut session = match connector.connect_client(timeout) {
-        Ok(session) => session,
-        Err(error) => {
-            MemoryMilestone::new("backend_client_connect_failed")
-                .workspace_id(beryl_workspace_id.as_str())
-                .runtime(workspace.runtime_mode().display_name())
-                .thread_id(thread_id.as_str())
-                .log();
-            debug!(
-                thread_id = thread_id.as_str(),
-                backend_connect_ms = elapsed_ms(connect_started.elapsed()),
-                worker_total_ms = elapsed_ms(worker_started.elapsed()),
-                "thread activation worker failed to connect backend client"
-            );
-            let _ = sender.send(ThreadActivationUpdate::Finished(
-                ThreadActivationOutcome::Failed {
-                    message: format!("Beryl could not connect to the managed backend: {error}"),
-                },
-            ));
-            return;
-        }
+    let summary = ThreadSummary {
+        id: thread_id.clone(),
+        forked_from_id: None,
+        cwd: workspace.canonical_path().to_path_buf(),
+        preview: String::new(),
+        name: Some(label),
+        agent_nickname: None,
+        path: None,
+        created_at: 0,
+        updated_at: 0,
+        model_provider: String::new(),
+        ephemeral: false,
     };
+    let prepared_transcript =
+        prepare_storage_backed_transcript_activation(syndic_storage_dir, &syndic_view_id);
     debug!(
         thread_id = thread_id.as_str(),
-        backend_connect_ms = elapsed_ms(connect_started.elapsed()),
-        "thread activation worker connected backend client"
+        syndic_view_id = syndic_view_id.as_str(),
+        worker_total_ms = elapsed_ms(worker_started.elapsed()),
+        "thread activation worker prepared Syndic transcript activation"
     );
-    MemoryMilestone::new("backend_client_connected")
+    MemoryMilestone::new("thread_activation_worker_done")
         .workspace_id(beryl_workspace_id.as_str())
         .runtime(workspace.runtime_mode().display_name())
         .thread_id(thread_id.as_str())
         .log();
-
-    let activation_started = Instant::now();
-    match ThreadActivationLoader::load_existing_thread(
-        &mut session,
-        &workspace,
-        &thread_id,
-        &label,
-        timeout,
-    ) {
-        Ok(activation) => {
-            debug!(
-                thread_id = thread_id.as_str(),
-                backend_activation_ms = elapsed_ms(activation_started.elapsed()),
-                "thread activation worker received backend activation"
-            );
-            MemoryMilestone::new("thread_activation_worker_done")
-                .workspace_id(beryl_workspace_id.as_str())
-                .runtime(workspace.runtime_mode().display_name())
-                .thread_id(thread_id.as_str())
-                .log();
-            info!(
-                thread_id = thread_id.as_str(),
-                "Prepared selected-thread activation worker metadata"
-            );
-            let _ = sender.send(ThreadActivationUpdate::Finished(
-                ThreadActivationOutcome::Activated {
-                    execution_target: workspace,
-                    thread: activation.thread,
-                    session_metadata: activation.session_metadata,
-                    prepared_transcript: prepare_storage_backed_transcript_activation(
-                        syndic_storage_dir,
-                        &thread_id,
-                    ),
-                },
-            ));
-        }
-        Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
-            MemoryMilestone::new("thread_activation_worker_requires_rebind")
-                .workspace_id(beryl_workspace_id.as_str())
-                .runtime(workspace.runtime_mode().display_name())
-                .thread_id(thread_id.as_str())
-                .log();
-            debug!(
-                thread_id = thread_id.as_str(),
-                backend_activation_ms = elapsed_ms(activation_started.elapsed()),
-                worker_total_ms = elapsed_ms(worker_started.elapsed()),
-                "thread activation worker requires rebind"
-            );
-            let _ = sender.send(ThreadActivationUpdate::Finished(
-                ThreadActivationOutcome::RequiresRebind { detail },
-            ));
-        }
-        Err(ExistingThreadActivationError::Failed { message }) => {
-            MemoryMilestone::new("thread_activation_worker_failed")
-                .workspace_id(beryl_workspace_id.as_str())
-                .runtime(workspace.runtime_mode().display_name())
-                .thread_id(thread_id.as_str())
-                .log();
-            debug!(
-                thread_id = thread_id.as_str(),
-                backend_activation_ms = elapsed_ms(activation_started.elapsed()),
-                worker_total_ms = elapsed_ms(worker_started.elapsed()),
-                "thread activation worker failed"
-            );
-            let _ = sender.send(ThreadActivationUpdate::Finished(
-                ThreadActivationOutcome::Failed { message },
-            ));
-        }
-    }
+    info!(
+        thread_id = thread_id.as_str(),
+        syndic_view_id = syndic_view_id.as_str(),
+        "Prepared selected-thread activation from Syndic"
+    );
+    let _ = sender.send(ThreadActivationUpdate::Finished(
+        ThreadActivationOutcome::Activated {
+            execution_target: workspace,
+            summary,
+            status: ThreadStatus::Idle,
+            session_metadata: None,
+            prepared_transcript,
+        },
+    ));
 }
 
 fn elapsed_ms(duration: Duration) -> f64 {

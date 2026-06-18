@@ -10,7 +10,8 @@ use beryl_app::{
 };
 use beryl_model::conversation::{
     ConversationThreadId, ConversationThreadMemberBinding, ConversationTurnId,
-    RegisteredConversationThread, WorkspaceConversationState,
+    RegisteredConversationThread, SyndicConversationId, SyndicConversationViewId,
+    WorkspaceConversationState,
 };
 use beryl_model::provenance::{MutationProvenance, MutationSource};
 use beryl_model::semantic_graph::{
@@ -23,6 +24,27 @@ use beryl_model::threaded_decision::{
     ThreadedDecisionRecordId, ThreadedDecisionState,
 };
 use beryl_model::workspace::{BerylWorkspaceId, BerylWorkspaceManifest, RuntimeMode, WorkspaceId};
+
+fn registered_thread(
+    thread_id: impl Into<String>,
+    execution_target: WorkspaceId,
+    preview: impl Into<String>,
+    created_at_millis: i64,
+    updated_at_millis: i64,
+) -> RegisteredConversationThread {
+    let thread_id = thread_id.into();
+    RegisteredConversationThread::new(
+        ConversationThreadId::new(thread_id.clone()),
+        execution_target,
+        preview,
+        created_at_millis,
+        updated_at_millis,
+    )
+    .with_syndic_view_registration(
+        SyndicConversationId::new(format!("conversation:test:{thread_id}")),
+        SyndicConversationViewId::new(format!("view:test:{thread_id}")),
+    )
+}
 
 #[test]
 fn workspace_graph_summary_rejects_missing_workspace() {
@@ -122,11 +144,10 @@ fn workspace_state_read_exposes_runtime_members_primary_and_thread_metadata() {
         .designate_primary_execution_target(&execution_target)
         .unwrap();
     let member_id = state.primary_explicit_member().unwrap().id().clone();
-    state.remember_thread(RegisteredConversationThread::new(
-        ConversationThreadId::new("thread_1"),
+    state.remember_thread(registered_thread(
+        "thread_1",
         execution_target.clone(),
         "Inspect metadata",
-        Some("Metadata thread".to_string()),
         1,
         2,
     ));
@@ -163,16 +184,47 @@ fn workspace_state_read_exposes_runtime_members_primary_and_thread_metadata() {
         } if primary_member_id == member_id
     ));
     assert_eq!(response.threads.len(), 1);
-    assert_eq!(
-        response.threads[0].backend_name.as_deref(),
-        Some("Metadata thread")
-    );
     assert!(response.threads[0].title.is_none());
     assert!(response.threads[0].active);
     assert!(matches!(
         response.threads[0].member_binding.as_ref(),
         Some(ConversationThreadMemberBinding::Explicit { .. })
     ));
+
+    root.close().unwrap();
+}
+
+#[test]
+fn workspace_state_read_hides_threads_without_syndic_view_registration() {
+    let root = unique_temp_dir();
+    let persistence = BerylWorkspacePersistence::new(&root);
+    let service = WorkspaceGraphToolService::new(persistence.clone());
+    let workspace_id = BerylWorkspaceId::new("workspace_state").unwrap();
+    let manifest = BerylWorkspaceManifest::named(workspace_id.clone(), "Workspace State", 42);
+    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
+    let mut state = WorkspaceConversationState::default();
+
+    state
+        .designate_primary_execution_target(&execution_target)
+        .unwrap();
+    state.remember_thread(RegisteredConversationThread::new(
+        ConversationThreadId::new("thread_backend_only"),
+        execution_target,
+        "Backend-only metadata",
+        1,
+        2,
+    ));
+
+    persistence.save_workspace_manifest(&manifest).unwrap();
+    persistence
+        .save_workspace_state(&workspace_id, &state)
+        .unwrap();
+
+    let response = service
+        .read_workspace_state(&WorkspaceStateReadRequest { workspace_id })
+        .unwrap();
+
+    assert!(response.threads.is_empty());
 
     root.close().unwrap();
 }
@@ -236,11 +288,10 @@ fn workspace_state_read_exposes_multiple_members_primary_and_rebind_metadata() {
     state
         .set_primary_explicit_member(&second_member_id)
         .unwrap();
-    state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
+    state.remember_thread(registered_thread(
+        thread_id.as_str(),
         first_target,
         "Needs rebind",
-        Some("Needs rebind".to_string()),
         1,
         2,
     ));

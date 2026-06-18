@@ -9,8 +9,8 @@ use std::{
 };
 
 use beryl_backend::{
-    ManagedBackendError, ManagedBackendServer, ManagedBackendSession, ManagedBackendStartupStage,
-    ThreadInfo, ThreadSummary, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_path,
+    ManagedBackendError, ManagedBackendServer, ManagedBackendStartupStage, ThreadStatus,
+    ThreadSummary, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_path,
 };
 use beryl_model::{
     semantic_graph::SemanticGraph,
@@ -24,13 +24,8 @@ use crate::{WorkspaceGraphRevision, WorkspaceGraphStateSnapshot};
 
 use super::backend_availability::{BackendUnavailable, BackendUnavailableKind};
 use super::lifecycle::blocked_state_for_error;
-use super::thread_activation::{
-    ExistingThreadActivationError, ThreadActivationLoader,
-    prepare_storage_backed_transcript_activation,
-};
-use super::thread_selection::{
-    KnownThreadSelection, ThreadSelectionRequest, resolve_known_thread_selection,
-};
+use super::thread_activation::prepare_storage_backed_transcript_activation;
+use super::thread_selection::ThreadSelectionRequest;
 use super::workspace_members::{
     WorkspaceTargetResolutionError, reconcile_workspace_member_availability,
     resolve_primary_execution_target, validate_primary_execution_target_selection,
@@ -243,19 +238,10 @@ pub(super) fn open_workspace_worker(
                 }
             };
 
-            let mut known_threads =
-                if matches!(thread_selection, ThreadSelectionRequest::Exact { .. }) {
-                    let _ = sender.send(WorkspaceUpdate::Detail(
-                        "Opening the selected conversation thread metadata".to_string(),
-                    ));
-                    Vec::new()
-                } else {
-                    let _ = sender.send(WorkspaceUpdate::Detail(
-                        "Loading existing conversation threads for this execution target"
-                            .to_string(),
-                    ));
-                    load_workspace_threads(&mut session, &execution_target, timeout)
-                };
+            let _ = sender.send(WorkspaceUpdate::Detail(
+                "Opening the workspace without backend thread-list catalog restore".to_string(),
+            ));
+            let mut known_threads = Vec::new();
             if cancellation.is_cancelled() {
                 shutdown_cancelled_open_server(&mut server, &execution_target);
                 return;
@@ -264,12 +250,11 @@ pub(super) fn open_workspace_worker(
             let syndic_storage_dir =
                 workspace_persistence.workspace_syndic_storage_dir(&workspace_id);
             let selected_thread = load_selected_thread_metadata(
-                &mut session,
+                &workspace_persistence,
+                &workspace_id,
                 &execution_target,
-                &known_threads,
                 &thread_selection,
                 &syndic_storage_dir,
-                timeout,
             );
             if cancellation.is_cancelled() {
                 shutdown_cancelled_open_server(&mut server, &execution_target);
@@ -277,9 +262,9 @@ pub(super) fn open_workspace_worker(
             }
 
             if known_threads.is_empty()
-                && let Some(thread) = selected_thread.thread_metadata.as_ref()
+                && let Some(thread) = selected_thread.thread_summary.as_ref()
             {
-                known_threads.push(thread.summary());
+                known_threads.push(thread.clone());
             }
             Ok(OpenedWorkspace {
                 execution_target,
@@ -288,7 +273,8 @@ pub(super) fn open_workspace_worker(
                 hard_stop_capabilities,
                 known_threads,
                 selected_thread_id: selected_thread.selected_thread_id,
-                selected_thread_metadata: selected_thread.thread_metadata,
+                selected_thread_summary: selected_thread.thread_summary,
+                selected_thread_status: selected_thread.thread_status,
                 selected_thread_session_metadata: selected_thread.thread_session_metadata,
                 selected_thread_transcript_activation: selected_thread.transcript_activation,
                 surface_notice: selected_thread.surface_notice,
@@ -365,146 +351,90 @@ fn load_workspace_surface_seed(
     }
 }
 
-fn load_workspace_threads(
-    session: &mut ManagedBackendSession,
-    workspace: &WorkspaceId,
-    timeout: Duration,
-) -> Vec<ThreadSummary> {
-    match session.list_threads(timeout) {
-        Ok(mut threads) => {
-            threads.retain(|thread| thread.cwd == workspace.canonical_path());
-            threads.sort_by(|left, right| {
-                right
-                    .updated_at
-                    .cmp(&left.updated_at)
-                    .then_with(|| right.created_at.cmp(&left.created_at))
-            });
-            threads
-        }
-        Err(error) => {
-            warn!(
-                workspace = %workspace.display_label(),
-                error = %error,
-                "failed to seed known workspace threads"
-            );
-            Vec::new()
-        }
-    }
-}
-
 fn load_selected_thread_metadata(
-    session: &mut ManagedBackendSession,
+    workspace_persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
     execution_target: &WorkspaceId,
-    known_threads: &[ThreadSummary],
     thread_selection: &ThreadSelectionRequest,
     syndic_storage_dir: &Path,
-    timeout: Duration,
 ) -> SelectedThreadMetadata {
-    if let ThreadSelectionRequest::Exact { thread_id, label } = thread_selection {
-        return match ThreadActivationLoader::load_existing_thread(
-            session,
-            execution_target,
-            thread_id,
-            label,
-            timeout,
-        ) {
-            Ok(activation) => SelectedThreadMetadata {
-                selected_thread_id: Some(thread_id.clone()),
-                thread_session_metadata: Some(activation.session_metadata),
-                transcript_activation: Some(prepare_storage_backed_transcript_activation(
-                    syndic_storage_dir.to_path_buf(),
-                    thread_id,
-                )),
-                thread_metadata: Some(activation.thread),
-                surface_notice: None,
-            },
-            Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
-                SelectedThreadMetadata {
-                    selected_thread_id: None,
-                    thread_session_metadata: None,
-                    transcript_activation: None,
-                    thread_metadata: None,
-                    surface_notice: Some(SurfaceNotice::new("Thread requires rebind", detail)),
-                }
-            }
-            Err(ExistingThreadActivationError::Failed { message }) => SelectedThreadMetadata {
+    let workspace_state = match workspace_persistence.load_workspace_state(workspace_id) {
+        Ok(state) => state,
+        Err(error) => {
+            return SelectedThreadMetadata {
                 selected_thread_id: None,
                 thread_session_metadata: None,
                 transcript_activation: None,
-                thread_metadata: None,
-                surface_notice: Some(SurfaceNotice::new("Thread activation failed", message)),
-            },
-        };
-    }
-
-    let selection =
-        resolve_known_thread_selection(known_threads, execution_target, thread_selection);
-
-    match selection {
-        KnownThreadSelection::Selected { thread_id, strict } => {
-            let label = known_threads
-                .iter()
-                .find(|thread| thread.id == thread_id)
-                .and_then(|thread| thread.name.as_deref())
-                .unwrap_or(&thread_id);
-            match ThreadActivationLoader::load_existing_thread(
-                session,
-                execution_target,
-                &thread_id,
-                label,
-                timeout,
-            ) {
-                Ok(activation) => SelectedThreadMetadata {
-                    selected_thread_id: Some(thread_id.clone()),
-                    thread_session_metadata: Some(activation.session_metadata),
-                    transcript_activation: Some(prepare_storage_backed_transcript_activation(
-                        syndic_storage_dir.to_path_buf(),
-                        &thread_id,
-                    )),
-                    thread_metadata: Some(activation.thread),
-                    surface_notice: None,
-                },
-                Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
-                    warn!(
-                        workspace = %execution_target.display_label(),
-                        thread_id = %thread_id,
-                        error = %detail,
-                        "failed to preload selected workspace thread metadata"
-                    );
-                    SelectedThreadMetadata {
-                        selected_thread_id: (!strict).then_some(thread_id),
-                        thread_session_metadata: None,
-                        transcript_activation: None,
-                        thread_metadata: None,
-                        surface_notice: strict
-                            .then(|| SurfaceNotice::new("Thread requires rebind", detail)),
-                    }
-                }
-                Err(ExistingThreadActivationError::Failed { message }) => {
-                    warn!(
-                        workspace = %execution_target.display_label(),
-                        thread_id = %thread_id,
-                        error = %message,
-                        "failed to preload selected workspace thread metadata"
-                    );
-                    SelectedThreadMetadata {
-                        selected_thread_id: (!strict).then_some(thread_id),
-                        thread_session_metadata: None,
-                        transcript_activation: None,
-                        thread_metadata: None,
-                        surface_notice: strict
-                            .then(|| SurfaceNotice::new("Thread activation failed", message)),
-                    }
-                }
-            }
+                thread_summary: None,
+                thread_status: None,
+                surface_notice: Some(SurfaceNotice::new(
+                    "Thread activation failed",
+                    format!("Beryl could not load workspace thread registrations: {error}"),
+                )),
+            };
         }
-        KnownThreadSelection::None => SelectedThreadMetadata {
-            selected_thread_id: None,
-            thread_session_metadata: None,
-            transcript_activation: None,
-            thread_metadata: None,
-            surface_notice: None,
-        },
+    };
+
+    let requested = match thread_selection {
+        ThreadSelectionRequest::Exact {
+            thread_id,
+            syndic_view_id,
+            ..
+        } => Some((thread_id.as_str(), Some(syndic_view_id.as_str()))),
+        ThreadSelectionRequest::RestorePreferred(Some(thread_id)) => {
+            Some((thread_id.as_str(), None))
+        }
+        ThreadSelectionRequest::RestorePreferred(None) => None,
+    };
+    let Some((thread_id, expected_view_id)) = requested else {
+        return SelectedThreadMetadata::none();
+    };
+    let thread_id_model =
+        beryl_model::conversation::ConversationThreadId::new(thread_id.to_string());
+    let Some(registration) = workspace_state.catalog_thread_registration(&thread_id_model) else {
+        return SelectedThreadMetadata::none();
+    };
+    if registration.requires_rebind() || registration.execution_target() != execution_target {
+        return SelectedThreadMetadata::none();
+    }
+    let Some(view_id) = registration.syndic_view_id() else {
+        return SelectedThreadMetadata::none();
+    };
+    if expected_view_id.is_some_and(|expected| expected != view_id.as_str()) {
+        return SelectedThreadMetadata::none();
+    }
+    let summary = thread_summary_from_registration(registration);
+
+    SelectedThreadMetadata {
+        selected_thread_id: Some(thread_id.to_string()),
+        thread_session_metadata: None,
+        transcript_activation: Some(prepare_storage_backed_transcript_activation(
+            syndic_storage_dir.to_path_buf(),
+            view_id.as_str(),
+        )),
+        thread_summary: Some(summary),
+        thread_status: Some(ThreadStatus::Idle),
+        surface_notice: None,
+    }
+}
+
+fn thread_summary_from_registration(
+    thread: &beryl_model::conversation::RegisteredConversationThread,
+) -> ThreadSummary {
+    ThreadSummary {
+        id: thread.thread_id().as_str().to_string(),
+        forked_from_id: thread
+            .branch_parent_thread_id()
+            .map(|thread_id| thread_id.as_str().to_string()),
+        cwd: thread.execution_target().canonical_path().to_path_buf(),
+        preview: String::new(),
+        name: thread.title().map(str::to_string),
+        agent_nickname: None,
+        path: None,
+        created_at: thread.created_at_millis(),
+        updated_at: thread.updated_at_millis(),
+        model_provider: String::new(),
+        ephemeral: false,
     }
 }
 
@@ -512,8 +442,22 @@ struct SelectedThreadMetadata {
     selected_thread_id: Option<String>,
     thread_session_metadata: Option<beryl_backend::ThreadSessionMetadata>,
     transcript_activation: Option<super::syndic_transcript::PreparedTranscriptActivation>,
-    thread_metadata: Option<ThreadInfo>,
+    thread_summary: Option<ThreadSummary>,
+    thread_status: Option<ThreadStatus>,
     surface_notice: Option<SurfaceNotice>,
+}
+
+impl SelectedThreadMetadata {
+    fn none() -> Self {
+        Self {
+            selected_thread_id: None,
+            thread_session_metadata: None,
+            transcript_activation: None,
+            thread_summary: None,
+            thread_status: None,
+            surface_notice: None,
+        }
+    }
 }
 
 fn resolve_workspace_target(

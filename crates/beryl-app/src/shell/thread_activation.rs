@@ -9,12 +9,9 @@ use crate::gui_control_dynamic_tools::PendingActivationUiState;
 use super::thread_navigation::ThreadNavigationActivationSource;
 use super::{ConversationSurfaceState, ShellView};
 
-#[path = "thread_activation/loader.rs"]
-mod loader;
 #[path = "thread_activation/preparation.rs"]
 mod preparation;
 
-pub(crate) use loader::{ExistingThreadActivationError, ThreadActivationLoader};
 pub(super) use preparation::{
     ActivationPreparer, StagedSelectedThreadActivation,
     prepare_storage_backed_transcript_activation,
@@ -135,7 +132,7 @@ impl ConversationSurfaceState {
             pending_label: pending.map(|pending| pending.label.clone()),
             pending_thread_id: pending.map(|pending| pending.thread_id.clone()),
             pending_progress: pending.map(PendingThreadActivation::progress),
-            staged_thread_id: staged.map(|staged| staged.thread.summary().id),
+            staged_thread_id: staged.map(|staged| staged.summary.id.clone()),
             staged_source: staged.map(|staged| format!("{:?}", staged.source)),
             staged_metadata_turn_count: None,
             ready_for_publication: staged
@@ -186,21 +183,21 @@ impl ConversationSurfaceState {
         let staged = self.staged_thread_activation.as_ref()?;
         if !staged.is_ready_for_publication() {
             debug!(
-                thread_id = staged.thread.summary().id.as_str(),
+                thread_id = staged.summary.id.as_str(),
                 "selected-thread activation remains staged pending publication"
             );
             return None;
         }
 
         let staged = self.staged_thread_activation.take()?;
-        let summary = staged.thread.summary();
+        let summary = staged.summary;
         let source = staged.source;
         let execution_target = staged.execution_target.clone();
-        let activated_idle = matches!(staged.thread.status, ThreadStatus::Idle);
+        let activated_idle = matches!(staged.status, ThreadStatus::Idle);
         let prepared_transcript = staged.prepared_transcript.clone();
 
         self.upsert_selected_thread(summary.clone());
-        self.selected_thread_status = Some(staged.thread.status.clone());
+        self.selected_thread_status = Some(staged.status.clone());
         self.sync_thread_selector_active_thread();
         self.hard_stop_targets.clear_all();
         self.status_line.clear_session_metadata();

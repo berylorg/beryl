@@ -1,18 +1,21 @@
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use beryl_backend::{JsonRpcError, ManagedBackendError, ThreadSummary};
 use beryl_model::{
     conversation::{
-        ConversationThreadId, RegisteredConversationThread, WorkspaceConversationState,
+        ConversationThreadId, ConversationThreadMemberBinding, ConversationThreadTitleSource,
+        RegisteredConversationThread, SyndicConversationId, SyndicConversationViewId,
+        WorkspaceConversationState,
     },
     workspace::{BerylWorkspaceId, RuntimeMode, WorkspaceId, WorkspaceMemberId},
 };
-use tracing::warn;
-
-pub(crate) const MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS: usize = 2048;
+use syndic_storage::{
+    ConversationViewSummary, MAX_CONVERSATION_SUMMARY_READ_LIMIT, StoreOpenOptions, SyndicStore,
+    ThreadViewId,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum MemberThreadInventoryMemberKey {
@@ -46,19 +49,14 @@ pub(crate) struct MemberThreadInventoryGroup {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MemberThreadInventoryThread {
     thread_id: ConversationThreadId,
+    syndic_conversation_id: SyndicConversationId,
+    syndic_view_id: SyndicConversationViewId,
     forked_from_id: Option<ConversationThreadId>,
     title: String,
     execution_target: WorkspaceId,
     preview: String,
-    backend_name: Option<String>,
     created_at_millis: i64,
     updated_at_millis: i64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MemberThreadInventoryBackendThread {
-    runtime: RuntimeMode,
-    summary: ThreadSummary,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,17 +67,11 @@ pub(crate) enum MemberThreadInventoryEvent {
     InventoryContentsChanged,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct MemberThreadInventoryRefreshToken {
-    generation: u64,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MemberThreadInventoryState {
     snapshot: MemberThreadInventorySnapshot,
-    generation: u64,
-    refresh_needed: bool,
     refreshing: bool,
+    needs_refresh: bool,
     last_error: Option<String>,
 }
 
@@ -88,12 +80,6 @@ pub(crate) struct MemberThreadInventoryRetainedCounts {
     pub(crate) groups: usize,
     pub(crate) threads: usize,
     pub(crate) payload_bytes: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ThreadForkParentMetadataReadError {
-    ThreadUnavailable(String),
-    Fatal(String),
 }
 
 impl MemberThreadInventorySnapshot {
@@ -105,18 +91,6 @@ impl MemberThreadInventorySnapshot {
             workspace_id,
             refreshed_at_millis: 0,
             groups: empty_groups_for_workspace_state(workspace_state),
-        }
-    }
-
-    pub(crate) fn new(
-        workspace_id: BerylWorkspaceId,
-        refreshed_at_millis: u64,
-        groups: Vec<MemberThreadInventoryGroup>,
-    ) -> Self {
-        Self {
-            workspace_id,
-            refreshed_at_millis,
-            groups,
         }
     }
 
@@ -150,17 +124,7 @@ impl MemberThreadInventorySnapshot {
                     + group
                         .threads
                         .iter()
-                        .map(|thread| {
-                            thread.thread_id.as_str().len()
-                                + thread
-                                    .forked_from_id
-                                    .as_ref()
-                                    .map_or(0, |id| id.as_str().len())
-                                + thread.title.len()
-                                + thread.execution_target.display_label().len()
-                                + thread.preview.len()
-                                + thread.backend_name.as_ref().map_or(0, String::len)
-                        })
+                        .map(MemberThreadInventoryThread::retained_payload_bytes)
                         .sum::<usize>()
             })
             .sum();
@@ -177,42 +141,6 @@ impl MemberThreadInventorySnapshot {
     ) -> Option<&MemberThreadInventoryGroup> {
         self.groups.iter().find(|group| group.key() == key)
     }
-
-    pub(crate) fn update_thread_backend_name(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-        thread_id: &ConversationThreadId,
-        backend_name: Option<&str>,
-    ) -> bool {
-        let backend_name = unsuppressed_inventory_backend_name(
-            workspace_state,
-            thread_id,
-            normalized_thread_title(backend_name),
-        );
-        let mut changed = false;
-        for group in &mut self.groups {
-            for thread in &mut group.threads {
-                if thread.thread_id() == thread_id {
-                    changed |= thread.update_backend_name(workspace_state, backend_name.clone());
-                }
-            }
-        }
-        changed
-    }
-
-    pub(crate) fn refresh_thread_titles(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-    ) -> bool {
-        let mut changed = false;
-        for group in &mut self.groups {
-            for thread in &mut group.threads {
-                changed |= thread.suppress_ignored_backend_name(workspace_state);
-                changed |= thread.update_title(workspace_state);
-            }
-        }
-        changed
-    }
 }
 
 impl MemberThreadInventoryState {
@@ -225,9 +153,8 @@ impl MemberThreadInventoryState {
                 workspace_id,
                 workspace_state,
             ),
-            generation: 0,
-            refresh_needed: workspace_state.selected_runtime().is_some(),
             refreshing: false,
+            needs_refresh: true,
             last_error: None,
         }
     }
@@ -245,108 +172,42 @@ impl MemberThreadInventoryState {
     }
 
     pub(crate) fn needs_refresh(&self) -> bool {
-        self.refresh_needed && !self.refreshing
+        self.needs_refresh
     }
 
-    pub(crate) fn refresh_token(&self) -> MemberThreadInventoryRefreshToken {
-        MemberThreadInventoryRefreshToken {
-            generation: self.generation,
+    pub(crate) fn prepare_for_backend_reopen(&mut self) {}
+
+    pub(crate) fn begin_refresh(&mut self) -> bool {
+        if self.refreshing || !self.needs_refresh {
+            return false;
         }
-    }
-
-    pub(crate) fn begin_refresh(&mut self) -> MemberThreadInventoryRefreshToken {
         self.refreshing = true;
-        self.refresh_needed = false;
-        self.last_error = None;
-        self.refresh_token()
+        true
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn finish_refresh(
+    pub(crate) fn apply_refresh_success(
         &mut self,
         snapshot: MemberThreadInventorySnapshot,
-        workspace_state: &WorkspaceConversationState,
-    ) {
-        let token = self.refresh_token();
-        self.refresh_needed = false;
-        let _ = self.finish_refresh_for_token(token, snapshot, workspace_state);
-    }
-
-    pub(crate) fn finish_refresh_for_token(
-        &mut self,
-        token: MemberThreadInventoryRefreshToken,
-        mut snapshot: MemberThreadInventorySnapshot,
-        workspace_state: &WorkspaceConversationState,
     ) -> bool {
-        if token != self.refresh_token() {
-            return false;
-        }
-
-        let refresh_requested_after_begin = self.refresh_needed;
-        snapshot.refresh_thread_titles(workspace_state);
-        let has_refreshable_groups = !snapshot.groups().is_empty();
+        let changed = self.snapshot != snapshot
+            || self.refreshing
+            || self.needs_refresh
+            || self.last_error.is_some();
         self.snapshot = snapshot;
-        self.refresh_needed = refresh_requested_after_begin && has_refreshable_groups;
         self.refreshing = false;
+        self.needs_refresh = false;
         self.last_error = None;
-        true
+        changed
     }
 
-    pub(crate) fn fail_refresh_for_token(
-        &mut self,
-        token: MemberThreadInventoryRefreshToken,
-        error: impl Into<String>,
-    ) -> bool {
-        if token != self.refresh_token() {
-            return false;
-        }
-
-        let refresh_requested_after_begin = self.refresh_needed;
+    pub(crate) fn apply_refresh_failure(&mut self, error: impl Into<String>) -> bool {
+        let error = error.into();
+        let changed =
+            self.refreshing || !self.needs_refresh || self.last_error.as_ref() != Some(&error);
         self.refreshing = false;
-        self.refresh_needed = refresh_requested_after_begin && !self.snapshot.groups().is_empty();
-        self.last_error = Some(error.into());
-        true
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn abandon_refresh_for_backend_reopen(&mut self, error: impl Into<String>) {
-        self.refreshing = false;
-        self.refresh_needed = !self.snapshot.groups().is_empty();
-        self.last_error = Some(error.into());
-    }
-
-    pub(crate) fn prepare_for_backend_reopen(&mut self) {
-        if self.refreshing {
-            self.refresh_needed = !self.snapshot.groups().is_empty();
-        }
-        self.refreshing = false;
-        self.generation = self.generation.wrapping_add(1);
-    }
-
-    pub(crate) fn mark_refresh_needed(&mut self) {
-        if !self.snapshot.groups().is_empty() {
-            self.refresh_needed = true;
-        }
-    }
-
-    pub(crate) fn update_thread_backend_name(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-        thread_id: &ConversationThreadId,
-        backend_name: Option<&str>,
-    ) -> bool {
-        self.snapshot
-            .update_thread_backend_name(workspace_state, thread_id, backend_name)
-    }
-
-    pub(crate) fn reset_for_workspace_state(
-        &mut self,
-        workspace_id: BerylWorkspaceId,
-        workspace_state: &WorkspaceConversationState,
-    ) {
-        let generation = self.generation.wrapping_add(1);
-        *self = Self::new(workspace_id, workspace_state);
-        self.generation = generation;
+        self.needs_refresh = true;
+        self.last_error = Some(error);
+        changed
     }
 
     pub(crate) fn rekey_workspace_id(&mut self, workspace_id: BerylWorkspaceId) {
@@ -361,14 +222,16 @@ impl MemberThreadInventoryState {
     ) {
         match event {
             MemberThreadInventoryEvent::MemberSetChanged => {
-                self.reset_for_workspace_state(workspace_id, workspace_state);
+                self.snapshot = MemberThreadInventorySnapshot::empty_for_workspace(
+                    workspace_id,
+                    workspace_state,
+                );
+                self.needs_refresh = true;
             }
-            MemberThreadInventoryEvent::BackendTargetAvailable
+            MemberThreadInventoryEvent::BackendTargetOpening
+            | MemberThreadInventoryEvent::BackendTargetAvailable
             | MemberThreadInventoryEvent::InventoryContentsChanged => {
-                self.mark_refresh_needed();
-            }
-            MemberThreadInventoryEvent::BackendTargetOpening => {
-                self.prepare_for_backend_reopen();
+                self.needs_refresh = true;
             }
         }
     }
@@ -419,8 +282,40 @@ impl MemberThreadInventoryGroup {
 }
 
 impl MemberThreadInventoryThread {
+    pub(crate) fn new(
+        thread_id: ConversationThreadId,
+        syndic_conversation_id: SyndicConversationId,
+        syndic_view_id: SyndicConversationViewId,
+        forked_from_id: Option<ConversationThreadId>,
+        title: impl Into<String>,
+        execution_target: WorkspaceId,
+        preview: impl Into<String>,
+        created_at_millis: i64,
+        updated_at_millis: i64,
+    ) -> Self {
+        Self {
+            thread_id,
+            syndic_conversation_id,
+            syndic_view_id,
+            forked_from_id,
+            title: title.into(),
+            execution_target,
+            preview: preview.into(),
+            created_at_millis,
+            updated_at_millis,
+        }
+    }
+
     pub(crate) fn thread_id(&self) -> &ConversationThreadId {
         &self.thread_id
+    }
+
+    pub(crate) fn syndic_conversation_id(&self) -> &SyndicConversationId {
+        &self.syndic_conversation_id
+    }
+
+    pub(crate) fn syndic_view_id(&self) -> &SyndicConversationViewId {
+        &self.syndic_view_id
     }
 
     pub(crate) fn forked_from_id(&self) -> Option<&ConversationThreadId> {
@@ -448,324 +343,31 @@ impl MemberThreadInventoryThread {
             self.thread_id.clone(),
             self.execution_target.clone(),
             self.preview.clone(),
-            self.backend_name.clone(),
             self.created_at_millis,
             self.updated_at_millis,
         );
         if let Some(parent_thread_id) = self.forked_from_id.as_ref() {
             thread = thread.with_branch_parent_thread_id(parent_thread_id.clone());
         }
+        thread = thread.with_syndic_view_registration(
+            self.syndic_conversation_id.clone(),
+            self.syndic_view_id.clone(),
+        );
         thread
     }
 
-    fn update_backend_name(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-        backend_name: Option<String>,
-    ) -> bool {
-        let title = self.resolved_title(workspace_state, backend_name.as_deref());
-        if self.backend_name == backend_name && self.title == title {
-            return false;
-        }
-
-        self.backend_name = backend_name;
-        self.title = title;
-        true
+    fn retained_payload_bytes(&self) -> usize {
+        self.thread_id.as_str().len()
+            + self.syndic_conversation_id.as_str().len()
+            + self.syndic_view_id.as_str().len()
+            + self
+                .forked_from_id
+                .as_ref()
+                .map_or(0, |id| id.as_str().len())
+            + self.title.len()
+            + self.execution_target.display_label().len()
+            + self.preview.len()
     }
-
-    fn update_title(&mut self, workspace_state: &WorkspaceConversationState) -> bool {
-        let title = self.resolved_title(workspace_state, self.backend_name.as_deref());
-        if self.title == title {
-            return false;
-        }
-
-        self.title = title;
-        true
-    }
-
-    fn suppress_ignored_backend_name(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-    ) -> bool {
-        if !workspace_state
-            .thread_registration(&self.thread_id)
-            .is_some_and(|thread| {
-                thread.ignores_backend_name_for_automatic_title(self.backend_name.as_deref())
-            })
-        {
-            return false;
-        }
-
-        self.update_backend_name(workspace_state, None)
-    }
-
-    fn resolved_title(
-        &self,
-        workspace_state: &WorkspaceConversationState,
-        backend_name: Option<&str>,
-    ) -> String {
-        resolved_thread_title(
-            workspace_state,
-            &self.thread_id,
-            &self.execution_target,
-            &self.preview,
-            backend_name,
-            self.created_at_millis,
-            self.updated_at_millis,
-        )
-    }
-}
-
-impl MemberThreadInventoryBackendThread {
-    pub(crate) fn new(runtime: RuntimeMode, summary: ThreadSummary) -> Self {
-        Self { runtime, summary }
-    }
-
-    pub(crate) fn runtime(&self) -> &RuntimeMode {
-        &self.runtime
-    }
-
-    pub(crate) fn summary(&self) -> &ThreadSummary {
-        &self.summary
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) fn build_member_thread_inventory_snapshot(
-    workspace_id: BerylWorkspaceId,
-    workspace_state: &WorkspaceConversationState,
-    members: Vec<MemberThreadInventoryGroup>,
-    backend_threads: Vec<ThreadSummary>,
-    refreshed_at_millis: u64,
-) -> MemberThreadInventorySnapshot {
-    let default_runtime = members
-        .first()
-        .map(|member| member.runtime().clone())
-        .unwrap_or(RuntimeMode::HostWindows);
-    let backend_threads = backend_threads
-        .into_iter()
-        .map(|summary| MemberThreadInventoryBackendThread::new(default_runtime.clone(), summary))
-        .collect();
-    build_member_thread_inventory_snapshot_for_backend_threads(
-        workspace_id,
-        workspace_state,
-        members,
-        backend_threads,
-        refreshed_at_millis,
-    )
-}
-
-pub(crate) fn build_member_thread_inventory_snapshot_for_backend_threads(
-    workspace_id: BerylWorkspaceId,
-    workspace_state: &WorkspaceConversationState,
-    members: Vec<MemberThreadInventoryGroup>,
-    mut backend_threads: Vec<MemberThreadInventoryBackendThread>,
-    refreshed_at_millis: u64,
-) -> MemberThreadInventorySnapshot {
-    dedupe_backend_threads_by_runtime_thread_and_cwd(&mut backend_threads);
-    let mut groups = members
-        .into_iter()
-        .map(|mut group| {
-            group.threads = backend_threads
-                .iter()
-                .filter(|thread| {
-                    thread.runtime() == group.runtime()
-                        && group
-                            .canonical_path()
-                            .is_some_and(|path| thread.summary().cwd.as_path() == path)
-                })
-                .map(|thread| thread_from_summary(workspace_state, &group, thread.summary()))
-                .collect();
-            group.threads.sort_by(|left, right| {
-                right
-                    .updated_at_millis
-                    .cmp(&left.updated_at_millis)
-                    .then_with(|| right.created_at_millis.cmp(&left.created_at_millis))
-                    .then_with(|| left.thread_id.as_str().cmp(right.thread_id.as_str()))
-            });
-            group
-        })
-        .collect::<Vec<_>>();
-
-    groups.sort_by(|left, right| member_group_sort_key(left).cmp(&member_group_sort_key(right)));
-    MemberThreadInventorySnapshot::new(workspace_id, refreshed_at_millis, groups)
-}
-
-fn dedupe_backend_threads_by_runtime_thread_and_cwd(
-    backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
-) {
-    let mut seen = HashSet::new();
-    backend_threads.retain(|thread| {
-        seen.insert((
-            thread.runtime().clone(),
-            thread.summary().id.clone(),
-            thread.summary().cwd.clone(),
-        ))
-    });
-}
-
-pub(crate) fn prepare_backend_threads_for_member_thread_inventory<R>(
-    backend_threads: &mut Vec<ThreadSummary>,
-    members: &[MemberThreadInventoryGroup],
-    read_metadata: R,
-) -> Result<(), String>
-where
-    R: FnMut(&str) -> Result<ThreadSummary, ThreadForkParentMetadataReadError>,
-{
-    retain_backend_threads_for_inventory_members(backend_threads, members);
-    truncate_backend_threads_for_member_thread_inventory(backend_threads);
-    enrich_missing_thread_fork_parent_metadata(backend_threads, read_metadata)
-}
-
-pub(crate) fn retain_backend_threads_for_inventory_members(
-    backend_threads: &mut Vec<ThreadSummary>,
-    members: &[MemberThreadInventoryGroup],
-) {
-    backend_threads.retain(|thread| {
-        members.iter().any(|member| {
-            member
-                .canonical_path()
-                .is_some_and(|path| thread.cwd.as_path() == path)
-        })
-    });
-}
-
-pub(crate) fn truncate_backend_threads_for_member_thread_inventory(
-    backend_threads: &mut Vec<ThreadSummary>,
-) {
-    if backend_threads.len() <= MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS {
-        return;
-    }
-
-    backend_threads.sort_by(|left, right| {
-        right
-            .updated_at
-            .cmp(&left.updated_at)
-            .then_with(|| right.created_at.cmp(&left.created_at))
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    backend_threads.truncate(MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS);
-}
-
-pub(crate) fn retain_scoped_backend_threads_for_inventory_members(
-    backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
-    members: &[MemberThreadInventoryGroup],
-) {
-    backend_threads.retain(|thread| {
-        members.iter().any(|member| {
-            thread.runtime() == member.runtime()
-                && member
-                    .canonical_path()
-                    .is_some_and(|path| thread.summary().cwd.as_path() == path)
-        })
-    });
-}
-
-pub(crate) fn truncate_scoped_backend_threads_for_member_thread_inventory(
-    backend_threads: &mut Vec<MemberThreadInventoryBackendThread>,
-) {
-    if backend_threads.len() <= MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS {
-        return;
-    }
-
-    backend_threads.sort_by(|left, right| {
-        right
-            .summary()
-            .updated_at
-            .cmp(&left.summary().updated_at)
-            .then_with(|| right.summary().created_at.cmp(&left.summary().created_at))
-            .then_with(|| left.summary().id.cmp(&right.summary().id))
-            .then_with(|| {
-                left.runtime()
-                    .display_name()
-                    .cmp(&right.runtime().display_name())
-            })
-    });
-    backend_threads.truncate(MEMBER_THREAD_INVENTORY_MAX_BACKEND_THREADS);
-}
-
-pub(crate) fn enrich_missing_thread_fork_parent_metadata<R>(
-    backend_threads: &mut [ThreadSummary],
-    mut read_metadata: R,
-) -> Result<(), String>
-where
-    R: FnMut(&str) -> Result<ThreadSummary, ThreadForkParentMetadataReadError>,
-{
-    for thread in backend_threads
-        .iter_mut()
-        .filter(|thread| thread.forked_from_id.is_none())
-    {
-        let metadata = match read_metadata(&thread.id) {
-            Ok(metadata) => metadata,
-            Err(ThreadForkParentMetadataReadError::ThreadUnavailable(message)) => {
-                warn!(
-                    thread_id = %thread.id,
-                    error = %message,
-                    "could not enrich thread fork parent metadata"
-                );
-                continue;
-            }
-            Err(ThreadForkParentMetadataReadError::Fatal(message)) => return Err(message),
-        };
-
-        if metadata.id != thread.id {
-            return Err(format!(
-                "Beryl could not enrich thread lineage because metadata-only thread/read for {} returned {}.",
-                thread.id, metadata.id
-            ));
-        }
-
-        if metadata.forked_from_id.is_some() {
-            thread.forked_from_id = metadata.forked_from_id;
-        }
-    }
-
-    Ok(())
-}
-
-impl ThreadForkParentMetadataReadError {
-    pub(crate) fn thread_unavailable(message: impl Into<String>) -> Self {
-        Self::ThreadUnavailable(message.into())
-    }
-
-    pub(crate) fn fatal(message: impl Into<String>) -> Self {
-        Self::Fatal(message.into())
-    }
-}
-
-pub(crate) fn thread_fork_parent_metadata_read_error(
-    thread_id: &str,
-    error: ManagedBackendError,
-) -> ThreadForkParentMetadataReadError {
-    match &error {
-        ManagedBackendError::RequestFailed { method, error }
-            if method == "thread/read"
-                && thread_read_error_is_thread_specific(error, thread_id) =>
-        {
-            ThreadForkParentMetadataReadError::thread_unavailable(error.to_string())
-        }
-        _ => ThreadForkParentMetadataReadError::fatal(format!(
-            "Beryl could not refresh the workspace thread inventory: {error}"
-        )),
-    }
-}
-
-fn thread_read_error_is_thread_specific(error: &JsonRpcError, thread_id: &str) -> bool {
-    const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
-    const JSONRPC_INVALID_PARAMS: i64 = -32602;
-
-    if matches!(
-        error.code,
-        JSONRPC_METHOD_NOT_FOUND | JSONRPC_INVALID_PARAMS
-    ) {
-        return false;
-    }
-
-    error.message.contains(thread_id)
-        || error
-            .data
-            .as_ref()
-            .is_some_and(|data| data.to_string().contains(thread_id))
 }
 
 pub(crate) fn empty_groups_for_workspace_state(
@@ -801,116 +403,197 @@ pub(crate) fn empty_groups_for_workspace_state(
         .collect()
 }
 
-fn thread_from_summary(
+pub(crate) fn build_workspace_syndic_catalog_snapshot(
+    storage_dir: &Path,
+    workspace_id: BerylWorkspaceId,
     workspace_state: &WorkspaceConversationState,
-    group: &MemberThreadInventoryGroup,
-    summary: &ThreadSummary,
-) -> MemberThreadInventoryThread {
-    let thread_id = ConversationThreadId::new(summary.id.clone());
-    let execution_target = WorkspaceId::from_parts(group.runtime().clone(), summary.cwd.clone());
-    let registered_thread = workspace_state.thread_registration(&thread_id);
-    let summary_backend_name = if registered_thread.is_some_and(|thread| {
-        thread.ignores_backend_name_for_automatic_title(summary.name.as_deref())
-    }) {
-        None
-    } else {
-        normalized_thread_title(summary.name.as_deref())
-    };
-    let backend_name = summary_backend_name.or_else(|| {
-        registered_thread
-            .and_then(RegisteredConversationThread::backend_name)
-            .map(str::to_string)
-    });
-    let title = resolved_thread_title(
-        workspace_state,
-        &thread_id,
-        &execution_target,
-        &summary.preview,
-        backend_name.as_deref(),
-        summary.created_at,
-        summary.updated_at,
-    );
-
-    let forked_from_id = summary
-        .forked_from_id
-        .as_ref()
-        .map(|thread_id| ConversationThreadId::new(thread_id.clone()))
-        .or_else(|| {
-            registered_thread
-                .and_then(RegisteredConversationThread::branch_parent_thread_id)
-                .cloned()
+) -> Result<MemberThreadInventorySnapshot, String> {
+    let registrations = workspace_state.catalog_threads().collect::<Vec<_>>();
+    let mut groups = empty_groups_for_workspace_state(workspace_state);
+    if registrations.is_empty() {
+        return Ok(MemberThreadInventorySnapshot {
+            workspace_id,
+            refreshed_at_millis: current_unix_millis(),
+            groups,
         });
-
-    MemberThreadInventoryThread {
-        thread_id,
-        forked_from_id,
-        title,
-        execution_target,
-        preview: summary.preview.clone(),
-        backend_name,
-        created_at_millis: summary.created_at,
-        updated_at_millis: summary.updated_at,
     }
+
+    let view_ids = registrations
+        .iter()
+        .filter_map(|thread| thread.syndic_view_id())
+        .map(|view_id| ThreadViewId::from(view_id.as_str().to_string()))
+        .collect::<Vec<_>>();
+    let store = SyndicStore::open(storage_dir, StoreOpenOptions::default())
+        .map_err(|error| format!("Syndic catalog storage unavailable: {error}"))?;
+    let mut summaries = Vec::new();
+    for chunk in view_ids.chunks(MAX_CONVERSATION_SUMMARY_READ_LIMIT) {
+        summaries.extend(
+            store
+                .conversation_view_summaries(chunk, chunk.len())
+                .map_err(|error| format!("Syndic catalog summaries unavailable: {error}"))?,
+        );
+    }
+    summaries.sort_by(|left, right| {
+        right
+            .updated_at_ms
+            .cmp(&left.updated_at_ms)
+            .then_with(|| right.created_at_ms.cmp(&left.created_at_ms))
+            .then_with(|| left.view_id.to_string().cmp(&right.view_id.to_string()))
+    });
+    let summaries_by_view = summaries
+        .into_iter()
+        .take(MAX_CONVERSATION_SUMMARY_READ_LIMIT)
+        .map(|summary| (summary.view_id.to_string(), summary))
+        .collect::<HashMap<_, _>>();
+    let thread_id_by_view = registrations
+        .iter()
+        .filter_map(|thread| {
+            Some((
+                thread.syndic_view_id()?.as_str().to_string(),
+                thread.thread_id().clone(),
+            ))
+        })
+        .collect::<HashMap<_, _>>();
+
+    for thread in registrations {
+        let Some(summary) = thread
+            .syndic_view_id()
+            .and_then(|view_id| summaries_by_view.get(view_id.as_str()))
+        else {
+            continue;
+        };
+        if !summary_matches_registration(thread, summary) {
+            continue;
+        }
+        let Some(group_key) = group_key_for_registered_thread(workspace_state, thread) else {
+            continue;
+        };
+        let Some(group) = groups.iter_mut().find(|group| group.key() == &group_key) else {
+            continue;
+        };
+        let Some(conversation_id) = thread.syndic_conversation_id().cloned() else {
+            continue;
+        };
+        let Some(view_id) = thread.syndic_view_id().cloned() else {
+            continue;
+        };
+        let parent_thread_id = summary
+            .branch
+            .as_ref()
+            .and_then(|branch| thread_id_by_view.get(&branch.parent_view_id.to_string()))
+            .cloned();
+        group.threads.push(MemberThreadInventoryThread::new(
+            thread.thread_id().clone(),
+            conversation_id,
+            view_id,
+            parent_thread_id,
+            catalog_title(thread, summary),
+            thread.execution_target().clone(),
+            "",
+            millis_u64_to_i64(summary.created_at_ms),
+            millis_u64_to_i64(summary.updated_at_ms),
+        ));
+    }
+
+    for group in &mut groups {
+        group.threads.sort_by(|left, right| {
+            right
+                .updated_at_millis()
+                .cmp(&left.updated_at_millis())
+                .then_with(|| right.created_at_millis().cmp(&left.created_at_millis()))
+                .then_with(|| left.thread_id().as_str().cmp(right.thread_id().as_str()))
+        });
+    }
+
+    Ok(MemberThreadInventorySnapshot {
+        workspace_id,
+        refreshed_at_millis: current_unix_millis(),
+        groups,
+    })
 }
 
 pub(crate) fn resolved_thread_title(
     workspace_state: &WorkspaceConversationState,
     thread_id: &ConversationThreadId,
-    execution_target: &WorkspaceId,
-    preview: &str,
-    backend_name: Option<&str>,
-    created_at_millis: i64,
-    updated_at_millis: i64,
 ) -> String {
     workspace_state
         .thread_registration(thread_id)
-        .and_then(|thread| {
-            thread
-                .title_with_backend_name(backend_name)
-                .map(str::to_string)
+        .and_then(workspace_owned_title)
+        .map(str::to_string)
+        .unwrap_or_else(|| "Untitled thread".to_string())
+}
+
+fn summary_matches_registration(
+    thread: &RegisteredConversationThread,
+    summary: &ConversationViewSummary,
+) -> bool {
+    thread
+        .syndic_conversation_id()
+        .is_some_and(|conversation_id| {
+            conversation_id.as_str() == summary.conversation_id.to_string()
         })
+        && thread
+            .syndic_view_id()
+            .is_some_and(|view_id| view_id.as_str() == summary.view_id.to_string())
+}
+
+fn group_key_for_registered_thread(
+    workspace_state: &WorkspaceConversationState,
+    thread: &RegisteredConversationThread,
+) -> Option<MemberThreadInventoryMemberKey> {
+    match thread.member_binding()? {
+        ConversationThreadMemberBinding::Explicit {
+            member_id,
+            execution_target,
+        } => workspace_state
+            .available_explicit_members()
+            .any(|member| {
+                member.id() == member_id
+                    && member.runtime_mode() == execution_target.runtime_mode()
+                    && member.canonical_path() == execution_target.canonical_path()
+                    && thread.execution_target() == execution_target
+            })
+            .then(|| MemberThreadInventoryMemberKey::Explicit(member_id.clone())),
+        ConversationThreadMemberBinding::ImplicitHome { execution_target } => (!workspace_state
+            .has_available_explicit_members()
+            && workspace_state.selected_runtime() == Some(execution_target.runtime_mode())
+            && thread.execution_target() == execution_target)
+            .then_some(MemberThreadInventoryMemberKey::ImplicitHome),
+    }
+}
+
+fn catalog_title(
+    thread: &RegisteredConversationThread,
+    summary: &ConversationViewSummary,
+) -> String {
+    workspace_owned_title(thread)
+        .map(str::to_string)
         .or_else(|| {
-            RegisteredConversationThread::new(
-                thread_id.clone(),
-                execution_target.clone(),
-                preview.to_string(),
-                backend_name.map(str::to_string),
-                created_at_millis,
-                updated_at_millis,
-            )
-            .title()
-            .map(str::to_string)
+            summary
+                .title_candidates
+                .iter()
+                .map(|candidate| candidate.title.trim())
+                .find(|title| !title.is_empty())
+                .map(str::to_string)
         })
         .unwrap_or_else(|| "Untitled thread".to_string())
 }
 
-fn normalized_thread_title(title: Option<&str>) -> Option<String> {
-    title
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .map(str::to_string)
-}
-
-fn unsuppressed_inventory_backend_name(
-    workspace_state: &WorkspaceConversationState,
-    thread_id: &ConversationThreadId,
-    backend_name: Option<String>,
-) -> Option<String> {
-    if workspace_state
-        .thread_registration(thread_id)
-        .is_some_and(|thread| {
-            thread.ignores_backend_name_for_automatic_title(backend_name.as_deref())
-        })
-    {
-        None
-    } else {
-        backend_name
+fn workspace_owned_title(thread: &RegisteredConversationThread) -> Option<&str> {
+    let title = thread.gui_title()?;
+    match title.source() {
+        ConversationThreadTitleSource::Manual
+        | ConversationThreadTitleSource::FirstCompletedTurn => Some(title.text()),
     }
 }
 
-fn member_group_sort_key(group: &MemberThreadInventoryGroup) -> (u8, String) {
-    match group.kind() {
-        MemberThreadInventoryMemberKind::ImplicitHome => (0, group.label().to_string()),
-        MemberThreadInventoryMemberKind::Explicit => (1, group.label().to_string()),
-    }
+fn millis_u64_to_i64(value: u64) -> i64 {
+    value.min(i64::MAX as u64) as i64
+}
+
+fn current_unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use beryl_model::{
-    conversation::ConversationThreadId,
+    conversation::{ConversationThreadId, SyndicConversationViewId},
     workspace::{BerylWorkspaceId, WorkspaceId},
 };
 
@@ -10,6 +10,7 @@ pub(crate) const DEFAULT_THREAD_NAVIGATION_HISTORY_LIMIT: usize = 64;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ThreadNavigationEntry {
     thread_id: ConversationThreadId,
+    syndic_view_id: SyndicConversationViewId,
     execution_target: WorkspaceId,
 }
 
@@ -48,23 +49,34 @@ pub(crate) struct ThreadNavigationHistory {
 impl ThreadNavigationEntry {
     pub(crate) fn new(
         thread_id: ConversationThreadId,
+        syndic_view_id: SyndicConversationViewId,
         execution_target: WorkspaceId,
     ) -> Option<Self> {
-        (!thread_id.as_str().is_empty()).then_some(Self {
+        (!thread_id.as_str().is_empty() && !syndic_view_id.as_str().is_empty()).then_some(Self {
             thread_id,
+            syndic_view_id,
             execution_target,
         })
     }
 
     pub(crate) fn from_thread_id(
         thread_id: impl Into<String>,
+        syndic_view_id: impl Into<String>,
         execution_target: WorkspaceId,
     ) -> Option<Self> {
-        Self::new(ConversationThreadId::new(thread_id), execution_target)
+        Self::new(
+            ConversationThreadId::new(thread_id),
+            SyndicConversationViewId::new(syndic_view_id),
+            execution_target,
+        )
     }
 
     pub(crate) fn thread_id(&self) -> &ConversationThreadId {
         &self.thread_id
+    }
+
+    pub(crate) fn syndic_view_id(&self) -> &SyndicConversationViewId {
+        &self.syndic_view_id
     }
 
     pub(crate) fn execution_target(&self) -> &WorkspaceId {

@@ -425,7 +425,6 @@ fn workspace_state_with_threads<const N: usize>(
             self::thread_id(thread_id),
             execution_target.clone(),
             "Preview",
-            None,
             1,
             1,
         ));

@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use beryl_backend::{ThreadInfo, ThreadSessionMetadata};
+use beryl_backend::{ThreadSessionMetadata, ThreadStatus, ThreadSummary};
 use beryl_model::workspace::WorkspaceId;
 
 use super::super::{
@@ -21,7 +21,8 @@ pub(in crate::shell) struct ActivationPreparer;
 #[derive(Clone)]
 pub(in crate::shell) struct StagedSelectedThreadActivation {
     pub(in crate::shell) execution_target: WorkspaceId,
-    pub(in crate::shell) thread: ThreadInfo,
+    pub(in crate::shell) summary: ThreadSummary,
+    pub(in crate::shell) status: ThreadStatus,
     pub(in crate::shell) session_metadata: Option<ThreadSessionMetadata>,
     pub(in crate::shell) source: SelectedThreadActivationSource,
     pub(in crate::shell) prepared_transcript: PreparedTranscriptActivation,
@@ -30,14 +31,16 @@ pub(in crate::shell) struct StagedSelectedThreadActivation {
 impl ActivationPreparer {
     pub(in crate::shell) fn prepare(
         execution_target: WorkspaceId,
-        thread: ThreadInfo,
+        summary: ThreadSummary,
+        status: ThreadStatus,
         session_metadata: Option<ThreadSessionMetadata>,
         source: SelectedThreadActivationSource,
         prepared_transcript: PreparedTranscriptActivation,
     ) -> StagedSelectedThreadActivation {
         StagedSelectedThreadActivation {
             execution_target,
-            thread,
+            summary,
+            status,
             session_metadata,
             source,
             prepared_transcript,
@@ -47,9 +50,9 @@ impl ActivationPreparer {
 
 pub(in crate::shell) fn prepare_storage_backed_transcript_activation(
     storage_dir: PathBuf,
-    thread_id: &str,
+    view_id: &str,
 ) -> PreparedTranscriptActivation {
-    let view_id = TranscriptViewId(thread_id.to_string());
+    let view_id = TranscriptViewId(view_id.to_string());
     let placement = TranscriptActivationPlacement::Tail;
     if let Err(error) = fs::create_dir_all(&storage_dir) {
         return unavailable_activation(

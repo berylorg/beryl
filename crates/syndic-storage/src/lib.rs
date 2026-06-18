@@ -27,6 +27,8 @@
 //! let conversation = ConversationRecord {
 //!     id: ConversationId::from("conversation-1"),
 //!     view_id: ThreadViewId::from("view-1"),
+//!     parent_view_id: None,
+//!     branch_source_turn_id: None,
 //!     title: Some("Captured work".to_string()),
 //!     created_at_ms: 1,
 //!     updated_at_ms: 1,
@@ -57,17 +59,18 @@ pub use ids::{
 };
 pub use records::{
     ByteRange, CanonicalItemKind, CanonicalItemRecord, CanonicalItemVisibility,
-    CasProjectionBindingRecord, CasProjectionBindingStatus, ConversationRecord, CursorRecord,
-    ExternalSourceMetadata, HistoryIncompleteReason, HistoryState, ProjectionPayload,
-    ProjectionRecord, ProjectionRecordKind, ProjectionStatus, ProviderOperationKind,
-    ProviderRevision, RecoveryMarkerKind, RecoveryMarkerRecord, ResourceKind,
-    ResourceMetadataRecord, ResourceRangeResponse, ResourceRecord, ResourceState,
-    SourceEventPayload, SourceEventRecord, SourceEventVisibility, SyndicSourceProvenance,
-    TerminalError, TranscriptNarrativeKind, TranscriptPage, TranscriptPageAnchor,
-    TranscriptPageDirection, TranscriptViewPosition, TranscriptViewRecord, TurnKind, TurnRecord,
-    TurnStatus,
+    CasProjectionBindingRecord, CasProjectionBindingStatus, CasProjectionBindingSummary,
+    ConversationRecord, ConversationTitleCandidate, ConversationTitleCandidateSource,
+    ConversationViewBranchSummary, ConversationViewSummary, CursorRecord, ExternalSourceMetadata,
+    HistoryIncompleteReason, HistoryState, ProjectionPayload, ProjectionRecord,
+    ProjectionRecordKind, ProjectionStatus, ProviderOperationKind, ProviderRevision,
+    RecoveryMarkerKind, RecoveryMarkerRecord, ResourceKind, ResourceMetadataRecord,
+    ResourceRangeResponse, ResourceRecord, ResourceState, SourceEventPayload, SourceEventRecord,
+    SourceEventVisibility, SyndicSourceProvenance, TerminalError, TranscriptNarrativeKind,
+    TranscriptPage, TranscriptPageAnchor, TranscriptPageDirection, TranscriptViewPosition,
+    TranscriptViewRecord, TranscriptViewRecordSummary, TurnKind, TurnRecord, TurnStatus,
 };
 pub use store::{
-    MAX_RESOURCE_RANGE_BYTES, MAX_SOURCE_EVENT_PAYLOAD_BYTES, MAX_SOURCE_EVENT_READ_LIMIT,
-    MAX_TRANSCRIPT_PAGE_LIMIT, StoreOpenOptions, SyndicStore,
+    MAX_CONVERSATION_SUMMARY_READ_LIMIT, MAX_RESOURCE_RANGE_BYTES, MAX_SOURCE_EVENT_PAYLOAD_BYTES,
+    MAX_SOURCE_EVENT_READ_LIMIT, MAX_TRANSCRIPT_PAGE_LIMIT, StoreOpenOptions, SyndicStore,
 };

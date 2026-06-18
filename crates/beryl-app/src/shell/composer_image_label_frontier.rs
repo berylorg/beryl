@@ -4,6 +4,7 @@ use std::{
 };
 
 use beryl_backend::UserInput;
+use beryl_model::conversation::ConversationThreadId;
 use gpui::{Context, Window};
 
 use super::composer_image_label_frontier_worker::{
@@ -454,6 +455,21 @@ impl ShellView {
         else {
             return false;
         };
+        let Some(syndic_view_id) = self.loaded_workspace().and_then(|loaded| {
+            let thread_id = ConversationThreadId::new(thread_id.clone());
+            loaded
+                .workspace_state
+                .catalog_thread_registration(&thread_id)
+                .and_then(|registration| registration.syndic_view_id())
+                .map(|view_id| view_id.as_str().to_string())
+        }) else {
+            return self.conversation_surface_mut().is_some_and(|surface| {
+                surface.mark_selected_thread_image_label_frontier_unavailable(
+                    &thread_id,
+                    "This thread is not registered as a Syndic conversation view, so image-label frontier data cannot be read.",
+                )
+            });
+        };
         let Some(workspace_id) = self
             .loaded_workspace()
             .map(|loaded| loaded.workspace.id().clone())
@@ -476,9 +492,13 @@ impl ShellView {
         }
 
         let storage_dir = persistence.workspace_syndic_storage_dir(&workspace_id);
-        self.composer_image_label_frontier_receiver = Some(
-            spawn_composer_image_label_frontier_worker(storage_dir, thread_id, expected_updated_at),
-        );
+        self.composer_image_label_frontier_receiver =
+            Some(spawn_composer_image_label_frontier_worker(
+                storage_dir,
+                thread_id,
+                syndic_view_id,
+                expected_updated_at,
+            ));
         true
     }
 }

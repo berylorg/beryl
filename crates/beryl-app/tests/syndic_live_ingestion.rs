@@ -65,10 +65,12 @@ use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 use syndic_ingestion::{
     SyndicLiveTurnIngestor, admit_user_turn, journal_steering_user_fragment,
     mark_steering_user_fragment_redirected, promote_steering_user_fragment,
+    register_cas_branch_thread_view,
 };
 use syndic_storage::{
-    HistoryIncompleteReason, HistoryState, StoreOpenOptions, SyndicStore, TranscriptPageAnchor,
-    TranscriptPageDirection, TurnStatus as SyndicTurnStatus,
+    CasProjectionBindingStatus, HistoryIncompleteReason, HistoryState, StoreOpenOptions,
+    SyndicStore, ThreadViewId, TranscriptPageAnchor, TranscriptPageDirection, TurnId,
+    TurnStatus as SyndicTurnStatus,
 };
 use tempfile::TempDir;
 use turn_input::UserInputFragment;
@@ -108,6 +110,112 @@ fn completed_turn(id: &str, item_id: &str, text: &str) -> TurnInfo {
         })],
         error: None,
     }
+}
+
+#[test]
+fn cas_branch_thread_registration_persists_parent_view_and_source_turn() {
+    let (_dir, persistence, workspace_id, execution_target) = workspace();
+    let registration = register_cas_branch_thread_view(
+        &persistence,
+        &workspace_id,
+        &execution_target,
+        "branch-thread-1",
+        10,
+        20,
+        "parent-view-1",
+        "parent-turn-1",
+    )
+    .expect("branch registration should persist");
+
+    assert_eq!(
+        registration.view_id().as_str(),
+        format!("view:{}:cas:branch-thread-1", workspace_id.as_str())
+    );
+
+    let storage_dir = persistence.workspace_syndic_storage_dir(&workspace_id);
+    let store = SyndicStore::open(&storage_dir, StoreOpenOptions::default())
+        .expect("store should reopen after branch registration");
+    let conversation = store
+        .conversation_by_external_thread(
+            "codex-app-server",
+            Some("host-windows"),
+            "branch-thread-1",
+        )
+        .expect("external thread lookup should succeed")
+        .expect("branch conversation should exist");
+
+    assert_eq!(conversation.view_id, registration.view_id().clone());
+    assert_eq!(
+        conversation.parent_view_id,
+        Some(ThreadViewId::from("parent-view-1"))
+    );
+    assert_eq!(
+        conversation.branch_source_turn_id,
+        Some(TurnId::from("parent-turn-1"))
+    );
+    assert_eq!(conversation.history_state, HistoryState::Complete);
+
+    let binding = store
+        .cas_projection_binding_by_view(&conversation.view_id)
+        .expect("projection binding lookup should succeed")
+        .expect("projection binding should exist");
+    match binding.status {
+        CasProjectionBindingStatus::Valid {
+            runtime_target,
+            cas_thread_id,
+            lineage_proof,
+        } => {
+            assert_eq!(runtime_target, "host-windows");
+            assert_eq!(cas_thread_id, "branch-thread-1");
+            assert_eq!(lineage_proof, "branch-cas-thread:branch-thread-1");
+        }
+        status => panic!("branch registration should create a valid binding, got {status:?}"),
+    }
+}
+
+#[test]
+fn cas_branch_thread_registration_rejects_parentage_conflicts() {
+    let (_dir, persistence, workspace_id, execution_target) = workspace();
+    let first = register_cas_branch_thread_view(
+        &persistence,
+        &workspace_id,
+        &execution_target,
+        "branch-thread-1",
+        10,
+        20,
+        "parent-view-1",
+        "parent-turn-1",
+    )
+    .expect("initial branch registration should persist");
+    let repeat = register_cas_branch_thread_view(
+        &persistence,
+        &workspace_id,
+        &execution_target,
+        "branch-thread-1",
+        10,
+        20,
+        "parent-view-1",
+        "parent-turn-1",
+    )
+    .expect("matching branch registration should be idempotent");
+    assert_eq!(repeat.view_id(), first.view_id());
+
+    let error = register_cas_branch_thread_view(
+        &persistence,
+        &workspace_id,
+        &execution_target,
+        "branch-thread-1",
+        10,
+        20,
+        "other-parent-view",
+        "parent-turn-1",
+    )
+    .expect_err("conflicting branch parentage should be rejected");
+
+    assert!(
+        error.to_string().contains("conflicts"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

@@ -114,6 +114,9 @@ impl ShellView {
         else {
             return false;
         };
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            return false;
+        };
         let Some(graph) = self
             .conversation_surface()
             .map(|surface| surface.graph_overlay().graph().clone())
@@ -128,6 +131,7 @@ impl ShellView {
         };
 
         self.decision_branch_start_receiver = Some(spawn_decision_branch_start_worker(
+            persistence,
             connector,
             graph,
             graph_revision,
@@ -178,20 +182,26 @@ impl ShellView {
             let Some(branch_point_turn_id) = record.branch_point_turn_id().cloned() else {
                 continue;
             };
-            let Some((execution_target, parent_thread_title, parent_thread_summary)) =
-                self.loaded_workspace().and_then(|loaded| {
-                    loaded
-                        .workspace_state
-                        .thread_registration(record.parent_thread_id())
-                        .map(|thread| {
-                            (
-                                thread.execution_target().clone(),
-                                thread.title().map(ToString::to_string),
-                                Some(thread.preview().trim().to_string())
-                                    .filter(|summary| !summary.is_empty()),
-                            )
-                        })
-                })
+            let Some((
+                execution_target,
+                parent_thread_title,
+                parent_thread_summary,
+                parent_syndic_view_id,
+            )) = self.loaded_workspace().and_then(|loaded| {
+                loaded
+                    .workspace_state
+                    .thread_registration(record.parent_thread_id())
+                    .and_then(|thread| {
+                        let parent_syndic_view_id = thread.syndic_view_id()?.clone();
+                        Some((
+                            thread.execution_target().clone(),
+                            thread.title().map(ToString::to_string),
+                            Some(thread.preview().trim().to_string())
+                                .filter(|summary| !summary.is_empty()),
+                            parent_syndic_view_id,
+                        ))
+                    })
+            })
             else {
                 continue;
             };
@@ -204,6 +214,7 @@ impl ShellView {
                     parent_thread_id: record.parent_thread_id().clone(),
                     parent_thread_title,
                     parent_thread_summary,
+                    parent_syndic_view_id,
                     branch_point_turn_id,
                     parent_context_source: None,
                     execution_target,

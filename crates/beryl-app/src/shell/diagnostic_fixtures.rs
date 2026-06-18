@@ -99,8 +99,10 @@ impl ShellView {
         }
 
         let thread = scroll_smoke_thread_info(&execution_target);
-        let selected_thread_id = thread.summary().id;
-        let known_threads = vec![thread.summary()];
+        let thread_summary = thread.summary();
+        let thread_status = thread.status.clone();
+        let selected_thread_id = thread_summary.id.clone();
+        let known_threads = vec![thread_summary.clone()];
         let turn_count = SCROLL_SMOKE_TURN_COUNT;
         let prepared_transcript =
             prepare_storage_backed_transcript_activation(storage_dir, &selected_thread_id);
@@ -111,7 +113,8 @@ impl ShellView {
             &loaded_workspace.workspace_ui_state,
             known_threads,
             HardStopCapabilities::default(),
-            Some(thread),
+            Some(thread_summary),
+            Some(thread_status),
             Some(selected_thread_id.clone()),
             None,
             Some(prepared_transcript),
@@ -225,6 +228,8 @@ fn seed_scroll_smoke_syndic_store(
     let mut batch = SyndicWriteBatch::new().put_conversation(ConversationRecord {
         id: conversation_id.clone(),
         view_id: view_id.clone(),
+        parent_view_id: None,
+        branch_source_turn_id: None,
         title: Some("Diagnostic Scroll Smoke".to_string()),
         created_at_ms: 1,
         updated_at_ms: current_revision.0,

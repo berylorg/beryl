@@ -485,6 +485,236 @@ fn selected_thread_activation_prepares_syndic_transcript_before_publication() {
 }
 
 #[test]
+fn backend_no_longer_exposes_cas_thread_list_protocol() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let backend_src_dir = manifest_dir
+        .parent()
+        .expect("app crate should be under workspace crates")
+        .join("beryl-backend")
+        .join("src");
+    let forbidden_needles = [
+        "thread/list",
+        "ThreadListOptions",
+        "ThreadListResponse",
+        "ThreadSortKey",
+        "SortDirection",
+        "CompatibilityProbe::ThreadList",
+        "list_thread_page",
+        "list_threads_with_options",
+        "list_threads(",
+    ];
+    let mut offenders = Vec::new();
+
+    for path in rust_files_under(&backend_src_dir) {
+        let source = fs::read_to_string(&path).expect("backend source should be readable");
+        for forbidden in forbidden_needles {
+            if source.contains(forbidden) {
+                offenders.push(format!(
+                    "{} contains {forbidden}",
+                    display_test_path(&backend_src_dir, &path)
+                ));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "CAS thread-list protocol remains live: {offenders:?}"
+    );
+}
+
+#[test]
+fn cas_metadata_reads_are_limited_to_approved_live_boundaries() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let src_dir = manifest_dir.join("src");
+    let allowed_resume_paths = [
+        "shell/status_operation.rs",
+        "shell/turn_worker/thread_start.rs",
+    ];
+    let allowed_read_paths = [
+        "branch_bootstrap_core.rs",
+        "branch_bootstrap_core/backend.rs",
+        "branch_bootstrap_core/proof.rs",
+        "shell/tool_activity_nickname.rs",
+    ];
+    let mut offenders = Vec::new();
+
+    for path in rust_files_under(&src_dir) {
+        let source = fs::read_to_string(&path).expect("app source should be readable");
+        let relative_path = display_test_path(&src_dir, &path).replace('\\', "/");
+        if source.contains("resume_thread_metadata(")
+            && !allowed_resume_paths.contains(&relative_path.as_str())
+        {
+            offenders.push(format!("{relative_path} contains resume_thread_metadata("));
+        }
+        if (source.contains("read_thread_metadata(")
+            || source.contains("read_thread_metadata_details("))
+            && !allowed_read_paths.contains(&relative_path.as_str())
+        {
+            offenders.push(format!(
+                "{relative_path} contains metadata-only thread/read"
+            ));
+        }
+        for forbidden in [
+            "ThreadActivationLoader",
+            "ExistingThreadActivation",
+            "thread_activation/loader",
+            "thread/turns/list",
+            "ThreadTurnsListOptions",
+            "ThreadReadResponse",
+        ] {
+            if source.contains(forbidden) {
+                offenders.push(format!("{relative_path} contains {forbidden}"));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "unapproved CAS metadata-read source remains: {offenders:?}"
+    );
+}
+
+#[test]
+fn cas_thread_name_is_not_thread_title_authority() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let crates_dir = manifest_dir
+        .parent()
+        .expect("app crate should be under workspace crates");
+    let backend_src_dir = crates_dir.join("beryl-backend").join("src");
+    let model_src_dir = crates_dir.join("beryl-model").join("src");
+    let app_src_dir = manifest_dir.join("src");
+    let backend_forbidden = [
+        "thread/name/set",
+        "ThreadNameSet",
+        "ThreadSetNameParams",
+        "set_thread_name(",
+    ];
+    let title_authority_forbidden = [
+        "thread/name/set",
+        "ThreadNameSet",
+        "ThreadSetNameParams",
+        "set_thread_name(",
+        "apply_thread_name_update",
+        "apply_authoritative_thread_name_update",
+        "set_authoritative_thread_backend_name",
+        "set_authoritative_backend_name",
+        "set_thread_backend_name",
+        "title_with_backend_name(",
+        "backend_name",
+        "ignored_backend_name_for_automatic_title",
+        "ignores_backend_name_for_automatic_title",
+        "with_ignored_backend_name_for_automatic_title",
+    ];
+    let mut offenders = Vec::new();
+
+    for path in rust_files_under(&backend_src_dir) {
+        let source = fs::read_to_string(&path).expect("backend source should be readable");
+        for forbidden in backend_forbidden {
+            if source.contains(forbidden) {
+                offenders.push(format!(
+                    "beryl-backend/{} contains {forbidden}",
+                    display_test_path(&backend_src_dir, &path)
+                ));
+            }
+        }
+    }
+
+    for (crate_label, src_dir) in [("beryl-app", app_src_dir), ("beryl-model", model_src_dir)] {
+        for path in rust_files_under(&src_dir) {
+            let source = fs::read_to_string(&path).expect("source should be readable");
+            for forbidden in title_authority_forbidden {
+                if source.contains(forbidden) {
+                    offenders.push(format!(
+                        "{crate_label}/{} contains {forbidden}",
+                        display_test_path(&src_dir, &path)
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "CAS thread-name title authority remains live: {offenders:?}"
+    );
+}
+
+#[test]
+fn backend_summary_names_do_not_feed_titles_or_graph_refs() {
+    let shell_source = include_str!("../src/shell.rs");
+    let thread_helpers_source = include_str!("../src/shell/thread_helpers.rs");
+    let resident_worker_source = include_str!("../src/shell/resident_branch_worker.rs");
+    let resident_edit_source = include_str!("../src/shell/resident_branch_edit.rs");
+    let graph_thread_start_source = include_str!("../src/shell/graph_thread_start.rs");
+    let tool_activity_source = include_str!("../src/shell/tool_activity.rs");
+    let decision_completion_source =
+        include_str!("../src/shell/threaded_decision_branch/completion.rs");
+    let decision_worker_source = include_str!("../src/shell/threaded_decision_branch/worker.rs");
+    let decision_core_source = include_str!("../src/threaded_decision_branch_core.rs");
+    let graph_workspace_state_source = include_str!("../src/graph_tools/workspace_state.rs");
+    let model_conversation_source = include_str!("../../beryl-model/src/conversation.rs");
+    let model_conversation_state_source =
+        include_str!("../../beryl-model/src/conversation/state.rs");
+    let resident_branch_completion_body =
+        rust_function_body(shell_source, "fn finish_successful_resident_branch");
+    let accept_resident_branch_target_body =
+        rust_function_body(shell_source, "fn accept_resident_branch_target");
+    let selected_thread_display_label_body =
+        rust_function_body(shell_source, "fn selected_thread_display_label");
+    let recovery_thread_for_target_body =
+        rust_function_body(shell_source, "fn recovery_thread_for_target");
+    let registered_thread_from_summary_body = rust_function_body(
+        thread_helpers_source,
+        "pub(in crate::shell) fn registered_thread_from_summary",
+    );
+    let resident_branch_body = rust_function_body(
+        resident_worker_source,
+        "pub(crate) fn run_resident_branch_backend_result",
+    );
+    let branch_materialization_body = rust_function_body(
+        resident_edit_source,
+        "pub(super) fn materialize_resident_branch_prefix",
+    );
+    let graph_ref_request_body = rust_function_body(
+        graph_thread_start_source,
+        "pub(super) fn build_graph_started_thread_ref_request",
+    );
+    let decision_branch_completion_body = rust_function_body(
+        decision_completion_source,
+        "fn finish_successful_decision_branch",
+    );
+    let decision_patch_body = rust_function_body(
+        decision_core_source,
+        "pub(crate) fn decision_branch_graph_patch",
+    );
+
+    assert!(!resident_branch_completion_body.contains("summary.name"));
+    assert!(accept_resident_branch_target_body.contains("resolved_thread_title("));
+    assert!(!accept_resident_branch_target_body.contains(".name"));
+    assert!(selected_thread_display_label_body.contains("resolved_thread_title("));
+    assert!(!selected_thread_display_label_body.contains(".name"));
+    assert!(!recovery_thread_for_target_body.contains("thread.name"));
+    assert!(!recovery_thread_for_target_body.contains("normalized_thread_name"));
+    assert!(!registered_thread_from_summary_body.contains("summary.name"));
+    assert!(!registered_thread_from_summary_body.contains("summary.forked_from_id"));
+    assert!(!tool_activity_source.contains("thread.name.as_deref()"));
+    assert!(!resident_branch_body.contains("branch_summary.name"));
+    assert!(branch_materialization_body.contains("title: None"));
+    assert!(!branch_materialization_body.contains("title: title"));
+    assert!(!graph_thread_start_source.contains("summary.name.as_deref()"));
+    assert!(!graph_ref_request_body.contains("title: Option<&str>"));
+    assert!(!decision_branch_completion_body.contains("summary.name"));
+    assert!(!decision_worker_source.contains("durable_summary.name.as_deref()"));
+    assert!(!decision_core_source.contains("label: Option<&str>"));
+    assert!(!decision_patch_body.contains("thread_ref_label(label)"));
+    assert!(!model_conversation_source.contains("backend_name"));
+    assert!(!model_conversation_state_source.contains("set_thread_backend_name"));
+    assert!(!graph_workspace_state_source.contains("backend_name"));
+    assert!(!graph_workspace_state_source.contains("backendName"));
+}
+
+#[test]
 fn active_turn_retained_text_bytes_are_per_turn_not_cumulative() {
     let active_turn_source = include_str!("../src/shell/active_turn_state.rs");
     let retained_counts_body = rust_function_body(active_turn_source, "fn retained_counts");
