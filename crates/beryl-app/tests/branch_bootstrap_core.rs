@@ -2,7 +2,7 @@ use std::{collections::VecDeque, path::PathBuf, time::Duration};
 
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,
-    DynamicToolCallResponse, ThreadInfo, ThreadItem, ThreadSummary, TurnInfo, TurnStartOptions,
+    DynamicToolCallResponse, ThreadItem, ThreadSummary, TurnInfo, TurnStartOptions,
     TurnStartResponse, TurnStatus, TurnStreamEvent, UserInput, parse_dynamic_tool_call_request,
 };
 use beryl_model::conversation::{ConversationThreadId, ConversationTurnId};
@@ -14,8 +14,7 @@ mod branch_bootstrap_core;
 use branch_bootstrap_core::{
     BranchBootstrapBackend, BranchBootstrapError, BranchBootstrapMessageInput,
     beryl_thread_link_destination, branch_bootstrap_message, parse_beryl_thread_link,
-    prove_branch_thread_completed_bootstrap_from_history, start_branch_bootstrap_turn,
-    start_branch_bootstrap_turn_only,
+    start_branch_bootstrap_turn, start_branch_bootstrap_turn_only,
 };
 
 #[test]
@@ -72,11 +71,7 @@ fn bootstrap_turn_starts_without_hidden_developer_context_then_proves_durable() 
     let mut backend = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
         .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_bootstrap(
-            "branch_thread",
-            "bootstrap_turn",
-            "Branched from [Parent](beryl_threadid://parent), no response required.",
-        )));
+        .with_read_metadata(Ok(thread_summary("branch_thread", false)));
 
     let result = start_branch_bootstrap_turn(
         &mut backend,
@@ -134,131 +129,11 @@ fn bootstrap_turn_start_only_returns_exact_turn_without_terminal_proof() {
 }
 
 #[test]
-fn bootstrap_turn_uses_history_proof_when_idle_precedes_completion_event() {
+fn bootstrap_turn_fails_when_idle_precedes_live_completion_event() {
     let thread_id = ConversationThreadId::new("branch_thread");
     let mut backend = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
-        .with_stream_event(Ok(Some(thread_status_idle("branch_thread"))))
-        .with_read_thread(Ok(thread_info_with_bootstrap(
-            "branch_thread",
-            "bootstrap_turn",
-            "Branched from [Parent](beryl_threadid://parent), no response required.",
-        )));
-
-    let result = start_branch_bootstrap_turn(
-        &mut backend,
-        &thread_id,
-        "Branched from [Parent](beryl_threadid://parent), no response required.",
-        Duration::from_secs(5),
-    )
-    .unwrap();
-
-    assert_eq!(result.thread().id, "branch_thread");
-    assert_eq!(
-        result.bootstrap_turn_id(),
-        Some(&ConversationTurnId::new("bootstrap_turn"))
-    );
-    assert_eq!(backend.stream_polls, 1);
-    assert_eq!(backend.read_calls, vec!["branch_thread".to_string()]);
-}
-
-#[test]
-fn foreground_bootstrap_history_probe_returns_completed_turn_after_idle() {
-    let thread_id = ConversationThreadId::new("branch_thread");
-    let bootstrap_turn_id = ConversationTurnId::new("bootstrap_turn");
-    let mut backend = FakeBootstrapBackend::new().with_read_thread(Ok(thread_info_with_bootstrap(
-        "branch_thread",
-        "bootstrap_turn",
-        "Branched from [Parent](beryl_threadid://parent), no response required.",
-    )));
-
-    let completion = prove_branch_thread_completed_bootstrap_from_history(
-        &mut backend,
-        &thread_id,
-        &bootstrap_turn_id,
-        "Branched from [Parent](beryl_threadid://parent), no response required.",
-        Duration::from_secs(5),
-    )
-    .unwrap()
-    .expect("completed history should prove the bootstrap turn");
-
-    assert_eq!(completion.thread().id, "branch_thread");
-    assert_eq!(completion.turn().id, "bootstrap_turn");
-    assert_eq!(backend.read_calls, vec!["branch_thread".to_string()]);
-}
-
-#[test]
-fn foreground_bootstrap_history_probe_waits_when_turn_is_still_active() {
-    let thread_id = ConversationThreadId::new("branch_thread");
-    let bootstrap_turn_id = ConversationTurnId::new("bootstrap_turn");
-    let mut backend =
-        FakeBootstrapBackend::new().with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("branch_thread", false),
-            vec![in_progress_bootstrap_turn(
-                "bootstrap_turn",
-                "Branched from [Parent](beryl_threadid://parent), no response required.",
-            )],
-        )));
-
-    let completion = prove_branch_thread_completed_bootstrap_from_history(
-        &mut backend,
-        &thread_id,
-        &bootstrap_turn_id,
-        "Branched from [Parent](beryl_threadid://parent), no response required.",
-        Duration::from_secs(5),
-    )
-    .unwrap();
-
-    assert!(completion.is_none());
-    assert_eq!(backend.read_calls, vec!["branch_thread".to_string()]);
-}
-
-#[test]
-fn bootstrap_turn_continues_after_idle_when_history_still_has_active_turn() {
-    let thread_id = ConversationThreadId::new("branch_thread");
-    let mut backend = FakeBootstrapBackend::new()
-        .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
-        .with_stream_event(Ok(Some(thread_status_idle("branch_thread"))))
-        .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("branch_thread", false),
-            vec![in_progress_bootstrap_turn(
-                "bootstrap_turn",
-                "Branched from [Parent](beryl_threadid://parent), no response required.",
-            )],
-        )))
-        .with_read_thread(Ok(thread_info_with_bootstrap(
-            "branch_thread",
-            "bootstrap_turn",
-            "Branched from [Parent](beryl_threadid://parent), no response required.",
-        )));
-
-    let result = start_branch_bootstrap_turn(
-        &mut backend,
-        &thread_id,
-        "Branched from [Parent](beryl_threadid://parent), no response required.",
-        Duration::from_secs(5),
-    )
-    .unwrap();
-
-    assert_eq!(result.thread().id, "branch_thread");
-    assert_eq!(backend.stream_polls, 2);
-    assert_eq!(
-        backend.read_calls,
-        vec!["branch_thread".to_string(), "branch_thread".to_string()]
-    );
-}
-
-#[test]
-fn bootstrap_turn_rejects_idle_history_without_visible_message() {
-    let thread_id = ConversationThreadId::new("branch_thread");
-    let mut backend = FakeBootstrapBackend::new()
-        .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
-        .with_stream_event(Ok(Some(thread_status_idle("branch_thread"))))
-        .with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("branch_thread", false),
-            vec![completed_bootstrap_turn("bootstrap_turn", "Different text")],
-        )));
+        .with_stream_event(Ok(Some(thread_status_idle("branch_thread"))));
 
     let error = start_branch_bootstrap_turn(
         &mut backend,
@@ -270,10 +145,10 @@ fn bootstrap_turn_rejects_idle_history_without_visible_message() {
 
     assert!(matches!(
         error,
-        BranchBootstrapError::BootstrapTurnMissingVisibleMessage { .. }
+        BranchBootstrapError::BootstrapStreamFailed { .. }
     ));
     assert_eq!(backend.stream_polls, 1);
-    assert_eq!(backend.read_calls, vec!["branch_thread".to_string()]);
+    assert!(backend.read_calls.is_empty());
 }
 
 #[test]
@@ -304,7 +179,7 @@ fn bootstrap_turn_reports_durability_read_failures() {
     let mut backend = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
         .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Err("no rollout found".to_string()));
+        .with_read_metadata(Err("no rollout found".to_string()));
 
     let error = start_branch_bootstrap_turn(
         &mut backend,
@@ -327,13 +202,7 @@ fn bootstrap_turn_rejects_mismatched_or_ephemeral_durable_threads() {
     let mut mismatched = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
         .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("other_thread", false),
-            vec![completed_bootstrap_turn(
-                "bootstrap_turn",
-                "Branched from [Parent](beryl_threadid://parent), no response required.",
-            )],
-        )));
+        .with_read_metadata(Ok(thread_summary("other_thread", false)));
 
     assert!(matches!(
         start_branch_bootstrap_turn(
@@ -349,13 +218,7 @@ fn bootstrap_turn_rejects_mismatched_or_ephemeral_durable_threads() {
     let mut ephemeral = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
         .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("branch_thread", true),
-            vec![completed_bootstrap_turn(
-                "bootstrap_turn",
-                "Branched from [Parent](beryl_threadid://parent), no response required.",
-            )],
-        )));
+        .with_read_metadata(Ok(thread_summary("branch_thread", true)));
 
     assert!(matches!(
         start_branch_bootstrap_turn(
@@ -372,13 +235,7 @@ fn bootstrap_turn_rejects_mismatched_or_ephemeral_durable_threads() {
 #[test]
 fn bootstrap_turn_rejects_missing_turn_id_before_streaming() {
     let thread_id = ConversationThreadId::new("branch_thread");
-    let mut backend = FakeBootstrapBackend::new()
-        .with_start_turn(Ok(turn_start_response("   ")))
-        .with_read_thread(Ok(thread_info_with_bootstrap(
-            "branch_thread",
-            "bootstrap_turn",
-            "Branched from [Parent](beryl_threadid://parent), no response required.",
-        )));
+    let mut backend = FakeBootstrapBackend::new().with_start_turn(Ok(turn_start_response("   ")));
 
     let error = start_branch_bootstrap_turn(
         &mut backend,
@@ -401,12 +258,7 @@ fn bootstrap_turn_failed_terminal_state_fails_before_durability_read() {
     let thread_id = ConversationThreadId::new("branch_thread");
     let mut backend = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
-        .with_stream_event(Ok(Some(turn_failed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_bootstrap(
-            "branch_thread",
-            "bootstrap_turn",
-            "Branched from [Parent](beryl_threadid://parent), no response required.",
-        )));
+        .with_stream_event(Ok(Some(turn_failed("branch_thread", "bootstrap_turn"))));
 
     let error = start_branch_bootstrap_turn(
         &mut backend,
@@ -427,40 +279,15 @@ fn bootstrap_turn_failed_terminal_state_fails_before_durability_read() {
 }
 
 #[test]
-fn bootstrap_turn_fails_when_final_history_omits_completed_turn() {
+fn bootstrap_turn_fails_when_live_completion_omits_visible_message() {
     let thread_id = ConversationThreadId::new("branch_thread");
     let mut backend = FakeBootstrapBackend::new()
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
-        .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("branch_thread", false),
-            Vec::new(),
-        )));
-
-    let error = start_branch_bootstrap_turn(
-        &mut backend,
-        &thread_id,
-        "Branched from [Parent](beryl_threadid://parent), no response required.",
-        Duration::from_secs(5),
-    )
-    .unwrap_err();
-
-    assert!(matches!(
-        error,
-        BranchBootstrapError::BootstrapTurnMissingFromHistory { .. }
-    ));
-}
-
-#[test]
-fn bootstrap_turn_fails_when_final_history_omits_visible_message() {
-    let thread_id = ConversationThreadId::new("branch_thread");
-    let mut backend = FakeBootstrapBackend::new()
-        .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
-        .with_stream_event(Ok(Some(turn_completed("branch_thread", "bootstrap_turn"))))
-        .with_read_thread(Ok(thread_info_with_summary_and_turns(
-            thread_summary("branch_thread", false),
-            vec![completed_bootstrap_turn("bootstrap_turn", "Different text")],
-        )));
+        .with_stream_event(Ok(Some(TurnStreamEvent::TurnCompleted {
+            thread_id: "branch_thread".to_string(),
+            turn: completed_bootstrap_turn("bootstrap_turn", "Different text"),
+        })))
+        .with_read_metadata(Ok(thread_summary("branch_thread", false)));
 
     let error = start_branch_bootstrap_turn(
         &mut backend,
@@ -474,6 +301,7 @@ fn bootstrap_turn_fails_when_final_history_omits_visible_message() {
         error,
         BranchBootstrapError::BootstrapTurnMissingVisibleMessage { .. }
     ));
+    assert!(backend.read_calls.is_empty());
 }
 
 #[test]
@@ -484,12 +312,7 @@ fn bootstrap_turn_returns_unavailable_response_for_dynamic_tool_and_fails_public
         .with_start_turn(Ok(turn_start_response("bootstrap_turn")))
         .with_stream_event(Ok(Some(TurnStreamEvent::DynamicToolCallRequested(
             request.clone(),
-        ))))
-        .with_read_thread(Ok(thread_info_with_bootstrap(
-            "branch_thread",
-            "bootstrap_turn",
-            "Branched from [Parent](beryl_threadid://parent), no response required.",
-        )));
+        ))));
 
     let error = start_branch_bootstrap_turn(
         &mut backend,
@@ -522,7 +345,7 @@ struct StartCall {
 
 struct FakeBootstrapBackend {
     start_response: Option<Result<TurnStartResponse, String>>,
-    read_responses: VecDeque<Result<ThreadInfo, String>>,
+    read_responses: VecDeque<Result<ThreadSummary, String>>,
     stream_events: VecDeque<Result<Option<TurnStreamEvent>, String>>,
     start_calls: Vec<StartCall>,
     read_calls: Vec<String>,
@@ -550,7 +373,7 @@ impl FakeBootstrapBackend {
         self
     }
 
-    fn with_read_thread(mut self, response: Result<ThreadInfo, String>) -> Self {
+    fn with_read_metadata(mut self, response: Result<ThreadSummary, String>) -> Self {
         self.read_responses.push_back(response);
         self
     }
@@ -586,15 +409,6 @@ impl BranchBootstrapBackend for FakeBootstrapBackend {
         thread_id: &str,
         _: Duration,
     ) -> Result<ThreadSummary, Self::Error> {
-        self.read_thread_with_turns(thread_id, Duration::from_secs(0))
-            .map(|thread| thread.summary())
-    }
-
-    fn read_thread_with_turns(
-        &mut self,
-        thread_id: &str,
-        _: Duration,
-    ) -> Result<ThreadInfo, Self::Error> {
         self.read_calls.push(thread_id.to_string());
         self.read_responses
             .pop_front()
@@ -685,78 +499,10 @@ fn thread_summary(thread_id: &str, ephemeral: bool) -> ThreadSummary {
     }
 }
 
-fn thread_info_with_bootstrap(thread_id: &str, turn_id: &str, message: &str) -> ThreadInfo {
-    thread_info_with_summary_and_turns(
-        thread_summary(thread_id, false),
-        vec![completed_bootstrap_turn(turn_id, message)],
-    )
-}
-
-fn thread_info_with_summary_and_turns(summary: ThreadSummary, turns: Vec<TurnInfo>) -> ThreadInfo {
-    let turns = turns.iter().map(turn_json).collect::<Vec<_>>();
-    serde_json::from_value(json!({
-        "createdAt": summary.created_at,
-        "cwd": summary.cwd.display().to_string(),
-        "ephemeral": summary.ephemeral,
-        "forkedFromId": summary.forked_from_id,
-        "id": summary.id,
-        "modelProvider": summary.model_provider,
-        "preview": summary.preview,
-        "status": { "type": "idle" },
-        "turns": turns,
-        "updatedAt": summary.updated_at
-    }))
-    .unwrap()
-}
-
-fn turn_json(turn: &TurnInfo) -> serde_json::Value {
-    json!({
-        "id": turn.id,
-        "status": turn_status_wire(turn.status),
-        "items": turn.items.iter().map(thread_item_json).collect::<Vec<_>>(),
-        "error": turn.error
-    })
-}
-
-fn thread_item_json(item: &ThreadItem) -> serde_json::Value {
-    match item {
-        ThreadItem::UserMessage(user_message) => json!({
-            "type": "userMessage",
-            "id": user_message.id,
-            "content": user_message.content
-        }),
-        other => serde_json::to_value(other).unwrap(),
-    }
-}
-
-fn turn_status_wire(status: TurnStatus) -> &'static str {
-    match status {
-        TurnStatus::Completed => "completed",
-        TurnStatus::Interrupted => "interrupted",
-        TurnStatus::Failed => "failed",
-        TurnStatus::InProgress => "inProgress",
-    }
-}
-
 fn completed_bootstrap_turn(turn_id: &str, message: &str) -> TurnInfo {
     TurnInfo {
         id: turn_id.to_string(),
         status: TurnStatus::Completed,
-        items_view: beryl_backend::TurnItemsView::Full,
-        items: vec![ThreadItem::UserMessage(beryl_backend::UserMessageItem {
-            id: "user_message".to_string(),
-            content: vec![UserInput::Text {
-                text: message.to_string(),
-            }],
-        })],
-        error: None,
-    }
-}
-
-fn in_progress_bootstrap_turn(turn_id: &str, message: &str) -> TurnInfo {
-    TurnInfo {
-        id: turn_id.to_string(),
-        status: TurnStatus::InProgress,
         items_view: beryl_backend::TurnItemsView::Full,
         items: vec![ThreadItem::UserMessage(beryl_backend::UserMessageItem {
             id: "user_message".to_string(),

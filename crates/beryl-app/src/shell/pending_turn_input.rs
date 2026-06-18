@@ -1,7 +1,10 @@
 use beryl_backend::TurnStartOptions;
 use beryl_model::workspace::WorkspaceId;
 
-use super::{execution_detail::UserInputFragment, thread_title::TurnThreadTitleMode};
+use super::{
+    syndic_ingestion::SyndicTurnAdmission, thread_title::TurnThreadTitleMode,
+    turn_input::UserInputFragment,
+};
 
 pub(super) const PENDING_TURN_INPUT_MAX_FRAGMENTS: usize = 64;
 pub(super) const PENDING_TURN_INPUT_MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
@@ -15,6 +18,7 @@ pub(super) struct PendingTurnInputQueue {
     title_mode: TurnThreadTitleMode,
     turn_options: TurnStartOptions,
     turn_index: usize,
+    syndic_admission: Option<SyndicTurnAdmission>,
     fragments: Vec<UserInputFragment>,
 }
 
@@ -41,6 +45,7 @@ impl PendingTurnInputQueue {
         title_mode: impl Into<TurnThreadTitleMode>,
         turn_options: TurnStartOptions,
         turn_index: usize,
+        syndic_admission: Option<SyndicTurnAdmission>,
         first_fragment: UserInputFragment,
     ) -> Self {
         Self::try_new(
@@ -49,6 +54,7 @@ impl PendingTurnInputQueue {
             title_mode,
             turn_options,
             turn_index,
+            syndic_admission,
             first_fragment,
         )
         .expect("pending turn input queue constructor received over-budget first fragment")
@@ -60,6 +66,7 @@ impl PendingTurnInputQueue {
         title_mode: impl Into<TurnThreadTitleMode>,
         turn_options: TurnStartOptions,
         turn_index: usize,
+        syndic_admission: Option<SyndicTurnAdmission>,
         first_fragment: UserInputFragment,
     ) -> Result<Self, PendingInputAdmissionError> {
         validate_fragment_count(1, PENDING_TURN_INPUT_MAX_FRAGMENTS)?;
@@ -72,6 +79,7 @@ impl PendingTurnInputQueue {
             title_mode: title_mode.into(),
             turn_options,
             turn_index,
+            syndic_admission,
             fragments: vec![first_fragment],
         })
     }
@@ -99,6 +107,10 @@ impl PendingTurnInputQueue {
 
     pub(super) fn turn_index(&self) -> usize {
         self.turn_index
+    }
+
+    pub(super) fn syndic_admission(&self) -> Option<&SyndicTurnAdmission> {
+        self.syndic_admission.as_ref()
     }
 
     #[allow(dead_code)]
@@ -199,6 +211,7 @@ pub(super) fn validate_pending_turn_input_fragments(
                     title_mode,
                     turn_options.clone(),
                     new_turn_index,
+                    None,
                     fragment.clone(),
                 )?);
                 accepted_any = true;

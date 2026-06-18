@@ -6,7 +6,6 @@ mod context_menu;
 mod core;
 mod demand;
 mod diagnostics;
-mod fixture_provider;
 mod frame;
 mod host;
 mod media_action;
@@ -21,8 +20,8 @@ mod snapshot;
 mod status_facts;
 
 pub(crate) use activation::{
-    TranscriptActivationOutcome, TranscriptActivationPlacement, TranscriptActivationSeed,
-    TranscriptActivationSource,
+    PreparedTranscriptActivation, TranscriptActivationOutcome, TranscriptActivationPlacement,
+    TranscriptActivationSeed, TranscriptActivationSource,
 };
 pub(crate) use command::{
     DisabledTranscriptCommand, ManualTranscriptScrollCommand, ResidentActionTargetProvenance,
@@ -48,7 +47,6 @@ pub(crate) use demand::{DemandFact, DemandFactKind, DemandFactSink, DemandFactSi
 pub(crate) use diagnostics::{
     ResidentDataDiagnostics, ResidentFrameDiagnostics, SyndicTranscriptDiagnosticSnapshot,
 };
-pub(crate) use fixture_provider::InMemorySyndicTranscriptProvider;
 pub(crate) use frame::{
     RealizedFrameAnchor, RealizedFrameClamp, RealizedFrameRecord, RealizedFrameRequest,
     RealizedFrameScrollController, RealizedFrameScrollMode, RealizedFrameScrollStateSnapshot,

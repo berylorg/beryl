@@ -43,7 +43,7 @@ pub(in crate::shell) fn first_real_branch_user_input_fragment_text<'a>(
     surface: &'a ConversationSurfaceState,
     thread: &RegisteredConversationThread,
 ) -> Option<&'a str> {
-    let turns = surface.execution_details.turns();
+    let turns = surface.active_turn_state.turns();
     let start_index = if let Some(bootstrap_turn_id) = thread.branch_bootstrap_turn_id() {
         turns
             .iter()

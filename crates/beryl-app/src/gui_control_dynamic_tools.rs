@@ -191,7 +191,7 @@ pub(crate) struct PendingActivationUiState {
     pub pending_progress: Option<f32>,
     pub staged_thread_id: Option<String>,
     pub staged_source: Option<String>,
-    pub staged_history_turn_count: Option<usize>,
+    pub staged_metadata_turn_count: Option<usize>,
     pub ready_for_publication: Option<bool>,
     pub progress_cap: Option<f32>,
     pub presentability: Option<PendingActivationPresentabilityUiState>,

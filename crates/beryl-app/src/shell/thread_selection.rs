@@ -142,7 +142,7 @@ pub(super) fn resolve_known_thread_selection(
     }
 }
 
-pub(super) fn thread_rebind_detail(
+pub(crate) fn thread_rebind_detail(
     label: &str,
     execution_target: &WorkspaceId,
     reason: &str,

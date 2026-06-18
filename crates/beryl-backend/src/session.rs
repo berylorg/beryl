@@ -25,24 +25,17 @@ use crate::{
     ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
     ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadBranchCapabilities,
     ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport,
-    ThreadForkOptions, ThreadForkResponse, ThreadHistoryCapabilities, ThreadHistoryCapabilityProbe,
-    ThreadHistoryCapabilityProbeResult, ThreadHistoryCapabilityReport, ThreadListResponse,
-    ThreadLoadedListResponse, ThreadReadMetadata, ThreadReadOptions, ThreadReadResponse,
-    ThreadResumeOptions, ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions,
-    ThreadSummary, ThreadTurnsListOptions, ThreadTurnsListResponse, ThreadUnarchiveResponse,
-    ThreadUnsubscribeResponse, TurnItemsView, TurnStartOptions, TurnStartResponse,
-    TurnSteerResponse, TurnStreamEvent, UserInput,
+    ThreadForkOptions, ThreadForkResponse, ThreadListResponse, ThreadLoadedListResponse,
+    ThreadReadMetadata, ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions,
+    ThreadSummary, ThreadUnarchiveResponse, ThreadUnsubscribeResponse, TurnStartOptions,
+    TurnStartResponse, TurnSteerResponse, TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
     managed_process::SupervisedBackendProcess,
     protocol::{SortDirection, ThreadListOptions, ThreadSortKey},
-    response_sanitizer::{response_sanitizer_kind, sanitize_json_rpc_message},
     thread_archive::{THREAD_ARCHIVE_CAPABILITY_PROBES, ThreadArchiveParams},
     thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
-    thread_history::{
-        THREAD_HISTORY_CAPABILITY_PROBES, ThreadReadParams, ThreadResumeParams,
-        ThreadTurnsListParams,
-    },
+    thread_metadata::{ThreadReadMetadataParams, ThreadResumeMetadataParams},
     turn::{
         ThreadStartParams, TurnStartParams, TurnSteerParams, parse_approval_request,
         parse_turn_stream_event,
@@ -95,20 +88,6 @@ fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
-fn sanitized_value_byte_len(value: &Value) -> Option<usize> {
-    if !backend_metrics_debug_enabled() {
-        return None;
-    }
-    serde_json::to_vec(value).ok().map(|bytes| bytes.len())
-}
-
-fn backend_metrics_debug_enabled() -> bool {
-    tracing::enabled!(
-        target: "beryl_backend::backend_metrics",
-        tracing::Level::DEBUG
-    )
-}
-
 const STARTUP_STAGES: &[ManagedBackendStartupStage] = &[
     ManagedBackendStartupStage::LaunchProcess,
     ManagedBackendStartupStage::InitializeHandshake,
@@ -133,7 +112,6 @@ pub struct ManagedBackendProbeReport {
     initialize: InitializeResponse,
     compatibility: CompatibilitySnapshot,
     method_successes: Vec<ProbeMethodSuccess>,
-    thread_history_capabilities: ThreadHistoryCapabilities,
     thread_archive_capabilities: ThreadArchiveCapabilities,
     thread_branch_capabilities: ThreadBranchCapabilities,
     config_defaults: BackendConfigDefaults,
@@ -204,12 +182,6 @@ pub enum ManagedBackendError {
     },
     #[error("backend returned an invalid {method} response payload")]
     DeserializeResponse {
-        method: String,
-        #[source]
-        source: serde_json::Error,
-    },
-    #[error("backend returned an invalid {method} response during streaming sanitization")]
-    SanitizeResponse {
         method: String,
         #[source]
         source: serde_json::Error,
@@ -605,44 +577,26 @@ impl ManagedBackendSession {
         )
     }
 
-    pub fn resume_thread(
-        &mut self,
-        thread_id: &str,
-        timeout: Duration,
-    ) -> Result<ThreadSessionResponse, ManagedBackendError> {
-        self.resume_thread_with_options(thread_id, ThreadResumeOptions::default(), timeout)
-    }
-
     pub fn resume_thread_metadata(
         &mut self,
         thread_id: &str,
         timeout: Duration,
     ) -> Result<ThreadSessionResponse, ManagedBackendError> {
-        self.resume_thread_with_options(thread_id, ThreadResumeOptions::metadata_only(), timeout)
-    }
-
-    pub fn resume_thread_with_options(
-        &mut self,
-        thread_id: &str,
-        options: ThreadResumeOptions,
-        timeout: Duration,
-    ) -> Result<ThreadSessionResponse, ManagedBackendError> {
         self.request(
             "thread/resume",
-            &ThreadResumeParams::new(thread_id, options),
+            &ThreadResumeMetadataParams::new(thread_id),
             timeout,
         )
     }
 
-    pub fn read_thread(
+    fn read_thread_metadata_response(
         &mut self,
         thread_id: &str,
-        options: ThreadReadOptions,
         timeout: Duration,
-    ) -> Result<ThreadReadResponse, ManagedBackendError> {
+    ) -> Result<ThreadSessionResponse, ManagedBackendError> {
         self.request(
             "thread/read",
-            &ThreadReadParams::new(thread_id, options),
+            &ThreadReadMetadataParams::new(thread_id),
             timeout,
         )
     }
@@ -652,7 +606,7 @@ impl ManagedBackendSession {
         thread_id: &str,
         timeout: Duration,
     ) -> Result<ThreadSummary, ManagedBackendError> {
-        self.read_thread(thread_id, ThreadReadOptions::metadata_only(), timeout)
+        self.read_thread_metadata_response(thread_id, timeout)
             .map(|response| response.thread.summary())
     }
 
@@ -661,8 +615,8 @@ impl ManagedBackendSession {
         thread_id: &str,
         timeout: Duration,
     ) -> Result<ThreadReadMetadata, ManagedBackendError> {
-        self.read_thread(thread_id, ThreadReadOptions::metadata_only(), timeout)
-            .map(|response| response.read_metadata())
+        self.read_thread_metadata_response(thread_id, timeout)
+            .map(ThreadReadMetadata::from_session_response)
     }
 
     pub fn read_file_bytes(
@@ -678,19 +632,6 @@ impl ManagedBackendSession {
                 method: "fs/readFile".to_string(),
                 source,
             })
-    }
-
-    pub fn list_thread_turns(
-        &mut self,
-        thread_id: &str,
-        options: &ThreadTurnsListOptions,
-        timeout: Duration,
-    ) -> Result<ThreadTurnsListResponse, ManagedBackendError> {
-        self.request(
-            "thread/turns/list",
-            &ThreadTurnsListParams::new(thread_id, options),
-            timeout,
-        )
     }
 
     pub fn fork_thread(
@@ -921,18 +862,6 @@ impl ManagedBackendSession {
         Ok(HardStopCapabilityReport::new(results))
     }
 
-    pub fn probe_thread_history_capabilities(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<ThreadHistoryCapabilityReport, ManagedBackendError> {
-        let mut results = Vec::with_capacity(THREAD_HISTORY_CAPABILITY_PROBES.len());
-        for probe in THREAD_HISTORY_CAPABILITY_PROBES {
-            results.push(self.probe_thread_history_capability(*probe, timeout)?);
-        }
-
-        Ok(ThreadHistoryCapabilityReport::new(results))
-    }
-
     pub fn probe_thread_branch_capabilities(
         &mut self,
         timeout: Duration,
@@ -1010,7 +939,7 @@ impl ManagedBackendSession {
             let message = if let Some(message) = self.pop_pending_message() {
                 message
             } else {
-                match self.recv_message_timeout("turn stream", remaining, None)? {
+                match self.recv_message_timeout("turn stream", remaining)? {
                     Some(message) => message,
                     None => return Ok(None),
                 }
@@ -1218,9 +1147,6 @@ impl ManagedBackendSession {
             method_successes.push(ProbeMethodSuccess { probe: *probe });
         }
 
-        let thread_history_capabilities = self
-            .probe_thread_history_capabilities(timeout)?
-            .capabilities();
         let thread_branch_capabilities = self
             .probe_thread_branch_capabilities(timeout)?
             .capabilities();
@@ -1232,7 +1158,6 @@ impl ManagedBackendSession {
             initialize,
             compatibility,
             method_successes,
-            thread_history_capabilities,
             thread_archive_capabilities,
             thread_branch_capabilities,
             config_defaults,
@@ -1368,14 +1293,14 @@ impl ManagedBackendSession {
             CompatibilityProbe::ThreadRead => {
                 self.probe_request_accepts_method(
                     probe.method(),
-                    &ThreadReadParams::new(PROBE_THREAD_ID, ThreadReadOptions::metadata_only()),
+                    &ThreadReadMetadataParams::new(PROBE_THREAD_ID),
                     timeout,
                 )?;
             }
             CompatibilityProbe::ThreadResumeMetadata => {
                 self.probe_request_accepts_method(
                     probe.method(),
-                    &ThreadResumeParams::new(PROBE_THREAD_ID, ThreadResumeOptions::metadata_only()),
+                    &ThreadResumeMetadataParams::new(PROBE_THREAD_ID),
                     timeout,
                 )?;
             }
@@ -1383,15 +1308,6 @@ impl ManagedBackendSession {
                 let _: ThreadUnsubscribeResponse = self.request(
                     probe.method(),
                     &ThreadUnsubscribeParams::new(PROBE_THREAD_ID),
-                    timeout,
-                )?;
-            }
-            CompatibilityProbe::ThreadTurnsList => {
-                let options =
-                    ThreadTurnsListOptions::page(1).with_sort_direction(SortDirection::Desc);
-                self.probe_request_accepts_method(
-                    probe.method(),
-                    &ThreadTurnsListParams::new(PROBE_THREAD_ID, &options),
                     timeout,
                 )?;
             }
@@ -1416,42 +1332,6 @@ impl ManagedBackendSession {
         }
 
         Ok(None)
-    }
-
-    fn probe_thread_history_capability(
-        &mut self,
-        probe: ThreadHistoryCapabilityProbe,
-        timeout: Duration,
-    ) -> Result<ThreadHistoryCapabilityProbeResult, ManagedBackendError> {
-        let params = match probe {
-            ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView => {
-                let options = ThreadTurnsListOptions::page(1)
-                    .with_sort_direction(SortDirection::Desc)
-                    .with_items_view(TurnItemsView::NotLoaded);
-                serde_json::to_value(ThreadTurnsListParams::new(PROBE_THREAD_ID, &options))
-            }
-        }
-        .map_err(|source| ManagedBackendError::SerializeRequest {
-            method: probe.method().to_string(),
-            source,
-        })?;
-
-        match self.request_json(probe.method(), &params, timeout)? {
-            JsonRpcRequestOutcome::Result(_) => Ok(
-                ThreadHistoryCapabilityProbeResult::for_supported_probe(probe),
-            ),
-            JsonRpcRequestOutcome::Error(error) if error.code == JSONRPC_METHOD_NOT_FOUND => {
-                Err(required_thread_history_contract_error(probe, error))
-            }
-            JsonRpcRequestOutcome::Error(error)
-                if thread_turns_list_items_view_rejected(&error) =>
-            {
-                Err(required_thread_history_contract_error(probe, error))
-            }
-            JsonRpcRequestOutcome::Error(_) => Ok(
-                ThreadHistoryCapabilityProbeResult::for_supported_probe(probe),
-            ),
-        }
     }
 
     fn probe_thread_branch_capability(
@@ -1588,15 +1468,6 @@ impl ManagedBackendSession {
                     typed_request_total_ms = elapsed_ms(typed_request_total),
                     "deserialized backend JSON-RPC response"
                 );
-                if backend_metrics_debug_enabled() && response_sanitizer_kind(method).is_some() {
-                    debug!(
-                        target: "beryl_backend::backend_metrics",
-                        method,
-                        typed_deserialize_ms = elapsed_ms(typed_deserialize),
-                        typed_request_total_ms = elapsed_ms(typed_request_total),
-                        "deserialized backend JSON-RPC response metrics"
-                    );
-                }
                 Ok(response)
             }
             JsonRpcRequestOutcome::Error(error) => Err(ManagedBackendError::RequestFailed {
@@ -1641,11 +1512,7 @@ impl ManagedBackendSession {
                 });
             };
 
-            let message = match self.recv_message_timeout(
-                method,
-                remaining,
-                Some(ExpectedJsonRpcResponse { method, request_id }),
-            )? {
+            let message = match self.recv_message_timeout(method, remaining)? {
                 Some(message) => message,
                 None => {
                     return Err(ManagedBackendError::RequestTimeout {
@@ -1675,26 +1542,6 @@ impl ManagedBackendSession {
                         out_of_order_response_count,
                         "backend JSON-RPC request completed"
                     );
-                    if backend_metrics_debug_enabled() && response_sanitizer_kind(method).is_some()
-                    {
-                        debug!(
-                            target: "beryl_backend::backend_metrics",
-                            method,
-                            request_id,
-                            outcome = "result",
-                            request_bytes = write_metrics.bytes,
-                            request_serialize_ms = elapsed_ms(write_metrics.serialize),
-                            request_send_ms = elapsed_ms(write_metrics.transport),
-                            response_wait_ms = elapsed_ms(response_wait),
-                            request_total_ms = elapsed_ms(request_total),
-                            interleaved_notification_count,
-                            interleaved_server_request_count,
-                            denied_approval_request_count,
-                            deferred_dynamic_tool_request_count,
-                            out_of_order_response_count,
-                            "backend JSON-RPC request completed metrics"
-                        );
-                    }
                     return Ok(JsonRpcRequestOutcome::Result(result));
                 }
                 IncomingMessage::Error { id, error } if id == Some(request_id) => {
@@ -1717,27 +1564,6 @@ impl ManagedBackendSession {
                         out_of_order_response_count,
                         "backend JSON-RPC request completed"
                     );
-                    if backend_metrics_debug_enabled() && response_sanitizer_kind(method).is_some()
-                    {
-                        debug!(
-                            target: "beryl_backend::backend_metrics",
-                            method,
-                            request_id,
-                            outcome = "error",
-                            error_code = error.code,
-                            request_bytes = write_metrics.bytes,
-                            request_serialize_ms = elapsed_ms(write_metrics.serialize),
-                            request_send_ms = elapsed_ms(write_metrics.transport),
-                            response_wait_ms = elapsed_ms(response_wait),
-                            request_total_ms = elapsed_ms(request_total),
-                            interleaved_notification_count,
-                            interleaved_server_request_count,
-                            denied_approval_request_count,
-                            deferred_dynamic_tool_request_count,
-                            out_of_order_response_count,
-                            "backend JSON-RPC request completed metrics"
-                        );
-                    }
                     return Ok(JsonRpcRequestOutcome::Error(error));
                 }
                 IncomingMessage::Notification {
@@ -1923,12 +1749,8 @@ impl ManagedBackendSession {
         &mut self,
         method: &str,
         timeout: Duration,
-        expected_response: Option<ExpectedJsonRpcResponse<'_>>,
     ) -> Result<Option<IncomingMessage>, ManagedBackendError> {
-        let received = match self
-            .transport
-            .recv_message_timeout(method, timeout, expected_response)
-        {
+        let received = match self.transport.recv_message_timeout(method, timeout) {
             Ok(received) => received,
             Err(ManagedBackendError::TransportClosed { .. }) if self.child_exited() => {
                 return Err(ManagedBackendError::ProcessExited {
@@ -1966,39 +1788,6 @@ impl Drop for ManagedBackendSession {
     }
 }
 
-fn thread_turns_list_items_view_rejected(error: &JsonRpcError) -> bool {
-    let message = error.message.to_ascii_lowercase();
-    let references_items_view = message.contains("itemsview")
-        || message.contains("items_view")
-        || (message.contains("items") && message.contains("view"));
-    let rejects_field = [
-        "unknown",
-        "unrecognized",
-        "unsupported",
-        "not supported",
-        "invalid",
-        "unexpected",
-        "not allowed",
-        "not permitted",
-    ]
-    .iter()
-    .any(|needle| message.contains(needle));
-
-    references_items_view && rejects_field
-}
-
-fn required_thread_history_contract_error(
-    probe: ThreadHistoryCapabilityProbe,
-    error: JsonRpcError,
-) -> ManagedBackendError {
-    CompatibilityError::ThreadTurnsListItemsViewUnsupported {
-        method: probe.method(),
-        code: error.code,
-        message: error.message,
-    }
-    .into()
-}
-
 impl ManagedBackendProbeReport {
     pub fn initialize(&self) -> &InitializeResponse {
         &self.initialize
@@ -2010,10 +1799,6 @@ impl ManagedBackendProbeReport {
 
     pub fn method_successes(&self) -> &[ProbeMethodSuccess] {
         &self.method_successes
-    }
-
-    pub fn thread_history_capabilities(&self) -> &ThreadHistoryCapabilities {
-        &self.thread_history_capabilities
     }
 
     pub fn thread_archive_capabilities(&self) -> &ThreadArchiveCapabilities {
@@ -2176,12 +1961,6 @@ enum JsonRpcRequestOutcome {
     Error(JsonRpcError),
 }
 
-#[derive(Clone, Copy)]
-struct ExpectedJsonRpcResponse<'a> {
-    method: &'a str,
-    request_id: u64,
-}
-
 struct MessageWriteMetrics {
     serialize: Duration,
     transport: Duration,
@@ -2223,7 +2002,6 @@ impl BackendClientTransport {
         &mut self,
         method: &str,
         timeout: Duration,
-        expected_response: Option<ExpectedJsonRpcResponse<'_>>,
     ) -> Result<Option<IncomingMessage>, ManagedBackendError> {
         match self {
             Self::Stdio { messages, .. } => match messages.recv_timeout(timeout) {
@@ -2234,58 +2012,6 @@ impl BackendClientTransport {
                 }),
             },
             Self::WebSocket(transport) => {
-                if let Some((expected, sanitizer_kind)) = expected_response.and_then(|expected| {
-                    response_sanitizer_kind(expected.method).map(|kind| (expected, kind))
-                }) {
-                    return match transport.recv_text_message_timeout_with_parser(
-                        method,
-                        timeout,
-                        |reader| {
-                            sanitize_json_rpc_message(sanitizer_kind, expected.request_id, reader)
-                        },
-                    )? {
-                        Some(Ok(sanitized)) => {
-                            let sanitized_response_bytes =
-                                sanitized_value_byte_len(&sanitized.value);
-                            let parse_started = Instant::now();
-                            let incoming = parse_incoming_value(sanitized.value).map(Some);
-                            let sanitized_response_parse = parse_started.elapsed();
-                            debug!(
-                                target: "beryl_backend::backend_metrics",
-                                method = expected.method,
-                                request_id = expected.request_id,
-                                sanitizer_kind = ?sanitizer_kind,
-                                sanitized_response_bytes,
-                                sanitizer_turn_count = sanitized.stats.turn_count,
-                                sanitizer_item_count = sanitized.stats.item_count,
-                                sanitizer_image_result_removed_count =
-                                    sanitized.stats.image_result_removed_count,
-                                sanitizer_total_ms =
-                                    elapsed_ms(sanitized.stats.total_sanitize),
-                                sanitizer_result_ms =
-                                    elapsed_ms(sanitized.stats.result_sanitize),
-                                sanitizer_turn_array_ms =
-                                    elapsed_ms(sanitized.stats.turn_array_sanitize),
-                                sanitizer_item_array_ms =
-                                    elapsed_ms(sanitized.stats.item_array_sanitize),
-                                sanitizer_image_result_skip_ms =
-                                    elapsed_ms(sanitized.stats.image_result_skip),
-                                sanitizer_image_result_skip_max_ms =
-                                    elapsed_ms(sanitized.stats.image_result_skip_max),
-                                sanitized_response_parse_ms =
-                                    elapsed_ms(sanitized_response_parse),
-                                "parsed sanitized backend JSON-RPC response metrics"
-                            );
-                            incoming
-                        }
-                        Some(Err(source)) => Err(ManagedBackendError::SanitizeResponse {
-                            method: expected.method.to_string(),
-                            source,
-                        }),
-                        None => Ok(None),
-                    };
-                }
-
                 match transport.recv_text_message_timeout(method, timeout)? {
                     Some(text) => {
                         let parse_started = Instant::now();

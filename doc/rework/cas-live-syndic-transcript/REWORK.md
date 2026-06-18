@@ -19,15 +19,18 @@
 - CAS remains the authority for authentication, live execution, enterprise policy enforcement, sandbox behavior, skills, tools, approvals, and runtime-owned operations.
 - Syndic becomes the authority for durable transcript history and transcript-view projection for turns captured from Beryl-owned live CAS event streams.
 - Selected transcript rendering after cutover must read through the Syndic transcript provider, not CAS historical transcript APIs.
-- CAS `thread/turns/list` and full-history reads are legacy or transitional compatibility surfaces only.
+- CAS `thread/turns/list` and full-history reads are obsolete under this target architecture and must not remain in live backend or app code.
 - Existing threads that were not captured into Syndic are incomplete from the Syndic transcript provider until a future explicit import or backfill design is approved.
 - Missed live events, process loss, or storage failure must produce explicit incomplete or failed captured-history state rather than silently repopulating selected transcript history from CAS.
 - Obsolete CAS-history source has been removed from live source locations and archived under `old-code`.
-- The project is allowed to stop compiling inside this active rework gap. Broken edges from surviving app/backend code to removed execution-detail, selected-activation, composer-label-scan, response-sanitizer, and thread-history APIs are intentional until replacement checkpoints fill them with target-state Syndic/CAS-live code.
-- Temporary cutover shims are allowed only when they connect surviving outer code to new target-state boundaries. They must not import, wrap, call, extend, or preserve archived `old-code`.
+- Operator standing rule for this rework: whenever an obsolete live code path conflicts with the target architecture, rip it out or quarantine it under `old-code`; do not invent transition adapters, compatibility layers, or compile-only stubs.
+- The Checkpoint 7 target implementation has closed the active rework gap; live app, backend, model, and storage code must compile without reintroducing removed execution-detail, selected-activation, composer-label-scan, or selected transcript history APIs.
+- Temporary cutover shims are no longer allowed for this completed gap. A new shim requires a new operator-approved rework checkpoint, and must still not import, wrap, call, extend, or preserve archived `old-code`.
 - CAS threads are disposable execution projections over Syndic-owned captured history. Surviving code may carry exact CAS ids for live execution, stop, fork, rollback, title, and metadata operations, but must not treat a CAS thread as selected transcript history authority after cutover.
 - CAS projection binding state, graph-action reflection outcomes, active-turn mutation rules, fresh context-pack materialization, and stale-thread abandonment are defined by `doc/systems/cas-live-syndic-transcript/design.md`.
 - Stale CAS projections are abandoned as execution bindings and are not deleted for cleanup. Archiving may be added only when CAS archive semantics are proven not to affect related threads.
+- No temporary cutover shim names remain allowed in live source after Checkpoint 7 cleanup.
+- The selected-activation seed shim, active-turn state cutover name, and composer image-label frontier cutover name are retired. If any retired cutover name reappears in live manifests, source, or tests, remove it or replace it with the target-state boundary rather than preserving it as a transition adapter.
 
 # Reference Snapshot
 
@@ -41,6 +44,7 @@
 - `old-code/beryl-app/src/shell/composer_image_label_scan.rs`
 - `old-code/beryl-app/src/shell/composer_image_labels.rs`
 - `old-code/beryl-app/src/shell/composer_image_label_sync.rs`
+- `old-code/beryl-app/tests/`
 - `old-code/beryl-backend/src/thread_history.rs`
 - `old-code/beryl-backend/src/response_sanitizer.rs`
 
@@ -49,8 +53,12 @@
 New CAS-live Syndic capture, transcript-provider, transcript-rendering, composer-label, branch, edit, and selected-activation code must not use these as selected transcript history sources:
 
 - `ManagedBackendSession::list_thread_turns`
+- `ManagedBackendSession::read_thread` with transcript turns included
 - CAS `thread/turns/list`
 - `ThreadTurnsListOptions`
+- `ThreadReadOptions::include_turns`
+- `ThreadReadResponse`
+- `response_sanitizer`
 - `ExecutionDetail::load_thread_history`
 - `ExecutionDetail::prepend_thread_history_page`
 - `load_selected_thread_history`
@@ -69,67 +77,168 @@ New CAS-live Syndic capture, transcript-provider, transcript-rendering, composer
   - Done: obsolete app/backend module registrations and backend public history exports removed.
   - Done: target system, feature, and package docs written.
   - Done: root implementation plan points at this rework.
-  - Remaining: inspect and remove or replace surviving dependent code and tests that still name removed APIs.
-  - Blocked: Operator review of the removal-first gap before filling it with replacement implementation.
+  - Done: Operator reviewed the removal-first boundary and authorized continuing to Checkpoint 1.
+  - Done: surviving dependent code and tests that still name removed APIs are preserved as the visible Checkpoint 1 gap.
   - Verification: no references to the retired Rust-specific archive directory name remain.
   - Verification: removed live source paths do not exist outside `old-code`.
   - Verification: `cargo check -p syndic-storage` remains green.
   - Verification: full workspace compile is expected to fail until later checkpoints replace the removed APIs.
 - Checkpoint 1: Surviving-edge responsibility split and CAS projection boundary.
   - Done: obsolete implementation has been removed before shim work.
-  - Remaining: inventory surviving app/backend references to removed selected-activation, execution-detail, composer-label-scan, response-sanitizer, and thread-history APIs.
-  - Remaining: split surviving responsibilities across focused selected activation, composer submission, CAS projection binding, active-turn state, transcript-provider, and transcript-host boundaries.
-  - Remaining: define live CAS projection binding records and state transitions for valid, stale, unbound, and active bindings.
-  - Remaining: implement or stub graph-action classification for no CAS effect, native CAS operation, projection invalidation, and materialize-on-next-run outcomes.
-  - Remaining: define exact fresh context-pack materialization contents, ordering, provenance markers, truncation or summarization policy, reference inclusion policy, and CAS request boundary for stale or unbound projections without creating a CAS-history adapter.
-  - Remaining: feed the context-pack design back into the owning system and package docs before implementing the materialization path.
-  - Remaining: define active-turn mutation gates for immutable accepted input, forbidden incomplete-branching, deleted-active-turn abort/discard, and allowed ancestor edits.
-  - Remaining: define stale CAS projection abandonment behavior without deletion cleanup.
-  - Remaining: decide which surviving edges need forward-facing cutover shims and name each shim with a removal condition.
-  - Remaining: remove obsolete tests or rewrite them against target-state Syndic/CAS-live boundaries.
-  - Blocked: Operator review of Checkpoint 0.
-  - Verification: no shim imports, wraps, calls, extends, or preserves `old-code`.
-  - Verification: no live project manifest, source registry, dependency declaration, entry point, test, script, or build configuration references `old-code`.
+  - Done: inventoried surviving app/backend/test references to removed selected-activation, execution-detail, composer-label-scan, response-sanitizer, and thread-history APIs.
+  - Done: split surviving responsibilities across focused selected activation, composer submission, CAS projection binding, active-turn state, transcript-provider, and transcript-host boundaries in `doc/systems/cas-live-syndic-transcript/design.md`.
+  - Done: defined live CAS projection binding records and status semantics for valid, stale, unbound, and active bindings in the owning system and storage package docs.
+  - Done: defined graph-action reflection outcomes and classifier inputs without permitting CAS history reads during classification.
+  - Done: defined exact fresh context-pack materialization contents, ordering, provenance handling, no-summarization budget policy, resource inclusion policy, and CAS request boundary in the owning system doc.
+  - Done: recorded that stale or unbound execution remains unavailable until a normalized backend request can keep materialized context separate from ordinary user input and hidden developer instructions.
+  - Done: defined active-turn mutation gates for immutable accepted input, forbidden incomplete-output actions, deleted-active-turn abort/discard, allowed ancestor edits, and late-event limits.
+  - Done: defined stale CAS projection abandonment behavior without deletion cleanup.
+  - Done: named forward-facing cutover shims with removal conditions in the cutover boundary.
+  - Done: implemented pure graph-action classification target types for no CAS effect, native CAS operation, projection invalidation, and materialize-on-next-run outcomes without CAS history reads.
+  - Done: removed the live backend `thread/turns/list`, full-history `thread/read`, thread-history capability probe, response-sanitizer transport path, exports, and tests instead of creating a backend compatibility boundary.
+  - Done: quarantined obsolete app tests that directly included archived execution-detail, selected-activation, composer-label-scan, composer-label-state, and CAS-history loading modules under `old-code/beryl-app/tests/`.
+  - Done: rewrote surviving branch-bootstrap tests and code to use live completion proof plus metadata-only durability reads rather than CAS history fallback.
+  - Done: reowned `UserInputFragment` and transcript image marker helpers into focused `turn_input` and `transcript_images` boundaries.
+  - Done: replaced surviving app-side `ExecutionDetailState` references with a focused active-turn shell projection.
+  - Done: moved selected-thread activation preparation and metadata-only resume loading into the `thread_activation` boundary without CAS transcript history reads.
+  - Done: replaced composer image-label scan/sync call paths with the Syndic image-label frontier, leaving image paste unavailable when the Syndic frontier is not ready.
+  - Done: replaced workspace opening selected-thread history loading with metadata-only activation through the new workspace open boundary.
+  - Done: split thread activation metadata loading into a leaf loader tested without importing shell UI state.
+  - Verification: completed 2026-06-18: forbidden backend-history API scan has no live backend, app, model, or storage matches except the explicit `transcript_rework_source_boundary.rs` forbidden-string test.
+  - Verification: completed 2026-06-18: live manifests and crates do not reference `old-code`.
+  - Verification: completed 2026-06-18: `cargo check -p syndic-storage` passed.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-model` and `cargo nextest run -p beryl-model` passed.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-backend` and `cargo nextest run -p beryl-backend` passed.
+  - Verification: completed 2026-06-18: forbidden live-source scan has no live matches for removed `execution_detail`, `ExecutionDetailState`, composer image-label scan/sync, response sanitizer, full-history `thread/read`, or `thread/turns/list` APIs outside explicit boundary-test needles.
+  - Verification: completed 2026-06-18: live manifests and live app/backend/model/storage source do not reference `old-code`.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app` passed, 1172 tests.
 - Checkpoint 2: `syndic-storage` fjall API and schema.
   - Done: target storage boundary docs exist.
-  - Remaining: define durable conversation, turn, source-event, resource, projection, revision, and cursor records.
-  - Remaining: define write-batch and crash-recovery behavior.
-  - Remaining: keep provider calls, auth, CAS execution, and renderer code out of the crate.
-  - Blocked: Checkpoint 1.
-  - Verification: storage crate tests cover bounded reads, idempotent events, incomplete turns, stale projections, and resource range errors.
+  - Done: defined durable conversation, turn, source-event, canonical item, resource, transcript projection, CAS projection binding, revision, and cursor records in the live `syndic-storage` API.
+  - Done: implemented typed fjall-backed keyspaces behind `SyndicStore` rather than exposing fjall handles, encodings, or transaction objects to callers.
+  - Done: implemented atomic write batches, idempotent source-event insertion, monotonic per-turn source-event sequence checks, bounded source-event reads, bounded transcript page reads, stale revision checks, resource metadata reads, and resource byte-range reads.
+  - Done: implemented crash-recovery marker records and explicit incomplete history, incomplete turn, stale projection, and stale CAS binding states.
+  - Done: kept provider calls, auth, CAS execution, renderer code, CAS history reads, and archived `old-code` references out of `syndic-storage`.
+  - Verification: completed 2026-06-18: `cargo check -p syndic-storage` passed.
+  - Verification: completed 2026-06-18: `cargo nextest run -p syndic-storage` passed, 5 tests covering bounded reads, idempotent events, incomplete turns, stale projections, and resource range errors.
+  - Verification: completed 2026-06-18: storage live-source and manifest scan found no backend/app/rendering/CAS-history/`old-code` references.
 - Checkpoint 3: CAS live event ingestion.
   - Done: CAS remains the execution and policy authority in target docs.
-  - Remaining: capture accepted user input, CAS live events, assistant deltas, terminal states, metadata, resources, and failure records into Syndic.
-  - Remaining: reject or mark incomplete captures when durable admission cannot be proven.
-  - Remaining: record missed live events, stream loss, and storage failures explicitly.
-  - Blocked: Checkpoint 2.
-  - Verification: ingestion tests cover durable admission before composer clear, terminal state, stream loss, duplicate events, and crash recovery.
+  - Done: accepted user input is captured into Syndic before composer clear, context-compaction queueing, lifecycle queueing, pending queue mutation, active steering mutation, and threaded-decision handoff mutation.
+  - Done: live CAS turn start events, streaming events, assistant deltas, terminal states, source metadata, generated-image metadata/resource markers, local backend failures, and stream-loss states are captured into Syndic.
+  - Done: CAS thread ids are bound as execution projection metadata without reviving CAS as selected transcript history authority.
+  - Done: active steering fragments are durably journaled before transcript promotion, promoted only after CAS steering succeeds, and marked redirected without fabricating transcript history when steering falls back to the pending queue.
+  - Done: durable admission failures block or redirect visible mutation instead of silently accepting uncaptured transcript state.
+  - Done: missed live events, stream loss, backend connect/start failures, and storage failures produce explicit failure or incomplete state rather than CAS-history fallback.
+  - Done: `syndic-storage` assigns source-event sequences across all pending same-turn events inside a single atomic batch.
+  - Verification: completed 2026-06-18: `git diff --check` passed.
+  - Verification: completed 2026-06-18: live manifests and crates do not reference `old-code`.
+  - Verification: completed 2026-06-18: forbidden CAS-history API scan has no live matches except the explicit `transcript_rework_source_boundary.rs` forbidden-string test for `thread/turns/list`.
+  - Verification: completed 2026-06-18: `cargo check -p syndic-storage` passed.
+  - Verification: completed 2026-06-18: `cargo nextest run -p syndic-storage` passed, 6 tests.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app` passed, 1176 tests.
 - Checkpoint 4: Storage-backed transcript provider.
   - Done: transcript presentation system docs define provider and residency boundaries.
-  - Remaining: replace fixture-only provider behavior with bounded reads from Syndic projections.
-  - Remaining: expose incomplete-history and resource-readiness states explicitly.
-  - Remaining: keep render paths isolated from direct storage calls.
-  - Blocked: Checkpoint 2.
-  - Verification: provider tests cover cursor pages, stale revisions, missing resources, incomplete histories, and bounded reads.
+  - Done: production storage-backed provider behavior reads bounded transcript-view pages, projection records, resource metadata, and resource ranges from Syndic storage.
+  - Done: production storage-backed provider lives outside the resident transcript module so resident and render paths remain isolated from direct `syndic-storage` calls.
+  - Done: in-memory transcript provider behavior moved out of live production source and into test support.
+  - Done: provider output exposes incomplete-history, unavailable-history, stale-revision, stale-projection, missing-projection, missing-resource, range, and budget states explicitly.
+  - Done: resident transcript state consumes provider history state without fetching CAS historical transcript pages.
+  - Verification: completed 2026-06-18: `cargo fmt` passed.
+  - Verification: completed 2026-06-18: `cargo check -p syndic-storage` passed.
+  - Verification: completed 2026-06-18: `cargo nextest run -p syndic-storage` passed, 7 tests.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed.
+  - Verification: completed 2026-06-18: storage-backed provider tests covered cursor pages, stale revisions, missing resources, incomplete histories, and bounded reads.
+  - Verification: completed 2026-06-18: resident view-page tests covered incomplete-history presentation state and stale or missing provider responses.
+  - Verification: completed 2026-06-18: transcript source-boundary tests passed with resident transcript source free of direct `syndic-storage` calls.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app` passed, 1182 tests.
+  - Verification: completed 2026-06-18: `git diff --check` passed.
+  - Verification: completed 2026-06-18: live manifests and crates do not reference `old-code`.
+  - Verification: completed 2026-06-18: forbidden CAS-history API scan has no live matches except the explicit `transcript_rework_source_boundary.rs` forbidden-string test for `thread/turns/list`.
 - Checkpoint 5: Selected-thread activation cutover.
   - Done: CAS metadata-only resume remains the target execution binding.
-  - Remaining: prepare selected transcript state from the Syndic provider.
-  - Remaining: remove CAS paginated history from selected transcript activation.
-  - Remaining: define startup and selector behavior for threads with no captured Syndic history.
-  - Blocked: Checkpoints 3 and 4.
-  - Verification: activation tests prove no CAS historical transcript request is made for captured selected threads.
+  - Done: selected transcript state is prepared from the storage-backed Syndic provider.
+  - Done: selected transcript activation publishes prepared resident view/projection state instead of CAS paginated history.
+  - Done: startup and selector activation keep the previous coherent transcript visible until prepared storage-backed state is ready or explicitly incomplete.
+  - Done: threads with no captured Syndic history publish explicit resident incomplete state rather than falling back to CAS history.
+  - Ready: Checkpoints 3 and 4 are complete.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed.
+  - Verification: completed 2026-06-18: focused activation, storage-provider, source-boundary, thread-activation, and GUI-control tests passed, 48 tests.
+  - Verification: completed 2026-06-18: `cargo nextest run -p syndic-storage` passed, 7 tests.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app` passed, 1185 tests.
+  - Verification: completed 2026-06-18: `git diff --check` passed.
+  - Verification: completed 2026-06-18: forbidden CAS-history API scan has no live matches except explicit `transcript_rework_source_boundary.rs` forbidden-string needles.
+  - Verification: completed 2026-06-18: live manifests and crates do not reference `old-code`.
 - Checkpoint 6: Composer, copy, quote, branch, and edit proof.
   - Done: system and feature docs assign proof to resident Syndic provenance and owning-history frontiers.
-  - Remaining: use resident Syndic provenance and owning-history label frontiers.
-  - Remaining: keep image paste unavailable when captured history is incomplete.
-  - Remaining: route branch and edit mutations through CAS execution primitives and Syndic history updates.
+  - Done: composer image-label readiness reads the complete Syndic owning-history frontier and keeps paste unavailable for incomplete or unavailable captured history.
+  - Done: live text projections carry source and copy byte ranges for resident copy and quote provenance.
+  - Done: resident branch/edit target proof reads complete Syndic view history, accepted user input, CAS thread/turn metadata, and rollback counts without CAS history payloads.
+  - Done: shell branch/edit acceptance fails closed when resident proof is unavailable.
+  - Done: Syndic storage has typed view-record removal for selected-path detachment without deleting detached turns, items, projections, resources, or CAS provenance.
+  - Done: resident edit proof produces exact detachment keys and can mark the selected CAS projection stale after removing those view records.
+  - Done: text-only resident edit mode reconstructs the proven user input into the composer without mutating backend, workspace, transcript persistence, semantic graph state, image assets, or activity records before commit.
+  - Done: edit replacement commit uses a worker pre-start operation that reopens the exact CAS thread, rolls back the proven tail, detaches the selected Syndic view tail, durably admits the replacement input, and then starts the replacement CAS turn through normal live ingestion.
+  - Done: resident branch proof carries source view and target turn identity for exact selected-prefix materialization.
+  - Done: branch execution materializes a target-state Syndic branch conversation and view, duplicated projection/view records with branch provenance, and a valid CAS projection binding for the forked CAS branch before bootstrap publication.
+  - Done: context-menu branch execution performs a CAS metadata-only fork, exact rollback, Syndic branch-prefix materialization, durable bootstrap admission, live bootstrap ingestion, terminal/durable proof, workspace branch registration, title repair scheduling, and foreground activation.
+  - Done: branch mutation tests cover metadata-only fork, rollback, bootstrap start, durable prefix publication, and missed-bootstrap completion stream-loss handling.
+  - Edge case: original edit targets with non-text backend input stay unavailable until a target-state atom reconstruction path exists.
   - Done: edit-as-branch, edit replacement with detached tails and no immediate Syndic garbage collection, and CAS compaction marker turn/item placement target policy are documented in the owning system docs.
-  - Blocked: Checkpoints 3, 4, and 5.
-  - Verification: composer, quote, copy, branch, and edit tests cover incomplete history, stable provenance, labels, rollback, replacement turns, and missed-event states.
+  - Edge case: branch execution must not be emulated by copying CAS history locally or by creating a CAS-only fork without durable Syndic branch-prefix state.
+  - Done: Checkpoint 5 prerequisite is complete.
+  - Verification: completed 2026-06-18: `cargo fmt --check` passed.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app --no-fail-fast --test transcript_rework_source_boundary --test transcript_branch_edit_target --test composer_image_label_frontier --test syndic_live_ingestion` passed, 32 tests.
+  - Verification: completed 2026-06-18: `cargo fmt` passed after edit replacement worker wiring.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed after edit replacement worker wiring.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app --no-fail-fast --test transcript_rework_source_boundary --test transcript_branch_edit_target --test composer_image_label_frontier --test syndic_live_ingestion` passed, 32 tests, after edit replacement worker wiring.
+  - Verification: completed 2026-06-18: `git diff --check` passed.
+  - Verification: completed 2026-06-18: live manifests, live source, and live tests do not reference `old-code`.
+  - Verification: completed 2026-06-18: forbidden CAS-history API scan has no live matches outside explicit `transcript_rework_source_boundary.rs` forbidden-string needles.
+  - Verification: completed 2026-06-18: `cargo fmt --check` passed after branch execution wiring.
+  - Verification: completed 2026-06-18: `cargo check -p beryl-app` passed after branch execution wiring.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app --test transcript_branch_edit_target` passed, 4 tests, including branch execution and missed-bootstrap completion handling.
+  - Verification: completed 2026-06-18: `cargo nextest run -p beryl-app --no-fail-fast --test transcript_rework_source_boundary --test transcript_branch_edit_target --test composer_image_label_frontier --test syndic_live_ingestion --test branch_bootstrap_core` passed, 47 tests.
+  - Verification: completed 2026-06-18: `git diff --check` passed after branch execution wiring.
+  - Verification: completed 2026-06-18: live manifests, live source, and live tests do not reference `old-code`.
+  - Verification: completed 2026-06-18: forbidden CAS-history API scan has no live matches outside explicit `transcript_rework_source_boundary.rs` forbidden-string needles.
 - Checkpoint 7: Cleanup and verification.
   - Done: initial obsolete source removal completed in Checkpoint 0.
-  - Remaining: remove any temporary cutover shims after target implementation replaces them.
-  - Remaining: verify renderer, selected activation, live streaming, restart, missed-event, image-label, branch, edit, copy, quote, activity, and transcript behavior.
-  - Blocked: Checkpoints 1 through 6.
-  - Verification: forbidden API scan has no live matches outside archived `old-code` and explicitly allowed legacy backend compatibility surfaces.
-  - Verification: full workspace checks pass after the target implementation closes the rework gap.
+  - Done: removed the remaining live temporary cutover shim names after selected activation, active-turn projection, and composer image-label frontier target boundaries were present.
+  - Done: cutover boundary now rejects retired cutover names in live source instead of allowing them as transition names.
+  - Done: diagnostic scroll smoke fixture now seeds target-state Syndic storage records and publishes a prepared storage-backed transcript activation instead of manufacturing CAS full-turn history.
+  - Done: resident transcript host records frame and scroll-input diagnostics from realized Syndic transcript frame windows for the target renderer path.
+  - Done: renderer, selected activation, live streaming, restart, missed-event, image-label, branch, edit, copy, quote, activity, diagnostic scroll, and transcript behavior are covered by focused and full workspace verification.
+  - Done: completion review findings were addressed by keeping lifecycle fallback activation on prepared storage-backed Syndic state, reporting scroll diagnostics from realized frame windows, closing completed-gap wording, and guarding active-turn retained text counts against cumulative overcounting.
+  - Done: final completion-review scroll-input diagnostic blocker was fixed so empty, stale, and unanchored realized frames report explicit unconsumed movement instead of synthetic consumption.
+  - Ready: Checkpoint 6 is complete.
+  - Verification: completed 2026-06-18: `cargo fmt --check` passed.
+  - Verification: completed 2026-06-18: `cargo check --workspace` passed.
+  - Verification: completed 2026-06-18: focused resident transcript/provider/source-boundary bundle passed, 132 tests.
+  - Verification: completed 2026-06-18: diagnostic scroll smoke passed.
+  - Verification: completed 2026-06-18: `cargo nextest run --workspace --no-fail-fast` passed, 1437 tests.
+  - Verification: completed 2026-06-18: live manifests, source, and tests do not reference `old-code`.
+  - Verification: completed 2026-06-18: forbidden CAS-history API scan has no live matches outside explicit `transcript_rework_source_boundary.rs` forbidden-string needles.
+  - Verification: completed 2026-06-18: retired cutover shim names and live-source `Cutover` names have no live matches.
+  - Verification: completed 2026-06-18: `git diff --check` passed.
+  - Verification: completed 2026-06-18 after completion-review fixes: `cargo fmt --check` passed.
+  - Verification: completed 2026-06-18 after completion-review fixes: `cargo check --workspace` passed.
+  - Verification: completed 2026-06-18 after completion-review fixes: focused source-boundary, manual-scroll, and realized-frame tests passed, 41 tests.
+  - Verification: completed 2026-06-18 after completion-review fixes: diagnostic scroll smoke passed.
+  - Verification: completed 2026-06-18 after completion-review fixes: live manifests, source, and tests do not reference `old-code`.
+  - Verification: completed 2026-06-18 after completion-review fixes: forbidden CAS-history API scan has no live matches outside explicit `transcript_rework_source_boundary.rs` forbidden-string needles.
+  - Verification: completed 2026-06-18 after completion-review fixes: retired cutover shim names and live-source `Cutover` names have no live matches.
+  - Verification: completed 2026-06-18 after completion-review fixes: `git diff --check` passed.
+  - Verification: completed 2026-06-18 after completion-review fixes: `cargo nextest run --workspace --no-fail-fast` passed, 1438 tests.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: `cargo fmt --check` passed.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: `git diff --check` passed.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: focused source-boundary and manual-scroll tests passed, 29 tests.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: `cargo check --workspace` passed.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: diagnostic scroll smoke passed.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: live manifests, source, and tests do not reference `old-code`.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: forbidden CAS-history API scan has no live matches outside explicit `transcript_rework_source_boundary.rs` forbidden-string needles.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: retired cutover shim names and live-source `Cutover` names have no live matches.
+  - Verification: completed 2026-06-18 after final completion-review blocker fix: `cargo nextest run --workspace --no-fail-fast` passed, 1439 tests.

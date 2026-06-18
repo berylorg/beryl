@@ -279,11 +279,11 @@ fn selected_thread_state_diagnostic_label(surface: &ConversationSurfaceState) ->
     if surface.selected_thread_context_compaction_id().is_some() {
         return "compacting";
     }
-    if surface.execution_details.working_turn_index().is_some() {
+    if surface.active_turn_state.working_turn_index().is_some() {
         return "working";
     }
     if surface
-        .execution_details
+        .active_turn_state
         .non_owned_active_turn_index()
         .is_some()
     {
@@ -300,6 +300,21 @@ fn selected_thread_state_diagnostic_label(surface: &ConversationSurfaceState) ->
         Some(ThreadStatus::SystemError) => "system_error",
         None => "unknown",
     }
+}
+
+fn copied_resident_branch_backend_name(
+    source_backend_name: Option<&str>,
+    branch_summary: &ThreadSummary,
+) -> Option<String> {
+    let source_backend_name = normalized_resident_branch_backend_name(source_backend_name)?;
+    let branch_backend_name =
+        normalized_resident_branch_backend_name(branch_summary.name.as_deref())?;
+    (branch_backend_name == source_backend_name).then(|| branch_backend_name.to_string())
+}
+
+fn normalized_resident_branch_backend_name(name: Option<&str>) -> Option<&str> {
+    let name = name?.trim();
+    (!name.is_empty()).then_some(name)
 }
 
 fn thread_status_diagnostic_label(status: &ThreadStatus) -> &'static str {
@@ -370,6 +385,7 @@ gpui::actions!(
 );
 
 mod account_rate_limits;
+mod active_turn_state;
 mod backend_availability;
 mod column_selector;
 mod composer_clipboard;
@@ -377,6 +393,8 @@ mod composer_draft;
 mod composer_history;
 mod composer_image_assets;
 mod composer_image_delivery;
+mod composer_image_label_frontier;
+mod composer_image_label_frontier_worker;
 mod composer_input_chrome;
 mod composer_measurement;
 mod composer_submission;
@@ -410,6 +428,8 @@ mod pending_turn_input;
 mod platform_attention;
 mod render;
 mod render_theme;
+mod resident_branch_edit;
+mod resident_branch_worker;
 mod semantic_thread_start;
 mod settings;
 mod status_line;
@@ -417,8 +437,11 @@ mod status_operation;
 mod status_operation_state;
 mod surface_accessors;
 mod surface_notice;
+mod syndic_ingestion;
 #[allow(dead_code)]
 mod syndic_transcript;
+#[allow(dead_code)]
+mod syndic_transcript_storage_provider;
 #[allow(dead_code)]
 mod syntax_highlighting;
 mod theme_candidates;
@@ -437,6 +460,8 @@ mod threaded_decision_resolution;
 mod token_usage_snapshot;
 mod tool_activity;
 mod tool_activity_nickname;
+mod transcript_images;
+mod turn_input;
 mod turn_steering;
 mod turn_stop;
 mod turn_view_status;
@@ -444,6 +469,7 @@ mod turn_worker;
 #[allow(dead_code)]
 mod virtual_list;
 mod workspace_members;
+mod workspace_open;
 mod workspace_persistence_worker;
 mod workspace_picker;
 mod workspace_picker_actions;
@@ -452,6 +478,9 @@ mod workspace_title;
 
 use account_rate_limits::{
     AccountRateLimitsOutcome, AccountRateLimitsUpdate, spawn_account_rate_limits_worker,
+};
+use active_turn_state::{
+    ActiveTurnIdentity, ActiveTurnSourcePinSnapshot, ActiveTurnState, TurnExecutionStatus,
 };
 use column_selector::{
     ColumnSelectorKeyboardIntent, ColumnSelectorScrollState, ColumnSelectorSurface,
@@ -471,6 +500,8 @@ use composer_image_assets::{ComposerImageAssetUpdate, spawn_composer_image_asset
 use composer_image_delivery::{
     ComposerImageDeliveryUpdate, PreparedComposerDraft, spawn_composer_image_delivery_worker,
 };
+use composer_image_label_frontier::{ComposerImageLabelFrontier, ComposerImagePasteReadiness};
+use composer_image_label_frontier_worker::ComposerImageLabelFrontierTask;
 use composer_measurement::{ComposerInputMeasurementCache, ComposerInputMeasurementKey};
 use composer_submission::prepared_composer_draft_fragment;
 use composer_submit::accepted_composer_draft;
@@ -504,6 +535,9 @@ use pending_turn_input::{
     PendingTurnInputSubmissionPlan,
 };
 use platform_attention::PlatformAttentionMonitor;
+use resident_branch_worker::{
+    ResidentBranchOutcome, ResidentBranchTask, ResidentBranchUpdate, spawn_resident_branch_worker,
+};
 use settings::{SharedActiveThemeProjection, SharedGuiPreferences};
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineState, StatusLineTurnView,
@@ -514,6 +548,11 @@ use status_operation_state::{StatusLineOperationState, StatusModelListCache};
 use surface_notice::{
     SurfaceNotice, SurfaceNoticeQueue, local_turn_failure_notice,
     selected_backend_turn_error_notice,
+};
+use thread_activation::{
+    ActivationPreparer, PendingThreadActivation, PublishedSelectedThreadActivation,
+    SelectedThreadActivationSource, StagedSelectedThreadActivation,
+    prepare_storage_backed_transcript_activation,
 };
 use thread_helpers::{
     first_real_branch_user_input_fragment_text, normalized_thread_name,
@@ -528,8 +567,8 @@ use thread_selector::{
     ThreadSelectorActivationTarget, ThreadSelectorColumnKey, ThreadSelectorState,
 };
 use thread_title::{
-    ThreadTitleCancellation, ThreadTitleResult, ThreadTitleTask, ThreadTitleTaskOutcome,
-    TurnThreadTitleMode, spawn_thread_title_worker,
+    ThreadTitleCancellation, ThreadTitleCandidate, ThreadTitleResult, ThreadTitleTask,
+    ThreadTitleTaskOutcome, TurnThreadTitleMode, spawn_thread_title_worker,
 };
 use threaded_decision_archive::{DecisionArchiveTask, QueuedDecisionArchiveJob};
 use threaded_decision_branch::{DecisionBranchStartTask, QueuedDecisionBranchJob};
@@ -541,14 +580,15 @@ use tool_activity_nickname::{
     ToolActivityNicknameOutcome, ToolActivityNicknamePoll, ToolActivityNicknameResolutionTarget,
     ToolActivityNicknameResolver,
 };
+use turn_input::UserInputFragment;
 use turn_steering::{
     SteeringInputFragment, TurnSteeringOutcome, TurnSteeringUpdate, spawn_turn_steering_worker,
 };
 use turn_stop::TurnStopUpdate;
 use turn_worker::{
     AcceptedLifecycleYield, ShellDynamicToolRequest, ThreadActivationUpdate, TurnWorkerOutcome,
-    TurnWorkerUpdate, shell_dynamic_tool_request_channel, spawn_thread_activation_worker,
-    spawn_turn_worker,
+    TurnWorkerPreStartOperation, TurnWorkerUpdate, shell_dynamic_tool_request_channel,
+    spawn_thread_activation_worker, spawn_turn_worker, spawn_turn_worker_with_pre_start,
 };
 use workspace_members::{
     WorkspaceMemberAttachRequest, apply_primary_execution_target_selection,
@@ -556,6 +596,7 @@ use workspace_members::{
     apply_workspace_member_primary_selection, reconcile_workspace_member_availability,
     resolve_workspace_member_attach_request,
 };
+use workspace_open::WorkspaceOpenCancellation;
 use workspace_persistence_worker::{
     WorkspacePersistenceFlush, WorkspacePersistenceQueue, spawn_workspace_persistence_worker,
 };
@@ -784,6 +825,7 @@ pub(super) struct ShellView {
     graph_receiver: Option<GraphWorkerTask>,
     graph_thread_start_receiver: Option<GraphThreadStartTask>,
     decision_branch_start_receiver: Option<DecisionBranchStartTask>,
+    resident_branch_receiver: Option<ResidentBranchTask>,
     decision_child_progress_receiver: Option<GraphWorkerTask>,
     decision_resolution_graph_receiver: Option<DecisionResolutionGraphTask>,
     decision_resolution_parent_activation_record_id: Option<ThreadedDecisionRecordId>,
@@ -797,8 +839,7 @@ pub(super) struct ShellView {
     thread_activation_receiver: Option<Receiver<ThreadActivationUpdate>>,
     pending_thread_navigation_activation: Option<PendingThreadNavigationActivation>,
     thread_navigation_histories: HashMap<BerylWorkspaceId, ThreadNavigationHistory>,
-    composer_image_label_validation_receiver: Option<ComposerImageLabelValidationTask>,
-    composer_image_label_scan_receiver: Option<ComposerImageLabelScanTask>,
+    composer_image_label_frontier_receiver: Option<ComposerImageLabelFrontierTask>,
     composer_image_asset_receiver: Option<Receiver<ComposerImageAssetUpdate>>,
     turn_receiver: Option<Receiver<TurnWorkerUpdate>>,
     shell_tool_receiver: Option<Receiver<ShellDynamicToolRequest>>,
@@ -952,6 +993,7 @@ enum ComposerHistoryDirection {
 
 struct TurnSteeringTask {
     thread_id: String,
+    turn_id: String,
     fragments: Vec<SteeringInputFragment>,
     receiver: Receiver<TurnSteeringUpdate>,
 }
@@ -1310,6 +1352,12 @@ struct ActiveTurnSteeringTarget {
     thread_id: String,
     turn_index: usize,
     turn_id: Option<String>,
+    syndic_turn: Option<syndic_ingestion::SyndicTurnIdentity>,
+}
+
+#[derive(Clone, Debug)]
+struct ResidentEditMode {
+    proof: resident_branch_edit::ResidentEditProof,
 }
 
 #[derive(Clone)]
@@ -1317,7 +1365,7 @@ struct ConversationSurfaceState {
     known_threads: Vec<ThreadSummary>,
     selected_thread: Option<usize>,
     selected_thread_status: Option<ThreadStatus>,
-    execution_details: ExecutionDetailState,
+    active_turn_state: ActiveTurnState,
     tool_activity: ToolActivityProjection,
     hard_stop_targets: HardStopTargetProjection,
     lifecycle_yields: LifecycleYieldState,
@@ -1327,13 +1375,14 @@ struct ConversationSurfaceState {
     status_line_operations: StatusLineOperationState,
     transcript_user_scrolled: bool,
     pending_thread_activation: Option<PendingThreadActivation>,
-    staged_selected_thread_activation: Option<StagedSelectedThreadActivation>,
+    staged_thread_activation: Option<StagedSelectedThreadActivation>,
     context_compaction_thread_id: Option<String>,
-    composer_image_labels: ComposerImageLabelState,
+    composer_image_labels: ComposerImageLabelFrontier,
     pending_new_thread_label_scope_id: u64,
     next_pending_new_thread_label_scope_id: u64,
     pending_new_thread_label_scope_bindings: HashMap<u64, String>,
     composer_history: ComposerHistoryState,
+    resident_edit_mode: Option<ResidentEditMode>,
     pending_turn_input_queue: Option<PendingTurnInputQueue>,
     pending_active_turn_steering_queue:
         Option<PendingActiveTurnSteeringQueue<SteeringInputFragment>>,
@@ -1513,8 +1562,9 @@ struct OpenedWorkspace {
     hard_stop_capabilities: HardStopCapabilities,
     known_threads: Vec<ThreadSummary>,
     selected_thread_id: Option<String>,
-    selected_thread_history: Option<ThreadInfo>,
+    selected_thread_metadata: Option<ThreadInfo>,
     selected_thread_session_metadata: Option<ThreadSessionMetadata>,
+    selected_thread_transcript_activation: Option<syndic_transcript::PreparedTranscriptActivation>,
     surface_notice: Option<SurfaceNotice>,
     graph: SemanticGraph,
     graph_revision: WorkspaceGraphRevision,
@@ -1920,9 +1970,12 @@ impl ConversationSurfaceState {
         workspace_ui_state: &WorkspaceUiState,
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
-        selected_thread_history: Option<ThreadInfo>,
+        selected_thread_metadata: Option<ThreadInfo>,
         selected_thread_id: Option<String>,
         selected_thread_session_metadata: Option<ThreadSessionMetadata>,
+        selected_thread_transcript_activation: Option<
+            syndic_transcript::PreparedTranscriptActivation,
+        >,
         notice: Option<SurfaceNotice>,
         graph: SemanticGraph,
         graph_revision: WorkspaceGraphRevision,
@@ -1934,7 +1987,7 @@ impl ConversationSurfaceState {
             known_threads,
             selected_thread: None,
             selected_thread_status: None,
-            execution_details: ExecutionDetailState::default(),
+            active_turn_state: ActiveTurnState::default(),
             tool_activity: ToolActivityProjection::default(),
             hard_stop_targets: {
                 let mut projection = HardStopTargetProjection::default();
@@ -1948,13 +2001,14 @@ impl ConversationSurfaceState {
             status_line_operations: StatusLineOperationState::default(),
             transcript_user_scrolled: false,
             pending_thread_activation: None,
-            staged_selected_thread_activation: None,
+            staged_thread_activation: None,
             context_compaction_thread_id: None,
-            composer_image_labels: ComposerImageLabelState::default(),
+            composer_image_labels: ComposerImageLabelFrontier::default(),
             pending_new_thread_label_scope_id: 0,
             next_pending_new_thread_label_scope_id: 1,
             pending_new_thread_label_scope_bindings: HashMap::new(),
             composer_history: ComposerHistoryState::default(),
+            resident_edit_mode: None,
             pending_turn_input_queue: None,
             pending_active_turn_steering_queue: None,
             notices: SurfaceNoticeQueue::from_initial(notice),
@@ -1973,14 +2027,19 @@ impl ConversationSurfaceState {
             graph_overlay_drag: None,
             tool_activity_panel_drag: None,
         };
-        let published_activation = if let Some(thread) = selected_thread_history {
-            state.stage_selected_thread_activation(ActivationPreparer::prepare(
+        let published_activation = if let Some(thread) = selected_thread_metadata {
+            state.stage_thread_activation(ActivationPreparer::prepare(
                 execution_target,
                 thread,
                 selected_thread_session_metadata,
                 SelectedThreadActivationSource::StartupRestore,
+                selected_thread_transcript_activation.unwrap_or_else(|| {
+                    syndic_transcript::PreparedTranscriptActivation::unavailable(
+                        syndic_transcript::TranscriptActivationPlacement::Tail,
+                    )
+                }),
             ));
-            state.publish_staged_selected_thread_activation()
+            state.publish_staged_thread_activation()
         } else if let Some(thread_id) = selected_thread_id {
             state.select_thread_by_id(&thread_id);
             None
@@ -2060,7 +2119,7 @@ impl ConversationSurfaceState {
     }
 
     fn earliest_known_user_input_fragment_text(&self) -> Option<&str> {
-        self.execution_details
+        self.active_turn_state
             .turns()
             .iter()
             .find_map(|turn| turn.first_user_input_fragment_text())
@@ -2095,8 +2154,8 @@ impl ConversationSurfaceState {
     }
 
     fn retained_state_snapshot(&self) -> RetainedStateSnapshot {
-        let transcript = self.execution_details.retained_counts();
-        let active_source_pin = self.execution_details.active_turn_source_pin_snapshot();
+        let transcript = self.active_turn_state.retained_counts();
+        let active_source_pin = self.active_turn_state.active_turn_source_pin_snapshot();
         let activity = self.tool_activity.retained_counts();
         let graph = self.graph_overlay.retained_counts();
         let inventory = self.member_thread_inventory.snapshot().retained_counts();
@@ -2264,7 +2323,7 @@ impl ConversationSurfaceState {
 
     fn tool_activity_panel_visible(&self) -> bool {
         self.tool_activity_panel_mode.panel_visible(
-            self.execution_details.working_turn_index().is_some(),
+            self.active_turn_state.working_turn_index().is_some(),
             self.selected_thread_context_compaction_id().is_some(),
         )
     }
@@ -2453,8 +2512,8 @@ impl ConversationSurfaceState {
         known_thread_changed || inventory_changed
     }
 
-    fn active_turn_source_pin_snapshot(&self) -> execution_detail::ActiveTurnSourcePinSnapshot {
-        self.execution_details.active_turn_source_pin_snapshot()
+    fn active_turn_source_pin_snapshot(&self) -> ActiveTurnSourcePinSnapshot {
+        self.active_turn_state.active_turn_source_pin_snapshot()
     }
 
     fn clear_transcript_shell_transient_state(&mut self) {
@@ -2470,11 +2529,21 @@ impl ConversationSurfaceState {
     }
 
     fn cancel_transcript_edit_mode(&mut self) -> bool {
-        false
+        self.resident_edit_mode.take().is_some()
     }
 
     fn transcript_edit_mode_active(&self) -> bool {
-        false
+        self.resident_edit_mode.is_some()
+    }
+
+    fn begin_resident_edit_mode(&mut self, proof: resident_branch_edit::ResidentEditProof) {
+        self.resident_edit_mode = Some(ResidentEditMode { proof });
+        self.close_transcript_branch_menu();
+        self.notices.clear_all();
+    }
+
+    fn resident_edit_mode_proof(&self) -> Option<&resident_branch_edit::ResidentEditProof> {
+        self.resident_edit_mode.as_ref().map(|mode| &mode.proof)
     }
 
     fn transcript_width(&self) -> Pixels {
@@ -2525,7 +2594,7 @@ impl ConversationSurfaceState {
                 || self.context_compaction_thread_id.is_some()
                 || self.pending_turn_input_queue.is_some()
                 || self.pending_active_turn_steering_queue.is_some()
-                || self.execution_details.has_backend_active_turn(),
+                || self.active_turn_state.has_backend_active_turn(),
             inventory_work: self.member_thread_inventory.refreshing()
                 || self.member_thread_inventory.needs_refresh(),
             status_work: self.status_line_operations.stop_request_in_flight()
@@ -2572,7 +2641,7 @@ impl ConversationSurfaceState {
             known_threads: self.known_threads.clone(),
             selected_thread: self.selected_thread,
             selected_thread_status: self.selected_thread_status.clone(),
-            execution_details: self.execution_details.clone(),
+            active_turn_state: self.active_turn_state.clone(),
             tool_activity: self.tool_activity.clone(),
             hard_stop_targets: self.hard_stop_targets.clone(),
             lifecycle_yields: self.lifecycle_yields.clone(),
@@ -2582,7 +2651,7 @@ impl ConversationSurfaceState {
             status_line_operations: self.status_line_operations.clone(),
             transcript_user_scrolled: self.transcript_user_scrolled,
             pending_thread_activation: self.pending_thread_activation.clone(),
-            staged_selected_thread_activation: self.staged_selected_thread_activation.clone(),
+            staged_thread_activation: self.staged_thread_activation.clone(),
             context_compaction_thread_id: self.context_compaction_thread_id.clone(),
             composer_image_labels: self.composer_image_labels.clone(),
             pending_new_thread_label_scope_id: self.pending_new_thread_label_scope_id,
@@ -2591,6 +2660,7 @@ impl ConversationSurfaceState {
                 .pending_new_thread_label_scope_bindings
                 .clone(),
             composer_history: self.composer_history.clone(),
+            resident_edit_mode: self.resident_edit_mode.clone(),
             pending_turn_input_queue: self.pending_turn_input_queue.clone(),
             pending_active_turn_steering_queue: self.pending_active_turn_steering_queue.clone(),
             notices: self.notices.clone(),
@@ -2632,9 +2702,12 @@ impl ConversationSurfaceState {
         workspace_state: &WorkspaceConversationState,
         known_threads: Vec<ThreadSummary>,
         hard_stop_capabilities: HardStopCapabilities,
-        selected_thread_history: Option<ThreadInfo>,
+        selected_thread_metadata: Option<ThreadInfo>,
         selected_thread_id: Option<String>,
         selected_thread_session_metadata: Option<ThreadSessionMetadata>,
+        selected_thread_transcript_activation: Option<
+            syndic_transcript::PreparedTranscriptActivation,
+        >,
         notice: Option<SurfaceNotice>,
         graph: SemanticGraph,
         graph_revision: WorkspaceGraphRevision,
@@ -2647,17 +2720,22 @@ impl ConversationSurfaceState {
                 .map(|thread| thread.id.clone())
         });
         let known_threads = bounded_known_threads(known_threads, known_thread_pin.iter().cloned());
-        let (preserve_staged_selected_thread_activation, published_activation) =
-            match selected_thread_history {
+        let (preserve_staged_thread_activation, published_activation) =
+            match selected_thread_metadata {
                 Some(thread) => {
                     self.known_threads = known_threads;
-                    self.stage_selected_thread_activation(ActivationPreparer::prepare(
+                    self.stage_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
                         thread,
                         selected_thread_session_metadata,
                         SelectedThreadActivationSource::BackendReopenRefresh,
+                        selected_thread_transcript_activation.unwrap_or_else(|| {
+                            syndic_transcript::PreparedTranscriptActivation::unavailable(
+                                syndic_transcript::TranscriptActivationPlacement::Tail,
+                            )
+                        }),
                     ));
-                    let published_activation = self.publish_staged_selected_thread_activation();
+                    let published_activation = self.publish_staged_thread_activation();
                     (published_activation.is_none(), published_activation)
                 }
                 None => {
@@ -2702,8 +2780,8 @@ impl ConversationSurfaceState {
         self.apply_known_thread_agent_labels();
         self.hydrate_token_usage_snapshots(workspace_state);
         self.pending_thread_activation = None;
-        if !preserve_staged_selected_thread_activation {
-            self.staged_selected_thread_activation = None;
+        if !preserve_staged_thread_activation {
+            self.staged_thread_activation = None;
         }
         self.clear_transcript_shell_transient_state();
         self.close_transcript_branch_menu();
@@ -2936,13 +3014,13 @@ impl ConversationSurfaceState {
         self.selected_thread = None;
         self.selected_thread_status = None;
         self.sync_thread_selector_active_thread();
-        self.execution_details.reset();
+        self.active_turn_state.reset();
         self.hard_stop_targets.clear_all();
         self.status_line.clear_session_metadata();
         self.status_line.clear_pending_new_thread_defaults();
         self.clear_transcript_shell_transient_state();
         self.pending_thread_activation = None;
-        self.staged_selected_thread_activation = None;
+        self.staged_thread_activation = None;
         self.context_compaction_thread_id = None;
         self.close_transcript_branch_menu();
         self.cancel_transcript_edit_mode();
@@ -2956,23 +3034,36 @@ impl ConversationSurfaceState {
         self.notices.clear_all();
     }
 
-    fn begin_turn(&mut self, user_input: UserInputFragment) {
+    fn begin_turn(
+        &mut self,
+        user_input: UserInputFragment,
+        syndic_admission: Option<&syndic_ingestion::SyndicTurnAdmission>,
+    ) {
         let thread_id = self.selected_thread_id().map(str::to_string);
-        self.begin_turn_for_thread_id(thread_id, user_input);
+        self.begin_turn_for_thread_id(thread_id, user_input, syndic_admission);
     }
 
-    fn begin_turn_for_thread(&mut self, thread_id: &str, user_input: UserInputFragment) {
-        self.begin_turn_for_thread_id(Some(thread_id.to_string()), user_input);
+    fn begin_turn_for_thread(
+        &mut self,
+        thread_id: &str,
+        user_input: UserInputFragment,
+        syndic_admission: Option<&syndic_ingestion::SyndicTurnAdmission>,
+    ) {
+        self.begin_turn_for_thread_id(Some(thread_id.to_string()), user_input, syndic_admission);
     }
 
     fn begin_turn_for_thread_id(
         &mut self,
         thread_id: Option<String>,
         user_input: UserInputFragment,
+        syndic_admission: Option<&syndic_ingestion::SyndicTurnAdmission>,
     ) {
         self.observe_composer_image_labels_in_fragment(&user_input);
-        self.execution_details
-            .begin_turn_with_thread_fragments(thread_id.clone(), vec![user_input]);
+        self.active_turn_state.begin_turn_with_thread_fragments(
+            thread_id.clone(),
+            vec![user_input],
+            syndic_admission.map(syndic_ingestion::SyndicTurnAdmission::identity),
+        );
         self.clear_transcript_shell_transient_state();
         self.notices.clear_all();
         self.close_transcript_branch_menu();
@@ -2995,7 +3086,8 @@ impl ConversationSurfaceState {
             turn_index,
             thread_id: active_thread_id,
             turn_id,
-        } = self.execution_details.active_turn_identity()?;
+            syndic_turn,
+        } = self.active_turn_state.active_turn_identity()?;
         if active_thread_id
             .as_deref()
             .is_some_and(|id| id != thread_id)
@@ -3007,6 +3099,7 @@ impl ConversationSurfaceState {
             thread_id,
             turn_index,
             turn_id,
+            syndic_turn,
         })
     }
 
@@ -3024,7 +3117,7 @@ impl ConversationSurfaceState {
 
         let ActiveTurnIdentity {
             thread_id, turn_id, ..
-        } = self.execution_details.active_turn_identity()?;
+        } = self.active_turn_state.active_turn_identity()?;
         if thread_id.as_deref() != Some(selected_thread_id) {
             return None;
         }
@@ -3039,10 +3132,29 @@ impl ConversationSurfaceState {
         target: &ActiveTurnSteeringTarget,
         user_input: UserInputFragment,
     ) -> Option<SteeringInputFragment> {
+        let Some(syndic_turn) = target.syndic_turn.as_ref() else {
+            self.set_notice(SurfaceNotice::new(
+                "Transcript capture failed",
+                "Beryl cannot accept active-turn steering for a turn without durable Syndic admission.",
+            ));
+            return None;
+        };
         let steering_fragment =
             SteeringInputFragment::from_user_input_fragment(target.turn_index, &user_input);
+        if let Err(error) = syndic_ingestion::journal_steering_user_fragment(
+            syndic_turn,
+            &user_input,
+            &target.thread_id,
+            target.turn_id.as_deref(),
+        ) {
+            self.set_notice(SurfaceNotice::new(
+                "Transcript capture failed",
+                format!("Beryl could not durably admit the steering input: {error}"),
+            ));
+            return None;
+        }
         self.observe_composer_image_labels_in_thread_fragment(&target.thread_id, &user_input);
-        self.execution_details
+        self.active_turn_state
             .append_user_input_fragment(target.turn_index, user_input)?;
         self.notices.clear_all();
         Some(steering_fragment)
@@ -3140,7 +3252,7 @@ impl ConversationSurfaceState {
         thread_id: &str,
         turn_id: &str,
     ) -> Option<Vec<SteeringInputFragment>> {
-        let active = self.execution_details.active_turn_identity()?;
+        let active = self.active_turn_state.active_turn_identity()?;
         if active.thread_id.as_deref() != Some(thread_id)
             || active.turn_id.as_deref() != Some(turn_id)
         {
@@ -3155,6 +3267,7 @@ impl ConversationSurfaceState {
         execution_target: WorkspaceId,
         title_mode: TurnThreadTitleMode,
         turn_options: TurnStartOptions,
+        mut syndic_admission: Option<syndic_ingestion::SyndicTurnAdmission>,
         fragments: Vec<SteeringInputFragment>,
     ) -> bool {
         if fragments.is_empty() {
@@ -3172,7 +3285,7 @@ impl ConversationSurfaceState {
             &execution_target,
             title_mode,
             &turn_options,
-            self.execution_details.turns().len(),
+            self.active_turn_state.turns().len(),
             &user_inputs,
         ) {
             Ok(true) => {}
@@ -3190,6 +3303,7 @@ impl ConversationSurfaceState {
                 execution_target.clone(),
                 title_mode,
                 turn_options.clone(),
+                syndic_admission.take(),
                 user_input,
             );
         }
@@ -3209,7 +3323,7 @@ impl ConversationSurfaceState {
             })
             .collect::<Vec<_>>();
         let affected_turns = self
-            .execution_details
+            .active_turn_state
             .remove_user_input_fragments(&removals);
         for turn_index in affected_turns {
             let _ = turn_index;
@@ -3224,6 +3338,7 @@ impl ConversationSurfaceState {
         execution_target: WorkspaceId,
         title_mode: TurnThreadTitleMode,
         turn_options: TurnStartOptions,
+        syndic_admission: Option<syndic_ingestion::SyndicTurnAdmission>,
         user_input: UserInputFragment,
     ) -> bool {
         let observed_thread_id = thread_id.clone();
@@ -3236,6 +3351,36 @@ impl ConversationSurfaceState {
                 turn_index,
                 fragment_index,
             }) => {
+                let Some(identity) = self
+                    .pending_turn_input_queue
+                    .as_ref()
+                    .and_then(|queue| queue.syndic_admission())
+                    .map(syndic_ingestion::SyndicTurnAdmission::identity)
+                else {
+                    self.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        "Beryl cannot append pending input to a queue without durable Syndic admission.",
+                    ));
+                    return false;
+                };
+                if let Some(queue) = self.pending_turn_input_queue.as_ref()
+                    && let Err(error) = queue.validate_append(&user_input)
+                {
+                    self.report_pending_input_admission_error(error);
+                    return false;
+                }
+                if let Err(error) = syndic_ingestion::admit_additional_user_fragment(
+                    &identity,
+                    &user_input,
+                    Some(observed_thread_id.as_str()),
+                    None,
+                ) {
+                    self.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        format!("Beryl could not durably admit the queued input: {error}"),
+                    ));
+                    return false;
+                }
                 if let Some(queue) = self.pending_turn_input_queue.as_mut() {
                     match queue.try_append(user_input.clone()) {
                         Ok(index) => debug_assert_eq!(index, fragment_index),
@@ -3245,17 +3390,25 @@ impl ConversationSurfaceState {
                         }
                     }
                 }
-                self.execution_details
+                self.active_turn_state
                     .append_user_input_fragment(turn_index, user_input);
                 Some((turn_index, fragment_index))
             }
             Some(PendingTurnInputSubmissionPlan::StartQueue) => {
+                let Some(syndic_admission) = syndic_admission else {
+                    self.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        "Beryl cannot start a pending input queue without durable Syndic admission.",
+                    ));
+                    return false;
+                };
                 let queue = match PendingTurnInputQueue::try_new(
                     thread_id,
                     execution_target,
                     title_mode,
                     turn_options,
-                    self.execution_details.turns().len(),
+                    self.active_turn_state.turns().len(),
+                    Some(syndic_admission.clone()),
                     user_input.clone(),
                 ) {
                     Ok(queue) => queue,
@@ -3264,9 +3417,10 @@ impl ConversationSurfaceState {
                         return false;
                     }
                 };
-                let turn_index = self
-                    .execution_details
-                    .begin_pending_turn_with_fragments(vec![user_input.clone()]);
+                let turn_index = self.active_turn_state.begin_pending_turn_with_fragments(
+                    vec![user_input.clone()],
+                    Some(syndic_admission.identity()),
+                );
                 debug_assert_eq!(queue.turn_index(), turn_index);
                 self.pending_turn_input_queue = Some(queue);
                 Some((turn_index, 0))
@@ -3332,7 +3486,7 @@ impl ConversationSurfaceState {
 
         let queue = self.pending_turn_input_queue.take()?;
         if self
-            .execution_details
+            .active_turn_state
             .activate_pending_turn(queue.turn_index())
             && self.selected_thread_id() == Some(thread_id)
         {
@@ -3349,6 +3503,18 @@ impl ConversationSurfaceState {
             .as_ref()
             .filter(|queue| queue.is_for_thread(thread_id))
             .map(PendingTurnInputQueue::execution_target)
+    }
+
+    fn pending_turn_input_requires_new_admission(&self, thread_id: &str) -> Option<bool> {
+        PendingTurnInputQueue::submission_plan(self.pending_turn_input_queue.as_ref(), thread_id)
+            .map(|plan| matches!(plan, PendingTurnInputSubmissionPlan::StartQueue))
+    }
+
+    fn syndic_turn_identity_for_turn_index(
+        &self,
+        turn_index: usize,
+    ) -> Option<syndic_ingestion::SyndicTurnIdentity> {
+        self.active_turn_state.syndic_turn_identity(turn_index)
     }
 
     fn invalidate_stream_turns(
@@ -3435,7 +3601,7 @@ impl ConversationSurfaceState {
                 .finish_turn_stop_request_for_target(thread_id, turn_id);
         }
 
-        let Some(turn_index) = self.execution_details.apply_stream_event(event) else {
+        let Some(turn_index) = self.active_turn_state.apply_stream_event(event) else {
             return AppliedStreamEvent::default();
         };
         let lifecycle_yield = terminal_turn.as_ref().and_then(|(thread_id, turn_id)| {
@@ -3466,7 +3632,7 @@ impl ConversationSurfaceState {
         message: impl Into<String>,
     ) -> Option<TurnCompletionSoundCandidate> {
         let message = message.into();
-        let active_turn = self.execution_details.active_turn_identity();
+        let active_turn = self.active_turn_state.active_turn_identity();
         if let Some(ActiveTurnIdentity {
             thread_id: Some(thread_id),
             turn_id: Some(turn_id),
@@ -3483,7 +3649,7 @@ impl ConversationSurfaceState {
         if let Some(thread_id) = self.selected_thread_id().map(str::to_string) {
             self.finish_running_tool_activity_for_thread_error(&thread_id);
         }
-        let Some(turn_index) = self.execution_details.finish_turn_failure(message.clone()) else {
+        let Some(turn_index) = self.active_turn_state.finish_turn_failure(message.clone()) else {
             return None;
         };
         self.set_notice(local_turn_failure_notice(message));
@@ -3517,7 +3683,7 @@ impl ConversationSurfaceState {
             .position(|known| known.id == thread.id)
         {
             if self.selected_thread == Some(index) {
-                self.mark_selected_thread_image_labels_need_validation_if_updated(
+                self.mark_selected_thread_image_labels_need_refresh_if_updated(
                     thread.id.as_str(),
                     thread.updated_at,
                 );
@@ -3567,7 +3733,7 @@ impl ConversationSurfaceState {
 
     fn mark_selected_turn_finished_idle(&mut self, active_thread_id: &str) -> bool {
         if self.selected_thread_id() != Some(active_thread_id)
-            || self.execution_details.working_turn_index().is_some()
+            || self.active_turn_state.working_turn_index().is_some()
         {
             return false;
         }
@@ -3599,7 +3765,7 @@ impl ConversationSurfaceState {
         &self,
         turn_index: usize,
     ) -> Option<CompletedTurnTitleCandidate> {
-        let turn = self.execution_details.turns().get(turn_index)?;
+        let turn = self.active_turn_state.turns().get(turn_index)?;
         if turn.status != TurnExecutionStatus::Completed {
             return None;
         }
@@ -3736,13 +3902,16 @@ impl ShellView {
         source: syndic_transcript::TranscriptActivationSource,
         cx: &mut Context<Self>,
     ) {
-        let seed = syndic_transcript::TranscriptActivationSeed::new(
-            Self::transcript_view_id_for_thread(thread_id),
-            source,
-            syndic_transcript::TranscriptActivationPlacement::Tail,
-        );
+        let prepared = self
+            .selected_workspace_resident_store_dir()
+            .map(|storage_dir| prepare_storage_backed_transcript_activation(storage_dir, thread_id))
+            .unwrap_or_else(|| {
+                syndic_transcript::PreparedTranscriptActivation::unavailable(
+                    syndic_transcript::TranscriptActivationPlacement::Tail,
+                )
+            });
         self.transcript_panel.update(cx, |panel, _| {
-            let _ = panel.begin_activation(seed);
+            let _ = panel.apply_prepared_activation(prepared, source);
         });
     }
 
@@ -3764,12 +3933,11 @@ impl ShellView {
         source: syndic_transcript::TranscriptActivationSource,
         cx: &mut Context<Self>,
     ) {
-        let seed = syndic_transcript::TranscriptActivationSeed::unavailable(
-            source,
+        let prepared = syndic_transcript::PreparedTranscriptActivation::unavailable(
             syndic_transcript::TranscriptActivationPlacement::Tail,
         );
         self.transcript_panel.update(cx, |panel, _| {
-            let _ = panel.begin_activation(seed);
+            let _ = panel.apply_prepared_activation(prepared, source);
         });
     }
 
@@ -3810,7 +3978,7 @@ impl ShellView {
         syndic_transcript::TranscriptViewId(thread_id.to_string())
     }
 
-    fn finish_published_selected_thread_activation(
+    fn finish_published_thread_activation(
         &mut self,
         publication: PublishedSelectedThreadActivation,
         cx: &mut Context<Self>,
@@ -3820,15 +3988,17 @@ impl ShellView {
             execution_target,
             source,
             activated_idle,
+            prepared_transcript,
         } = publication;
         if let ShellState::Ready(ready) = &mut self.state {
             ready.execution_target = execution_target.clone();
         }
-        self.begin_transcript_host_activation_for_thread(
-            summary.id.as_str(),
-            Self::transcript_activation_source_for_selected_thread(source),
-            cx,
-        );
+        self.transcript_panel.update(cx, |panel, _| {
+            let _ = panel.apply_prepared_activation(
+                prepared_transcript,
+                Self::transcript_activation_source_for_selected_thread(source),
+            );
+        });
         MemoryMilestone::new("thread_activation_ui_applied")
             .thread_id(summary.id.as_str())
             .retained_state_if_enabled(|| self.retained_state_snapshot())
@@ -4007,6 +4177,7 @@ impl ShellView {
             graph_receiver: None,
             graph_thread_start_receiver: None,
             decision_branch_start_receiver: None,
+            resident_branch_receiver: None,
             decision_child_progress_receiver: None,
             decision_resolution_graph_receiver: None,
             decision_resolution_parent_activation_record_id: None,
@@ -4020,8 +4191,7 @@ impl ShellView {
             thread_activation_receiver: None,
             pending_thread_navigation_activation: None,
             thread_navigation_histories: HashMap::new(),
-            composer_image_label_validation_receiver: None,
-            composer_image_label_scan_receiver: None,
+            composer_image_label_frontier_receiver: None,
             composer_image_asset_receiver: None,
             turn_receiver: None,
             shell_tool_receiver: None,
@@ -4145,6 +4315,12 @@ impl ShellView {
             .as_ref()
             .ok()
             .map(|state| state.workspace_persistence.clone())
+    }
+
+    fn selected_workspace_resident_store_dir(&self) -> Option<PathBuf> {
+        let workspace_id = self.loaded_workspace()?.workspace.id().clone();
+        let persistence = self.workspace_persistence_for_worker()?;
+        Some(persistence.workspace_syndic_storage_dir(&workspace_id))
     }
 
     fn app_state_for_worker(&self) -> Option<ConfiguredAppState> {
@@ -4342,6 +4518,7 @@ impl ShellView {
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
         self.decision_branch_start_receiver = None;
+        self.resident_branch_receiver = None;
         self.decision_child_progress_receiver = None;
         self.decision_resolution_graph_receiver = None;
         self.decision_resolution_parent_activation_record_id = None;
@@ -4352,8 +4529,7 @@ impl ShellView {
         self.pending_decision_archive_jobs.clear();
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         self.composer_image_asset_receiver = None;
         self.pending_composer_image_asset_paste = None;
         self.turn_receiver = None;
@@ -4389,6 +4565,7 @@ impl ShellView {
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
         self.decision_branch_start_receiver = None;
+        self.resident_branch_receiver = None;
         self.decision_child_progress_receiver = None;
         self.decision_resolution_graph_receiver = None;
         self.decision_resolution_parent_activation_record_id = None;
@@ -4399,8 +4576,7 @@ impl ShellView {
         self.pending_decision_archive_jobs.clear();
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         self.turn_receiver = None;
         self.turn_steering_receivers.clear();
         self.status_operation_receiver = None;
@@ -4606,6 +4782,7 @@ impl ShellView {
         self.graph_receiver = None;
         self.graph_thread_start_receiver = None;
         self.decision_branch_start_receiver = None;
+        self.resident_branch_receiver = None;
         self.decision_child_progress_receiver = None;
         self.decision_resolution_graph_receiver = None;
         self.decision_resolution_parent_activation_record_id = None;
@@ -4616,8 +4793,7 @@ impl ShellView {
         self.pending_decision_archive_jobs.clear();
         self.member_thread_inventory_receiver = None;
         self.thread_activation_receiver = None;
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         self.turn_receiver = None;
         self.turn_steering_receivers.clear();
         self.cancel_thread_title_workers();
@@ -4653,7 +4829,7 @@ impl ShellView {
         };
         let (sender, receiver) = mpsc::channel();
         thread::spawn(move || {
-            discovery::open_workspace_worker(
+            workspace_open::open_workspace_worker(
                 workspace_persistence,
                 workspace_id,
                 target,
@@ -4720,6 +4896,7 @@ impl ShellView {
             || self.graph_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
             || self.decision_branch_start_receiver.is_some()
+            || self.resident_branch_receiver.is_some()
             || self.decision_child_progress_receiver.is_some()
             || self.decision_resolution_graph_receiver.is_some()
             || self
@@ -4731,9 +4908,8 @@ impl ShellView {
             || !self.pending_decision_resolution_jobs.is_empty()
             || !self.pending_decision_archive_jobs.is_empty()
             || self.member_thread_inventory_receiver.is_some()
-            || self.selected_thread_activation_pending()
-            || self.composer_image_label_validation_receiver.is_some()
-            || self.composer_image_label_scan_receiver.is_some()
+            || self.thread_activation_pending()
+            || self.composer_image_label_frontier_receiver.is_some()
             || self.composer_image_asset_receiver.is_some()
             || self.turn_receiver.is_some()
             || self.shell_tool_receiver.is_some()
@@ -4805,15 +4981,14 @@ impl ShellView {
                     .decision_resolution_parent_activation_record_id
                     .is_some()
                 || self.pending_decision_handoff_turn.is_some()
-                || self.selected_thread_activation_pending()
+                || self.thread_activation_pending()
                 || self.turn_receiver.is_some()
                 || !self.turn_steering_receivers.is_empty()
                 || !self.thread_title_receivers.is_empty()
                 || !self.thread_title_update_receivers.is_empty()
                 || self.pending_lifecycle_phase_continue.is_some(),
             inventory_work: self.member_thread_inventory_receiver.is_some(),
-            image_work: self.composer_image_label_validation_receiver.is_some()
-                || self.composer_image_label_scan_receiver.is_some()
+            image_work: self.composer_image_label_frontier_receiver.is_some()
                 || self.composer_image_asset_receiver.is_some()
                 || self.composer_image_delivery_receiver.is_some()
                 || self.pending_composer_image_asset_paste.is_some(),
@@ -4851,14 +5026,14 @@ impl ShellView {
         updated |= self.poll_graph_updates();
         updated |= self.poll_graph_thread_start_updates();
         updated |= self.poll_decision_branch_start_updates(window, cx);
+        updated |= self.poll_resident_branch_updates(window, cx);
         updated |= self.poll_decision_child_progress_updates();
         updated |= self.poll_decision_resolution_graph_updates(window, cx);
         updated |= self.poll_decision_archive_updates();
         updated |= self.poll_member_thread_inventory_updates();
         updated |= self.poll_pending_thread_activation_progress();
         updated |= self.poll_thread_activation_updates(window, cx);
-        updated |= self.poll_composer_image_label_validation_updates(window, cx);
-        updated |= self.poll_composer_image_label_scan_updates();
+        updated |= self.poll_composer_image_label_frontier_updates();
         updated |= self.poll_composer_image_asset_updates(window, cx);
         updated |= self.poll_diagnostic_target_requests(window, cx);
         updated |= self.poll_shell_dynamic_tool_requests(window, cx);
@@ -4885,7 +5060,7 @@ impl ShellView {
         updated |= self.poll_workspace_persistence_pending_state();
         updated |= self.begin_member_thread_inventory_refresh_if_needed();
         updated |= self.begin_tool_activity_nickname_resolution_if_needed(window, cx);
-        updated |= self.begin_composer_image_label_sync_if_needed(window, cx);
+        updated |= self.begin_composer_image_label_frontier_refresh_if_needed(window, cx);
 
         let should_poll_backend_liveness = matches!(self.state, ShellState::Ready(_))
             && self
@@ -5189,6 +5364,196 @@ impl ShellView {
         updated
     }
 
+    fn poll_resident_branch_updates(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(receiver) = self.resident_branch_receiver.as_ref() else {
+            return false;
+        };
+
+        match receiver.try_recv() {
+            Ok(ResidentBranchUpdate::Finished(outcome)) => {
+                self.resident_branch_receiver = None;
+                self.finish_resident_branch_worker(outcome, window, cx);
+                true
+            }
+            Err(TryRecvError::Empty) => false,
+            Err(TryRecvError::Disconnected) => {
+                self.resident_branch_receiver = None;
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Branch failed",
+                        "Beryl lost the background worker that was creating the branch.",
+                    ));
+                }
+                true
+            }
+        }
+    }
+
+    fn finish_resident_branch_worker(
+        &mut self,
+        outcome: ResidentBranchOutcome,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match outcome {
+            ResidentBranchOutcome::Created {
+                source_thread_id,
+                source_turn_id,
+                title_seed,
+                execution_target,
+                thread_summary,
+                bootstrap_turn_id,
+            } => self.finish_successful_resident_branch(
+                source_thread_id,
+                source_turn_id,
+                title_seed,
+                execution_target,
+                thread_summary,
+                bootstrap_turn_id,
+                window,
+                cx,
+            ),
+            ResidentBranchOutcome::Failed {
+                source_thread_id,
+                message,
+            } => {
+                warn!(
+                    source_thread_id = source_thread_id.as_str(),
+                    error = %message,
+                    "resident branch failed"
+                );
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new("Branch failed", message.clone()));
+                }
+                self.block_if_backend_process_dead(
+                    "Managed backend disconnected during branch creation",
+                    "The backend process exited before Beryl could finish creating the branch.",
+                    &message,
+                );
+                cx.notify();
+            }
+        }
+    }
+
+    fn finish_successful_resident_branch(
+        &mut self,
+        source_thread_id: ConversationThreadId,
+        source_turn_id: ConversationTurnId,
+        title_seed: String,
+        execution_target: WorkspaceId,
+        summary: ThreadSummary,
+        bootstrap_turn_id: ConversationTurnId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let branch_thread_id = ConversationThreadId::new(summary.id.clone());
+        let registration = {
+            let Some(loaded) = self.workspace_shell_state_mut() else {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Branch failed",
+                        "Beryl created the branch, but the workspace is no longer loaded.",
+                    ));
+                }
+                cx.notify();
+                return;
+            };
+            let Some(source_thread) = loaded
+                .workspace_state
+                .thread_registration(&source_thread_id)
+                .cloned()
+            else {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Branch failed",
+                        format!(
+                            "Beryl created the branch, but source thread {} is no longer registered.",
+                            source_thread_id.as_str()
+                        ),
+                    ));
+                }
+                cx.notify();
+                return;
+            };
+            let source_execution_target = source_thread.execution_target().clone();
+            if source_execution_target != execution_target {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Branch failed",
+                        "Beryl created the branch, but its source thread execution target changed before publication.",
+                    ));
+                }
+                cx.notify();
+                return;
+            }
+            if summary.cwd.as_path() != execution_target.canonical_path() {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Branch failed",
+                        format!(
+                            "Beryl forked thread {}, but it records working directory {} instead of {}.",
+                            summary.id,
+                            summary.cwd.display(),
+                            execution_target.canonical_path().display()
+                        ),
+                    ));
+                }
+                cx.notify();
+                return;
+            }
+            let member_binding = source_thread.member_binding().cloned();
+            let copied_source_name =
+                copied_resident_branch_backend_name(source_thread.backend_name(), &summary);
+            let mut registered_thread = RegisteredConversationThread::new(
+                branch_thread_id.clone(),
+                execution_target.clone(),
+                summary.preview.clone(),
+                if copied_source_name.is_some() {
+                    None
+                } else {
+                    summary.name.clone()
+                },
+                summary.created_at,
+                summary.updated_at,
+            )
+            .with_beryl_created()
+            .with_branch_parent_thread_id(source_thread_id.clone())
+            .with_transcript_branch_bootstrap(source_turn_id, Some(bootstrap_turn_id.clone()));
+            if let Some(copied_source_name) = copied_source_name {
+                registered_thread = registered_thread
+                    .with_ignored_backend_name_for_automatic_title(Some(copied_source_name));
+            }
+            if let Some(member_binding) = member_binding {
+                registered_thread = registered_thread.with_member_binding(member_binding);
+            }
+            loaded.workspace_state.remember_thread(registered_thread)
+        };
+
+        if registration {
+            self.persist_current_workspace_state(true);
+        }
+        self.mark_member_thread_inventory_refresh_needed();
+        if let Some(candidate) =
+            ThreadTitleCandidate::new(branch_thread_id.as_str().to_string(), title_seed)
+        {
+            let _ = self.repair_thread_title_from_candidate(execution_target.clone(), candidate);
+        }
+        let _ = self.activate_thread_selector_target(
+            thread_selector::ThreadSelectorActivationTarget {
+                thread_id: branch_thread_id,
+                label: summary.name.clone().unwrap_or_else(|| summary.id.clone()),
+                execution_target,
+            },
+            thread_navigation::ThreadNavigationActivationSource::NonHistory,
+            window,
+            cx,
+        );
+    }
+
     fn poll_thread_activation_updates(
         &mut self,
         window: &mut Window,
@@ -5326,6 +5691,24 @@ impl ShellView {
                         updated |= surface.record_lifecycle_yield(yielded);
                     }
                 }
+                TurnWorkerUpdate::TurnAdmitted {
+                    thread_id,
+                    user_input_fragments,
+                    syndic_admission,
+                } => {
+                    if let Some(first_fragment) = user_input_fragments.first().cloned()
+                        && let Some(surface) = self.conversation_surface_mut()
+                    {
+                        surface.begin_turn_for_thread(
+                            &thread_id,
+                            first_fragment,
+                            Some(&syndic_admission),
+                        );
+                    }
+                    self.clear_composer_draft(cx);
+                    self.notify_transcript_panel(cx);
+                    updated = true;
+                }
                 TurnWorkerUpdate::Event(beryl_backend::TurnStreamEvent::TokenUsageUpdated {
                     thread_id,
                     turn_id,
@@ -5440,6 +5823,10 @@ impl ShellView {
                         TurnWorkerOutcome::Failed { message } => Some(message.clone()),
                         TurnWorkerOutcome::Finished { .. } => None,
                     };
+                    let edit_failure_message = failure_message.clone().filter(|_| {
+                        self.conversation_surface()
+                            .is_some_and(ConversationSurfaceState::transcript_edit_mode_active)
+                    });
                     self.turn_receiver = None;
                     self.shell_tool_receiver = None;
                     if failure_message.is_some() {
@@ -5448,6 +5835,12 @@ impl ShellView {
                     let sound_candidate = self.finish_turn_worker(outcome);
                     if failure_message.is_some() {
                         self.pending_lifecycle_phase_continue = None;
+                    }
+                    if let Some(message) = edit_failure_message
+                        && let Some(surface) = self.conversation_surface_mut()
+                        && surface.transcript_edit_mode_active()
+                    {
+                        surface.set_notice(SurfaceNotice::new("Edit message failed", message));
                     }
                     if let Some(thread_id) = pending_thread_id {
                         if self.has_queued_decision_branch_jobs_for_parent(&thread_id) {
@@ -5706,8 +6099,8 @@ impl ShellView {
         while index < self.turn_steering_receivers.len() {
             match self.turn_steering_receivers[index].receiver.try_recv() {
                 Ok(TurnSteeringUpdate::Finished(outcome)) => {
-                    self.turn_steering_receivers.remove(index);
-                    self.finish_turn_steering(outcome);
+                    let task = self.turn_steering_receivers.remove(index);
+                    self.finish_turn_steering(task, outcome);
                     updated = true;
                 }
                 Err(TryRecvError::Empty) => {
@@ -5717,6 +6110,7 @@ impl ShellView {
                     let task = self.turn_steering_receivers.remove(index);
                     self.queue_steering_fragments_for_next_turn(
                         task.thread_id,
+                        Some(task.turn_id),
                         task.fragments,
                         "Beryl lost the background task that was steering the active turn."
                             .to_string(),
@@ -5729,15 +6123,85 @@ impl ShellView {
         updated
     }
 
-    fn finish_turn_steering(&mut self, outcome: TurnSteeringOutcome) {
+    fn finish_turn_steering(&mut self, task: TurnSteeringTask, outcome: TurnSteeringOutcome) {
         match outcome {
-            TurnSteeringOutcome::Steered => {}
+            TurnSteeringOutcome::Steered => {
+                self.promote_steered_fragments(&task.thread_id, &task.turn_id, &task.fragments);
+            }
             TurnSteeringOutcome::QueueForNextTurn {
                 thread_id,
                 fragments,
                 message,
             } => {
-                self.queue_steering_fragments_for_next_turn(thread_id, fragments, message);
+                self.queue_steering_fragments_for_next_turn(
+                    thread_id,
+                    Some(task.turn_id),
+                    fragments,
+                    message,
+                );
+            }
+        }
+    }
+
+    fn promote_steered_fragments(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        fragments: &[SteeringInputFragment],
+    ) {
+        for fragment in fragments {
+            let Some(identity) = self.conversation_surface().and_then(|surface| {
+                surface.syndic_turn_identity_for_turn_index(fragment.turn_index)
+            }) else {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        "Beryl could not find the Syndic turn for a steered input fragment.",
+                    ));
+                }
+                continue;
+            };
+            let user_input = fragment.clone().into_user_input_fragment();
+            if let Err(error) = syndic_ingestion::promote_steering_user_fragment(
+                &identity,
+                &user_input,
+                thread_id,
+                turn_id,
+            ) && let Some(surface) = self.conversation_surface_mut()
+            {
+                surface.set_notice(SurfaceNotice::new(
+                    "Transcript capture failed",
+                    format!("Beryl could not persist the steered input fragment: {error}"),
+                ));
+            }
+        }
+    }
+
+    fn mark_steering_fragments_redirected(
+        &mut self,
+        thread_id: &str,
+        turn_id: Option<&str>,
+        fragments: &[SteeringInputFragment],
+        detail: &str,
+    ) {
+        for fragment in fragments {
+            let Some(identity) = self.conversation_surface().and_then(|surface| {
+                surface.syndic_turn_identity_for_turn_index(fragment.turn_index)
+            }) else {
+                continue;
+            };
+            if let Err(error) = syndic_ingestion::mark_steering_user_fragment_redirected(
+                &identity,
+                fragment.fragment_id,
+                thread_id,
+                turn_id,
+                detail,
+            ) && let Some(surface) = self.conversation_surface_mut()
+            {
+                surface.set_notice(SurfaceNotice::new(
+                    "Transcript capture failed",
+                    format!("Beryl could not persist steering fallback state: {error}"),
+                ));
             }
         }
     }
@@ -9140,12 +9604,12 @@ impl ShellView {
     ) -> ThreadActivationStart {
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
-            || self.selected_thread_activation_pending()
+            || self.thread_activation_pending()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
         {
-            if self.selected_thread_activation_pending()
+            if self.thread_activation_pending()
                 && self.conversation_surface().is_some_and(|surface| {
                     surface.pending_thread_activation_matches(
                         target.thread_id.as_str(),
@@ -9197,9 +9661,6 @@ impl ShellView {
         let thread_id = target.thread_id.as_str().to_string();
         let label = target.label;
         let execution_target = target.execution_target;
-        let transcript_activation_source =
-            Self::transcript_activation_source_for_thread_navigation(source);
-
         if let Some(block) = self.known_backend_unavailable_block_for_target(&execution_target) {
             if let Some(surface) = self.conversation_surface_mut() {
                 surface.set_notice(SurfaceNotice::new(
@@ -9216,11 +9677,6 @@ impl ShellView {
 
         let connector = self.backend_client_connector_for_execution_target(&execution_target);
         if current_execution_target != execution_target && connector.is_none() {
-            self.begin_transcript_host_activation_for_thread(
-                thread_id.as_str(),
-                transcript_activation_source,
-                cx,
-            );
             self.begin_open_target_with_thread_selection_and_intent(
                 RetryTarget::Workspace(execution_target),
                 thread_selection,
@@ -9270,6 +9726,21 @@ impl ShellView {
                 message,
             };
         };
+        let Some(workspace_persistence) = self.workspace_persistence_for_worker() else {
+            let message =
+                "Beryl cannot prepare Syndic transcript storage for thread activation.".to_string();
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread activation unavailable",
+                    message.clone(),
+                ));
+                cx.notify();
+            }
+            return ThreadActivationStart::Rejected {
+                kind: "workspace_persistence_unavailable",
+                message,
+            };
+        };
         self.pending_thread_navigation_activation = pending_navigation;
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
@@ -9281,11 +9752,6 @@ impl ShellView {
             );
             surface.close_thread_selector();
         }
-        self.begin_transcript_host_activation_for_thread(
-            thread_id.as_str(),
-            transcript_activation_source,
-            cx,
-        );
         MemoryMilestone::new("thread_activation_start")
             .workspace_id(beryl_workspace_id.as_str())
             .runtime(execution_target.runtime_mode().display_name())
@@ -9296,14 +9762,16 @@ impl ShellView {
             pending_visible_ms = elapsed_ms(activation_ui_started.elapsed()),
             "thread activation pending state set from selector"
         );
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         self.notify_transcript_panel(cx);
         let worker_spawn_started = Instant::now();
         let thread_id_for_log = thread_id.clone();
+        let syndic_storage_dir =
+            workspace_persistence.workspace_syndic_storage_dir(&beryl_workspace_id);
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
             connector,
             beryl_workspace_id,
+            syndic_storage_dir,
             execution_target,
             thread_id,
             label,
@@ -9332,7 +9800,7 @@ impl ShellView {
     ) {
         if self.workspace_receiver.is_some()
             || self.graph_thread_start_receiver.is_some()
-            || self.selected_thread_activation_pending()
+            || self.thread_activation_pending()
             || self.status_operation_receiver.is_some()
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
@@ -9418,11 +9886,6 @@ impl ShellView {
 
         let connector = self.backend_client_connector_for_execution_target(&execution_target);
         if current_execution_target != execution_target && connector.is_none() {
-            self.begin_transcript_host_activation_for_thread(
-                thread_id.as_str(),
-                syndic_transcript::TranscriptActivationSource::ThreadGraph,
-                cx,
-            );
             self.begin_open_target_with_thread_selection(
                 RetryTarget::Workspace(execution_target),
                 ThreadSelectionRequest::exact(thread_id, label),
@@ -9464,6 +9927,16 @@ impl ShellView {
         else {
             return;
         };
+        let Some(workspace_persistence) = self.workspace_persistence_for_worker() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Thread activation unavailable",
+                    "Beryl cannot prepare Syndic transcript storage for thread activation.",
+                ));
+                cx.notify();
+            }
+            return;
+        };
         let activation_ui_started = Instant::now();
         if let Some(surface) = self.conversation_surface_mut() {
             surface.begin_thread_activation(
@@ -9473,11 +9946,6 @@ impl ShellView {
                 label.clone(),
             );
         }
-        self.begin_transcript_host_activation_for_thread(
-            thread_id.as_str(),
-            syndic_transcript::TranscriptActivationSource::ThreadGraph,
-            cx,
-        );
         MemoryMilestone::new("thread_activation_start")
             .runtime(execution_target.runtime_mode().display_name())
             .thread_id(thread_id.as_str())
@@ -9487,8 +9955,7 @@ impl ShellView {
             pending_visible_ms = elapsed_ms(activation_ui_started.elapsed()),
             "thread activation pending state set from graph"
         );
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         self.notify_transcript_panel(cx);
         MemoryMilestone::new("thread_activation_workspace_resolved")
             .workspace_id(beryl_workspace_id.as_str())
@@ -9496,9 +9963,12 @@ impl ShellView {
             .log();
         let worker_spawn_started = Instant::now();
         let thread_id_for_log = thread_id.clone();
+        let syndic_storage_dir =
+            workspace_persistence.workspace_syndic_storage_dir(&beryl_workspace_id);
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
             connector,
             beryl_workspace_id,
+            syndic_storage_dir,
             execution_target,
             thread_id,
             label,
@@ -10126,7 +10596,7 @@ impl ShellView {
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
             || self.status_operation_receiver.is_some()
-            || self.selected_thread_activation_pending()
+            || self.thread_activation_pending()
             || self.composer_image_asset_receiver.is_some()
         {
             return;
@@ -10144,8 +10614,7 @@ impl ShellView {
             surface.start_new_thread();
             updated = true;
         }
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         if cleared_active_thread {
             self.persist_current_workspace_state(false);
         }
@@ -10261,14 +10730,15 @@ impl ShellView {
     fn edit_resident_context_target_action(
         &mut self,
         _: &EditResidentContextTarget,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let _ = self.edit_resident_context_target_from_panel(cx);
+        let _ = self.edit_resident_context_target_from_panel(window, cx);
     }
 
     fn edit_resident_context_target_from_panel(
         &mut self,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> syndic_transcript::TranscriptCommandResult {
         let target = syndic_transcript::ResidentEditCommandTarget::from_context_menu_command_target(
@@ -10278,7 +10748,7 @@ impl ShellView {
         );
         match target {
             syndic_transcript::ResidentEditCommandTarget::Targeted(target) => {
-                Self::accept_resident_edit_target(target)
+                self.accept_resident_edit_target(target, window, cx)
             }
             syndic_transcript::ResidentEditCommandTarget::Unavailable(_) => self
                 .transcript_panel
@@ -10288,10 +10758,65 @@ impl ShellView {
     }
 
     fn accept_resident_edit_target(
+        &mut self,
         target: syndic_transcript::ResidentEditActionTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> syndic_transcript::TranscriptCommandResult {
         let _record_ids = target.record_ids();
-        syndic_transcript::TranscriptCommandResult::NoOp
+        let Some(storage_dir) = self.selected_workspace_resident_store_dir() else {
+            return syndic_transcript::TranscriptCommandResult::unavailable(
+                "edit_resident_context_target",
+            );
+        };
+        match resident_branch_edit::prove_resident_edit_target(&storage_dir, &target) {
+            Ok(proof) => {
+                if proof
+                    .backend_input
+                    .iter()
+                    .any(|input| !matches!(input, beryl_backend::UserInput::Text { .. }))
+                {
+                    if let Some(surface) = self.conversation_surface_mut() {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Edit message unavailable",
+                            "This message contains non-text input that Beryl cannot reconstruct into edit mode yet.",
+                        ));
+                    }
+                    return syndic_transcript::TranscriptCommandResult::unavailable(
+                        "edit_resident_context_target",
+                    );
+                }
+                if !self.composer_draft.is_empty() {
+                    if let Some(surface) = self.conversation_surface_mut() {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Edit message unavailable",
+                            "Clear the current composer draft before starting edit mode.",
+                        ));
+                    }
+                    return syndic_transcript::TranscriptCommandResult::unavailable(
+                        "edit_resident_context_target",
+                    );
+                }
+                let edit_text = proof.display_text.clone();
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.begin_resident_edit_mode(proof);
+                }
+                self.conversation_input.update(cx, |input, cx| {
+                    input.set_text(&edit_text, cx);
+                    input.set_selection(edit_text.len()..edit_text.len(), false, cx);
+                    input.focus(window, cx);
+                });
+                self.sync_composer_draft_from_input(cx);
+                cx.notify();
+                syndic_transcript::TranscriptCommandResult::NoOp
+            }
+            Err(error) => {
+                warn!(?error, "resident edit target proof failed");
+                syndic_transcript::TranscriptCommandResult::unavailable(
+                    "edit_resident_context_target",
+                )
+            }
+        }
     }
 
     fn branch_resident_context_target_action(
@@ -10315,7 +10840,7 @@ impl ShellView {
             );
         match target {
             syndic_transcript::ResidentBranchCommandTarget::Targeted(target) => {
-                Self::accept_resident_branch_target(target)
+                self.accept_resident_branch_target(target, cx)
             }
             syndic_transcript::ResidentBranchCommandTarget::Unavailable(_) => self
                 .transcript_panel
@@ -10325,10 +10850,155 @@ impl ShellView {
     }
 
     fn accept_resident_branch_target(
+        &mut self,
         target: syndic_transcript::ResidentBranchActionTarget,
+        cx: &mut Context<Self>,
     ) -> syndic_transcript::TranscriptCommandResult {
         let _record_ids = target.record_ids();
-        syndic_transcript::TranscriptCommandResult::NoOp
+        let Some(storage_dir) = self.selected_workspace_resident_store_dir() else {
+            return syndic_transcript::TranscriptCommandResult::unavailable(
+                "branch_resident_context_target",
+            );
+        };
+        match resident_branch_edit::prove_resident_branch_target(&storage_dir, &target) {
+            Ok(proof) => {
+                if self.resident_branch_receiver.is_some()
+                    || self.turn_receiver.is_some()
+                    || self.status_operation_receiver.is_some()
+                    || self.thread_activation_pending()
+                    || self.composer_image_asset_receiver.is_some()
+                    || self.composer_image_delivery_receiver.is_some()
+                {
+                    if let Some(surface) = self.conversation_surface_mut() {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Branch unavailable",
+                            "Beryl cannot create a branch while another thread operation is in progress.",
+                        ));
+                    }
+                    return syndic_transcript::TranscriptCommandResult::unavailable(
+                        "branch_resident_context_target",
+                    );
+                }
+
+                let (workspace_id, execution_target, selected_thread_id, parent_thread_title) =
+                    match &self.state {
+                        ShellState::Ready(ready) => {
+                            let Some(selected_thread) = ready.surface.selected_thread().cloned()
+                            else {
+                                return syndic_transcript::TranscriptCommandResult::unavailable(
+                                    "branch_resident_context_target",
+                                );
+                            };
+                            (
+                                ready.loaded_workspace.workspace.id().clone(),
+                                ready.execution_target.clone(),
+                                selected_thread.id.clone(),
+                                selected_thread
+                                    .name
+                                    .clone()
+                                    .or_else(|| Some(selected_thread.id.clone())),
+                            )
+                        }
+                        ShellState::BackendUnavailable(unavailable) => {
+                            let Some(selected_thread) =
+                                unavailable.surface.selected_thread().cloned()
+                            else {
+                                return syndic_transcript::TranscriptCommandResult::unavailable(
+                                    "branch_resident_context_target",
+                                );
+                            };
+                            let execution_target =
+                                Self::selected_thread_registered_execution_target(
+                                    &unavailable.loaded_workspace,
+                                    &unavailable.surface,
+                                )
+                                .unwrap_or_else(|| unavailable.execution_target.clone());
+                            (
+                                unavailable.loaded_workspace.workspace.id().clone(),
+                                execution_target,
+                                selected_thread.id.clone(),
+                                selected_thread
+                                    .name
+                                    .clone()
+                                    .or_else(|| Some(selected_thread.id.clone())),
+                            )
+                        }
+                        ShellState::Discovering(_)
+                        | ShellState::Picker(_)
+                        | ShellState::Opening(_)
+                        | ShellState::WorkspaceIdle(_)
+                        | ShellState::WorkspaceLoaded(_)
+                        | ShellState::Blocked(_) => {
+                            return syndic_transcript::TranscriptCommandResult::unavailable(
+                                "branch_resident_context_target",
+                            );
+                        }
+                    };
+                if selected_thread_id != proof.source_thread_id {
+                    if let Some(surface) = self.conversation_surface_mut() {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Branch unavailable",
+                            "The selected thread no longer matches the proven branch target.",
+                        ));
+                    }
+                    return syndic_transcript::TranscriptCommandResult::unavailable(
+                        "branch_resident_context_target",
+                    );
+                }
+                let Some(connector) =
+                    self.backend_client_connector_for_execution_target(&execution_target)
+                else {
+                    let block = self
+                        .backend_required_target_block(&execution_target)
+                        .unwrap_or_else(|| BackendOperationBlock {
+                            kind: "backend_unavailable",
+                            message: format!(
+                                "Beryl does not have an active managed backend for {}.",
+                                execution_target.display_label()
+                            ),
+                        });
+                    self.report_backend_operation_block("Branch unavailable", block, cx);
+                    return syndic_transcript::TranscriptCommandResult::unavailable(
+                        "branch_resident_context_target",
+                    );
+                };
+                let Some(persistence) = self.workspace_persistence_for_worker() else {
+                    if let Some(surface) = self.conversation_surface_mut() {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Branch unavailable",
+                            "Beryl could not open the configured workspace persistence root.",
+                        ));
+                    }
+                    return syndic_transcript::TranscriptCommandResult::unavailable(
+                        "branch_resident_context_target",
+                    );
+                };
+                self.resident_branch_receiver = Some(spawn_resident_branch_worker(
+                    persistence,
+                    connector,
+                    workspace_id,
+                    execution_target,
+                    storage_dir,
+                    proof,
+                    parent_thread_title,
+                    self.bootstrap.probe_timeout(),
+                ));
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Branch started",
+                        "Beryl is creating a branch from the selected transcript point.",
+                    ));
+                }
+                cx.notify();
+                syndic_transcript::TranscriptCommandResult::NoOp
+            }
+            Err(error) => {
+                warn!(?error, "resident branch target proof failed");
+                syndic_transcript::TranscriptCommandResult::unavailable(
+                    "branch_resident_context_target",
+                )
+            }
+        }
     }
 
     fn preview_resident_transcript_media_action(
@@ -10971,25 +11641,14 @@ impl ShellView {
             .unwrap_or(ComposerImagePasteReadiness::Ready);
         match paste_readiness {
             ComposerImagePasteReadiness::Ready => true,
-            ComposerImagePasteReadiness::Validating => {
-                if let Some(surface) = self.conversation_surface_mut() {
-                    surface.set_notice(SurfaceNotice::new(
-                        "Image input unavailable",
-                        "Beryl is still validating this thread's earlier image labels. Try again when validation finishes.",
-                    ));
-                }
-                self.begin_composer_image_label_sync_if_needed(window, cx);
-                cx.notify();
-                false
-            }
             ComposerImagePasteReadiness::Scanning => {
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.set_notice(SurfaceNotice::new(
                         "Image input unavailable",
-                        "Beryl is still scanning this thread's earlier image labels. Try again when scanning finishes.",
+                        "Beryl is still scanning the Syndic image-label frontier for this thread. Try again when scanning finishes.",
                     ));
                 }
-                self.begin_composer_image_label_sync_if_needed(window, cx);
+                self.begin_composer_image_label_frontier_refresh_if_needed(window, cx);
                 cx.notify();
                 false
             }
@@ -10997,21 +11656,7 @@ impl ShellView {
                 if let Some(surface) = self.conversation_surface_mut() {
                     surface.set_notice(SurfaceNotice::new(
                         "Image input unavailable",
-                        format!(
-                            "Beryl could not validate this thread's earlier image labels: {message}"
-                        ),
-                    ));
-                }
-                cx.notify();
-                false
-            }
-            ComposerImagePasteReadiness::Failed { message } => {
-                if let Some(surface) = self.conversation_surface_mut() {
-                    surface.set_notice(SurfaceNotice::new(
-                        "Image input unavailable",
-                        format!(
-                            "Beryl could not scan this thread's earlier image labels: {message}"
-                        ),
+                        format!("Beryl cannot allocate image labels for this thread: {message}"),
                     ));
                 }
                 cx.notify();
@@ -11326,8 +11971,13 @@ impl ShellView {
                 self.mark_accepted_composer_image_assets_retained(staged.draft());
                 let accepted_draft = staged.draft().with_durable_image_references();
 
+                let editing = self
+                    .conversation_surface()
+                    .is_some_and(ConversationSurfaceState::transcript_edit_mode_active);
                 if self.queue_accepted_composer_fragment(fragment, cx) {
-                    self.record_accepted_composer_history(&accepted_draft);
+                    if !editing {
+                        self.record_accepted_composer_history(&accepted_draft);
+                    }
                     cx.notify();
                 }
             }
@@ -11524,7 +12174,7 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.graph_thread_start_receiver.is_some()
-            || self.selected_thread_activation_pending()
+            || self.thread_activation_pending()
             || self.composer_image_asset_receiver.is_some()
             || self.composer_image_delivery_receiver.is_some()
         {
@@ -11576,8 +12226,13 @@ impl ShellView {
         };
         let fragment = UserInputFragment::text(draft);
 
+        let editing = self
+            .conversation_surface()
+            .is_some_and(ConversationSurfaceState::transcript_edit_mode_active);
         if self.queue_accepted_composer_fragment(fragment, cx) {
-            self.record_accepted_composer_history(&accepted_draft);
+            if !editing {
+                self.record_accepted_composer_history(&accepted_draft);
+            }
             cx.notify();
             return true;
         }
@@ -11595,6 +12250,13 @@ impl ShellView {
         fragment: UserInputFragment,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self
+            .conversation_surface()
+            .is_some_and(ConversationSurfaceState::transcript_edit_mode_active)
+        {
+            return self.queue_resident_edit_replacement_from_composer(fragment, cx);
+        }
+
         if self.status_operation_receiver.is_some()
             && self.queue_context_compaction_turn_from_composer(fragment.clone(), cx)
         {
@@ -11737,12 +12399,41 @@ impl ShellView {
             selected_thread_id.as_deref(),
             turn_options,
         );
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Transcript capture failed",
+                    "Beryl could not open the configured workspace persistence root.",
+                ));
+            }
+            return false;
+        };
+        let syndic_admission = match syndic_ingestion::admit_user_turn(
+            &persistence,
+            &beryl_workspace_id,
+            &workspace,
+            selected_thread_id.as_deref(),
+            std::slice::from_ref(&fragment),
+        ) {
+            Ok(admission) => admission,
+            Err(error) => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        format!("Beryl could not durably admit the submitted input: {error}"),
+                    ));
+                }
+                return false;
+            }
+        };
 
         match &mut self.state {
-            ShellState::Ready(ready) => ready.surface.begin_turn(fragment.clone()),
-            ShellState::BackendUnavailable(unavailable) => {
-                unavailable.surface.begin_turn(fragment.clone())
-            }
+            ShellState::Ready(ready) => ready
+                .surface
+                .begin_turn(fragment.clone(), Some(&syndic_admission)),
+            ShellState::BackendUnavailable(unavailable) => unavailable
+                .surface
+                .begin_turn(fragment.clone(), Some(&syndic_admission)),
             ShellState::Discovering(_)
             | ShellState::Picker(_)
             | ShellState::Opening(_)
@@ -11753,16 +12444,6 @@ impl ShellView {
         self.clear_composer_draft(cx);
 
         self.notify_transcript_panel(cx);
-
-        let Some(persistence) = self.workspace_persistence_for_worker() else {
-            if let Some(surface) = self.conversation_surface_mut() {
-                let _ = surface.finish_turn_failure(
-                    "Beryl could not open the configured workspace persistence root.",
-                );
-            }
-            self.notify_transcript_panel(cx);
-            return true;
-        };
 
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
         self.shell_tool_receiver = Some(shell_tool_receiver);
@@ -11778,10 +12459,183 @@ impl ShellView {
             selected_thread_id,
             title_mode,
             vec![fragment],
+            Some(syndic_admission),
             turn_options,
             Some(shell_tool_sender),
             self.bootstrap.probe_timeout(),
         ));
+        true
+    }
+
+    fn queue_resident_edit_replacement_from_composer(
+        &mut self,
+        fragment: UserInputFragment,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.turn_receiver.is_some()
+            || self.status_operation_receiver.is_some()
+            || self.thread_activation_pending()
+            || self.composer_image_asset_receiver.is_some()
+            || self.composer_image_delivery_receiver.is_some()
+        {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Edit message unavailable",
+                    "Beryl cannot commit an edit while another thread operation is in progress.",
+                ));
+            }
+            return false;
+        }
+
+        let Some(syndic_storage_dir) = self.selected_workspace_resident_store_dir() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Edit message unavailable",
+                    "Beryl could not open the selected workspace's Syndic storage.",
+                ));
+            }
+            return false;
+        };
+
+        let (
+            beryl_workspace_id,
+            workspace,
+            selected_thread_id,
+            automatic_title_generation_allowed,
+            turn_options,
+            proof,
+        ) = match &self.state {
+            ShellState::Ready(ready) => {
+                let Some(selected_thread_id) =
+                    ready.surface.selected_thread_id().map(str::to_string)
+                else {
+                    return false;
+                };
+                let Some(proof) = ready.surface.resident_edit_mode_proof().cloned() else {
+                    return false;
+                };
+                let automatic_title_generation_allowed = ready
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        selected_thread_id.clone(),
+                    ));
+                (
+                    ready.loaded_workspace.workspace.id().clone(),
+                    ready.execution_target.clone(),
+                    selected_thread_id,
+                    automatic_title_generation_allowed,
+                    ready
+                        .surface
+                        .pending_turn_start_options(Some(proof.source_thread_id.as_str())),
+                    proof,
+                )
+            }
+            ShellState::BackendUnavailable(unavailable) => {
+                let Some(selected_thread_id) =
+                    unavailable.surface.selected_thread_id().map(str::to_string)
+                else {
+                    return false;
+                };
+                let Some(proof) = unavailable.surface.resident_edit_mode_proof().cloned() else {
+                    return false;
+                };
+                let automatic_title_generation_allowed = unavailable
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        selected_thread_id.clone(),
+                    ));
+                let workspace = Self::selected_thread_registered_execution_target(
+                    &unavailable.loaded_workspace,
+                    &unavailable.surface,
+                )
+                .unwrap_or_else(|| unavailable.execution_target.clone());
+                (
+                    unavailable.loaded_workspace.workspace.id().clone(),
+                    workspace,
+                    selected_thread_id,
+                    automatic_title_generation_allowed,
+                    unavailable
+                        .surface
+                        .pending_turn_start_options(Some(proof.source_thread_id.as_str())),
+                    proof,
+                )
+            }
+            ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_)
+            | ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_) => return false,
+        };
+
+        if selected_thread_id != proof.source_thread_id {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Edit message unavailable",
+                    "The selected thread no longer matches the proven edit target.",
+                ));
+            }
+            return false;
+        }
+
+        let Some(connector) = self.backend_client_connector_for_execution_target(&workspace) else {
+            let block = self
+                .backend_required_target_block(&workspace)
+                .unwrap_or_else(|| BackendOperationBlock {
+                    kind: "backend_unavailable",
+                    message: format!(
+                        "Beryl does not have an active managed backend for {}.",
+                        workspace.display_label()
+                    ),
+                });
+            self.report_backend_operation_block("Edit message unavailable", block, cx);
+            return false;
+        };
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Edit message unavailable",
+                    "Beryl could not open the configured workspace persistence root.",
+                ));
+            }
+            return false;
+        };
+
+        let turn_options = self.turn_options_with_current_developer_instructions(
+            Some(selected_thread_id.as_str()),
+            turn_options,
+        );
+        let title_mode = self.thread_title_mode_for_user_submission(
+            Some(selected_thread_id.as_str()),
+            automatic_title_generation_allowed,
+        );
+        let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
+        self.shell_tool_receiver = Some(shell_tool_receiver);
+        self.turn_receiver = Some(spawn_turn_worker_with_pre_start(
+            persistence,
+            connector,
+            beryl_workspace_id,
+            workspace,
+            Some(selected_thread_id),
+            title_mode,
+            vec![fragment],
+            None,
+            Some(TurnWorkerPreStartOperation::ResidentEditReplacement {
+                proof,
+                syndic_storage_dir,
+            }),
+            turn_options,
+            Some(shell_tool_sender),
+            self.bootstrap.probe_timeout(),
+        ));
+        if let Some(surface) = self.conversation_surface_mut() {
+            surface.set_notice(SurfaceNotice::new(
+                "Edit message started",
+                "Beryl is rolling back the selected thread before starting the replacement turn.",
+            ));
+        }
         true
     }
 
@@ -11899,68 +12753,103 @@ impl ShellView {
         fragment: UserInputFragment,
         cx: &mut Context<Self>,
     ) -> bool {
-        let (thread_id, execution_target, automatic_title_generation_allowed, turn_options) =
-            match &self.state {
-                ShellState::Ready(ready) => {
-                    let Some(thread_id) = ready
-                        .surface
-                        .selected_thread_context_compaction_id()
-                        .map(str::to_string)
-                    else {
-                        return false;
-                    };
-                    let automatic_title_generation_allowed = ready
-                        .loaded_workspace
-                        .workspace_state
-                        .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
-                            thread_id.clone(),
-                        ));
-                    let turn_options = ready
-                        .surface
-                        .pending_turn_start_options(Some(thread_id.as_str()));
-                    (
-                        thread_id,
-                        ready.execution_target.clone(),
-                        automatic_title_generation_allowed,
-                        turn_options,
-                    )
+        let (
+            beryl_workspace_id,
+            thread_id,
+            execution_target,
+            automatic_title_generation_allowed,
+            turn_options,
+        ) = match &self.state {
+            ShellState::Ready(ready) => {
+                let Some(thread_id) = ready
+                    .surface
+                    .selected_thread_context_compaction_id()
+                    .map(str::to_string)
+                else {
+                    return false;
+                };
+                let automatic_title_generation_allowed = ready
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        thread_id.clone(),
+                    ));
+                let turn_options = ready
+                    .surface
+                    .pending_turn_start_options(Some(thread_id.as_str()));
+                (
+                    ready.loaded_workspace.workspace.id().clone(),
+                    thread_id,
+                    ready.execution_target.clone(),
+                    automatic_title_generation_allowed,
+                    turn_options,
+                )
+            }
+            ShellState::BackendUnavailable(unavailable) => {
+                let Some(thread_id) = unavailable
+                    .surface
+                    .selected_thread_context_compaction_id()
+                    .map(str::to_string)
+                else {
+                    return false;
+                };
+                let automatic_title_generation_allowed = unavailable
+                    .loaded_workspace
+                    .workspace_state
+                    .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
+                        thread_id.clone(),
+                    ));
+                let turn_options = unavailable
+                    .surface
+                    .pending_turn_start_options(Some(thread_id.as_str()));
+                let execution_target = Self::registered_thread_execution_target(
+                    &unavailable.loaded_workspace,
+                    &thread_id,
+                )
+                .unwrap_or_else(|| unavailable.execution_target.clone());
+                (
+                    unavailable.loaded_workspace.workspace.id().clone(),
+                    thread_id,
+                    execution_target,
+                    automatic_title_generation_allowed,
+                    turn_options,
+                )
+            }
+            ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_)
+            | ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_) => return false,
+        };
+
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Transcript capture failed",
+                    "Beryl could not open the configured workspace persistence root.",
+                ));
+            }
+            return false;
+        };
+        let syndic_admission = match syndic_ingestion::admit_user_turn(
+            &persistence,
+            &beryl_workspace_id,
+            &execution_target,
+            Some(thread_id.as_str()),
+            std::slice::from_ref(&fragment),
+        ) {
+            Ok(admission) => admission,
+            Err(error) => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        format!("Beryl could not durably admit the queued input: {error}"),
+                    ));
                 }
-                ShellState::BackendUnavailable(unavailable) => {
-                    let Some(thread_id) = unavailable
-                        .surface
-                        .selected_thread_context_compaction_id()
-                        .map(str::to_string)
-                    else {
-                        return false;
-                    };
-                    let automatic_title_generation_allowed = unavailable
-                        .loaded_workspace
-                        .workspace_state
-                        .thread_automatic_title_generation_eligible(&ConversationThreadId::new(
-                            thread_id.clone(),
-                        ));
-                    let turn_options = unavailable
-                        .surface
-                        .pending_turn_start_options(Some(thread_id.as_str()));
-                    let execution_target = Self::registered_thread_execution_target(
-                        &unavailable.loaded_workspace,
-                        &thread_id,
-                    )
-                    .unwrap_or_else(|| unavailable.execution_target.clone());
-                    (
-                        thread_id,
-                        execution_target,
-                        automatic_title_generation_allowed,
-                        turn_options,
-                    )
-                }
-                ShellState::WorkspaceIdle(_)
-                | ShellState::WorkspaceLoaded(_)
-                | ShellState::Blocked(_)
-                | ShellState::Discovering(_)
-                | ShellState::Picker(_)
-                | ShellState::Opening(_) => return false,
-            };
+                return false;
+            }
+        };
 
         let title_mode = self.thread_title_mode_for_user_submission(
             Some(thread_id.as_str()),
@@ -11972,6 +12861,7 @@ impl ShellView {
                 execution_target,
                 title_mode,
                 turn_options,
+                Some(syndic_admission),
                 fragment,
             ),
             ShellState::BackendUnavailable(unavailable) => {
@@ -11980,6 +12870,7 @@ impl ShellView {
                     execution_target,
                     title_mode,
                     turn_options,
+                    Some(syndic_admission),
                     fragment,
                 )
             }
@@ -12043,8 +12934,12 @@ impl ShellView {
             return false;
         }
 
-        let (execution_target, automatic_title_generation_allowed, turn_options) = match &self.state
-        {
+        let (
+            beryl_workspace_id,
+            execution_target,
+            automatic_title_generation_allowed,
+            turn_options,
+        ) = match &self.state {
             ShellState::Ready(ready) => {
                 let automatic_title_generation_allowed = ready
                     .loaded_workspace
@@ -12056,6 +12951,7 @@ impl ShellView {
                     .surface
                     .pending_turn_start_options(Some(thread_id.as_str()));
                 (
+                    ready.loaded_workspace.workspace.id().clone(),
                     ready.execution_target.clone(),
                     automatic_title_generation_allowed,
                     turn_options,
@@ -12077,6 +12973,7 @@ impl ShellView {
                 )
                 .unwrap_or_else(|| unavailable.execution_target.clone());
                 (
+                    unavailable.loaded_workspace.workspace.id().clone(),
                     execution_target,
                     automatic_title_generation_allowed,
                     turn_options,
@@ -12090,6 +12987,37 @@ impl ShellView {
             | ShellState::Opening(_) => return false,
         };
 
+        let resume_fragment = request.resume_fragment();
+        let Some(persistence) = self.workspace_persistence_for_worker() else {
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Transcript capture failed",
+                    "Beryl could not open the configured workspace persistence root.",
+                ));
+            }
+            return false;
+        };
+        let syndic_admission = match syndic_ingestion::admit_user_turn(
+            &persistence,
+            &beryl_workspace_id,
+            &execution_target,
+            Some(thread_id.as_str()),
+            std::slice::from_ref(&resume_fragment),
+        ) {
+            Ok(admission) => admission,
+            Err(error) => {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        format!(
+                            "Beryl could not durably admit the lifecycle continuation: {error}"
+                        ),
+                    ));
+                }
+                return false;
+            }
+        };
+
         let title_mode =
             TurnThreadTitleMode::automatic_if_allowed(automatic_title_generation_allowed);
         let queued = match &mut self.state {
@@ -12098,7 +13026,8 @@ impl ShellView {
                 execution_target,
                 title_mode,
                 turn_options,
-                request.resume_fragment(),
+                Some(syndic_admission),
+                resume_fragment,
             ),
             ShellState::BackendUnavailable(unavailable) => {
                 unavailable.surface.queue_pending_turn_fragment(
@@ -12106,7 +13035,8 @@ impl ShellView {
                     execution_target,
                     title_mode,
                     turn_options,
-                    request.resume_fragment(),
+                    Some(syndic_admission),
+                    resume_fragment,
                 )
             }
             ShellState::WorkspaceIdle(_)
@@ -12149,6 +13079,7 @@ impl ShellView {
         if self.turn_steering_receivers.len() >= MAX_CONCURRENT_TURN_STEERING_TASKS {
             return self.queue_steering_fragments_for_next_turn(
                 thread_id,
+                Some(expected_turn_id),
                 fragments,
                 "Beryl queued this input for the next turn because too many active-turn steering requests are already in flight.".to_string(),
             );
@@ -12157,6 +13088,7 @@ impl ShellView {
         let Some(connector) = self.backend_client_connector() else {
             return self.queue_steering_fragments_for_next_turn(
                 thread_id,
+                Some(expected_turn_id),
                 fragments,
                 "Beryl does not have an active managed backend for this workspace.".to_string(),
             );
@@ -12165,12 +13097,13 @@ impl ShellView {
         let receiver = spawn_turn_steering_worker(
             connector,
             thread_id.clone(),
-            expected_turn_id,
+            expected_turn_id.clone(),
             fragments.clone(),
             self.bootstrap.probe_timeout(),
         );
         self.turn_steering_receivers.push(TurnSteeringTask {
             thread_id,
+            turn_id: expected_turn_id,
             fragments,
             receiver,
         });
@@ -12180,11 +13113,22 @@ impl ShellView {
     fn queue_steering_fragments_for_next_turn(
         &mut self,
         thread_id: String,
+        external_turn_id: Option<String>,
         fragments: Vec<SteeringInputFragment>,
         message: String,
     ) -> bool {
-        let mut queued = false;
-        match &mut self.state {
+        let Some(first_fragment) = fragments
+            .first()
+            .cloned()
+            .map(SteeringInputFragment::into_user_input_fragment)
+        else {
+            return false;
+        };
+        let requires_new_admission = self
+            .conversation_surface()
+            .and_then(|surface| surface.pending_turn_input_requires_new_admission(&thread_id))
+            .unwrap_or(false);
+        let fallback_plan = match &self.state {
             ShellState::Ready(ready) => {
                 let automatic_title_generation_allowed = ready
                     .loaded_workspace
@@ -12200,19 +13144,12 @@ impl ShellView {
                 let turn_options = ready
                     .surface
                     .pending_turn_start_options(Some(thread_id.as_str()));
-                queued = ready.surface.move_steering_fragments_to_pending_turn(
-                    thread_id.clone(),
+                Some((
+                    ready.loaded_workspace.workspace.id().clone(),
                     ready.execution_target.clone(),
                     title_mode,
                     turn_options,
-                    fragments,
-                );
-                if queued {
-                    ready.surface.set_notice(SurfaceNotice::new(
-                        "Input queued for next turn",
-                        message.clone(),
-                    ));
-                }
+                ))
             }
             ShellState::BackendUnavailable(unavailable) => {
                 let automatic_title_generation_allowed = unavailable
@@ -12234,11 +13171,81 @@ impl ShellView {
                     &thread_id,
                 )
                 .unwrap_or_else(|| unavailable.execution_target.clone());
+                Some((
+                    unavailable.loaded_workspace.workspace.id().clone(),
+                    execution_target,
+                    title_mode,
+                    turn_options,
+                ))
+            }
+            ShellState::WorkspaceIdle(_)
+            | ShellState::WorkspaceLoaded(_)
+            | ShellState::Blocked(_)
+            | ShellState::Discovering(_)
+            | ShellState::Picker(_)
+            | ShellState::Opening(_) => None,
+        };
+        let Some((beryl_workspace_id, execution_target, title_mode, turn_options)) = fallback_plan
+        else {
+            return false;
+        };
+        let syndic_admission = if requires_new_admission {
+            let Some(persistence) = self.workspace_persistence_for_worker() else {
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Transcript capture failed",
+                        "Beryl could not open the configured workspace persistence root.",
+                    ));
+                }
+                return false;
+            };
+            match syndic_ingestion::admit_user_turn(
+                &persistence,
+                &beryl_workspace_id,
+                &execution_target,
+                Some(thread_id.as_str()),
+                std::slice::from_ref(&first_fragment),
+            ) {
+                Ok(admission) => Some(admission),
+                Err(error) => {
+                    if let Some(surface) = self.conversation_surface_mut() {
+                        surface.set_notice(SurfaceNotice::new(
+                            "Transcript capture failed",
+                            format!("Beryl could not durably admit the redirected input: {error}"),
+                        ));
+                    }
+                    return false;
+                }
+            }
+        } else {
+            None
+        };
+        let redirected_fragments = fragments.clone();
+        let mut queued = false;
+        match &mut self.state {
+            ShellState::Ready(ready) => {
+                queued = ready.surface.move_steering_fragments_to_pending_turn(
+                    thread_id.clone(),
+                    execution_target,
+                    title_mode,
+                    turn_options,
+                    syndic_admission,
+                    fragments,
+                );
+                if queued {
+                    ready.surface.set_notice(SurfaceNotice::new(
+                        "Input queued for next turn",
+                        message.clone(),
+                    ));
+                }
+            }
+            ShellState::BackendUnavailable(unavailable) => {
                 queued = unavailable.surface.move_steering_fragments_to_pending_turn(
                     thread_id.clone(),
                     execution_target,
                     title_mode,
                     turn_options,
+                    syndic_admission,
                     fragments,
                 );
                 if queued {
@@ -12256,6 +13263,14 @@ impl ShellView {
             | ShellState::Opening(_) => {}
         }
 
+        if queued {
+            self.mark_steering_fragments_redirected(
+                &thread_id,
+                external_turn_id.as_deref(),
+                &redirected_fragments,
+                message.as_str(),
+            );
+        }
         if queued && self.turn_receiver.is_none() {
             self.begin_pending_turn_input_queue_for_thread(&thread_id);
         }
@@ -12309,6 +13324,7 @@ impl ShellView {
             selected_thread_id.as_deref(),
             queue.turn_options().clone(),
         );
+        let syndic_admission = queue.syndic_admission().cloned();
         let user_input_fragments = queue.into_fragments();
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
         self.shell_tool_receiver = Some(shell_tool_receiver);
@@ -12320,6 +13336,7 @@ impl ShellView {
             selected_thread_id,
             title_mode,
             user_input_fragments,
+            syndic_admission,
             turn_options,
             Some(shell_tool_sender),
             self.bootstrap.probe_timeout(),
@@ -12591,7 +13608,7 @@ impl ShellView {
     }
 
     fn current_conversation_submission_block(&self) -> Option<BackendOperationBlock> {
-        if self.selected_thread_activation_pending() {
+        if self.thread_activation_pending() {
             return Some(BackendOperationBlock {
                 kind: "pending_thread_activation",
                 message:
@@ -12630,7 +13647,7 @@ impl ShellView {
     }
 
     fn current_new_thread_block(&self) -> Option<BackendOperationBlock> {
-        if self.selected_thread_activation_pending() {
+        if self.thread_activation_pending() {
             return Some(BackendOperationBlock {
                 kind: "pending_thread_activation",
                 message:
@@ -13554,7 +14571,7 @@ impl ShellView {
             popups: self.popup_ui_state(cx),
             background_work: BackgroundWorkUiState {
                 backend_work_receivers: self.backend_work_receiver_count(),
-                thread_activation_pending: self.selected_thread_activation_pending(),
+                thread_activation_pending: self.thread_activation_pending(),
                 turn_stream_pending: self.turn_receiver.is_some(),
                 workspace_transition_pending: self.workspace_picker_action_receiver.is_some()
                     || self.workspace_receiver.is_some()
@@ -14078,7 +15095,7 @@ impl ShellView {
                 "Beryl has no active conversation surface.".to_string(),
             ));
         }
-        if self.selected_thread_activation_pending() {
+        if self.thread_activation_pending() {
             return Err((
                 "pending_thread_activation",
                 "Wait for the pending thread switch to finish before selecting New Thread."
@@ -14098,7 +15115,7 @@ impl ShellView {
             || self.turn_receiver.is_some()
             || !self.turn_steering_receivers.is_empty()
             || self.status_operation_receiver.is_some()
-            || self.selected_thread_activation_pending()
+            || self.thread_activation_pending()
             || self.composer_image_asset_receiver.is_some()
         {
             return Err((
@@ -14117,8 +15134,7 @@ impl ShellView {
             syndic_transcript::TranscriptActivationSource::NewThread,
             cx,
         );
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         if cleared_active_thread {
             self.persist_current_workspace_state(false);
         }

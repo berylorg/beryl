@@ -14,8 +14,16 @@
 //! and branch first-real-turn retitle state so GUI orchestration can keep
 //! backend-owned branch history durable without treating Beryl-authored
 //! bootstrap turns as user exploration.
+//! CAS projection graph-action classification is kept as pure data so storage
+//! and shell orchestration can agree on reflection outcomes without calling the
+//! backend while classifying a graph mutation.
 //!
 //! ```rust
+//! use beryl_model::cas_projection::{
+//!     CasBindingMutation, CasGraphAction, CasGraphActionClassificationInput,
+//!     CasLineageProof, CasNativeOperationKind, CasProjectionBindingStatus,
+//!     CasReflectionOutcome, classify_cas_graph_action,
+//! };
 //! use beryl_model::conversation::{
 //!     ConversationThreadId, ConversationThreadTokenUsageSnapshot,
 //!     ConversationTokenUsageBreakdown, ConversationTurnId, RegisteredConversationThread,
@@ -117,8 +125,22 @@
 //!         .active_record_for_child_thread(&ConversationThreadId::new("thread_child"))
 //!         .is_none()
 //! );
+//!
+//! let classification = classify_cas_graph_action(
+//!     CasGraphActionClassificationInput::new(
+//!         CasGraphAction::AppendUserTurn,
+//!         CasProjectionBindingStatus::Valid,
+//!         CasLineageProof::Exact,
+//!     ),
+//! );
+//! assert_eq!(
+//!     classification.outcome,
+//!     CasReflectionOutcome::CasNativeOperation(CasNativeOperationKind::TurnStart)
+//! );
+//! assert_eq!(classification.binding_mutation, CasBindingMutation::LockActive);
 //! ```
 
+pub mod cas_projection;
 pub mod conversation;
 pub mod provenance;
 pub mod semantic_graph;

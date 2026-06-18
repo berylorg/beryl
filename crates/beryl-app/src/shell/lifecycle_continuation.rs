@@ -1,6 +1,6 @@
 use crate::LifecycleYieldOutcome;
 
-use super::{execution_detail::UserInputFragment, lifecycle_yield::TerminalLifecycleYield};
+use super::{lifecycle_yield::TerminalLifecycleYield, turn_input::UserInputFragment};
 
 pub(super) const PHASE_CONTINUE_RESUME_TEXT: &str = "Continue from the root doc/plan.md.";
 

@@ -26,7 +26,7 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> DynamicToolCallResponse {
         let active_matches = self.conversation_surface().is_some_and(|surface| {
-            let Some(active) = surface.execution_details.active_turn_identity() else {
+            let Some(active) = surface.active_turn_state.active_turn_identity() else {
                 return false;
             };
             active.thread_id.as_deref() == Some(request.thread_id())

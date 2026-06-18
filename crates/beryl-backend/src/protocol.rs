@@ -43,7 +43,6 @@ pub enum CompatibilityProbe {
     ThreadRead,
     ThreadResumeMetadata,
     ThreadUnsubscribe,
-    ThreadTurnsList,
     TurnInterrupt,
     TurnSteer,
 }
@@ -60,7 +59,6 @@ impl CompatibilityProbe {
             Self::ThreadRead => "thread/read",
             Self::ThreadResumeMetadata => "thread/resume",
             Self::ThreadUnsubscribe => "thread/unsubscribe",
-            Self::ThreadTurnsList => "thread/turns/list",
             Self::TurnInterrupt => "turn/interrupt",
             Self::TurnSteer => "turn/steer",
         }
@@ -77,7 +75,6 @@ const REQUIRED_COMPATIBILITY_PROBES: &[CompatibilityProbe] = &[
     CompatibilityProbe::ThreadRead,
     CompatibilityProbe::ThreadResumeMetadata,
     CompatibilityProbe::ThreadUnsubscribe,
-    CompatibilityProbe::ThreadTurnsList,
     CompatibilityProbe::TurnInterrupt,
     CompatibilityProbe::TurnSteer,
 ];
@@ -249,14 +246,6 @@ pub enum CompatibilityError {
         required_version: &'static str,
         actual_version: String,
         user_agent: String,
-    },
-    #[error(
-        "backend does not satisfy required transcript history contract: {method} with itemsView was rejected with JSON-RPC code {code}: {message}"
-    )]
-    ThreadTurnsListItemsViewUnsupported {
-        method: &'static str,
-        code: i64,
-        message: String,
     },
     #[error(
         "runtime mode {runtime_mode} requires backend platform family {expected_platform_family}, got {actual_platform_family}"

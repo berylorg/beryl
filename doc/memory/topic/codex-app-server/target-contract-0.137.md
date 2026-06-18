@@ -6,7 +6,7 @@ Beryl targets exactly one Codex App Server contract per release. The CAS 0.137 m
 
 Useful. For this Beryl version, the target runtime is `codex-cli 0.137.0` / Codex App Server 0.137.0. Compatibility must be proven by parsing the app-server version from `initialize.userAgent` and by required-method probes, not by assuming that a newer app-server version enables a different protocol path.
 
-The current 0.137 transcript-history contract is `thread/turns/list` with `itemsView`. The current 0.137 permission contract exposes sandbox controls at thread, fork, and turn boundaries. The current 0.137 thread schema exposes direct subagent hierarchy through nullable `Thread.parentThreadId`.
+The 0.137 transcript-history observation at investigation time was `thread/turns/list` with `itemsView`. That observation is superseded as live Beryl design authority by the CAS-live Syndic transcript rework: selected transcript history now targets CAS live-event capture into Syndic and storage-backed Syndic projection reads. The current 0.137 permission contract exposes sandbox controls at thread, fork, and turn boundaries. The current 0.137 thread schema exposes direct subagent hierarchy through nullable `Thread.parentThreadId`.
 
 These observations support the root design invariant but do not replace it. `doc/design.md` remains the design authority.
 

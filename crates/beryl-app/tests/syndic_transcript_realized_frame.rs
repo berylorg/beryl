@@ -31,7 +31,7 @@ fn snapshot_with_names(presentation_revision: u64, names: &[&str]) -> ResidentTr
     ResidentTranscriptSnapshot {
         activation_revision: 1,
         presentation_revision,
-        state: ResidentTranscriptSnapshotState::Fixture {
+        state: ResidentTranscriptSnapshotState::ProviderBacked {
             label: "frame-test".to_string(),
         },
         records: names

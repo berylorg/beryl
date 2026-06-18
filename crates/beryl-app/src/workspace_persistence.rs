@@ -37,6 +37,7 @@ use crate::{
 const APP_ROOT_DIR_NAME: &str = ".beryl";
 const WORKSPACES_DIR_NAME: &str = "workspaces";
 const WORKSPACE_DATABASE_FILE_NAME: &str = "workspace.redb";
+const WORKSPACE_SYNDIC_STORAGE_DIR_NAME: &str = "syndic-storage";
 const WORKSPACE_METADATA_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("workspace_metadata");
 const WORKSPACE_MANIFEST_KEY: &str = "manifest";
@@ -427,6 +428,11 @@ impl BerylWorkspacePersistence {
 
     pub fn workspace_image_assets_dir(&self, workspace_id: &BerylWorkspaceId) -> PathBuf {
         workspace_image_assets_dir(&self.workspace_dir(workspace_id))
+    }
+
+    pub fn workspace_syndic_storage_dir(&self, workspace_id: &BerylWorkspaceId) -> PathBuf {
+        self.workspace_dir(workspace_id)
+            .join(WORKSPACE_SYNDIC_STORAGE_DIR_NAME)
     }
 
     pub fn recover_interrupted_workspace_rename(

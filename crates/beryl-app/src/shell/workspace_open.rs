@@ -1,0 +1,653 @@
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::Duration,
+};
+
+use beryl_backend::{
+    ManagedBackendError, ManagedBackendServer, ManagedBackendSession, ManagedBackendStartupStage,
+    ThreadInfo, ThreadSummary, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_path,
+};
+use beryl_model::{
+    semantic_graph::SemanticGraph,
+    workspace::{BerylWorkspaceId, WorkspaceId},
+};
+use tracing::warn;
+
+use crate::BerylWorkspacePersistence;
+use crate::memory_diagnostics::MemoryMilestone;
+use crate::{WorkspaceGraphRevision, WorkspaceGraphStateSnapshot};
+
+use super::backend_availability::{BackendUnavailable, BackendUnavailableKind};
+use super::lifecycle::blocked_state_for_error;
+use super::thread_activation::{
+    ExistingThreadActivationError, ThreadActivationLoader,
+    prepare_storage_backed_transcript_activation,
+};
+use super::thread_selection::{
+    KnownThreadSelection, ThreadSelectionRequest, resolve_known_thread_selection,
+};
+use super::workspace_members::{
+    WorkspaceTargetResolutionError, reconcile_workspace_member_availability,
+    resolve_primary_execution_target, validate_primary_execution_target_selection,
+};
+use super::workspace_persistence_worker::WorkspacePersistenceFlush;
+use super::{
+    BackendUnavailableFailure, BlockedState, OpenWorkspaceFailure, OpenedWorkspace, RetryTarget,
+    SurfaceNotice, WorkspaceOpenIntent, WorkspaceSurfaceSeed, WorkspaceUpdate,
+};
+
+#[derive(Clone, Debug)]
+pub(super) struct WorkspaceOpenCancellation {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl WorkspaceOpenCancellation {
+    pub(super) fn new() -> Self {
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub(super) fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
+impl RetryTarget {
+    pub(super) fn workspace_label(&self) -> String {
+        match self {
+            Self::Startup => "startup".to_string(),
+            Self::WorkspacePrimary => "primary workspace member".to_string(),
+            Self::Workspace(workspace) => workspace.display_label(),
+            Self::HostPath(path) => format!("host-windows {path}"),
+            Self::WslPath { distro_name, path } => format!("wsl-linux:{distro_name} {path}"),
+        }
+    }
+
+    pub(super) fn workspace(&self) -> WorkspaceId {
+        match self {
+            Self::Startup => WorkspaceId::host_windows(""),
+            Self::WorkspacePrimary => WorkspaceId::host_windows(""),
+            Self::Workspace(workspace) => workspace.clone(),
+            Self::HostPath(path) => WorkspaceId::host_windows(path.clone()),
+            Self::WslPath { distro_name, path } => {
+                WorkspaceId::wsl_linux(distro_name.clone(), path.clone())
+            }
+        }
+    }
+}
+
+impl BlockedState {
+    pub(super) fn failure_summary(&self) -> super::FailureSummary {
+        super::FailureSummary {
+            stage: self.stage,
+            title: self.title,
+            summary: self.summary.clone(),
+        }
+    }
+}
+
+pub(super) fn open_workspace_worker(
+    workspace_persistence: BerylWorkspacePersistence,
+    workspace_id: BerylWorkspaceId,
+    target: RetryTarget,
+    thread_selection: ThreadSelectionRequest,
+    intent: WorkspaceOpenIntent,
+    cancellation: WorkspaceOpenCancellation,
+    workspace_persistence_flush: WorkspacePersistenceFlush,
+    timeout: Duration,
+    sender: mpsc::Sender<WorkspaceUpdate>,
+) {
+    MemoryMilestone::new("workspace_open_worker_start")
+        .workspace_id(workspace_id.as_str())
+        .runtime(target.workspace().runtime_mode().display_name())
+        .log();
+    if cancellation.is_cancelled() {
+        MemoryMilestone::new("workspace_open_worker_cancelled")
+            .workspace_id(workspace_id.as_str())
+            .note("before_flush")
+            .log();
+        return;
+    }
+
+    if let Err(error) = workspace_persistence_flush.wait(timeout) {
+        MemoryMilestone::new("workspace_persistence_flush_failed")
+            .workspace_id(workspace_id.as_str())
+            .log();
+        let _ = sender.send(WorkspaceUpdate::Finished(Err(OpenWorkspaceFailure {
+            stage: None,
+            title: "Workspace state could not be flushed",
+            summary:
+                "Beryl could not finish saving pending workspace state before opening the backend."
+                    .to_string(),
+            detail: error,
+            next_steps: vec![
+                "Retry after pending workspace persistence has completed.".to_string(),
+                "Check the logs for workspace persistence errors.".to_string(),
+            ],
+            backend_unavailable: None,
+        })));
+        return;
+    }
+
+    let _ = sender.send(WorkspaceUpdate::Detail(
+        "Canonicalizing the selected execution target".to_string(),
+    ));
+    let execution_target =
+        match resolve_workspace_target(&workspace_persistence, &workspace_id, &target) {
+            Ok(execution_target) => {
+                let _ = sender.send(WorkspaceUpdate::ResolvedExecutionTarget(
+                    execution_target.clone(),
+                ));
+                execution_target
+            }
+            Err(error) => {
+                let _ = sender.send(WorkspaceUpdate::Finished(Err(error)));
+                return;
+            }
+        };
+
+    if cancellation.is_cancelled() {
+        MemoryMilestone::new("workspace_open_worker_cancelled")
+            .workspace_id(workspace_id.as_str())
+            .note("after_metadata")
+            .log();
+        return;
+    }
+
+    if intent == WorkspaceOpenIntent::UseAsPrimaryMember {
+        let workspace_state = match workspace_persistence.load_workspace_state(&workspace_id) {
+            Ok(state) => state,
+            Err(error) => {
+                let _ = sender.send(WorkspaceUpdate::Finished(Err(OpenWorkspaceFailure {
+                    stage: None,
+                    title: "Workspace state could not be loaded",
+                    summary: "Beryl could not validate the selected workspace member before opening the backend.".to_string(),
+                    detail: error.to_string(),
+                    next_steps: vec![
+                        "Verify that the semantic workspace state is readable.".to_string(),
+                        "Retry after restoring workspace storage access.".to_string(),
+                    ],
+                    backend_unavailable: None,
+                })));
+                return;
+            }
+        };
+        if let Err(error) =
+            validate_primary_execution_target_selection(&workspace_state, &execution_target)
+        {
+            let _ = sender.send(WorkspaceUpdate::Finished(Err(OpenWorkspaceFailure {
+                stage: None,
+                title: "Workspace member selection is invalid",
+                summary: "Beryl could not use the selected execution target as the workspace's primary member.".to_string(),
+                detail: error.to_string(),
+                next_steps: vec![
+                    "Choose a member inside the selected runtime environment.".to_string(),
+                    "Detach overlapping members before changing to a conflicting path.".to_string(),
+                ],
+                backend_unavailable: None,
+            })));
+            return;
+        }
+    }
+
+    let _ = sender.send(WorkspaceUpdate::Detail(
+        "Loading the persisted semantic graph for this workspace".to_string(),
+    ));
+    let surface_seed = load_workspace_surface_seed(&workspace_persistence, &workspace_id);
+
+    if cancellation.is_cancelled() {
+        MemoryMilestone::new("workspace_open_worker_cancelled")
+            .workspace_id(workspace_id.as_str())
+            .note("after_graph_load")
+            .log();
+        return;
+    }
+
+    let mut last_stage = ManagedBackendStartupStage::LaunchProcess;
+    let result = match ManagedBackendServer::launch_and_probe_with_progress(
+        execution_target.runtime_mode().clone(),
+        execution_target.canonical_path().to_path_buf(),
+        timeout,
+        |progress| {
+            last_stage = progress.stage();
+            let _ = sender.send(WorkspaceUpdate::Progress(progress));
+        },
+    ) {
+        Ok((mut server, mut session, report)) => {
+            if cancellation.is_cancelled() {
+                shutdown_cancelled_open_server(&mut server, &execution_target);
+                return;
+            }
+
+            let _ = sender.send(WorkspaceUpdate::Detail(
+                "Checking hard stop capability support".to_string(),
+            ));
+            let hard_stop_capabilities = match session.probe_hard_stop_capabilities(timeout) {
+                Ok(report) => report.capabilities(),
+                Err(error) => {
+                    warn!(
+                        error = %error,
+                        "hard-stop capability probe failed; disabling optional hard-stop targets"
+                    );
+                    beryl_backend::HardStopCapabilities::default()
+                }
+            };
+
+            let mut known_threads =
+                if matches!(thread_selection, ThreadSelectionRequest::Exact { .. }) {
+                    let _ = sender.send(WorkspaceUpdate::Detail(
+                        "Opening the selected conversation thread metadata".to_string(),
+                    ));
+                    Vec::new()
+                } else {
+                    let _ = sender.send(WorkspaceUpdate::Detail(
+                        "Loading existing conversation threads for this execution target"
+                            .to_string(),
+                    ));
+                    load_workspace_threads(&mut session, &execution_target, timeout)
+                };
+            if cancellation.is_cancelled() {
+                shutdown_cancelled_open_server(&mut server, &execution_target);
+                return;
+            }
+
+            let syndic_storage_dir =
+                workspace_persistence.workspace_syndic_storage_dir(&workspace_id);
+            let selected_thread = load_selected_thread_metadata(
+                &mut session,
+                &execution_target,
+                &known_threads,
+                &thread_selection,
+                &syndic_storage_dir,
+                timeout,
+            );
+            if cancellation.is_cancelled() {
+                shutdown_cancelled_open_server(&mut server, &execution_target);
+                return;
+            }
+
+            if known_threads.is_empty()
+                && let Some(thread) = selected_thread.thread_metadata.as_ref()
+            {
+                known_threads.push(thread.summary());
+            }
+            Ok(OpenedWorkspace {
+                execution_target,
+                server,
+                report,
+                hard_stop_capabilities,
+                known_threads,
+                selected_thread_id: selected_thread.selected_thread_id,
+                selected_thread_metadata: selected_thread.thread_metadata,
+                selected_thread_session_metadata: selected_thread.thread_session_metadata,
+                selected_thread_transcript_activation: selected_thread.transcript_activation,
+                surface_notice: selected_thread.surface_notice,
+                graph: surface_seed.graph,
+                graph_revision: surface_seed.graph_revision,
+                graph_warning: surface_seed.graph_warning,
+            })
+        }
+        Err(error) => Err(workspace_failure_from_backend(
+            error,
+            &execution_target,
+            last_stage,
+            surface_seed,
+        )),
+    };
+
+    if cancellation.is_cancelled() {
+        if let Ok(opened) = result {
+            shutdown_cancelled_opened_workspace(opened);
+        }
+        return;
+    }
+
+    if let Err(error) = sender.send(WorkspaceUpdate::Finished(result))
+        && let WorkspaceUpdate::Finished(Ok(opened)) = error.0
+    {
+        shutdown_cancelled_opened_workspace(opened);
+    }
+}
+
+fn shutdown_cancelled_open_server(
+    server: &mut ManagedBackendServer,
+    execution_target: &WorkspaceId,
+) {
+    if let Err(error) = server.shutdown() {
+        warn!(
+            workspace = %execution_target.display_label(),
+            error = %error,
+            "failed to shut down managed backend after workspace open was cancelled"
+        );
+    }
+}
+
+fn shutdown_cancelled_opened_workspace(mut opened: OpenedWorkspace) {
+    shutdown_cancelled_open_server(&mut opened.server, &opened.execution_target);
+}
+
+fn load_workspace_surface_seed(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
+) -> WorkspaceSurfaceSeed {
+    match persistence.load_workspace_graph_state_snapshot(workspace_id) {
+        Ok(snapshot) => WorkspaceSurfaceSeed {
+            graph: snapshot.graph,
+            graph_revision: snapshot.revision,
+            graph_warning: None,
+        },
+        Err(error) => {
+            warn!(
+                workspace_id = workspace_id.as_str(),
+                error = %error,
+                "failed to preload persisted semantic graph state"
+            );
+            let snapshot = WorkspaceGraphStateSnapshot::new(
+                SemanticGraph::default(),
+                WorkspaceGraphRevision::default(),
+            );
+            WorkspaceSurfaceSeed {
+                graph: snapshot.graph,
+                graph_revision: snapshot.revision,
+                graph_warning: Some(error.to_string()),
+            }
+        }
+    }
+}
+
+fn load_workspace_threads(
+    session: &mut ManagedBackendSession,
+    workspace: &WorkspaceId,
+    timeout: Duration,
+) -> Vec<ThreadSummary> {
+    match session.list_threads(timeout) {
+        Ok(mut threads) => {
+            threads.retain(|thread| thread.cwd == workspace.canonical_path());
+            threads.sort_by(|left, right| {
+                right
+                    .updated_at
+                    .cmp(&left.updated_at)
+                    .then_with(|| right.created_at.cmp(&left.created_at))
+            });
+            threads
+        }
+        Err(error) => {
+            warn!(
+                workspace = %workspace.display_label(),
+                error = %error,
+                "failed to seed known workspace threads"
+            );
+            Vec::new()
+        }
+    }
+}
+
+fn load_selected_thread_metadata(
+    session: &mut ManagedBackendSession,
+    execution_target: &WorkspaceId,
+    known_threads: &[ThreadSummary],
+    thread_selection: &ThreadSelectionRequest,
+    syndic_storage_dir: &Path,
+    timeout: Duration,
+) -> SelectedThreadMetadata {
+    if let ThreadSelectionRequest::Exact { thread_id, label } = thread_selection {
+        return match ThreadActivationLoader::load_existing_thread(
+            session,
+            execution_target,
+            thread_id,
+            label,
+            timeout,
+        ) {
+            Ok(activation) => SelectedThreadMetadata {
+                selected_thread_id: Some(thread_id.clone()),
+                thread_session_metadata: Some(activation.session_metadata),
+                transcript_activation: Some(prepare_storage_backed_transcript_activation(
+                    syndic_storage_dir.to_path_buf(),
+                    thread_id,
+                )),
+                thread_metadata: Some(activation.thread),
+                surface_notice: None,
+            },
+            Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
+                SelectedThreadMetadata {
+                    selected_thread_id: None,
+                    thread_session_metadata: None,
+                    transcript_activation: None,
+                    thread_metadata: None,
+                    surface_notice: Some(SurfaceNotice::new("Thread requires rebind", detail)),
+                }
+            }
+            Err(ExistingThreadActivationError::Failed { message }) => SelectedThreadMetadata {
+                selected_thread_id: None,
+                thread_session_metadata: None,
+                transcript_activation: None,
+                thread_metadata: None,
+                surface_notice: Some(SurfaceNotice::new("Thread activation failed", message)),
+            },
+        };
+    }
+
+    let selection =
+        resolve_known_thread_selection(known_threads, execution_target, thread_selection);
+
+    match selection {
+        KnownThreadSelection::Selected { thread_id, strict } => {
+            let label = known_threads
+                .iter()
+                .find(|thread| thread.id == thread_id)
+                .and_then(|thread| thread.name.as_deref())
+                .unwrap_or(&thread_id);
+            match ThreadActivationLoader::load_existing_thread(
+                session,
+                execution_target,
+                &thread_id,
+                label,
+                timeout,
+            ) {
+                Ok(activation) => SelectedThreadMetadata {
+                    selected_thread_id: Some(thread_id.clone()),
+                    thread_session_metadata: Some(activation.session_metadata),
+                    transcript_activation: Some(prepare_storage_backed_transcript_activation(
+                        syndic_storage_dir.to_path_buf(),
+                        &thread_id,
+                    )),
+                    thread_metadata: Some(activation.thread),
+                    surface_notice: None,
+                },
+                Err(ExistingThreadActivationError::RequiresRebind { detail }) => {
+                    warn!(
+                        workspace = %execution_target.display_label(),
+                        thread_id = %thread_id,
+                        error = %detail,
+                        "failed to preload selected workspace thread metadata"
+                    );
+                    SelectedThreadMetadata {
+                        selected_thread_id: (!strict).then_some(thread_id),
+                        thread_session_metadata: None,
+                        transcript_activation: None,
+                        thread_metadata: None,
+                        surface_notice: strict
+                            .then(|| SurfaceNotice::new("Thread requires rebind", detail)),
+                    }
+                }
+                Err(ExistingThreadActivationError::Failed { message }) => {
+                    warn!(
+                        workspace = %execution_target.display_label(),
+                        thread_id = %thread_id,
+                        error = %message,
+                        "failed to preload selected workspace thread metadata"
+                    );
+                    SelectedThreadMetadata {
+                        selected_thread_id: (!strict).then_some(thread_id),
+                        thread_session_metadata: None,
+                        transcript_activation: None,
+                        thread_metadata: None,
+                        surface_notice: strict
+                            .then(|| SurfaceNotice::new("Thread activation failed", message)),
+                    }
+                }
+            }
+        }
+        KnownThreadSelection::None => SelectedThreadMetadata {
+            selected_thread_id: None,
+            thread_session_metadata: None,
+            transcript_activation: None,
+            thread_metadata: None,
+            surface_notice: None,
+        },
+    }
+}
+
+struct SelectedThreadMetadata {
+    selected_thread_id: Option<String>,
+    thread_session_metadata: Option<beryl_backend::ThreadSessionMetadata>,
+    transcript_activation: Option<super::syndic_transcript::PreparedTranscriptActivation>,
+    thread_metadata: Option<ThreadInfo>,
+    surface_notice: Option<SurfaceNotice>,
+}
+
+fn resolve_workspace_target(
+    persistence: &BerylWorkspacePersistence,
+    workspace_id: &BerylWorkspaceId,
+    target: &RetryTarget,
+) -> Result<WorkspaceId, OpenWorkspaceFailure> {
+    match target {
+        RetryTarget::Startup => Err(OpenWorkspaceFailure {
+            stage: None,
+            title: "Startup retry target is not a backend workspace",
+            summary: "Beryl cannot open a managed backend directly from the startup retry target."
+                .to_string(),
+            detail: "Retry startup discovery instead of backend workspace activation.".to_string(),
+            next_steps: vec!["Use the startup retry action.".to_string()],
+            backend_unavailable: None,
+        }),
+        RetryTarget::WorkspacePrimary => {
+            let mut workspace_state =
+                persistence
+                    .load_workspace_state(workspace_id)
+                    .map_err(|error| OpenWorkspaceFailure {
+                        stage: None,
+                        title: "Workspace state could not be loaded",
+                        summary: "Beryl could not read the workspace runtime and member selection."
+                            .to_string(),
+                        detail: error.to_string(),
+                        next_steps: vec![
+                            "Verify that the semantic workspace state is readable.".to_string(),
+                            "Retry after restoring workspace storage access.".to_string(),
+                        ],
+                        backend_unavailable: None,
+                    })?;
+            if reconcile_workspace_member_availability(&mut workspace_state) {
+                persistence.save_workspace_state(workspace_id, &workspace_state).map_err(
+                    |error| OpenWorkspaceFailure {
+                        stage: None,
+                        title: "Workspace state could not be updated",
+                        summary: "Beryl resolved unavailable workspace members but could not persist the updated primary selection.".to_string(),
+                        detail: error.to_string(),
+                        next_steps: vec![
+                            "Verify that the semantic workspace state is writable.".to_string(),
+                            "Retry after restoring workspace storage access.".to_string(),
+                        ],
+                        backend_unavailable: None,
+                    },
+                )?;
+            }
+            resolve_primary_execution_target(&workspace_state)
+                .map_err(workspace_failure_from_primary_target_error)?
+                .ok_or_else(|| OpenWorkspaceFailure {
+                    stage: None,
+                    title: "Workspace runtime environment is not selected",
+                    summary: "Beryl cannot open a managed backend until the workspace has a selected runtime environment.".to_string(),
+                    detail: "Select a runtime environment or attach a workspace member before opening this semantic workspace.".to_string(),
+                    next_steps: vec![
+                        "Attach a host-Windows or WSL-Linux member for this workspace.".to_string(),
+                        "Retry after the workspace has a primary member.".to_string(),
+                    ],
+                    backend_unavailable: None,
+                })
+        }
+        RetryTarget::Workspace(workspace) => Ok(workspace.clone()),
+        RetryTarget::HostPath(path) => canonicalize_host_path(PathBuf::from(path).as_path())
+            .map(WorkspaceId::host_windows)
+            .map_err(workspace_failure_from_path_error),
+        RetryTarget::WslPath { distro_name, path } => {
+            canonicalize_wsl_path(distro_name, PathBuf::from(path).as_path())
+                .map(|path| WorkspaceId::wsl_linux(distro_name.clone(), path))
+                .map_err(workspace_failure_from_path_error)
+        }
+    }
+}
+
+fn workspace_failure_from_path_error(error: WorkspacePathError) -> OpenWorkspaceFailure {
+    OpenWorkspaceFailure {
+        stage: None,
+        title: "Workspace path is invalid for the selected runtime",
+        summary:
+            "Beryl could not resolve the selected workspace into the canonical identity required for this runtime mode."
+                .to_string(),
+        detail: error.to_string(),
+        next_steps: vec![
+            "Verify that the workspace path exists.".to_string(),
+            "If you selected WSL-Linux, re-check the distro and path.".to_string(),
+            "Retry after correcting the workspace path.".to_string(),
+        ],
+        backend_unavailable: None,
+    }
+}
+
+fn workspace_failure_from_primary_target_error(
+    error: WorkspaceTargetResolutionError,
+) -> OpenWorkspaceFailure {
+    OpenWorkspaceFailure {
+        stage: None,
+        title: "Primary workspace member could not be resolved",
+        summary: error.open_failure_summary().to_string(),
+        detail: error.to_string(),
+        next_steps: vec![
+            "Verify that the selected runtime environment can resolve its home directory."
+                .to_string(),
+            "Retry after correcting the runtime environment or attached members.".to_string(),
+        ],
+        backend_unavailable: None,
+    }
+}
+
+fn workspace_failure_from_backend(
+    error: ManagedBackendError,
+    execution_target: &WorkspaceId,
+    stage: ManagedBackendStartupStage,
+    surface_seed: WorkspaceSurfaceSeed,
+) -> OpenWorkspaceFailure {
+    let kind = BackendUnavailableKind::from_backend_error(&error);
+    let blocked = blocked_state_for_error(error, 0, stage);
+    let unavailable = BackendUnavailable::new(
+        kind,
+        blocked.stage,
+        blocked.title,
+        blocked.summary.clone(),
+        blocked.detail.clone(),
+        blocked.next_steps.clone(),
+    );
+    OpenWorkspaceFailure {
+        stage: blocked.stage,
+        title: blocked.title,
+        summary: blocked.summary,
+        detail: blocked.detail,
+        next_steps: blocked.next_steps,
+        backend_unavailable: Some(BackendUnavailableFailure {
+            target: execution_target.clone(),
+            unavailable,
+            surface_seed,
+        }),
+    }
+}

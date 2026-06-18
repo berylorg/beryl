@@ -3,11 +3,12 @@ use beryl_backend::UserInput;
 use super::{
     composer_draft::AcceptedComposerDraftPart,
     composer_image_delivery::PreparedComposerDraft,
-    execution_detail::{
-        TranscriptImageMarkerSpec, TranscriptImagePreviewState, UserInputFragment,
+    transcript_images::{
+        TranscriptImageMarkerSpec, TranscriptImagePreviewState,
         transcript_image_source_from_local_image,
         transcript_image_source_from_local_image_with_format,
     },
+    turn_input::UserInputFragment,
 };
 
 pub(super) fn prepared_composer_draft_fragment(

@@ -45,7 +45,7 @@ use crate::{
 
 use super::{
     ShellState, ShellView, SurfaceNotice,
-    execution_detail::{
+    active_turn_state::{
         ExecutionItem, TurnExecutionRecord, TurnExecutionStatus, TurnNarrativeEntry,
     },
     graph::{GraphMutationCommitUpdate, GraphMutationFailureUpdate, GraphMutationUpdate},

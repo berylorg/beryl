@@ -2,7 +2,7 @@
 
 ## Superseded Context
 
-This note records measurements from the older CAS 0.128.0 transcript-loading path. The current Beryl target contract is CAS 0.137 with `thread/turns/list itemsView`; see `doc/design.md` for current target authority and `doc/memory/topic/codex-app-server/transcript-history-itemsview-0.137.md` for supporting evidence.
+This note records measurements from older CAS transcript-loading paths. The CAS 0.137 `thread/turns/list itemsView` path discussed below is now superseded as live Beryl transcript-history architecture by the CAS-live Syndic transcript rework; see `doc/design.md` and `doc/rework/cas-live-syndic-transcript/REWORK.md` for current authority.
 
 ## 2026-05-10: Large Generated-Image Thread First-Byte Stall
 

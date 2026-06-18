@@ -198,7 +198,7 @@ impl ShellView {
                 "Beryl does not have an active managed backend for the parent thread.".to_string(),
             );
         }
-        let active = surface.execution_details.active_turn_identity();
+        let active = surface.active_turn_state.active_turn_identity();
         let active_parent_turn = active.as_ref().is_some_and(|active| {
             active.turn_id.is_some()
                 && active
@@ -260,7 +260,7 @@ impl ShellView {
         let graph = surface.graph_overlay().graph();
         let node = graph.node(node_id);
         let parent_thread_id = surface.selected_thread_id();
-        let active = surface.execution_details.active_turn_identity();
+        let active = surface.active_turn_state.active_turn_identity();
         let active_parent_turn = active.as_ref().is_some_and(|active| {
             active.turn_id.is_some()
                 && active
@@ -332,7 +332,7 @@ impl ShellView {
             .map(|thread| thread.preview().trim().to_string())
             .filter(|summary| !summary.is_empty());
 
-        if let Some(active) = surface.execution_details.active_turn_identity()
+        if let Some(active) = surface.active_turn_state.active_turn_identity()
             && active
                 .thread_id
                 .as_deref()
@@ -345,13 +345,13 @@ impl ShellView {
                 parent_thread_summary,
                 branch_point_turn_id: ConversationTurnId::new(turn_id),
                 parent_context_source: surface
-                    .execution_details
+                    .active_turn_state
                     .turns()
                     .get(active.turn_index)
                     .and_then(|turn| parent_context_source_for_turn(turn)),
                 execution_target,
                 title_seed: title_seed_for_turn_or_node(
-                    surface.execution_details.turns().get(active.turn_index),
+                    surface.active_turn_state.turns().get(active.turn_index),
                     surface.graph_overlay().graph(),
                     node_id,
                 ),
@@ -362,7 +362,7 @@ impl ShellView {
             return None;
         }
         let (_, turn) = surface
-            .execution_details
+            .active_turn_state
             .turns()
             .iter()
             .enumerate()

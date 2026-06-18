@@ -5,5 +5,12 @@ pub(crate) mod provider;
 
 pub(crate) use provider::*;
 
-#[path = "../../src/shell/syndic_transcript/fixture_provider.rs"]
+pub(crate) mod syndic_transcript {
+    pub(crate) use super::provider::*;
+}
+
+#[path = "syndic_transcript_fixture_provider.rs"]
 pub(crate) mod fixture_provider;
+
+#[path = "../../src/shell/syndic_transcript_storage_provider.rs"]
+pub(crate) mod storage_provider;

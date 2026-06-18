@@ -1,7 +1,7 @@
 use super::{
     provider::{
-        TranscriptPageAnchor, TranscriptPageDirection, TranscriptProviderRequest, TranscriptViewId,
-        TranscriptViewPosition,
+        TranscriptPageAnchor, TranscriptPageDirection, TranscriptProviderRequest,
+        TranscriptProviderResponseKind, TranscriptViewId, TranscriptViewPosition,
     },
     snapshot::ResidentTranscriptSnapshotState,
 };
@@ -78,4 +78,44 @@ pub(crate) struct TranscriptActivationOutcome {
     pub(crate) state: ResidentTranscriptSnapshotState,
     pub(crate) retained_previous_snapshot: bool,
     pub(crate) provider_request: Option<TranscriptProviderRequest>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PreparedTranscriptActivation {
+    pub(crate) view_id: Option<TranscriptViewId>,
+    pub(crate) placement: TranscriptActivationPlacement,
+    pub(crate) view_page_response: Option<TranscriptProviderResponseKind>,
+    pub(crate) projection_records_response: Option<TranscriptProviderResponseKind>,
+}
+
+impl PreparedTranscriptActivation {
+    pub(crate) fn new(
+        view_id: TranscriptViewId,
+        placement: TranscriptActivationPlacement,
+        view_page_response: TranscriptProviderResponseKind,
+        projection_records_response: Option<TranscriptProviderResponseKind>,
+    ) -> Self {
+        Self {
+            view_id: Some(view_id),
+            placement,
+            view_page_response: Some(view_page_response),
+            projection_records_response,
+        }
+    }
+
+    pub(crate) fn unavailable(placement: TranscriptActivationPlacement) -> Self {
+        Self {
+            view_id: None,
+            placement,
+            view_page_response: None,
+            projection_records_response: None,
+        }
+    }
+
+    pub(crate) fn seed(&self, source: TranscriptActivationSource) -> TranscriptActivationSeed {
+        match self.view_id.clone() {
+            Some(view_id) => TranscriptActivationSeed::new(view_id, source, self.placement),
+            None => TranscriptActivationSeed::unavailable(source, self.placement),
+        }
+    }
 }

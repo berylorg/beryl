@@ -161,6 +161,90 @@ fn unavailable_activation_publishes_unavailable_state_without_provider_request()
     assert_eq!(snapshot.provider_requests.pending_count, 0);
 }
 
+#[test]
+fn prepared_activation_admits_view_and_projection_without_pending_request() {
+    let view_id = view_id("prepared-view");
+    let mut core = ResidentTranscriptCore::empty();
+    let prepared = PreparedTranscriptActivation::new(
+        view_id.clone(),
+        TranscriptActivationPlacement::Tail,
+        TranscriptProviderResponseKind::ViewPage(TranscriptViewPage {
+            view_id: view_id.clone(),
+            revision: REVISION,
+            history_state: TranscriptProviderHistoryState::Complete,
+            records: vec![view_record(&view_id, 10, "prepared")],
+            previous_cursor: None,
+            next_cursor: None,
+            at_start: true,
+            at_end: true,
+        }),
+        Some(TranscriptProviderResponseKind::ProjectionRecords(
+            ProjectionRecordSet {
+                view_id: view_id.clone(),
+                revision: REVISION,
+                records: vec![text_projection(&view_id, 10, "prepared")],
+                rejections: Vec::new(),
+            },
+        )),
+    );
+
+    let outcome = core.apply_prepared_activation(prepared, TranscriptActivationSource::Test);
+
+    assert!(outcome.provider_request.is_none());
+    assert!(!outcome.retained_previous_snapshot);
+    assert!(matches!(
+        outcome.state,
+        ResidentTranscriptSnapshotState::ProviderBacked { .. }
+    ));
+    let snapshot = core.core_snapshot();
+    assert_eq!(presentation_texts(&snapshot), vec!["text-prepared"]);
+    assert_eq!(snapshot.provider_requests.pending_count, 0);
+    assert_eq!(snapshot.provider_requests.completed_count, 2);
+    assert_eq!(snapshot.resident.view_record_count, 1);
+    assert_eq!(snapshot.resident.projection_record_count, 1);
+}
+
+#[test]
+fn prepared_uncaptured_activation_publishes_incomplete_state_without_pending_request() {
+    let view_id = view_id("uncaptured-view");
+    let mut core = ResidentTranscriptCore::empty();
+    let prepared = PreparedTranscriptActivation::new(
+        view_id.clone(),
+        TranscriptActivationPlacement::Tail,
+        TranscriptProviderResponseKind::ViewPage(TranscriptViewPage {
+            view_id,
+            revision: REVISION,
+            history_state: TranscriptProviderHistoryState::Incomplete {
+                reason: TranscriptProviderHistoryReason::NotCaptured,
+                detail: Some("no captured Syndic history".to_string()),
+            },
+            records: Vec::new(),
+            previous_cursor: None,
+            next_cursor: None,
+            at_start: true,
+            at_end: true,
+        }),
+        None,
+    );
+
+    let outcome = core.apply_prepared_activation(prepared, TranscriptActivationSource::Test);
+
+    assert!(outcome.provider_request.is_none());
+    assert!(!outcome.retained_previous_snapshot);
+    assert!(matches!(
+        outcome.state,
+        ResidentTranscriptSnapshotState::Incomplete { .. }
+    ));
+    let snapshot = core.core_snapshot();
+    assert!(snapshot.presentation.records.is_empty());
+    assert_eq!(snapshot.provider_requests.pending_count, 0);
+    assert_eq!(snapshot.provider_requests.completed_count, 1);
+    assert!(matches!(
+        snapshot.presentation.state,
+        ResidentTranscriptSnapshotState::Incomplete { .. }
+    ));
+}
+
 fn seed_text_presentation(names: &[&str]) -> ResidentTranscriptCore {
     let view_id = view_id("current-view");
     let mut provider = InMemorySyndicTranscriptProvider::new();
@@ -220,7 +304,7 @@ fn previous_coherent_snapshot_is_retained_until_replacement_seed_is_admitted() {
     );
     assert!(matches!(
         outcome.state,
-        ResidentTranscriptSnapshotState::Fixture { .. }
+        ResidentTranscriptSnapshotState::ProviderBacked { .. }
     ));
     assert!(outcome.provider_request.is_some());
 

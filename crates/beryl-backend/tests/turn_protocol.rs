@@ -2,12 +2,11 @@ use std::path::PathBuf;
 
 use beryl_backend::{
     AccountRateLimitsResponse, DynamicToolCallOutputContentItem, DynamicToolCallResponse,
-    JsonRpcError, NonSteerableTurnKind, ProtocolPhase, SortDirection, ThreadForkResponse,
-    ThreadItem, ThreadListResponse, ThreadReadOptions, ThreadReadResponse, ThreadResumeOptions,
-    ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus, ThreadTurnsListOptions,
-    ThreadTurnsListResponse, ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnItemsView,
-    TurnStartOptions, TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
+    JsonRpcError, NonSteerableTurnKind, ProtocolPhase, ThreadForkResponse, ThreadItem,
+    ThreadListResponse, ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus,
+    ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
+    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStartOptions,
+    TurnStartResponse, TurnStatus, TurnSteerResponse, TurnStreamEvent, UserInput,
     active_turn_not_steerable_error, parse_approval_request, parse_dynamic_tool_call_request,
     parse_turn_stream_event,
 };
@@ -364,7 +363,7 @@ fn thread_list_response_treats_malformed_fork_parent_metadata_as_absent() {
 }
 
 #[test]
-fn thread_read_response_can_supply_fork_parent_when_list_row_is_null() {
+fn thread_session_response_can_supply_fork_parent_when_list_row_is_null() {
     let list_response: ThreadListResponse = serde_json::from_value(json!({
         "data": [
             {
@@ -380,7 +379,7 @@ fn thread_read_response_can_supply_fork_parent_when_list_row_is_null() {
         ]
     }))
     .unwrap();
-    let read_response: ThreadReadResponse = serde_json::from_value(json!({
+    let read_response: ThreadSessionResponse = serde_json::from_value(json!({
         "thread": {
             "cliVersion": "0.128.0",
             "createdAt": 1,
@@ -402,116 +401,14 @@ fn thread_read_response_can_supply_fork_parent_when_list_row_is_null() {
 
     assert_eq!(list_response.data[0].forked_from_id, None);
     assert_eq!(
-        read_response
-            .read_metadata()
-            .thread
-            .forked_from_id
-            .as_deref(),
+        read_response.thread.summary().forked_from_id.as_deref(),
         Some("thread_parent")
     );
 }
 
 #[test]
-fn thread_read_response_preserves_agent_nickname_metadata() {
-    let response: ThreadReadResponse = serde_json::from_value(json!({
-        "thread": {
-            "agentNickname": "Hooke",
-            "cliVersion": "0.125.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Subagent work",
-            "source": "subAgent",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    assert_eq!(response.thread.summary().id, "thread_child");
-    assert_eq!(
-        response.thread.summary().agent_nickname.as_deref(),
-        Some("Hooke")
-    );
-}
-
-#[test]
-fn thread_read_response_preserves_fork_parent_metadata() {
-    let response: ThreadReadResponse = serde_json::from_value(json!({
-        "thread": {
-            "cliVersion": "0.128.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "forkedFromId": "thread_parent",
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Forked work",
-            "source": "appServer",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    assert_eq!(
-        response.thread.summary().forked_from_id.as_deref(),
-        Some("thread_parent")
-    );
-    assert_eq!(
-        response.read_metadata().thread.forked_from_id.as_deref(),
-        Some("thread_parent")
-    );
-}
-
-#[test]
-fn thread_read_response_derives_agent_nickname_from_subagent_source_metadata() {
-    let response: ThreadReadResponse = serde_json::from_value(json!({
-        "thread": {
-            "cliVersion": "0.125.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Subagent work",
-            "source": {
-                "subAgent": {
-                    "thread_spawn": {
-                        "agent_nickname": "Gauss",
-                        "agent_role": "explorer",
-                        "depth": 1,
-                        "parent_thread_id": "thread_parent"
-                    }
-                }
-            },
-            "status": {
-                "type": "idle"
-            },
-            "turns": [],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    assert_eq!(response.thread.summary().id, "thread_child");
-    assert_eq!(
-        response.thread.summary().agent_nickname.as_deref(),
-        Some("Gauss")
-    );
-}
-
-#[test]
-fn thread_read_response_preserves_runtime_metadata_when_exposed() {
-    let response: ThreadReadResponse = serde_json::from_value(json!({
+fn thread_session_response_preserves_runtime_metadata_when_exposed() {
+    let response: ThreadSessionResponse = serde_json::from_value(json!({
         "model": "gpt-5.5",
         "modelProvider": "openai",
         "reasoningEffort": "xhigh",
@@ -538,17 +435,6 @@ fn thread_read_response_preserves_runtime_metadata_when_exposed() {
     assert_eq!(metadata.model.as_deref(), Some("gpt-5.5"));
     assert_eq!(metadata.model_provider.as_deref(), Some("openai"));
     assert_eq!(metadata.reasoning_effort.as_deref(), Some("xhigh"));
-
-    let read_metadata = response.read_metadata();
-    assert_eq!(read_metadata.thread.id, "thread_child");
-    assert_eq!(
-        read_metadata.thread.agent_nickname.as_deref(),
-        Some("Curie")
-    );
-    assert_eq!(
-        read_metadata.session_metadata.reasoning_effort.as_deref(),
-        Some("xhigh")
-    );
 }
 
 #[test]
@@ -1867,7 +1753,7 @@ fn agent_message_phase_deserializes_final_answer() {
 }
 
 #[test]
-fn thread_history_deserializes_user_message_items() {
+fn thread_session_deserializes_user_message_items() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",
         "approvalsReviewer": "user",
@@ -1926,7 +1812,7 @@ fn thread_history_deserializes_user_message_items() {
 }
 
 #[test]
-fn thread_history_preserves_context_compaction_as_generic_item() {
+fn thread_session_preserves_context_compaction_as_generic_item() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",
         "approvalsReviewer": "user",
@@ -1973,7 +1859,7 @@ fn thread_history_preserves_context_compaction_as_generic_item() {
 }
 
 #[test]
-fn thread_history_deserializes_image_generation_items() {
+fn thread_session_deserializes_image_generation_items() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "approvalPolicy": "never",
         "approvalsReviewer": "user",
@@ -2034,34 +1920,8 @@ fn thread_history_deserializes_image_generation_items() {
 }
 
 #[test]
-fn thread_resume_options_serialize_metadata_only_control() {
-    assert_eq!(
-        serde_json::to_value(ThreadResumeOptions::metadata_only()).unwrap(),
-        json!({
-            "excludeTurns": true
-        })
-    );
-}
-
-#[test]
-fn thread_read_options_serialize_metadata_and_history_controls() {
-    assert_eq!(
-        serde_json::to_value(ThreadReadOptions::metadata_only()).unwrap(),
-        json!({
-            "includeTurns": false
-        })
-    );
-    assert_eq!(
-        serde_json::to_value(ThreadReadOptions::include_turns()).unwrap(),
-        json!({
-            "includeTurns": true
-        })
-    );
-}
-
-#[test]
-fn thread_read_response_deserializes_thread_metadata() {
-    let response: ThreadReadResponse = serde_json::from_value(json!({
+fn thread_session_response_deserializes_thread_metadata() {
+    let response: ThreadSessionResponse = serde_json::from_value(json!({
         "thread": {
             "cliVersion": "0.125.0",
             "createdAt": 1,
@@ -2082,170 +1942,6 @@ fn thread_read_response_deserializes_thread_metadata() {
 
     assert_eq!(response.thread.summary().id, "thread_123");
     assert!(response.thread.turns.is_empty());
-}
-
-#[test]
-fn thread_turns_list_options_serialize_page_controls() {
-    let options = ThreadTurnsListOptions::page(50)
-        .with_cursor("turn_cursor")
-        .with_sort_direction(SortDirection::Desc)
-        .with_items_view(TurnItemsView::NotLoaded);
-
-    assert_eq!(
-        serde_json::to_value(options).unwrap(),
-        json!({
-            "cursor": "turn_cursor",
-            "limit": 50,
-            "sortDirection": "desc",
-            "itemsView": "notLoaded"
-        })
-    );
-
-    assert_eq!(
-        serde_json::to_value(ThreadTurnsListOptions::default()).unwrap(),
-        json!({})
-    );
-
-    assert_eq!(
-        serde_json::to_value(
-            ThreadTurnsListOptions::default().with_items_view(TurnItemsView::Summary)
-        )
-        .unwrap(),
-        json!({
-            "itemsView": "summary"
-        })
-    );
-    assert_eq!(
-        serde_json::to_value(
-            ThreadTurnsListOptions::default().with_items_view(TurnItemsView::Full)
-        )
-        .unwrap(),
-        json!({
-            "itemsView": "full"
-        })
-    );
-}
-
-#[test]
-fn thread_turns_list_response_deserializes_page_cursors() {
-    let response: ThreadTurnsListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "id": "turn_2",
-                "status": "completed",
-                "items": [
-                    {
-                        "id": "item_2",
-                        "type": "agentMessage",
-                        "text": "done"
-                    }
-                ]
-            }
-        ],
-        "nextCursor": "older_turns",
-        "backwardsCursor": "newer_turns"
-    }))
-    .unwrap();
-
-    assert_eq!(response.data.len(), 1);
-    assert_eq!(response.data[0].id, "turn_2");
-    assert_eq!(response.data[0].items_view, TurnItemsView::Full);
-    assert_eq!(response.next_cursor.as_deref(), Some("older_turns"));
-    assert_eq!(response.backwards_cursor.as_deref(), Some("newer_turns"));
-}
-
-#[test]
-fn thread_turns_list_response_deserializes_items_view_states() {
-    let response: ThreadTurnsListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "id": "turn_not_loaded",
-                "itemsView": "notLoaded",
-                "status": "completed"
-            },
-            {
-                "id": "turn_summary",
-                "itemsView": "summary",
-                "status": "completed",
-                "items": [
-                    {
-                        "id": "item_summary",
-                        "type": "agentMessage",
-                        "text": "summary"
-                    }
-                ]
-            },
-            {
-                "id": "turn_full",
-                "itemsView": "full",
-                "status": "completed",
-                "items": [
-                    {
-                        "id": "item_full",
-                        "type": "agentMessage",
-                        "text": "done"
-                    }
-                ]
-            }
-        ]
-    }))
-    .unwrap();
-
-    assert_eq!(response.data[0].items_view, TurnItemsView::NotLoaded);
-    assert!(response.data[0].items.is_empty());
-    assert_eq!(response.data[1].items_view, TurnItemsView::Summary);
-    assert_eq!(response.data[2].items_view, TurnItemsView::Full);
-
-    assert!(
-        serde_json::from_value::<ThreadTurnsListResponse>(json!({
-            "data": [{
-                "id": "turn_unknown",
-                "itemsView": "preview",
-                "status": "completed"
-            }]
-        }))
-        .is_err()
-    );
-}
-
-#[test]
-fn thread_turns_list_response_deserializes_image_generation_items() {
-    let response: ThreadTurnsListResponse = serde_json::from_value(json!({
-        "data": [
-            {
-                "id": "turn_2",
-                "status": "completed",
-                "items": [
-                    {
-                        "id": "image_generation_1",
-                        "type": "imageGeneration",
-                        "result": "iVBORw0KGgo=",
-                        "revisedPrompt": "A small blue glass bird on a desk",
-                        "savedPath": "C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png",
-                        "status": "generating"
-                    }
-                ]
-            }
-        ]
-    }))
-    .unwrap();
-
-    let item = response.data[0].items.first().unwrap();
-    let ThreadItem::ImageGeneration(item) = item else {
-        panic!("expected image generation item");
-    };
-
-    assert_eq!(item.id, "image_generation_1");
-    assert_eq!(item.status.as_deref(), Some("generating"));
-    assert_eq!(
-        item.revised_prompt.as_deref(),
-        Some("A small blue glass bird on a desk")
-    );
-    assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
-    assert_eq!(
-        item.saved_path.as_deref(),
-        Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")
-    );
 }
 
 #[test]

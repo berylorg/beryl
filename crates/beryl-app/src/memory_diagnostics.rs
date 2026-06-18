@@ -14,9 +14,6 @@ pub(crate) struct MemoryMilestone {
     runtime: Option<String>,
     thread_id: Option<String>,
     backend_pid: Option<u32>,
-    turn_count: Option<usize>,
-    item_count: Option<usize>,
-    generated_image_count: Option<usize>,
     retained_state: RetainedStateSnapshot,
     note: Option<String>,
 }
@@ -244,23 +241,6 @@ impl MemoryMilestone {
         self
     }
 
-    pub(crate) fn turn_count(mut self, turn_count: usize) -> Self {
-        self.turn_count = Some(turn_count);
-        self
-    }
-
-    pub(crate) fn history_counts(
-        mut self,
-        turn_count: usize,
-        item_count: usize,
-        generated_image_count: usize,
-    ) -> Self {
-        self.turn_count = Some(turn_count);
-        self.item_count = Some(item_count);
-        self.generated_image_count = Some(generated_image_count);
-        self
-    }
-
     pub(crate) fn retained_state(mut self, retained_state: RetainedStateSnapshot) -> Self {
         self.retained_state = retained_state;
         self
@@ -291,18 +271,6 @@ impl MemoryMilestone {
         let thread_id = self.thread_id.unwrap_or_default();
         let backend_pid = self
             .backend_pid
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let turn_count = self
-            .turn_count
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let item_count = self
-            .item_count
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let generated_image_count = self
-            .generated_image_count
             .map(|value| value.to_string())
             .unwrap_or_default();
         let retained_state = self.retained_state;
@@ -439,9 +407,6 @@ impl MemoryMilestone {
                     runtime = %runtime,
                     thread_id = %thread_id,
                     backend_pid = %backend_pid,
-                    turn_count = %turn_count,
-                    item_count = %item_count,
-                    generated_image_count = %generated_image_count,
                     retained_state = ?retained_state,
                     retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
                     loaded_transcript_turns = %loaded_transcript_turns,
@@ -531,9 +496,6 @@ impl MemoryMilestone {
                     runtime = %runtime,
                     thread_id = %thread_id,
                     backend_pid = %backend_pid,
-                    turn_count = %turn_count,
-                    item_count = %item_count,
-                    generated_image_count = %generated_image_count,
                     retained_state = ?retained_state,
                     retained_payload_bytes_lower_bound = %retained_payload_bytes_lower_bound,
                     loaded_transcript_turns = %loaded_transcript_turns,

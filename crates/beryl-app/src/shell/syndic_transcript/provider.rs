@@ -76,11 +76,37 @@ pub(crate) enum TranscriptPageDirection {
 pub(crate) struct TranscriptViewPage {
     pub(crate) view_id: TranscriptViewId,
     pub(crate) revision: ProviderRevision,
+    pub(crate) history_state: TranscriptProviderHistoryState,
     pub(crate) records: Vec<TranscriptViewRecord>,
     pub(crate) previous_cursor: Option<TranscriptCursor>,
     pub(crate) next_cursor: Option<TranscriptCursor>,
     pub(crate) at_start: bool,
     pub(crate) at_end: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum TranscriptProviderHistoryState {
+    Complete,
+    Incomplete {
+        reason: TranscriptProviderHistoryReason,
+        detail: Option<String>,
+    },
+    Unavailable {
+        reason: TranscriptProviderHistoryReason,
+        detail: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum TranscriptProviderHistoryReason {
+    NotCaptured,
+    MissedEvents,
+    StreamLost,
+    StorageFailure,
+    UnknownTerminalState,
+    ProjectionStale,
+    ResourceMissing,
+    Other(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -260,6 +286,8 @@ pub(crate) enum TranscriptProviderRejectionReason {
     MissingView,
     MissingCursor,
     MissingProjectionRecord,
+    ProjectionStale,
+    ProjectionIncomplete,
     MissingResource,
     UnsupportedResourceKind,
     RangeOutOfBounds,

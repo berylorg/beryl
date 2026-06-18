@@ -434,6 +434,90 @@ fn rendered_status_line_consumes_panel_status_facts_only() {
 }
 
 #[test]
+fn selected_thread_activation_prepares_syndic_transcript_before_publication() {
+    let shell_source = include_str!("../src/shell.rs");
+    let worker_source = include_str!("../src/shell/turn_worker.rs");
+    let workspace_open_source = include_str!("../src/shell/workspace_open.rs");
+    let decision_resolution_source = include_str!("../src/shell/threaded_decision_resolution.rs");
+    let finish_publication_body =
+        rust_function_body(shell_source, "fn finish_published_thread_activation");
+    let fallback_activation_body = rust_function_body(
+        shell_source,
+        "fn begin_transcript_host_activation_for_thread",
+    );
+    let selector_activation_body =
+        rust_function_body(shell_source, "fn activate_thread_selector_target");
+    let graph_activation_body = rust_function_body(shell_source, "fn select_graph_thread_ref");
+    let decision_parent_activation_body = rust_function_body(
+        decision_resolution_source,
+        "fn begin_decision_resolution_parent_activation",
+    );
+
+    assert!(worker_source.contains("prepare_storage_backed_transcript_activation("));
+    assert!(workspace_open_source.contains("prepare_storage_backed_transcript_activation("));
+    assert!(finish_publication_body.contains("apply_prepared_activation("));
+    assert!(fallback_activation_body.contains("prepare_storage_backed_transcript_activation("));
+    assert!(fallback_activation_body.contains("apply_prepared_activation("));
+    assert!(!fallback_activation_body.contains("begin_activation("));
+
+    for body in [
+        selector_activation_body,
+        graph_activation_body,
+        decision_parent_activation_body,
+    ] {
+        assert!(
+            !body.contains("begin_transcript_host_activation_for_thread("),
+            "selected activation path began transcript activation before prepared Syndic state"
+        );
+        for forbidden in [
+            "thread/turns/list",
+            "ThreadTurnsListOptions",
+            "ThreadReadResponse",
+            "include_turns",
+            "load_selected_thread_history",
+        ] {
+            assert!(
+                !body.contains(forbidden),
+                "selected activation path referenced forbidden CAS history API {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
+fn active_turn_retained_text_bytes_are_per_turn_not_cumulative() {
+    let active_turn_source = include_str!("../src/shell/active_turn_state.rs");
+    let retained_counts_body = rust_function_body(active_turn_source, "fn retained_counts");
+    let text_bytes_assignment_start = retained_counts_body
+        .rfind("counts.text_bytes =")
+        .expect("retained counts should assign text bytes");
+    let text_bytes_assignment_tail = &retained_counts_body[text_bytes_assignment_start..];
+    let text_bytes_assignment_end = text_bytes_assignment_tail
+        .find(';')
+        .expect("text bytes assignment should be a statement");
+    let text_bytes_assignment = &text_bytes_assignment_tail[..=text_bytes_assignment_end];
+
+    assert!(retained_counts_body.contains("let mut turn_text_bytes = 0usize;"));
+    assert!(
+        retained_counts_body
+            .contains("turn_text_bytes = turn_text_bytes.saturating_add(fragment.text.len());")
+    );
+    assert!(
+        retained_counts_body
+            .contains("turn_text_bytes = turn_text_bytes.saturating_add(message.text.len());")
+    );
+    assert!(
+        text_bytes_assignment.contains("turn_text_bytes"),
+        "retained text bytes must add the current turn's text only: {text_bytes_assignment}"
+    );
+    assert!(
+        !text_bytes_assignment.contains("user_fragment_text_bytes")
+            && !text_bytes_assignment.contains("agent_text_bytes"),
+        "retained text bytes must not re-add cumulative counters: {text_bytes_assignment}"
+    );
+}
+
+#[test]
 fn syndic_transcript_selection_copy_stays_on_resident_boundary() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let syndic_transcript_dir = manifest_dir
@@ -1046,7 +1130,7 @@ fn shell_resident_edit_and_branch_commands_use_context_menu_targets_only() {
     assert!(edit_body.contains("ResidentEditCommandTarget::Targeted(target)"));
     assert!(edit_body.contains("ResidentEditCommandTarget::Unavailable(_)"));
     assert!(edit_body.contains("unavailable_command(\"edit_resident_context_target\")"));
-    assert!(edit_body.contains("accept_resident_edit_target(target)"));
+    assert!(edit_body.contains("accept_resident_edit_target(target, window, cx)"));
     assert!(accept_edit_body.contains("target.record_ids()"));
     assert!(accept_edit_body.contains("TranscriptCommandResult::NoOp"));
     assert!(branch_action_body.contains("branch_resident_context_target_from_panel"));
@@ -1055,7 +1139,7 @@ fn shell_resident_edit_and_branch_commands_use_context_menu_targets_only() {
     assert!(branch_body.contains("ResidentBranchCommandTarget::Targeted(target)"));
     assert!(branch_body.contains("ResidentBranchCommandTarget::Unavailable(_)"));
     assert!(branch_body.contains("unavailable_command(\"branch_resident_context_target\")"));
-    assert!(branch_body.contains("accept_resident_branch_target(target)"));
+    assert!(branch_body.contains("accept_resident_branch_target(target, cx)"));
     assert!(accept_branch_body.contains("target.record_ids()"));
     assert!(accept_branch_body.contains("TranscriptCommandResult::NoOp"));
 

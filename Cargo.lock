@@ -572,6 +572,7 @@ dependencies = [
  "rodio",
  "serde",
  "serde_json",
+ "syndic-storage",
  "taplo",
  "tempfile",
  "thiserror 2.0.18",
@@ -5430,6 +5431,7 @@ dependencies = [
  "fjall",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

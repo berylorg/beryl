@@ -36,7 +36,7 @@ Evidence:
 
 Course adjustment at the time: drive detail scheduling from the visible transcript range and actual cached skeleton/full row state.
 
-This was later superseded first by the CAS 0.137 single-contract invariant and then by the resident-window transcript design. Beryl no longer uses the schema-exposed per-turn item-list method. `notLoaded` turn pages are non-rendered index/planning data, and bounded `thread/turns/list itemsView = "full"` requests provide resident full-detail transcript windows admitted by the transcript residency policy.
+This was later superseded first by the CAS 0.137 single-contract invariant and then by the resident-window transcript design. That intermediate correction removed the schema-exposed per-turn item-list method and used bounded `thread/turns/list itemsView = "full"` requests admitted by transcript residency policy. The CAS-live Syndic transcript rework has since superseded that CAS-history path as live selected-transcript architecture.
 
 ## Schema-Exposed Item Detail Method Can Still Be Runtime-Unsupported
 
@@ -46,7 +46,7 @@ The invalid assumption was that schema presence plus experimental initialization
 
 Course adjustment at the time: do not silently replace per-turn detail loading with full turn-page loading without operator approval. The operator approved an explicit CAS 0.137 workaround that retried unsupported per-turn detail requests through `thread/turns/list itemsView = "full"` with the skeleton page cursor and the smallest page prefix that can include the visible turn.
 
-This was later superseded by the root design invariant for the 0.137 migration and by the resident-window transcript design: Beryl hardcodes the supported CAS 0.137 transcript contract to `thread/turns/list` with `itemsView`, does not carry an item-list attempt or fallback branch, and admits returned full details only through transcript residency policy or explicit pins. Beryl still depends on the streaming sanitizer to strip generated-image `result` bytes before typed retention.
+This was later superseded by the root design invariant for the 0.137 migration and by the resident-window transcript design. That path is now superseded again by the CAS-live Syndic transcript rework: Beryl's live target no longer uses CAS historical transcript reads or the archived streaming sanitizer for selected transcript history.
 
 ## Visible Transcript Rows Are Not Always History Skeletons
 

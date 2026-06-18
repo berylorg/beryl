@@ -12,6 +12,7 @@ use super::*;
 pub(crate) struct InMemorySyndicTranscriptProvider {
     revision: ProviderRevision,
     views: HashMap<TranscriptViewId, Vec<TranscriptViewRecord>>,
+    history_states: HashMap<TranscriptViewId, TranscriptProviderHistoryState>,
     projections: HashMap<ProjectionRecordId, ProjectionRecord>,
     projection_rejections: HashMap<ProjectionRecordId, FixtureRejection>,
     resources: HashMap<ResourceId, FixtureResource>,
@@ -62,6 +63,15 @@ impl InMemorySyndicTranscriptProvider {
     ) -> &mut Self {
         sort_view_records(&mut records);
         self.views.insert(view_id, records);
+        self
+    }
+
+    pub(crate) fn set_history_state(
+        &mut self,
+        view_id: TranscriptViewId,
+        state: TranscriptProviderHistoryState,
+    ) -> &mut Self {
+        self.history_states.insert(view_id, state);
         self
     }
 
@@ -189,6 +199,7 @@ impl InMemorySyndicTranscriptProvider {
         };
 
         TranscriptProviderResponseKind::ViewPage(TranscriptViewPage {
+            history_state: self.history_state_for(&request.view_id),
             view_id: request.view_id,
             revision: self.revision,
             records: records[start..end].to_vec(),
@@ -369,6 +380,13 @@ impl InMemorySyndicTranscriptProvider {
                 })
             }
         }
+    }
+
+    fn history_state_for(&self, view_id: &TranscriptViewId) -> TranscriptProviderHistoryState {
+        self.history_states
+            .get(view_id)
+            .cloned()
+            .unwrap_or(TranscriptProviderHistoryState::Complete)
     }
 
     fn stale_response(

@@ -288,7 +288,7 @@ fn fixture_backed_snapshot_realizes_only_resident_presentation_records() {
 
     assert!(matches!(
         snapshot.state,
-        ResidentTranscriptSnapshotState::Fixture { .. }
+        ResidentTranscriptSnapshotState::ProviderBacked { .. }
     ));
     assert_eq!(rows.len(), snapshot.records.len());
     assert_eq!(

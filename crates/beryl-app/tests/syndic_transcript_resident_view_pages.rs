@@ -272,3 +272,42 @@ fn terminal_page_state_is_resident_state_not_presentation_content() {
     assert!(snapshot.resident.at_end);
     assert!(snapshot.presentation.records.is_empty());
 }
+
+#[test]
+fn incomplete_history_page_sets_resident_snapshot_state_without_content() {
+    let view_id = TranscriptViewId("stream-lost-view".to_string());
+    let mut provider = InMemorySyndicTranscriptProvider::new();
+    provider
+        .set_revision(REVISION)
+        .insert_view_records(view_id.clone(), Vec::new())
+        .set_history_state(
+            view_id.clone(),
+            TranscriptProviderHistoryState::Incomplete {
+                reason: TranscriptProviderHistoryReason::StreamLost,
+                detail: Some("stream disconnected".to_string()),
+            },
+        );
+    let mut core = ResidentTranscriptCore::new(policy_with_page_limit(8));
+
+    let request = core.request_view_page(
+        view_id.clone(),
+        TranscriptPageAnchor::Start,
+        TranscriptPageDirection::Forward,
+        ProviderRequestReason::ActivationSeed,
+    );
+    assert_eq!(
+        handle_provider_request(&mut core, &mut provider, request),
+        ResidentProviderResponseEffect::ViewPageAdmitted { admitted_count: 0 }
+    );
+
+    let snapshot = core.core_snapshot();
+    assert_eq!(snapshot.resident.view_id, Some(view_id));
+    assert!(snapshot.presentation.records.is_empty());
+    assert_eq!(
+        snapshot.presentation.state,
+        ResidentTranscriptSnapshotState::Incomplete {
+            reason: TranscriptProviderHistoryReason::StreamLost,
+            detail: Some("stream disconnected".to_string())
+        }
+    );
+}

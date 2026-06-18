@@ -1,7 +1,10 @@
 use std::ops::Range;
 
 use super::{
-    activation::{TranscriptActivationOutcome, TranscriptActivationSeed},
+    activation::{
+        PreparedTranscriptActivation, TranscriptActivationOutcome, TranscriptActivationSeed,
+        TranscriptActivationSource,
+    },
     context_menu::{
         ResidentContextMenuCommand, ResidentContextMenuOutcome, ResidentContextMenuRecord,
         ResidentContextMenuUnavailable, ResidentTranscriptContextMenuTarget,
@@ -18,7 +21,8 @@ use super::{
         ProjectionRecordsRequest, ProviderRequestId, ProviderRevision, ResourceId, ResourceKind,
         ResourceMetadata, ResourceMetadataRequest, ResourceRangeRequest, ResourceRangeResponse,
         SyndicSourceProvenance, TranscriptCursor, TranscriptPageAnchor, TranscriptPageDirection,
-        TranscriptProviderRejection, TranscriptProviderRejectionReason, TranscriptProviderRequest,
+        TranscriptProviderHistoryState, TranscriptProviderRejection,
+        TranscriptProviderRejectionReason, TranscriptProviderRequest,
         TranscriptProviderRequestKind, TranscriptProviderResponse, TranscriptProviderResponseKind,
         TranscriptProviderStale, TranscriptProviderTarget, TranscriptViewId, TranscriptViewPage,
         TranscriptViewPageRequest, TranscriptViewPosition, TranscriptViewRecord,
@@ -461,6 +465,43 @@ impl ResidentTranscriptCore {
         }
     }
 
+    pub(crate) fn apply_prepared_activation(
+        &mut self,
+        prepared: PreparedTranscriptActivation,
+        source: TranscriptActivationSource,
+    ) -> TranscriptActivationOutcome {
+        let seed = prepared.seed(source);
+        let activation = self.begin_activation(seed);
+        if let (Some(request), Some(kind)) = (
+            activation.provider_request.as_ref(),
+            prepared.view_page_response,
+        ) {
+            self.handle_provider_response(TranscriptProviderResponse {
+                request_id: request.id,
+                kind,
+            });
+        }
+
+        if let Some(kind) = prepared.projection_records_response
+            && let Some(request) = self.request_projection_records_for_resident_view(
+                ProviderRequestReason::ProjectionAdmission,
+            )
+        {
+            self.handle_provider_response(TranscriptProviderResponse {
+                request_id: request.id,
+                kind,
+            });
+        }
+
+        TranscriptActivationOutcome {
+            activation_revision: self.presentation.activation_revision,
+            presentation_revision: self.presentation.presentation_revision,
+            state: self.presentation.state.clone(),
+            retained_previous_snapshot: activation.retained_previous_snapshot,
+            provider_request: None,
+        }
+    }
+
     pub(crate) fn reserve_provider_request(
         &mut self,
         kind: TranscriptProviderRequestKind,
@@ -837,6 +878,7 @@ impl ResidentTranscriptCore {
     fn clear_resident_data_for_activation(&mut self) {
         self.resident.view_id = None;
         self.resident.provider_revision = None;
+        self.resident.history_state = None;
         self.resident.view_records.clear();
         self.resident.projection_records.clear();
         self.resident.projection_rejections.clear();
@@ -1337,13 +1379,8 @@ impl ResidentTranscriptCore {
             .records
             .retain(|record| !record_id_in(record_ids, &record.id));
         let released_count = before_count.saturating_sub(self.presentation.records.len());
-        self.presentation.state = if self.presentation.records.is_empty() {
-            ResidentTranscriptSnapshotState::Empty
-        } else {
-            ResidentTranscriptSnapshotState::Fixture {
-                label: "resident-syndic-projections".to_string(),
-            }
-        };
+        self.presentation.state =
+            self.presentation_state_for_records(!self.presentation.records.is_empty());
         released_count
     }
 
@@ -1636,10 +1673,13 @@ impl ResidentTranscriptCore {
 
         self.resident.view_id = Some(page.view_id);
         self.resident.provider_revision = Some(page.revision);
+        self.resident.history_state = Some(page.history_state);
         self.resident.view_record_count = self.resident.view_records.len();
 
         if !self.resident.projection_records.is_empty() || !self.presentation.records.is_empty() {
             self.rebuild_presentation_records();
+        } else {
+            self.refresh_empty_presentation_state_from_history();
         }
 
         self.resident
@@ -2469,16 +2509,47 @@ impl ResidentTranscriptCore {
         self.presentation.presentation_revision = presentation_revision;
         self.presentation.realized_range = None;
         self.presentation.visible_range = None;
-        self.presentation.state = if records.is_empty() {
-            ResidentTranscriptSnapshotState::Empty
-        } else {
-            ResidentTranscriptSnapshotState::Fixture {
-                label: "resident-syndic-projections".to_string(),
-            }
-        };
+        self.presentation.state = self.presentation_state_for_records(!records.is_empty());
         self.presentation.records = records;
         self.apply_fallback_records_to_presentation();
         self.refresh_budget_accounting();
+    }
+
+    fn refresh_empty_presentation_state_from_history(&mut self) {
+        if !self.presentation.records.is_empty() {
+            return;
+        }
+        let next_state = self.presentation_state_for_records(false);
+        if self.presentation.state != next_state {
+            self.presentation.presentation_revision =
+                self.presentation.presentation_revision.saturating_add(1);
+            self.presentation.state = next_state;
+        }
+    }
+
+    fn presentation_state_for_records(&self, has_records: bool) -> ResidentTranscriptSnapshotState {
+        match self.resident.history_state.as_ref() {
+            Some(TranscriptProviderHistoryState::Incomplete { reason, detail }) => {
+                ResidentTranscriptSnapshotState::Incomplete {
+                    reason: reason.clone(),
+                    detail: detail.clone(),
+                }
+            }
+            Some(TranscriptProviderHistoryState::Unavailable { reason, detail }) => {
+                let detail = detail
+                    .clone()
+                    .unwrap_or_else(|| format!("history unavailable: {reason:?}"));
+                ResidentTranscriptSnapshotState::Unavailable { reason: detail }
+            }
+            Some(TranscriptProviderHistoryState::Complete) | None if has_records => {
+                ResidentTranscriptSnapshotState::ProviderBacked {
+                    label: "resident-syndic-projections".to_string(),
+                }
+            }
+            Some(TranscriptProviderHistoryState::Complete) | None => {
+                ResidentTranscriptSnapshotState::Empty
+            }
+        }
     }
 
     fn clear_presentation_records(&mut self) {
@@ -2758,6 +2829,10 @@ fn fallback_reason_for_rejection(
         TranscriptProviderRejectionReason::UnsupportedResourceKind => {
             Some(LocalPresentationReason::Unsupported)
         }
+        TranscriptProviderRejectionReason::ProjectionStale
+        | TranscriptProviderRejectionReason::ProjectionIncomplete => {
+            Some(LocalPresentationReason::PendingCoherentData)
+        }
         TranscriptProviderRejectionReason::MissingResource
         | TranscriptProviderRejectionReason::RangeOutOfBounds
         | TranscriptProviderRejectionReason::InvalidRequest => {
@@ -2926,6 +3001,7 @@ pub(crate) enum ResidentReleaseTarget {
 pub(crate) struct ResidentSyndicDataSnapshot {
     pub(crate) view_id: Option<TranscriptViewId>,
     pub(crate) provider_revision: Option<ProviderRevision>,
+    pub(crate) history_state: Option<TranscriptProviderHistoryState>,
     pub(crate) view_records: Vec<TranscriptViewRecord>,
     pub(crate) projection_records: Vec<ProjectionRecord>,
     pub(crate) projection_rejections: Vec<TranscriptProviderRejection>,
@@ -2973,6 +3049,7 @@ impl Default for ResidentSyndicDataSnapshot {
         Self {
             view_id: None,
             provider_revision: None,
+            history_state: None,
             view_records: Vec::new(),
             projection_records: Vec::new(),
             projection_rejections: Vec::new(),

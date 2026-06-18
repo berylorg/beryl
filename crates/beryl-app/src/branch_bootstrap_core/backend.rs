@@ -21,20 +21,6 @@ impl BranchBootstrapBackend for ManagedBackendSession {
         ManagedBackendSession::read_thread_metadata(self, thread_id, timeout)
     }
 
-    fn read_thread_with_turns(
-        &mut self,
-        thread_id: &str,
-        timeout: Duration,
-    ) -> Result<ThreadInfo, Self::Error> {
-        ManagedBackendSession::read_thread(
-            self,
-            thread_id,
-            ThreadReadOptions::include_turns(),
-            timeout,
-        )
-        .map(|response| response.thread)
-    }
-
     fn next_turn_stream_event(
         &mut self,
         idle_timeout: Duration,

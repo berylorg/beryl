@@ -6,6 +6,8 @@ Beryl needed a reusable exploration-memory note for the legacy dependency invest
 
 The legacy note is preserved below as a dependency exploration memory note for crates.io package serde_json 1.0.149. It is supporting research only; design decisions remain in design docs and implementation sequencing remains in doc/plan.md.
 
+The generated-image history sanitizer described in the migrated details has been archived by the CAS-live Syndic transcript rework. Treat those details as historical dependency research, not as live backend architecture.
+
 # Sources
 
 - Legacy note: doc/deps/serde_json/1.0.149.md.
@@ -40,18 +42,18 @@ Verified on 2026-05-10.
 ### Lifecycle And I/O Notes
 
 - Existing small JSON-RPC paths may continue to parse through `Value` where response sizes are bounded by ordinary protocol expectations.
-- Large generated-image history responses must pass through method-aware streaming sanitization before typed normalization builds any `Value` or backend response structs.
-- `Deserializer::from_reader` lets the sanitizer consume JSON from a bounded payload reader without first materializing the complete WebSocket message.
+- Large generated-image history responses passed through method-aware streaming sanitization before typed normalization built any `Value` or backend response structs in the archived CAS-history path.
+- `Deserializer::from_reader` let the archived sanitizer consume JSON from a bounded payload reader without first materializing the complete WebSocket message.
 - `IgnoredAny` can skip discarded JSON values, including large escaped strings, without retaining the skipped value.
 - JSON parsing validates accepted text payload bytes as JSON. A separate incremental UTF-8 validator is deferred unless Phase 3 exposes a transport-level text-validation diagnostic that `serde_json` cannot provide cleanly.
 
 ### Integration Gotchas
 
-- `serde_json::from_str`, `from_slice`, and `Value` materialize the complete parsed payload and must not be used directly on unsanitized generated-image history responses.
-- Method-aware sanitization must be selected by JSON-RPC request id and known method metadata because JSON-RPC responses carry `id` but not `method`.
-- Unknown methods, malformed JSON, and unexpected response shapes must fail explicitly rather than receiving generic lossy rewriting.
+- `serde_json::from_str`, `from_slice`, and `Value` materialize the complete parsed payload and were unsuitable for unsanitized generated-image history responses in the archived CAS-history path.
+- Method-aware sanitization was selected by JSON-RPC request id and known method metadata because JSON-RPC responses carry `id` but not `method`.
+- Unknown methods, malformed JSON, and unexpected response shapes failed explicitly rather than receiving generic lossy rewriting.
 - `serde-transcode` was not selected for Phase 2 because the sanitizer needs structural, method-specific rewriting instead of pure pass-through serialization.
-- The implemented sanitizer uses method-specific `DeserializeSeed` and visitor types for JSON-RPC response envelopes, `thread/read`, `thread/turns/list`, turn arrays, and item arrays. It uses `IgnoredAny` only for generated-image `result` payloads that must not be retained.
+- The archived sanitizer used method-specific `DeserializeSeed` and visitor types for JSON-RPC response envelopes, `thread/read`, `thread/turns/list`, turn arrays, and item arrays. It used `IgnoredAny` only for generated-image `result` payloads that must not be retained.
 
 ### Minimal Upstream Entrypoints
 

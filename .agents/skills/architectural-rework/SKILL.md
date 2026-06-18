@@ -11,6 +11,8 @@ Treat an architectural rework as a removal-first clean replacement with explicit
 
 Do not migrate by keeping obsolete implementation alive behind adapters, compatibility layers, bridges, or transitional flows unless the operator explicitly approves that workaround.
 
+During an active rework, do not preserve obsolete live behavior by naming it legacy, transitional, compatibility, or compile-only surface. If existing docs describe an obsolete behavior that way, reconcile the docs to the target architecture before implementing. Treat obsolete APIs, tests, protocol probes, and call paths as removal candidates unless the operator has explicitly approved a bounded exception.
+
 After target authority and the rework tracker exist, remove obsolete live docs and source from authoritative locations and live project membership. Do this even if the project temporarily stops building or running.
 
 Temporary breakage is acceptable only inside an active tracked rework gap. Record that gap in the cutover boundary and checklist instead of hiding it with compatibility glue.

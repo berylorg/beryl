@@ -2,7 +2,7 @@
 
 Capture live Codex App Server conversation turns into Syndic durable storage and feed Beryl transcript presentation from storage-backed Syndic transcript projections.
 
-Preserve Codex App Server as Beryl's live execution, authentication, sandbox, approval, skill, MCP, and enterprise-policy authority while removing Codex App Server historical transcript reads from the selected transcript rendering path.
+Preserve Codex App Server as Beryl's live execution, authentication, sandbox, approval, skill, MCP, and enterprise-policy authority while removing Codex App Server historical transcript reads and thread-catalog metadata reads from Beryl shell authority.
 
 Make captured live turns durable incrementally so user input, streamed assistant output, terminal status, and projection revisions survive ordinary UI navigation and process restarts after they have been committed.
 
@@ -10,6 +10,7 @@ Make captured live turns durable incrementally so user input, streamed assistant
 
 - Replacing Codex App Server model execution or implementing a direct `chatgpt_codex` model provider.
 - Importing older Codex App Server thread history or backfilling missed events through historical transcript APIs.
+- Importing, listing, restoring, selecting, titling, or grouping Beryl threads from Codex App Server thread-list or metadata-read APIs.
 - Replacing Codex App Server sandboxing, approvals, policy enforcement, skills, MCP, subagents, or dynamic-tool execution.
 - Persisting transient activity-panel rows as transcript narrative.
 - Rendering raw reasoning, command output, patch diffs, tool resources, or hidden developer instructions as parent transcript narrative.
@@ -20,8 +21,24 @@ Make captured live turns durable incrementally so user input, streamed assistant
 
 - Codex App Server owns live execution for CAS-backed turns.
 - Syndic owns durable transcript history for CAS-backed turns that Beryl captures from live events.
-- Beryl shell owns orchestration between composer submission, CAS turn start, live event streaming, Syndic ingestion, and transcript invalidation.
+- Beryl workspace storage owns workspace membership, selected conversation-view state, title overrides, runtime/member bindings, semantic graph refs, and other GUI state.
+- Beryl shell owns orchestration between workspace state, composer submission, CAS turn start, live event streaming, Syndic ingestion, and transcript invalidation.
 - The transcript renderer consumes only the Beryl-facing Syndic transcript provider contract and must not call Codex App Server or `syndic-storage` directly.
+
+## Responsibility Split
+
+- Selected-thread activation owns workspace-registered Syndic conversation-view selection, execution-target validation, pending activation chrome, and publication of a selected transcript activation seed.
+- Selected-thread activation must not request CAS thread-list rows, CAS metadata-only reads, CAS historical turn pages, or transcript item records from a CAS thread.
+- Composer submission owns draft validation, image asset preparation, pending-fragment admission, and late-bound backend request assembly.
+- Composer submission must obtain durable Syndic admission before it clears a draft, advances image-label protected state, mutates transcript-visible state, or delivers a CAS request.
+- CAS projection binding owns whether the selected Syndic view can reuse a CAS thread for execution, must abandon it as stale, or must wait for fresh projection materialization.
+- Active-turn state owns the accepted immutable execution snapshot, exact CAS thread and turn identities, lifecycle status, pending or steered input queues, hard-stop targets, and local failure presentation.
+- Active-turn state must not own selected transcript history, resident presentation data, image-label frontier authority, or CAS projection validity outside the running turn's immutable snapshot.
+- The Syndic transcript provider owns bounded reads of transcript-view pages, projection records, resource metadata, resource ranges, incomplete-history state, and provider revisions.
+- The transcript host owns resident data, demand, presentation records, scrolling, selection, quote, context-menu, media-action, and diagnostics state above the provider.
+- Graph-action reflection owns classification of Syndic graph mutations into CAS reflection outcomes before any execution operation reuses a CAS binding.
+- Backend protocol normalization owns live execution and live-control methods for approved CAS projections. It must not expose CAS thread-list, metadata-read, or historical transcript reads as shell catalog, restore, title, or selector authority.
+- Composer image-label readiness owns only draft-scope allocation and gating. For captured histories, prior-label authority comes from the Syndic owning-history frontier exposed through the transcript/history boundary.
 
 ## Submission Admission
 
@@ -78,15 +95,40 @@ Make captured live turns durable incrementally so user input, streamed assistant
 - Stale CAS threads are abandoned as execution projections. Beryl does not delete them, because backend fork, branch, archive, and listing relationships may have dependencies outside the current Syndic view.
 - If CAS exposes archive semantics that are proven not to damage related threads, Beryl may archive abandoned projections as a later cleanup policy. Archiving is not required for correctness.
 
+## CAS Projection Binding Records
+
+- A CAS projection binding record is owned by Syndic durable history and attached to one Syndic thread view.
+- The record status is exactly `valid`, `stale`, `unbound`, or `active`.
+- The record stores the Syndic thread-view id, binding revision, selected-path revision or digest, and the latest graph action or storage revision that established the binding status.
+- A valid or active record stores the exact CAS runtime target, CAS thread id, and proof that the selected Syndic path maps to the CAS lineage prefix used for native execution.
+- An active record also stores the accepted immutable execution snapshot id, CAS turn id when known, accepted user input identity, accepted selected-path revision or digest, started timestamp, and active-turn mutation gates.
+- A stale record keeps the old CAS thread id only as provenance, stores a stale reason, and prevents future execution from using that CAS thread as valid lineage.
+- An unbound record stores that no CAS execution projection is available for the view and may store the reason, such as newly created Syndic-only view, imported view without CAS proof, or abandoned stale projection.
+- Binding records may reference provider-operation turns created by compaction or future materialization work, but compaction items and materialization metadata do not become separate graph nodes.
+- Binding records must not store authentication material, capability tokens, hidden developer-instructions payloads, or backend-private policy fields.
+- A selected view with no binding record is treated as unbound until storage creates an explicit record.
+
 ## CAS Reflection Outcomes
 
 - `NoCasEffect`: the action changes only Syndic/UI metadata or affects a view that is not being executed.
-- `CasNativeOperation`: Beryl can prove the selected Syndic path maps exactly to a CAS-supported operation such as fork, rollback, turn start, interruption, or metadata-only resume.
+- `CasNativeOperation`: Beryl can prove the selected Syndic path maps exactly to a CAS-supported live operation such as fork, rollback, turn start, interruption, or live projection attachment.
 - `InvalidateCasProjection`: the CAS thread no longer represents the selected Syndic path, so future execution must not reuse that binding as valid lineage.
 - `MaterializeFreshCasProjectionOnNextRun`: the next execution must create a fresh CAS execution projection from Syndic history.
 - Fresh projection materialization creates a new execution lineage rather than pretending the old CAS thread was rebuilt in place.
 - Fresh projection materialization may use a context pack derived from Syndic history when CAS cannot create an arbitrary thread from exact prior turns.
 - A context-pack projection is not equivalent to native CAS history. It can change prompt shape, cache behavior, provenance, tool/result structure, and model interpretation, so Beryl records it as a new execution lineage.
+
+## Graph-Action Classification Boundary
+
+- Graph-action classification is a pure Beryl/Syndic decision over the requested graph mutation, the selected Syndic view, the current CAS projection binding record, active-turn state, and exact lineage proof already present in durable or resident state.
+- The classifier must not call CAS, list CAS turns, inspect CAS history, or synthesize a backend thread while deciding an outcome.
+- The classifier returns one CAS reflection outcome, the binding mutation to write, and any required execution precondition for later orchestration.
+- `NoCasEffect` is returned for UI metadata, titles, pins, selection, view-only changes, and graph changes outside the executing view. It does not mutate CAS binding state unless the action also changes the selected execution path.
+- `CasNativeOperation` is returned only when the classifier can prove an exact CAS-supported operation and identify the exact CAS ids and rollback or fork scope needed by that operation.
+- `InvalidateCasProjection` is returned when the selected Syndic path changes in a way that invalidates the CAS lineage and no immediate execution is being requested.
+- `MaterializeFreshCasProjectionOnNextRun` is returned when the selected view must not reuse the old CAS thread and the next execution can proceed only after fresh materialization.
+- If an active turn exists, classifier output for mutations to ancestors records that the active turn continues against its accepted immutable snapshot and that the selected view's binding becomes stale for later execution.
+- If a requested branch, edit, delete, or reparent action needs exact proof that is absent, the classifier rejects the CAS-native path rather than downgrading to a guessed CAS operation.
 
 ## Syndic Graph Actions
 
@@ -105,6 +147,20 @@ Make captured live turns durable incrementally so user input, streamed assistant
 - Moving or reparenting turns usually invalidates the affected CAS projection unless the resulting path remains exactly the same CAS lineage.
 - Renaming, titling, pinning, archiving, selecting, and UI-only metadata changes are Syndic/UI operations and do not mutate CAS history.
 - Stopping or canceling an active turn uses CAS interruption or stop primitives against the exact active CAS identities. If the user stops without deleting the active turn, Syndic keeps the captured turn with explicit interrupted, failed, incomplete, or terminal state according to the observed stream outcome.
+
+## Fresh Context-Pack Materialization
+
+- Fresh context-pack materialization is used only when the selected Syndic view is stale or unbound, a user action needs live CAS execution, and no exact CAS-native operation can establish a valid binding.
+- Materialization creates a new CAS execution lineage and records that lineage in the CAS projection binding. It must not pretend the abandoned CAS thread was rebuilt in place.
+- The materialization input is derived from the selected Syndic path in chronological turn order up to the execution parent, followed by the newly accepted user input for the requested turn.
+- The context pack includes only Syndic-owned transcript-visible user input text, transcript-visible user media markers, assistant commentary, assistant final-answer text, generated-output labels, provider-operation markers such as compaction, and bounded provenance markers needed to explain that the context was materialized from Syndic.
+- The context pack excludes hidden developer instructions, graph-upkeep instructions, raw reasoning, command output, patch diffs, approval payloads, tool internals, policy-private fields, authentication material, capability tokens, and activity-panel-only records.
+- The context pack records source provenance in Syndic binding metadata and source-event metadata. It does not create synthetic user-authored transcript turns for older history.
+- V1 materialization does not summarize omitted history. If the selected path does not fit the approved materialization budget, Beryl rejects execution with an explicit too-large or incomplete-history state until a summarization design is approved.
+- V1 materialization includes resource text only when Syndic projections already expose bounded transcript-visible text. It represents generated images, attachments, and comparable heavy resources by their durable labels or transcript-visible markers unless a future resource replay design approves byte rehydration.
+- Materialization may use a backend request only when the normalized backend boundary can keep materialized context separate from ordinary user-authored input and hidden developer instructions.
+- Until such a backend request boundary is implemented, stale or unbound execution remains unavailable rather than smuggling the context pack through a user prompt, developer-instructions payload, or legacy CAS history mutation.
+- The materialization request, if accepted by CAS, binds the new CAS thread id and first CAS turn id to the active Syndic turn and marks the prior stale CAS thread abandoned.
 
 ## CAS Compaction
 
@@ -125,6 +181,16 @@ Make captured live turns durable incrementally so user input, streamed assistant
 - Deleting, editing, or reparenting ancestors of the active turn is allowed, but the active turn continues streaming against the immutable execution snapshot CAS accepted.
 - The active execution snapshot records the accepted user input, CAS identities, and Syndic graph revision or path that CAS answered from.
 - If an ancestor changes while a turn is streaming, the selected graph may move on, but the live response records that it was generated from the earlier snapshot and the CAS projection becomes stale for later execution.
+
+## Active-Turn Mutation Gates
+
+- Accepted user input is immutable after durable admission and CAS acceptance. Editing it requires a later branch or replacement edit operation, not mutation of the active turn.
+- Incomplete assistant output cannot be used as a branch, edit, copy-proof, quote-proof, or image-label frontier until it reaches a terminal state or is explicitly marked incomplete by the owning Syndic boundary.
+- Deleting the active turn requests exact CAS interruption when possible and removes the active turn's partial Syndic data from the selected path after the abort is accepted.
+- Deleting, editing, or reparenting an ancestor of the active turn is allowed only as a Syndic graph mutation against the selected view. The running CAS turn continues against the immutable snapshot it already accepted.
+- Ancestor mutation during streaming marks the selected view's CAS projection stale for later execution and stores the active snapshot provenance on the running turn.
+- Late CAS events for an aborted, detached, or stale active turn may update only the exact turn-owned source-event or terminal-state records they identify. They must not recreate graph parent edges or republish detached transcript content into the selected view.
+- Pending user-input queues and active-turn steering queues belong to active-turn orchestration, not transcript history. Admission must be bounded and must not fabricate backend history when delivery fails.
 
 ## Operational Records
 

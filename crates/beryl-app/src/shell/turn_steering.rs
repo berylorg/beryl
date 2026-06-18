@@ -9,7 +9,7 @@ use beryl_backend::{
     active_turn_not_steerable_error,
 };
 
-use super::execution_detail::{TranscriptImageMarkerSpec, UserInputFragment};
+use super::{transcript_images::TranscriptImageMarkerSpec, turn_input::UserInputFragment};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SteeringInputFragment {

@@ -8,7 +8,7 @@ use gpui::{
 use super::super::OpenTranscriptContextMenu;
 use super::{
     DemandFact, DemandFactKind, LocalPresentationReason, ManualTranscriptScrollCommand,
-    RealizedFrameRecord, RealizedFrameRequest, RealizedFrameWindow,
+    PreparedTranscriptActivation, RealizedFrameRecord, RealizedFrameRequest, RealizedFrameWindow,
     ResidentContextMenuCommandTarget, ResidentContextMenuOutcome, ResidentContextMenuUnavailable,
     ResidentFallbackTarget, ResidentMediaActionOutcome, ResidentMediaActionUnavailable,
     ResidentMediaCopyCommandTarget, ResidentMediaPreviewCommandTarget,
@@ -19,12 +19,12 @@ use super::{
     ResidentTranscriptQuotePayload, ResidentTranscriptQuoteTarget, ResidentTranscriptSelection,
     ResidentTranscriptSnapshot, ResidentTranscriptStatusFacts, ResourceId, ResourceKind,
     ResourceMetadata, SyndicTranscriptDiagnosticSnapshot, SyndicTranscriptHost,
-    TranscriptActivationOutcome, TranscriptActivationSeed, TranscriptCommandResult,
-    realized_resident_selectable_record_ids, resident_context_menu_command_for_realized_record_id,
-    resident_context_menu_frame_loss, resident_media_action_command_for_realized_record_id,
-    resident_media_action_frame_loss, resident_quote_command_for_realized_record_ids,
-    resident_quote_frame_loss, resident_selection_command_for_realized_record_ids,
-    resident_selection_frame_loss,
+    TranscriptActivationOutcome, TranscriptActivationSeed, TranscriptActivationSource,
+    TranscriptCommandResult, realized_resident_selectable_record_ids,
+    resident_context_menu_command_for_realized_record_id, resident_context_menu_frame_loss,
+    resident_media_action_command_for_realized_record_id, resident_media_action_frame_loss,
+    resident_quote_command_for_realized_record_ids, resident_quote_frame_loss,
+    resident_selection_command_for_realized_record_ids, resident_selection_frame_loss,
 };
 use crate::diagnostic_dynamic_tools::TranscriptFrameMetricsSnapshot;
 
@@ -70,6 +70,14 @@ impl SyndicTranscriptPanel {
         seed: TranscriptActivationSeed,
     ) -> TranscriptActivationOutcome {
         self.host.begin_activation(seed)
+    }
+
+    pub(crate) fn apply_prepared_activation(
+        &mut self,
+        prepared: PreparedTranscriptActivation,
+        source: TranscriptActivationSource,
+    ) -> TranscriptActivationOutcome {
+        self.host.apply_prepared_activation(prepared, source)
     }
 
     pub(crate) fn manual_scroll(

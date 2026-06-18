@@ -4,8 +4,8 @@ use std::{fmt, time::Duration};
 
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallRequest, DynamicToolCallResponse, ManagedBackendSession,
-    ThreadInfo, ThreadItem, ThreadReadOptions, ThreadSummary, TurnInfo, TurnStartOptions,
-    TurnStartResponse, TurnStatus, TurnStreamEvent, UserInput,
+    ThreadItem, ThreadSummary, TurnInfo, TurnStartOptions, TurnStartResponse, TurnStatus,
+    TurnStreamEvent, UserInput,
 };
 use beryl_model::conversation::{ConversationThreadId, ConversationTurnId};
 
@@ -18,19 +18,14 @@ mod message;
 #[path = "branch_bootstrap_core/proof.rs"]
 mod proof;
 
+pub(crate) use message::branch_bootstrap_message;
 #[allow(unused_imports)]
-pub(crate) use message::beryl_thread_link_destination;
-pub(crate) use message::{branch_bootstrap_message, parse_beryl_thread_link};
+pub(crate) use message::{beryl_thread_link_destination, parse_beryl_thread_link};
 #[allow(unused_imports)]
 pub(crate) use proof::bootstrap_dynamic_tool_unavailable_response;
-pub(crate) use proof::{
-    prove_branch_thread_completed_bootstrap_from_history,
-    prove_branch_thread_durable_with_bootstrap_turn,
-};
-use proof::{
-    validate_durable_thread_summary, validate_thread_info_with_completed_bootstrap_turn,
-    wait_for_bootstrap_turn_terminal,
-};
+pub(crate) use proof::prove_branch_thread_durable_with_bootstrap_turn;
+pub(crate) use proof::turn_has_visible_bootstrap_message;
+use proof::{validate_durable_thread_summary, wait_for_bootstrap_turn_terminal};
 
 pub(crate) const BERYL_THREAD_LINK_SCHEME: &str = "beryl_threadid://";
 const UNTITLED_THREAD_LABEL: &str = "Untitled thread";
@@ -55,15 +50,8 @@ pub(crate) struct BranchBootstrapStartedTurn {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BranchBootstrapHistoryCompletion {
-    thread: ThreadSummary,
-    turn: TurnInfo,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 enum BootstrapTerminalProof {
     Streamed(TurnInfo),
-    History { thread: ThreadInfo, turn: TurnInfo },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,15 +108,6 @@ pub(crate) enum BranchBootstrapError {
     DurableThreadMarkedEphemeral {
         thread_id: ConversationThreadId,
     },
-    BootstrapTurnMissingFromHistory {
-        thread_id: ConversationThreadId,
-        turn_id: ConversationTurnId,
-    },
-    BootstrapTurnNotCompletedInHistory {
-        thread_id: ConversationThreadId,
-        turn_id: ConversationTurnId,
-        status: TurnStatus,
-    },
     BootstrapTurnMissingVisibleMessage {
         thread_id: ConversationThreadId,
         turn_id: ConversationTurnId,
@@ -151,12 +130,6 @@ pub(crate) trait BranchBootstrapBackend {
         thread_id: &str,
         timeout: Duration,
     ) -> Result<ThreadSummary, Self::Error>;
-
-    fn read_thread_with_turns(
-        &mut self,
-        thread_id: &str,
-        timeout: Duration,
-    ) -> Result<ThreadInfo, Self::Error>;
 
     fn next_turn_stream_event(
         &mut self,
@@ -192,24 +165,10 @@ impl BranchBootstrapStartedTurn {
     }
 }
 
-impl BranchBootstrapHistoryCompletion {
-    pub(crate) fn new(thread: ThreadSummary, turn: TurnInfo) -> Self {
-        Self { thread, turn }
-    }
-
-    pub(crate) fn thread(&self) -> &ThreadSummary {
-        &self.thread
-    }
-
-    pub(crate) fn turn(&self) -> &TurnInfo {
-        &self.turn
-    }
-}
-
 impl BootstrapTerminalProof {
     fn turn(&self) -> &TurnInfo {
         match self {
-            Self::Streamed(turn) | Self::History { turn, .. } => turn,
+            Self::Streamed(turn) => turn,
         }
     }
 }
@@ -244,23 +203,19 @@ where
         });
     }
 
-    let thread = match terminal_proof {
-        BootstrapTerminalProof::Streamed(_) => prove_branch_thread_durable_with_bootstrap_turn(
-            backend,
-            thread_id,
-            &bootstrap_turn_id,
-            message,
-            timeout,
-        )?,
-        BootstrapTerminalProof::History { thread, .. } => {
-            validate_thread_info_with_completed_bootstrap_turn(
-                thread,
-                thread_id,
-                &bootstrap_turn_id,
-                message,
-            )?
-        }
-    };
+    if !turn_has_visible_bootstrap_message(terminal_proof.turn(), message) {
+        return Err(BranchBootstrapError::BootstrapTurnMissingVisibleMessage {
+            thread_id: thread_id.clone(),
+            turn_id: bootstrap_turn_id,
+        });
+    }
+
+    let thread = prove_branch_thread_durable_with_bootstrap_turn(
+        backend,
+        thread_id,
+        &bootstrap_turn_id,
+        timeout,
+    )?;
     Ok(BranchBootstrapTurn {
         thread,
         bootstrap_turn_id: Some(bootstrap_turn_id),

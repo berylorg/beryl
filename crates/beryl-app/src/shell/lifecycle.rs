@@ -7,7 +7,7 @@ use beryl_model::semantic_graph::SemanticGraph;
 use beryl_model::workspace::WorkspaceId;
 use gpui::Context;
 
-use super::selected_thread_activation::ActivationPreparer;
+use super::thread_activation::ActivationPreparer;
 use super::turn_worker::{ThreadActivationOutcome, TurnWorkerOutcome};
 use super::{
     BlockedState, ConversationSurfaceState, FailureSummary, LoadedWorkspaceState,
@@ -92,7 +92,7 @@ impl ShellView {
                 let workspace_id_for_log = loaded_workspace.workspace.id().as_str().to_string();
                 let active_thread_id = opened.selected_thread_id.clone().or_else(|| {
                     opened
-                        .selected_thread_history
+                        .selected_thread_metadata
                         .as_ref()
                         .map(|thread| thread.summary().id)
                 });
@@ -112,9 +112,10 @@ impl ShellView {
                             &inventory_workspace_state,
                             known_threads.clone(),
                             opened.hard_stop_capabilities.clone(),
-                            opened.selected_thread_history,
+                            opened.selected_thread_metadata,
                             active_thread_id.clone(),
                             opened.selected_thread_session_metadata,
+                            opened.selected_thread_transcript_activation,
                             opened.surface_notice,
                             opened.graph,
                             opened.graph_revision,
@@ -129,9 +130,10 @@ impl ShellView {
                         &loaded_workspace.workspace_ui_state,
                         known_threads.clone(),
                         opened.hard_stop_capabilities.clone(),
-                        opened.selected_thread_history,
+                        opened.selected_thread_metadata,
                         active_thread_id.clone(),
                         opened.selected_thread_session_metadata,
+                        opened.selected_thread_transcript_activation,
                         opened.surface_notice,
                         opened.graph,
                         opened.graph_revision,
@@ -188,7 +190,7 @@ impl ShellView {
                     .retained_state_if_enabled(|| self.retained_state_snapshot())
                     .log();
                 if let Some(publication) = synchronous_publication {
-                    self.finish_published_selected_thread_activation(publication, cx);
+                    self.finish_published_thread_activation(publication, cx);
                 } else {
                     let source = if refreshing_preserved_surface {
                         super::syndic_transcript::TranscriptActivationSource::BackendReopen
@@ -422,26 +424,13 @@ impl ShellView {
                 execution_target,
                 thread,
                 session_metadata,
+                prepared_transcript,
             } => {
                 let ui_finish_started = Instant::now();
                 let summary = thread.summary();
-                let history_turn_count = thread.turns.len();
-                let history_item_count = thread
-                    .turns
-                    .iter()
-                    .map(|turn| turn.items.len())
-                    .sum::<usize>();
-                let history_generated_image_count = thread
-                    .turns
-                    .iter()
-                    .flat_map(|turn| turn.items.iter())
-                    .filter(|item| matches!(item, beryl_backend::ThreadItem::ImageGeneration(_)))
-                    .count();
+                let metadata_turn_count = thread.turns.len();
                 let Some(activation_source) = self.conversation_surface().and_then(|surface| {
-                    surface.pending_selected_thread_activation_source(
-                        summary.id.as_str(),
-                        &execution_target,
-                    )
+                    surface.pending_thread_activation_source(summary.id.as_str(), &execution_target)
                 }) else {
                     self.discard_pending_thread_navigation_activation();
                     debug!(
@@ -453,43 +442,35 @@ impl ShellView {
                 };
                 let mut published_activation = None;
                 if let Some(surface) = self.conversation_surface_mut() {
-                    let history_apply_started = Instant::now();
+                    let activation_apply_started = Instant::now();
                     MemoryMilestone::new("thread_activation_ui_apply_start")
                         .thread_id(summary.id.as_str())
-                        .history_counts(
-                            history_turn_count,
-                            history_item_count,
-                            history_generated_image_count,
-                        )
                         .log();
-                    surface.stage_selected_thread_activation(ActivationPreparer::prepare(
+                    surface.stage_thread_activation(ActivationPreparer::prepare(
                         execution_target.clone(),
                         thread,
                         Some(session_metadata),
                         activation_source,
+                        prepared_transcript,
                     ));
-                    published_activation = surface.publish_staged_selected_thread_activation();
+                    published_activation = surface.publish_staged_thread_activation();
                     debug!(
                         thread_id = summary.id.as_str(),
-                        history_turn_count,
-                        history_item_count,
-                        history_generated_image_count,
-                        history_application_ms = super::elapsed_ms(history_apply_started.elapsed()),
+                        metadata_turn_count,
+                        activation_application_ms =
+                            super::elapsed_ms(activation_apply_started.elapsed()),
                         published = published_activation.is_some(),
-                        "staged activated thread history for conversation surface"
+                        "staged selected-thread activation metadata and prepared transcript for conversation surface"
                     );
                     info!(
                         thread_id = summary.id.as_str(),
-                        history_turn_count,
-                        history_item_count,
-                        history_generated_image_count,
+                        metadata_turn_count,
                         published = published_activation.is_some(),
                         "Staged selected-thread activation result"
                     );
                 }
-                let published_thread_id = published_activation.map(|publication| {
-                    self.finish_published_selected_thread_activation(publication, cx)
-                });
+                let published_thread_id = published_activation
+                    .map(|publication| self.finish_published_thread_activation(publication, cx));
                 debug!(
                     thread_id = summary.id.as_str(),
                     thread_activation_ui_finish_ms = super::elapsed_ms(ui_finish_started.elapsed()),
@@ -623,6 +604,7 @@ fn seed_backend_unavailable_surface(
         HardStopCapabilities::default(),
         None,
         selected_thread_id,
+        None,
         None,
         None,
         seed.graph,
@@ -759,32 +741,6 @@ pub(super) fn blocked_state_for_error(
             ),
             next_steps: vec![
                 format!("Run Beryl with Codex App Server {required_version}."),
-                "Verify that the selected runtime target is using the expected codex executable.".to_string(),
-                "Retry after correcting the backend launch environment.".to_string(),
-            ],
-            disconnect: false,
-            surface: None,
-        },
-        beryl_backend::ManagedBackendError::Compatibility(
-            beryl_backend::CompatibilityError::ThreadTurnsListItemsViewUnsupported {
-                method,
-                code,
-                message,
-            },
-        ) => BlockedState {
-            attempt,
-            loaded_workspace: None,
-            target: RetryTarget::HostPath(String::new()),
-            intent: super::WorkspaceOpenIntent::None,
-            workspace_label: String::new(),
-            stage: Some(stage),
-            title: "Codex app-server transcript history is unsupported",
-            summary: "The managed backend started, but it does not satisfy the transcript history contract this Beryl build requires.".to_string(),
-            detail: format!(
-                "This Beryl build requires `{method}` with `itemsView` under the 0.137 app-server contract. The backend rejected the probe with JSON-RPC code {code}: {message}."
-            ),
-            next_steps: vec![
-                "Run Beryl with Codex App Server 0.137.0.".to_string(),
                 "Verify that the selected runtime target is using the expected codex executable.".to_string(),
                 "Retry after correcting the backend launch environment.".to_string(),
             ],

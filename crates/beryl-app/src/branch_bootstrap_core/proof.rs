@@ -14,7 +14,6 @@ where
         return Ok(BootstrapTerminalProof::Streamed(started_turn));
     }
 
-    let mut saw_target_idle = false;
     loop {
         let event = backend
             .next_turn_stream_event(idle_timeout)
@@ -24,17 +23,11 @@ where
                 error: error.to_string(),
             })?;
         let Some(event) = event else {
-            if saw_target_idle {
-                if let Some(proof) = read_bootstrap_terminal_from_history(
-                    backend,
-                    thread_id,
-                    bootstrap_turn_id,
-                    idle_timeout,
-                )? {
-                    return Ok(proof);
-                }
-            }
-            continue;
+            return Err(BranchBootstrapError::BootstrapStreamFailed {
+                thread_id: thread_id.clone(),
+                turn_id: bootstrap_turn_id.clone(),
+                error: "timed out waiting for live bootstrap completion event".to_string(),
+            });
         };
 
         match event {
@@ -88,158 +81,35 @@ where
             } if event_thread_id == thread_id.as_str()
                 && matches!(status, beryl_backend::ThreadStatus::Idle) =>
             {
-                saw_target_idle = true;
-                if let Some(proof) = read_bootstrap_terminal_from_history(
-                    backend,
-                    thread_id,
-                    bootstrap_turn_id,
-                    idle_timeout,
-                )? {
-                    return Ok(proof);
-                }
+                return Err(BranchBootstrapError::BootstrapStreamFailed {
+                    thread_id: thread_id.clone(),
+                    turn_id: bootstrap_turn_id.clone(),
+                    error: "thread became idle before Beryl observed the live bootstrap completion event"
+                        .to_string(),
+                });
             }
             _ => {}
         }
     }
 }
 
-fn read_bootstrap_terminal_from_history<B>(
-    backend: &mut B,
-    thread_id: &ConversationThreadId,
-    bootstrap_turn_id: &ConversationTurnId,
-    timeout: Duration,
-) -> Result<Option<BootstrapTerminalProof>, BranchBootstrapError>
-where
-    B: BranchBootstrapBackend,
-{
-    let thread = backend
-        .read_thread_with_turns(thread_id.as_str(), timeout)
-        .map_err(|error| BranchBootstrapError::DurabilityProofFailed {
-            thread_id: thread_id.clone(),
-            error: error.to_string(),
-        })?;
-    let _ = validate_durable_thread_summary(thread.summary(), thread_id)?;
-    let Some(turn) = thread
-        .turns
-        .iter()
-        .find(|turn| turn.id == bootstrap_turn_id.as_str())
-        .cloned()
-    else {
-        return Ok(None);
-    };
-
-    if !turn.is_terminal() {
-        return Ok(None);
-    }
-
-    Ok(Some(BootstrapTerminalProof::History { thread, turn }))
-}
-
 pub(crate) fn prove_branch_thread_durable_with_bootstrap_turn<B>(
     backend: &mut B,
     thread_id: &ConversationThreadId,
     bootstrap_turn_id: &ConversationTurnId,
-    message: &str,
     timeout: Duration,
 ) -> Result<ThreadSummary, BranchBootstrapError>
 where
     B: BranchBootstrapBackend,
 {
     let thread = backend
-        .read_thread_with_turns(thread_id.as_str(), timeout)
+        .read_thread_metadata(thread_id.as_str(), timeout)
         .map_err(|error| BranchBootstrapError::DurabilityProofFailed {
             thread_id: thread_id.clone(),
             error: error.to_string(),
         })?;
-    validate_thread_info_with_completed_bootstrap_turn(
-        thread,
-        thread_id,
-        bootstrap_turn_id,
-        message,
-    )
-}
-
-pub(crate) fn prove_branch_thread_completed_bootstrap_from_history<B>(
-    backend: &mut B,
-    thread_id: &ConversationThreadId,
-    bootstrap_turn_id: &ConversationTurnId,
-    message: &str,
-    timeout: Duration,
-) -> Result<Option<BranchBootstrapHistoryCompletion>, BranchBootstrapError>
-where
-    B: BranchBootstrapBackend,
-{
-    let thread = backend
-        .read_thread_with_turns(thread_id.as_str(), timeout)
-        .map_err(|error| BranchBootstrapError::DurabilityProofFailed {
-            thread_id: thread_id.clone(),
-            error: error.to_string(),
-        })?;
-    let summary = validate_durable_thread_summary(thread.summary(), thread_id)?;
-    let Some(turn) = thread
-        .turns
-        .iter()
-        .find(|turn| turn.id == bootstrap_turn_id.as_str())
-        .cloned()
-    else {
-        return Ok(None);
-    };
-
-    if !turn.is_terminal() {
-        return Ok(None);
-    }
-
-    if turn.status != TurnStatus::Completed {
-        return Err(BranchBootstrapError::BootstrapTurnNotCompletedInHistory {
-            thread_id: thread_id.clone(),
-            turn_id: bootstrap_turn_id.clone(),
-            status: turn.status,
-        });
-    }
-
-    if !turn_has_visible_bootstrap_message(&turn, message) {
-        return Err(BranchBootstrapError::BootstrapTurnMissingVisibleMessage {
-            thread_id: thread_id.clone(),
-            turn_id: bootstrap_turn_id.clone(),
-        });
-    }
-
-    Ok(Some(BranchBootstrapHistoryCompletion::new(summary, turn)))
-}
-
-pub(super) fn validate_thread_info_with_completed_bootstrap_turn(
-    thread: ThreadInfo,
-    thread_id: &ConversationThreadId,
-    bootstrap_turn_id: &ConversationTurnId,
-    message: &str,
-) -> Result<ThreadSummary, BranchBootstrapError> {
-    let summary = validate_durable_thread_summary(thread.summary(), thread_id)?;
-    let Some(turn) = thread
-        .turns
-        .iter()
-        .find(|turn| turn.id == bootstrap_turn_id.as_str())
-    else {
-        return Err(BranchBootstrapError::BootstrapTurnMissingFromHistory {
-            thread_id: thread_id.clone(),
-            turn_id: bootstrap_turn_id.clone(),
-        });
-    };
-
-    if turn.status != TurnStatus::Completed {
-        return Err(BranchBootstrapError::BootstrapTurnNotCompletedInHistory {
-            thread_id: thread_id.clone(),
-            turn_id: bootstrap_turn_id.clone(),
-            status: turn.status,
-        });
-    }
-
-    if !turn_has_visible_bootstrap_message(turn, message) {
-        return Err(BranchBootstrapError::BootstrapTurnMissingVisibleMessage {
-            thread_id: thread_id.clone(),
-            turn_id: bootstrap_turn_id.clone(),
-        });
-    }
-
+    let summary = validate_durable_thread_summary(thread, thread_id)?;
+    let _ = bootstrap_turn_id;
     Ok(summary)
 }
 
@@ -263,7 +133,7 @@ pub(super) fn validate_durable_thread_summary(
     Ok(thread)
 }
 
-fn turn_has_visible_bootstrap_message(turn: &TurnInfo, message: &str) -> bool {
+pub(crate) fn turn_has_visible_bootstrap_message(turn: &TurnInfo, message: &str) -> bool {
     turn.items.iter().any(|item| {
         let ThreadItem::UserMessage(user_message) = item else {
             return false;

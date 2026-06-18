@@ -180,7 +180,6 @@ impl BackendUnavailableKind {
             | ManagedBackendError::ReadTransport { .. }
             | ManagedBackendError::InvalidJsonLine { .. }
             | ManagedBackendError::DeserializeResponse { .. }
-            | ManagedBackendError::SanitizeResponse { .. }
             | ManagedBackendError::DecodeBase64Response { .. }
             | ManagedBackendError::SerializeRequest { .. }
             | ManagedBackendError::RequestTimeout { .. }

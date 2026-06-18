@@ -48,6 +48,7 @@ mod server;
 mod session;
 mod thread_archive;
 mod thread_branch;
+mod thread_metadata;
 mod turn;
 mod websocket_transport;
 
@@ -99,6 +100,7 @@ pub use thread_branch::{
     ThreadBranchCapabilities, ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult,
     ThreadBranchCapabilityReport, ThreadForkOptions, ThreadForkResponse, ThreadRollbackResponse,
 };
+pub use thread_metadata::ThreadReadMetadata;
 pub use turn::{
     AccountRateLimitsResponse, ActiveTurnNotSteerable, AgentMessageItem, ApprovalRequest,
     ApprovalRequestKind, CommandExecutionItem, CommandExecutionStatus, FileChangeItem,

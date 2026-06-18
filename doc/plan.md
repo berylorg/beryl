@@ -1,63 +1,51 @@
 # Scope
 
-Active rework: `doc/rework/cas-live-syndic-transcript/REWORK.md`.
+Active rework: `doc/rework/workspace-syndic-thread-catalog/REWORK.md`.
 
-Replace CAS-backed selected transcript history with CAS-live capture into Syndic storage and storage-backed Syndic transcript rendering. CAS remains live execution, authentication, enterprise policy, sandbox, tools, approvals, and runtime owner during this rework.
+Rework target: Beryl shell thread catalogs, thread selectors, workspace restore, graph link-thread menus, breadcrumbs, navigation history, and title rows must be built from Beryl workspace-owned Syndic conversation-view refs joined with Syndic history-derived summaries.
 
-# Phase 1: Rework Authority Realignment And Old-Code Removal (wip)
+Domain split:
 
-Status: blocked on Operator review of the intentional removal-first gap before replacement implementation.
+- Syndic owns historical conversation data and history-derived summaries.
+- Beryl workspace storage owns selected view, workspace membership, runtime/member bindings, GUI-local titles, semantic graph refs, navigation history, and other GUI state.
+- CAS is only the live execution stream/control source for approved projections and must not be used as catalog, selector, restore, title, branch-tree, workspace-membership, or link-menu authority.
 
-- Done: updated the active rework tracker to use `old-code` rather than Rust-specific archive language.
-- Done: reclassified Syndic durable history, CAS-live capture, backend runtime internals, Codex-compatible agent-layer constraints, and transcript presentation internals into `doc/systems`.
-- Done: trimmed transcript feature authority back to user-visible transcript behavior.
-- Done: archived obsolete docs under `old-doc`.
-- Done: archived obsolete source under `old-code`.
-- Done: removed obsolete live CAS-history source files from `beryl-app` and `beryl-backend`.
-- Done: removed obsolete app/backend module registrations and backend public history exports.
-- Done: recorded that full workspace compilation is expected to fail until replacement checkpoints close the gap.
-- Remaining: Operator review of the removal boundary, forbidden APIs, system-doc authority split, and next checkpoint.
-- Edge case: surviving live source and tests still name removed APIs; that is the visible rework gap, not permission to restore archived code.
-- Verification: confirm no references to the retired Rust-specific archive directory name remain.
-- Verification: confirm removed live source paths exist only under `old-code`.
-- Verification: `cargo check -p syndic-storage` should remain green.
+Architectural rework standing rule: obsolete CAS-backed catalog and restore code must be removed or quarantined under the active `old-code` archive rather than preserved behind transition adapters.
 
-# Phase 2: Surviving-Edge Responsibility Split And CAS Projection Boundary (pending)
+# Phase 1: Rework Document Review (wip)
 
-- Inventory surviving app/backend references to removed selected-activation, execution-detail, composer-label-scan, response-sanitizer, and thread-history APIs.
-- Split surviving responsibilities across selected activation, composer submission, CAS projection binding, active-turn state, transcript-provider, and transcript-host boundaries.
-- Define CAS projection binding records and graph-action reflection outcomes for valid, stale, unbound, and active bindings.
-- Define active-turn mutation gates, exact context-pack materialization contents and policy, and stale CAS projection abandonment behavior.
-- Name any forward-facing cutover shims with explicit removal conditions in `REWORK.md`.
-- Remove obsolete tests or rewrite them against target-state Syndic/CAS-live boundaries.
-- Verify no shim imports, wraps, calls, extends, or preserves `old-code`.
+- Done: corrected target docs to remove CAS thread-list and metadata-read authority from thread selector, catalog, restore, title, and link-menu behavior.
+- Done: created `doc/rework/workspace-syndic-thread-catalog/REWORK.md` with target docs, cutover boundary, forbidden local APIs, and checkpointed replacement work.
+- Remaining: Operator review of the new rework tracker before implementation starts.
+- Edge case: storage engine unification is intentionally out of scope for this rework; logical domains must remain separate even if `redb` and `fjall` are unified later.
+- Edge case: existing CAS threads without Syndic view registration must not appear through a compatibility inventory while the replacement is incomplete.
+- Verification: confirm the rework tracker forbids CAS catalog/restore authority and does not authorize transition adapters.
+- Resumable milestone: waiting for Operator review of `doc/rework/workspace-syndic-thread-catalog/REWORK.md`.
 
-# Phase 3: Syndic Storage API And Fjall Schema (pending)
+# Phase 2: Remove CAS-Backed Catalog And Restore Surfaces (pending)
 
-- Implement durable conversation, turn, source-event, resource, projection, revision, and cursor records.
-- Implement write batches, crash-recovery markers, and incomplete-history states.
-- Keep provider calls, auth, execution, and rendering out of `syndic-storage`.
+- Remove or quarantine app-side backend-list inventory workers, selector tests, restore paths, and title paths that treat CAS metadata as catalog authority.
+- Remove startup and selector refresh paths that call backend thread-list or metadata-read methods to populate visible thread rows.
+- Keep the selector/restore gap visible until workspace-plus-Syndic catalog replacement lands.
+- Verification: live app source and tests do not call CAS list/read metadata APIs for shell catalog, selector, restore, title, breadcrumbs, graph links, or navigation paths.
 
-# Phase 4: CAS Live Event Ingestion (pending)
+# Phase 3: Workspace View Registration And Syndic Summaries (pending)
 
-- Capture accepted user input and live CAS turn events into Syndic.
-- Persist assistant streaming, terminal states, metadata, resources, and failure records.
-- Require durable admission before composer clear and transcript mutation.
+- Add workspace-owned registration of Syndic conversation-view refs, active selected view, runtime/member binding, title metadata, and catalog status.
+- Add bounded Syndic history summary reads for catalog joins without storing GUI state in Syndic.
+- Make workspace restore require a registered Syndic view ref or fall back to pending-new-thread.
+- Verification: restore cannot select a CAS thread id without a workspace-registered Syndic view.
 
-# Phase 5: Storage-Backed Transcript Provider (pending)
+# Phase 4: Workspace-Plus-Syndic Catalog Cutover (pending)
 
-- Replace fixture-backed provider behavior with bounded Syndic projection reads.
-- Expose cursor pages, resident projection records, resource metadata, and explicit incomplete-history states.
-- Keep render paths isolated from direct storage calls.
+- Implement catalog refresh as workspace refs joined with Syndic summaries.
+- Rewire selector columns, branch columns, breadcrumbs, graph link-thread menus, navigation history, and activation to Syndic view identities.
+- Rewire new, branch, edit, title, and image-label readiness workflows to update catalog state without backend inventory refresh.
+- Verification: opening the selector never calls CAS and displays only workspace-registered Syndic views.
 
-# Phase 6: Selected Activation And Composer Cutover (pending)
+# Phase 5: Backend Cleanup And Full Verification (pending)
 
-- Keep CAS metadata-only resume for exact backend thread activation.
-- Prepare selected transcript state from the Syndic provider instead of CAS paginated history.
-- Move image-label authority, copy, quote, branch, and edit proof to resident Syndic provenance and owning-history frontiers.
-- Preserve the documented edit-as-branch, edit replacement with detached tails and no immediate Syndic garbage collection, and CAS compaction marker policies while implementing branch, edit, copy, quote, and label proof.
-
-# Phase 7: Cleanup And Verification (pending)
-
-- Remove temporary cutover shims after replacement code closes the gap.
-- Verify live streaming, restart recovery, missed-event handling, selected activation, image labels, branch, edit, copy, quote, activity, and transcript renderer behavior.
+- Remove or quarantine backend protocol surfaces that exist only for shell catalog, selector, title, or restore.
+- Keep only CAS live execution/control APIs required by approved Syndic projection operations.
+- Add source-boundary tests forbidding CAS catalog authority in shell paths.
+- Verification: `cargo fmt --check`, `cargo check --workspace`, focused catalog/source-boundary tests, and `cargo nextest run --workspace --no-fail-fast`.

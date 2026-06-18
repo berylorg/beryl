@@ -75,5 +75,5 @@ pub(crate) mod core;
 
 pub(crate) use core::*;
 
-#[path = "../../src/shell/syndic_transcript/fixture_provider.rs"]
+#[path = "syndic_transcript_fixture_provider.rs"]
 pub(crate) mod fixture_provider;

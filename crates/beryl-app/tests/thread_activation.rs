@@ -8,16 +8,16 @@ use serde_json::json;
 
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
+#[path = "../src/shell/thread_activation/loader.rs"]
+mod thread_activation_loader;
 
 mod shell {
-    #[path = "../../src/shell/thread_activation.rs"]
-    pub(super) mod thread_activation;
     #[allow(dead_code)]
     #[path = "../../src/shell/thread_selection.rs"]
     pub(super) mod thread_selection;
 }
 
-use shell::thread_activation::{
+use thread_activation_loader::{
     ExistingThreadActivationBackend, ExistingThreadActivationError, ThreadActivationLoader,
 };
 

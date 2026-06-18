@@ -20,6 +20,7 @@ base64 = "0.22.1"
 beryl-app = { path = "crates/beryl-app" }
 beryl-backend = { path = "crates/beryl-backend" }
 beryl-model = { path = "crates/beryl-model" }
+syndic-storage = { path = "crates/syndic-storage" }
 clap = { version = "4.6.1", features = ["derive"] }
 deunicode = "1.6.2"
 fjall = "3.1.5"

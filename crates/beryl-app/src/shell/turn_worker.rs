@@ -1,5 +1,6 @@
 use std::{
     fmt,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicU8, Ordering},
@@ -20,16 +21,21 @@ mod title;
 
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallRequest, DynamicToolCallResponse,
-    ManagedBackendClientConnector, ManagedBackendSession, ThreadInfo, ThreadSessionMetadata,
-    ThreadStatus, ThreadSummary, TurnStartOptions, TurnStreamEvent,
+    ManagedBackendClientConnector, ManagedBackendSession, ThreadInfo, ThreadRollbackResponse,
+    ThreadSessionMetadata, ThreadStatus, ThreadSummary, TurnStartOptions, TurnStreamEvent,
 };
 use beryl_model::workspace::{BerylWorkspaceId, WorkspaceId};
 use tracing::{debug, info, warn};
 
-use super::execution_detail::UserInputFragment;
 use super::graph::GraphMutationUpdate;
-use super::thread_activation::{ExistingThreadActivationError, ThreadActivationLoader};
+use super::resident_branch_edit;
+use super::syndic_ingestion::{self, SyndicLiveTurnIngestor, SyndicTurnAdmission};
+use super::thread_activation::{
+    ExistingThreadActivationError, ThreadActivationLoader,
+    prepare_storage_backed_transcript_activation,
+};
 use super::thread_title::{ThreadTitleCandidate, TurnThreadTitleMode};
+use super::turn_input::UserInputFragment;
 use crate::memory_diagnostics::MemoryMilestone;
 use crate::{
     BerylWorkspacePersistence, WorkspaceGraphToolService,
@@ -84,6 +90,7 @@ pub(super) enum ThreadActivationOutcome {
         execution_target: WorkspaceId,
         thread: ThreadInfo,
         session_metadata: ThreadSessionMetadata,
+        prepared_transcript: super::syndic_transcript::PreparedTranscriptActivation,
     },
     RequiresRebind {
         detail: String,
@@ -104,6 +111,11 @@ pub(super) enum TurnWorkerUpdate {
         candidate: ThreadTitleCandidate,
         title_mode: TurnThreadTitleMode,
     },
+    TurnAdmitted {
+        thread_id: String,
+        user_input_fragments: Vec<UserInputFragment>,
+        syndic_admission: SyndicTurnAdmission,
+    },
     GraphMutationFinished(GraphMutationUpdate),
     LifecycleYieldAccepted(AcceptedLifecycleYield),
     Event(TurnStreamEvent),
@@ -118,6 +130,14 @@ pub(super) enum TurnWorkerOutcome {
     },
     Failed {
         message: String,
+    },
+}
+
+#[derive(Clone)]
+pub(super) enum TurnWorkerPreStartOperation {
+    ResidentEditReplacement {
+        proof: resident_branch_edit::ResidentEditProof,
+        syndic_storage_dir: PathBuf,
     },
 }
 
@@ -333,6 +353,30 @@ impl TurnStreamBackend for ManagedBackendSession {
     }
 }
 
+pub(crate) trait ResidentEditRollbackBackend {
+    type Error: fmt::Display;
+
+    fn rollback_thread(
+        &mut self,
+        thread_id: &str,
+        num_turns: u32,
+        timeout: Duration,
+    ) -> Result<ThreadRollbackResponse, Self::Error>;
+}
+
+impl ResidentEditRollbackBackend for ManagedBackendSession {
+    type Error = beryl_backend::ManagedBackendError;
+
+    fn rollback_thread(
+        &mut self,
+        thread_id: &str,
+        num_turns: u32,
+        timeout: Duration,
+    ) -> Result<ThreadRollbackResponse, Self::Error> {
+        ManagedBackendSession::rollback_thread(self, thread_id, num_turns, timeout)
+    }
+}
+
 pub(super) fn spawn_turn_worker(
     persistence: BerylWorkspacePersistence,
     connector: ManagedBackendClientConnector,
@@ -341,6 +385,37 @@ pub(super) fn spawn_turn_worker(
     selected_thread_id: Option<String>,
     title_mode: TurnThreadTitleMode,
     user_input_fragments: Vec<UserInputFragment>,
+    syndic_admission: Option<SyndicTurnAdmission>,
+    turn_options: TurnStartOptions,
+    shell_tool_sender: Option<ShellDynamicToolRequestSender>,
+    timeout: Duration,
+) -> Receiver<TurnWorkerUpdate> {
+    spawn_turn_worker_with_pre_start(
+        persistence,
+        connector,
+        beryl_workspace_id,
+        workspace,
+        selected_thread_id,
+        title_mode,
+        user_input_fragments,
+        syndic_admission,
+        None,
+        turn_options,
+        shell_tool_sender,
+        timeout,
+    )
+}
+
+pub(super) fn spawn_turn_worker_with_pre_start(
+    persistence: BerylWorkspacePersistence,
+    connector: ManagedBackendClientConnector,
+    beryl_workspace_id: BerylWorkspaceId,
+    workspace: WorkspaceId,
+    selected_thread_id: Option<String>,
+    title_mode: TurnThreadTitleMode,
+    user_input_fragments: Vec<UserInputFragment>,
+    syndic_admission: Option<SyndicTurnAdmission>,
+    pre_start: Option<TurnWorkerPreStartOperation>,
     turn_options: TurnStartOptions,
     shell_tool_sender: Option<ShellDynamicToolRequestSender>,
     timeout: Duration,
@@ -355,6 +430,8 @@ pub(super) fn spawn_turn_worker(
             selected_thread_id,
             title_mode,
             user_input_fragments,
+            syndic_admission,
+            pre_start,
             turn_options,
             shell_tool_sender,
             timeout,
@@ -367,6 +444,7 @@ pub(super) fn spawn_turn_worker(
 pub(super) fn spawn_thread_activation_worker(
     connector: ManagedBackendClientConnector,
     beryl_workspace_id: BerylWorkspaceId,
+    syndic_storage_dir: PathBuf,
     workspace: WorkspaceId,
     thread_id: String,
     label: String,
@@ -377,6 +455,7 @@ pub(super) fn spawn_thread_activation_worker(
         run_thread_activation_worker(
             connector,
             beryl_workspace_id,
+            syndic_storage_dir,
             workspace,
             thread_id,
             label,
@@ -395,14 +474,25 @@ fn run_turn_worker(
     selected_thread_id: Option<String>,
     title_mode: TurnThreadTitleMode,
     user_input_fragments: Vec<UserInputFragment>,
+    mut syndic_admission: Option<SyndicTurnAdmission>,
+    pre_start: Option<TurnWorkerPreStartOperation>,
     turn_options: TurnStartOptions,
     shell_tool_sender: Option<ShellDynamicToolRequestSender>,
     timeout: Duration,
     sender: SyncSender<TurnWorkerUpdate>,
 ) {
+    let mut syndic_ingestor = match open_syndic_ingestor(syndic_admission.clone(), &sender) {
+        Some(ingestor) => ingestor,
+        None => return,
+    };
     let mut session = match connector.connect_client(timeout) {
         Ok(session) => session,
         Err(error) => {
+            if let Some(ingestor) = syndic_ingestor.as_mut() {
+                let _ = ingestor.mark_local_failure(format!(
+                    "Beryl could not connect to the managed backend: {error}"
+                ));
+            }
             let _ = send_turn_worker_update(
                 &sender,
                 TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
@@ -421,6 +511,9 @@ fn run_turn_worker(
     ) {
         Ok(activation) => activation,
         Err(message) => {
+            if let Some(ingestor) = syndic_ingestor.as_mut() {
+                let _ = ingestor.mark_local_failure(message.clone());
+            }
             let _ = send_turn_worker_update(
                 &sender,
                 TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
@@ -428,6 +521,18 @@ fn run_turn_worker(
             return;
         }
     };
+
+    if let Some(ingestor) = syndic_ingestor.as_mut()
+        && let Err(error) = ingestor.bind_cas_thread(&activation.thread_id)
+    {
+        let message = format!("Beryl could not bind the CAS thread into Syndic: {error}");
+        let _ = ingestor.mark_local_failure(message.clone());
+        let _ = send_turn_worker_update(
+            &sender,
+            TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
+        );
+        return;
+    }
 
     if send_turn_worker_update(
         &sender,
@@ -442,6 +547,47 @@ fn run_turn_worker(
         return;
     }
 
+    let mut admission_update = None;
+    if let Some(pre_start) = pre_start {
+        let admitted = match run_turn_pre_start_operation(
+            &mut session,
+            &persistence,
+            &beryl_workspace_id,
+            &workspace,
+            &activation.thread_id,
+            selected_thread_id.as_deref(),
+            &user_input_fragments,
+            pre_start,
+            timeout,
+        ) {
+            Ok(admission) => admission,
+            Err(message) => {
+                let _ = send_turn_worker_update(
+                    &sender,
+                    TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
+                );
+                return;
+            }
+        };
+        syndic_admission = Some(admitted.clone());
+        syndic_ingestor = match open_syndic_ingestor(syndic_admission.clone(), &sender) {
+            Some(ingestor) => ingestor,
+            None => return,
+        };
+        if let Some(ingestor) = syndic_ingestor.as_mut()
+            && let Err(error) = ingestor.bind_cas_thread(&activation.thread_id)
+        {
+            let message = format!("Beryl could not bind the CAS thread into Syndic: {error}");
+            let _ = ingestor.mark_local_failure(message.clone());
+            let _ = send_turn_worker_update(
+                &sender,
+                TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
+            );
+            return;
+        }
+        admission_update = Some(admitted);
+    }
+
     let graph_tool_service = WorkspaceGraphToolService::new(persistence.clone());
 
     let turn = match session.start_turn_with_user_input_options(
@@ -452,6 +598,9 @@ fn run_turn_worker(
     ) {
         Ok(response) => response.turn,
         Err(error) => {
+            if let Some(ingestor) = syndic_ingestor.as_mut() {
+                let _ = ingestor.mark_local_failure(format!("CAS rejected turn start: {error}"));
+            }
             let _ = send_turn_worker_update(
                 &sender,
                 TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
@@ -462,15 +611,35 @@ fn run_turn_worker(
         }
     };
     let active_turn_id = turn.id.clone();
-    if send_turn_worker_update(
-        &sender,
-        TurnWorkerUpdate::Event(TurnStreamEvent::TurnStarted {
-            thread_id: activation.thread_id.clone(),
-            turn,
-        }),
-    )
-    .is_err()
+    let turn_started_event = TurnStreamEvent::TurnStarted {
+        thread_id: activation.thread_id.clone(),
+        turn,
+    };
+    if let Some(ingestor) = syndic_ingestor.as_mut()
+        && let Err(error) = ingestor.ingest_event(&turn_started_event)
     {
+        let message = format!("Beryl could not persist CAS turn start in Syndic: {error}");
+        let _ = ingestor.mark_local_failure(message.clone());
+        let _ = send_turn_worker_update(
+            &sender,
+            TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
+        );
+        return;
+    }
+    if let Some(syndic_admission) = admission_update
+        && send_turn_worker_update(
+            &sender,
+            TurnWorkerUpdate::TurnAdmitted {
+                thread_id: activation.thread_id.clone(),
+                user_input_fragments: user_input_fragments.clone(),
+                syndic_admission,
+            },
+        )
+        .is_err()
+    {
+        return;
+    }
+    if send_turn_worker_update(&sender, TurnWorkerUpdate::Event(turn_started_event)).is_err() {
         return;
     }
 
@@ -528,10 +697,18 @@ fn run_turn_worker(
             );
         },
         |event| {
+            if let Some(ingestor) = syndic_ingestor.as_mut() {
+                ingestor.ingest_event(&event).map_err(|error| {
+                    format!("Beryl could not persist a CAS turn event in Syndic: {error}")
+                })?;
+            }
             send_turn_worker_update(&sender, TurnWorkerUpdate::Event(event))
                 .map_err(|_| "Beryl stopped receiving turn stream updates.".to_string())
         },
     ) {
+        if let Some(ingestor) = syndic_ingestor.as_mut() {
+            let _ = ingestor.mark_stream_lost(message.clone());
+        }
         let _ = send_turn_worker_update(
             &sender,
             TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed { message }),
@@ -554,6 +731,100 @@ fn send_turn_worker_update(
     update: TurnWorkerUpdate,
 ) -> Result<(), ()> {
     sender.send(update).map_err(|_| ())
+}
+
+fn open_syndic_ingestor(
+    admission: Option<SyndicTurnAdmission>,
+    sender: &SyncSender<TurnWorkerUpdate>,
+) -> Option<Option<SyndicLiveTurnIngestor>> {
+    match admission.map(SyndicLiveTurnIngestor::new).transpose() {
+        Ok(ingestor) => Some(ingestor),
+        Err(error) => {
+            let _ = send_turn_worker_update(
+                sender,
+                TurnWorkerUpdate::Finished(TurnWorkerOutcome::Failed {
+                    message: format!("Beryl could not open Syndic turn capture: {error}"),
+                }),
+            );
+            None
+        }
+    }
+}
+
+fn run_turn_pre_start_operation(
+    session: &mut ManagedBackendSession,
+    persistence: &BerylWorkspacePersistence,
+    beryl_workspace_id: &BerylWorkspaceId,
+    workspace: &WorkspaceId,
+    activation_thread_id: &str,
+    selected_thread_id: Option<&str>,
+    user_input_fragments: &[UserInputFragment],
+    pre_start: TurnWorkerPreStartOperation,
+    timeout: Duration,
+) -> Result<SyndicTurnAdmission, String> {
+    match pre_start {
+        TurnWorkerPreStartOperation::ResidentEditReplacement {
+            proof,
+            syndic_storage_dir,
+        } => {
+            let selected_thread_id = selected_thread_id.ok_or_else(|| {
+                "Beryl cannot replace-edit a pending new thread draft.".to_string()
+            })?;
+            if activation_thread_id != proof.source_thread_id {
+                return Err(format!(
+                    "Beryl reopened CAS thread {activation_thread_id}, but the resident edit proof targets {}.",
+                    proof.source_thread_id
+                ));
+            }
+            if selected_thread_id != proof.source_thread_id {
+                return Err(format!(
+                    "Beryl selected CAS thread {selected_thread_id}, but the resident edit proof targets {}.",
+                    proof.source_thread_id
+                ));
+            }
+            rollback_resident_edit_tail(session, &proof, timeout)?;
+            resident_branch_edit::detach_resident_edit_tail(&syndic_storage_dir, &proof)
+                .map_err(|error| {
+                    format!(
+                        "Beryl rolled back CAS thread {} but could not detach the selected Syndic transcript tail: {error:?}",
+                        proof.source_thread_id
+                    )
+                })?;
+            syndic_ingestion::admit_user_turn(
+                persistence,
+                beryl_workspace_id,
+                workspace,
+                Some(selected_thread_id),
+                user_input_fragments,
+            )
+            .map_err(|error| {
+                format!("Beryl could not durably admit the replacement input: {error}")
+            })
+        }
+    }
+}
+
+pub(crate) fn rollback_resident_edit_tail<B>(
+    backend: &mut B,
+    proof: &resident_branch_edit::ResidentEditProof,
+    timeout: Duration,
+) -> Result<(), String>
+where
+    B: ResidentEditRollbackBackend,
+{
+    backend
+        .rollback_thread(
+            &proof.source_thread_id,
+            proof.rollback_turns_including_target,
+            timeout,
+        )
+        .map(|_| ())
+        .map_err(|error| {
+            format!(
+                "Beryl could not roll back CAS thread {} by {} turn(s): {error}",
+                proof.source_thread_id, proof.rollback_turns_including_target
+            )
+        })
 }
 
 pub(super) fn backend_input_for_user_input_fragments(
@@ -731,6 +1002,7 @@ where
 fn run_thread_activation_worker(
     connector: ManagedBackendClientConnector,
     beryl_workspace_id: BerylWorkspaceId,
+    syndic_storage_dir: PathBuf,
     workspace: WorkspaceId,
     thread_id: String,
     label: String,
@@ -805,6 +1077,10 @@ fn run_thread_activation_worker(
                     execution_target: workspace,
                     thread: activation.thread,
                     session_metadata: activation.session_metadata,
+                    prepared_transcript: prepare_storage_backed_transcript_activation(
+                        syndic_storage_dir,
+                        &thread_id,
+                    ),
                 },
             ));
         }

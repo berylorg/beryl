@@ -1,4 +1,5 @@
 use super::{
+    TranscriptProviderHistoryReason,
     core::ResidentCoreSnapshot,
     frame::{RealizedFrameScrollMode, RealizedFrameScrollStateSnapshot},
     provider::TranscriptViewPosition,
@@ -29,8 +30,16 @@ pub(crate) struct ResidentTranscriptStatusFacts {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ResidentTranscriptStatusState {
     Empty,
-    Unavailable { reason: String },
-    FixtureBacked { label: String },
+    Unavailable {
+        reason: String,
+    },
+    Incomplete {
+        reason: TranscriptProviderHistoryReason,
+        detail: Option<String>,
+    },
+    ProviderBacked {
+        label: String,
+    },
     Unknown,
 }
 
@@ -119,7 +128,11 @@ impl From<&ResidentTranscriptSnapshotState> for ResidentTranscriptStatusState {
             ResidentTranscriptSnapshotState::Unavailable { reason } => Self::Unavailable {
                 reason: reason.clone(),
             },
-            ResidentTranscriptSnapshotState::Fixture { label } => Self::FixtureBacked {
+            ResidentTranscriptSnapshotState::Incomplete { reason, detail } => Self::Incomplete {
+                reason: reason.clone(),
+                detail: detail.clone(),
+            },
+            ResidentTranscriptSnapshotState::ProviderBacked { label } => Self::ProviderBacked {
                 label: label.clone(),
             },
         }

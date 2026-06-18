@@ -27,7 +27,7 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Public Boundary
 
 - This package implements the storage boundary consumed by `doc/systems/syndic-conversation-history/design.md` and `doc/systems/cas-live-syndic-transcript/design.md`.
-- The package exposes operations for opening a storage directory, committing live-source events, reading thread and turn metadata, reading transcript-view pages, reading projection records, reading resource metadata, and reading resource byte ranges.
+- The package exposes operations for opening a storage directory, committing live-source events, reading historical conversation/view summaries, reading thread and turn metadata, reading transcript-view pages, reading projection records, reading resource metadata, and reading resource byte ranges.
 - Public APIs use Syndic identities and revisions as their stable boundary.
 - External execution ids, including CAS thread ids, turn ids, and item ids, are stored as source metadata and never become the only primary key.
 - Public reads are bounded by caller-supplied limits or explicit range requests.
@@ -40,9 +40,15 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - A turn record captures turn identity, turn kind, parent relationship when known, owning thread view, source provider metadata, lifecycle status, timestamps, and terminal error status.
 - Turn kind distinguishes ordinary user turns from provider-operation turns such as context compaction.
 - CAS projection binding records store the current external execution projection state when present, including valid, stale, unbound, or active binding status, external CAS ids, and immutable execution snapshot identity needed by higher-level systems.
+- A CAS projection binding record is keyed by Syndic thread view and binding revision, and stores the selected-path revision or digest used to validate the binding.
+- Valid binding records store the CAS runtime target, CAS thread id, and lineage proof needed by higher-level orchestration before it may request CAS-native execution.
+- Active binding records additionally store the accepted execution snapshot id, active CAS turn id when known, accepted user-input identity, and the selected-path revision or digest accepted by CAS.
+- Stale binding records preserve the old CAS thread id as provenance, store a stale reason, and make the old CAS thread unusable for future valid-lineage execution.
+- Unbound binding records represent a view with no usable CAS projection and may store the reason that no projection exists.
 - A source event record stores normalized live-source event data with a monotonic per-turn sequence number and bounded payload.
 - A canonical item record stores user input, assistant messages, operational records, generated media references, or other source items with stable item identity and source provenance.
 - A transcript-view record orders transcript-visible projection records for a selected thread view.
+- History summary records expose bounded, history-derived facts such as last captured activity, branch/view relationship, completeness, and title candidates for workspace catalog joins without storing selected-thread GUI state.
 - A projection record stores the durable text chunk or resource reference consumed by the transcript provider.
 - A resource metadata record describes range-readable heavy data such as code, tables, generated images, attachments, logs, or other large outputs.
 

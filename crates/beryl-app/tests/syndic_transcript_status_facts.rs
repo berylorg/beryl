@@ -152,7 +152,7 @@ fn empty_status_facts_are_unknown_for_turn_view() {
 }
 
 #[test]
-fn fixture_status_facts_publish_scroll_anchor_and_resident_counts() {
+fn provider_backed_status_facts_publish_scroll_anchor_and_resident_counts() {
     let mut core = seed_text_core(&["alpha", "beta", "gamma"]);
     let mut scroll = RealizedFrameScrollController::new();
     scroll.begin_live_tail_following();
@@ -166,7 +166,7 @@ fn fixture_status_facts_publish_scroll_anchor_and_resident_counts() {
 
     assert_eq!(
         facts.state,
-        ResidentTranscriptStatusState::FixtureBacked {
+        ResidentTranscriptStatusState::ProviderBacked {
             label: "resident-syndic-projections".to_string()
         }
     );

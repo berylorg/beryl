@@ -15,9 +15,9 @@ use beryl_backend::{
     ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
     ModelListOptions, ModelListResponse, NonSteerableTurnKind, REQUIRED_CODEX_APP_SERVER_VERSION,
     SortDirection, ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
-    ThreadHistoryCapabilityProbe, ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse,
-    ThreadSortKey, ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus, TurnStreamEvent,
-    UserInput, active_turn_not_steerable_error,
+    ThreadListOptions, ThreadListResponse, ThreadLoadedListResponse, ThreadSortKey,
+    ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput,
+    active_turn_not_steerable_error,
 };
 use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
@@ -47,14 +47,14 @@ fn host_windows_compatibility_stdio_launch_is_explicit() {
 #[test]
 fn websocket_transport_error_display_includes_source_detail() {
     let error = ManagedBackendError::WebSocketTransport {
-        method: "thread/turns/list".to_string(),
+        method: "thread/read".to_string(),
         endpoint: "ws://127.0.0.1:49154".to_string(),
         source: ManagedWebSocketError::protocol("message too large"),
     };
 
     let display = error.to_string();
 
-    assert!(display.contains("thread/turns/list"));
+    assert!(display.contains("thread/read"));
     assert!(display.contains("message too large"));
 }
 
@@ -1704,158 +1704,6 @@ fn websocket_hard_stop_capability_probe_reports_optional_method_support() {
 }
 
 #[test]
-fn websocket_thread_history_probe_validates_required_items_view_contract() {
-    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
-        expect_initialize(&mut socket, 1);
-        expect_initialized(&mut socket);
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/turns/list"));
-        assert_eq!(
-            request["params"],
-            json!({
-                "threadId": "00000000-0000-0000-0000-000000000000",
-                "limit": 1,
-                "sortDirection": "desc",
-                "itemsView": "notLoaded"
-            })
-        );
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "error": {
-                        "code": -32600,
-                        "message": "no rollout found for thread id"
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-    });
-    let launch = websocket_test_launch(endpoint.clone());
-    let mut client = ManagedBackendSession::connect_websocket(
-        launch,
-        endpoint,
-        "Bearer test-token".to_string(),
-        Duration::from_secs(2),
-    )
-    .unwrap();
-
-    let report = client
-        .probe_thread_history_capabilities(Duration::from_secs(2))
-        .unwrap();
-    assert_eq!(report.probe_results().len(), 1);
-    assert_eq!(
-        report.probe_results()[0].probe(),
-        ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView
-    );
-    assert!(report.probe_results()[0].supported());
-    assert!(report.capabilities().thread_turns_list_items_view());
-    server.join().unwrap();
-}
-
-#[test]
-fn websocket_thread_history_probe_rejects_missing_required_items_view_contract() {
-    for (code, message) in [
-        (-32601, "method not found"),
-        (-32600, "unknown field `itemsView`"),
-        (-32600, "unsupported parameter: items view is not allowed"),
-    ] {
-        let (endpoint, server) = spawn_fake_app_server("Bearer test-token", move |mut socket| {
-            expect_initialize(&mut socket, 1);
-            expect_initialized(&mut socket);
-
-            let request = read_json(&mut socket);
-            assert_eq!(request["id"], json!(2));
-            assert_eq!(request["method"], json!("thread/turns/list"));
-            socket
-                .send(Message::text(
-                    json!({
-                        "jsonrpc": "2.0",
-                        "id": 2,
-                        "error": {
-                            "code": code,
-                            "message": message
-                        }
-                    })
-                    .to_string(),
-                ))
-                .unwrap();
-        });
-        let launch = websocket_test_launch(endpoint.clone());
-        let mut client = ManagedBackendSession::connect_websocket(
-            launch,
-            endpoint,
-            "Bearer test-token".to_string(),
-            Duration::from_secs(2),
-        )
-        .unwrap();
-
-        let error = client
-            .probe_thread_history_capabilities(Duration::from_secs(2))
-            .unwrap_err();
-        assert!(matches!(
-            error,
-            ManagedBackendError::Compatibility(
-                CompatibilityError::ThreadTurnsListItemsViewUnsupported {
-                    method: "thread/turns/list",
-                    code: actual_code,
-                    message: actual_message,
-                }
-            ) if actual_code == code && actual_message == message
-        ));
-        server.join().unwrap();
-    }
-}
-
-#[test]
-fn websocket_thread_history_probe_treats_unrelated_probe_errors_as_contract_support() {
-    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
-        expect_initialize(&mut socket, 1);
-        expect_initialized(&mut socket);
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/turns/list"));
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "error": {
-                        "code": -32600,
-                        "message": "no rollout found for thread id"
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-    });
-    let launch = websocket_test_launch(endpoint.clone());
-    let mut client = ManagedBackendSession::connect_websocket(
-        launch,
-        endpoint,
-        "Bearer test-token".to_string(),
-        Duration::from_secs(2),
-    )
-    .unwrap();
-
-    let report = client
-        .probe_thread_history_capabilities(Duration::from_secs(2))
-        .unwrap();
-    assert_eq!(
-        report.probe_results()[0].probe(),
-        ThreadHistoryCapabilityProbe::ThreadTurnsListItemsView
-    );
-    assert!(report.probe_results()[0].supported());
-    assert!(report.capabilities().thread_turns_list_items_view());
-    server.join().unwrap();
-}
-
-#[test]
 fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
@@ -2697,7 +2545,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
             CompatibilityProbe::ThreadRead,
             CompatibilityProbe::ThreadResumeMetadata,
             CompatibilityProbe::ThreadUnsubscribe,
-            CompatibilityProbe::ThreadTurnsList,
             CompatibilityProbe::TurnInterrupt,
             CompatibilityProbe::TurnSteer,
         ]
@@ -2718,7 +2565,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
             "thread/read",
             "thread/resume",
             "thread/unsubscribe",
-            "thread/turns/list",
             "turn/interrupt",
             "turn/steer",
         ]

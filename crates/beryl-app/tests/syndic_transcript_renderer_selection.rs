@@ -157,7 +157,7 @@ fn snapshot_with_records(
     ResidentTranscriptSnapshot {
         activation_revision: 1,
         presentation_revision,
-        state: ResidentTranscriptSnapshotState::Fixture {
+        state: ResidentTranscriptSnapshotState::ProviderBacked {
             label: "renderer-selection-test".to_string(),
         },
         records,

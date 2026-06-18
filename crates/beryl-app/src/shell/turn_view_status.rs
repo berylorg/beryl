@@ -30,7 +30,7 @@ impl ConversationSurfaceState {
                 self.selected_thread_id(),
                 self.status_line_model_reasoning_available(),
                 self.status_line_context_operation_available(),
-                self.execution_details.last_turn_state().label(),
+                self.active_turn_state.last_turn_state().label(),
                 cancellable_active_turn,
                 hard_stop_targets,
             )

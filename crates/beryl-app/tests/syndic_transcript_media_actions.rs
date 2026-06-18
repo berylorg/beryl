@@ -520,7 +520,7 @@ fn renderer_media_command_rejects_fallback_local_non_media_provenance_and_metada
     let local_snapshot = ResidentTranscriptSnapshot {
         activation_revision: 1,
         presentation_revision: 44,
-        state: ResidentTranscriptSnapshotState::Fixture {
+        state: ResidentTranscriptSnapshotState::ProviderBacked {
             label: "local-media-reject".to_string(),
         },
         records: vec![ResidentPresentationRecord {

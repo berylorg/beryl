@@ -2,7 +2,32 @@
 mod syndic_transcript_core;
 
 use syndic_transcript_core::fixture_provider::InMemorySyndicTranscriptProvider;
-use syndic_transcript_core::*;
+pub(crate) use syndic_transcript_core::*;
+
+mod dynamic_tools {
+    pub(crate) const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
+}
+
+mod gui_control_dynamic_tools {
+    #[derive(Clone, Debug, Default, Eq, PartialEq)]
+    pub(crate) struct MarkdownCacheUiState;
+}
+
+#[path = "../src/memory_diagnostics.rs"]
+mod memory_diagnostics;
+
+#[path = "../src/diagnostic_dynamic_tools.rs"]
+mod diagnostic_dynamic_tools;
+
+#[path = "../src/shell/syndic_transcript/diagnostics.rs"]
+mod diagnostics;
+
+pub(crate) use diagnostics::*;
+
+#[path = "../src/shell/syndic_transcript/host.rs"]
+mod host;
+
+use host::SyndicTranscriptHost;
 
 const REVISION: ProviderRevision = ProviderRevision(71);
 
@@ -87,7 +112,7 @@ fn snapshot_with_names(presentation_revision: u64, names: &[&str]) -> ResidentTr
     ResidentTranscriptSnapshot {
         activation_revision: 1,
         presentation_revision,
-        state: ResidentTranscriptSnapshotState::Fixture {
+        state: ResidentTranscriptSnapshotState::ProviderBacked {
             label: "manual-scroll-test".to_string(),
         },
         records: names
@@ -274,4 +299,89 @@ fn manual_scroll_demand_facts_update_resident_ranges_from_snapshot_only() {
         matches!(kind, DemandFactKind::ObsoleteRange { range } if range == &(0..3))
     }));
     assert_eq!(second_snapshot.resident.obsolete_ranges, vec![0..3]);
+}
+
+#[test]
+fn host_scroll_input_diagnostics_do_not_consume_unanchored_frames() {
+    let mut host = SyndicTranscriptHost::empty();
+    let empty_snapshot = ResidentTranscriptSnapshot::empty();
+
+    host.manual_scroll(command(&empty_snapshot, 40.0));
+
+    let metrics = host.frame_metrics_snapshot();
+    let empty_event = metrics
+        .scroll_inputs
+        .events
+        .last()
+        .expect("empty manual scroll should record a scroll input");
+    assert!(!empty_event.consumed);
+    assert!(!empty_event.changed);
+    assert_eq!(empty_event.requested_delta, 40.0);
+    assert_eq!(empty_event.consumed_delta, 0.0);
+    assert_eq!(empty_event.residual_delta, 40.0);
+    assert!(empty_event.before_anchor.is_none());
+    assert!(empty_event.after_anchor.is_none());
+
+    let view_id = view_id();
+    let prepared = PreparedTranscriptActivation::new(
+        view_id.clone(),
+        TranscriptActivationPlacement::Start,
+        TranscriptProviderResponseKind::ViewPage(TranscriptViewPage {
+            view_id: view_id.clone(),
+            revision: REVISION,
+            history_state: TranscriptProviderHistoryState::Complete,
+            records: vec![
+                view_record(&view_id, 0, "zero"),
+                view_record(&view_id, 1, "one"),
+                view_record(&view_id, 2, "two"),
+            ],
+            previous_cursor: None,
+            next_cursor: None,
+            at_start: true,
+            at_end: true,
+        }),
+        Some(TranscriptProviderResponseKind::ProjectionRecords(
+            ProjectionRecordSet {
+                view_id: view_id.clone(),
+                revision: REVISION,
+                records: vec![
+                    text_projection(&view_id, 0, "zero"),
+                    text_projection(&view_id, 1, "one"),
+                    text_projection(&view_id, 2, "two"),
+                ],
+                rejections: Vec::new(),
+            },
+        )),
+    );
+    let _ = host.apply_prepared_activation(prepared, TranscriptActivationSource::Test);
+    let anchored_snapshot = host.snapshot();
+    host.realize_frame(wide_command(&anchored_snapshot, 0.0).frame_request());
+    host.manual_scroll(ManualTranscriptScrollCommand::new(
+        32.0,
+        16.0,
+        16.0,
+        100.0,
+        Some(REVISION.0.saturating_sub(1)),
+    ));
+
+    let metrics = host.frame_metrics_snapshot();
+    let stale_event = metrics
+        .scroll_inputs
+        .events
+        .last()
+        .expect("stale manual scroll should record a scroll input");
+    assert!(!stale_event.consumed);
+    assert!(!stale_event.changed);
+    assert_eq!(stale_event.requested_delta, 100.0);
+    assert_eq!(stale_event.consumed_delta, 0.0);
+    assert_eq!(stale_event.residual_delta, 100.0);
+    assert!(stale_event.before_anchor.is_some());
+    assert!(stale_event.after_anchor.is_none());
+    assert_eq!(
+        stale_event
+            .after_visible_segment_range
+            .as_ref()
+            .map(|range| { (range.start, range.end) }),
+        Some((0, 0))
+    );
 }

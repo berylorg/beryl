@@ -231,7 +231,7 @@ impl ShellView {
                 .as_ref()
                 .is_some_and(|spec| graph.node(&spec.topic_id).is_some());
         let parent_turn_active = surface
-            .execution_details
+            .active_turn_state
             .active_turn_identity()
             .is_some_and(|active| {
                 active
@@ -271,7 +271,7 @@ impl ShellView {
         let surface = self.conversation_surface()?;
         let (_, turn) =
             surface
-                .execution_details
+                .active_turn_state
                 .turns()
                 .iter()
                 .enumerate()

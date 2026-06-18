@@ -103,26 +103,9 @@ impl fmt::Display for BranchBootstrapError {
                 "Beryl started a bootstrap turn for branch thread {}, but the backend still marked the thread ephemeral.",
                 thread_id.as_str()
             ),
-            Self::BootstrapTurnMissingFromHistory { thread_id, turn_id } => write!(
-                formatter,
-                "Beryl completed bootstrap turn {} for branch thread {}, but the final history read did not contain that turn.",
-                turn_id.as_str(),
-                thread_id.as_str()
-            ),
-            Self::BootstrapTurnNotCompletedInHistory {
-                thread_id,
-                turn_id,
-                status,
-            } => write!(
-                formatter,
-                "Beryl completed bootstrap turn {} for branch thread {}, but the final history read still reported status {}.",
-                turn_id.as_str(),
-                thread_id.as_str(),
-                turn_status_label(*status)
-            ),
             Self::BootstrapTurnMissingVisibleMessage { thread_id, turn_id } => write!(
                 formatter,
-                "Beryl completed bootstrap turn {} for branch thread {}, but the final history read did not contain the visible bootstrap user message.",
+                "Beryl completed bootstrap turn {} for branch thread {}, but the live completion proof did not contain the visible bootstrap user message.",
                 turn_id.as_str(),
                 thread_id.as_str()
             ),

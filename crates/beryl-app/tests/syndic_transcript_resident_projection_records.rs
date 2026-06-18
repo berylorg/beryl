@@ -229,7 +229,7 @@ fn projection_records_build_presentation_records_with_syndic_provenance() {
     assert_eq!(snapshot.presentation.record_count(), 2);
     assert!(matches!(
         snapshot.presentation.state,
-        ResidentTranscriptSnapshotState::Fixture { .. }
+        ResidentTranscriptSnapshotState::ProviderBacked { .. }
     ));
 
     let text_record = &snapshot.presentation.records[0];

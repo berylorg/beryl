@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use super::provider::{
     ProjectionRecordId, ProviderRevision, ResourceId, ResourceKind, ResourceMetadata,
-    SyndicSourceProvenance, TranscriptNarrativeKind,
+    SyndicSourceProvenance, TranscriptNarrativeKind, TranscriptProviderHistoryReason,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -70,7 +70,11 @@ pub(crate) enum ResidentTranscriptSnapshotState {
     Unavailable {
         reason: String,
     },
-    Fixture {
+    Incomplete {
+        reason: TranscriptProviderHistoryReason,
+        detail: Option<String>,
+    },
+    ProviderBacked {
         label: String,
     },
 }

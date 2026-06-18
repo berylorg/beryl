@@ -370,7 +370,7 @@ impl ShellView {
                 }
                 if let Some(surface) = self.conversation_surface_mut() {
                     if let Some((thread_id, updated_at)) = selected_thread_updated_at {
-                        surface.mark_selected_thread_image_labels_need_validation_if_updated(
+                        surface.mark_selected_thread_image_labels_need_refresh_if_updated(
                             thread_id.as_str(),
                             updated_at,
                         );

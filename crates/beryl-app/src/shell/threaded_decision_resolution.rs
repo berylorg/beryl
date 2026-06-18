@@ -17,11 +17,12 @@ use tracing::warn;
 
 use super::{
     ShellView, SurfaceNotice,
-    execution_detail::UserInputFragment,
     graph::GraphMutationUpdate,
     graph_worker::{GraphUpdate, GraphWorkerTask},
+    syndic_ingestion,
     thread_title::TurnThreadTitleMode,
     token_usage_snapshot,
+    turn_input::UserInputFragment,
     turn_worker::spawn_turn_worker,
     turn_worker::{shell_dynamic_tool_request_channel, spawn_thread_activation_worker},
 };
@@ -249,7 +250,7 @@ impl ShellView {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.turn_receiver.is_some()
-            || self.selected_thread_activation_pending()
+            || self.thread_activation_pending()
             || self.status_operation_receiver.is_some()
         {
             return false;
@@ -325,6 +326,33 @@ impl ShellView {
         let Some(persistence) = self.workspace_persistence_for_worker() else {
             return false;
         };
+        let parent_thread_id = record.parent_thread_id().as_str().to_string();
+        let Some(beryl_workspace_id) = self
+            .loaded_workspace()
+            .map(|loaded| loaded.workspace.id().clone())
+        else {
+            return false;
+        };
+        let handoff_fragment = UserInputFragment::text(handoff_message);
+        let syndic_admission = match syndic_ingestion::admit_user_turn(
+            &persistence,
+            &beryl_workspace_id,
+            &execution_target,
+            Some(parent_thread_id.as_str()),
+            std::slice::from_ref(&handoff_fragment),
+        ) {
+            Ok(admission) => admission,
+            Err(error) => {
+                self.remove_queued_decision_resolution_job(&job.record_id);
+                if let Some(surface) = self.conversation_surface_mut() {
+                    surface.set_notice(SurfaceNotice::new(
+                        "Decision handoff unavailable",
+                        format!("Beryl could not durably admit the parent handoff turn: {error}"),
+                    ));
+                }
+                return true;
+            }
+        };
 
         let provenance = MutationProvenance::new(
             "beryl",
@@ -355,13 +383,6 @@ impl ShellView {
             None => return false,
         }
 
-        let parent_thread_id = record.parent_thread_id().as_str().to_string();
-        let Some(beryl_workspace_id) = self
-            .loaded_workspace()
-            .map(|loaded| loaded.workspace.id().clone())
-        else {
-            return false;
-        };
         let turn_options = {
             let Some(surface) = self.conversation_surface() else {
                 return false;
@@ -371,9 +392,12 @@ impl ShellView {
                 surface.pending_turn_start_options(Some(parent_thread_id.as_str())),
             )
         };
-        let handoff_fragment = UserInputFragment::text(handoff_message);
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.begin_turn_for_thread(parent_thread_id.as_str(), handoff_fragment.clone());
+            surface.begin_turn_for_thread(
+                parent_thread_id.as_str(),
+                handoff_fragment.clone(),
+                Some(&syndic_admission),
+            );
         }
         self.notify_transcript_panel(cx);
         let (shell_tool_sender, shell_tool_receiver) = shell_dynamic_tool_request_channel();
@@ -389,6 +413,7 @@ impl ShellView {
             Some(parent_thread_id),
             TurnThreadTitleMode::automatic_if_allowed(automatic_title_generation_allowed),
             vec![handoff_fragment],
+            Some(syndic_admission),
             turn_options,
             Some(shell_tool_sender),
             self.bootstrap.probe_timeout(),
@@ -424,6 +449,16 @@ impl ShellView {
         else {
             return false;
         };
+        let Some(workspace_persistence) = self.workspace_persistence_for_worker() else {
+            self.remove_queued_decision_resolution_job(&job.record_id);
+            if let Some(surface) = self.conversation_surface_mut() {
+                surface.set_notice(SurfaceNotice::new(
+                    "Decision handoff unavailable",
+                    "Beryl cannot prepare Syndic transcript storage for parent activation.",
+                ));
+            }
+            return true;
+        };
         let parent_thread_id = record.parent_thread_id().as_str().to_string();
         if let Some(surface) = self.conversation_surface_mut() {
             surface.begin_thread_activation(
@@ -433,17 +468,14 @@ impl ShellView {
                 label.clone(),
             );
         }
-        self.begin_transcript_host_activation_for_thread(
-            parent_thread_id.as_str(),
-            super::syndic_transcript::TranscriptActivationSource::ThreadGraph,
-            cx,
-        );
-        self.composer_image_label_validation_receiver = None;
-        self.composer_image_label_scan_receiver = None;
+        self.composer_image_label_frontier_receiver = None;
         self.decision_resolution_parent_activation_record_id = Some(record.record_id().clone());
+        let syndic_storage_dir =
+            workspace_persistence.workspace_syndic_storage_dir(&beryl_workspace_id);
         self.thread_activation_receiver = Some(spawn_thread_activation_worker(
             connector,
             beryl_workspace_id,
+            syndic_storage_dir,
             execution_target,
             parent_thread_id,
             label,
