@@ -1,7 +1,0 @@
-interface:
-  display_name: "Capture Repeatable Lessons"
-  short_description: "Capture corrected reusable lessons."
-  default_prompt: "Use capture-repeatable-lessons to capture this corrected repeatable-task lesson and route it to the right durable place."
-
-policy:
-  allow_implicit_invocation: true
