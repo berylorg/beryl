@@ -16,15 +16,9 @@ Adornments may include icons, clear buttons, validation indicators, or unit labe
 
 # Look
 
-The field has a fixed single-line height.
+The field presents editable single-line text inside a bordered body with placeholder, caret, and optional adornment visuals.
 
-The field body surrounds the text with padding and a cosmetic border.
-
-Text is vertically centered within the line box. Placeholder text appears only when the field is empty and not showing entered content.
-
-When focused, the field shows a visible focus treatment through border, outline, or surface change.
-
-Text overflows horizontally. The field scrolls horizontally as needed to keep the caret and edited text visible.
+Placeholder text appears only when the field is empty and not showing entered content.
 
 # States
 
@@ -44,11 +38,79 @@ Mouse or touch interaction may place the caret, drag-select text, and use platfo
 
 # Layout
 
-The field has a fixed height based on one text line plus vertical padding.
-
-The field may have fixed, minimum, maximum, or fill width according to its containing layout.
+The field occupies one editable line and receives its inline size from the owning layout.
 
 The text content is clipped to the field body and scrolls horizontally instead of wrapping.
+
+The CSS block defines the one-line box metrics, padding, clipping, and state visuals.
+
+Spec CSS:
+
+```css
+.single-line-text-field {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  block-size: var(--height);
+  min-inline-size: var(--min-width);
+  padding-inline: var(--padding-x);
+  padding-block: var(--padding-y);
+  gap: var(--gap);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: var(--font-size);
+  overflow: hidden;
+}
+
+.single-line-text-field__content {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.single-line-text-field__placeholder {
+  color: var(--foreground);
+}
+
+.single-line-text-field__caret {
+  color: var(--foreground);
+}
+
+.single-line-text-field__adornment-icon {
+  inline-size: var(--size);
+  block-size: var(--size);
+  color: var(--foreground);
+}
+
+.single-line-text-field[data-state~="hover"] {
+  border-color: var(--border-color);
+}
+
+.single-line-text-field[data-state~="focused"] {
+  border-color: var(--border-color);
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: var(--ring-offset);
+}
+
+.single-line-text-field[data-state~="disabled"] {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border-color);
+}
+
+.single-line-text-field[data-state~="readonly"] {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.single-line-text-field[data-state~="invalid"] {
+  border-color: var(--border-color);
+  outline-color: var(--ring-color);
+}
+```
 
 # Variants
 
@@ -58,60 +120,58 @@ Default variant: plain.
 
 # UI Roles
 
-## Root
+```css
+.single-line-text-field {
+  --height: 32px;
+  --min-width: 160px;
+  --padding-x: 10px;
+  --padding-y: 6px;
+  --gap: 6px;
+  --radius: 6px;
+  --border-width: 1px;
+  --font-size: 13px;
+  --background: #ffffff;
+  --foreground: #111827;
+  --border-color: #cbd5e1;
+}
 
-- `height`: `32px`
-- `min-width`: `160px`
-- `padding-x`: `10px`
-- `padding-y`: `6px`
-- `gap`: `6px`
-- `radius`: `6px`
-- `border-width`: `1px`
-- `font-size`: `13px`
-- `background`: `#ffffff`
-- `foreground`: `#111827`
-- `border-color`: `#cbd5e1`
+.single-line-text-field__placeholder {
+  --foreground: #64748b;
+}
 
-## Parts
+.single-line-text-field__caret {
+  --foreground: #2563eb;
+}
 
-### `placeholder`
+.single-line-text-field__adornment-icon {
+  --size: 16px;
+  --foreground: #64748b;
+}
 
-- `foreground`: `#64748b`
+.single-line-text-field[data-state~="hover"] {
+  --border-color: #94a3b8;
+}
 
-### `caret`
+.single-line-text-field[data-state~="focused"] {
+  --border-color: #2563eb;
+  --ring-width: 2px;
+  --ring-color: #93c5fd;
+  --ring-offset: 0px;
+}
 
-- `foreground`: `#2563eb`
+.single-line-text-field[data-state~="disabled"] {
+  --background: #f1f5f9;
+  --foreground: #94a3b8;
+  --border-color: #cbd5e1;
+}
 
-### `adornment-icon`
+.single-line-text-field[data-state~="readonly"] {
+  --background: #f8fafc;
+  --foreground: #334155;
+}
 
-- `size`: `16px`
-- `foreground`: `#64748b`
-
-## States
-
-### `hover`
-
-- `border-color`: `#94a3b8`
-
-### `focused`
-
-- `border-color`: `#2563eb`
-- `ring-width`: `2px`
-- `ring-color`: `#93c5fd`
-- `ring-offset`: `0px`
-
-### `disabled`
-
-- `background`: `#f1f5f9`
-- `foreground`: `#94a3b8`
-- `border-color`: `#cbd5e1`
-
-### `readonly`
-
-- `background`: `#f8fafc`
-- `foreground`: `#334155`
-
-### `invalid`
-
-- `border-color`: `#dc2626`
-- `ring-color`: `#fecaca`
+.single-line-text-field[data-state~="invalid"] {
+  --border-color: #dc2626;
+  --ring-color: #fecaca;
+}
+```

@@ -16,15 +16,7 @@ The label is usually text. A project may add a leading or trailing icon when the
 
 # Look
 
-The button is a rectangle with rounded corners.
-
-The body hugs the label with horizontal and vertical padding. The body has enough visual weight to read as an interactive control.
-
-The button uses background, border, and text colors to communicate its variant and state.
-
-Hover highlights the button with a visible color, border, or surface change.
-
-Press highlights the button more strongly while activation is held, then returns to the appropriate post-press state when released.
+The button reads as a compact rectangular command control with visible state feedback.
 
 The default variant may have a stronger outline, fill, or accent treatment to indicate that it is the command activated by Enter in the current context.
 
@@ -48,9 +40,71 @@ Disabled buttons do not invoke their command.
 
 The button hugs its label by default.
 
+The button has no default minimum width beyond its label, icon, gap, border, and padding.
+
 The button may fill available width only when its containing layout explicitly requires it.
 
+Buttons whose visible text comes from a known finite cycling or toggle label set may reserve width for the longest label in that set.
+
 The label stays centered within the button body. Text should not overlap icons, borders, or neighboring content.
+
+The CSS block defines the default inline sizing, padding, gap, clipping, and full-width variant.
+
+Spec CSS:
+
+```css
+.command-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  block-size: var(--height);
+  inline-size: max-content;
+  padding-inline: var(--padding-x);
+  padding-block: var(--padding-y);
+  gap: var(--gap);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: var(--font-size);
+  font-weight: var(--font-weight);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.command-button[data-state~="hover"] {
+  background: var(--background);
+  border-color: var(--border-color);
+}
+
+.command-button[data-state~="pressed"] {
+  background: var(--background);
+  border-color: var(--border-color);
+}
+
+.command-button[data-state~="focused"] {
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: var(--ring-offset);
+}
+
+.command-button[data-state~="disabled"] {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border-color);
+  opacity: var(--opacity);
+}
+
+.command-button[data-variant="full-width"] {
+  inline-size: 100%;
+}
+
+.command-button__icon {
+  inline-size: var(--size);
+  block-size: var(--size);
+  color: var(--foreground);
+}
+```
 
 # Variants
 
@@ -60,49 +114,46 @@ Default variant: secondary.
 
 # UI Roles
 
-## Root
+```css
+.command-button {
+  --height: 32px;
+  --padding-x: 12px;
+  --padding-y: 6px;
+  --gap: 6px;
+  --radius: 6px;
+  --border-width: 1px;
+  --font-size: 13px;
+  --font-weight: 500;
+  --background: #f8fafc;
+  --foreground: #1f2937;
+  --border-color: #cbd5e1;
+}
 
-- `height`: `32px`
-- `min-width`: `64px`
-- `padding-x`: `12px`
-- `padding-y`: `6px`
-- `gap`: `6px`
-- `radius`: `6px`
-- `border-width`: `1px`
-- `font-size`: `13px`
-- `font-weight`: `500`
-- `background`: `#f8fafc`
-- `foreground`: `#1f2937`
-- `border-color`: `#cbd5e1`
+.command-button__icon {
+  --size: 16px;
+  --foreground: currentColor;
+}
 
-## Parts
+.command-button[data-state~="hover"] {
+  --background: #eef2f7;
+  --border-color: #94a3b8;
+}
 
-### `icon`
+.command-button[data-state~="pressed"] {
+  --background: #e2e8f0;
+  --border-color: #64748b;
+}
 
-- `size`: `16px`
-- `foreground`: `currentColor`
+.command-button[data-state~="focused"] {
+  --ring-width: 2px;
+  --ring-color: #2563eb;
+  --ring-offset: 2px;
+}
 
-## States
-
-### `hover`
-
-- `background`: `#eef2f7`
-- `border-color`: `#94a3b8`
-
-### `pressed`
-
-- `background`: `#e2e8f0`
-- `border-color`: `#64748b`
-
-### `focused`
-
-- `ring-width`: `2px`
-- `ring-color`: `#2563eb`
-- `ring-offset`: `2px`
-
-### `disabled`
-
-- `background`: `#f1f5f9`
-- `foreground`: `#94a3b8`
-- `border-color`: `#cbd5e1`
-- `opacity`: `1`
+.command-button[data-state~="disabled"] {
+  --background: #f1f5f9;
+  --foreground: #94a3b8;
+  --border-color: #cbd5e1;
+  --opacity: 1;
+}
+```

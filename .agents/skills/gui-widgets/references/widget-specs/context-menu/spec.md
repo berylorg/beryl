@@ -24,11 +24,7 @@ A text header item labels a group of menu items and is not interactive.
 
 # Look
 
-The context menu is a bordered surface with fixed width and fixed height.
-
-Menu items are stacked vertically inside the surface.
-
-If menu items exceed the visible height, the menu scrolls vertically.
+The context menu is a bordered vertical menu surface.
 
 Action items and selection items use hover, pressed, focused, and selected visuals as appropriate.
 
@@ -62,13 +58,87 @@ Escape, outside click, or an equivalent dismissal action closes the context menu
 
 # Layout
 
-The context menu has fixed width and fixed height.
-
-Menu items fill the menu width and use a stable row height unless a project-specific item variant defines otherwise.
-
-Vertical scrolling occurs inside the menu surface.
-
 The menu is positioned by the owning invocation context.
+
+The CSS block defines content-derived menu sizing, row sizing, clamping, and internal scrolling.
+
+Spec CSS:
+
+```css
+.context-menu {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  inline-size: clamp(var(--min-width), max-content, min(var(--max-width), available-inline-size));
+  max-block-size: min(var(--max-height), available-block-size);
+  padding-block: var(--padding-y);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: var(--shadow);
+  font-size: var(--font-size);
+  overflow-y: auto;
+}
+
+.context-menu__item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  block-size: calc(measure("M", var(--font-size), 400) + 2 * var(--padding-y));
+  inline-size: 100%;
+  padding-inline: var(--padding-x);
+  gap: var(--gap);
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+.context-menu__item[data-state~="hover"] {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.context-menu__item[data-state~="pressed"] {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.context-menu__item[data-state~="focused"] {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.context-menu__item[data-state~="selected"] {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.context-menu__item[data-state~="disabled"] {
+  color: var(--foreground);
+  opacity: var(--opacity);
+}
+
+.context-menu__header {
+  box-sizing: border-box;
+  block-size: calc(measure("M", var(--font-size), var(--font-weight)) + 2 * var(--padding-y));
+  padding-inline: var(--padding-x);
+  color: var(--foreground);
+  font-size: var(--font-size);
+  font-weight: var(--font-weight);
+  white-space: nowrap;
+}
+
+.context-menu__separator {
+  block-size: var(--height);
+  background: var(--background);
+}
+
+.context-menu__checkmark {
+  inline-size: var(--size);
+  block-size: var(--size);
+  color: var(--foreground);
+}
+```
 
 # Variants
 
@@ -78,69 +148,68 @@ Default variant: mixed action and selection.
 
 # UI Roles
 
-## Root
+```css
+.context-menu {
+  --min-width: 160px;
+  --max-width: 480px;
+  --max-height: 320px;
+  --padding-y: 4px;
+  --radius: 6px;
+  --border-width: 1px;
+  --background: #ffffff;
+  --foreground: #111827;
+  --border-color: #cbd5e1;
+  --shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  --font-size: 13px;
+}
 
-- `width`: `240px`
-- `height`: `320px`
-- `padding-y`: `4px`
-- `radius`: `6px`
-- `border-width`: `1px`
-- `background`: `#ffffff`
-- `foreground`: `#111827`
-- `border-color`: `#cbd5e1`
-- `shadow`: `0 12px 28px rgba(15, 23, 42, 0.18)`
-- `font-size`: `13px`
+.context-menu__item {
+  --padding-x: 10px;
+  --padding-y: 6px;
+  --gap: 8px;
+  --radius: 4px;
+}
 
-## Parts
+.context-menu__item[data-state~="hover"] {
+  --background: #eef2f7;
+  --foreground: #0f172a;
+}
 
-### `item`
+.context-menu__item[data-state~="pressed"] {
+  --background: #e2e8f0;
+  --foreground: #0f172a;
+}
 
-- `height`: `28px`
-- `padding-x`: `10px`
-- `gap`: `8px`
-- `radius`: `4px`
+.context-menu__item[data-state~="focused"] {
+  --background: #dbeafe;
+  --foreground: #0f172a;
+}
 
-#### States
+.context-menu__item[data-state~="selected"] {
+  --background: #eff6ff;
+  --foreground: #1d4ed8;
+}
 
-##### `hover`
+.context-menu__item[data-state~="disabled"] {
+  --foreground: #94a3b8;
+  --opacity: 1;
+}
 
-- `background`: `#eef2f7`
-- `foreground`: `#0f172a`
+.context-menu__header {
+  --padding-x: 10px;
+  --padding-y: 5px;
+  --foreground: #64748b;
+  --font-size: 12px;
+  --font-weight: 500;
+}
 
-##### `pressed`
+.context-menu__separator {
+  --height: 1px;
+  --background: #e2e8f0;
+}
 
-- `background`: `#e2e8f0`
-- `foreground`: `#0f172a`
-
-##### `focused`
-
-- `background`: `#dbeafe`
-- `foreground`: `#0f172a`
-
-##### `selected`
-
-- `background`: `#eff6ff`
-- `foreground`: `#1d4ed8`
-
-##### `disabled`
-
-- `foreground`: `#94a3b8`
-- `opacity`: `1`
-
-### `header`
-
-- `height`: `24px`
-- `padding-x`: `10px`
-- `foreground`: `#64748b`
-- `font-size`: `12px`
-- `font-weight`: `500`
-
-### `separator`
-
-- `height`: `1px`
-- `background`: `#e2e8f0`
-
-### `checkmark`
-
-- `size`: `16px`
-- `foreground`: `#2563eb`
+.context-menu__checkmark {
+  --size: 16px;
+  --foreground: #2563eb;
+}
+```

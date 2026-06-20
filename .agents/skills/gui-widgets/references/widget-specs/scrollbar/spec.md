@@ -18,15 +18,11 @@ The scrollbar may have an interaction lane along the scroll axis. The lane may b
 
 # Look
 
-The scrollbar may be vertical or horizontal.
-
 By default, the scrollbar is hidden.
 
 When the owning viewport receives pointer movement, active scrolling, or direct scrollbar interaction, the scrollbar fades into view if the viewport has overflow.
 
 After a short inactivity delay, the scrollbar fades out.
-
-The thumb is visible while the scrollbar is visible.
 
 The thumb size reflects the visible viewport's proportion of the scrollable extent, within the widget's minimum thumb size.
 
@@ -54,17 +50,90 @@ Disabled or inactive scrollbars do not accept direct manipulation.
 
 # Layout
 
-The scrollbar is aligned to the scroll container edge for its axis.
-
-A vertical scrollbar is placed along the vertical edge of the viewport.
-
-A horizontal scrollbar is placed along the horizontal edge of the viewport.
-
-The thumb remains inside the scrollbar lane bounds.
+The scrollbar is aligned to the scroll container edge for its axis, and the thumb remains inside the scrollbar lane bounds.
 
 The scrollbar does not change content layout when fading in or out unless the owning project explicitly defines reserved scrollbar space.
 
 The owning scroll surface owns viewport routing, scroll extent semantics, and scroll-state callbacks.
+
+The CSS block defines axis-specific edge placement and thumb dimensions.
+
+Spec CSS:
+
+```css
+.scrollbar {
+  position: absolute;
+  box-sizing: border-box;
+  opacity: var(--opacity);
+  transition-property: opacity;
+  transition-duration: var(--fade-duration);
+}
+
+.scrollbar[data-state~="hidden"] {
+  opacity: var(--opacity);
+}
+
+.scrollbar[data-state~="fading-in"] {
+  opacity: var(--opacity);
+}
+
+.scrollbar[data-state~="visible"] {
+  opacity: var(--opacity);
+}
+
+.scrollbar[data-state~="fading-out"] {
+  opacity: var(--opacity);
+}
+
+.scrollbar[data-state~="disabled"] {
+  opacity: var(--opacity);
+}
+
+.scrollbar[data-state~="inactive"] {
+  opacity: var(--opacity);
+}
+
+.scrollbar[data-variant~="vertical"] {
+  inline-size: var(--lane-size);
+  inset-block: var(--edge-inset);
+  inset-inline-end: var(--edge-inset);
+}
+
+.scrollbar[data-variant~="horizontal"] {
+  block-size: var(--lane-size);
+  inset-inline: var(--edge-inset);
+  inset-block-end: var(--edge-inset);
+}
+
+.scrollbar__lane {
+  inline-size: 100%;
+  block-size: 100%;
+  background: var(--background);
+}
+
+.scrollbar__thumb {
+  border-radius: var(--radius);
+  background: var(--background);
+}
+
+.scrollbar__thumb[data-variant~="vertical"] {
+  inline-size: var(--size);
+  min-block-size: var(--min-length);
+}
+
+.scrollbar__thumb[data-variant~="horizontal"] {
+  block-size: var(--size);
+  min-inline-size: var(--min-length);
+}
+
+.scrollbar__thumb[data-state~="hover"] {
+  background: var(--background);
+}
+
+.scrollbar__thumb[data-state~="dragging"] {
+  background: var(--background);
+}
+```
 
 # Variants
 
@@ -74,50 +143,55 @@ Default variant: overlay thumb-only.
 
 # UI Roles
 
-## Root
+```css
+.scrollbar {
+  --lane-size: 10px;
+  --edge-inset: 2px;
+  --fade-duration: 120ms;
+  --inactivity-delay: 800ms;
+  --opacity: 0;
+}
 
-- `lane-size`: `10px`
-- `edge-inset`: `2px`
-- `fade-duration`: `120ms`
-- `inactivity-delay`: `800ms`
+.scrollbar[data-state~="hidden"] {
+  --opacity: 0;
+}
 
-## Parts
+.scrollbar[data-state~="fading-in"] {
+  --opacity: 1;
+}
 
-### `lane`
+.scrollbar[data-state~="visible"] {
+  --opacity: 1;
+}
 
-- `background`: `transparent`
+.scrollbar[data-state~="fading-out"] {
+  --opacity: 0;
+}
 
-### `thumb`
+.scrollbar[data-state~="disabled"] {
+  --opacity: 0;
+}
 
-- `size`: `6px`
-- `min-length`: `24px`
-- `radius`: `999px`
-- `background`: `#94a3b8`
+.scrollbar[data-state~="inactive"] {
+  --opacity: 0.4;
+}
 
-#### States
+.scrollbar__lane {
+  --background: transparent;
+}
 
-##### `hover`
+.scrollbar__thumb {
+  --size: 6px;
+  --min-length: 24px;
+  --radius: 999px;
+  --background: #94a3b8;
+}
 
-- `background`: `#64748b`
+.scrollbar__thumb[data-state~="hover"] {
+  --background: #64748b;
+}
 
-##### `dragging`
-
-- `background`: `#475569`
-
-## States
-
-### `hidden`
-
-- `opacity`: `0`
-
-### `visible`
-
-- `opacity`: `1`
-
-### `disabled`
-
-- `opacity`: `0`
-
-### `inactive`
-
-- `opacity`: `0.4`
+.scrollbar__thumb[data-state~="dragging"] {
+  --background: #475569;
+}
+```
