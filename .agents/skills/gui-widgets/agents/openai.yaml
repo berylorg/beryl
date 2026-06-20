@@ -1,0 +1,4 @@
+interface:
+  display_name: "GUI Widgets"
+  short_description: "Use GUI terms and reusable widget specs."
+  default_prompt: "Use $gui-widgets to apply GUI terminology, built-in widget specs, and custom widget documentation rules."
