@@ -8,6 +8,16 @@ Sometimes known as: press-and-hold button, hold-to-activate button, safety hold 
 
 Invokes a high-risk or deliberate command only after the user holds activation for a required duration.
 
+# References
+
+Contracts:
+
+- disabled-command-tooltip
+
+Widgets:
+
+- command button
+
 # Anatomy
 
 The hold-to-confirm button consists of a rounded rectangular button body, a centered label, and a hold progress fill.
@@ -44,7 +54,7 @@ When the hold duration completes, the button invokes its assigned command once.
 
 Keyboard activation may require holding Space or Enter for the same duration when the project supports keyboard hold behavior.
 
-Disabled buttons do not start hold progress or invoke their command.
+Disabled buttons do not start hold progress, do not invoke their command, and must satisfy `disabled-command-tooltip`.
 
 # Layout
 

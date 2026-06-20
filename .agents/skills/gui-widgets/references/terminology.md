@@ -7,6 +7,8 @@ The entries are intentionally short. They establish what a term means, not every
 # Term Choice Rules
 
 - Prefer the most specific familiar term over a vague local name.
+- Use `command button` for a freestanding button-shaped command control. Treat `action button` and `push button` as synonyms, not separate canonical names.
+- Use `command row` for a row-shaped command control inside a list-like surface, including menus. Treat `menu item`, `context menu item`, and `action row` as context-specific descriptions unless a platform API requires those names.
 - Use `selector` only when the exact selection control is intentionally unspecified.
 - Use `button` for an action invoker, not for a persistent on/off value.
 - Use `checkbox` for an independent boolean option.
@@ -59,7 +61,7 @@ The entries are intentionally short. They establish what a term means, not every
 
 # Controls and Inputs
 
-- **Action button**: A button that invokes a command.
+- **Action button**: A synonym for command button. Prefer `command button` in widget specs.
 - **Affordance**: A visible cue that suggests an available interaction.
 - **Button**: A control that invokes an action when activated.
 - **Button group**: A visually grouped set of related buttons.
@@ -67,7 +69,8 @@ The entries are intentionally short. They establish what a term means, not every
 - **Color picker**: A control for choosing a color value.
 - **Color swatch**: A small color sample, often selectable or used to preview a chosen color.
 - **Combobox**: A text entry or selection control that combines an editable field with a list of options.
-- **Command button**: A button that runs a command; usually synonymous with action button.
+- **Command button**: A freestanding button-shaped control that runs a command. Prefer this term over `action button` in widget specs.
+- **Command row**: A row-shaped control inside a list-like surface that invokes a command when activated.
 - **Control**: An interactive UI element that accepts input or changes state.
 - **Control group**: A labeled group of related controls.
 - **Date picker**: A control for selecting a calendar date.
@@ -106,6 +109,8 @@ The entries are intentionally short. They establish what a term means, not every
 # Collections and Navigation
 
 - **Accordion**: A stacked set of expandable sections.
+- **Action menu**: A menu opened from an explicit primary-action, menu-button, or action-menu trigger rather than from a context-menu gesture.
+- **Action row**: A context-specific synonym for a command row outside a formal menu. Prefer `command row` in widget specs.
 - **App bar**: A top-level bar for application identity, navigation, or high-level actions.
 - **Breadcrumb**: A navigation trail showing the current location in a hierarchy.
 - **Carousel**: A horizontally or sequentially browsed collection of items.
@@ -114,7 +119,7 @@ The entries are intentionally short. They establish what a term means, not every
 - **Command palette**: A searchable command launcher, usually presented as a transient overlay.
 - **Column**: A vertical series of cells in a table or grid.
 - **Column header**: A header that labels a table or grid column.
-- **Context menu**: A menu of commands relevant to the clicked or focused object.
+- **Context menu**: A menu opened by a context-menu gesture for a specific object, location, or focus context.
 - **Data grid**: A grid optimized for tabular data with interactive cells, rows, columns, or sorting.
 - **Divider**: A visual separator between regions, groups, or items.
 - **Gallery**: A visual collection of items, often image or preview oriented.
@@ -124,9 +129,9 @@ The entries are intentionally short. They establish what a term means, not every
 - **List**: A one-dimensional collection of items.
 - **List item**: One row or entry in a list.
 - **Master-detail view**: A layout where selecting an item in one region shows its details in another.
-- **Menu**: A list of commands or choices presented as a transient or persistent UI.
+- **Menu**: A command-oriented surface made of rows. Use `context menu` for context-menu gesture invocation and `action menu` for explicit primary-action invocation.
 - **Menu bar**: A horizontal set of top-level menus, common in desktop applications.
-- **Menu item**: One command or choice inside a menu.
+- **Menu item**: Common platform term for a menu row. Prefer `command row`, `selector row`, `toggle row`, or `submenu row` when documenting reusable row behavior.
 - **Navigation bar**: A region containing primary navigation controls.
 - **Pagination**: Controls for moving between discrete pages of a result set.
 - **Ribbon**: A large command surface organized into tabs and command groups.
@@ -134,12 +139,15 @@ The entries are intentionally short. They establish what a term means, not every
 - **Row header**: A header that labels a table or grid row.
 - **Section**: A named or visually grouped part of a larger surface.
 - **Separator**: A line, gap, or element that separates items or groups.
+- **Selector row**: A row-shaped control that chooses, opens, or focuses the represented value or object.
 - **Status bar**: A bar showing status, mode, progress, or contextual information.
 - **Tab**: A labeled selector for one panel in a tabbed interface.
 - **Tab list**: The set of tabs that controls visible tab panels.
 - **Tab panel**: The content region associated with a selected tab.
 - **Table**: A row-and-column presentation of structured data.
 - **Toolbar**: A compact collection of frequently used commands.
+- **Submenu row**: A menu row that opens a nested menu instead of invoking a command directly.
+- **Toggle row**: A row-shaped control that toggles a persistent on/off or selected/unselected state.
 - **Tree**: A hierarchical collection with expandable and collapsible nodes.
 - **Tree node**: One item in a tree, optionally with child nodes.
 - **Tree view**: A UI presentation of a tree.

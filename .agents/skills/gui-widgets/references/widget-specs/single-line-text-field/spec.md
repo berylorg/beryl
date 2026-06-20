@@ -8,6 +8,10 @@ Sometimes known as: text field, text box, edit field, single-line text input
 
 Accepts and edits one line of text.
 
+# References
+
+N/A
+
 # Anatomy
 
 The single-line text field consists of a bordered field body, optional placeholder text, editable text content, an insertion caret, and optional leading or trailing adornments.

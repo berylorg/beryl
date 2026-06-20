@@ -8,6 +8,12 @@ Sometimes known as: status bar, status line, segmented status line, readout stri
 
 Shows compact status or readout information in a segmented strip at the bottom of a panel or window.
 
+# References
+
+Contracts:
+
+- disabled-command-tooltip
+
 # Anatomy
 
 The segmented status bar consists of a horizontal strip divided into segments. When the same pattern is used primarily for frequently updated live values, it may be called a readout strip.
@@ -47,6 +53,8 @@ A direct-action segment invokes one command without opening a transient surface.
 The segmented status bar does not define the internal look or behavior of opened menus, selectors, dropdowns, or flyouts.
 
 When a segment's associated transient surface is open, that segment enters the open or active state.
+
+Disabled interactive command-like segments must satisfy `disabled-command-tooltip`.
 
 # Layout
 

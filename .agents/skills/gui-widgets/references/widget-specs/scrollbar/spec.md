@@ -8,6 +8,10 @@ Sometimes known as: scroll bar
 
 Shows scroll position for content inside a viewport and provides direct manipulation for changing that scroll position.
 
+# References
+
+N/A
+
 # Anatomy
 
 The scrollbar is associated with one scroll container, one viewport, and one scroll axis.

@@ -8,13 +8,23 @@ Sometimes known as: flyout context menu, context flyout, anchored menu
 
 Presents a context menu anchored to the control or segment that opened it.
 
+# References
+
+Contracts:
+
+- disabled-command-tooltip
+
+Widgets:
+
+- context menu
+
 # Anatomy
 
-The anchored context menu consists of an anchor, a bordered menu surface, a vertical scroll container, and menu items.
+The anchored context menu consists of an anchor, a bordered menu surface, a vertical scroll container, and menu rows.
 
-Menu items are rendered as full-width rows.
+Menu rows are rendered full-width.
 
-The menu item types match the context menu spec: action items, selection items, and text header items.
+The row types match the context menu spec: command rows, selection rows, submenu rows, toggle rows, and text header rows.
 
 # Look
 
@@ -24,23 +34,25 @@ The menu appears near its anchor and reads as visually connected to the control,
 
 # States
 
-Closed, open, anchored, focused, scrollable, item-normal, item-hover, item-pressed, item-focused, item-selected, and item-disabled.
+Closed, open, anchored, focused, scrollable, row-normal, row-hover, row-pressed, row-focused, row-selected, and row-disabled.
 
 # Interaction
 
 Opening the anchored context menu associates it with its anchor.
 
-Action item activation invokes the item's command and closes the menu.
+Command row activation invokes the row's command and closes the menu.
 
-Selection item activation marks that item visually selected and reports that item as the selected element.
+Selection row activation marks that row visually selected and reports that row as the selected element.
 
-Text header items are not interactive.
+Text header rows are not interactive.
 
-Arrow Up and Arrow Down move focus among interactive menu items.
+Arrow Up and Arrow Down move focus among interactive rows.
 
-Home and End move focus to the first and last interactive menu items.
+Home and End move focus to the first and last interactive rows.
 
-Enter and Space activate the focused interactive menu item.
+Enter and Space activate the focused interactive row.
+
+Disabled command rows must satisfy `disabled-command-tooltip`.
 
 Escape, outside click, anchor reactivation, or an equivalent dismissal action closes the flyout unless the owning environment defines a stricter dismissal rule.
 
@@ -76,7 +88,7 @@ Spec CSS:
   overflow-y: auto;
 }
 
-.anchored-context-menu__item {
+.anchored-context-menu__row {
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -88,27 +100,27 @@ Spec CSS:
   white-space: nowrap;
 }
 
-.anchored-context-menu__item[data-state~="hover"] {
+.anchored-context-menu__row[data-state~="hover"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.anchored-context-menu__item[data-state~="pressed"] {
+.anchored-context-menu__row[data-state~="pressed"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.anchored-context-menu__item[data-state~="focused"] {
+.anchored-context-menu__row[data-state~="focused"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.anchored-context-menu__item[data-state~="selected"] {
+.anchored-context-menu__row[data-state~="selected"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.anchored-context-menu__item[data-state~="disabled"] {
+.anchored-context-menu__row[data-state~="disabled"] {
   color: var(--foreground);
   opacity: var(--opacity);
 }
@@ -159,34 +171,34 @@ Default variant: below-anchor, leading-edge aligned.
   --font-size: 13px;
 }
 
-.anchored-context-menu__item {
+.anchored-context-menu__row {
   --padding-x: 10px;
   --padding-y: 6px;
   --gap: 8px;
   --radius: 4px;
 }
 
-.anchored-context-menu__item[data-state~="hover"] {
+.anchored-context-menu__row[data-state~="hover"] {
   --background: #eef2f7;
   --foreground: #0f172a;
 }
 
-.anchored-context-menu__item[data-state~="pressed"] {
+.anchored-context-menu__row[data-state~="pressed"] {
   --background: #e2e8f0;
   --foreground: #0f172a;
 }
 
-.anchored-context-menu__item[data-state~="focused"] {
+.anchored-context-menu__row[data-state~="focused"] {
   --background: #dbeafe;
   --foreground: #0f172a;
 }
 
-.anchored-context-menu__item[data-state~="selected"] {
+.anchored-context-menu__row[data-state~="selected"] {
   --background: #eff6ff;
   --foreground: #1d4ed8;
 }
 
-.anchored-context-menu__item[data-state~="disabled"] {
+.anchored-context-menu__row[data-state~="disabled"] {
   --foreground: #94a3b8;
   --opacity: 1;
 }

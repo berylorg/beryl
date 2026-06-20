@@ -8,6 +8,12 @@ Sometimes known as: action button, push button
 
 Invokes a discrete command selected by the user.
 
+# References
+
+Contracts:
+
+- disabled-command-tooltip
+
 # Anatomy
 
 The command button consists of a rounded rectangular button body and a centered label.
@@ -34,7 +40,7 @@ When focused, Enter and Space invoke the command unless the owning feature defin
 
 When the button is the default command for its context, pressing Enter from the relevant context invokes it.
 
-Disabled buttons do not invoke their command.
+Disabled buttons do not invoke their command and must satisfy `disabled-command-tooltip`.
 
 # Layout
 
@@ -99,6 +105,11 @@ Spec CSS:
   inline-size: 100%;
 }
 
+.command-button[data-variant~="icon-only"] {
+  inline-size: var(--height);
+  padding-inline: 0;
+}
+
 .command-button__icon {
   inline-size: var(--size);
   block-size: var(--size);
@@ -108,7 +119,7 @@ Spec CSS:
 
 # Variants
 
-Primary, secondary, default command, destructive, icon-leading, icon-trailing, and full-width.
+Primary, secondary, default command, destructive, icon-leading, icon-trailing, icon-only, square icon, and full-width.
 
 Default variant: secondary.
 

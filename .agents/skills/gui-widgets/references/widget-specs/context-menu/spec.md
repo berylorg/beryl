@@ -8,51 +8,59 @@ Sometimes known as: shortcut menu, contextual menu, right-click menu
 
 Presents contextual actions or selections related to the current object, region, or invocation context.
 
+# References
+
+Contracts:
+
+- disabled-command-tooltip
+
 # Anatomy
 
-The context menu consists of a bordered menu surface, a vertical scroll container, and menu items.
+The context menu consists of a bordered menu surface, a vertical scroll container, and menu rows.
 
-Menu items are rendered as full-width rows.
+Menu rows are rendered full-width.
 
-Menu items may be action items, selection items, or text header items.
+Menu rows may be command rows, selection rows, submenu rows, toggle rows, or text header rows.
 
-An action item invokes a command.
+A command row invokes a command.
 
-A selection item represents a selectable value.
+A selection row represents a selectable value.
 
-A text header item labels a group of menu items and is not interactive.
+A text header row labels a group of rows and is not interactive.
 
 # Look
 
 The context menu is a bordered vertical menu surface.
 
-Action items and selection items use hover, pressed, focused, and selected visuals as appropriate.
+Command rows and selection rows use hover, pressed, focused, and selected visuals as appropriate.
 
-Text header items use a quieter text treatment to separate or label groups of action and selection items.
+Text header rows use a quieter text treatment to separate or label row groups.
 
 # States
 
-Closed, open, focused, scrollable, item-normal, item-hover, item-pressed, item-focused, item-selected, and item-disabled.
+Closed, open, focused, scrollable, row-normal, row-hover, row-pressed, row-focused, row-selected, and row-disabled.
 
 # Interaction
 
-Opening the context menu presents the menu items for the current context.
+Opening the context menu presents the menu rows for the current context.
 
-Clicking or tapping an enabled action item invokes that item's command and closes the context menu.
+Clicking or tapping an enabled command row invokes that row's command and closes the context menu.
 
-Clicking or tapping an enabled selection item marks that item visually selected and reports that item as the selected element.
+Clicking or tapping an enabled selection row marks that row visually selected and reports that row as the selected element.
 
-Selection items do not necessarily close the context menu unless the owning feature defines that behavior.
+Selection rows do not necessarily close the context menu unless the owning feature defines that behavior.
 
-Text header items are not interactive.
+Text header rows are not interactive.
 
-Arrow Up and Arrow Down move focus among interactive menu items.
+Arrow Up and Arrow Down move focus among interactive rows.
 
-Home and End move focus to the first and last interactive menu items.
+Home and End move focus to the first and last interactive rows.
 
-Enter and Space activate the focused interactive menu item.
+Enter and Space activate the focused interactive row.
 
-The menu can scroll vertically when its items exceed the visible height.
+Disabled command rows must satisfy `disabled-command-tooltip`.
+
+The menu can scroll vertically when its rows exceed the visible height.
 
 Escape, outside click, or an equivalent dismissal action closes the context menu unless the owning environment defines a stricter dismissal rule.
 
@@ -81,7 +89,7 @@ Spec CSS:
   overflow-y: auto;
 }
 
-.context-menu__item {
+.context-menu__row {
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -93,27 +101,27 @@ Spec CSS:
   white-space: nowrap;
 }
 
-.context-menu__item[data-state~="hover"] {
+.context-menu__row[data-state~="hover"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.context-menu__item[data-state~="pressed"] {
+.context-menu__row[data-state~="pressed"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.context-menu__item[data-state~="focused"] {
+.context-menu__row[data-state~="focused"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.context-menu__item[data-state~="selected"] {
+.context-menu__row[data-state~="selected"] {
   background: var(--background);
   color: var(--foreground);
 }
 
-.context-menu__item[data-state~="disabled"] {
+.context-menu__row[data-state~="disabled"] {
   color: var(--foreground);
   opacity: var(--opacity);
 }
@@ -142,9 +150,9 @@ Spec CSS:
 
 # Variants
 
-Action-only, selection-only, mixed action and selection, grouped, disabled-row, and scrollable.
+Command-only, selection-only, mixed command and selection, grouped, disabled-row, submenu-row, toggle-row, and scrollable.
 
-Default variant: mixed action and selection.
+Default variant: mixed command and selection.
 
 # UI Roles
 
@@ -163,34 +171,34 @@ Default variant: mixed action and selection.
   --font-size: 13px;
 }
 
-.context-menu__item {
+.context-menu__row {
   --padding-x: 10px;
   --padding-y: 6px;
   --gap: 8px;
   --radius: 4px;
 }
 
-.context-menu__item[data-state~="hover"] {
+.context-menu__row[data-state~="hover"] {
   --background: #eef2f7;
   --foreground: #0f172a;
 }
 
-.context-menu__item[data-state~="pressed"] {
+.context-menu__row[data-state~="pressed"] {
   --background: #e2e8f0;
   --foreground: #0f172a;
 }
 
-.context-menu__item[data-state~="focused"] {
+.context-menu__row[data-state~="focused"] {
   --background: #dbeafe;
   --foreground: #0f172a;
 }
 
-.context-menu__item[data-state~="selected"] {
+.context-menu__row[data-state~="selected"] {
   --background: #eff6ff;
   --foreground: #1d4ed8;
 }
 
-.context-menu__item[data-state~="disabled"] {
+.context-menu__row[data-state~="disabled"] {
   --foreground: #94a3b8;
   --opacity: 1;
 }

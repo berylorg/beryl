@@ -8,6 +8,10 @@ Sometimes known as: text area, multiline text box, multiline text input, multili
 
 Accepts and edits text that may contain multiple lines.
 
+# References
+
+N/A
+
 # Anatomy
 
 The multiline text field consists of a bordered field body, optional placeholder text, editable text content, an insertion caret, a scroll container, and optional resize affordance.

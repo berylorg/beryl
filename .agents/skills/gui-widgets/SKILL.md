@@ -1,6 +1,6 @@
 ---
 name: gui-widgets
-description: Shared GUI terminology catalog, predefined widget specs, and custom widget documentation rules. Use when naming, discussing, designing, reviewing, or documenting GUI elements; when choosing baseline UI vocabulary for controls, containers, overlays, state, selection, navigation, or layout; when describing built-in widget patterns such as command buttons, text fields, scrollbars, segmented status bars, or context menus; or when creating/updating custom widget specs at doc/gui-widgets/<custom_widget_name>/spec.md.
+description: Shared GUI terminology catalog, reusable widget contracts, predefined widget specs, and custom widget documentation rules. Use when naming, discussing, designing, reviewing, or documenting GUI elements; when choosing baseline UI vocabulary for controls, containers, overlays, state, selection, navigation, or layout; when describing reusable contracts or built-in widget patterns such as command buttons, text fields, scrollbars, segmented status bars, context menus, or tooltips; or when creating/updating custom widget specs at doc/gui-widgets/<custom_widget_name>/spec.md.
 ---
 
 # GUI Widgets
@@ -19,6 +19,18 @@ Consult the catalog when naming GUI elements, reviewing UI docs, resolving ambig
 
 Keep the catalog limited to broadly established GUI terminology. Do not add project-specific widget names or predefined widget spec names to the terminology catalog merely because a spec file exists.
 
+## Reusable Contracts
+
+Use these built-in contracts when a project needs one of the predefined reusable widget obligations:
+
+- `references/contracts/disabled-command-tooltip.md`
+
+Contracts are reusable behavioral, dependency, or state obligations. They are not complete widgets and usually do not define CSS.
+
+Contracts may reference concrete widget specs by canonical widget name when satisfying the contract requires a concrete UI element. Treat each contract reference to a widget as an explicit dependency. Do not hide widget dependencies behind generic wording when a specific widget is required.
+
+Widget specs may reference contracts and other widgets. Authors should avoid circular dependencies. If a cycle appears, resolve it during review by moving shared behavior into a lower contract or by removing an unnecessary dependency.
+
 ## Predefined Widget Specs
 
 Use these built-in specs when a project needs one of the predefined widget patterns:
@@ -31,10 +43,11 @@ Use these built-in specs when a project needs one of the predefined widget patte
 - `references/widget-specs/anchored-context-menu/spec.md`
 - `references/widget-specs/hold-to-confirm-button/spec.md`
 - `references/widget-specs/scrollbar/spec.md`
+- `references/widget-specs/tooltip/spec.md`
 
 These reference paths mirror the project-local custom widget layout while staying inside the skill's `references/` directory.
 
-Treat these specs as reusable reference contracts. Copy or adapt them into a project's `doc/gui-widgets/<custom_widget_name>/spec.md` only when the project needs a project-local custom widget spec.
+Treat these specs as reusable widget references. Copy or adapt them into a project's `doc/gui-widgets/<custom_widget_name>/spec.md` only when the project needs a project-local custom widget spec.
 
 ## UI Role Addressing
 
@@ -63,9 +76,9 @@ Use these selector rules:
 - The root selector, such as `.command-button`, adds no part or state prefix.
 - A part selector, such as `.command-button__icon`, adds the part name.
 - A root state selector, such as `.command-button[data-state~="hover"]`, adds the state name.
-- A part state selector, such as `.context-menu__item[data-state~="hover"]`, adds the part name and then the state name.
+- A part state selector, such as `.context-menu__row[data-state~="hover"]`, adds the part name and then the state name.
 
-For a `context-menu` widget, `.context-menu__item[data-state~="hover"] { --background: #eef2f7; }` expands to `context-menu.item.hover.background`.
+For a `context-menu` widget, `.context-menu__row[data-state~="hover"] { --background: #eef2f7; }` expands to `context-menu.row.hover.background`.
 
 Theme-aware apps use the expanded canonical role ids directly or through a deterministic adapter for their theme system. Apps without theming use the fallback values listed in the widget spec.
 
@@ -74,6 +87,21 @@ The default visual variant belongs in `# Variants`. Exact visual fallback values
 Prefer `foreground` for text, icon, and stroke color; `background` for fills; `width` and `height` for rectangular dimensions; `size` only when one value intentionally controls both width and height; and `padding-x` and `padding-y` instead of ambiguous padding when axes may differ.
 
 Every visual-impacting parameter used by the default variant must have a UI role fallback unless the value is inherited from platform behavior or deliberately non-themable.
+
+## Dependency References
+
+Use `# References` in widget specs and contract docs to list direct dependencies by canonical name.
+
+Use these dependency groups:
+
+- `Contracts:` for reusable contract dependencies.
+- `Widgets:` for concrete widget dependencies.
+
+Write `N/A` when a spec has no direct dependencies.
+
+List only direct dependencies, not transitive dependencies. A widget that uses `disabled-command-tooltip` lists that contract; the contract itself lists the required `tooltip` widget.
+
+References are reviewable dependency edges. Prefer simple acyclic graphs, but do not invent vague wording to avoid naming a real dependency.
 
 ## Widget CSS Notation
 
@@ -99,7 +127,7 @@ CSS variables reference local UI role defaults by selector scope:
 - A root declaration such as `.command-button { --height: 32px; }` is referenced as `var(--height)` in `.command-button`.
 - A part declaration such as `.command-button__icon { --size: 16px; }` is referenced as `var(--size)` in `.command-button__icon`.
 - A state declaration such as `.command-button[data-state~="hover"] { --background: #eef2f7; }` is referenced as `var(--background)` in that state selector.
-- A part-state declaration such as `.context-menu__item[data-state~="hover"] { --background: #eef2f7; }` is referenced as `var(--background)` in that part-state selector.
+- A part-state declaration such as `.context-menu__row[data-state~="hover"] { --background: #eef2f7; }` is referenced as `var(--background)` in that part-state selector.
 
 Every CSS variable that affects the default visual result must correspond to a `# UI Roles` custom-property fallback in the same selector scope or an inherited selector scope, a named fixed widget constant in prose, an inherited platform value, a documented environment value, or a documented dynamic widget-state value.
 
@@ -121,6 +149,44 @@ Use lowercase hyphenated directory names for `<custom_widget_name>`.
 
 Keep widget specs focused on the reusable widget contract. Put feature-specific workflows, product rules, permissions, data lifecycles, and visible error behavior in the owning feature design doc unless the project declares a different documentation authority.
 
+Document project-local reusable contracts at:
+
+```text
+doc/gui-widgets/contracts/<contract_name>.md
+```
+
+Use lowercase hyphenated names for `<contract_name>`.
+
+Keep contracts focused on reusable obligations and dependency rules. Put concrete widget anatomy, CSS, visual variants, and UI roles in widget specs unless the contract itself is the concrete renderable element.
+
+## Required Contract Structure
+
+Every reusable contract must use these sections, in this order:
+
+```markdown
+# Name
+
+Canonical name: <name>
+
+# Purpose
+
+<What reusable obligation this contract defines, or N/A.>
+
+# References
+
+<Direct contract and widget dependencies by canonical name, or N/A.>
+
+# Applies To
+
+<Which widgets, states, or situations the contract applies to, or N/A.>
+
+# Rule
+
+<The reusable obligation, behavior, dependency, or state rule.>
+```
+
+If a section has nothing meaningful to say, write `N/A` as that section's body. Do not omit mandatory sections.
+
 ## Required Spec Structure
 
 Every custom widget spec must use these sections, in this order:
@@ -135,6 +201,10 @@ Sometimes known as: <other names, or N/A>
 # Purpose
 
 <What reusable UI problem this widget solves, or N/A.>
+
+# References
+
+<Direct contract and widget dependencies by canonical name, or N/A.>
 
 # Anatomy
 
@@ -173,6 +243,8 @@ Use `# Name` to establish one canonical term. Include aliases only to map common
 
 Use `# Purpose` to explain why the widget exists as a reusable control, not what one feature does with it.
 
+Use `# References` to list direct dependencies. Use canonical names, not file paths. Use the dependency groups `Contracts:` and `Widgets:` when dependencies exist.
+
 Use `# Anatomy` to name stable subparts such as trigger, label, leading icon, trailing icon, panel, item, handle, thumb, track, header, row, cell, separator, backdrop, or affordance.
 
 Use `# Look` for visual identity and visual-state intent. When `Spec CSS:` is present, keep this section high-level and do not restate CSS mechanics.
@@ -201,6 +273,12 @@ Sometimes known as: action button, push button
 # Purpose
 
 Invokes a discrete command selected by the user.
+
+# References
+
+Contracts:
+
+- disabled-command-tooltip
 
 # Anatomy
 
