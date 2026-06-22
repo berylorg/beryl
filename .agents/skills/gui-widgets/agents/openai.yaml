@@ -1,4 +1,0 @@
-interface:
-  display_name: "GUI Widgets"
-  short_description: "Compatibility redirect to the GUI skill."
-  default_prompt: "Use $gui-widgets only to redirect to $gui for GUI docs, slots, mounts, and widget specs."
