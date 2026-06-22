@@ -51,7 +51,7 @@ Beryl builds graph-upkeep hidden context in its own request-assembly path. Graph
 
 If both graph-upkeep instructions and global developer instructions are disabled, Beryl sends the app-server hidden reset value required by the shared developer-instructions transport. If the transport requires an exact effective model and Beryl cannot determine it from backend metadata or GUI-held pending defaults, Beryl omits the hidden developer-instructions payload rather than guessing a model.
 
-Graph upkeep does not use `fs/watch`, filesystem events, or scanner loops as a source synchronization mechanism. Current source state is pulled on demand through bounded source reads or source-ref resolution when the AI upkeep pass needs it. Failed, stale, ambiguous, or invalid source refs are surfaced through graph-owned tool results or localized UI state so the AI can retry, repair, update the graph, or leave the graph unchanged.
+Graph upkeep does not use `fs/watch`, filesystem events, or scanner loops as a source synchronization mechanism. Current source state is pulled on demand through bounded source reads or source-ref resolution when the AI upkeep pass needs it. Failed, stale, ambiguous, or invalid source refs are reported through graph-owned tool results or localized UI state so the AI can retry, repair, update the graph, or leave the graph unchanged.
 
 Automatic post-turn graph upkeep must stay off the user-visible response path. User- or model-initiated graph tool calls during an active conversation follow the ordinary dynamic-tool execution path and must still use bounded graph reads and graph-owned write validation.
 
@@ -69,4 +69,4 @@ Applying graph upkeep instructions updates the workspace-scoped active graph pol
 
 When no workspace is selected, the `Graph` tab remains visible but the graph upkeep instructions row is disabled with a workspace-required state and cannot apply a draft. During a workspace switch, unapplied graph-upkeep drafts for the previous workspace are discarded and the row is rebound to the newly selected workspace's applied policy. If workspace persistence is unavailable or an apply attempt cannot prove the target workspace still matches the selected workspace, applying graph-upkeep instructions fails without mutating the active policy.
 
-Stale-ref repair failures, source-read failures, and mechanically rejected upkeep writes are reported through localized notices or bounded surface state without replacing the graph overlay.
+Stale-ref repair failures, source-read failures, and mechanically rejected upkeep writes are reported through localized notices or bounded graph-overlay state without replacing the graph overlay.

@@ -11,11 +11,16 @@ Let users organize Beryl work into durable semantic workspaces that can span hos
 
 # Decisions
 
+## GUI Supplement
+
+- `gui.md` is a normative supplemental GUI composition file for workspace toolbar controls, workspace picker layout, and member-column layout.
+
 ## Workspace Identity
 
 - A Beryl workspace is GUI-owned durable state stored under the configured Beryl home directory, whose default is `~/.beryl`.
 - On startup, Beryl opens the previously active persisted workspace. If it cannot be resumed, Beryl creates and opens a fresh untitled workspace.
 - New workspaces begin untitled and may remain untitled until manually renamed or best-effort auto-titled after the first completed assistant turn.
+- A freshly created workspace renders through the normal main workspace window as a pending-new-thread draft. It does not replace the main workspace window with a separate startup screen.
 - Untitled workspace labels use a monotonically increasing sequence and are not renumbered after deletions.
 - Workspace display titles map to filesystem-friendly workspace id slugs by deterministic transliteration and normalization.
 - A title change is rejected when the derived slug is empty or already belongs to another workspace. Beryl does not auto-suffix colliding names.

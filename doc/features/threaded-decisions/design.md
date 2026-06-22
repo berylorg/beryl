@@ -15,6 +15,7 @@ Let users explore nontrivial itemized decisions in dedicated child conversation 
 
 ## Implementation References
 
+- `gui.md` is a normative supplemental GUI composition file for threaded-decision toolbar breadcrumb composition and graph-overlay affordances.
 - CAS projection bindings and storage-backed transcript preparation for captured histories are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
 - Durable transcript provenance for parent and child turns is defined in `doc/systems/syndic-conversation-history/design.md`.
 - Backend runtime capability probing and backend-unavailable behavior are defined in `doc/systems/backend-runtime/design.md` and `doc/features/backend-runtime-recovery/design.md`.

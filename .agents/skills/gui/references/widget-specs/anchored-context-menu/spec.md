@@ -20,7 +20,7 @@ Widgets:
 
 # Anatomy
 
-The anchored context menu consists of an anchor, a bordered menu surface, a vertical scroll container, and menu rows.
+The anchored context menu consists of an anchor, a bordered menu panel, a vertical scroll container, and menu rows.
 
 Menu rows are rendered full-width.
 
@@ -64,7 +64,7 @@ The menu is positioned relative to its anchor.
 
 The preferred placement is near the anchor without obscuring the anchor more than necessary.
 
-If the preferred placement would overflow the viewport or containing surface, the menu may flip, shift, or clamp while remaining associated with the anchor.
+If the preferred placement would overflow the viewport or containing region, the menu may flip, shift, or clamp while remaining associated with the anchor.
 
 The CSS block defines content-derived menu sizing, row sizing, clamping, and internal scrolling.
 

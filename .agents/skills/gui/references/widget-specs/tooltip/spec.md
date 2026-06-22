@@ -14,13 +14,13 @@ N/A
 
 # Anatomy
 
-The tooltip consists of a transient text surface and optional pointer notch.
+The tooltip consists of a transient text panel and optional pointer notch.
 
 The owning element provides the tooltip text and anchor.
 
 # Look
 
-The tooltip is a compact transient surface with readable helper text.
+The tooltip is a compact transient panel with readable helper text.
 
 The tooltip should visually sit above ordinary content without reading as a menu, dialog, or notification.
 
@@ -34,15 +34,15 @@ The tooltip is opened by the owning element's hover, focus, or equivalent inspec
 
 The tooltip does not receive focus, accept selection, expose commands, or contain interactive controls.
 
-The tooltip closes when the owning hover, focus, or inspect gesture ends, or when the owning surface dismisses transient affordances.
+The tooltip closes when the owning hover, focus, or inspect gesture ends, or when the owning container dismisses transient affordances.
 
 # Layout
 
 The tooltip is positioned near its anchor without obscuring the anchor more than necessary.
 
-If the preferred placement would overflow the viewport or containing surface, the tooltip may flip, shift, or clamp while remaining associated with the anchor.
+If the preferred placement would overflow the viewport or containing region, the tooltip may flip, shift, or clamp while remaining associated with the anchor.
 
-The CSS block defines compact tooltip surface sizing, text wrapping, and optional notch geometry.
+The CSS block defines compact tooltip panel sizing, text wrapping, and optional notch geometry.
 
 Spec CSS:
 

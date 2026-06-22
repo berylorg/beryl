@@ -20,7 +20,7 @@ Workspace knowledge search is a discovery aid for the AI conversation interface.
 
 Semantic search consumes semantic graph records, thread refs, markdown refs, graph provenance, and graph proximity metadata as source and ranking signals. The graph remains owned by `doc/features/semantic-graph/design.md`, and search must not mutate semantic graph state as part of indexing or query execution.
 
-No dedicated user-facing semantic search surface is defined by this feature. CAS-facing knowledge search results appear through ordinary conversation output and dynamic-tool activity presentation until a separate UI-search design owns that surface.
+No dedicated user-facing semantic search UI is defined by this feature. CAS-facing knowledge search results appear through ordinary conversation output and dynamic-tool activity presentation until a separate UI-search design owns that interface.
 
 ## Architecture
 

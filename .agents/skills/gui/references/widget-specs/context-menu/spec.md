@@ -16,7 +16,7 @@ Contracts:
 
 # Anatomy
 
-The context menu consists of a bordered menu surface, a vertical scroll container, and menu rows.
+The context menu consists of a bordered menu panel, a vertical scroll container, and menu rows.
 
 Menu rows are rendered full-width.
 
@@ -30,7 +30,7 @@ A text header row labels a group of rows and is not interactive.
 
 # Look
 
-The context menu is a bordered vertical menu surface.
+The context menu is a bordered vertical menu panel.
 
 Command rows and selection rows use hover, pressed, focused, and selected visuals as appropriate.
 

@@ -10,6 +10,10 @@ Define Beryl's semantic graph as the durable workspace scope map that helps user
 
 # Decisions
 
+## GUI Supplement
+
+- `gui.md` is a normative supplemental GUI composition file for the graph toolbar toggle, graph overlay, graph browser, and graph context menus.
+
 ## Product Features
 
 Beryl presents the semantic graph as a per-workspace scope map for durable work concepts. Users can use it to organize project capabilities, bugs, ideas, open questions, design areas, implementation tasks, itemized work, source documents, and important Codex conversations.
@@ -108,11 +112,11 @@ Workspace-level metadata such as titles, the default runtime environment, runtim
 
 The semantic graph UI consists of the graph overlay, graph node context menu, and graph-ref status treatments.
 
-Beryl does not provide a separate checklist sidebar. Checklist-item navigation and actions are graph-overlay responsibilities so checklist-item state has one primary user-facing surface.
+Beryl does not provide a separate checklist sidebar. Checklist-item navigation and actions are graph-overlay responsibilities so checklist-item state has one primary user-facing UI path.
 
 The main toolbar exposes a `Graph` toggle in the trailing toolbar group before Settings. The control opens and closes the graph overlay and uses the active button visual while the overlay is visible.
 
-The graph overlay is a toggleable overlay surface shown above the conversation column. It is hidden by default, closes the thread selector when opened, and is the only column-browser surface interactive while visible.
+The graph overlay is a toggleable overlay shown above the conversation column. It is hidden by default, closes the thread selector when opened, and is the only column-browser UI interactive while visible.
 
 The graph overlay anchors its left and right edges to the conversation column and its top edge to the bottom edge of the thread strip. Its default height is bounded near the upper half of the visible conversation-column space.
 
@@ -120,7 +124,7 @@ The graph overlay remains bounded within the visible conversation column in smal
 
 When the OS window cannot provide the graph overlay's preferred height, the overlay clamps its height within the conversation column and leaves scrolling to the graph browser viewport and browser columns.
 
-The graph overlay does not reflow the main workspace layout. It floats above the transcript region, leaves the toolbar strip, thread strip, user input panel, and status line strip in place, and prevents underlying transcript content from acting as the active interaction surface while open.
+The graph overlay does not reflow the main workspace layout. It floats above the transcript region, leaves the toolbar strip, thread strip, user input panel, and status line strip in place, and prevents underlying transcript content from acting as the active interaction target while open.
 
 The graph overlay has a fixed header strip and a graph browser viewport below that header. The header strip may show compact graph scope or status information, but it does not show node summaries, graph-wide node counts, or long explanatory text inline.
 
@@ -148,7 +152,7 @@ Rows with visible hard children expose an expand-or-collapse control. Expanding 
 
 Soft links render as compact terminal rows attached beneath expanded semantic nodes. A soft-link row label identifies the link kind and target title. Activating a soft-link row opens the target semantic node in a successor column instead of mutating graph state.
 
-Thread refs render as compact terminal rows attached beneath expanded semantic nodes. A valid thread-ref row label shows the thread display title. Activating a valid thread-ref row closes selector surfaces as needed and uses the exact existing-thread activation path, including pending transcript activation state.
+Thread refs render as compact terminal rows attached beneath expanded semantic nodes. A valid thread-ref row label shows the thread display title. Activating a valid thread-ref row closes selectors as needed and uses the exact existing-thread activation path, including pending transcript activation state.
 
 Invalid thread-ref rows remain visible. They render a compact invalid-link indicator, expose the invalid reason through a hover tooltip, and report the invalid reason through the standard localized notice path when activated.
 
@@ -158,13 +162,13 @@ A resolved markdown-ref row activates the ordinary source-opening path for that 
 
 Rows affected by pending local graph mutations may show pending, disabled, or dimmed state. Unaffected rows remain visible and interactive according to current graph-action policy.
 
-Ordinary graph mutations keep the graph overlay body and browser columns mounted when graph content is already available. Full-body loading or recovery surfaces are reserved for startup, empty graph, and explicit authoritative refresh recovery.
+Ordinary graph mutations keep the graph overlay body and browser columns mounted when graph content is already available. Full-body loading or recovery presentations are reserved for startup, empty graph, and explicit authoritative refresh recovery.
 
 Right-clicking a semantic-node row opens a graph node context menu without changing the active transcript thread.
 
 Right-clicking a topic-capable semantic-node row may expose commands to create checklist-item children under that topic. Creating a checklist item from a topic row creates an ordinary checklist-item child node; creating a decision from a topic row is owned by the threaded-decision workflow.
 
-The graph node context menu is a bounded context menu surface layered above the graph overlay and clamped within the OS window bounds. The menu and its submenus own vertical scrolling when their rows exceed the bounded height.
+The graph node context menu is bounded above the graph overlay and clamped within the OS window bounds. The menu and its submenus own vertical scrolling when their rows exceed the bounded height.
 
 The graph node context menu contains compact menu items. Disabled menu items remain visible and expose the disabled reason through a hover tooltip.
 
@@ -184,10 +188,10 @@ When the active workspace has more than one available member, `Link thread` open
 
 Thread-list submenu rows show only the thread display title and are sorted by last-updated time descending. A member with no linkable threads shows a disabled `No threads` menu item.
 
-Graph mutation failures from context-menu commands report localized error or recovery state near the menu or graph surface, clear the in-flight state, and preserve unaffected graph columns.
+Graph mutation failures from context-menu commands report localized error or recovery state near the menu or graph UI, clear the in-flight state, and preserve unaffected graph columns.
 
 Right-clicking a checklist-item semantic-node row opens a graph node context menu that includes `Start New Codex Thread`. That command creates and activates a new Codex thread attached to the existing checklist-item node rather than creating a new semantic child node.
 
-Threaded-decision commands for checklist-item rows, including `Start Decision Branch`, are defined by `doc/features/threaded-decisions/design.md` and use the same graph node context-menu surface.
+Threaded-decision commands for checklist-item rows, including `Start Decision Branch`, are defined by `doc/features/threaded-decisions/design.md` and use the same graph node context menu.
 
-Surface notices report graph recovery, invalid thread refs, invalid markdown refs, backend-unavailable graph actions, and graph mutation failures without replacing the graph overlay.
+Workspace notices report graph recovery, invalid thread refs, invalid markdown refs, backend-unavailable graph actions, and graph mutation failures without replacing the graph overlay.

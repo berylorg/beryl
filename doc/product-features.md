@@ -17,7 +17,7 @@ Authoritative feature design entry points:
 - Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches: `doc/features/semantic-search/design.md`
 - Settings window shell, settings rows, settings persistence, and settings dynamic tools: `doc/features/settings/design.md`
 - Appearance themes, theme repository, Themes settings page, theme candidate code panels, theme dynamic tools, and theme editor: `doc/features/theming/design.md`
-- Surface notices, turn-error notices, end-turn sounds, and attention-trigger behavior: `doc/features/notifications/design.md`
+- Workspace notices, turn-error notices, end-turn sounds, and attention-trigger behavior: `doc/features/notifications/design.md`
 - AI lifecycle yield tool and continuation behavior: `doc/features/lifecycle-yield/design.md`
 - Supervisor diagnostics and diagnostic child control: `doc/features/diagnostics/design.md`
 
@@ -29,5 +29,7 @@ Shared non-feature contracts:
 - Backend runtime launch, listener security, managed backend lifecycle, capability probing, connection recovery, and protocol ownership: `doc/systems/backend-runtime/design.md`
 - Transcript presentation internals, residency, shell host boundary, renderer demand, resource admission, and diagnostics: `doc/systems/transcript-presentation/design.md`
 - Codex-compatible replacement-agent constraints: `doc/systems/codex-compatible-agent-layer/design.md`
-- Shared UI infrastructure, widgets, geometry, and scroll mechanics: `doc/ui.md`
+- GUI window and slot integration: `doc/gui/integration.md`
+- External GUI widget spec registry: `doc/gui/external-specs.md`
+- Beryl-local reusable GUI widget specs and contracts: `doc/gui/widgets/...`
 - Shared baseline text-input interaction: `doc/input-hotkeys.md`

@@ -13,19 +13,20 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 
 ## Supplemental Files
 
-- `theme-editor.md` is a normative supplemental design file for the theme editor UI and interaction contract.
+- `gui.md` is a normative supplemental GUI composition file for the Themes settings page, theme editor subpage, and theme candidate code panel actions.
+- `theme-editor.md` is a navigation pointer to `gui.md` for older references.
 - The feature entry point remains authoritative for theme model, repository, tools, and how the editor fits into the theming workflow.
 
 ## Appearance Theme Model
 
-- Typography and colors used by Beryl-owned UI and transcript surfaces are configurable through the active appearance theme.
+- Typography and colors used by Beryl-owned UI and transcript regions are configurable through the active appearance theme.
 - Every Beryl-owned visible appearance value resolves from the active theme model or a documented derivation of an active theme property.
-- Theme roles cover main-window chrome, toolbar and thread-strip surfaces, buttons, inputs, transcript shell/content, Markdown blocks and inline structures, code panels, syntax-highlight tokens, user input fragments, activity rows, status cells, graph/checklist visuals, selector accents, scrollbars, separators, popups, overlays, notices, media placeholders, warning/error/info states, selection/focus/disabled states, and settings-window surfaces.
+- Theme roles cover main-window chrome, toolbar and thread-strip regions, buttons, inputs, transcript shell/content, Markdown blocks and inline structures, code panels, syntax-highlight tokens, user input fragments, activity rows, status cells, graph/checklist visuals, selector accents, scrollbars, separators, popups, overlays, notices, media placeholders, warning/error/info states, selection/focus/disabled states, and settings-window regions.
 - A theme defines a rooted style-role hierarchy. Each role has a hardcoded supported property set and one value source per supported property.
 - Supported value sources resolve to concrete values from inline values, the same property on the static parent chain, runtime ambient parent, or built-in fallback.
 - Unsupported role-property combinations are not part of the schema and do not inherit into existence.
 - Runtime ambient inheritance is distinct from static inheritance and is used for embedded content whose surrounding render context changes.
-- Role property sets follow semantic category: surface roles expose surface properties, text roles expose foreground/background and coherent typography, single-primitive roles expose `color`, and controls/rows/menus/status/media/transcript/graph/checklist/workspace/settings roles inherit from appropriate foundation roles.
+- Role property sets follow semantic category: region roles expose container properties, text roles expose foreground/background and coherent typography, single-primitive roles expose `color`, and controls/rows/menus/status/media/transcript/graph/checklist/workspace/settings roles inherit from appropriate foundation roles.
 - Transient interaction states may change resolved color properties for hover, pressed, active, selected, focused, disabled, warning, error, info, pending, streaming, and unavailable states, but must not change widget geometry unless a widget contract permits it.
 - The active theme drives both the main workspace window and app-neutral style options passed into reusable settings-window mechanics.
 
@@ -50,7 +51,7 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 - The active theme row exposes Save and Save As when the active theme has staged changes.
 - Save persists changes to the active installed theme.
 - Save As asks for a durable name and saves staged active-theme definition as a new installed theme.
-- The active theme row's Edit action opens the theme editor subpage described by `theme-editor.md`.
+- The active theme row's Edit action opens the theme editor subpage described by `gui.md`.
 - Ordinary settings drafts do not live-preview theme changes. Preview controls are limited to unsaved `beryl-theme` transcript candidates and CAS theme preview tools.
 
 ## Theme Candidate Code Panels

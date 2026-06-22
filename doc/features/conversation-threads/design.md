@@ -16,9 +16,10 @@ Let users create, resume, branch, edit, title, navigate between, and select Bery
 
 ## Implementation References
 
+- `gui.md` is a normative supplemental GUI composition file for conversation-thread toolbar, thread strip, selector, and context-menu placement.
 - CAS projection bindings, stale/unbound projection behavior, fresh materialization, and Syndic graph-action reflection are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
 - Durable captured transcript history and transcript-view provenance are defined in `doc/systems/syndic-conversation-history/design.md`.
-- Transcript presentation residency and context-menu provenance surfaces are defined in `doc/systems/transcript-presentation/design.md`.
+- Transcript presentation residency and context-menu provenance are defined in `doc/systems/transcript-presentation/design.md`.
 - Backend runtime capability probing and backend-unavailable behavior are defined in `doc/systems/backend-runtime/design.md` and `doc/features/backend-runtime-recovery/design.md`.
 
 ## Thread Ownership And Binding
@@ -73,7 +74,7 @@ Let users create, resume, branch, edit, title, navigate between, and select Bery
 ## Thread Selector
 
 - The thread selector is a popup opened from the active thread title control. It switches the active Codex thread without requiring semantic graph interaction.
-- Opening the selector closes the graph overlay and graph context menus so only one column-selector surface is interactive.
+- Opening the selector closes the graph overlay and graph context menus so only one column selector is interactive.
 - The selector renders from the latest available workspace thread catalog snapshot and must not call `codex app-server`.
 - Opening the selector must not itself mark catalog refresh or start backend enumeration. It uses the latest completed snapshot prepared by background maintenance.
 - A selector popup's visible rows, columns, and ordering remain stable while the popup is open. If a newer catalog refresh completes while the selector is open, Beryl defers applying it to that open selector projection until the selector is closed and reopened, unless a later explicit apply-refresh affordance is designed.
@@ -88,7 +89,7 @@ Let users create, resume, branch, edit, title, navigate between, and select Bery
 - Pending activation progress is chrome state derived from activation-owned work such as accepted intent, selected transcript-view activation, resident data seed preparation, and presentation-window construction. It is not transcript content, does not publish the target as the selected thread, and must not trigger backend reads, Syndic provider requests, or media admission from rendering.
 - While pending activation progress is visible, breadcrumbs and the transcript region keep rendering the previous coherent selected-thread state until the new selected thread's resident history is prepared and applied.
 - Successful selected-thread activation clears pending progress and applies the normal active title selector state, breadcrumbs, transcript rows, and the transcript's initial viewport state together. The activation path must not rely on deferred renderer callbacks to revise transcript scroll position after the newly activated thread first becomes visible.
-- Failed, rejected, canceled, or stopped activation clears pending progress, restores the previous title selector state, and surfaces the normal activation failure notice without changing the selected transcript.
+- Failed, rejected, canceled, or stopped activation clears pending progress, restores the previous title selector state, and reports the normal activation failure notice without changing the selected transcript.
 - Snapshot reconciliation preserves closed selector state and next-open projections by member and thread identity, pruning invalid fork columns without substituting another selected thread.
 
 ## Thread History Navigation
@@ -98,7 +99,7 @@ Let users create, resume, branch, edit, title, navigate between, and select Bery
 - Graph and Settings controls remain in the toolbar trailing group after flexible spacing.
 - The Workspaces and New Thread controls are normal text-labeled command buttons that use the shared app-wide button horizontal padding and content-sized width. They must not reserve a wider fixed leading chrome slot merely to match each other.
 - Square or icon-like thread-navigation controls may use square geometry, but that exception does not apply to normal text-labeled command buttons.
-- The thread strip must not render static runtime-context labels before the active thread selector. WSL context belongs in workspace/member management, activation/recovery messages, diagnostics, or other context-owning surfaces, not as a `wsl-linux:<distro>` prefix in front of the selector.
+- The thread strip must not render static runtime-context labels before the active thread selector. WSL context belongs in workspace/member management, activation/recovery messages, diagnostics, or other context-owning UI, not as a `wsl-linux:<distro>` prefix in front of the selector.
 - Thread-navigation controls are icon-like command buttons using compact backward and forward labels. They remain visible and render disabled with a local unavailable reason when no corresponding navigation target exists or when thread activation is currently blocked.
 - Thread-navigation history is GUI-local in-memory session state scoped to the loaded Beryl workspace. It survives thread switching within that workspace and is discarded on app restart or workspace teardown.
 - History entries identify exact workspace-registered Syndic conversation-view refs and the runtime/member execution target known at the time the entry was recorded. They are not historical conversation content and are not persisted as workspace content.
@@ -106,7 +107,7 @@ Let users create, resume, branch, edit, title, navigate between, and select Bery
 - Failed, rejected, canceled, already-selected, background-only, catalog-refresh, title-update, workspace-selection, pending-new-thread, automatic restore, and backend recovery selections do not push thread-navigation entries.
 - When a new user-initiated thread switch succeeds after the user has navigated backward, Beryl truncates the forward stack before recording the new target.
 - Backward and forward commands use the same exact activation path and activation gates as thread selector activation, including backend availability, busy selected-thread work, current workspace scope, rebind-required checks, and no-flicker pending activation presentation.
-- Activation failure during backward or forward navigation leaves the current thread and navigation stacks unchanged except for any bounded surface notice produced by the normal activation path.
+- Activation failure during backward or forward navigation leaves the current thread and navigation stacks unchanged except for any bounded workspace notice produced by the normal activation path.
 - Navigating to a thread whose recorded target is no longer in current workspace scope, whose registration is missing, or whose registration requires rebind is rejected instead of substituting another thread.
 - Thread-navigation rendering must not synchronously call `codex app-server`, enumerate catalogs, refresh thread summaries, or read transcript history.
 - Pending thread activation may change the active thread selector label to the target thread title only when paired with the stable in-button progress fill defined by Thread Selector. It must not change the label to an `Opening ...` or other transient loading presentation. Breadcrumbs continue to render from the last selected-thread branch projection until the activation result applies the new selected thread or reports failure.

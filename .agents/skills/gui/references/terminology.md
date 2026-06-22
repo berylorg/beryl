@@ -8,7 +8,7 @@ The entries are intentionally short. They establish what a term means, not every
 
 - Prefer the most specific familiar term over a vague local name.
 - Use `command button` for a freestanding button-shaped command control. Treat `action button` and `push button` as synonyms, not separate canonical names.
-- Use `command row` for a row-shaped command control inside a list-like surface, including menus. Treat `menu item`, `context menu item`, and `action row` as context-specific descriptions unless a platform API requires those names.
+- Use `command row` for a row-shaped command control inside a list-like container, including menus. Treat `menu item`, `context menu item`, and `action row` as context-specific descriptions unless a platform API requires those names.
 - Use `selector` only when the exact selection control is intentionally unspecified.
 - Use `button` for an action invoker, not for a persistent on/off value.
 - Use `checkbox` for an independent boolean option.
@@ -20,7 +20,7 @@ The entries are intentionally short. They establish what a term means, not every
 
 # Contents
 
-- Structure and Surfaces
+- Structure and Regions
 - Controls and Inputs
 - Collections and Navigation
 - Content and Indicators
@@ -29,11 +29,11 @@ The entries are intentionally short. They establish what a term means, not every
 - Layout and Spatial Terms
 - Interaction Terms
 
-# Structure and Surfaces
+# Structure and Regions
 
 - **Application window**: The top-level window owned by an application.
 - **Backdrop**: A layer behind an overlay, often used to dim or block interaction with underlying UI.
-- **Banner**: A prominent horizontal message region, usually near the top of a page or surface.
+- **Banner**: A prominent horizontal message region, usually near the top of a page or region.
 - **Canvas**: A drawable or freeform work area for spatial content.
 - **Card**: A bounded content container presenting one object, summary, or repeated item.
 - **Chrome**: UI around content, such as title bars, toolbars, tabs, and window controls.
@@ -42,19 +42,18 @@ The entries are intentionally short. They establish what a term means, not every
 - **Dialog**: A transient window or overlay used for a focused task, confirmation, or message.
 - **Drawer**: A panel that slides from an edge and exposes secondary navigation or controls.
 - **Flyout**: A transient panel opened from another control and positioned near that control.
-- **Frame**: A bounded structural region around content or another surface.
-- **Inspector**: A side or floating surface for viewing or editing properties of the current selection.
+- **Frame**: A bounded structural region around content or another region.
+- **Inspector**: A side or floating region for viewing or editing properties of the current selection.
 - **Modal dialog**: A dialog that blocks interaction with the rest of the relevant UI until dismissed.
 - **Modeless dialog**: A dialog that can remain open while the user continues working elsewhere.
-- **Overlay**: A UI layer rendered above the normal surface.
+- **Overlay**: A UI layer rendered above the normal UI.
 - **Page**: A navigable full-view unit of application content.
 - **Pane**: A resizable or persistent region within a larger window or view.
-- **Panel**: A grouped surface that contains related controls or content.
+- **Panel**: A grouped region that contains related controls or content.
 - **Popover**: A small contextual overlay anchored to an element.
-- **Sheet**: A transient surface that enters from an edge or sits over content for a contained task.
+- **Sheet**: A transient panel that enters from an edge or sits over content for a contained task.
 - **Sidebar**: A persistent or collapsible side region for navigation, structure, or contextual tools.
 - **Split view**: A layout with adjacent panes, often separated by a splitter.
-- **Surface**: A visible UI region that can contain content, controls, or overlays.
 - **Tooltip**: A brief hover or focus hint that explains an element without accepting interaction.
 - **View**: A rendered presentation of a state, document, route, or application area.
 - **Viewport**: The visible portion of a scrollable or rendered area.
@@ -70,13 +69,13 @@ The entries are intentionally short. They establish what a term means, not every
 - **Color swatch**: A small color sample, often selectable or used to preview a chosen color.
 - **Combobox**: A text entry or selection control that combines an editable field with a list of options.
 - **Command button**: A freestanding button-shaped control that runs a command. Prefer this term over `action button` in widget specs.
-- **Command row**: A row-shaped control inside a list-like surface that invokes a command when activated.
+- **Command row**: A row-shaped control inside a list-like container that invokes a command when activated.
 - **Control**: An interactive UI element that accepts input or changes state.
 - **Control group**: A labeled group of related controls.
 - **Date picker**: A control for selecting a calendar date.
 - **Disclosure button**: A control that expands or collapses additional content.
 - **Dropdown**: A broad term for a control or overlay that opens downward or near its trigger.
-- **Dropdown button**: A button that opens a menu, flyout, or other dropdown surface.
+- **Dropdown button**: A button that opens a menu, flyout, or other dropdown panel.
 - **Dropdown menu**: A menu opened from a control and presented in a dropped-down overlay.
 - **Dropdown select**: A selection control that shows the current value and opens an option list.
 - **Field**: A form element that accepts, displays, or controls one value.
@@ -85,6 +84,7 @@ The entries are intentionally short. They establish what a term means, not every
 - **Form**: A group of fields and controls used to collect or edit structured input.
 - **Icon button**: A button represented primarily by an icon instead of a text label.
 - **Input field**: A generic field that accepts user-entered data.
+- **Labeled cycle button**: A button-shaped control with a stable label part and a current value part; activation cycles through a finite ordered value set.
 - **Link**: An inline or standalone text control that navigates or opens a referenced target.
 - **Menu button**: A button that opens a menu of commands or options.
 - **Option**: One selectable value in a selection control or menu.
@@ -105,6 +105,10 @@ The entries are intentionally short. They establish what a term means, not every
 - **Time picker**: A control for selecting a time value.
 - **Toggle button**: A button that remains in an on/off or selected/unselected state after activation.
 - **Widget**: A reusable UI element with a recognizable structure or behavior.
+- **Flyout trigger**: An interactive element that opens a transient panel positioned near the trigger.
+- **Selector trigger**: A flyout trigger whose opened panel lets the user choose the current value or target.
+- **Action-menu trigger**: A flyout trigger whose opened panel contains commands related to the trigger's current object or displayed state.
+- **Hold-for-action trigger**: A command-capable control whose command runs only after the user holds activation on the same target for a required duration.
 
 # Collections and Navigation
 
@@ -129,15 +133,15 @@ The entries are intentionally short. They establish what a term means, not every
 - **List**: A one-dimensional collection of items.
 - **List item**: One row or entry in a list.
 - **Master-detail view**: A layout where selecting an item in one region shows its details in another.
-- **Menu**: A command-oriented surface made of rows. Use `context menu` for context-menu gesture invocation and `action menu` for explicit primary-action invocation.
+- **Menu**: A command-oriented panel made of rows. Use `context menu` for context-menu gesture invocation and `action menu` for explicit primary-action invocation.
 - **Menu bar**: A horizontal set of top-level menus, common in desktop applications.
 - **Menu item**: Common platform term for a menu row. Prefer `command row`, `selector row`, `toggle row`, or `submenu row` when documenting reusable row behavior.
 - **Navigation bar**: A region containing primary navigation controls.
 - **Pagination**: Controls for moving between discrete pages of a result set.
-- **Ribbon**: A large command surface organized into tabs and command groups.
+- **Ribbon**: A large command area organized into tabs and command groups.
 - **Row**: A horizontal series of cells or item fields.
 - **Row header**: A header that labels a table or grid row.
-- **Section**: A named or visually grouped part of a larger surface.
+- **Section**: A named or visually grouped part of a larger view.
 - **Separator**: A line, gap, or element that separates items or groups.
 - **Selector row**: A row-shaped control that chooses, opens, or focuses the represented value or object.
 - **Status bar**: A bar showing status, mode, progress, or contextual information.
@@ -158,13 +162,13 @@ The entries are intentionally short. They establish what a term means, not every
 - **Alert**: A prominent message that communicates important status or requires attention.
 - **Avatar**: A visual representation of a person, account, agent, or entity.
 - **Badge**: A small label or count attached to another element.
-- **Body text**: Primary reading text in a UI surface.
+- **Body text**: Primary reading text in a UI region.
 - **Caption**: Supporting text associated with an image, chart, table, or field.
 - **Chart**: A visual representation of data.
 - **Chip**: A compact token representing an entity, filter, selection, or input.
 - **Empty state**: The content shown when a view or collection has no items to display.
 - **Glyph**: A symbolic mark, usually an icon-like shape inside a font or icon set.
-- **Heading**: Text that titles a section, surface, or group.
+- **Heading**: Text that titles a section, region, or group.
 - **Helper text**: Supporting text that clarifies a field, setting, or action.
 - **Icon**: A small graphical symbol that represents an object, action, status, or concept.
 - **Image**: A visual media element.
@@ -272,7 +276,7 @@ The entries are intentionally short. They establish what a term means, not every
 - **Cancel**: Abandon an in-progress interaction without applying its result.
 - **Click**: Press and release a pointer button on a target.
 - **Commit**: Accept and apply an in-progress value, selection, or task.
-- **Dismiss**: Close a transient surface without necessarily applying a value.
+- **Dismiss**: Close a transient panel without necessarily applying a value.
 - **Double-click**: Two rapid clicks on the same target, often opening or editing an item.
 - **Drag**: Move a pointer while holding an item, handle, or region.
 - **Drop**: Release dragged content onto a target.

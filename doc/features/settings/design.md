@@ -4,16 +4,21 @@ Give users a durable, validated settings window for Beryl-owned application pref
 
 ## Non-goals
 
-- Providing a settings surface for backend-owned Codex authentication, session storage, skills, MCP, or transcript history.
+- Providing settings UI for backend-owned Codex authentication, session storage, skills, MCP, or transcript history.
 - Owning the semantics of every setting exposed in the window.
 - Live-previewing ordinary unapplied settings drafts.
 - Owning appearance theme schema, theme repository, or theme editor behavior.
 
 # Decisions
 
+## GUI Supplement
+
+- `gui.md` is a normative supplemental GUI composition file for settings toolbar entry, settings window shell layout, sections, rows, and settings-window widget usage.
+
 ## Settings Window
 
 - Application settings live in a dedicated top-level settings window, not an in-place modal or main-workspace panel.
+- The main workspace toolbar exposes a Settings control that opens or reveals the dedicated settings window.
 - The settings window is created ahead of first use and hidden when inactive so opening it feels immediate.
 - The settings window does not include the main workspace toolbar strip.
 - It uses a left sidebar of broad sections and one right-pane page or subpage at a time.
@@ -22,7 +27,7 @@ Give users a durable, validated settings window for Beryl-owned application pref
 - The `Themes` section's product behavior is owned by `doc/features/theming/design.md`.
 - The settings window root layout stretches with the OS window. The sidebar has a bounded fixed logical width; the main pane takes remaining width.
 - Page content is organized as section headings followed by grouped row lists. Pages must not nest cards inside cards.
-- The settings shell itself is not an outer scrolling surface. The sidebar and current page body own their own scrolling while headers and apply/action areas remain reachable.
+- The settings shell itself is not an outer scrolling container. The sidebar and current page body own their own scrolling while headers and apply/action areas remain reachable.
 - Unavailable sections, invalid staged values, failed saves, and failed feature-owned settings operations render localized page or row feedback without replacing the settings shell.
 
 ## Settings Rows

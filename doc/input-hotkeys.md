@@ -2,6 +2,8 @@
 
 This document defines baseline text-input keyboard, pointer, selection, clipboard, and undo/redo behavior for Beryl-owned text fields. Feature-specific field behavior belongs in the owning feature design doc.
 
+This document does not own GUI slots, feature GUI composition, reusable widget anatomy, or widget visual contracts. Those live under `doc/gui/` and linked feature `gui.md` files.
+
 All requirements here are extensions of, and subject to, root `doc/design.md`.
 
 Windows-first behavior is the canonical target for this contract.
@@ -11,7 +13,7 @@ Windows-first behavior is the canonical target for this contract.
 - Conversation composer behavior, including `Enter` submission, `Shift+Enter` newline, `Alt+Up`/`Alt+Down` history, image marker atoms, transcript quote insertion, and focused `Ctrl+Up`/`Ctrl+Down` transcript navigation, is defined in `doc/features/composer/design.md`.
 - Transcript selection, quote popup, Markdown-preserving copy, and transcript context-menu behavior are defined in `doc/features/transcript/design.md`.
 - Settings text fields, multiline settings fields, and generic color input behavior are defined in `doc/features/settings/design.md`.
-- Column selector keyboard behavior is defined in `doc/ui.md` and the owning feature docs.
+- Column browser keyboard behavior is defined in `doc/gui/widgets/column-browser/spec.md` and the owning feature docs.
 
 ## Scope
 

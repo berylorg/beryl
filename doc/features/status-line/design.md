@@ -10,6 +10,10 @@ Expose compact, exact conversation status and selected-thread controls without m
 
 # Decisions
 
+## GUI Supplement
+
+- `gui.md` is a normative supplemental GUI composition file for status-line placement, cell layout, and status operation popups.
+
 ## Status Line Layout
 
 - The status line strip is fixed to the bottom edge of the main window between the user input panel and the OS window edge.
@@ -70,5 +74,5 @@ Expose compact, exact conversation status and selected-thread controls without m
 - Hard stop is a held action. Holding the row for three seconds triggers it once; releasing early, leaving the row, closing the popup, focus loss, or selected active-turn target change cancels.
 - Keyboard activation must provide the same held affordance for the focused row.
 - While in flight, stop rows suppress duplicate submissions until the request finishes or fails.
-- Partial hard-stop failures and unsupported targets are surfaced through status-operation feedback.
+- Partial hard-stop failures and unsupported targets are reported through status-operation feedback.
 - User input fragments queued before or during stop remain visible and ordered. If they cannot be delivered to the interrupted turn, they remain queued for the next eligible turn.

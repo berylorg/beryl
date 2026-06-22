@@ -15,6 +15,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 
 ## Implementation References
 
+- `gui.md` is a normative supplemental GUI composition file for the transcript region, transcript-owned embedded widgets, menus, and previews.
 - `doc/systems/transcript-presentation/design.md` owns the internal transcript host, residency, presentation, renderer, resource admission, scroll, diagnostics, and shell-boundary architecture.
 - `doc/systems/syndic-conversation-history/design.md` owns durable conversation history, transcript views, Markdown projections, resources, and replay.
 - `doc/systems/cas-live-syndic-transcript/design.md` owns CAS-live capture into Syndic and selected-history read authority for captured CAS-backed turns.
@@ -32,13 +33,16 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - Manual scrolling must not snap chunks, rows, turns, prompts, final answers, or transcript boundaries to viewport edges.
 - Semantic placement is reserved for selected-thread activation, live-turn autoscroll policy, explicit navigation, and saved-position restore.
 - When manual scrolling reaches the edge of coherent resident content, the transcript clamps at that edge until additional coherent content or a stable terminal fallback is available.
+- The transcript region owns transcript scrolling without rendering the shared visual scrollbar affordance.
 - Activating a selected transcript publishes visible content and the initial viewport state together.
+- Markdown parsing, completed-media readiness, and media resource admission are post-publication work with stable row-owned placeholders or terminal fallbacks. They must not gate selected-thread publication or install later scroll correction after the first visible frame.
 - Activation must not blank or replace the transcript with a full-region loading placeholder when a previous coherent transcript can remain visible until the new coherent seed is ready.
 
 ## Large Content And Media
 
 - Very large transcript records may appear through bounded chunks, nested widgets, or stable fallbacks.
 - Code blocks, tables, generated images, attachments, and comparable heavy resources may expose their own bounded interaction affordances such as inner scrolling, selection, copy, preview, or fallback states.
+- A nested scrollable code panel does not take vertical pointer-wheel ownership merely because the pointer hovers over it. Clicking the nested code panel selects it for vertical pointer-wheel ownership; while selected, vertical wheel input over that code panel scrolls only the panel and must not co-scroll the transcript. Pressing `Escape` does not clear that wheel ownership.
 - Media rendering must fail visibly and locally when content cannot be admitted, decoded, loaded, or shown within Beryl's resource policy.
 - Oversized or unsupported content must not make the full transcript unresponsive.
 

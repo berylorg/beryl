@@ -15,8 +15,9 @@ From `https://github.com/berylorg/aipm`:
 From `https://github.com/berylorg/skillheap`:
 
 - cargo-projects
-- gui-widgets
 
 # Local
 
+- gui
+- gui-widgets compatibility redirect
 - gpui-scroll-surfaces

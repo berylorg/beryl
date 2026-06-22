@@ -48,11 +48,11 @@ A readout selector opens a selector, dropdown, or flyout for changing the value 
 
 An action-menu segment opens a command menu or action menu related to the displayed state.
 
-A direct-action segment invokes one command without opening a transient surface.
+A direct-action segment invokes one command without opening a transient panel.
 
 The segmented status bar does not define the internal look or behavior of opened menus, selectors, dropdowns, or flyouts.
 
-When a segment's associated transient surface is open, that segment enters the open or active state.
+When a segment's associated transient panel is open, that segment enters the open or active state.
 
 Disabled interactive command-like segments must satisfy `disabled-command-tooltip`.
 

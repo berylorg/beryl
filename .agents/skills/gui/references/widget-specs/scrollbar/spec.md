@@ -58,7 +58,7 @@ The scrollbar is aligned to the scroll container edge for its axis, and the thum
 
 The scrollbar does not change content layout when fading in or out unless the owning project explicitly defines reserved scrollbar space.
 
-The owning scroll surface owns viewport routing, scroll extent semantics, and scroll-state callbacks.
+The owning scroll area owns viewport routing, scroll extent semantics, and scroll-state callbacks.
 
 The CSS block defines axis-specific edge placement and thumb dimensions.
 

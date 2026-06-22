@@ -13,11 +13,12 @@ Provide one reliable composer for new threads, existing threads, active-turn ste
 
 ## Implementation References
 
+- `gui.md` is a normative supplemental GUI composition file for the composer panel, draft editor, image marker menu, and image preview popup.
 - CAS-live Syndic submission admission, capture durability, and incomplete-history behavior are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
 - Syndic turn ownership, transcript-view provenance, and durable image-marker evidence are defined in `doc/systems/syndic-conversation-history/design.md`.
 - Backend runtime availability and protocol capability boundaries are defined in `doc/systems/backend-runtime/design.md`.
 
-## Composer Surface
+## Composer Panel
 
 - The user input panel is pinned above the status line inside the conversation column.
 - The same composer layout is used for selected conversation threads and pending new-thread drafts.

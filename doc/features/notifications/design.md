@@ -1,6 +1,6 @@
 # Goals
 
-Report user-visible errors, recovery states, and completion attention signals without replacing the active workspace surface or changing backend conversation semantics.
+Report user-visible errors, recovery states, and completion attention signals without replacing the active workspace view or changing backend conversation semantics.
 
 ## Non-goals
 
@@ -10,9 +10,13 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 # Decisions
 
-## Surface Notices
+## GUI Supplement
 
-- Surface notices are bounded transient message surfaces shown near the top-right of the main workspace window below toolbar and thread strips.
+- `gui.md` is a normative supplemental GUI composition file for main workspace notice placement, notice anatomy, and notice variant presentation.
+
+## Workspace Notices
+
+- Workspace notices are bounded transient messages shown near the top-right of the main workspace window below toolbar and thread strips.
 - Notices report localized errors and recovery information that should not replace the active workspace view.
 - The notice queue is bounded FIFO and renders at most one active notice at a time.
 - Dismissing the visible notice advances to the next queued notice when present.

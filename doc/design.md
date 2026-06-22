@@ -19,8 +19,11 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - System-owned internal cross-feature and cross-package architecture is defined in `doc/systems/<system>/design.md`.
 - Package `doc/design.md` files own package public boundary contracts and must not duplicate or contradict feature contracts.
 - `doc/product-features.md` is a navigational index rather than the authority for detailed product behavior.
-- `doc/ui.md` owns shared reusable UI mechanics, window rules, widgets, and scroll contracts that are not specific to one product feature.
-- `doc/input-hotkeys.md` owns shared baseline text-input behavior. Feature-specific field behavior belongs in the owning feature doc.
+- `doc/gui/integration.md` owns Beryl GUI window and slot declarations.
+- `doc/gui/external-specs.md` registers externally owned GUI widget specs visible to Beryl.
+- `doc/gui/widgets/...` owns Beryl-local reusable GUI widget specs and contracts.
+- `doc/features/<feature>/gui.md` owns linked feature GUI composition and slot mounts when a feature needs supplemental GUI structure beyond its `design.md`.
+- `doc/input-hotkeys.md` owns shared baseline text-input behavior. It does not own GUI slots, feature GUI composition, reusable widget anatomy, or widget visual contracts. Feature-specific field behavior belongs in the owning feature doc.
 - Active architectural reworks are tracked under `doc/rework/<name>/REWORK.md`. Rework trackers record archived reference material, cutover boundaries, and exhaustive replacement checklists; target-state design authority remains in the normal feature, system, and package design paths.
 
 ## Feature Design Entry Points
@@ -38,7 +41,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches are defined in `doc/features/semantic-search/design.md`.
 - Settings window shell, settings rows, settings persistence, and settings dynamic tools are defined in `doc/features/settings/design.md`.
 - Appearance themes, theme repository, Themes settings page, theme candidate code panels, theme dynamic tools, and theme editor authority are defined in `doc/features/theming/design.md`.
-- Surface notices, turn-error notices, end-turn sounds, and attention-trigger behavior are defined in `doc/features/notifications/design.md`.
+- Workspace notices, turn-error notices, end-turn sounds, and attention-trigger behavior are defined in `doc/features/notifications/design.md`.
 - AI lifecycle yield tool behavior is defined in `doc/features/lifecycle-yield/design.md`.
 - Supervisor diagnostics and diagnostic child control are defined in `doc/features/diagnostics/design.md`.
 
@@ -56,11 +59,11 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 - The desktop client is implemented with `gpui`.
 - The application stack must not depend on browser technologies, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native libraries.
 - Beryl may depend on the official `gpui` package or on a fork anchored to upstream Zed `gpui` source when targeted patches are needed to satisfy Beryl's product constraints.
-- GPUI-owned native build dependency surface, including transitive C or assembly compilation, remains allowed.
+- GPUI-owned native build dependency set, including transitive C or assembly compilation, remains allowed.
 - A Beryl-maintained GPUI fork must preserve GPUI's public boundary for Beryl and must not be used to remove GPUI-owned build dependencies without an explicit design decision.
 - Beryl's normal dependency on a Beryl-maintained GPUI fork does not require GPUI's HTTP client capability.
 - The fork may gate GPUI-owned HTTP client integration, including `http_client` and `zed-reqwest`, behind an opt-in `gpui` Cargo feature so Beryl builds that do not use GPUI HTTP APIs do not compile that dependency stack.
-- The GPUI HTTP-client feature exception is limited to that dependency surface and must preserve GPUI's public HTTP-client boundary for consumers that enable the feature.
+- The GPUI HTTP-client feature exception is limited to that dependency set and must preserve GPUI's public HTTP-client boundary for consumers that enable the feature.
 - Beryl consumes the standalone `gpui-text-input`, `gpui-settings-window`, and `gpui-scrollbar` crates for reusable text editing, settings-window mechanics, and scrollbar affordances where practical. Beryl-owned feature code adapts those app-neutral boundaries for Beryl-specific behavior.
 
 ## Backend Boundary
@@ -80,7 +83,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 
 - Each Beryl version targets exactly one Codex App Server contract. This Beryl version is built for `codex-cli 0.137.0` / Codex App Server 0.137.0.
 - Beryl must not carry runtime branches that support older Codex App Server schemas or speculative future schemas. Compatibility checks validate that the configured app-server satisfies the required target contract; they do not choose among multiple implementation paths.
-- If a configured app-server does not satisfy the required target contract, Beryl must surface backend incompatibility and stop the affected backend-dependent behavior instead of silently falling back to an older schema.
+- If a configured app-server does not satisfy the required target contract, Beryl must report backend incompatibility and stop the affected backend-dependent behavior instead of silently falling back to an older schema.
 - For this target, Beryl validates the app-server version from the `initialize` response userAgent product token that CAS generates as `beryl/<app-server-version>`. Beryl's `clientInfo.version` is the GUI client version echoed later in that userAgent string and is not the CAS version.
 - Upgrading Beryl to a different Codex App Server version requires updating this invariant, the supporting Codex App Server memory notes under `doc/memory/topic/codex-app-server/`, and affected feature docs or tests as one migration. The migration should replace the old single contract rather than layer a new contract beside it.
 - For transcript history in the current 0.137.0 target, Beryl's selected-transcript target is CAS live event capture into Syndic and storage-backed Syndic projection reads as defined by `doc/systems/cas-live-syndic-transcript/design.md`. CAS `thread/turns/list`, full-history `thread/read`, and `thread/turns/items/list` are not live Beryl transcript-history inputs under this rework.
@@ -124,7 +127,7 @@ Build a desktop GUI client for Codex that organizes user work as Beryl-owned sem
 
 - UI responsiveness, including input latency and render latency, is a first-order design constraint rather than deferred polish.
 - Beryl UI must not flicker. Asynchronous work must not blank, swap out, or replace established user-visible content with transient loading placeholders or temporary `Opening ...` labels when the prior content can remain coherent until the replacement content is ready to apply.
-- Beryl UI must not introduce flicker through transient viewport changes. When asynchronous work replaces a coherent surface such as the selected transcript, the replacement content and its initial viewport state must apply as one transaction; render, prepaint, deferred, or post-frame callbacks must not revise that activation-owned viewport after the first visible frame.
+- Beryl UI must not introduce flicker through transient viewport changes. When asynchronous work replaces a coherent UI region such as the selected transcript, the replacement content and its initial viewport state must apply as one transaction; render, prepaint, deferred, or post-frame callbacks must not revise that activation-owned viewport after the first visible frame.
 - RAM efficiency and CPU efficiency are first-order design constraints.
 - The application must not perform blocking filesystem, process, network, parsing, image decoding, persistence, or backend protocol work on the thread that drives `gpui`.
 - Interactive code paths must avoid avoidable algorithmic complexity cliffs as transcript size, semantic graph size, workspace count, or backend event volume grows.
