@@ -19,8 +19,6 @@ mod generated;
 mod task;
 #[path = "thread_title/types.rs"]
 mod types;
-#[path = "thread_title/worker.rs"]
-mod worker;
 
 pub(crate) use backend::ThreadTitleBackend;
 #[allow(unused_imports)]
@@ -30,9 +28,6 @@ pub(super) use task::{
     thread_title_task_active_for_thread,
 };
 pub(crate) use types::{ThreadTitleResult, ThreadTitleUpdate};
-pub(super) use worker::spawn_thread_title_worker;
-#[allow(unused_imports)]
-pub(crate) use worker::{run_thread_title_attempt, run_thread_title_attempt_with_cancellation};
 
 const TITLE_DEVELOPER_INSTRUCTIONS: &str = r#"You generate concise conversation titles.
 Return only the title text.
@@ -257,8 +252,6 @@ fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
         TurnStreamEvent::AgentLabelUpdated { thread_id, .. }
         | TurnStreamEvent::ThreadStatusChanged { thread_id, .. }
         | TurnStreamEvent::ThreadClosed { thread_id }
-        | TurnStreamEvent::ThreadArchived { thread_id }
-        | TurnStreamEvent::ThreadUnarchived { thread_id }
         | TurnStreamEvent::TurnStarted { thread_id, .. }
         | TurnStreamEvent::TurnCompleted { thread_id, .. }
         | TurnStreamEvent::ItemStarted { thread_id, .. }

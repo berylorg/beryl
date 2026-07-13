@@ -5,7 +5,7 @@ Support bounded operator debugging, live testing, and resource investigation thr
 ## Non-goals
 
 - Exposing arbitrary process launching through diagnostic child control.
-- Mutating backend conversation history, semantic graph state, workspace persistence, settings, transcript content, or durable image assets through observation tools.
+- Mutating Syndic history, Beryl-home state, settings, transcript content, or durable image assets through observation tools.
 - Loading additional transcript history, decoding media, or creating renderer resources solely to answer diagnostics.
 
 # Decisions
@@ -13,7 +13,7 @@ Support bounded operator debugging, live testing, and resource investigation thr
 ## Supervisor Diagnostics
 
 - Beryl may expose Beryl-owned app-server dynamic tools on Beryl-created conversation threads for operator-approved debugging, live testing, and resource investigation.
-- Supervisor self-observation tools may report bounded snapshots of Beryl process identity, platform memory counters, active workspace/thread identity, managed backend child process ids, retained GUI projections, visible transcript media, and recent media lifecycle events.
+- Supervisor self-observation tools may report bounded snapshots of Beryl process identity, platform memory counters, selected window/thread/runtime identity, managed backend child process ids, retained GUI projections, visible transcript media, and recent media lifecycle events.
 - Diagnostic output must be bounded by deterministic item and byte caps. Large strings, paths, labels, error text, media keys, event details, and lists are truncated or omitted rather than returned without limit.
 - Diagnostics must not retain image bytes, decoded pixel buffers, GPUI image handles, process handles, backend responses, or transcript payloads solely to make later diagnostics more detailed.
 - Recent diagnostic event logs are metadata-only bounded rings.
@@ -36,22 +36,22 @@ Support bounded operator debugging, live testing, and resource investigation thr
 
 ## Diagnostic Child Controls
 
-- Diagnostic child controls are supervisor dynamic tools for testing an isolated child Beryl instance. They are not visible end-user controls in the ordinary workspace screen.
-- Child control may switch workspaces or threads, list workspace threads from bounded child-owned inventory state, select a pending new-thread draft, submit bounded text through the child composer, request soft or hard stop for the child's exact selected active turn, scroll transcript, close transient popups, and wait for bounded UI or turn-state predicates.
+- Diagnostic child controls are supervisor dynamic tools for testing an isolated child Beryl instance. They are not visible end-user controls in the ordinary conversation shell.
+- Child control may switch threads, list threads from the bounded Beryl-home catalog, invoke ordinary New Thread, submit bounded text through the child composer, request soft or hard stop for the child's exact selected active turn, scroll transcript, close transient popups, and wait for bounded UI or turn-state predicates.
 - Child commands must drive the same internal application command paths and state transitions as corresponding visible UI interactions or retained UI projections.
 - Child commands that activate image-heavy or history-heavy transcript states exercise real child UI work and must honor the transcript feature's residency and presentable-media admission gates. They must not use diagnostic shortcuts that publish unloaded, media-pending, or otherwise non-presentable transcript rows.
 - Child commands reject ambiguous, stale, missing, or unavailable targets and report timeout or partial state instead of blocking indefinitely.
-- A child command must not fall back to another workspace, thread, runtime target, turn, stop target, or input path when the requested target cannot be used exactly.
+- A child command must not fall back to another thread, runtime, root, turn, stop target, or input path when the requested target cannot be used exactly.
 - Child composer submission may synthesize user-authored transcript input only for the isolated child and only through ordinary validation, draft acceptance, transcript insertion, new-thread creation, active-turn steering, compaction queueing, and rejection behavior.
 - Child soft stop uses the same exact selected-thread active-turn interruption behavior as the visible status-line `Soft stop` action.
 - Child hard stop uses the same exact selected-turn interruption and backend-exposed hard-stop targets as the visible popup, but the diagnostic request supplies deliberate activation instead of the visible three-second hold affordance.
 - Stop commands may interrupt only the child's exact selected active backend turn or selected active compaction operation when Beryl knows the interruptible backend turn id.
 - Hard stop must use only exact backend-exposed termination handles and never guessed OS pids, process names, working directories, or local process trees.
 - Child wait commands observe bounded UI state without creating loading UI solely for diagnostics and return latest bounded state on timeout.
-- Diagnostic child UI-state and command results report backend-unavailable workspace state and backend-unavailable submission/thread-listing rejection distinctly from ready, opening, workspace-idle, and blocked shell states.
+- Diagnostic child UI-state and command results report home failure, zero-runtime, runtime/CAS unavailable, submission-disabled, catalog-loading, selected-thread-active, and idle states distinctly.
 
 ## Boundaries
 
-- Diagnostic child GUI-control commands must not edit backend history, apply settings, mutate semantic graph data, mutate the supervisor instance, bypass availability checks, or use direct app-server calls when a child-owned UI/application path defines the behavior.
+- Diagnostic child GUI-control commands must not edit history directly, apply settings, mutate Beryl-home records directly, mutate the supervisor instance, bypass availability checks, or use direct app-server calls when a child-owned UI/application path defines the behavior.
 - Diagnostic child control is independent of the child app-server turn lifecycle. Supervisor commands reach the child over the child control channel rather than through that child's dynamic-tool stream.
 - Beryl-owned dynamic-tool results use the existing app-server dynamic tool-call response contract for the supervisor-facing call. The child-control protocol remains an internal Beryl process boundary.

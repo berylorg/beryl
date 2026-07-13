@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE,
+    dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE,
     memory_diagnostics::{ProcessMemorySnapshot, RetainedStateSnapshot},
 };
 
@@ -54,26 +54,8 @@ pub(crate) struct ProcessDiagnosticSnapshot {
     pub pid: u32,
     pub executable_path: Option<String>,
     pub beryl_home: Option<String>,
-    pub selected_workspace_id: Option<String>,
     pub selected_thread_id: Option<String>,
-    pub selected_runtime_target: Option<RuntimeTargetDiagnostic>,
-    pub managed_backend_child_pids: Vec<ManagedBackendProcessDiagnostic>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct RuntimeTargetDiagnostic {
-    pub runtime: String,
-    pub canonical_path: String,
-    pub display_label: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ManagedBackendProcessDiagnostic {
-    pub pid: u32,
-    pub runtime_target: RuntimeTargetDiagnostic,
-    pub selected: bool,
+    pub managed_backend_child_pids: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -87,9 +69,7 @@ pub(crate) struct MemoryDiagnosticSnapshot {
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MemoryDiagnosticUiCorrelation {
-    pub selected_workspace_id: Option<String>,
     pub selected_thread_id: Option<String>,
-    pub selected_runtime_target: Option<RuntimeTargetDiagnostic>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -211,9 +191,7 @@ fn shell_renderer_unready_reason(window: &GpuiWindowRendererDiagnosticSnapshot) 
 impl MemoryDiagnosticUiCorrelation {
     pub(crate) fn from_process(process: &ProcessDiagnosticSnapshot) -> Self {
         Self {
-            selected_workspace_id: process.selected_workspace_id.clone(),
             selected_thread_id: process.selected_thread_id.clone(),
-            selected_runtime_target: process.selected_runtime_target.clone(),
         }
     }
 }

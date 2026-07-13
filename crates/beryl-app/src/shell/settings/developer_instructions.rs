@@ -4,26 +4,15 @@ use gpui_settings_window::{
     SettingsFieldId, SettingsFieldKind, SettingsRow, SettingsSection, SettingsSectionId,
 };
 
-use crate::{AgentPreferences, normalize_developer_instructions_text};
-
 const AGENT_SECTION: &str = "agent";
 const DEVELOPER_INSTRUCTIONS_FIELD: &str = "agent.developer_instructions";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct AgentSettingsDraft {
     developer_instructions: String,
 }
 
 impl AgentSettingsDraft {
-    pub(crate) fn from_preferences(preferences: &AgentPreferences) -> Self {
-        Self {
-            developer_instructions: preferences
-                .developer_instructions()
-                .map(str::to_string)
-                .unwrap_or_default(),
-        }
-    }
-
     pub(crate) fn set_field_value(&mut self, field_id: &SettingsFieldId, value: String) -> bool {
         if *field_id != developer_instructions_field_id() {
             return false;
@@ -40,16 +29,6 @@ impl AgentSettingsDraft {
     #[allow(dead_code)]
     pub(crate) fn developer_instructions_value(&self) -> &str {
         &self.developer_instructions
-    }
-
-    pub(crate) fn to_preferences(
-        &self,
-    ) -> Result<AgentPreferences, HashMap<SettingsFieldId, String>> {
-        Ok(AgentPreferences {
-            developer_instructions: normalize_developer_instructions_text(
-                &self.developer_instructions,
-            ),
-        })
     }
 }
 

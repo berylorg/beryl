@@ -10,7 +10,6 @@ use beryl_backend::{
     ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStatus,
     TurnStreamEvent,
 };
-use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -94,7 +93,6 @@ struct SubagentRuntimeMetadata {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum AgentLabelPriority {
     ActivityMetadata,
-    ThreadDisplayLabel,
     ThreadMetadataNickname,
 }
 
@@ -352,23 +350,13 @@ impl ToolActivityProjection {
         true
     }
 
-    #[allow(dead_code)]
     pub(super) fn apply_stream_event(
         &mut self,
         event: &TurnStreamEvent,
         agent_label: Option<String>,
     ) -> bool {
-        self.apply_stream_event_with_execution_target(event, agent_label, None)
-    }
-
-    pub(super) fn apply_stream_event_with_execution_target(
-        &mut self,
-        event: &TurnStreamEvent,
-        agent_label: Option<String>,
-        execution_target: Option<&WorkspaceId>,
-    ) -> bool {
         if let Some(activity) = event.activity() {
-            return self.apply_tool_activity(activity, agent_label, execution_target);
+            return self.apply_tool_activity(activity, agent_label);
         }
 
         match event {
@@ -391,9 +379,6 @@ impl ToolActivityProjection {
             TurnStreamEvent::ThreadClosed { thread_id } => {
                 self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
             }
-            TurnStreamEvent::ThreadArchived { thread_id } => {
-                self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
-            }
             TurnStreamEvent::ProtocolError { .. } => {
                 self.finish_all_running(ToolActivityRowStatus::FinishedError)
             }
@@ -401,13 +386,15 @@ impl ToolActivityProjection {
         }
     }
 
-    pub(super) fn apply_thread_summary_agent_labels<'a>(
+    pub(super) fn apply_subagent_thread_summaries<'a>(
         &mut self,
         threads: impl IntoIterator<Item = &'a ThreadSummary>,
     ) -> bool {
         let mut changed = false;
         for thread in threads {
-            changed |= self.note_thread_summary_agent_labels(thread);
+            if self.is_observed_subagent_thread(&thread.id) {
+                changed |= self.note_thread_summary_agent_nickname(thread);
+            }
         }
         if changed {
             self.rebuild_rows();
@@ -421,13 +408,14 @@ impl ToolActivityProjection {
     ) -> bool {
         let mut changed = false;
         for metadata in metadata {
-            changed |= self.note_thread_summary_agent_labels(&metadata.thread);
-            if self.is_observed_subagent_thread(&metadata.thread.id) {
-                changed |= self.note_subagent_runtime_metadata(
-                    metadata.thread.id.as_str(),
-                    &metadata.session_metadata,
-                );
+            if !self.is_observed_subagent_thread(&metadata.thread.id) {
+                continue;
             }
+            changed |= self.note_thread_summary_agent_nickname(&metadata.thread);
+            changed |= self.note_subagent_runtime_metadata(
+                metadata.thread.id.as_str(),
+                &metadata.session_metadata,
+            );
         }
         if changed {
             self.rebuild_rows();
@@ -485,7 +473,6 @@ impl ToolActivityProjection {
         &mut self,
         activity: ToolActivityEvent,
         agent_label: Option<String>,
-        execution_target: Option<&WorkspaceId>,
     ) -> bool {
         let ownership_changed = self.apply_receiver_thread_ownership_updates(&activity);
         let labels_changed = self.apply_agent_label_updates(&activity);
@@ -493,20 +480,14 @@ impl ToolActivityProjection {
         let key = ToolActivityKey::from_activity(&activity);
         let activity_changed = match activity.lifecycle {
             ToolActivityLifecycle::Started => {
-                self.start_activity(key, activity, explicit_agent_label, execution_target)
+                self.start_activity(key, activity, explicit_agent_label)
             }
             ToolActivityLifecycle::Updated => {
-                self.update_activity(key, activity, explicit_agent_label, execution_target)
+                self.update_activity(key, activity, explicit_agent_label)
             }
             ToolActivityLifecycle::Completed => {
                 let status = final_status_from_item_status(activity.raw_item_status.as_deref());
-                self.finish_or_insert_completed(
-                    key,
-                    activity,
-                    explicit_agent_label,
-                    status,
-                    execution_target,
-                )
+                self.finish_or_insert_completed(key, activity, explicit_agent_label, status)
             }
         };
         if !activity_changed && labels_changed {
@@ -527,7 +508,6 @@ impl ToolActivityProjection {
         key: ToolActivityKey,
         activity: ToolActivityEvent,
         explicit_agent_label: Option<String>,
-        execution_target: Option<&WorkspaceId>,
     ) -> bool {
         if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
             let mut changed = false;
@@ -542,8 +522,7 @@ impl ToolActivityProjection {
             }
             changed |= merge_receiver_thread_ids(existing, &activity);
             changed |= apply_reasoning_summary_detail(existing, &activity);
-            let display_value =
-                activity_display_value_for_record(existing, &activity, execution_target);
+            let display_value = activity_display_value_for_record(existing, &activity);
             if existing.tool_display_value != display_value {
                 existing.tool_display_value = display_value;
                 changed = true;
@@ -565,7 +544,6 @@ impl ToolActivityProjection {
             activity,
             explicit_agent_label,
             ToolActivityRowStatus::Running,
-            execution_target,
         );
         self.records.push(record);
         self.rebuild_rows();
@@ -577,7 +555,6 @@ impl ToolActivityProjection {
         key: ToolActivityKey,
         activity: ToolActivityEvent,
         explicit_agent_label: Option<String>,
-        execution_target: Option<&WorkspaceId>,
     ) -> bool {
         if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
             let mut changed = false;
@@ -588,8 +565,7 @@ impl ToolActivityProjection {
             }
             changed |= merge_receiver_thread_ids(existing, &activity);
             changed |= apply_reasoning_summary_detail(existing, &activity);
-            let display_value =
-                activity_display_value_for_record(existing, &activity, execution_target);
+            let display_value = activity_display_value_for_record(existing, &activity);
             if existing.tool_display_value != display_value {
                 existing.tool_display_value = display_value;
                 changed = true;
@@ -611,7 +587,6 @@ impl ToolActivityProjection {
             activity,
             explicit_agent_label,
             ToolActivityRowStatus::Running,
-            execution_target,
         );
         self.records.push(record);
         self.rebuild_rows();
@@ -660,7 +635,6 @@ impl ToolActivityProjection {
         activity: ToolActivityEvent,
         explicit_agent_label: Option<String>,
         status: ToolActivityRowStatus,
-        execution_target: Option<&WorkspaceId>,
     ) -> bool {
         if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
             let mut changed = false;
@@ -675,8 +649,7 @@ impl ToolActivityProjection {
             }
             changed |= merge_receiver_thread_ids(existing, &activity);
             changed |= apply_reasoning_summary_detail(existing, &activity);
-            let tool_display_value =
-                activity_display_value_for_record(existing, &activity, execution_target);
+            let tool_display_value = activity_display_value_for_record(existing, &activity);
             if existing.tool_display_value != tool_display_value {
                 existing.tool_display_value = tool_display_value;
                 changed = true;
@@ -693,13 +666,7 @@ impl ToolActivityProjection {
             return changed;
         }
 
-        let record = self.new_record(
-            key,
-            activity,
-            explicit_agent_label,
-            status,
-            execution_target,
-        );
+        let record = self.new_record(key, activity, explicit_agent_label, status);
         self.records.push(record);
         self.rebuild_rows();
         true
@@ -772,12 +739,11 @@ impl ToolActivityProjection {
         activity: ToolActivityEvent,
         explicit_agent_label: Option<String>,
         status: ToolActivityRowStatus,
-        execution_target: Option<&WorkspaceId>,
     ) -> ToolActivityRecord {
         let mut record = ToolActivityRecord {
             source: ToolActivityRecordSource::from(activity.source),
             explicit_agent_label,
-            tool_display_value: tool_activity_display_value(&activity, execution_target),
+            tool_display_value: tool_activity_display_value(&activity),
             status,
             start_order: self.next_start_order(),
             reasoning_summary_parts: Vec::new(),
@@ -785,8 +751,7 @@ impl ToolActivityProjection {
             key,
         };
         apply_reasoning_summary_detail(&mut record, &activity);
-        record.tool_display_value =
-            activity_display_value_for_record(&record, &activity, execution_target);
+        record.tool_display_value = activity_display_value_for_record(&record, &activity);
         record
     }
 
@@ -836,13 +801,6 @@ impl ToolActivityProjection {
             if previous_root_turn.as_ref() != Some(&root_turn) {
                 change.changed = true;
             }
-            if self
-                .agent_labels_by_thread
-                .get(&receiver_thread_id)
-                .is_some_and(|label| label.priority == AgentLabelPriority::ThreadDisplayLabel)
-            {
-                change.requires_row_rebuild = true;
-            }
             if self.note_activity_subagent_runtime_metadata(
                 receiver_thread_id.as_str(),
                 activity.collab_agent_spawn_metadata.as_ref(),
@@ -870,20 +828,12 @@ impl ToolActivityProjection {
         changed
     }
 
-    fn note_thread_summary_agent_labels(&mut self, thread: &ThreadSummary) -> bool {
-        let mut changed = self.note_agent_label(
+    fn note_thread_summary_agent_nickname(&mut self, thread: &ThreadSummary) -> bool {
+        self.note_agent_label(
             thread.id.as_str(),
             thread.agent_nickname.as_deref(),
             AgentLabelPriority::ThreadMetadataNickname,
-        );
-        if !self.is_observed_subagent_thread(&thread.id) {
-            changed |= self.note_agent_label(
-                thread.id.as_str(),
-                Some(thread.preview.as_str()),
-                AgentLabelPriority::ThreadDisplayLabel,
-            );
-        }
-        changed
+        )
     }
 
     fn note_subagent_runtime_metadata(
@@ -1396,13 +1346,7 @@ impl ToolActivityProjection {
                 AgentLabelPriority::ActivityMetadata => {
                     return self.display_agent_label_for_thread(thread_id, &stored_label.value);
                 }
-                AgentLabelPriority::ThreadDisplayLabel
-                    if !self.is_observed_subagent_thread(thread_id) =>
-                {
-                    return stored_label.value.clone();
-                }
-                AgentLabelPriority::ThreadDisplayLabel
-                | AgentLabelPriority::ThreadMetadataNickname => {}
+                AgentLabelPriority::ThreadMetadataNickname => {}
             }
         }
 
@@ -1561,10 +1505,7 @@ static WINDOWS_POWERSHELL_LAUNCHER_RE: Lazy<Regex> = Lazy::new(|| {
     .expect("Windows PowerShell launcher regex must compile")
 });
 
-fn tool_activity_display_value(
-    activity: &ToolActivityEvent,
-    execution_target: Option<&WorkspaceId>,
-) -> String {
+fn tool_activity_display_value(activity: &ToolActivityEvent) -> String {
     let display_value = if activity.source == ToolActivitySource::Reasoning {
         reasoning_activity_display_value(
             activity
@@ -1581,7 +1522,7 @@ fn tool_activity_display_value(
     } else if activity.source == ToolActivitySource::FileChange
         && let Some(summary) = activity.file_change_summary.as_ref()
     {
-        file_change_display_value(summary, execution_target)
+        file_change_display_value(summary)
     } else {
         activity
             .raw_tool_name
@@ -1597,11 +1538,8 @@ fn subagent_handoff_display_value(byte_len: usize) -> String {
     format!("handoff: {byte_len} bytes")
 }
 
-fn file_change_display_value(
-    summary: &ToolActivityFileChangeSummary,
-    execution_target: Option<&WorkspaceId>,
-) -> String {
-    if let Some(path) = single_relative_file_change_path(summary, execution_target) {
+fn file_change_display_value(summary: &ToolActivityFileChangeSummary) -> String {
+    if let Some(path) = single_relative_file_change_path(summary) {
         return format!(
             "Patching {}, +{} -{}",
             path, summary.additions, summary.deletions
@@ -1619,79 +1557,17 @@ fn file_change_display_value(
     )
 }
 
-fn single_relative_file_change_path(
-    summary: &ToolActivityFileChangeSummary,
-    execution_target: Option<&WorkspaceId>,
-) -> Option<String> {
+fn single_relative_file_change_path(summary: &ToolActivityFileChangeSummary) -> Option<String> {
     if summary.file_count != 1 {
         return None;
     }
 
-    let path = summary.single_file_path.as_deref()?;
-    match execution_target.map(WorkspaceId::runtime_mode) {
-        Some(RuntimeMode::HostWindows) => execution_target.and_then(|target| {
-            host_windows_relative_file_change_path(path, target.canonical_path())
-        }),
-        Some(RuntimeMode::WslLinux { .. }) => execution_target
-            .and_then(|target| wsl_relative_file_change_path(path, target.canonical_path())),
-        None => generic_relative_file_change_path(path),
-    }
+    generic_relative_file_change_path(summary.single_file_path.as_deref()?)
 }
 
 fn generic_relative_file_change_path(path: &Path) -> Option<String> {
     let path_text = path.to_string_lossy();
     is_windows_plain_relative_path(&path_text).then(|| path_text.into_owned())
-}
-
-fn host_windows_relative_file_change_path(path: &Path, root: &Path) -> Option<String> {
-    let path_text = path.to_string_lossy();
-    if is_windows_plain_relative_path(&path_text) {
-        return non_empty_path_text(path_text.into_owned());
-    }
-    if !is_windows_absolute_path_text(&path_text) {
-        return None;
-    }
-
-    let normalized_path = normalize_windows_file_change_path(&path_text);
-    let normalized_root =
-        trim_windows_prefix_root(&normalize_windows_file_change_path(&root.to_string_lossy()));
-    if normalized_path.eq_ignore_ascii_case(&normalized_root) {
-        return None;
-    }
-
-    let prefix = normalized_path.get(..normalized_root.len())?;
-    if !prefix.eq_ignore_ascii_case(&normalized_root) {
-        return None;
-    }
-
-    let relative_path = normalized_path
-        .get(normalized_root.len()..)?
-        .strip_prefix('\\')?;
-    non_empty_path_text(relative_path.to_string())
-}
-
-fn wsl_relative_file_change_path(path: &Path, root: &Path) -> Option<String> {
-    let path_text = path.to_string_lossy();
-    if path_text.is_empty() {
-        return None;
-    }
-    if !path_text.starts_with('/') {
-        return Some(path_text.into_owned());
-    }
-
-    let root_text = root.to_string_lossy();
-    let root_text = trim_wsl_root_path(&root_text);
-    if root_text == "/" {
-        return path_text
-            .strip_prefix('/')
-            .and_then(|relative_path| non_empty_path_text(relative_path.to_string()));
-    }
-    if path_text == root_text {
-        return None;
-    }
-
-    let relative_path = path_text.strip_prefix(root_text)?.strip_prefix('/')?;
-    non_empty_path_text(relative_path.to_string())
 }
 
 fn is_windows_plain_relative_path(path: &str) -> bool {
@@ -1701,48 +1577,9 @@ fn is_windows_plain_relative_path(path: &str) -> bool {
         && !has_windows_drive_prefix(normalized.as_str())
 }
 
-fn is_windows_absolute_path_text(path: &str) -> bool {
-    let normalized = path.replace('/', "\\");
-    has_windows_drive_root(normalized.as_str()) || normalized.starts_with(r"\\")
-}
-
-fn has_windows_drive_root(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\'
-}
-
 fn has_windows_drive_prefix(path: &str) -> bool {
     let bytes = path.as_bytes();
     bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
-}
-
-fn normalize_windows_file_change_path(path: &str) -> String {
-    let normalized = path.replace('/', "\\");
-    if let Some(stripped) = normalized.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{stripped}")
-    } else if let Some(stripped) = normalized.strip_prefix(r"\\?\") {
-        stripped.to_string()
-    } else {
-        normalized
-    }
-}
-
-fn trim_windows_prefix_root(path: &str) -> String {
-    let trimmed = path.trim_end_matches('\\');
-    if trimmed.is_empty() {
-        path.to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn trim_wsl_root_path(path: &str) -> &str {
-    let trimmed = path.trim_end_matches('/');
-    if trimmed.is_empty() { "/" } else { trimmed }
-}
-
-fn non_empty_path_text(path: String) -> Option<String> {
-    (!path.is_empty()).then_some(path)
 }
 
 fn receiver_thread_ids_for_activity(activity: &ToolActivityEvent) -> Vec<String> {
@@ -1798,13 +1635,12 @@ fn merge_receiver_thread_ids(
 fn activity_display_value_for_record(
     record: &ToolActivityRecord,
     activity: &ToolActivityEvent,
-    execution_target: Option<&WorkspaceId>,
 ) -> String {
     if record.source.is_backend(ToolActivitySource::Reasoning) {
         return reasoning_activity_display_value(&record.reasoning_summary_parts.join(""));
     }
 
-    tool_activity_display_value(activity, execution_target)
+    tool_activity_display_value(activity)
 }
 
 fn apply_reasoning_summary_detail(

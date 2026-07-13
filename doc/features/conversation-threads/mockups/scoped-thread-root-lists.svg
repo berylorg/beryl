@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2480" height="2080" viewBox="0 0 2480 2080" role="img" aria-labelledby="title description">
+  <title id="title">Beryl scoped thread and root list mockup</title>
+  <desc id="description">An exploratory refinement showing exhaustive recent-first thread lists scoped by root and exhaustive recent-first root lists scoped by runtime.</desc>
+
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#090d16"/>
+      <stop offset="1" stop-color="#030407"/>
+    </linearGradient>
+    <linearGradient id="accent-button" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f5876"/>
+      <stop offset="1" stop-color="#173a5e"/>
+    </linearGradient>
+    <style>
+      text { font-family: Roboto, "Segoe UI", Arial, sans-serif; }
+      .board-title { fill: #f3f7fb; font-size: 34px; font-weight: 650; letter-spacing: -0.5px; }
+      .board-subtitle { fill: #92a2b7; font-size: 16px; }
+      .tag { fill: #7dd3fc; font-size: 12px; font-weight: 700; letter-spacing: 1.4px; }
+      .card { fill: #0a0e16; stroke: #253148; stroke-width: 1; }
+      .card-title { fill: #f3f7fb; font-size: 20px; font-weight: 650; }
+      .card-kicker { fill: #7dd3fc; font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }
+      .shell { fill: #000000; stroke: #171717; stroke-width: 1; }
+      .toolbar { fill: #05070b; stroke: #202735; stroke-width: 1; }
+      .lineage { fill: #0d1421; stroke: #28364b; stroke-width: 1; }
+      .button { fill: #1e293b; stroke: #475569; stroke-width: 1; }
+      .button-accent { fill: url(#accent-button); stroke: #38bdf8; stroke-width: 1; }
+      .button-subtle { fill: #111827; stroke: #334155; stroke-width: 1; }
+      .button-label { fill: #f3f7fb; font-size: 13px; font-weight: 550; }
+      .button-label-small { fill: #dbe7f4; font-size: 12px; font-weight: 550; }
+      .flyout { fill: #101827; stroke: #3a4860; stroke-width: 1.25; }
+      .flyout-title { fill: #f3f7fb; font-size: 19px; font-weight: 650; }
+      .flyout-subtitle { fill: #92a2b7; font-size: 12px; }
+      .section-label { fill: #7f8ea3; font-size: 11px; font-weight: 700; letter-spacing: 1.1px; }
+      .label { fill: #e9eef5; font-size: 14px; font-weight: 520; }
+      .small-label { fill: #e9eef5; font-size: 13px; font-weight: 520; }
+      .muted { fill: #92a2b7; font-size: 12px; }
+      .micro { fill: #7f8ea3; font-size: 11px; }
+      .accent-text { fill: #7dd3fc; font-size: 12px; font-weight: 600; }
+      .row { fill: #111827; stroke: #2f3b52; stroke-width: 1; }
+      .row-selected { fill: #173a5e; stroke: #38bdf8; stroke-width: 1; }
+      .row-current { fill: #131b29; stroke: #3b475d; stroke-width: 1; }
+      .row-open { fill: #141b2a; stroke: #2b3547; stroke-width: 1; }
+      .field { fill: #0f172a; stroke: #334155; stroke-width: 1; }
+      .divider { stroke: #2a3549; stroke-width: 1; }
+      .icon-ring { fill: #142337; stroke: #40516b; stroke-width: 1; }
+      .icon-ring-selected { fill: #164e63; stroke: #22d3ee; stroke-width: 1; }
+      .scope { fill: #12283b; stroke: #38bdf8; stroke-width: 1; }
+      .scope-text { fill: #bae6fd; font-size: 10px; font-weight: 650; }
+      .sort { fill: #151c2a; stroke: #344258; stroke-width: 1; }
+      .sort-text { fill: #9fb0c5; font-size: 10px; font-weight: 600; }
+      .note-title { fill: #dbe7f4; font-size: 13px; font-weight: 650; }
+      .note { fill: #92a2b7; font-size: 12px; }
+      .state { fill: #12283b; stroke: #38bdf8; stroke-width: 1; }
+      .state-new { fill: #103022; stroke: #22c55e; stroke-width: 1; }
+      .state-text { fill: #bae6fd; font-size: 10px; font-weight: 650; letter-spacing: 0.6px; }
+      .scroll-track { fill: #111827; }
+      .scroll-thumb { fill: #334155; }
+    </style>
+  </defs>
+
+  <rect width="2480" height="2080" fill="url(#board)"/>
+  <circle cx="2220" cy="-170" r="510" fill="#0d2a40" opacity="0.34"/>
+  <circle cx="160" cy="2030" r="390" fill="#102038" opacity="0.25"/>
+
+  <text x="48" y="58" class="board-title">Stable lists, visible scope</text>
+  <text x="48" y="90" class="board-subtitle">Threads remain threads; roots remain roots. Scope changes, while every list stays exhaustive and recent-first.</text>
+  <rect x="2126" y="38" width="306" height="34" rx="17" fill="#0c1c2b" stroke="#285270"/>
+  <text x="2279" y="60" text-anchor="middle" class="tag">EXPLORATORY &#x00B7; NOT AUTHORITY</text>
+
+  <!-- Existing shell treatment retained -->
+  <rect x="40" y="120" width="2400" height="224" rx="16" class="card"/>
+  <text x="68" y="154" class="card-kicker">UNCHANGED SHELL TREATMENT</text>
+  <text x="68" y="181" class="card-title">Merged toolbar with a conditional branch-lineage strip</text>
+  <rect x="68" y="200" width="2344" height="116" rx="9" class="shell"/>
+  <rect x="68" y="200" width="2344" height="58" rx="9" class="toolbar"/>
+  <rect x="86" y="212" width="112" height="34" rx="6" class="button"/>
+  <text x="142" y="234" text-anchor="middle" class="button-label">New Thread</text>
+  <rect x="198" y="212" width="40" height="34" rx="6" class="button-accent"/>
+  <text x="218" y="234" text-anchor="middle" class="button-label">&#x2026;</text>
+  <rect x="252" y="212" width="34" height="34" rx="6" class="button-subtle"/>
+  <text x="269" y="234" text-anchor="middle" class="button-label">&#x2039;</text>
+  <rect x="292" y="212" width="34" height="34" rx="6" class="button-subtle"/>
+  <text x="309" y="234" text-anchor="middle" class="button-label">&#x203A;</text>
+  <rect x="340" y="212" width="1240" height="34" rx="6" class="button"/>
+  <text x="360" y="234" class="button-label">Unifying thread navigation</text>
+  <text x="1558" y="234" text-anchor="end" class="accent-text">THREADS  &#x25BE;</text>
+  <rect x="2242" y="212" width="70" height="34" rx="6" class="button-subtle"/>
+  <text x="2277" y="234" text-anchor="middle" class="button-label-small">Exit</text>
+  <rect x="2320" y="212" width="76" height="34" rx="6" class="button-subtle"/>
+  <text x="2358" y="234" text-anchor="middle" class="button-label-small">Settings</text>
+  <rect x="68" y="258" width="2344" height="44" class="lineage"/>
+  <text x="90" y="285" class="micro">LINEAGE</text>
+  <text x="160" y="285" class="accent-text">Beryl redesign</text>
+  <text x="252" y="285" class="muted">&#x203A;</text>
+  <text x="270" y="285" class="accent-text">GUI rework</text>
+  <text x="342" y="285" class="muted">&#x203A;</text>
+  <text x="360" y="285" class="small-label">Unifying thread navigation</text>
+  <text x="2394" y="330" text-anchor="end" class="micro">This strip is absent for top-level threads.</text>
+
+  <text x="40" y="382" class="card-kicker">THREAD SWITCHER &#x00B7; ONE EXHAUSTIVE THREAD LIST MOVING THROUGH THREE STATES</text>
+
+  <!-- Thread Switcher state 1: all roots -->
+  <rect x="40" y="400" width="780" height="800" rx="16" class="card"/>
+  <rect x="64" y="424" width="126" height="26" rx="13" class="state"/>
+  <text x="127" y="442" text-anchor="middle" class="state-text">1 &#x00B7; ALL ROOTS</text>
+  <text x="64" y="478" class="card-title">Default thread view</text>
+
+  <rect x="64" y="498" width="732" height="616" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="90" y="536" class="flyout-title">Switch thread</text>
+  <text x="90" y="558" class="flyout-subtitle">Every thread, sorted by most recent activity.</text>
+  <line x1="64" y1="578" x2="796" y2="578" class="divider"/>
+
+  <rect x="90" y="596" width="680" height="40" rx="7" class="field"/>
+  <circle cx="114" cy="615" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="120" y1="621" x2="127" y2="628" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="140" y="621" class="muted">Search all threads&#x2026;</text>
+
+  <text x="90" y="666" class="section-label">THREADS FOR ALL ROOTS</text>
+
+  <rect x="90" y="684" width="664" height="52" rx="7" class="row-current"/>
+  <circle cx="116" cy="710" r="12" class="icon-ring-selected"/>
+  <text x="116" y="714" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="140" y="706" class="small-label">Unifying thread navigation</text>
+  <text x="140" y="725" class="micro">Host - C:\Users\user\p\beryl - current</text>
+  <rect x="684" y="700" width="52" height="20" rx="10" class="scope"/>
+  <text x="710" y="714" text-anchor="middle" class="scope-text">OPEN</text>
+
+  <rect x="90" y="742" width="664" height="52" rx="7" class="row"/>
+  <circle cx="116" cy="768" r="12" class="icon-ring"/>
+  <text x="116" y="772" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="140" y="764" class="small-label">Fjall recovery behavior</text>
+  <text x="140" y="783" class="micro">Host - D:\Research - 18 min ago</text>
+
+  <rect x="90" y="800" width="664" height="52" rx="7" class="row-open"/>
+  <circle cx="116" cy="826" r="12" class="icon-ring"/>
+  <text x="116" y="830" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="140" y="822" class="small-label">Semantic search notes</text>
+  <text x="140" y="841" class="micro">OL9 - /home/user/p/beryl - open elsewhere</text>
+  <text x="734" y="832" text-anchor="end" class="micro">UNAVAILABLE</text>
+
+  <rect x="90" y="858" width="664" height="52" rx="7" class="row"/>
+  <circle cx="116" cy="884" r="12" class="icon-ring"/>
+  <text x="116" y="888" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="140" y="880" class="small-label">CAS recovery exploration</text>
+  <text x="140" y="899" class="micro">Host - C:\Users\user - yesterday</text>
+  <rect x="760" y="688" width="4" height="218" rx="2" class="scroll-track"/>
+  <rect x="760" y="690" width="4" height="64" rx="2" class="scroll-thumb"/>
+
+  <text x="90" y="938" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="90" y="952" width="680" height="48" rx="7" class="row"/>
+  <text x="112" y="973" class="small-label">Host</text>
+  <text x="112" y="990" class="micro">C:\Users\user\apps\bin\codex.exe &#x00B7; 3 roots &#x00B7; ready</text>
+  <text x="644" y="981" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="662" y1="960" x2="662" y2="992" class="divider"/>
+  <text x="682" y="981" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="90" y="1006" width="680" height="48" rx="7" class="row"/>
+  <text x="112" y="1027" class="small-label">OL9</text>
+  <text x="112" y="1044" class="micro">/home/user/.local/bin/codex &#x00B7; 2 roots &#x00B7; ready</text>
+  <text x="644" y="1035" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="662" y1="1014" x2="662" y2="1046" class="divider"/>
+  <text x="682" y="1035" class="accent-text">&#xFF0B; Add root</text>
+  <rect x="90" y="1062" width="180" height="34" rx="6" class="button"/>
+  <text x="110" y="1084" class="accent-text">&#xFF0B;</text>
+  <text x="132" y="1084" class="button-label">Add runtime</text>
+
+  <text x="64" y="1150" class="note-title">Stable collection: Threads</text>
+  <text x="64" y="1175" class="note">The list is exhaustive, virtualized, and recent-first. Its header states the active root scope.</text>
+
+  <!-- Thread Switcher state 2: root chooser -->
+  <rect x="850" y="400" width="780" height="800" rx="16" class="card"/>
+  <rect x="874" y="424" width="142" height="26" rx="13" class="state"/>
+  <text x="945" y="442" text-anchor="middle" class="state-text">2 &#x00B7; CHOOSE ROOT</text>
+  <text x="874" y="478" class="card-title">After Browse roots on Host</text>
+
+  <rect x="874" y="498" width="732" height="616" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="900" y="536" class="flyout-title">Switch thread</text>
+  <text x="900" y="558" class="flyout-subtitle">Choose the root whose threads should be shown.</text>
+  <rect x="1438" y="517" width="142" height="34" rx="6" class="button-subtle"/>
+  <text x="1509" y="539" text-anchor="middle" class="button-label-small">&#x2039; Back to threads</text>
+  <line x1="874" y1="578" x2="1606" y2="578" class="divider"/>
+
+  <rect x="900" y="596" width="680" height="40" rx="7" class="field"/>
+  <circle cx="924" cy="615" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="930" y1="621" x2="937" y2="628" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="950" y="621" class="muted">Search Host roots&#x2026;</text>
+
+  <text x="900" y="666" class="section-label">ROOTS FOR HOST</text>
+
+  <rect x="900" y="684" width="664" height="52" rx="7" class="row-selected"/>
+  <circle cx="926" cy="710" r="12" class="icon-ring-selected"/>
+  <path d="M917 706 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#7dd3fc" stroke-width="1.3"/>
+  <text x="950" y="706" class="small-label">C:\Users\user\p\beryl</text>
+  <text x="950" y="725" class="micro">12 threads - 4 min ago</text>
+  <text x="1544" y="716" text-anchor="end" class="accent-text">Choose  &#x203A;</text>
+
+  <rect x="900" y="742" width="664" height="52" rx="7" class="row"/>
+  <circle cx="926" cy="768" r="12" class="icon-ring"/>
+  <path d="M917 764 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="950" y="764" class="small-label">D:\Research</text>
+  <text x="950" y="783" class="micro">4 threads - 18 min ago</text>
+
+  <rect x="900" y="800" width="664" height="52" rx="7" class="row"/>
+  <circle cx="926" cy="826" r="12" class="icon-ring"/>
+  <path d="M917 822 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="950" y="822" class="small-label">C:\Users\user</text>
+  <text x="950" y="841" class="micro">3 threads - yesterday</text>
+
+  <rect x="900" y="858" width="664" height="52" rx="7" class="row"/>
+  <circle cx="926" cy="884" r="12" class="icon-ring"/>
+  <path d="M917 880 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="950" y="880" class="small-label">D:\Scratch</text>
+  <text x="950" y="899" class="micro">2 threads - last week</text>
+  <rect x="1570" y="688" width="4" height="218" rx="2" class="scroll-track"/>
+  <rect x="1570" y="690" width="4" height="112" rx="2" class="scroll-thumb"/>
+
+  <text x="900" y="938" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="900" y="952" width="680" height="48" rx="7" class="row-selected"/>
+  <text x="922" y="973" class="small-label">Host</text>
+  <text x="922" y="990" class="micro">C:\Users\user\apps\bin\codex.exe &#x00B7; roots shown</text>
+  <text x="1454" y="981" text-anchor="end" class="accent-text">Roots shown</text>
+  <line x1="1472" y1="960" x2="1472" y2="992" class="divider"/>
+  <text x="1492" y="981" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="900" y="1006" width="680" height="48" rx="7" class="row"/>
+  <text x="922" y="1027" class="small-label">OL9</text>
+  <text x="922" y="1044" class="micro">/home/user/.local/bin/codex &#x00B7; 2 roots &#x00B7; ready</text>
+  <text x="1454" y="1035" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="1472" y1="1014" x2="1472" y2="1046" class="divider"/>
+  <text x="1492" y="1035" class="accent-text">&#xFF0B; Add root</text>
+  <rect x="900" y="1062" width="180" height="34" rx="6" class="button"/>
+  <text x="920" y="1084" class="accent-text">&#xFF0B;</text>
+  <text x="942" y="1084" class="button-label">Add runtime</text>
+
+  <text x="874" y="1150" class="note-title">The only temporary collection change</text>
+  <text x="874" y="1175" class="note">Choosing beryl returns immediately to the exhaustive thread list, now scoped to beryl.</text>
+
+  <!-- Thread Switcher state 3: scoped threads -->
+  <rect x="1660" y="400" width="780" height="800" rx="16" class="card"/>
+  <rect x="1684" y="424" width="172" height="26" rx="13" class="state"/>
+  <text x="1770" y="442" text-anchor="middle" class="state-text">3 &#x00B7; ROOT FILTER APPLIED</text>
+  <text x="1684" y="478" class="card-title">The same thread view, scoped</text>
+
+  <rect x="1684" y="498" width="732" height="616" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="1710" y="536" class="flyout-title">Switch thread</text>
+  <text x="1710" y="558" class="flyout-subtitle">Every thread under C:\Users\user\p\beryl, still sorted by most recent activity.</text>
+  <line x1="1684" y1="578" x2="2416" y2="578" class="divider"/>
+
+  <rect x="1710" y="596" width="680" height="40" rx="7" class="field"/>
+  <circle cx="1734" cy="615" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="1740" y1="621" x2="1747" y2="628" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="1760" y="621" class="muted">Search threads in this root&#x2026;</text>
+
+  <text x="1710" y="666" class="section-label">THREADS FOR C:\Users\user\p\beryl</text>
+
+  <rect x="1710" y="684" width="664" height="52" rx="7" class="row-current"/>
+  <circle cx="1736" cy="710" r="12" class="icon-ring-selected"/>
+  <text x="1736" y="714" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="1760" y="706" class="small-label">Unifying thread navigation</text>
+  <text x="1760" y="725" class="micro">Current &#x00B7; 4 min ago</text>
+  <rect x="2304" y="700" width="52" height="20" rx="10" class="scope"/>
+  <text x="2330" y="714" text-anchor="middle" class="scope-text">OPEN</text>
+
+  <rect x="1710" y="742" width="664" height="52" rx="7" class="row"/>
+  <circle cx="1736" cy="768" r="12" class="icon-ring"/>
+  <text x="1736" y="772" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="1760" y="764" class="small-label">CAS history materialization</text>
+  <text x="1760" y="783" class="micro">Yesterday</text>
+
+  <rect x="1710" y="800" width="664" height="52" rx="7" class="row-open"/>
+  <circle cx="1736" cy="826" r="12" class="icon-ring"/>
+  <text x="1736" y="830" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="1760" y="822" class="small-label">Semantic search notes</text>
+  <text x="1760" y="841" class="micro">2 days ago &#x00B7; open in another window</text>
+  <text x="2354" y="832" text-anchor="end" class="micro">UNAVAILABLE</text>
+
+  <rect x="1710" y="858" width="664" height="52" rx="7" class="row"/>
+  <circle cx="1736" cy="884" r="12" class="icon-ring"/>
+  <text x="1736" y="888" text-anchor="middle" font-family="Segoe UI Emoji, Segoe UI Symbol, sans-serif" font-size="13">&#x1F9F5;</text>
+  <text x="1760" y="880" class="small-label">Theme role hierarchy</text>
+  <text x="1760" y="899" class="micro">Last week</text>
+  <rect x="2380" y="688" width="4" height="218" rx="2" class="scroll-track"/>
+  <rect x="2380" y="690" width="4" height="88" rx="2" class="scroll-thumb"/>
+
+  <text x="1710" y="938" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="1710" y="952" width="680" height="48" rx="7" class="row-selected"/>
+  <text x="1732" y="973" class="small-label">Host</text>
+  <text x="1732" y="990" class="micro">C:\Users\user\apps\bin\codex.exe &#x00B7; 3 roots</text>
+  <text x="2264" y="981" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="2282" y1="960" x2="2282" y2="992" class="divider"/>
+  <text x="2302" y="981" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="1710" y="1006" width="680" height="48" rx="7" class="row"/>
+  <text x="1732" y="1027" class="small-label">OL9</text>
+  <text x="1732" y="1044" class="micro">/home/user/.local/bin/codex &#x00B7; 2 roots &#x00B7; ready</text>
+  <text x="2264" y="1035" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="2282" y1="1014" x2="2282" y2="1046" class="divider"/>
+  <text x="2302" y="1035" class="accent-text">&#xFF0B; Add root</text>
+  <rect x="1710" y="1062" width="180" height="34" rx="6" class="button"/>
+  <text x="1730" y="1084" class="accent-text">&#xFF0B;</text>
+  <text x="1752" y="1084" class="button-label">Add runtime</text>
+
+  <text x="1684" y="1150" class="note-title">Stable collection: still Threads</text>
+  <text x="1684" y="1175" class="note">Choosing All roots restores the unscoped list without changing the ordering model.</text>
+
+  <text x="40" y="1250" class="card-kicker">NEW THREAD / CHANGE ROOT &#x00B7; ONE EXHAUSTIVE ROOT LIST WITH RUNTIME SCOPE</text>
+
+  <!-- New Thread state 1: all runtimes -->
+  <rect x="40" y="1270" width="780" height="740" rx="16" class="card"/>
+  <rect x="64" y="1294" width="160" height="26" rx="13" class="state-new"/>
+  <text x="144" y="1312" text-anchor="middle" fill="#bbf7d0" font-size="10" font-weight="650">ROOTS &#x00B7; ALL RUNTIMES</text>
+  <text x="64" y="1346" class="card-title">New thread in another root</text>
+
+  <rect x="64" y="1364" width="732" height="616" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="90" y="1402" class="flyout-title">New thread</text>
+  <text x="90" y="1424" class="flyout-subtitle">Choose a root, then confirm.</text>
+  <line x1="64" y1="1444" x2="796" y2="1444" class="divider"/>
+
+  <rect x="90" y="1462" width="680" height="40" rx="7" class="field"/>
+  <circle cx="114" cy="1481" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="120" y1="1487" x2="127" y2="1494" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="140" y="1487" class="muted">Search all roots&#x2026;</text>
+
+  <text x="90" y="1532" class="section-label">ROOTS FOR ALL RUNTIMES</text>
+
+  <rect x="90" y="1550" width="664" height="48" rx="7" class="row-current"/>
+  <circle cx="116" cy="1574" r="12" class="icon-ring"/>
+  <path d="M107 1570 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="140" y="1570" class="small-label">C:\Users\user\p\beryl</text>
+  <text x="140" y="1588" class="micro">12 threads - 4 min ago</text>
+  <rect x="668" y="1564" width="68" height="20" rx="10" class="sort"/>
+  <text x="702" y="1578" text-anchor="middle" class="sort-text">CURRENT</text>
+
+  <rect x="90" y="1604" width="664" height="48" rx="7" class="row-selected"/>
+  <circle cx="116" cy="1628" r="12" class="icon-ring-selected"/>
+  <path d="M107 1624 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#7dd3fc" stroke-width="1.3"/>
+  <text x="140" y="1624" class="small-label">D:\Research</text>
+  <text x="140" y="1642" class="micro">4 threads - 18 min ago</text>
+
+  <rect x="90" y="1658" width="664" height="48" rx="7" class="row"/>
+  <circle cx="116" cy="1682" r="12" class="icon-ring"/>
+  <path d="M107 1678 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="140" y="1678" class="small-label">/home/user/p/beryl</text>
+  <text x="140" y="1696" class="micro">7 threads - 2 hours ago</text>
+
+  <rect x="90" y="1712" width="664" height="48" rx="7" class="row"/>
+  <circle cx="116" cy="1736" r="12" class="icon-ring"/>
+  <path d="M107 1732 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="140" y="1732" class="small-label">C:\Users\user</text>
+  <text x="140" y="1750" class="micro">3 threads - yesterday</text>
+  <rect x="760" y="1554" width="4" height="202" rx="2" class="scroll-track"/>
+  <rect x="760" y="1556" width="4" height="74" rx="2" class="scroll-thumb"/>
+
+  <text x="90" y="1778" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="90" y="1788" width="680" height="42" rx="7" class="row"/>
+  <text x="112" y="1805" class="small-label">Host</text>
+  <text x="112" y="1821" class="micro">C:\Users\user\apps\bin\codex.exe &#x00B7; 3 roots &#x00B7; ready</text>
+  <text x="644" y="1813" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="662" y1="1796" x2="662" y2="1822" class="divider"/>
+  <text x="682" y="1813" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="90" y="1834" width="680" height="42" rx="7" class="row"/>
+  <text x="112" y="1851" class="small-label">OL9</text>
+  <text x="112" y="1867" class="micro">/home/user/.local/bin/codex &#x00B7; 2 roots &#x00B7; ready</text>
+  <text x="644" y="1859" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="662" y1="1842" x2="662" y2="1868" class="divider"/>
+  <text x="682" y="1859" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="90" y="1882" width="180" height="30" rx="6" class="button"/>
+  <text x="110" y="1902" class="accent-text">&#xFF0B;</text>
+  <text x="132" y="1902" class="button-label">Add runtime</text>
+  <line x1="64" y1="1920" x2="796" y2="1920" class="divider"/>
+  <rect x="325" y="1930" width="210" height="42" rx="7" class="button-accent"/>
+  <text x="430" y="1956" text-anchor="middle" class="button-label">Confirm</text>
+
+  <text x="64" y="1995" class="micro">The footer contains only Confirm. Root selection remains visible in the list.</text>
+
+  <g transform="translate(-410 0)">
+  <!-- New Thread state 2: runtime scope -->
+  <rect x="1260" y="1270" width="780" height="740" rx="16" class="card"/>
+  <rect x="1284" y="1294" width="144" height="26" rx="13" class="state-new"/>
+  <text x="1356" y="1312" text-anchor="middle" fill="#bbf7d0" font-size="10" font-weight="650">ROOTS &#x00B7; HOST</text>
+  <text x="1284" y="1346" class="card-title">After Browse roots on Host</text>
+
+  <rect x="1284" y="1364" width="732" height="616" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="1310" y="1402" class="flyout-title">New thread</text>
+  <text x="1310" y="1424" class="flyout-subtitle">The same root list, now scoped to Host.</text>
+  <line x1="1284" y1="1444" x2="2016" y2="1444" class="divider"/>
+
+  <rect x="1310" y="1462" width="680" height="40" rx="7" class="field"/>
+  <circle cx="1334" cy="1481" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="1340" y1="1487" x2="1347" y2="1494" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="1360" y="1487" class="muted">Search Host roots&#x2026;</text>
+
+  <text x="1310" y="1532" class="section-label">ROOTS FOR HOST</text>
+
+  <rect x="1310" y="1550" width="664" height="48" rx="7" class="row-current"/>
+  <circle cx="1336" cy="1574" r="12" class="icon-ring"/>
+  <path d="M1327 1570 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1360" y="1570" class="small-label">C:\Users\user\p\beryl</text>
+  <text x="1360" y="1588" class="micro">12 threads - 4 min ago</text>
+  <rect x="1888" y="1564" width="68" height="20" rx="10" class="sort"/>
+  <text x="1922" y="1578" text-anchor="middle" class="sort-text">CURRENT</text>
+
+  <rect x="1310" y="1604" width="664" height="48" rx="7" class="row-selected"/>
+  <circle cx="1336" cy="1628" r="12" class="icon-ring-selected"/>
+  <path d="M1327 1624 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#7dd3fc" stroke-width="1.3"/>
+  <text x="1360" y="1624" class="small-label">D:\Research</text>
+  <text x="1360" y="1642" class="micro">4 threads - 18 min ago</text>
+
+  <rect x="1310" y="1658" width="664" height="48" rx="7" class="row"/>
+  <circle cx="1336" cy="1682" r="12" class="icon-ring"/>
+  <path d="M1327 1678 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1360" y="1678" class="small-label">C:\Users\user</text>
+  <text x="1360" y="1696" class="micro">3 threads - yesterday</text>
+
+  <rect x="1310" y="1712" width="664" height="48" rx="7" class="row"/>
+  <circle cx="1336" cy="1736" r="12" class="icon-ring"/>
+  <path d="M1327 1732 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1360" y="1732" class="small-label">D:\Scratch</text>
+  <text x="1360" y="1750" class="micro">2 threads - last week</text>
+  <rect x="1980" y="1554" width="4" height="202" rx="2" class="scroll-track"/>
+  <rect x="1980" y="1556" width="4" height="128" rx="2" class="scroll-thumb"/>
+
+  <text x="1310" y="1778" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="1310" y="1788" width="680" height="42" rx="7" class="row-selected"/>
+  <text x="1332" y="1805" class="small-label">Host</text>
+  <text x="1332" y="1821" class="micro">C:\Users\user\apps\bin\codex.exe &#x00B7; roots shown</text>
+  <text x="1864" y="1813" text-anchor="end" class="accent-text">Roots shown</text>
+  <line x1="1882" y1="1796" x2="1882" y2="1822" class="divider"/>
+  <text x="1902" y="1813" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="1310" y="1834" width="680" height="42" rx="7" class="row"/>
+  <text x="1332" y="1851" class="small-label">OL9</text>
+  <text x="1332" y="1867" class="micro">/home/user/.local/bin/codex &#x00B7; 2 roots &#x00B7; ready</text>
+  <text x="1864" y="1859" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="1882" y1="1842" x2="1882" y2="1868" class="divider"/>
+  <text x="1902" y="1859" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="1310" y="1882" width="180" height="30" rx="6" class="button"/>
+  <text x="1330" y="1902" class="accent-text">&#xFF0B;</text>
+  <text x="1352" y="1902" class="button-label">Add runtime</text>
+  <line x1="1284" y1="1920" x2="2016" y2="1920" class="divider"/>
+  <rect x="1545" y="1930" width="210" height="42" rx="7" class="button-accent"/>
+  <text x="1650" y="1956" text-anchor="middle" class="button-label">Confirm</text>
+
+  <text x="1284" y="1995" class="micro">Choosing all runtimes restores the unscoped root list without changing its ordering.</text>
+  </g>
+
+  <!-- Change Root state: same fixed flyout geometry -->
+  <rect x="1660" y="1270" width="780" height="740" rx="16" class="card"/>
+  <rect x="1684" y="1294" width="150" height="26" rx="13" class="state-new"/>
+  <text x="1759" y="1312" text-anchor="middle" fill="#bbf7d0" font-size="10" font-weight="650">CHANGE ROOT &#x00B7; OL9</text>
+  <text x="1684" y="1346" class="card-title">Existing thread, identical root picker</text>
+
+  <rect x="1684" y="1364" width="732" height="616" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="1710" y="1402" class="flyout-title">Change root</text>
+  <text x="1710" y="1424" class="flyout-subtitle">Unifying thread navigation &#x00B7; choose a root, then confirm.</text>
+  <line x1="1684" y1="1444" x2="2416" y2="1444" class="divider"/>
+
+  <rect x="1710" y="1462" width="680" height="40" rx="7" class="field"/>
+  <circle cx="1734" cy="1481" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="1740" y1="1487" x2="1747" y2="1494" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="1760" y="1487" class="muted">Search OL9 roots&#x2026;</text>
+
+  <text x="1710" y="1532" class="section-label">ROOTS FOR OL9</text>
+  <rect x="1710" y="1550" width="664" height="48" rx="7" class="row-selected"/>
+  <circle cx="1736" cy="1574" r="12" class="icon-ring-selected"/>
+  <path d="M1727 1570 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#7dd3fc" stroke-width="1.3"/>
+  <text x="1760" y="1570" class="small-label">/home/user/p/beryl</text>
+  <text x="1760" y="1588" class="micro">7 threads - 2 hours ago</text>
+
+  <rect x="1710" y="1604" width="664" height="48" rx="7" class="row"/>
+  <circle cx="1736" cy="1628" r="12" class="icon-ring"/>
+  <path d="M1727 1624 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1760" y="1624" class="small-label">/home/user</text>
+  <text x="1760" y="1642" class="micro">3 threads - yesterday</text>
+
+  <rect x="1710" y="1658" width="664" height="48" rx="7" class="row"/>
+  <circle cx="1736" cy="1682" r="12" class="icon-ring"/>
+  <path d="M1727 1678 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1760" y="1678" class="small-label">/home/user/experiments</text>
+  <text x="1760" y="1696" class="micro">2 threads - 3 days ago</text>
+
+  <rect x="1710" y="1712" width="664" height="48" rx="7" class="row"/>
+  <circle cx="1736" cy="1736" r="12" class="icon-ring"/>
+  <path d="M1727 1732 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1760" y="1732" class="small-label">/tmp/beryl-scratch</text>
+  <text x="1760" y="1750" class="micro">1 thread - last week</text>
+  <rect x="2380" y="1554" width="4" height="202" rx="2" class="scroll-track"/>
+  <rect x="2380" y="1556" width="4" height="110" rx="2" class="scroll-thumb"/>
+
+  <text x="1710" y="1778" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="1710" y="1788" width="680" height="42" rx="7" class="row"/>
+  <text x="1732" y="1805" class="small-label">Host</text>
+  <text x="1732" y="1821" class="micro">C:\Users\user\apps\bin\codex.exe &#x00B7; 3 roots &#x00B7; ready</text>
+  <text x="2264" y="1813" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="2282" y1="1796" x2="2282" y2="1822" class="divider"/>
+  <text x="2302" y="1813" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="1710" y="1834" width="680" height="42" rx="7" class="row-selected"/>
+  <text x="1732" y="1851" class="small-label">OL9</text>
+  <text x="1732" y="1867" class="micro">/home/user/.local/bin/codex &#x00B7; roots shown</text>
+  <text x="2264" y="1859" text-anchor="end" class="accent-text">Roots shown</text>
+  <line x1="2282" y1="1842" x2="2282" y2="1868" class="divider"/>
+  <text x="2302" y="1859" class="accent-text">&#xFF0B; Add root</text>
+
+  <rect x="1710" y="1882" width="180" height="30" rx="6" class="button"/>
+  <text x="1730" y="1902" class="accent-text">&#xFF0B;</text>
+  <text x="1752" y="1902" class="button-label">Add runtime</text>
+  <line x1="1684" y1="1920" x2="2416" y2="1920" class="divider"/>
+  <rect x="1945" y="1930" width="210" height="42" rx="7" class="button-accent"/>
+  <text x="2050" y="1956" text-anchor="middle" class="button-label">Confirm</text>
+
+  <text x="1684" y="1995" class="micro">All three lower flyouts use the same fixed width and height as the Thread Switcher.</text>
+
+  <text x="2432" y="2050" text-anchor="end" class="micro">Mockup only &#x00B7; 2026-07-10</text>
+</svg>

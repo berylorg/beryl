@@ -9,8 +9,8 @@ use super::types::{
     validate_theme_name,
 };
 use crate::appearance::theme::{
-    ActiveThemeProjection, ThemeDefinition, ThemeResolutionError, ThemeResolver,
-    ThemeValidationDiagnostics, built_in_theme_definition, built_in_theme_schema,
+    ThemeDefinition, ThemeResolver, ThemeValidationDiagnostics, built_in_theme_definition,
+    built_in_theme_schema,
 };
 use snapshot::snapshot_from_loaded;
 
@@ -26,10 +26,7 @@ pub struct ThemeRepositoryStore {
 
 #[derive(Clone, Debug)]
 pub struct ThemeRepositorySnapshot {
-    active_theme_id: InstalledThemeId,
     themes: Vec<InstalledThemeMetadata>,
-    active_definition: ThemeDefinition,
-    active_projection: ActiveThemeProjection,
 }
 
 #[derive(Debug, Error)]
@@ -75,11 +72,6 @@ pub enum ThemeRepositoryError {
         #[source]
         source: ThemeValidationDiagnostics,
     },
-    #[error("installed theme could not be projected")]
-    Projection {
-        #[source]
-        source: ThemeResolutionError,
-    },
     #[error("theme document is invalid")]
     Document {
         #[from]
@@ -89,7 +81,6 @@ pub enum ThemeRepositoryError {
 
 #[derive(Clone, Debug)]
 struct LoadedThemeRepository {
-    active_theme_id: InstalledThemeId,
     themes: Vec<InstalledThemeRecord>,
 }
 
@@ -145,19 +136,6 @@ impl ThemeRepositoryStore {
             .ok_or(ThemeRepositoryError::UnknownTheme)
     }
 
-    pub fn activate_theme(
-        &self,
-        id: &InstalledThemeId,
-    ) -> Result<ThemeRepositorySnapshot, ThemeRepositoryError> {
-        let mut loaded = self.load_repository()?;
-        if !id_is_built_in(id) && !loaded.themes.iter().any(|theme| &theme.id == id) {
-            return Err(ThemeRepositoryError::UnknownTheme);
-        }
-        loaded.active_theme_id = id.clone();
-        self.persist_repository(&loaded)?;
-        snapshot_from_loaded(loaded)
-    }
-
     pub fn install_theme(
         &self,
         name: impl AsRef<str>,
@@ -195,7 +173,6 @@ impl ThemeRepositoryStore {
                 .iter()
                 .any(|theme| theme.id.as_str() == candidate)
         });
-        loaded.active_theme_id = id.clone();
         loaded.themes.push(InstalledThemeRecord {
             id,
             name,
@@ -261,13 +238,6 @@ impl ThemeRepositoryStore {
         loaded.themes.retain(|theme| &theme.id != id);
         if loaded.themes.len() == before {
             return Err(ThemeRepositoryError::UnknownTheme);
-        }
-        if &loaded.active_theme_id == id {
-            loaded.active_theme_id = loaded
-                .themes
-                .first()
-                .map(|theme| theme.id.clone())
-                .unwrap_or_else(InstalledThemeId::built_in);
         }
         self.persist_repository(&loaded)?;
         let path = self.theme_document_path(id);

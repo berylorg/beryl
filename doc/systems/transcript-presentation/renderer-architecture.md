@@ -22,9 +22,9 @@ Keep storage access, projection ownership, Markdown parsing, and resource byte l
 
 `Transcript view` means the ordered user-visible view over Syndic's turn DAG that the transcript renderer consumes.
 
-`Resident Syndic data` means Syndic-derived projection records, metadata, resource slices, presentation records, and measurement state currently admitted into Beryl memory by transcript residency.
+`Resident Syndic data` means Syndic-derived projection records, immutable branch-context envelopes, metadata, resource slices, presentation records, and measurement state currently admitted into Beryl memory by transcript residency.
 
-`Presentation data` means the ordered Beryl-side render records available to the scroll controller and renderer. Records may represent rows, streamed chunks inside a large row, stable fallbacks, local live affordances, or nested-widget descriptors.
+`Presentation data` means the ordered Beryl-side render records available to the scroll controller and renderer. Records may represent rows, streamed chunks inside a large row, synthetic context groups, stable fallbacks, local live affordances, or nested-widget descriptors.
 
 `Realized frame window` means the subset of the presentation data currently laid out around the viewport, including bounded overscan.
 
@@ -36,7 +36,7 @@ Beryl keeps only the transcript presentation stack above Syndic.
 
 Transcript residency is the only Beryl transcript layer that requests Syndic data. It admits transcript-view cursor pages, projection records, resource metadata, and resource ranges into bounded resident memory. It owns byte budgets, pins, eviction, preload, cancellation, stale-result handling, and diagnostics.
 
-Presentation data turns resident Syndic data into Beryl render records. It owns stable presentation identity, row and chunk ordering, fallback records, widget descriptors, copy spans, context-menu targets, and presentation revisions. It does not perform storage IO or raw Markdown parsing.
+Presentation data turns resident Syndic data into Beryl render records. It owns stable presentation identity, row and chunk ordering, synthetic-context insertion, fallback records, widget descriptors, copy spans, context-menu targets, and presentation revisions. It does not perform storage IO or raw Markdown parsing.
 
 The scroll controller owns the semantic anchor, realized frame window, manual pixel scroll integration, autoscroll state, explicit navigation placement, anchor rebasing, and missing-content clamp behavior.
 
@@ -52,7 +52,7 @@ The target pipeline is:
 Syndic transcript view
 -> transcript residency
 -> resident Syndic data
--> presentation data
+-> presentation data + applicable synthetic context at an exact branch boundary
 -> realized frame window
 -> renderer
 ```
@@ -65,13 +65,17 @@ Every transcript content presentation record must carry Syndic provenance suffic
 
 Required provenance includes the owning turn or transcript-view position when known, source item or block identity, resource identity when applicable, source range or resource range when applicable, projection revision, presentation revision, and copy-source span when applicable.
 
-Beryl-local records such as live carets, budget fallbacks, and transient affordances must declare that they are local UI state rather than Syndic-authored transcript content.
+Beryl-local records such as synthetic discussion context, live carets, budget fallbacks, and transient affordances must declare that they are local UI state rather than Syndic-authored transcript content.
+
+A synthetic discussion-context group retains exact Syndic envelope provenance and one immutable insertion parent but does not claim authored-turn provenance or become a turn-number source.
 
 ## Transcript Projection Boundary
 
 Syndic provides the parsed and indexed transcript projections. Beryl's transcript path does not rediscover Markdown block structure from raw assistant text and does not discover code blocks, tables, or media by reparsing raw Markdown in the render path.
 
 Beryl may adapt resident Syndic projection records into presentation records, split very large projection records into render-budget chunks, and create stable local fallbacks. These adaptations must preserve Syndic source identity, ordering, copy semantics, and invalidation revisions.
+
+Beryl may likewise adapt one immutable branch-context envelope into bounded synthetic-context chunks. The group remains at the branch boundary across first-draft submission and never enters the Syndic transcript projection.
 
 Operational records that are not transcript narrative remain in Syndic canonical history and may feed activity, diagnostics, search, replay, or export projections. They are simply not admitted into transcript narrative presentation data unless a later product decision promotes a specific summary or item class.
 
@@ -109,7 +113,7 @@ Autoscroll must be stateful and must not issue competing viewport corrections fo
 
 ## Large Content
 
-Very large transcript records render through bounded chunks or stable fallbacks. A large row may stream chunk presentation around the current anchor without providing continuous pixel geometry for unloaded chunks.
+Very large transcript records and synthetic context groups render through bounded chunks or stable fallbacks. A large row or context group may stream chunk presentation around the current anchor without providing continuous pixel geometry for unloaded chunks.
 
 Code blocks, tables, generated images, attachments, and comparable heavy resources are represented by Syndic resource metadata and explicit range-readable resource data. Beryl presentation records point at those resources and admit only the ranges needed for the current viewport, nested-widget viewport, copy action, or active UI pin.
 
@@ -131,6 +135,8 @@ When geometry changes, the scroll controller preserves the active semantic ancho
 
 Selection, Markdown-preserving copy, quote harvesting, and turn context menus operate only on rendered records whose provenance and geometry are stable.
 
+Synthetic discussion-context chunks permit selection and copy when their geometry is stable but are never eligible for quote harvesting, branch creation, replacement edit, or turn context menus.
+
 In streamed huge-content mode, transcript-level selection does not span through unrendered chunks. Nested widgets expose their own copy and selection contracts for resident resource ranges.
 
 If virtualization, release, remeasurement, or missing data destroys stable selection geometry, the selection or quote affordance closes instead of pinning unbounded offscreen content.
@@ -143,6 +149,7 @@ If virtualization, release, remeasurement, or missing data destroys stable selec
 - Manual scrolling is exact pixel movement and never semantic snapping.
 - Missing data is never transcript content.
 - Budget fallbacks are explicit Beryl UI records tied to Syndic provenance, not assistant-authored content.
+- Synthetic discussion context is an explicit Beryl presentation group tied to Syndic envelope provenance, not a Syndic or CAS turn.
 - Presentation records preserve Syndic provenance and revision identity.
 - Transcript rendering never requires total transcript pixel height.
 - Render-path work does not parse raw Markdown, scan full history, compute residency totals, or build widgets for offscreen history.

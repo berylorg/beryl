@@ -36,12 +36,13 @@ Feature `design.md` files still own product behavior, workflows, permissions, pe
 
 1. Read project documentation authority before changing GUI docs.
 2. Use `references/terminology.md` when naming common GUI concepts.
-3. Resolve widget dependencies as built-in, project-local, or externally registered before inventing a new widget spec.
-4. Put window and slot declarations in `doc/gui/integration.md`.
-5. Put feature-owned GUI composition in `doc/features/<feature>/gui.md`.
-6. Put reusable project widget specs under `doc/gui/widgets/<widget-name>/spec.md`.
-7. Put reusable project widget contracts under `doc/gui/widgets/contracts/<contract-name>.md`.
-8. Put external visible widget registries in `doc/gui/external-specs.md`.
+3. Inventory each visible control and nontrivial composite in the requested GUI, then classify it as built-in, project-local reusable, externally registered, or feature-local before writing composition prose.
+4. Create or select required reusable widget specs before describing how a feature configures and mounts those widgets.
+5. Put window and slot declarations in `doc/gui/integration.md`.
+6. Put feature-owned GUI composition in `doc/features/<feature>/gui.md`.
+7. Put reusable project widget specs under `doc/gui/widgets/<widget-name>/spec.md`.
+8. Put reusable project widget contracts under `doc/gui/widgets/contracts/<contract-name>.md`.
+9. Put external visible widget registries in `doc/gui/external-specs.md`.
 
 ## Project GUI Locations
 
@@ -119,6 +120,12 @@ If a feature GUI needs a slot that does not exist, update `doc/gui/integration.m
 
 Keep product workflows, permissions, persistence rules, disabled/error behavior, and acceptance rules in the feature `design.md`. Keep layout, widget composition, visual grouping, and slot mounting in `gui.md`.
 
+A feature GUI document configures and composes canonical widgets. It must not substitute for a widget spec by defining a control's reusable anatomy, general state model, generic interaction rules, focus model, layout algorithm, virtualization behavior, variants, or UI roles.
+
+Feature GUI prose may define feature-specific labels, content, ordering, data meaning, command placement, mode selection, and relationships between canonical widgets. When that prose needs a new stable composite control identity or any reusable contract named above, create a project-local widget spec first and refer to it by canonical name.
+
+A feature-local arrangement is limited to a one-off composition of existing canonical widgets that introduces no new reusable control identity, state machine, generic interaction contract, layout algorithm, virtualization behavior, variant family, or UI roles. If a nontrivial composition remains feature-local, state that classification and its reason explicitly in the feature GUI document.
+
 ## External Spec Registry
 
 `doc/gui/external-specs.md` registers canonical widget names that are visible to the current project but owned outside the project repository.
@@ -164,7 +171,20 @@ Before creating a new widget spec, classify the widget as one of these:
 - Externally registered widget from `doc/gui/external-specs.md`.
 - Feature-local arrangement that does not need a reusable widget spec.
 
-Use canonical widget names in docs and dependency lists. Prefer a project-local spec only when the project introduces reusable local semantics, local anatomy, or a visual and interaction contract that baseline terminology or an existing spec cannot capture.
+Use canonical widget names in docs and dependency lists.
+
+Create a project-local widget spec when no built-in or external spec covers the control and any of these conditions applies:
+
+- The same composite anatomy is used by two or more commands, modes, variants, or mounted surfaces, even inside one feature.
+- The composite has a stable identity while internal content or collections change.
+- The composite owns focus entry/return, keyboard traversal, selection, open/close, commit/cancel, or another interaction model beyond its child widgets.
+- The composite owns scrolling, virtualization/windowing, overscan, anchor preservation, or popover/tooltip preservation.
+- The composite needs named anatomy, a state family, layout rules, variants, or UI roles that are not already supplied by its child widgets.
+- The operator explicitly requests a widget or reusable GUI contract.
+
+Do not classify a composite as feature-local merely because all current uses belong to one feature. Feature-local composition describes how existing widgets are arranged and configured; it is not an alternate location for a widget contract.
+
+During review, inspect feature GUI prose for definitions that belong under widget-spec sections such as Anatomy, States, Interaction, Layout, Variants, or UI Roles. Extract those definitions into a widget spec and leave only feature-specific configuration and composition in the feature GUI document.
 
 ## Built-In Widget Specs
 
@@ -317,17 +337,17 @@ Use `# References` to list direct dependencies. Use canonical names, not file pa
 
 Use `# Anatomy` to name stable subparts such as trigger, label, leading icon, trailing icon, panel, item, handle, thumb, track, header, row, cell, separator, backdrop, or affordance.
 
-Use `# Look` for visual identity and visual-state intent. When `Spec CSS:` is present, keep this section high-level and do not restate CSS mechanics.
+Use `# Look` for visual identity and visual-state intent. Do not put exact visual or layout fallback values in this section. Use semantic descriptions such as compact, rounded, muted, inset, or thumb-only; put literal colors, dimensions, spacing, radii, opacity values, durations, and similar visual defaults in `# UI Roles`.
 
 Use `# States` to list all user-visible widget states the implementation must represent.
 
 Use `# Interaction` for behavior caused by user input, including hover, press, click, drag, keyboard activation, focus movement, opening panels, closing panels, committing choices, cancelling choices, and outside-click dismissal.
 
-Use `# Layout` for geometry and placement rules, including how the widget behaves in constrained space. When `Spec CSS:` is present, state only semantic layout constraints or owner responsibilities that CSS does not express directly.
+Use `# Layout` for geometry and placement rules, including how the widget behaves in constrained space. Do not put exact layout fallback values in this section. Use semantic geometry, formulas, relative relationships, constrained-space behavior, and owner responsibilities; put literal default sizes, spacing, offsets, minimums, maximums, and placement constants in `# UI Roles`.
 
 Use `# Variants` only for deliberate widget variants. Include one `Default variant:` line when the widget has more than one variant or when the default needs to be explicit.
 
-Use `# UI Roles` to define CSS custom-property fallbacks for all visual-impacting parameters in the default variant. Use selectors that map to widget anatomy and state.
+Use `# UI Roles` to define CSS custom-property fallbacks for all visual-impacting and layout-impacting parameters in the default variant. Use selectors that map to widget anatomy and state. This is the only widget spec section where exact default visual and layout fallback values belong.
 
 ## UI Role Addressing
 
@@ -364,11 +384,13 @@ For a `context-menu` widget, `.context-menu__row[data-state~="hover"] { --backgr
 
 Theme-aware apps use the expanded canonical role ids directly or through a deterministic adapter for their theme system. Apps without theming use the fallback values listed in the widget spec.
 
-The default visual variant belongs in `# Variants`. Exact visual fallback values belong in `# UI Roles`.
+The default visual variant belongs in `# Variants`. Exact default visual and layout fallback values belong only in `# UI Roles`.
 
 Prefer `foreground` for text, icon, and stroke color; `background` for fills; `width` and `height` for rectangular dimensions; `size` only when one value intentionally controls both width and height; and `padding-x` and `padding-y` instead of ambiguous padding when axes may differ.
 
-Every visual-impacting parameter used by the default variant must have a UI role fallback unless the value is inherited from platform behavior or deliberately non-themable.
+Every visual-impacting or layout-impacting parameter used by the default variant must have a UI role fallback unless the value is inherited from platform behavior, a documented environment value, or a documented dynamic widget-state value.
+
+Outside `# UI Roles`, exact values are allowed only for formal identifiers, dependency names, paths, section names, state names, variant names, behavioral constants, formulas, and implementation references that do not act as default visual or layout fallback values.
 
 ## Widget CSS Notation
 
@@ -377,6 +399,10 @@ Use fenced `css` blocks as specification notation when CSS makes widget look or 
 Prose remains authoritative for behavior. Do not use CSS to define activation, keyboard movement, focus routing, selection semantics, open/close policy, dismissal, data ownership, validation, persistence, or feature-specific workflow.
 
 When a `Spec CSS:` block is present, keep `# Look` and `# Layout` prose to semantic intent, constraints CSS cannot express, and short orientation for the CSS contract. Do not duplicate CSS declarations, sizing formulas, spacing values, state colors, overflow rules, or placement formulas in prose unless the duplication is needed to disambiguate a non-CSS semantic rule.
+
+`Spec CSS:` blocks must reference UI role custom properties, inherited platform values, documented environment values, or documented dynamic widget-state values for default visual and layout fallback values. Do not introduce literal colors, dimensions, spacing, radii, opacity values, durations, or similar fallback values in `Spec CSS:`.
+
+Structural CSS literals and keywords such as `display`, `position`, `box-sizing`, `flex-direction`, `align-items`, `justify-content`, `0`, `100%`, `auto`, and overflow or wrapping keywords are allowed in `Spec CSS:` only when they express layout mechanics such as fill, origin, reset, intrinsic sizing, alignment, clipping, wrapping, or a dynamic formula rather than a tunable widget default.
 
 Place at most one `Spec CSS:` block at the end of `# Layout` when a widget uses CSS notation. The block may include visual state selectors because it is a compact style contract for the whole widget.
 
@@ -396,7 +422,7 @@ CSS variables reference local UI role defaults by selector scope:
 - A state declaration such as `.command-button[data-state~="hover"] { --background: #eef2f7; }` is referenced as `var(--background)` in that state selector.
 - A part-state declaration such as `.context-menu__row[data-state~="hover"] { --background: #eef2f7; }` is referenced as `var(--background)` in that part-state selector.
 
-Every CSS variable that affects the default visual result must correspond to a `# UI Roles` custom-property fallback in the same selector scope or an inherited selector scope, a named fixed widget constant in prose, an inherited platform value, a documented environment value, or a documented dynamic widget-state value.
+Every CSS variable that affects the default visual or layout result must correspond to a `# UI Roles` custom-property fallback in the same selector scope or an inherited selector scope, an inherited platform value, a documented environment value, or a documented dynamic widget-state value.
 
 Allowed environment values are `available-inline-size`, `available-block-size`, and `max-label-inline-size`. Allowed helper functions are `measure("M", <font-size>, <font-weight>)` for font-derived row metrics and ordinary CSS math functions such as `calc()`, `min()`, `max()`, and `clamp()`.
 

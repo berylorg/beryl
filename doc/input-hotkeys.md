@@ -13,7 +13,6 @@ Windows-first behavior is the canonical target for this contract.
 - Conversation composer behavior, including `Enter` submission, `Shift+Enter` newline, `Alt+Up`/`Alt+Down` history, image marker atoms, transcript quote insertion, and focused `Ctrl+Up`/`Ctrl+Down` transcript navigation, is defined in `doc/features/composer/design.md`.
 - Transcript selection, quote popup, Markdown-preserving copy, and transcript context-menu behavior are defined in `doc/features/transcript/design.md`.
 - Settings text fields, multiline settings fields, and generic color input behavior are defined in `doc/features/settings/design.md`.
-- Column browser keyboard behavior is defined in `doc/gui/widgets/column-browser/spec.md` and the owning feature docs.
 
 ## Scope
 

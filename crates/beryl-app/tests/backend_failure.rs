@@ -22,12 +22,12 @@ fn source_chain_detail_includes_direct_source() {
 fn json_rpc_error_detail_includes_error_data() {
     let detail = backend_failure::json_rpc_error_detail(&JsonRpcError {
         code: -32603,
-        message: "workspace load failed".to_string(),
+        message: "runtime request failed".to_string(),
         data: Some(json!({ "reason": "invalid config" })),
     });
 
     assert!(detail.contains("JSON-RPC code -32603"));
-    assert!(detail.contains("workspace load failed"));
+    assert!(detail.contains("runtime request failed"));
     assert!(detail.contains("invalid config"));
 }
 

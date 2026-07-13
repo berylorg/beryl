@@ -1,193 +1,112 @@
-use std::{error::Error, fmt};
+use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
-use crate::conversation::{ConversationThreadId, ConversationTurnId};
+use crate::{CommandId, IdempotencyKey, JobId, ValueError, runtime::bounded_text};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ProvenanceError {
-    EmptyActor,
-    EmptyToolName,
-    EmptyInvocationId,
-    EmptyWorkspaceAction,
-    InvalidConfidencePercent { confidence_percent: u8 },
+const MAX_EXTERNAL_ID_BYTES: usize = 256;
+const MAX_TOOL_NAME_BYTES: usize = 128;
+
+macro_rules! bounded_external_value {
+    ($(#[$meta:meta])* $name:ident, $kind:literal, $max:expr) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(Box<str>);
+
+        impl $name {
+            /// Validates a bounded external value without interpreting provider syntax.
+            pub fn new(value: impl AsRef<str>) -> Result<Self, ValueError> {
+                bounded_text($kind, value.as_ref(), $max).map(Self)
+            }
+
+            /// Returns the exact external value.
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(&self.0)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                Self::new(value).map_err(de::Error::custom)
+            }
+        }
+    };
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MutationSource {
-    ConversationTurn {
-        thread_id: ConversationThreadId,
-        turn_id: ConversationTurnId,
+bounded_external_value!(
+    /// Exact opaque Codex App Server thread identity.
+    CasThreadId,
+    "CAS thread identity",
+    MAX_EXTERNAL_ID_BYTES
+);
+bounded_external_value!(
+    /// Exact opaque Codex App Server turn identity.
+    CasTurnId,
+    "CAS turn identity",
+    MAX_EXTERNAL_ID_BYTES
+);
+bounded_external_value!(
+    /// Exact opaque Codex App Server dynamic-tool call identity.
+    DynamicToolCallId,
+    "dynamic tool call identity",
+    MAX_EXTERNAL_ID_BYTES
+);
+bounded_external_value!(
+    /// Exact bounded dynamic-tool name.
+    DynamicToolName,
+    "dynamic tool name",
+    MAX_TOOL_NAME_BYTES
+);
+
+/// Bounded source provenance shared across package boundaries.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub enum Provenance {
+    /// Input authored directly by the user.
+    UserAuthored,
+    /// Input generated from one admitted durable branch-handoff job.
+    BerylGeneratedHandoff {
+        /// Exact durable job identity.
+        job_id: JobId,
+        /// Logical-operation identity retained across safe retries.
+        idempotency_key: IdempotencyKey,
     },
+    /// One normalized live event emitted by CAS.
+    CasLiveEvent {
+        /// Exact source CAS thread.
+        thread_id: CasThreadId,
+        /// Exact source CAS turn.
+        turn_id: CasTurnId,
+        /// Monotonic source sequence retained by the owning capture boundary.
+        sequence: u64,
+    },
+    /// One exact Beryl dynamic-tool invocation reported by CAS.
     DynamicToolCall {
-        thread_id: ConversationThreadId,
-        turn_id: ConversationTurnId,
-        tool_name: String,
-        call_id: String,
+        /// Exact source CAS thread.
+        thread_id: CasThreadId,
+        /// Exact source CAS turn.
+        turn_id: CasTurnId,
+        /// Registered dynamic-tool name.
+        tool_name: DynamicToolName,
+        /// Exact source tool-call identity.
+        call_id: DynamicToolCallId,
     },
-    ToolAction {
-        tool_name: String,
-        invocation_id: String,
+    /// An action performed by an admitted durable recovery command.
+    DurableRecovery {
+        /// Exact admitted command identity.
+        command_id: CommandId,
+        /// Logical-operation identity retained across safe retries.
+        idempotency_key: IdempotencyKey,
     },
-    WorkspaceAction {
-        action: String,
-    },
 }
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MutationProvenance {
-    actor: String,
-    recorded_at_millis: u64,
-    source: MutationSource,
-    confidence_percent: Option<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ElementProvenance {
-    created: MutationProvenance,
-    last_updated: MutationProvenance,
-}
-
-impl MutationSource {
-    pub fn conversation_turn(thread_id: ConversationThreadId, turn_id: ConversationTurnId) -> Self {
-        Self::ConversationTurn { thread_id, turn_id }
-    }
-
-    pub fn dynamic_tool_call(
-        thread_id: ConversationThreadId,
-        turn_id: ConversationTurnId,
-        tool_name: impl Into<String>,
-        call_id: impl Into<String>,
-    ) -> Result<Self, ProvenanceError> {
-        let tool_name = tool_name.into();
-        if tool_name.trim().is_empty() {
-            return Err(ProvenanceError::EmptyToolName);
-        }
-
-        let call_id = call_id.into();
-        if call_id.trim().is_empty() {
-            return Err(ProvenanceError::EmptyInvocationId);
-        }
-
-        Ok(Self::DynamicToolCall {
-            thread_id,
-            turn_id,
-            tool_name,
-            call_id,
-        })
-    }
-
-    pub fn tool_action(
-        tool_name: impl Into<String>,
-        invocation_id: impl Into<String>,
-    ) -> Result<Self, ProvenanceError> {
-        let tool_name = tool_name.into();
-        if tool_name.trim().is_empty() {
-            return Err(ProvenanceError::EmptyToolName);
-        }
-
-        let invocation_id = invocation_id.into();
-        if invocation_id.trim().is_empty() {
-            return Err(ProvenanceError::EmptyInvocationId);
-        }
-
-        Ok(Self::ToolAction {
-            tool_name,
-            invocation_id,
-        })
-    }
-
-    pub fn workspace_action(action: impl Into<String>) -> Result<Self, ProvenanceError> {
-        let action = action.into();
-        if action.trim().is_empty() {
-            return Err(ProvenanceError::EmptyWorkspaceAction);
-        }
-
-        Ok(Self::WorkspaceAction { action })
-    }
-}
-
-impl MutationProvenance {
-    pub fn new(
-        actor: impl Into<String>,
-        recorded_at_millis: u64,
-        source: MutationSource,
-        confidence_percent: Option<u8>,
-    ) -> Result<Self, ProvenanceError> {
-        let actor = actor.into();
-        if actor.trim().is_empty() {
-            return Err(ProvenanceError::EmptyActor);
-        }
-
-        if let Some(confidence_percent) = confidence_percent {
-            if confidence_percent > 100 {
-                return Err(ProvenanceError::InvalidConfidencePercent { confidence_percent });
-            }
-        }
-
-        Ok(Self {
-            actor,
-            recorded_at_millis,
-            source,
-            confidence_percent,
-        })
-    }
-
-    pub fn actor(&self) -> &str {
-        &self.actor
-    }
-
-    pub fn recorded_at_millis(&self) -> u64 {
-        self.recorded_at_millis
-    }
-
-    pub fn source(&self) -> &MutationSource {
-        &self.source
-    }
-
-    pub fn confidence_percent(&self) -> Option<u8> {
-        self.confidence_percent
-    }
-}
-
-impl ElementProvenance {
-    pub fn new(created: MutationProvenance) -> Self {
-        Self {
-            created: created.clone(),
-            last_updated: created,
-        }
-    }
-
-    pub fn created(&self) -> &MutationProvenance {
-        &self.created
-    }
-
-    pub fn last_updated(&self) -> &MutationProvenance {
-        &self.last_updated
-    }
-
-    pub fn touch(&mut self, provenance: MutationProvenance) {
-        self.last_updated = provenance;
-    }
-}
-
-impl fmt::Display for ProvenanceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyActor => write!(f, "provenance actor must not be empty"),
-            Self::EmptyToolName => write!(f, "tool action provenance must include a tool name"),
-            Self::EmptyInvocationId => {
-                write!(f, "tool action provenance must include an invocation id")
-            }
-            Self::EmptyWorkspaceAction => {
-                write!(f, "workspace action provenance must include an action name")
-            }
-            Self::InvalidConfidencePercent { confidence_percent } => write!(
-                f,
-                "confidence percent {confidence_percent} is outside the supported range 0..=100"
-            ),
-        }
-    }
-}
-
-impl Error for ProvenanceError {}

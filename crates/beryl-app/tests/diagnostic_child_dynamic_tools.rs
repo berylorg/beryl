@@ -3,22 +3,12 @@
 #[path = "support/tempdir.rs"]
 mod tempdir_support;
 
-pub use beryl_app::BerylHomeDir;
-
-mod dynamic_tools {
+mod dynamic_tool_namespace {
     pub const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
 }
 
 mod diagnostic_dynamic_tools {
     use serde::Serialize;
-
-    #[derive(Clone, Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub(crate) struct RuntimeTargetDiagnostic {
-        pub runtime: String,
-        pub canonical_path: String,
-        pub display_label: String,
-    }
 
     #[derive(Clone, Debug, Default, Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -32,11 +22,15 @@ mod diagnostic_child_protocol;
 mod diagnostic_child_control;
 
 mod diagnostic_child_supervisor {
-    use std::{fmt, io, path::PathBuf, time::Duration};
+    use std::{
+        fmt, io,
+        path::{Path, PathBuf},
+        time::Duration,
+    };
 
     use serde_json::Value;
 
-    use crate::{BerylHomeDir, diagnostic_child_protocol::DiagnosticChildCommand};
+    use crate::diagnostic_child_protocol::DiagnosticChildCommand;
 
     pub(crate) const DIAGNOSTIC_CHILD_STOP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(12);
     pub(crate) const MAX_DIAGNOSTIC_CHILD_EXECUTABLE_PATH_BYTES: usize = 1024;
@@ -79,7 +73,14 @@ mod diagnostic_child_supervisor {
 
     #[derive(Debug)]
     pub(crate) enum DiagnosticChildSupervisorError {
-        BerylHomeDir(beryl_app::BerylHomeDirError),
+        InvalidHomePath {
+            path: PathBuf,
+            reason: &'static str,
+        },
+        HomePathAccess {
+            path: PathBuf,
+            source: io::Error,
+        },
         HomeCollidesWithSupervisor {
             child_home: PathBuf,
             supervisor_home: PathBuf,
@@ -146,7 +147,7 @@ mod diagnostic_child_supervisor {
     impl DiagnosticChildSupervisor {
         pub(crate) fn start(
             &mut self,
-            _supervisor_home: &BerylHomeDir,
+            _supervisor_home: &Path,
             launch: DiagnosticChildLaunch,
         ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
             if let Some(identity) = self.identity.clone() {
@@ -200,7 +201,16 @@ mod diagnostic_child_supervisor {
     impl fmt::Display for DiagnosticChildSupervisorError {
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Self::BerylHomeDir(error) => write!(formatter, "{error}"),
+                Self::InvalidHomePath { path, reason } => write!(
+                    formatter,
+                    "invalid diagnostic child Beryl home path {}: {reason}",
+                    path.display()
+                ),
+                Self::HomePathAccess { path, source } => write!(
+                    formatter,
+                    "failed to inspect diagnostic child Beryl home path {}: {source}",
+                    path.display()
+                ),
                 Self::HomeCollidesWithSupervisor {
                     child_home,
                     supervisor_home,
@@ -281,9 +291,8 @@ use beryl_backend::{
 };
 use diagnostic_child_dynamic_tools::{
     BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
-    DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL, DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL,
-    DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, DIAGNOSTIC_CHILD_READ_RENDERER_TOOL,
-    DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL,
+    DIAGNOSTIC_CHILD_PREPARE_RENDERER_WINDOW_TOOL, DIAGNOSTIC_CHILD_READ_PROCESS_TOOL,
+    DIAGNOSTIC_CHILD_READ_RENDERER_TOOL, DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL,
     DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL, DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL,
     DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL, DIAGNOSTIC_CHILD_START_TOOL,
     DIAGNOSTIC_CHILD_START_TURN_TOOL, DIAGNOSTIC_CHILD_STATUS_TOOL,
@@ -296,7 +305,7 @@ use serde_json::{Value, json};
 #[test]
 fn diagnostic_child_read_before_start_returns_not_running_failure() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let request = tool_request(DIAGNOSTIC_CHILD_READ_PROCESS_TOOL, json!({}));
 
@@ -317,7 +326,7 @@ fn diagnostic_child_read_before_start_returns_not_running_failure() {
 #[test]
 fn diagnostic_child_status_reports_not_running_as_success() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let request = tool_request(DIAGNOSTIC_CHILD_STATUS_TOOL, json!({}));
 
@@ -339,7 +348,7 @@ fn diagnostic_child_status_reports_not_running_as_success() {
 fn diagnostic_child_start_returns_identity_and_running_status() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,
@@ -372,7 +381,7 @@ fn diagnostic_child_start_forwards_custom_executable_and_preserves_running_ident
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
     let second_child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let executable_path = child.path().join(format!("custom b{}ryl.exe", '\u{00e9}'));
     let second_executable_path = second_child.path().join("other beryl.exe");
     let mut supervisor = DiagnosticChildSupervisor::default();
@@ -436,7 +445,7 @@ fn diagnostic_child_start_forwards_custom_executable_and_preserves_running_ident
 fn diagnostic_child_control_params_are_normalized_before_protocol_request() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let start_request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,
@@ -471,7 +480,7 @@ fn diagnostic_child_control_params_are_normalized_before_protocol_request() {
 fn diagnostic_child_scroll_transcript_forwards_wheel_delta() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let start_request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,
@@ -509,15 +518,11 @@ fn diagnostic_child_scroll_transcript_forwards_wheel_delta() {
 fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let start_request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,
         json!({ "berylHomeDir": child.path().display().to_string() }),
-    );
-    let list_request = tool_request(
-        DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
-        json!({ "limit": 999 }),
     );
     let turn_request = tool_request(
         DIAGNOSTIC_CHILD_START_TURN_TOOL,
@@ -541,11 +546,6 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
         &mut supervisor,
         &supervisor_home,
         &start_request,
-    );
-    let list_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
-        &mut supervisor,
-        &supervisor_home,
-        &list_request,
     );
     let turn_response = dispatch_beryl_diagnostic_child_dynamic_tool_call(
         &mut supervisor,
@@ -577,7 +577,6 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
         &supervisor_home,
         &settings_window_request,
     );
-    let list_payload = response_json(&list_response);
     let turn_payload = response_json(&turn_response);
     let renderer_payload = response_json(&renderer_response);
     let renderer_prepare_alias_payload = response_json(&renderer_prepare_alias_response);
@@ -585,9 +584,6 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
     let frame_metrics_payload = response_json(&frame_metrics_response);
     let settings_window_payload = response_json(&settings_window_response);
 
-    assert!(list_response.success);
-    assert_eq!(list_payload["result"]["command"], "list_workspace_threads");
-    assert_eq!(list_payload["result"]["params"]["limit"], 128);
     assert!(frame_metrics_response.success);
     assert_eq!(
         frame_metrics_payload["result"]["command"],
@@ -628,7 +624,7 @@ fn diagnostic_child_new_control_tools_are_mapped_to_protocol_commands() {
 fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let start_request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,
@@ -696,10 +692,6 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_START_TOOL)
         .unwrap();
-    let list_schema = specs
-        .iter()
-        .find(|spec| spec.name == DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL)
-        .unwrap();
     let renderer_schema = specs
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_RENDERER_TOOL)
@@ -735,10 +727,6 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
     );
     assert_eq!(renderer_schema.input_schema["additionalProperties"], false);
     assert_eq!(
-        list_schema.input_schema["properties"]["limit"]["maximum"],
-        diagnostic_child_control::MAX_DIAGNOSTIC_THREAD_LIST_LIMIT
-    );
-    assert_eq!(
         wait_schema.input_schema["properties"]["limit"]["maximum"],
         diagnostic_child_control::MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT
     );
@@ -748,13 +736,6 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
             .unwrap()
             .iter()
             .any(|value| value == "backend_unavailable")
-    );
-    assert!(
-        wait_schema.input_schema["properties"]["predicate"]["enum"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|value| value == "workspace_idle")
     );
     assert!(
         wait_schema.input_schema["properties"]["predicate"]["enum"]
@@ -784,7 +765,7 @@ fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
 fn diagnostic_wait_state_accepts_backend_unavailable_predicate() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let start_request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,
@@ -839,7 +820,7 @@ fn diagnostic_stop_turn_arguments_match_exact_thread_and_turn_identity() {
 fn diagnostic_child_wait_for_state_polls_ui_state_until_timeout() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-child-dynamic-tools-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let supervisor_home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let supervisor_home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     let start_request = tool_request(
         DIAGNOSTIC_CHILD_START_TOOL,

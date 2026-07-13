@@ -1,6 +1,6 @@
 # Goals
 
-Report user-visible errors, recovery states, and completion attention signals without replacing the active workspace view or changing backend conversation semantics.
+Report user-visible errors, recovery states, and completion attention signals without replacing the active conversation shell or changing backend conversation semantics.
 
 ## Non-goals
 
@@ -12,18 +12,18 @@ Report user-visible errors, recovery states, and completion attention signals wi
 
 ## GUI Supplement
 
-- `gui.md` is a normative supplemental GUI composition file for main workspace notice placement, notice anatomy, and notice variant presentation.
+- `gui.md` is the normative supplemental GUI composition file for mounting and configuring the project-local `main-window notice` widget. Reusable notice anatomy and variant presentation live in that widget's spec.
 
-## Workspace Notices
+## Main Conversation Notices
 
-- Workspace notices are bounded transient messages shown near the top-right of the main workspace window below toolbar and thread strips.
-- Notices report localized errors and recovery information that should not replace the active workspace view.
+- Main conversation notices are bounded transient messages shown near the top-right of the main conversation window below the toolbar and any visible thread-lineage strip.
+- Notices report localized errors and recovery information that should not replace the active conversation shell.
 - The notice queue is bounded FIFO and renders at most one active notice at a time.
 - Dismissing the visible notice advances to the next queued notice when present.
 - If the queue reaches its cap, Beryl may coalesce overflow into a summary notice rather than preserving every individual notice.
 - Repeated reports for the same selected foreground turn failure are deduplicated so Beryl enqueues at most one notice for that failed turn.
 - Notice text is selectable and ordinary copy commands copy selected notice text.
-- The visible close action dismisses only the current notice and must not mutate transcript, workspace, backend, graph, settings, or persistence state.
+- The visible close action dismisses only the current notice and must not mutate transcript, thread, backend, settings, or persistence state.
 - Notice title, detail, background, border, and warning/error/info variants resolve from active theme notice roles.
 
 ## Turn Error Notices
@@ -38,10 +38,10 @@ Report user-visible errors, recovery states, and completion attention signals wi
 - The default setting is empty, so no end-turn sound plays by default.
 - V1 sound files are WAV files selected by full host filesystem path in settings.
 - Beryl may use the `rodio` playback crate for short custom notification sound playback.
-- When configured, the sound plays only after a user-visible parent conversation turn reaches terminal state while no Beryl window is focused.
-- A Beryl window is focused when either the main workspace window or settings window has OS focus.
+- When configured, the sound plays only after a user-visible parent conversation turn reaches terminal state and at least one known attention trigger below is active; lack of Beryl-window focus is one trigger, not a separate prerequisite.
+- A Beryl window is focused when either a main conversation window or settings window has OS focus.
 - Terminal states eligible for sound include successful completion, interruption, and failure.
-- Beryl does not play ordinary end-turn sound for title-generation maintenance, member-thread inventory refresh, lazy metadata resolution, context compaction, automatic lifecycle continuation, startup probes, settings changes, or other background/status-only work.
+- Beryl does not play ordinary end-turn sound for title-generation maintenance, catalog projection maintenance, lazy metadata resolution, context compaction, automatic lifecycle continuation, startup probes, settings changes, or other background/status-only work.
 - Playback is best-effort, must not block the `gpui` thread on filesystem or audio-device work, and must not affect backend turn completion semantics.
 - If the configured WAV file is missing, unreadable, unsupported, or cannot be played at turn completion time, Beryl treats playback failure as non-fatal, leaves turn state unchanged, and records the failure through normal diagnostics.
 
@@ -50,6 +50,7 @@ Report user-visible errors, recovery states, and completion attention signals wi
 - User-visible turn-completion sound is a GUI-local desktop notification side effect.
 - It may be emitted only when at least one Beryl-owned attention trigger is active.
 - Beryl-owned attention triggers include no Beryl window focused, no host-reported local mouse or keyboard input for 30 seconds, a locked desktop session, a closed laptop lid, or a host-reported off or dimmed session display.
+- Eligibility is the logical OR of those known trigger states: any one active trigger is sufficient even when every other trigger is inactive, including when a Beryl window remains focused.
 - Unsupported or unknown trigger states do not make a notification eligible by themselves and must not suppress another known active trigger.
 
 ## Lifecycle Notifications

@@ -5,17 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use beryl_model::workspace::RuntimeMode;
 use tracing::warn;
 
 use crate::ManagedBackendError;
 
 const TOKEN_BYTES: usize = 32;
 const NONCE_BYTES: usize = 16;
-const TOKEN_DIR_NAME: &str = "beryl-codex-app-server";
-const WSL_TOKEN_DIR: &str = "/tmp/beryl-codex-app-server";
-
-pub struct ManagedBackendAuthMaterial {
+pub(crate) struct ManagedBackendAuthMaterial {
     token: String,
     host_token_file_path: PathBuf,
     backend_token_file_path: PathBuf,
@@ -23,10 +19,14 @@ pub struct ManagedBackendAuthMaterial {
 }
 
 impl ManagedBackendAuthMaterial {
-    pub fn generate(runtime_mode: &RuntimeMode) -> Result<Self, ManagedBackendError> {
+    pub(crate) fn generate(
+        host_token_directory: &Path,
+        backend_token_directory: &Path,
+    ) -> Result<Self, ManagedBackendError> {
         let token = random_hex(TOKEN_BYTES)?;
         let file_name = format!("token-{}.txt", random_hex(NONCE_BYTES)?);
-        let (host_token_file_path, backend_token_file_path) = token_paths(runtime_mode, &file_name);
+        let host_token_file_path = host_token_directory.join(&file_name);
+        let backend_token_file_path = backend_token_directory.join(file_name);
 
         if let Some(parent) = host_token_file_path.parent() {
             fs::create_dir_all(parent).map_err(|source| {
@@ -71,19 +71,19 @@ impl ManagedBackendAuthMaterial {
         })
     }
 
-    pub fn host_token_file_path(&self) -> &Path {
+    pub(crate) fn host_token_file_path(&self) -> &Path {
         &self.host_token_file_path
     }
 
-    pub fn backend_token_file_path(&self) -> &Path {
+    pub(crate) fn backend_token_file_path(&self) -> &Path {
         &self.backend_token_file_path
     }
 
-    pub fn authorization_header_value(&self) -> String {
+    pub(crate) fn authorization_header_value(&self) -> String {
         format!("Bearer {}", self.token)
     }
 
-    pub fn cleanup(&mut self) -> Result<(), ManagedBackendError> {
+    pub(crate) fn cleanup(&mut self) -> Result<(), ManagedBackendError> {
         if self.cleaned_up {
             return Ok(());
         }
@@ -120,22 +120,6 @@ impl Drop for ManagedBackendAuthMaterial {
     fn drop(&mut self) {
         if let Err(error) = self.cleanup() {
             warn!(%error, "failed to clean up managed backend auth material");
-        }
-    }
-}
-
-fn token_paths(runtime_mode: &RuntimeMode, file_name: &str) -> (PathBuf, PathBuf) {
-    match runtime_mode {
-        RuntimeMode::HostWindows => {
-            let path = std::env::temp_dir().join(TOKEN_DIR_NAME).join(file_name);
-            (path.clone(), path)
-        }
-        RuntimeMode::WslLinux { distro_name } => {
-            let backend_path = format!("{WSL_TOKEN_DIR}/{file_name}");
-            let host_path = PathBuf::from(format!(
-                r"\\wsl.localhost\{distro_name}\tmp\beryl-codex-app-server\{file_name}"
-            ));
-            (host_path, PathBuf::from(backend_path))
         }
     }
 }

@@ -274,46 +274,6 @@ fn projection_removes_completed_command_execution_process_handles() {
     );
 }
 
-#[test]
-fn archive_notification_finishes_thread_targets() {
-    let mut projection = HardStopTargetProjection::default();
-    projection.set_capabilities(HardStopCapabilities::new(true, true));
-
-    projection.apply_stream_event(&turn_started("thread_branch", "turn_branch"));
-    projection.apply_stream_event(&started(
-        "thread_branch",
-        "turn_branch",
-        command_item_with_process("cmd_branch", Some("proc_branch")),
-    ));
-
-    assert!(
-        projection
-            .selected_turn_targets(Some(&CancellableActiveTurn::ordinary(
-                "thread_branch",
-                "turn_branch",
-            )))
-            .is_some()
-    );
-
-    assert!(
-        projection.apply_stream_event(&TurnStreamEvent::ThreadArchived {
-            thread_id: "thread_branch".to_string(),
-        })
-    );
-
-    let targets = projection
-        .selected_turn_targets(Some(&CancellableActiveTurn::ordinary(
-            "thread_branch",
-            "turn_branch",
-        )))
-        .expect("selected turn should still have direct hard-stop targets");
-    assert!(
-        !targets
-            .targets
-            .contains(&HardStopTarget::command_execution("proc_branch"))
-    );
-}
-
 fn started(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemStarted {
         thread_id: thread_id.to_string(),

@@ -1,15 +1,13 @@
 use std::{
-    path::PathBuf,
     sync::mpsc::{self, Receiver, Sender, TryRecvError},
     thread,
     time::{Duration, Instant},
 };
 
 use beryl_backend::{
-    ApprovalRequest, BackendConfigDefaults, ManagedBackendClientConnector, ManagedBackendSession,
-    ModelInfo, ThreadStatus, TurnStreamEvent,
+    ApprovalRequest, ManagedBackendClientConnector, ManagedBackendSession, ModelInfo, ThreadStatus,
+    TurnStreamEvent,
 };
-use beryl_model::workspace::WorkspaceId;
 use gpui::{
     Bounds, ClickEvent, Context, KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseUpEvent, Pixels,
     Window,
@@ -17,10 +15,9 @@ use gpui::{
 use tracing::warn;
 
 use super::{
-    ConversationSurfaceState, ShellState, ShellView, SurfaceNotice,
+    ConversationSurfaceState, ShellView, SurfaceNotice,
     context_compaction::ContextCompactionStreamState,
     hard_stop::{HardStopOutcome, HardStopUpdate, spawn_hard_stop_worker},
-    lifecycle_continuation::context_compaction_queue_failure_message,
     status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets, ThreadTurnDefaults},
     status_operation_state::{
         HardStopHoldSource, HardStopRequestSummary, StatusLineOperationKind,
@@ -40,13 +37,8 @@ pub(super) enum StatusOperationUpdate {
 }
 
 pub(super) enum StatusModelListOutcome {
-    Loaded {
-        config_defaults: BackendConfigDefaults,
-        models: Vec<ModelInfo>,
-    },
-    Failed {
-        message: String,
-    },
+    Loaded { models: Vec<ModelInfo> },
+    Failed { message: String },
 }
 
 pub(super) enum ContextCompactionOutcome {
@@ -56,11 +48,10 @@ pub(super) enum ContextCompactionOutcome {
 
 pub(super) fn spawn_status_model_list_worker(
     connector: ManagedBackendClientConnector,
-    config_cwd: PathBuf,
     timeout: Duration,
 ) -> Receiver<StatusOperationUpdate> {
     let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || run_status_model_list_worker(connector, config_cwd, timeout, sender));
+    thread::spawn(move || run_status_model_list_worker(connector, timeout, sender));
     receiver
 }
 
@@ -85,7 +76,6 @@ pub(super) fn spawn_context_compaction_worker(
 
 fn run_status_model_list_worker(
     connector: ManagedBackendClientConnector,
-    config_cwd: PathBuf,
     timeout: Duration,
     sender: Sender<StatusOperationUpdate>,
 ) {
@@ -102,15 +92,7 @@ fn run_status_model_list_worker(
     };
 
     let outcome = match session.list_models(timeout) {
-        Ok(models) => match session.read_config(&config_cwd, timeout) {
-            Ok(response) => StatusModelListOutcome::Loaded {
-                config_defaults: response.config,
-                models,
-            },
-            Err(error) => StatusModelListOutcome::Failed {
-                message: format!("Beryl could not read the backend configuration: {error}"),
-            },
-        },
+        Ok(models) => StatusModelListOutcome::Loaded { models },
         Err(error) => StatusModelListOutcome::Failed {
             message: format!("Beryl could not load the backend model list: {error}"),
         },
@@ -261,17 +243,13 @@ impl ConversationSurfaceState {
 
     pub(crate) fn set_pending_status_model_reasoning(
         &mut self,
-        thread_id: Option<&str>,
+        thread_id: &str,
         model: Option<String>,
         reasoning_effort: Option<String>,
     ) -> bool {
         let defaults = ThreadTurnDefaults::new(model, reasoning_effort);
-        match thread_id {
-            Some(thread_id) => self
-                .status_line
-                .set_pending_turn_defaults(thread_id, defaults),
-            None => self.status_line.set_pending_new_thread_defaults(defaults),
-        }
+        self.status_line
+            .set_pending_turn_defaults(thread_id, defaults)
     }
 
     pub(super) fn finish_context_compaction(&mut self, thread_id: &str) {
@@ -299,28 +277,9 @@ impl ShellView {
         &self.status_model_cache
     }
 
-    pub(crate) fn sync_new_thread_defaults_from_model_cache(&mut self) -> bool {
-        let Some(cache_target) = self.status_model_cache.target() else {
-            return false;
-        };
-        let Ok(current_new_thread_target) = self.current_new_thread_target() else {
-            return false;
-        };
-        if &current_new_thread_target != cache_target {
-            return false;
-        }
-        let defaults = self.status_model_cache.effective_default_turn_defaults();
-        self.conversation_surface_mut()
-            .is_some_and(|surface| surface.set_effective_new_thread_defaults(defaults))
-    }
-
     pub(crate) fn status_line_backend_operation_available(&self) -> bool {
         self.backend_client_connector().is_some()
             && self.status_operation_receiver.is_none()
-            && self.workspace_receiver.is_none()
-            && self.graph_thread_start_receiver.is_none()
-            && self.thread_activation_receiver.is_none()
-            && self.turn_receiver.is_none()
             && self.hard_stop_receiver.is_none()
     }
 
@@ -351,8 +310,6 @@ impl ShellView {
         }
 
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.thread_selector_mut().close();
-            surface.graph_thread_link_menu_mut().close();
             surface.close_transcript_branch_menu();
             surface
                 .status_line_operations_mut()
@@ -379,8 +336,6 @@ impl ShellView {
         }
 
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.thread_selector_mut().close();
-            surface.graph_thread_link_menu_mut().close();
             surface.close_transcript_branch_menu();
             surface
                 .status_line_operations_mut()
@@ -406,8 +361,6 @@ impl ShellView {
         }
 
         if let Some(surface) = self.conversation_surface_mut() {
-            surface.thread_selector_mut().close();
-            surface.graph_thread_link_menu_mut().close();
             surface.close_transcript_branch_menu();
             surface
                 .status_line_operations_mut()
@@ -513,9 +466,12 @@ impl ShellView {
         if !self.status_line_model_reasoning_interactive(available) {
             return;
         }
-        let thread_id = self
+        let Some(thread_id) = self
             .conversation_surface()
-            .and_then(|surface| surface.selected_thread_id().map(str::to_string));
+            .and_then(|surface| surface.selected_thread_id().map(str::to_string))
+        else {
+            return;
+        };
         let current_reasoning = self
             .conversation_surface()
             .and_then(|surface| surface.current_status_model_reasoning().1);
@@ -523,7 +479,7 @@ impl ShellView {
             reasoning_effort_for_model_selection(&model, current_reasoning.as_deref());
         if let Some(surface) = self.conversation_surface_mut()
             && surface.set_pending_status_model_reasoning(
-                thread_id.as_deref(),
+                &thread_id,
                 Some(model.model),
                 reasoning_effort,
             )
@@ -547,12 +503,15 @@ impl ShellView {
         if !self.status_line_model_reasoning_interactive(available) {
             return;
         }
-        let thread_id = self
+        let Some(thread_id) = self
             .conversation_surface()
-            .and_then(|surface| surface.selected_thread_id().map(str::to_string));
+            .and_then(|surface| surface.selected_thread_id().map(str::to_string))
+        else {
+            return;
+        };
         if let Some(surface) = self.conversation_surface_mut()
             && surface.set_pending_status_model_reasoning(
-                thread_id.as_deref(),
+                &thread_id,
                 Some(model),
                 Some(reasoning_effort),
             )
@@ -934,16 +893,13 @@ impl ShellView {
             return;
         };
 
-        let target = self.status_model_list_target_for_connector(&connector);
-        if !self.status_model_cache.should_load_for(&target) {
+        if !self.status_model_cache.should_load() {
             return;
         }
 
-        let config_cwd = self.status_model_list_config_cwd_for_connector(&connector);
-        self.status_model_cache.begin_loading_for(target);
+        self.status_model_cache.begin_loading();
         self.status_operation_receiver = Some(spawn_status_model_list_worker(
             connector,
-            config_cwd,
             self.bootstrap.probe_timeout(),
         ));
         self.schedule_poll_if_needed(window, cx);
@@ -951,13 +907,8 @@ impl ShellView {
 
     fn finish_status_model_list(&mut self, outcome: StatusModelListOutcome) {
         match outcome {
-            StatusModelListOutcome::Loaded {
-                config_defaults,
-                models,
-            } => {
-                self.status_model_cache
-                    .finish_loaded_with_config(models, config_defaults);
-                self.sync_new_thread_defaults_from_model_cache();
+            StatusModelListOutcome::Loaded { models } => {
+                self.status_model_cache.finish_loaded(models);
             }
             StatusModelListOutcome::Failed { message } => {
                 self.status_model_cache.finish_failed(message.clone());
@@ -970,33 +921,6 @@ impl ShellView {
         }
     }
 
-    fn status_model_list_config_cwd_for_connector(
-        &self,
-        connector: &ManagedBackendClientConnector,
-    ) -> PathBuf {
-        self.status_model_list_target_for_connector(connector)
-            .canonical_path()
-            .to_path_buf()
-    }
-
-    fn status_model_list_target_for_connector(
-        &self,
-        connector: &ManagedBackendClientConnector,
-    ) -> WorkspaceId {
-        self.current_conversation_submission_target()
-            .ok()
-            .filter(|target| {
-                target.runtime_mode() == connector.launch_spec().runtime_mode()
-                    && target.canonical_path() == connector.launch_spec().cwd()
-            })
-            .unwrap_or_else(|| {
-                WorkspaceId::from_parts(
-                    connector.launch_spec().runtime_mode().clone(),
-                    connector.launch_spec().cwd().to_path_buf(),
-                )
-            })
-    }
-
     fn finish_context_compaction(&mut self, outcome: ContextCompactionOutcome) {
         match outcome {
             ContextCompactionOutcome::Finished { thread_id } => {
@@ -1004,7 +928,6 @@ impl ShellView {
                     surface.finish_context_compaction(&thread_id);
                     surface.finish_running_tool_activity_for_thread_ok(&thread_id);
                 }
-                self.begin_pending_turn_input_queue_for_thread(&thread_id);
             }
             ContextCompactionOutcome::Failed { thread_id, message } => {
                 if let Some(surface) = self.conversation_surface_mut() {
@@ -1014,10 +937,6 @@ impl ShellView {
                         "Context compaction failed",
                         message.clone(),
                     ));
-                    surface.fail_pending_turn_input_queue_for_thread(
-                        &thread_id,
-                        context_compaction_queue_failure_message(&message),
-                    );
                 }
 
                 self.block_if_backend_process_dead(
@@ -1126,7 +1045,7 @@ impl ShellView {
         self.block_if_backend_process_dead(
             "Turn stop stopped unexpectedly",
             message,
-            "Beryl preserved the current workspace surface, but it cannot continue until the managed backend for this workspace is relaunched.",
+            "Beryl preserved the current window, but it cannot continue until its managed runtime is relaunched.",
         );
     }
 
@@ -1148,7 +1067,7 @@ impl ShellView {
         self.block_if_backend_process_dead(
             "Hard stop stopped unexpectedly",
             message,
-            "Beryl preserved the current workspace surface, but it cannot continue until the managed backend for this workspace is relaunched.",
+            "Beryl preserved the current window, but it cannot continue until its managed runtime is relaunched.",
         );
     }
 
@@ -1165,23 +1084,7 @@ impl ShellView {
             TurnStreamEvent::AccountRateLimitsUpdated { rate_limits } => {
                 updated | self.apply_account_rate_limits_update(rate_limits)
             }
-            event => {
-                let execution_target = match &self.state {
-                    ShellState::Ready(ready) => Some(ready.execution_target.clone()),
-                    ShellState::BackendUnavailable(unavailable) => {
-                        Self::selected_thread_registered_execution_target(
-                            &unavailable.loaded_workspace,
-                            &unavailable.surface,
-                        )
-                    }
-                    _ => None,
-                };
-                if let Some(surface) = self.conversation_surface_mut() {
-                    surface.apply_stream_event(event, execution_target.as_ref());
-                    updated = true;
-                }
-                updated
-            }
+            _ => updated,
         }
     }
 
@@ -1194,12 +1097,6 @@ impl ShellView {
             if let Some(thread_id) = selected_thread_id.as_deref() {
                 surface.finish_context_compaction(thread_id);
                 surface.finish_running_tool_activity_for_thread_error(thread_id);
-                surface.fail_pending_turn_input_queue_for_thread(
-                    thread_id,
-                    format!(
-                        "Beryl could not send the queued input because the status operation stopped unexpectedly: {message}"
-                    ),
-                );
             }
             surface.status_line_operations_mut().close();
             surface.set_notice(SurfaceNotice::new("Status operation failed", message));
@@ -1207,7 +1104,7 @@ impl ShellView {
         self.block_if_backend_process_dead(
             "Status operation stopped unexpectedly",
             message,
-            "Beryl preserved the current workspace surface, but it cannot continue until the managed backend for this workspace is relaunched.",
+            "Beryl preserved the current window, but it cannot continue until its managed runtime is relaunched.",
         );
     }
 

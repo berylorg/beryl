@@ -11,6 +11,3 @@ pub(crate) mod syndic_transcript {
 
 #[path = "syndic_transcript_fixture_provider.rs"]
 pub(crate) mod fixture_provider;
-
-#[path = "../../src/shell/syndic_transcript_storage_provider.rs"]
-pub(crate) mod storage_provider;

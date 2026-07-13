@@ -3,7 +3,7 @@
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
-mod dynamic_tools {
+mod dynamic_tool_namespace {
     pub const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
 }
 
@@ -20,18 +20,18 @@ use diagnostic_dynamic_tools::{
     ProcessDiagnosticSnapshot, READ_MEDIA_EVENTS_TOOL, READ_MEMORY_DIAGNOSTICS_TOOL,
     READ_RENDERER_DIAGNOSTICS_TOOL, READ_RETAINED_STATE_SUMMARY_TOOL,
     READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL, READ_TRANSCRIPT_FRAME_METRICS_TOOL,
-    READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, RuntimeTargetDiagnostic,
-    SettingsWindowDiagnosticSnapshot, SettingsWindowPerformanceDiagnostic,
-    SettingsWindowRowSurfaceDiagnostic, ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic,
-    ThemeRoleNavigatorDiagnostic, TranscriptFrameAnchorDiagnostic, TranscriptFrameMetric,
-    TranscriptFrameMetricsLog, TranscriptFrameMetricsSnapshot,
-    TranscriptFrameRenderBudgetDiagnostic, TranscriptRenderedFrameDiagnostic,
-    TranscriptResidencyRequestDiagnostic, TranscriptScrollInputAnchorDiagnostic,
-    TranscriptScrollInputDiagnostic, TranscriptScrollInputLog,
-    TranscriptSegmentMeasurementCommitDiagnostic, TranscriptSemanticViewportDiagnostic,
-    VisibleMediaDiagnostics, VisibleMediaItemDiagnostic, VisibleMediaSnapshot,
-    beryl_diagnostic_dynamic_tool_specs, dispatch_beryl_diagnostic_dynamic_tool_call,
-    is_beryl_diagnostic_dynamic_tool, renderer_snapshot_with_shell_window,
+    READ_VISIBLE_MEDIA_TOOL, RendererDiagnosticSnapshot, SettingsWindowDiagnosticSnapshot,
+    SettingsWindowPerformanceDiagnostic, SettingsWindowRowSurfaceDiagnostic,
+    ShellWindowRendererDiagnostic, ThemeEditorModelDiagnostic, ThemeRoleNavigatorDiagnostic,
+    TranscriptFrameAnchorDiagnostic, TranscriptFrameMetric, TranscriptFrameMetricsLog,
+    TranscriptFrameMetricsSnapshot, TranscriptFrameRenderBudgetDiagnostic,
+    TranscriptRenderedFrameDiagnostic, TranscriptResidencyRequestDiagnostic,
+    TranscriptScrollInputAnchorDiagnostic, TranscriptScrollInputDiagnostic,
+    TranscriptScrollInputLog, TranscriptSegmentMeasurementCommitDiagnostic,
+    TranscriptSemanticViewportDiagnostic, VisibleMediaDiagnostics, VisibleMediaItemDiagnostic,
+    VisibleMediaSnapshot, beryl_diagnostic_dynamic_tool_specs,
+    dispatch_beryl_diagnostic_dynamic_tool_call, is_beryl_diagnostic_dynamic_tool,
+    renderer_snapshot_with_shell_window,
 };
 use memory_diagnostics::RetainedStateSnapshot;
 use serde_json::{Value, json};
@@ -746,19 +746,12 @@ fn settings_window_diagnostics_tool_is_registered() {
 }
 
 #[test]
-fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
-    let runtime = RuntimeTargetDiagnostic {
-        runtime: "host-windows".to_string(),
-        canonical_path: "C:\\work\\beryl".to_string(),
-        display_label: "C:\\work\\beryl".to_string(),
-    };
+fn memory_diagnostics_include_same_snapshot_thread_correlation() {
     let process = ProcessDiagnosticSnapshot {
         pid: 7,
         executable_path: None,
         beryl_home: None,
-        selected_workspace_id: Some("workspace_1".to_string()),
         selected_thread_id: Some("thread_1".to_string()),
-        selected_runtime_target: Some(runtime),
         managed_backend_child_pids: Vec::new(),
     };
     let memory = MemoryDiagnosticSnapshot {
@@ -784,15 +777,7 @@ fn memory_diagnostics_include_same_snapshot_ui_correlation_labels() {
 
     assert!(response.success);
     assert_eq!(payload["ok"], true);
-    assert_eq!(
-        payload["result"]["ui"]["selectedWorkspaceId"],
-        "workspace_1"
-    );
     assert_eq!(payload["result"]["ui"]["selectedThreadId"], "thread_1");
-    assert_eq!(
-        payload["result"]["ui"]["selectedRuntimeTarget"]["runtime"],
-        "host-windows"
-    );
 }
 
 #[test]
@@ -801,9 +786,7 @@ fn renderer_diagnostics_include_target_identity_and_bounded_snapshot() {
         pid: 42,
         executable_path: Some("beryl.exe".to_string()),
         beryl_home: Some("C:\\beryl-home".to_string()),
-        selected_workspace_id: Some("workspace_1".to_string()),
         selected_thread_id: Some("thread_1".to_string()),
-        selected_runtime_target: None,
         managed_backend_child_pids: Vec::new(),
     };
     let response = dispatch_beryl_diagnostic_dynamic_tool_call(
@@ -868,9 +851,7 @@ fn renderer_diagnostics_serialize_source_backed_image_sections() {
         pid: 42,
         executable_path: Some("beryl.exe".to_string()),
         beryl_home: Some("C:\\beryl-home".to_string()),
-        selected_workspace_id: Some("workspace_1".to_string()),
         selected_thread_id: Some("thread_1".to_string()),
-        selected_runtime_target: None,
         managed_backend_child_pids: Vec::new(),
     };
     let mut renderer_window = window_renderer_snapshot(9, true, 1200, 800);
@@ -946,9 +927,7 @@ fn renderer_snapshot_merges_current_shell_window_when_app_snapshot_omits_it() {
         pid: 42,
         executable_path: Some("beryl.exe".to_string()),
         beryl_home: Some("C:\\beryl-home".to_string()),
-        selected_workspace_id: Some("workspace_1".to_string()),
         selected_thread_id: Some("thread_1".to_string()),
-        selected_runtime_target: None,
         managed_backend_child_pids: Vec::new(),
     };
     let snapshot = renderer_snapshot_with_shell_window(
@@ -1303,9 +1282,7 @@ fn diagnostic_snapshot(
         pid: 7,
         executable_path: None,
         beryl_home: None,
-        selected_workspace_id: None,
         selected_thread_id: None,
-        selected_runtime_target: None,
         managed_backend_child_pids: Vec::new(),
     };
     DiagnosticToolSnapshot {

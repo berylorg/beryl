@@ -234,10 +234,6 @@ fn syndic_transcript_manual_scroll_command_stays_on_host_boundary() {
         fs::read_to_string(syndic_transcript_dir.join("host.rs")).expect("host source readable");
     let panel_source =
         fs::read_to_string(syndic_transcript_dir.join("panel.rs")).expect("panel source readable");
-    let shell_source = fs::read_to_string(manifest_dir.join("src").join("shell.rs"))
-        .expect("shell source readable");
-    let shell_scroll_body = rust_function_body(&shell_source, "fn apply_transcript_scroll_command");
-
     assert!(command_source.contains("struct ManualTranscriptScrollCommand"));
     assert!(command_source.contains("pub(crate) fn frame_request(self) -> RealizedFrameRequest"));
     assert!(command_source.contains("manual_delta_px: self.delta_px"));
@@ -248,12 +244,6 @@ fn syndic_transcript_manual_scroll_command_stays_on_host_boundary() {
     assert!(panel_source.contains("pub(crate) fn manual_scroll_delta("));
     assert!(panel_source.contains("ManualTranscriptScrollCommand::new("));
     assert!(panel_source.contains("Some(snapshot.presentation_revision)"));
-    assert!(shell_scroll_body.contains("ScrollTranscriptCommand::Wheel"));
-    assert!(shell_scroll_body.contains("panel.manual_scroll_delta("));
-    assert!(shell_scroll_body.contains("let manual_delta_px = -delta_y;"));
-    assert!(shell_scroll_body.contains("window.viewport_size().height"));
-    assert!(!shell_scroll_body.contains("apply_transcript_wheel_command"));
-    assert!(!shell_scroll_body.contains("TranscriptViewportState"));
     assert!(!host_source.contains("TranscriptViewportState"));
     assert!(!panel_source.contains("TranscriptViewportState"));
 }
@@ -390,108 +380,17 @@ fn syndic_transcript_status_facts_stay_on_resident_host_boundary() {
 }
 
 #[test]
-fn rendered_status_line_consumes_panel_status_facts_only() {
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let turn_view_source = include_str!("../src/shell/turn_view_status.rs");
-    let workspace_surface_body =
-        rust_function_body(conversation_source, "fn render_workspace_surface");
-    let turn_view_body = rust_function_body(turn_view_source, "fn status_line_turn_view");
-
-    assert!(workspace_surface_body.contains("transcript_panel.read(cx).status_facts()"));
-    assert!(workspace_surface_body.contains(
-        "surface.status_line_projection_with_transcript_facts(&transcript_status_facts)"
-    ));
-    assert!(turn_view_body.contains("transcript_status_facts.turn_view.current"));
-    assert!(turn_view_body.contains("transcript_status_facts.turn_view.total"));
-    assert!(turn_view_body.contains("StatusLineTurnView::new("));
-
-    for forbidden in [
-        "diagnostic_snapshot",
-        "snapshot().records",
-        "presentation.records",
-        "core_snapshot",
-        "provider",
-        "syndic-storage",
-        "syndic_storage",
-        "thread/turns/list",
-        "ThreadInfo",
-        "rendered_text",
-        "backend history",
-        "TranscriptHistoryWindow",
-        "TranscriptPresentationState",
-        "TranscriptViewportState",
-        "transcript_projection",
-    ] {
-        assert!(
-            !workspace_surface_body.contains(forbidden),
-            "rendered status line crossed transcript fact boundary with {forbidden}"
-        );
-        assert!(
-            !turn_view_body.contains(forbidden),
-            "status-line turn-view mapping crossed transcript fact boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn selected_thread_activation_prepares_syndic_transcript_before_publication() {
-    let shell_source = include_str!("../src/shell.rs");
-    let worker_source = include_str!("../src/shell/turn_worker.rs");
-    let workspace_open_source = include_str!("../src/shell/workspace_open.rs");
-    let decision_resolution_source = include_str!("../src/shell/threaded_decision_resolution.rs");
-    let finish_publication_body =
-        rust_function_body(shell_source, "fn finish_published_thread_activation");
-    let fallback_activation_body = rust_function_body(
-        shell_source,
-        "fn begin_transcript_host_activation_for_thread",
-    );
-    let selector_activation_body =
-        rust_function_body(shell_source, "fn activate_thread_selector_target");
-    let graph_activation_body = rust_function_body(shell_source, "fn select_graph_thread_ref");
-    let decision_parent_activation_body = rust_function_body(
-        decision_resolution_source,
-        "fn begin_decision_resolution_parent_activation",
-    );
-
-    assert!(worker_source.contains("prepare_storage_backed_transcript_activation("));
-    assert!(workspace_open_source.contains("prepare_storage_backed_transcript_activation("));
-    assert!(finish_publication_body.contains("apply_prepared_activation("));
-    assert!(fallback_activation_body.contains("prepare_storage_backed_transcript_activation("));
-    assert!(fallback_activation_body.contains("apply_prepared_activation("));
-    assert!(!fallback_activation_body.contains("begin_activation("));
-
-    for body in [
-        selector_activation_body,
-        graph_activation_body,
-        decision_parent_activation_body,
-    ] {
-        assert!(
-            !body.contains("begin_transcript_host_activation_for_thread("),
-            "selected activation path began transcript activation before prepared Syndic state"
-        );
-        for forbidden in [
-            "thread/turns/list",
-            "ThreadTurnsListOptions",
-            "ThreadReadResponse",
-            "include_turns",
-            "load_selected_thread_history",
-        ] {
-            assert!(
-                !body.contains(forbidden),
-                "selected activation path referenced forbidden CAS history API {forbidden}"
-            );
-        }
-    }
-}
-
-#[test]
-fn backend_no_longer_exposes_cas_thread_list_protocol() {
+fn backend_source_exposes_no_cas_catalog_protocol() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let backend_src_dir = manifest_dir
         .parent()
         .expect("app crate should be under workspace crates")
         .join("beryl-backend")
         .join("src");
+    let loaded_list_method = ["thread", "loaded", "list"].join("/");
+    let loaded_list_type = ["Thread", "Loaded", "List"].join("");
+    let known_thread_key = ["known", "threads"].join("_");
+    let known_thread_constant = ["KNOWN", "THREADS"].join("_");
     let forbidden_needles = [
         "thread/list",
         "ThreadListOptions",
@@ -502,6 +401,10 @@ fn backend_no_longer_exposes_cas_thread_list_protocol() {
         "list_thread_page",
         "list_threads_with_options",
         "list_threads(",
+        loaded_list_method.as_str(),
+        loaded_list_type.as_str(),
+        known_thread_key.as_str(),
+        known_thread_constant.as_str(),
     ];
     let mut offenders = Vec::new();
 
@@ -519,41 +422,39 @@ fn backend_no_longer_exposes_cas_thread_list_protocol() {
 
     assert!(
         offenders.is_empty(),
-        "CAS thread-list protocol remains live: {offenders:?}"
+        "CAS catalog protocol remains live: {offenders:?}"
     );
 }
 
 #[test]
-fn cas_metadata_reads_are_limited_to_approved_live_boundaries() {
+fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let src_dir = manifest_dir.join("src");
-    let allowed_resume_paths = [
-        "shell/status_operation.rs",
-        "shell/turn_worker/thread_start.rs",
-    ];
-    let allowed_read_paths = [
-        "branch_bootstrap_core.rs",
-        "branch_bootstrap_core/backend.rs",
-        "branch_bootstrap_core/proof.rs",
-        "shell/tool_activity_nickname.rs",
-    ];
+    let metadata_read_path = "shell/tool_activity_nickname.rs";
+    let loaded_list_method = ["thread", "loaded", "list"].join("/");
+    let loaded_list_type = ["Thread", "Loaded", "List"].join("");
+    let known_thread_key = ["known", "threads"].join("_");
+    let known_thread_constant = ["KNOWN", "THREADS"].join("_");
+    let direct_store_open = ["SyndicStore", "open"].join("::");
+    let store_open_options = ["Store", "Open", "Options"].join("");
+    let storage_module = format!("{}::", ["syndic", "storage"].join("_"));
+    let member_inventory = ["Member", "Thread", "Inventory"].join("");
+    let selector_projection = ["Thread", "Selector", "Projection"].join("");
     let mut offenders = Vec::new();
+    let mut metadata_read_sources = Vec::new();
 
     for path in rust_files_under(&src_dir) {
         let source = fs::read_to_string(&path).expect("app source should be readable");
         let relative_path = display_test_path(&src_dir, &path).replace('\\', "/");
-        if source.contains("resume_thread_metadata(")
-            && !allowed_resume_paths.contains(&relative_path.as_str())
+        if source.contains("read_thread_metadata(")
+            || source.contains("read_thread_metadata_details(")
         {
-            offenders.push(format!("{relative_path} contains resume_thread_metadata("));
-        }
-        if (source.contains("read_thread_metadata(")
-            || source.contains("read_thread_metadata_details("))
-            && !allowed_read_paths.contains(&relative_path.as_str())
-        {
-            offenders.push(format!(
-                "{relative_path} contains metadata-only thread/read"
-            ));
+            metadata_read_sources.push(relative_path.clone());
+            if relative_path != metadata_read_path {
+                offenders.push(format!(
+                    "{relative_path} contains metadata-only thread/read"
+                ));
+            }
         }
         for forbidden in [
             "ThreadActivationLoader",
@@ -562,6 +463,15 @@ fn cas_metadata_reads_are_limited_to_approved_live_boundaries() {
             "thread/turns/list",
             "ThreadTurnsListOptions",
             "ThreadReadResponse",
+            loaded_list_method.as_str(),
+            loaded_list_type.as_str(),
+            known_thread_key.as_str(),
+            known_thread_constant.as_str(),
+            direct_store_open.as_str(),
+            store_open_options.as_str(),
+            storage_module.as_str(),
+            member_inventory.as_str(),
+            selector_projection.as_str(),
         ] {
             if source.contains(forbidden) {
                 offenders.push(format!("{relative_path} contains {forbidden}"));
@@ -571,8 +481,11 @@ fn cas_metadata_reads_are_limited_to_approved_live_boundaries() {
 
     assert!(
         offenders.is_empty(),
-        "unapproved CAS metadata-read source remains: {offenders:?}"
+        "obsolete app catalog, storage, or activation input remains: {offenders:?}"
     );
+    metadata_read_sources.sort();
+    metadata_read_sources.dedup();
+    assert_eq!(metadata_read_sources, vec![metadata_read_path.to_string()]);
 }
 
 #[test]
@@ -637,113 +550,6 @@ fn cas_thread_name_is_not_thread_title_authority() {
     assert!(
         offenders.is_empty(),
         "CAS thread-name title authority remains live: {offenders:?}"
-    );
-}
-
-#[test]
-fn backend_summary_names_do_not_feed_titles_or_graph_refs() {
-    let shell_source = include_str!("../src/shell.rs");
-    let thread_helpers_source = include_str!("../src/shell/thread_helpers.rs");
-    let resident_worker_source = include_str!("../src/shell/resident_branch_worker.rs");
-    let resident_edit_source = include_str!("../src/shell/resident_branch_edit.rs");
-    let graph_thread_start_source = include_str!("../src/shell/graph_thread_start.rs");
-    let tool_activity_source = include_str!("../src/shell/tool_activity.rs");
-    let decision_completion_source =
-        include_str!("../src/shell/threaded_decision_branch/completion.rs");
-    let decision_worker_source = include_str!("../src/shell/threaded_decision_branch/worker.rs");
-    let decision_core_source = include_str!("../src/threaded_decision_branch_core.rs");
-    let graph_workspace_state_source = include_str!("../src/graph_tools/workspace_state.rs");
-    let model_conversation_source = include_str!("../../beryl-model/src/conversation.rs");
-    let model_conversation_state_source =
-        include_str!("../../beryl-model/src/conversation/state.rs");
-    let resident_branch_completion_body =
-        rust_function_body(shell_source, "fn finish_successful_resident_branch");
-    let accept_resident_branch_target_body =
-        rust_function_body(shell_source, "fn accept_resident_branch_target");
-    let selected_thread_display_label_body =
-        rust_function_body(shell_source, "fn selected_thread_display_label");
-    let recovery_thread_for_target_body =
-        rust_function_body(shell_source, "fn recovery_thread_for_target");
-    let registered_thread_from_summary_body = rust_function_body(
-        thread_helpers_source,
-        "pub(in crate::shell) fn registered_thread_from_summary",
-    );
-    let resident_branch_body = rust_function_body(
-        resident_worker_source,
-        "pub(crate) fn run_resident_branch_backend_result",
-    );
-    let branch_materialization_body = rust_function_body(
-        resident_edit_source,
-        "pub(super) fn materialize_resident_branch_prefix",
-    );
-    let graph_ref_request_body = rust_function_body(
-        graph_thread_start_source,
-        "pub(super) fn build_graph_started_thread_ref_request",
-    );
-    let decision_branch_completion_body = rust_function_body(
-        decision_completion_source,
-        "fn finish_successful_decision_branch",
-    );
-    let decision_patch_body = rust_function_body(
-        decision_core_source,
-        "pub(crate) fn decision_branch_graph_patch",
-    );
-
-    assert!(!resident_branch_completion_body.contains("summary.name"));
-    assert!(accept_resident_branch_target_body.contains("resolved_thread_title("));
-    assert!(!accept_resident_branch_target_body.contains(".name"));
-    assert!(selected_thread_display_label_body.contains("resolved_thread_title("));
-    assert!(!selected_thread_display_label_body.contains(".name"));
-    assert!(!recovery_thread_for_target_body.contains("thread.name"));
-    assert!(!recovery_thread_for_target_body.contains("normalized_thread_name"));
-    assert!(!registered_thread_from_summary_body.contains("summary.name"));
-    assert!(!registered_thread_from_summary_body.contains("summary.forked_from_id"));
-    assert!(!tool_activity_source.contains("thread.name.as_deref()"));
-    assert!(!resident_branch_body.contains("branch_summary.name"));
-    assert!(branch_materialization_body.contains("title: None"));
-    assert!(!branch_materialization_body.contains("title: title"));
-    assert!(!graph_thread_start_source.contains("summary.name.as_deref()"));
-    assert!(!graph_ref_request_body.contains("title: Option<&str>"));
-    assert!(!decision_branch_completion_body.contains("summary.name"));
-    assert!(!decision_worker_source.contains("durable_summary.name.as_deref()"));
-    assert!(!decision_core_source.contains("label: Option<&str>"));
-    assert!(!decision_patch_body.contains("thread_ref_label(label)"));
-    assert!(!model_conversation_source.contains("backend_name"));
-    assert!(!model_conversation_state_source.contains("set_thread_backend_name"));
-    assert!(!graph_workspace_state_source.contains("backend_name"));
-    assert!(!graph_workspace_state_source.contains("backendName"));
-}
-
-#[test]
-fn active_turn_retained_text_bytes_are_per_turn_not_cumulative() {
-    let active_turn_source = include_str!("../src/shell/active_turn_state.rs");
-    let retained_counts_body = rust_function_body(active_turn_source, "fn retained_counts");
-    let text_bytes_assignment_start = retained_counts_body
-        .rfind("counts.text_bytes =")
-        .expect("retained counts should assign text bytes");
-    let text_bytes_assignment_tail = &retained_counts_body[text_bytes_assignment_start..];
-    let text_bytes_assignment_end = text_bytes_assignment_tail
-        .find(';')
-        .expect("text bytes assignment should be a statement");
-    let text_bytes_assignment = &text_bytes_assignment_tail[..=text_bytes_assignment_end];
-
-    assert!(retained_counts_body.contains("let mut turn_text_bytes = 0usize;"));
-    assert!(
-        retained_counts_body
-            .contains("turn_text_bytes = turn_text_bytes.saturating_add(fragment.text.len());")
-    );
-    assert!(
-        retained_counts_body
-            .contains("turn_text_bytes = turn_text_bytes.saturating_add(message.text.len());")
-    );
-    assert!(
-        text_bytes_assignment.contains("turn_text_bytes"),
-        "retained text bytes must add the current turn's text only: {text_bytes_assignment}"
-    );
-    assert!(
-        !text_bytes_assignment.contains("user_fragment_text_bytes")
-            && !text_bytes_assignment.contains("agent_text_bytes"),
-        "retained text bytes must not re-add cumulative counters: {text_bytes_assignment}"
     );
 }
 
@@ -1221,453 +1027,6 @@ fn syndic_transcript_renderer_media_action_target_stays_on_resident_boundary() {
 }
 
 #[test]
-fn shell_transcript_copy_command_uses_resident_payload_only() {
-    let shell_source = include_str!("../src/shell.rs");
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let copy_body = rust_function_body(shell_source, "fn copy_transcript_selection_action");
-    let payload_text_body = rust_function_body(
-        shell_source,
-        "fn transcript_clipboard_text_from_resident_payload",
-    );
-    let left_panel_body = rust_function_body(conversation_source, "fn render_left_panel");
-
-    assert!(shell_source.contains("CopyTranscriptSelection"));
-    assert!(shell_source.contains("Some(syndic_transcript::SYNDIC_TRANSCRIPT_KEY_CONTEXT)"));
-    assert!(left_panel_body.contains("ShellView::copy_transcript_selection_action"));
-    assert!(panel_source.contains("pub(crate) fn resident_copy_payload"));
-    assert!(copy_body.contains(".resident_copy_payload()"));
-    assert!(copy_body.contains("unavailable_command(\"copy_transcript_selection\")"));
-    assert!(copy_body.contains("ClipboardItem::new_string(text)"));
-    assert!(payload_text_body.contains("payload.markdown"));
-    assert!(payload_text_body.contains("payload.plain_text"));
-
-    for forbidden in [
-        "conversation_input",
-        "selection_export",
-        "copy_composer_selection_action",
-        "composer_clipboard_payload_from_selection",
-        "selection.copy_text",
-        "TranscriptHistoryWindow",
-        "transcript_presentation",
-        "transcript_quote",
-        "selected_text_from_copy_lines",
-    ] {
-        assert!(
-            !copy_body.contains(forbidden) && !payload_text_body.contains(forbidden),
-            "shell transcript copy crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn shell_transcript_context_menu_command_uses_resident_target_only() {
-    let shell_source = include_str!("../src/shell.rs");
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let command_source = include_str!("../src/shell/syndic_transcript/command.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let left_panel_body = rust_function_body(conversation_source, "fn render_left_panel");
-    let open_action_body =
-        rust_function_body(shell_source, "fn open_transcript_context_menu_action");
-    let open_body = rust_function_body(
-        shell_source,
-        "fn open_transcript_context_menu_from_resident_target",
-    );
-    let accept_body = rust_function_body(
-        shell_source,
-        "fn accept_resident_transcript_context_menu_target",
-    );
-
-    assert!(shell_source.contains("OpenTranscriptContextMenu"));
-    assert!(left_panel_body.contains("ShellView::open_transcript_context_menu_action"));
-    assert!(command_source.contains("ResidentContextMenuCommandTarget"));
-    assert!(command_source.contains("from_active_target"));
-    assert!(panel_source.contains("pub(crate) fn resident_context_menu_command_target"));
-    assert!(panel_source.contains("apply_realized_context_menu_target(&context_record_id"));
-    assert!(panel_source.contains("OpenTranscriptContextMenu.boxed_clone()"));
-    assert!(open_action_body.contains("open_transcript_context_menu_from_resident_target"));
-    assert!(open_body.contains(".resident_context_menu_command_target()"));
-    assert!(open_body.contains("ResidentContextMenuCommandTarget::Targeted(target)"));
-    assert!(open_body.contains("ResidentContextMenuCommandTarget::Unavailable(_)"));
-    assert!(open_body.contains("unavailable_command(\"open_transcript_context_menu\")"));
-    assert!(open_body.contains("accept_resident_transcript_context_menu_target(target)"));
-    assert!(accept_body.contains("target.record_ids()"));
-    assert!(accept_body.contains("TranscriptCommandResult::NoOp"));
-
-    for forbidden in [
-        "provider.read",
-        "provider.request",
-        "handle_provider_response",
-        "drain_demand_facts",
-        "syndic-storage",
-        "syndic_storage",
-        "transcript_branch",
-        "transcript_edit",
-        "TranscriptBranch",
-        "TranscriptEdit",
-        "selected_text()",
-        "selected_text_from_copy_lines",
-        "TranscriptHistoryWindow",
-        "transcript_projection",
-        "rendered_text",
-        "backend history",
-    ] {
-        assert!(
-            !open_body.contains(forbidden) && !accept_body.contains(forbidden),
-            "shell transcript context-menu command crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn shell_resident_edit_and_branch_commands_use_context_menu_targets_only() {
-    let shell_source = include_str!("../src/shell.rs");
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let command_source = include_str!("../src/shell/syndic_transcript/command.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let left_panel_body = rust_function_body(conversation_source, "fn render_left_panel");
-    let edit_action_body =
-        rust_function_body(shell_source, "fn edit_resident_context_target_action");
-    let edit_body = rust_function_body(shell_source, "fn edit_resident_context_target_from_panel");
-    let accept_edit_body = rust_function_body(shell_source, "fn accept_resident_edit_target");
-    let branch_action_body =
-        rust_function_body(shell_source, "fn branch_resident_context_target_action");
-    let branch_body =
-        rust_function_body(shell_source, "fn branch_resident_context_target_from_panel");
-    let accept_branch_body = rust_function_body(shell_source, "fn accept_resident_branch_target");
-    let combined_command_bodies = [
-        edit_action_body,
-        edit_body,
-        accept_edit_body,
-        branch_action_body,
-        branch_body,
-        accept_branch_body,
-    ]
-    .join("\n");
-
-    assert!(shell_source.contains("EditResidentContextTarget"));
-    assert!(shell_source.contains("BranchResidentContextTarget"));
-    assert!(left_panel_body.contains("ShellView::edit_resident_context_target_action"));
-    assert!(left_panel_body.contains("ShellView::branch_resident_context_target_action"));
-    assert!(panel_source.contains("pub(crate) fn resident_context_menu_command_target"));
-    assert!(command_source.contains("ResidentActionTargetProvenance"));
-    assert!(command_source.contains("from_context_menu_target"));
-    assert!(command_source.contains("ResidentEditCommandTarget"));
-    assert!(command_source.contains("ResidentBranchCommandTarget"));
-    assert!(edit_action_body.contains("edit_resident_context_target_from_panel"));
-    assert!(edit_body.contains(".resident_context_menu_command_target()"));
-    assert!(edit_body.contains("ResidentEditCommandTarget::from_context_menu_command_target"));
-    assert!(edit_body.contains("ResidentEditCommandTarget::Targeted(target)"));
-    assert!(edit_body.contains("ResidentEditCommandTarget::Unavailable(_)"));
-    assert!(edit_body.contains("unavailable_command(\"edit_resident_context_target\")"));
-    assert!(edit_body.contains("accept_resident_edit_target(target, window, cx)"));
-    assert!(accept_edit_body.contains("target.record_ids()"));
-    assert!(accept_edit_body.contains("TranscriptCommandResult::NoOp"));
-    assert!(branch_action_body.contains("branch_resident_context_target_from_panel"));
-    assert!(branch_body.contains(".resident_context_menu_command_target()"));
-    assert!(branch_body.contains("ResidentBranchCommandTarget::from_context_menu_command_target"));
-    assert!(branch_body.contains("ResidentBranchCommandTarget::Targeted(target)"));
-    assert!(branch_body.contains("ResidentBranchCommandTarget::Unavailable(_)"));
-    assert!(branch_body.contains("unavailable_command(\"branch_resident_context_target\")"));
-    assert!(branch_body.contains("accept_resident_branch_target(target, cx)"));
-    assert!(accept_branch_body.contains("target.record_ids()"));
-    assert!(accept_branch_body.contains("TranscriptCommandResult::NoOp"));
-
-    for forbidden in [
-        "provider.read",
-        "provider.request",
-        "handle_provider_response",
-        "drain_demand_facts",
-        "syndic-storage",
-        "syndic_storage",
-        "transcript_branch",
-        "transcript_edit",
-        "TranscriptBranch",
-        "TranscriptEdit",
-        "selected_text()",
-        "selected_text_from_copy_lines",
-        "TranscriptHistoryWindow",
-        "transcript_projection",
-        "rendered_text",
-        "backend history",
-    ] {
-        assert!(
-            !combined_command_bodies.contains(forbidden),
-            "shell resident edit/branch command crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn shell_media_preview_command_uses_resident_payload_only() {
-    let shell_source = include_str!("../src/shell.rs");
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let command_source = include_str!("../src/shell/syndic_transcript/command.rs");
-    let host_source = include_str!("../src/shell/syndic_transcript/host.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let left_panel_body = rust_function_body(conversation_source, "fn render_left_panel");
-    let preview_action_body =
-        rust_function_body(shell_source, "fn preview_resident_transcript_media_action");
-    let preview_body = rust_function_body(
-        shell_source,
-        "fn preview_resident_transcript_media_from_panel",
-    );
-    let accept_body = rust_function_body(shell_source, "fn accept_resident_media_preview_payload");
-    let combined_command_bodies = [preview_action_body, preview_body, accept_body].join("\n");
-
-    assert!(shell_source.contains("PreviewResidentTranscriptMedia"));
-    assert!(left_panel_body.contains("ShellView::preview_resident_transcript_media_action"));
-    assert!(command_source.contains("ResidentMediaPreviewCommandPayload"));
-    assert!(command_source.contains("ResidentMediaPreviewCommandTarget"));
-    assert!(command_source.contains("from_resident_payload"));
-    assert!(host_source.contains("pub(crate) fn resident_media_preview_command_target"));
-    assert!(host_source.contains("self.core.resident_media_action_payload()"));
-    assert!(panel_source.contains("pub(crate) fn resident_media_preview_command_target"));
-    assert!(preview_action_body.contains("preview_resident_transcript_media_from_panel"));
-    assert!(preview_body.contains(".resident_media_preview_command_target()"));
-    assert!(preview_body.contains("ResidentMediaPreviewCommandTarget::Targeted(payload)"));
-    assert!(preview_body.contains("ResidentMediaPreviewCommandTarget::Unavailable(_)"));
-    assert!(preview_body.contains("unavailable_command(\"preview_resident_transcript_media\")"));
-    assert!(preview_body.contains("accept_resident_media_preview_payload(payload)"));
-    assert!(accept_body.contains("payload.record_ids()"));
-    assert!(accept_body.contains("payload.range()"));
-    assert!(accept_body.contains("payload.byte_len()"));
-    assert!(accept_body.contains("TranscriptCommandResult::NoOp"));
-
-    for forbidden in [
-        "provider.read",
-        "provider.request",
-        "handle_provider_response",
-        "drain_demand_facts",
-        "syndic-storage",
-        "syndic_storage",
-        ".resident_media_action_payload()",
-        "transcript_media::",
-        "transcript_image",
-        "TranscriptImage",
-        "ClipboardItem",
-        "write_to_clipboard",
-        "read_from_clipboard",
-        "std::fs",
-        "File::",
-        "selected_text()",
-        "selected_text_from_copy_lines",
-        "TranscriptHistoryWindow",
-        "transcript_projection",
-        "rendered_text",
-        "backend history",
-    ] {
-        assert!(
-            !combined_command_bodies.contains(forbidden),
-            "shell media preview command crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn shell_media_copy_command_writes_resident_payload_to_image_clipboard() {
-    let shell_source = include_str!("../src/shell.rs");
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let command_source = include_str!("../src/shell/syndic_transcript/command.rs");
-    let host_source = include_str!("../src/shell/syndic_transcript/host.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let left_panel_body = rust_function_body(conversation_source, "fn render_left_panel");
-    let copy_action_body =
-        rust_function_body(shell_source, "fn copy_resident_transcript_media_action");
-    let copy_body =
-        rust_function_body(shell_source, "fn copy_resident_transcript_media_from_panel");
-    let write_body = rust_function_body(
-        shell_source,
-        "fn write_resident_media_copy_payload_to_clipboard",
-    );
-    let format_body = rust_function_body(shell_source, "fn resident_media_copy_image_format");
-    let combined_command_bodies = [copy_action_body, copy_body, write_body, format_body].join("\n");
-
-    assert!(shell_source.contains("CopyResidentTranscriptMedia"));
-    assert!(left_panel_body.contains("ShellView::copy_resident_transcript_media_action"));
-    assert!(command_source.contains("ResidentMediaCopyCommandPayload"));
-    assert!(command_source.contains("ResidentMediaCopyCommandTarget"));
-    assert!(command_source.contains("from_resident_payload"));
-    assert!(host_source.contains("pub(crate) fn resident_media_copy_command_target"));
-    assert!(host_source.contains("self.core.resident_media_action_payload()"));
-    assert!(panel_source.contains("pub(crate) fn resident_media_copy_command_target"));
-    assert!(copy_action_body.contains("copy_resident_transcript_media_from_panel"));
-    assert!(copy_body.contains(".resident_media_copy_command_target()"));
-    assert!(copy_body.contains("ResidentMediaCopyCommandTarget::Targeted(payload)"));
-    assert!(copy_body.contains("ResidentMediaCopyCommandTarget::Unavailable(_)"));
-    assert!(copy_body.contains("unavailable_command(\"copy_resident_transcript_media\")"));
-    assert!(copy_body.contains("write_resident_media_copy_payload_to_clipboard(payload, cx)"));
-    assert!(write_body.contains("resident_media_copy_image_format(&payload)"));
-    assert!(write_body.contains("payload.complete()"));
-    assert!(write_body.contains("payload.record_ids()"));
-    assert!(write_body.contains("payload.range()"));
-    assert!(write_body.contains("payload.byte_len()"));
-    assert!(write_body.contains("Image::from_bytes(format, payload.bytes().to_vec())"));
-    assert!(write_body.contains("ClipboardItem::new_image(&image)"));
-    assert!(write_body.contains("cx.write_to_clipboard"));
-    assert!(format_body.contains("payload.media_type()"));
-    assert!(format_body.contains("ImageFormat::from_mime_type"));
-
-    for forbidden in [
-        "provider.read",
-        "provider.request",
-        "handle_provider_response",
-        "drain_demand_facts",
-        "syndic-storage",
-        "syndic_storage",
-        ".resident_media_action_payload()",
-        "transcript_media::",
-        "transcript_image",
-        "TranscriptImage",
-        "ClipboardItem::new_string",
-        "read_from_clipboard",
-        "std::fs",
-        "File::",
-        "PathBuf",
-        "selected_text()",
-        "selected_text_from_copy_lines",
-        "TranscriptHistoryWindow",
-        "transcript_projection",
-        "rendered_text",
-        "backend history",
-    ] {
-        assert!(
-            !combined_command_bodies.contains(forbidden),
-            "shell media copy command crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn shell_media_save_command_writes_resident_payload_to_explicit_destination() {
-    let shell_source = include_str!("../src/shell.rs");
-    let conversation_source = include_str!("../src/shell/render/conversation.rs");
-    let command_source = include_str!("../src/shell/syndic_transcript/command.rs");
-    let host_source = include_str!("../src/shell/syndic_transcript/host.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let left_panel_body = rust_function_body(conversation_source, "fn render_left_panel");
-    let save_action_body =
-        rust_function_body(shell_source, "fn save_resident_transcript_media_action");
-    let no_destination_body = rust_function_body(
-        shell_source,
-        "fn save_resident_transcript_media_without_destination",
-    );
-    let save_body = rust_function_body(shell_source, "fn save_resident_transcript_media_to_path");
-    let write_body =
-        rust_function_body(shell_source, "fn write_resident_media_save_payload_to_path");
-    let destination_body = rust_function_body(shell_source, "fn resident_media_save_destination");
-    let safe_path_body = rust_function_body(
-        shell_source,
-        "fn resident_media_save_destination_path_is_safe",
-    );
-    let combined_command_bodies = [
-        save_action_body,
-        no_destination_body,
-        save_body,
-        write_body,
-        destination_body,
-        safe_path_body,
-    ]
-    .join("\n");
-
-    assert!(shell_source.contains("SaveResidentTranscriptMedia"));
-    assert!(left_panel_body.contains("ShellView::save_resident_transcript_media_action"));
-    assert!(command_source.contains("ResidentMediaSaveCommandPayload"));
-    assert!(command_source.contains("ResidentMediaSaveCommandTarget"));
-    assert!(command_source.contains("ResidentMediaSaveDestination"));
-    assert!(command_source.contains("ResidentMediaSaveDestinationUnavailable"));
-    assert!(host_source.contains("pub(crate) fn resident_media_save_command_target"));
-    assert!(host_source.contains("self.core.resident_media_action_payload()"));
-    assert!(panel_source.contains("pub(crate) fn resident_media_save_command_target"));
-    assert!(save_action_body.contains("save_resident_transcript_media_without_destination(cx)"));
-    assert!(
-        no_destination_body.contains("unavailable_command(\"save_resident_transcript_media\")")
-    );
-    assert!(save_body.contains("resident_media_save_destination(destination)"));
-    assert!(save_body.contains(".resident_media_save_command_target()"));
-    assert!(save_body.contains("ResidentMediaSaveCommandTarget::Targeted(payload)"));
-    assert!(save_body.contains("ResidentMediaSaveCommandTarget::Unavailable(_)"));
-    assert!(save_body.contains("unavailable_command(\"save_resident_transcript_media\")"));
-    assert!(
-        save_body.contains("write_resident_media_save_payload_to_path(payload, destination, cx)")
-    );
-    assert!(write_body.contains("payload.complete()"));
-    assert!(write_body.contains("payload.record_ids()"));
-    assert!(write_body.contains("payload.resource_id()"));
-    assert!(write_body.contains("payload.range()"));
-    assert!(write_body.contains("payload.byte_len()"));
-    assert!(write_body.contains("payload.media_type()"));
-    assert!(write_body.contains("fs::write(destination.path(), payload.bytes())"));
-    assert!(destination_body.contains("ResidentMediaSaveDestination::new(destination).ok()?"));
-    assert!(destination_body.contains("resident_media_save_destination_path_is_safe"));
-    assert!(safe_path_body.contains("destination.exists()"));
-    assert!(safe_path_body.contains("destination.is_dir()"));
-    assert!(safe_path_body.contains("parent.is_dir()"));
-
-    for forbidden in [
-        "provider.read",
-        "provider.request",
-        "handle_provider_response",
-        "drain_demand_facts",
-        "syndic-storage",
-        "syndic_storage",
-        ".resident_media_action_payload()",
-        "transcript_media::",
-        "transcript_image",
-        "TranscriptImage",
-        "ClipboardItem",
-        "write_to_clipboard",
-        "read_from_clipboard",
-        "File::",
-        "Image::from_bytes",
-        "ImageFormat",
-        "selected_text()",
-        "selected_text_from_copy_lines",
-        "TranscriptHistoryWindow",
-        "transcript_projection",
-        "rendered_text",
-        "backend history",
-    ] {
-        assert!(
-            !combined_command_bodies.contains(forbidden),
-            "shell media save command crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
-fn shell_transcript_quote_command_uses_resident_payload_only() {
-    let shell_source = include_str!("../src/shell.rs");
-    let panel_source = include_str!("../src/shell/syndic_transcript/panel.rs");
-    let quote_body = rust_function_body(shell_source, "fn insert_transcript_quote_into_draft");
-
-    assert!(panel_source.contains("pub(crate) fn resident_quote_payload"));
-    assert!(quote_body.contains(".resident_quote_payload()"));
-    assert!(quote_body.contains("payload.quoted_markdown"));
-    assert!(quote_body.contains("replace_selected_text(&quoted_markdown"));
-    assert!(quote_body.contains("sync_composer_draft_from_input"));
-    assert!(quote_body.contains("unavailable_command(\"quote_transcript_selection\")"));
-
-    for forbidden in [
-        "resident_copy_payload",
-        "read_from_clipboard",
-        "ClipboardItem",
-        "selection_export",
-        "selected_text()",
-        "TranscriptHistoryWindow",
-        "transcript_presentation",
-        "transcript_projection",
-        "transcript_quote",
-        "selected_text_from_copy_lines",
-    ] {
-        assert!(
-            !quote_body.contains(forbidden),
-            "shell transcript quote crossed boundary with {forbidden}"
-        );
-    }
-}
-
-#[test]
 fn syndic_transcript_sources_avoid_forbidden_legacy_apis() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let syndic_transcript_dir = manifest_dir
@@ -1704,33 +1063,6 @@ fn syndic_transcript_sources_avoid_forbidden_legacy_apis() {
         offenders.is_empty(),
         "new transcript source references legacy APIs: {offenders:?}"
     );
-}
-
-fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
-    let signature_index = source
-        .find(function_signature)
-        .unwrap_or_else(|| panic!("missing function {function_signature}"));
-    let after_signature = &source[signature_index..];
-    let open_offset = after_signature
-        .find('{')
-        .unwrap_or_else(|| panic!("missing body for function {function_signature}"));
-    let body_start = signature_index + open_offset;
-    let mut depth = 0usize;
-
-    for (offset, character) in source[body_start..].char_indices() {
-        match character {
-            '{' => depth = depth.saturating_add(1),
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return &source[body_start..body_start + offset + character.len_utf8()];
-                }
-            }
-            _ => {}
-        }
-    }
-
-    panic!("unterminated body for function {function_signature}");
 }
 
 fn rust_files_under(root: &Path) -> Vec<PathBuf> {

@@ -11,7 +11,6 @@ pub struct InstalledThemeMetadata {
     id: InstalledThemeId,
     name: String,
     built_in: bool,
-    active: bool,
 }
 
 impl InstalledThemeId {
@@ -65,17 +64,11 @@ impl InstalledThemeId {
 }
 
 impl InstalledThemeMetadata {
-    pub(super) fn new(
-        id: InstalledThemeId,
-        name: impl Into<String>,
-        built_in: bool,
-        active: bool,
-    ) -> Self {
+    pub(super) fn new(id: InstalledThemeId, name: impl Into<String>, built_in: bool) -> Self {
         Self {
             id,
             name: name.into(),
             built_in,
-            active,
         }
     }
 
@@ -89,10 +82,6 @@ impl InstalledThemeMetadata {
 
     pub fn is_built_in(&self) -> bool {
         self.built_in
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.active
     }
 }
 

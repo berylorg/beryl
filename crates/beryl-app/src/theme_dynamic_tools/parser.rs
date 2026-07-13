@@ -15,7 +15,7 @@ use super::{
     authoring::ThemeAuthoringGuideSection,
 };
 
-use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
+use crate::dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE;
 
 pub fn parse_beryl_theme_dynamic_tool_request(
     request: &DynamicToolCallRequest,

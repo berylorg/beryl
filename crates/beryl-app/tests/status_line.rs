@@ -6,11 +6,6 @@ use beryl_backend::{
     AccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow, ThreadSessionMetadata,
     ThreadStatus, ThreadTokenUsage, TokenUsageBreakdown,
 };
-use beryl_model::conversation::{
-    ConversationThreadId, ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown,
-    ConversationTurnId, RegisteredConversationThread, WorkspaceConversationState,
-};
-use beryl_model::workspace::WorkspaceId;
 use status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, StatusLineCellAction,
     StatusLineCellValueKind, StatusLineCellValueSegmentKind, StatusLineProjection, StatusLineState,
@@ -221,10 +216,6 @@ fn pending_turn_options_are_selected_by_thread() {
     let other_options = state.pending_turn_start_options(Some("thread_2"));
     assert_eq!(other_options.model(), None);
     assert_eq!(other_options.reasoning_effort(), None);
-
-    let no_thread_options = state.pending_turn_start_options(None);
-    assert_eq!(no_thread_options.model(), None);
-    assert_eq!(no_thread_options.reasoning_effort(), None);
 }
 
 #[test]
@@ -239,13 +230,6 @@ fn effective_turn_context_defaults_include_displayed_model_and_reasoning() {
         "thread_1",
         ThreadTurnDefaults::new(Some("gpt-5.5".to_string()), Some("high".to_string())),
     ));
-    assert!(
-        state.set_effective_new_thread_defaults(Some(ThreadTurnDefaults::new(
-            Some("gpt-5.3-codex".to_string()),
-            Some("low".to_string()),
-        )))
-    );
-
     let selected = state.effective_turn_context_defaults(Some("thread_1"));
     assert_eq!(selected.model(), Some("gpt-5.5"));
     assert_eq!(selected.reasoning_effort(), Some("high"));
@@ -253,10 +237,6 @@ fn effective_turn_context_defaults_include_displayed_model_and_reasoning() {
     let other = state.effective_turn_context_defaults(Some("thread_2"));
     assert_eq!(other.model(), Some("gpt-5.4"));
     assert_eq!(other.reasoning_effort(), Some("medium"));
-
-    let new_thread = state.effective_turn_context_defaults(None);
-    assert_eq!(new_thread.model(), Some("gpt-5.3-codex"));
-    assert_eq!(new_thread.reasoning_effort(), Some("low"));
 }
 
 #[test]
@@ -325,94 +305,6 @@ fn developer_instructions_context_is_omitted_without_effective_model() {
     );
 
     assert!(options.developer_instructions_context().is_none());
-}
-
-#[test]
-fn pending_new_thread_defaults_follow_effective_defaults_until_explicit_selection() {
-    let mut state = StatusLineState::default();
-    assert!(
-        state.set_effective_new_thread_defaults(Some(ThreadTurnDefaults::new(
-            Some("gpt-5.4".to_string()),
-            Some("medium".to_string()),
-        )))
-    );
-
-    let first_projection = state.projection(None, "Unknown");
-    assert_eq!(first_projection.model, "gpt-5.4");
-    assert_eq!(first_projection.reasoning_effort, "medium");
-    assert_eq!(state.pending_turn_start_options(None).model(), None);
-    assert_eq!(
-        state.pending_turn_start_options(None).reasoning_effort(),
-        None
-    );
-
-    assert!(
-        state.set_effective_new_thread_defaults(Some(ThreadTurnDefaults::new(
-            Some("gpt-5.5".to_string()),
-            Some("high".to_string()),
-        )))
-    );
-
-    let updated_projection = state.projection(None, "Unknown");
-    assert_eq!(updated_projection.model, "gpt-5.5");
-    assert_eq!(updated_projection.reasoning_effort, "high");
-    assert_eq!(state.pending_turn_start_options(None).model(), None);
-    assert_eq!(
-        state.pending_turn_start_options(None).reasoning_effort(),
-        None
-    );
-}
-
-#[test]
-fn explicit_new_thread_defaults_overlay_effective_defaults_and_drive_first_turn_options() {
-    let mut state = StatusLineState::default();
-    assert!(
-        state.set_effective_new_thread_defaults(Some(ThreadTurnDefaults::new(
-            Some("gpt-5.4".to_string()),
-            Some("medium".to_string()),
-        )))
-    );
-    assert!(
-        state.set_pending_new_thread_defaults(ThreadTurnDefaults::new(
-            Some("gpt-5.5".to_string()),
-            Some("xhigh".to_string()),
-        ))
-    );
-
-    let projection = state.projection(None, "Unknown");
-    let options = state.pending_turn_start_options(None);
-
-    assert_eq!(projection.model, "gpt-5.5");
-    assert_eq!(projection.reasoning_effort, "xhigh");
-    assert_eq!(options.model(), Some("gpt-5.5"));
-    assert_eq!(options.reasoning_effort(), Some("xhigh"));
-}
-
-#[test]
-fn explicit_new_thread_defaults_bind_to_created_thread_for_retry_and_promotion() {
-    let mut state = StatusLineState::default();
-    assert!(
-        state.set_pending_new_thread_defaults(ThreadTurnDefaults::new(
-            Some("gpt-5.5".to_string()),
-            Some("high".to_string()),
-        ))
-    );
-
-    assert!(state.bind_pending_new_thread_defaults_to_thread("thread_1"));
-    assert_eq!(state.pending_turn_start_options(None).model(), None);
-
-    let retry_options = state.pending_turn_start_options(Some("thread_1"));
-    assert_eq!(retry_options.model(), Some("gpt-5.5"));
-    assert_eq!(retry_options.reasoning_effort(), Some("high"));
-
-    assert!(state.promote_pending_turn_defaults("thread_1"));
-    let promoted_options = state.pending_turn_start_options(Some("thread_1"));
-    assert_eq!(promoted_options.model(), None);
-    assert_eq!(promoted_options.reasoning_effort(), None);
-
-    let projection = state.projection(Some("thread_1"), "working");
-    assert_eq!(projection.model, "gpt-5.5");
-    assert_eq!(projection.reasoning_effort, "high");
 }
 
 #[test]
@@ -508,13 +400,9 @@ fn status_projection_carries_operation_availability() {
 }
 
 #[test]
-fn status_line_model_reasoning_is_available_for_idle_thread_or_new_thread_draft() {
+fn status_line_model_reasoning_is_available_only_for_an_idle_selected_thread() {
     assert!(status_line::status_line_model_reasoning_available(
         Some("thread_1"),
-        Some(&ThreadStatus::Idle),
-    ));
-    assert!(status_line::status_line_model_reasoning_available(
-        None,
         Some(&ThreadStatus::Idle),
     ));
     assert!(!status_line::status_line_model_reasoning_available(
@@ -1011,60 +899,7 @@ fn cached_token_usage_survives_switching_away_and_back() {
 }
 
 #[test]
-fn durable_snapshot_hydrates_context_for_selected_thread() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.apply_token_usage_snapshot(
-        true,
-        "thread_1".to_string(),
-        &token_usage_snapshot("turn_1", 50, Some(200)),
-    ));
-
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "Idle")
-            .context_space_left,
-        "75%"
-    );
-}
-
-#[test]
-fn durable_snapshot_cache_is_selected_by_thread_after_switching() {
-    let mut state = StatusLineState::default();
-
-    state.apply_token_usage_snapshot(
-        true,
-        "thread_a".to_string(),
-        &token_usage_snapshot("turn_a", 50, Some(200)),
-    );
-    state.apply_token_usage_snapshot(
-        true,
-        "thread_b".to_string(),
-        &token_usage_snapshot("turn_b", 40, Some(100)),
-    );
-
-    assert_eq!(
-        state
-            .projection(Some("thread_a"), "Idle")
-            .context_space_left,
-        "75%"
-    );
-    assert_eq!(
-        state
-            .projection(Some("thread_b"), "Idle")
-            .context_space_left,
-        "60%"
-    );
-    assert_eq!(
-        state
-            .projection(Some("thread_a"), "Idle")
-            .context_space_left,
-        "75%"
-    );
-}
-
-#[test]
-fn missing_durable_snapshot_keeps_context_unknown_after_restart_style_hydration() {
+fn missing_token_usage_keeps_context_unknown() {
     let state = StatusLineState::default();
 
     assert_eq!(
@@ -1072,123 +907,6 @@ fn missing_durable_snapshot_keeps_context_unknown_after_restart_style_hydration(
             .projection(Some("thread_1"), "Idle")
             .context_space_left,
         "Unknown"
-    );
-}
-
-#[test]
-fn durable_snapshot_for_unknown_thread_is_ignored() {
-    let mut state = StatusLineState::default();
-
-    assert!(!state.apply_token_usage_snapshot(
-        false,
-        "thread_1".to_string(),
-        &token_usage_snapshot("turn_1", 50, Some(200)),
-    ));
-
-    assert_eq!(state.cached_thread_count(), 0);
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "Idle")
-            .context_space_left,
-        "Unknown"
-    );
-}
-
-#[test]
-fn durable_snapshot_missing_context_window_is_unknown() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.apply_token_usage_snapshot(
-        true,
-        "thread_1".to_string(),
-        &token_usage_snapshot("turn_1", 50, None),
-    ));
-
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "Idle")
-            .context_space_left,
-        "Unknown"
-    );
-}
-
-#[test]
-fn durable_snapshot_non_positive_context_window_is_unknown() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.apply_token_usage_snapshot(
-        true,
-        "thread_1".to_string(),
-        &token_usage_snapshot("turn_1", 50, Some(0)),
-    ));
-
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "Idle")
-            .context_space_left,
-        "Unknown"
-    );
-}
-
-#[test]
-fn durable_snapshot_does_not_overwrite_newer_notification_cache() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.apply_token_usage(
-        true,
-        "thread_1".to_string(),
-        "turn_live".to_string(),
-        token_usage(20, 0, Some(100)),
-    ));
-    assert!(!state.apply_token_usage_snapshot(
-        true,
-        "thread_1".to_string(),
-        &token_usage_snapshot("turn_durable", 80, Some(100)),
-    ));
-
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "Idle")
-            .context_space_left,
-        "80%"
-    );
-}
-
-#[test]
-fn restart_style_hydration_reads_workspace_conversation_state_snapshots() {
-    let mut state = StatusLineState::default();
-    let workspace_state =
-        workspace_state_with_snapshot("thread_1", token_usage_snapshot("turn_1", 50, Some(200)));
-
-    assert!(
-        state.hydrate_token_usage_snapshots(&workspace_state, |thread_id| {
-            thread_id == "thread_1"
-        })
-    );
-
-    assert_eq!(
-        state
-            .projection(Some("thread_1"), "Idle")
-            .context_space_left,
-        "75%"
-    );
-}
-
-#[test]
-fn new_thread_projection_does_not_consume_cached_usage() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.apply_token_usage(
-        true,
-        "thread_1".to_string(),
-        "turn_1".to_string(),
-        token_usage(250, 0, Some(1000)),
-    ));
-
-    assert_eq!(state.projection(None, "ok").context_space_left, "Unknown");
-    assert_eq!(
-        state.projection(Some("thread_1"), "ok").context_space_left,
-        "75%"
     );
 }
 
@@ -1290,38 +1008,4 @@ fn rate_limit_window(used_percent: i32, window_duration_mins: Option<i64>) -> Ra
         window_duration_mins,
         resets_at: None,
     }
-}
-
-fn token_usage_snapshot(
-    turn_id: &str,
-    input_tokens: i64,
-    model_context_window: Option<i64>,
-) -> ConversationThreadTokenUsageSnapshot {
-    ConversationThreadTokenUsageSnapshot::new(
-        ConversationTurnId::new(turn_id),
-        ConversationTokenUsageBreakdown::new(0, input_tokens, 5, 7, input_tokens + 12),
-        ConversationTokenUsageBreakdown::new(0, input_tokens + 20, 11, 13, input_tokens + 44),
-        model_context_window,
-        42,
-    )
-}
-
-fn workspace_state_with_snapshot(
-    thread_id: &str,
-    snapshot: ConversationThreadTokenUsageSnapshot,
-) -> WorkspaceConversationState {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-    let thread_id = ConversationThreadId::new(thread_id);
-    let mut workspace_state = WorkspaceConversationState::default();
-    workspace_state.remember_thread(RegisteredConversationThread::new(
-        thread_id.clone(),
-        execution_target,
-        "Preview",
-        1,
-        2,
-    ));
-    workspace_state
-        .record_thread_token_usage_snapshot(&thread_id, snapshot)
-        .unwrap();
-    workspace_state
 }

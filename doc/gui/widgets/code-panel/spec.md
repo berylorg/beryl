@@ -25,6 +25,8 @@ Widgets:
 
 The code panel consists of a root frame, optional header strip, optional language label, optional command controls, text viewport, code text, and optional vertical resize handle.
 
+Code text is a bounded realization over an owner-supplied range-backed source. Stable byte and logical-line offsets identify text, selections, syntax roles, and copy ranges without requiring the complete source to become one GPUI render tree.
+
 Inline mode omits the root frame and header strip, rendering only the code text inside surrounding content.
 
 # Look
@@ -51,6 +53,8 @@ In no-wrap mode, horizontal wheel or direct horizontal scrolling moves the text 
 
 A nested scrollable code panel does not take vertical pointer-wheel ownership merely because the pointer hovers over it. Clicking the nested code panel selects it for vertical pointer-wheel ownership. While selected, vertical wheel input over that code panel scrolls only the panel and does not co-scroll the outer viewport. Pressing `Escape` does not deselect the nested code panel for pointer-wheel ownership.
 
+Selection and full-source Copy operate on stable source ranges, including ranges outside the current realization window. Scrolling, resizing, wrap-mode changes, and syntax-result publication reconcile the realized range without changing source identity or losing a valid selection.
+
 # Layout
 
 Smart-wrap prefers breaks on spaces, commas, and semicolons before forcing a split at the last fitting symbol.
@@ -60,6 +64,12 @@ No-wrap enables horizontal scrolling instead of soft line breaks.
 In bordered mode, the widget may expose a draggable lower edge for vertical resizing within surrounding layout bounds.
 
 Scrollable code panels use the shared scrollbar affordance.
+
+Bordered code panels realize only the visible logical or wrapped text range plus bounded overscan. The viewport consumes range slices and range-indexed syntax roles; it must not eagerly construct GPUI elements, shaped lines, or token children for an unbounded complete source. No-wrap mode uses logical-line ranges. Smart-wrap mode uses a bounded wrap-layout index or equivalent range-backed realization so offscreen text is not shaped merely to build the render tree.
+
+Inline mode is static full render only when the surrounding text contract supplies a documented small source bound. Longer or caller-unbounded code uses bordered mode with the bounded viewport strategy.
+
+Content-free diagnostics expose source byte and logical-line counts, realized source range, realized visual-line count, overscan, wrap mode, viewport size, and range-reconciliation timing. Diagnostics never include source text, copied text, syntax tokens, file paths, or user content.
 
 Spec CSS:
 

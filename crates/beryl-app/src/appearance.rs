@@ -1,5 +1,3 @@
-use std::{env, io, path::PathBuf};
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -25,9 +23,6 @@ pub use theme::{
     built_in_theme_role_is_editable, built_in_theme_schema, built_in_theme_supported_properties,
     built_in_theme_supports_property,
 };
-
-const APP_ROOT_DIR_NAME: &str = ".beryl";
-const THEME_FILE_NAME: &str = "theme.toml";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceSettings {
@@ -63,44 +58,8 @@ pub struct ParsedHexColor {
     blue: u8,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AppearanceSettingsStore {
-    root_dir: PathBuf,
-}
-
 #[derive(Debug, Error)]
 pub enum AppearanceSettingsError {
-    #[error("could not determine the current user's home directory")]
-    MissingHomeDirectory,
-    #[error("failed to create settings directory {path}")]
-    CreateDirectory {
-        path: String,
-        #[source]
-        source: io::Error,
-    },
-    #[error("failed to read appearance settings from {path}")]
-    ReadSettings {
-        path: String,
-        #[source]
-        source: io::Error,
-    },
-    #[error("failed to write appearance settings to {path}")]
-    WriteSettings {
-        path: String,
-        #[source]
-        source: io::Error,
-    },
-    #[error("failed to serialize appearance settings")]
-    SerializeSettings {
-        #[source]
-        source: toml::ser::Error,
-    },
-    #[error("failed to parse appearance settings from {path}")]
-    ParseSettings {
-        path: String,
-        #[source]
-        source: toml::de::Error,
-    },
     #[error("{role} font family must not be empty")]
     EmptyFontFamily { role: &'static str },
     #[error("{role} font family must be at most {max_bytes} bytes")]
@@ -254,35 +213,6 @@ impl ParsedHexColor {
 
     pub fn blue(&self) -> u8 {
         self.blue
-    }
-}
-
-impl AppearanceSettingsStore {
-    pub fn from_environment() -> Result<Self, AppearanceSettingsError> {
-        let home = env::var_os("USERPROFILE")
-            .or_else(|| env::var_os("HOME"))
-            .map(PathBuf::from)
-            .ok_or(AppearanceSettingsError::MissingHomeDirectory)?;
-        Ok(Self::new(home.join(APP_ROOT_DIR_NAME)))
-    }
-
-    pub fn new(root_dir: impl Into<PathBuf>) -> Self {
-        Self {
-            root_dir: root_dir.into(),
-        }
-    }
-
-    pub fn theme_path(&self) -> PathBuf {
-        self.root_dir.join(THEME_FILE_NAME)
-    }
-
-    pub fn load_or_default(&self) -> Result<AppearanceSettings, AppearanceSettingsError> {
-        Ok(AppearanceSettings::default())
-    }
-
-    pub fn save(&self, settings: &AppearanceSettings) -> Result<(), AppearanceSettingsError> {
-        settings.validated()?;
-        Ok(())
     }
 }
 

@@ -4,11 +4,6 @@ use beryl_backend::DynamicToolCallRequest;
 use serde::{Deserialize, Deserializer};
 use serde_json::{Value, json};
 
-use crate::{
-    OperationPreferences, parse_context_compaction_timeout_seconds_text,
-    parse_notification_sound_path_text,
-};
-
 use super::{
     AgentSettingsUpdate, GuiSettingsUpdate, MAX_SETTINGS_TOOL_STRING_BYTES,
     MAX_SETTINGS_TOOL_TIMEOUT_STRING_BYTES, NotificationSettingsUpdate, OperationSettingsUpdate,
@@ -16,7 +11,7 @@ use super::{
     UPDATE_GUI_SETTINGS_TOOL, VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
 };
 
-use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
+use crate::dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE;
 
 pub fn parse_beryl_settings_dynamic_tool_request(
     request: &DynamicToolCallRequest,
@@ -157,15 +152,7 @@ where
 fn parse_timeout_seconds_value(value: Value) -> Result<u64, SettingsDynamicToolError> {
     match value {
         Value::Number(number) if number.is_u64() => {
-            let seconds = number.as_u64().expect("number reports u64");
-            OperationPreferences::with_context_compaction_timeout_seconds(seconds)
-                .map(|preferences| preferences.context_compaction_timeout_seconds)
-                .map_err(|source| {
-                    SettingsDynamicToolError::invalid_field(
-                        "operations.contextCompactionTimeoutSeconds",
-                        source.to_string(),
-                    )
-                })
+            Ok(number.as_u64().expect("number reports u64"))
         }
         Value::String(value) => {
             if value.len() > MAX_SETTINGS_TOOL_TIMEOUT_STRING_BYTES {
@@ -174,7 +161,7 @@ fn parse_timeout_seconds_value(value: Value) -> Result<u64, SettingsDynamicToolE
                     format!("value exceeds {MAX_SETTINGS_TOOL_TIMEOUT_STRING_BYTES} bytes"),
                 ));
             }
-            parse_context_compaction_timeout_seconds_text(&value).map_err(|source| {
+            value.trim().parse::<u64>().map_err(|source| {
                 SettingsDynamicToolError::invalid_field(
                     "operations.contextCompactionTimeoutSeconds",
                     source.to_string(),
@@ -200,12 +187,7 @@ fn parse_notification_path_value(
                     format!("value exceeds {MAX_SETTINGS_TOOL_STRING_BYTES} bytes"),
                 ));
             }
-            parse_notification_sound_path_text(&value).map_err(|source| {
-                SettingsDynamicToolError::invalid_field(
-                    "notifications.endTurnSoundPath",
-                    source.to_string(),
-                )
-            })
+            Ok(Some(PathBuf::from(value)))
         }
         _ => Err(SettingsDynamicToolError::invalid_field(
             "notifications.endTurnSoundPath",

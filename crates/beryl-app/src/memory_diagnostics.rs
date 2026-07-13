@@ -10,7 +10,6 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 #[derive(Clone, Debug, Default)]
 pub(crate) struct MemoryMilestone {
     milestone: &'static str,
-    workspace_id: Option<String>,
     runtime: Option<String>,
     thread_id: Option<String>,
     backend_pid: Option<u32>,
@@ -146,45 +145,16 @@ pub(crate) struct RetainedStateSnapshot {
     pub(crate) activity_visible_thread_index_bytes: Option<usize>,
     pub(crate) activity_record_payload_bytes: Option<usize>,
     pub(crate) activity_row_payload_bytes: Option<usize>,
-    pub(crate) graph_nodes: Option<usize>,
-    pub(crate) graph_soft_links: Option<usize>,
-    pub(crate) graph_thread_refs: Option<usize>,
-    pub(crate) graph_committed_nodes: Option<usize>,
-    pub(crate) graph_committed_soft_links: Option<usize>,
-    pub(crate) graph_committed_thread_refs: Option<usize>,
-    pub(crate) graph_columns: Option<usize>,
-    pub(crate) graph_pending_optimistic_mutations: Option<usize>,
-    pub(crate) graph_queued_commits: Option<usize>,
-    pub(crate) inventory_groups: Option<usize>,
-    pub(crate) inventory_threads: Option<usize>,
-    pub(crate) known_threads: Option<usize>,
     pub(crate) composer_draft_text_bytes: Option<usize>,
     pub(crate) composer_draft_images: Option<usize>,
     pub(crate) composer_draft_image_bytes: Option<usize>,
     pub(crate) composer_draft_atoms: Option<usize>,
     pub(crate) composer_draft_atom_bytes: Option<usize>,
-    pub(crate) composer_clipboard_payloads: Option<usize>,
-    pub(crate) composer_clipboard_text_bytes: Option<usize>,
-    pub(crate) composer_clipboard_images: Option<usize>,
-    pub(crate) composer_clipboard_image_bytes: Option<usize>,
-    pub(crate) composer_clipboard_atoms: Option<usize>,
-    pub(crate) composer_clipboard_atom_bytes: Option<usize>,
-    pub(crate) composer_history_lanes: Option<usize>,
-    pub(crate) composer_history_entries: Option<usize>,
-    pub(crate) composer_history_text_bytes: Option<usize>,
-    pub(crate) composer_history_images: Option<usize>,
-    pub(crate) composer_history_image_bytes: Option<usize>,
-    pub(crate) composer_history_atoms: Option<usize>,
-    pub(crate) composer_history_atom_bytes: Option<usize>,
     pub(crate) pending_composer_image_asset_paste_bytes: Option<usize>,
     pub(crate) composer_image_popup_bytes: Option<usize>,
-    pub(crate) pending_turn_input_fragments: Option<usize>,
-    pub(crate) pending_turn_input_bytes: Option<usize>,
     pub(crate) pending_steering_fragments: Option<usize>,
     pub(crate) pending_steering_bytes: Option<usize>,
-    pub(crate) workspace_persistence_pending_work: Option<usize>,
     pub(crate) thread_title_workers: Option<usize>,
-    pub(crate) inventory_worker_active: Option<usize>,
     pub(crate) text_input_count: Option<usize>,
     pub(crate) text_input_current_text_bytes: Option<usize>,
     pub(crate) text_input_current_atoms: Option<usize>,
@@ -219,11 +189,6 @@ impl MemoryMilestone {
             milestone,
             ..Self::default()
         }
-    }
-
-    pub(crate) fn workspace_id(mut self, workspace_id: impl Into<String>) -> Self {
-        self.workspace_id = Some(workspace_id.into());
-        self
     }
 
     pub(crate) fn runtime(mut self, runtime: impl Into<String>) -> Self {
@@ -266,7 +231,6 @@ impl MemoryMilestone {
             return;
         }
 
-        let workspace_id = self.workspace_id.unwrap_or_default();
         let runtime = self.runtime.unwrap_or_default();
         let thread_id = self.thread_id.unwrap_or_default();
         let backend_pid = self
@@ -372,20 +336,6 @@ impl MemoryMilestone {
         let activity_rows = optional_usize(retained_state.activity_rows);
         let activity_visible_thread_indexes =
             optional_usize(retained_state.activity_visible_thread_indexes);
-        let graph_nodes = optional_usize(retained_state.graph_nodes);
-        let graph_soft_links = optional_usize(retained_state.graph_soft_links);
-        let graph_thread_refs = optional_usize(retained_state.graph_thread_refs);
-        let graph_committed_nodes = optional_usize(retained_state.graph_committed_nodes);
-        let graph_committed_soft_links = optional_usize(retained_state.graph_committed_soft_links);
-        let graph_committed_thread_refs =
-            optional_usize(retained_state.graph_committed_thread_refs);
-        let graph_columns = optional_usize(retained_state.graph_columns);
-        let graph_pending_optimistic_mutations =
-            optional_usize(retained_state.graph_pending_optimistic_mutations);
-        let graph_queued_commits = optional_usize(retained_state.graph_queued_commits);
-        let inventory_groups = optional_usize(retained_state.inventory_groups);
-        let inventory_threads = optional_usize(retained_state.inventory_threads);
-        let known_threads = optional_usize(retained_state.known_threads);
         let backend_work_receivers = optional_usize(retained_state.backend_work_receivers);
         let backend_event_queue_estimate =
             optional_usize(retained_state.backend_event_queue_estimate);
@@ -403,7 +353,6 @@ impl MemoryMilestone {
                     private_bytes = snapshot.private_bytes,
                     working_set_bytes = snapshot.working_set_bytes,
                     pagefile_usage_bytes = snapshot.pagefile_usage_bytes,
-                    workspace_id = %workspace_id,
                     runtime = %runtime,
                     thread_id = %thread_id,
                     backend_pid = %backend_pid,
@@ -465,18 +414,6 @@ impl MemoryMilestone {
                     activity_records = %activity_records,
                     activity_rows = %activity_rows,
                     activity_visible_thread_indexes = %activity_visible_thread_indexes,
-                    graph_nodes = %graph_nodes,
-                    graph_soft_links = %graph_soft_links,
-                    graph_thread_refs = %graph_thread_refs,
-                    graph_committed_nodes = %graph_committed_nodes,
-                    graph_committed_soft_links = %graph_committed_soft_links,
-                    graph_committed_thread_refs = %graph_committed_thread_refs,
-                    graph_columns = %graph_columns,
-                    graph_pending_optimistic_mutations = %graph_pending_optimistic_mutations,
-                    graph_queued_commits = %graph_queued_commits,
-                    inventory_groups = %inventory_groups,
-                    inventory_threads = %inventory_threads,
-                    known_threads = %known_threads,
                     backend_work_receivers = %backend_work_receivers,
                     backend_event_queue_estimate = %backend_event_queue_estimate,
                     backend_client_connection_estimate = %backend_client_connection_estimate,
@@ -492,7 +429,6 @@ impl MemoryMilestone {
                     pid = std::process::id(),
                     memory_counters_available = false,
                     error = %error,
-                    workspace_id = %workspace_id,
                     runtime = %runtime,
                     thread_id = %thread_id,
                     backend_pid = %backend_pid,
@@ -554,18 +490,6 @@ impl MemoryMilestone {
                     activity_records = %activity_records,
                     activity_rows = %activity_rows,
                     activity_visible_thread_indexes = %activity_visible_thread_indexes,
-                    graph_nodes = %graph_nodes,
-                    graph_soft_links = %graph_soft_links,
-                    graph_thread_refs = %graph_thread_refs,
-                    graph_committed_nodes = %graph_committed_nodes,
-                    graph_committed_soft_links = %graph_committed_soft_links,
-                    graph_committed_thread_refs = %graph_committed_thread_refs,
-                    graph_columns = %graph_columns,
-                    graph_pending_optimistic_mutations = %graph_pending_optimistic_mutations,
-                    graph_queued_commits = %graph_queued_commits,
-                    inventory_groups = %inventory_groups,
-                    inventory_threads = %inventory_threads,
-                    known_threads = %known_threads,
                     backend_work_receivers = %backend_work_receivers,
                     backend_event_queue_estimate = %backend_event_queue_estimate,
                     backend_client_connection_estimate = %backend_client_connection_estimate,

@@ -5,7 +5,6 @@ use super::{AppearanceSettingsError, validate_hex_color};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceChromeSettings {
     pub toolbar_background: String,
-    pub conversation_thread_strip_background: String,
     pub separator: String,
     pub primary_button: AppearanceButtonSettings,
     pub secondary_button: AppearanceButtonSettings,
@@ -66,7 +65,6 @@ impl Default for AppearanceChromeSettings {
     fn default() -> Self {
         Self {
             toolbar_background: "#020617".to_string(),
-            conversation_thread_strip_background: "#091220".to_string(),
             separator: "#1e293b".to_string(),
             primary_button: AppearanceButtonSettings::primary(),
             secondary_button: AppearanceButtonSettings::secondary(),
@@ -217,11 +215,6 @@ impl AppearanceChromeSettings {
                 &self.toolbar_background,
                 "Chrome",
                 "toolbar_background",
-            )?,
-            conversation_thread_strip_background: validate_hex_color(
-                &self.conversation_thread_strip_background,
-                "Chrome",
-                "conversation_thread_strip_background",
             )?,
             separator: validate_hex_color(&self.separator, "Chrome", "separator")?,
             primary_button: self.primary_button.validated("Primary button")?,

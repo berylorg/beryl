@@ -12,7 +12,7 @@ Expose compact, exact conversation status and selected-thread controls without m
 
 ## GUI Supplement
 
-- `gui.md` is a normative supplemental GUI composition file for status-line placement, cell layout, and status operation popups.
+- `gui.md` is the normative supplemental GUI composition file for configuring bundled status and popup widgets with this feature's cells, values, operations, and availability.
 
 ## Status Line Layout
 
@@ -24,15 +24,15 @@ Expose compact, exact conversation status and selected-thread controls without m
 ## Model And Reasoning Cell
 
 - The model/reasoning cell displays the selected thread's active or pending model and reasoning effort.
-- When the workspace is on a pending new-thread draft, it displays the draft's explicit first-turn selection when present; otherwise it displays the current effective backend defaults for the draft execution root.
+- For a draft-only thread, it displays the current draft's explicit first-turn selection when present; otherwise it displays the effective backend defaults for that thread's execution root.
 - Missing values render `Unknown` or unavailable. Beryl must not infer effective reasoning from model-list menu defaults.
-- Backend-derived values already known may remain visible when a runtime target is backend-unavailable; otherwise the cell renders unavailable/unknown without launching or probing a backend.
-- The cell opens a model/reasoning popup only when an idle backend thread is selected or the workspace is on a pending new-thread draft.
-- With an active selected-thread turn or backend-unavailable selected runtime target, the cell is non-clickable.
+- Backend-derived values already known may remain visible when a runtime is backend-unavailable; otherwise the cell renders unavailable/unknown without launching or probing a backend.
+- The cell opens a model/reasoning popup only when a selected Syndic thread is idle and its runtime is available.
+- With an active selected-thread turn or backend-unavailable selected runtime, the cell is non-clickable.
 - The popup lists backend-supported models and restricts reasoning choices to the selected model's supported efforts.
-- Choosing a model or reasoning effort updates selected-thread pending turn defaults or pending-new-thread first-turn defaults only. It does not mutate global Codex configuration, other workspaces, or other threads.
+- Choosing a model or reasoning effort updates the selected thread's current-draft or next-turn defaults only. It does not mutate global Codex configuration or other threads.
 - Existing-thread selections are carried on the next submitted user turn for that thread. The backend-owned thread default is then the source for later status presentation.
-- Pending-new-thread selections are carried on the first submitted user turn. A draft without explicit selection follows current effective backend defaults until submission or explicit user choice.
+- Draft-only-thread selections are carried on the first submitted user turn. A draft without explicit selection follows current effective backend defaults until submission or explicit user choice.
 
 ## Context And Rate-Limit Cell
 
@@ -45,7 +45,7 @@ Expose compact, exact conversation status and selected-thread controls without m
 - Rate-limit bucket identity such as `limitId` and `limitName` is preserved. Beryl selects the bucket matching the active model and avoids merging unrelated model-specific buckets.
 - Rate-limit segments are omitted independently when the exact window or active-model bucket is unavailable.
 - Activating the context cell opens the context operations popup only when a backend conversation thread is selected, idle, and backend-available.
-- With no selected thread, an active selected-thread turn, or a backend-unavailable selected runtime target, the cell is non-clickable.
+- With no selected thread, an active selected-thread turn, or an unavailable selected runtime, the cell is non-clickable.
 - The context operations popup initially contains `Compact`, which starts backend context compaction for the selected thread. Request acceptance is not compaction completion.
 - The app-wide context compaction timeout preference controls how long Beryl waits for backend-reported selected-thread compaction completion after the backend accepts compaction. It does not change launch, probe, connection, subscription, compact-start, active-turn, or other bounded JSON-RPC request timeouts.
 
@@ -54,6 +54,7 @@ Expose compact, exact conversation status and selected-thread controls without m
 - Last-turn state displays `compacting` while selected-thread context compaction is active, `working` while a parent turn is active, `ok` after the latest completed turn, `error` after the latest failed or interrupted turn, and `Unknown` before any turn state is known.
 - The turn cell appends a secondary `View` segment that reports the backend turn number currently represented at the transcript viewport bottom as `<current>/<total>`, such as `working View 5/5`.
 - `View` numbers are one-based chronological backend parent-turn numbers for the selected thread. They are not transcript presentation row numbers, loaded detail counts, or Markdown block counts.
+- A synthetic discussion-context item never increments `current` or `total`. When it is the lowest intersecting presentation item, `current` remains the real source turn immediately preceding its branch-boundary position.
 - The `View` segment is passive status chrome. It consumes transcript host facts for viewport ownership, source-turn ownership, and exact numbering that are already present in shell state.
 - The status line does not inspect transcript residency internals, presentation records, renderer state, Syndic storage, backend history, or rendered text to derive `View` values.
 - The `View` segment must not start selected-thread turn pagination, create background workers, call backend connectors, trigger synthetic turns, load transcript details, scan rendered text, or mutate transcript history/list state.
@@ -63,7 +64,7 @@ Expose compact, exact conversation status and selected-thread controls without m
 - Missing current or total values render as `-` in the count segment. With no known turns, including an exact zero-turn selected thread, the view segment is `-/-`; when total is exact and positive but the viewport turn cannot be identified it is `-/N`.
 - The `View` segment must not make the turn cell interactive when stop controls are otherwise unavailable.
 - Interrupted turns without actual error payload update status but do not automatically enqueue turn-error notices.
-- Activating the cell opens the turn operations popup only when the selected runtime target is backend-available and Beryl knows an interruptible backend turn id for the selected ordinary active turn or selected-thread compaction operation.
+- Activating the cell opens the turn operations popup only when the selected runtime is backend-available and Beryl knows an interruptible backend turn id for the selected ordinary active turn or selected-thread compaction operation.
 - Otherwise the cell is non-clickable.
 - `Soft stop` requests backend interruption for the exact selected-thread active turn or compaction operation, then closes or reports request failure through popup feedback.
 - Request acceptance is not terminal turn completion. Visible state converges from backend stream events, explicit termination responses, transport failure, or backend process exit.

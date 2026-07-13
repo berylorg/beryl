@@ -8,7 +8,6 @@ pub(crate) const WINDOW_MIN_HEIGHT: f32 = 320.0;
 
 pub(crate) const CHROME_STRIP_HEIGHT: f32 = 40.0;
 pub(crate) const TOOLBAR_STRIP_HEIGHT: f32 = CHROME_STRIP_HEIGHT;
-pub(crate) const THREAD_STRIP_HEIGHT: f32 = CHROME_STRIP_HEIGHT;
 pub(crate) const STATUS_LINE_HEIGHT: f32 = 28.0;
 #[cfg(test)]
 pub(crate) const STANDARD_UI_TEXT_FONT_SIZE: f32 = 16.0;
@@ -22,17 +21,10 @@ pub(crate) const BUTTON_LABEL_LINE_HEIGHT: f32 = 18.0;
 pub(crate) const BUTTON_BORDER_WIDTH: f32 = 1.0;
 pub(crate) const BUTTON_VERTICAL_PADDING: f32 = 6.0;
 pub(crate) const BUTTON_HORIZONTAL_PADDING: f32 = 10.0;
-pub(crate) const TOOLBAR_BREADCRUMB_TRAIL_MAX_WIDTH: f32 = 680.0;
-pub(crate) const TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH: f32 = 320.0;
-pub(crate) const TOOLBAR_BREADCRUMB_GAP: f32 = 8.0;
-pub(crate) const TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH: f32 = BUTTON_LABEL_FONT_SIZE;
 pub(crate) const TOOL_ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub(crate) const TOOL_ACTIVITY_OVERSCAN_ROWS: usize = 3;
 pub(crate) const TOOL_ACTIVITY_MIN_PANEL_HEIGHT: f32 = TOOL_ACTIVITY_ROW_HEIGHT;
 pub(crate) const TOOL_ACTIVITY_RESIZE_HANDLE_HEIGHT: f32 = 8.0;
-pub(crate) const THREAD_SELECTOR_ROW_HEIGHT: f32 = 42.0;
-pub(crate) const THREAD_SELECTOR_ROW_GAP: f32 = 8.0;
-pub(crate) const THREAD_SELECTOR_OVERSCAN_ROWS: usize = 4;
 pub(crate) const PANEL_MIN_WIDTH: f32 = 100.0;
 pub(crate) const MAIN_REGION_MIN_HEIGHT: f32 = 120.0;
 pub(crate) const COMPOSER_MIN_HEIGHT: f32 = 74.0;
@@ -49,67 +41,13 @@ pub(crate) const COMPOSER_INPUT_PAINT_SLACK: f32 = 4.0;
 pub(crate) const COMPOSER_INPUT_HORIZONTAL_CHROME: f32 =
     COMPOSER_INPUT_PADDING_X * 2.0 + COMPOSER_INPUT_BORDER_WIDTH * 2.0;
 pub(crate) const COMPOSER_OUTER_HORIZONTAL_PADDING: f32 = 32.0;
-pub(crate) const GRAPH_OVERLAY_MIN_HEIGHT: f32 = 160.0;
-pub(crate) const DEFAULT_GRAPH_OVERLAY_HEIGHT_RATIO: f32 = 0.5;
-pub(crate) const WORKSPACE_PICKER_MARGIN: f32 = 12.0;
-pub(crate) const WORKSPACE_PICKER_OFFSET_Y: f32 = 8.0;
-pub(crate) const WORKSPACE_PICKER_VIEWPORT_WIDTH_RATIO: f32 = 0.94;
-pub(crate) const WORKSPACE_PICKER_PREFERRED_WIDTH: f32 = 840.0;
-pub(crate) const WORKSPACE_PICKER_MIN_WIDTH: f32 = 620.0;
-pub(crate) const WORKSPACE_PICKER_WORKSPACES_COLUMN_PREFERRED_WIDTH: f32 = 420.0;
-pub(crate) const WORKSPACE_PICKER_MEMBERS_COLUMN_PREFERRED_WIDTH: f32 = 419.0;
-pub(crate) const WORKSPACE_PICKER_COLUMN_DIVIDER_WIDTH: f32 = 1.0;
-pub(crate) const WORKSPACE_PICKER_HEADER_HEIGHT: f32 = 64.0;
-pub(crate) const WORKSPACE_PICKER_FILTER_HEIGHT: f32 = 62.0;
-pub(crate) const WORKSPACE_PICKER_MEMBERS_CONTROL_HEIGHT: f32 = WORKSPACE_PICKER_FILTER_HEIGHT;
-pub(crate) const WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_X: f32 = 16.0;
-pub(crate) const WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_Y: f32 = 12.0;
-pub(crate) const WORKSPACE_PICKER_CREATE_ROW_HEIGHT: f32 = 56.0;
-pub(crate) const WORKSPACE_PICKER_ROW_HEIGHT: f32 = 104.0;
-pub(crate) const WORKSPACE_PICKER_MEMBERS_ATTACH_ROW_HEIGHT: f32 =
-    WORKSPACE_PICKER_CREATE_ROW_HEIGHT;
-pub(crate) const WORKSPACE_PICKER_MEMBERS_ROW_HEIGHT: f32 = WORKSPACE_PICKER_ROW_HEIGHT;
-pub(crate) const WORKSPACE_PICKER_CREATE_ADD_PLUS_SLOT_WIDTH: f32 = 18.0;
-pub(crate) const WORKSPACE_PICKER_CREATE_ADD_PLUS_FONT_SIZE: f32 = 18.0;
-pub(crate) const WORKSPACE_PICKER_CREATE_ADD_PLUS_GLYPH_Y_OFFSET: f32 = -1.5;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_DETAIL_LINE_HEIGHT: f32 = 14.0;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_ARROW_SLOT_WIDTH: f32 = 20.0;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_ARROW_FONT_SIZE: f32 = 14.0;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_TRIGGER_HEIGHT: f32 = BUTTON_BORDER_WIDTH * 2.0
-    + BUTTON_VERTICAL_PADDING * 2.0
-    + BUTTON_LABEL_LINE_HEIGHT
-    + WORKSPACE_PICKER_RUNTIME_SELECTOR_DETAIL_LINE_HEIGHT;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_RELATIVE_TOP: f32 =
-    WORKSPACE_PICKER_RUNTIME_SELECTOR_TRIGGER_HEIGHT - BUTTON_BORDER_WIDTH;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_COLUMN_TOP: f32 =
-    WORKSPACE_PICKER_MEMBERS_CONTROL_PADDING_Y
-        + WORKSPACE_PICKER_RUNTIME_SELECTOR_DROPDOWN_RELATIVE_TOP;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_DROPDOWN_ROW_HEIGHT: f32 = 44.0;
-pub(crate) const WORKSPACE_PICKER_RUNTIME_DROPDOWN_MAX_VISIBLE_ROWS: usize = 6;
-pub(crate) const WORKSPACE_PICKER_MAX_HEIGHT_RATIO: f32 = 0.72;
 
 pub(crate) const fn button_required_outer_height() -> f32 {
     BUTTON_BORDER_WIDTH * 2.0 + BUTTON_VERTICAL_PADDING * 2.0 + BUTTON_LABEL_LINE_HEIGHT
 }
 
-#[cfg(test)]
-pub(crate) const fn toolbar_breadcrumb_two_button_required_width() -> f32 {
-    BUTTON_BORDER_WIDTH * 2.0
-        + TOOLBAR_BREADCRUMB_BUTTON_MAX_WIDTH * 2.0
-        + TOOLBAR_BREADCRUMB_SEPARATOR_WIDTH
-        + TOOLBAR_BREADCRUMB_GAP * 2.0
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ToolActivityRowWindow {
-    pub(crate) range: Range<usize>,
-    pub(crate) top_spacer_height: Pixels,
-    pub(crate) bottom_spacer_height: Pixels,
-    pub(crate) content_height: Pixels,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ThreadSelectorRowWindow {
     pub(crate) range: Range<usize>,
     pub(crate) top_spacer_height: Pixels,
     pub(crate) bottom_spacer_height: Pixels,
@@ -190,16 +128,6 @@ pub(crate) fn tool_activity_content_height(row_count: usize) -> Pixels {
     fixed_row_content_height(row_count, px(TOOL_ACTIVITY_ROW_HEIGHT), px(0.0))
 }
 
-#[cfg(test)]
-#[allow(dead_code)]
-pub(crate) fn thread_selector_content_height(row_count: usize) -> Pixels {
-    fixed_row_content_height(
-        row_count,
-        px(THREAD_SELECTOR_ROW_HEIGHT),
-        px(THREAD_SELECTOR_ROW_GAP),
-    )
-}
-
 pub(crate) fn tool_activity_row_window(
     row_count: usize,
     viewport_height: Pixels,
@@ -216,29 +144,6 @@ pub(crate) fn tool_activity_row_window(
     );
 
     ToolActivityRowWindow {
-        range: window.range,
-        top_spacer_height: window.top_spacer_height,
-        bottom_spacer_height: window.bottom_spacer_height,
-        content_height: window.content_height,
-    }
-}
-
-pub(crate) fn thread_selector_row_window(
-    row_count: usize,
-    viewport_height: Pixels,
-    scroll_offset: Pixels,
-    overscan_rows: usize,
-) -> ThreadSelectorRowWindow {
-    let window = fixed_row_window(
-        row_count,
-        viewport_height,
-        scroll_offset,
-        overscan_rows,
-        px(THREAD_SELECTOR_ROW_HEIGHT),
-        px(THREAD_SELECTOR_ROW_GAP),
-    );
-
-    ThreadSelectorRowWindow {
         range: window.range,
         top_spacer_height: window.top_spacer_height,
         bottom_spacer_height: window.bottom_spacer_height,
@@ -378,25 +283,4 @@ pub(crate) fn composer_input_measurement_for_height(
         scroll_limits: geometry.scroll_limits,
         vertical_reveal: geometry.vertical_reveal,
     }
-}
-
-pub(crate) fn default_graph_overlay_height(available_height: Pixels) -> Pixels {
-    clamp_graph_overlay_height(
-        available_height,
-        available_height * DEFAULT_GRAPH_OVERLAY_HEIGHT_RATIO,
-    )
-}
-
-pub(crate) fn clamp_graph_overlay_height(
-    available_height: Pixels,
-    desired_graph_overlay_height: Pixels,
-) -> Pixels {
-    let max_height = available_height.max(Pixels::ZERO);
-    let min_height = px(GRAPH_OVERLAY_MIN_HEIGHT).min(max_height);
-
-    if max_height <= Pixels::ZERO {
-        return Pixels::ZERO;
-    }
-
-    desired_graph_overlay_height.clamp(min_height, max_height)
 }

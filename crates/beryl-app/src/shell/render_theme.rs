@@ -26,7 +26,6 @@ pub(super) struct ShellRenderStyleSnapshot {
     general_ui_background: gpui::Rgba,
     general_ui_foreground: gpui::Rgba,
     toolbar_background: gpui::Rgba,
-    conversation_thread_strip_background: gpui::Rgba,
     separator_color: gpui::Rgba,
     primary_button_theme: ChromeButtonTheme,
     secondary_button_theme: ChromeButtonTheme,
@@ -104,11 +103,6 @@ impl ShellRenderStyleSnapshot {
                 &role_styles,
                 crate::BerylThemeRole::MainToolbar,
                 rgb(0x020617),
-            ),
-            conversation_thread_strip_background: style_background(
-                &role_styles,
-                crate::BerylThemeRole::MainThreadStrip,
-                rgb(0x091220),
             ),
             separator_color: style_single_color(
                 &role_styles,
@@ -277,10 +271,6 @@ impl ShellRenderStyleSnapshot {
 
     pub(super) fn toolbar_background(&self) -> gpui::Rgba {
         self.toolbar_background
-    }
-
-    pub(super) fn conversation_thread_strip_background(&self) -> gpui::Rgba {
-        self.conversation_thread_strip_background
     }
 
     pub(super) fn separator_color(&self) -> gpui::Rgba {

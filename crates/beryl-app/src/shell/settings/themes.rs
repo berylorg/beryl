@@ -6,7 +6,7 @@ use gpui_settings_window::{
     SettingsRow, SettingsRowAction, SettingsRowActionId, SettingsSection, SettingsSectionId,
 };
 
-use crate::{BUILT_IN_INSTALLED_THEME_ID, InstalledThemeId, ThemeRepositorySnapshot};
+use crate::{InstalledThemeId, ThemeRepositorySnapshot};
 
 use super::theme_editor::ThemeEditorPageModel;
 
@@ -15,7 +15,6 @@ pub(super) const EDITOR_PAGE_ID: &str = "themes.editor";
 const ACTIVATE_ACTION_ID: &str = "activate";
 const SAVE_ACTION_ID: &str = "save";
 const SAVE_AS_ACTION_ID: &str = "save_as";
-const ACTIVE_ROW_FIELD_ID: &str = "themes.active";
 const SAVE_AS_NAME_FIELD_ID: &str = "themes.save_as_name";
 const INSTALLED_ROW_PREFIX: &str = "themes.installed.";
 const EDITOR_ROLE_NAVIGATOR_BODY_ID: &str = "themes.editor.role_navigator";
@@ -66,9 +65,8 @@ pub(super) fn settings_section(
     save_as_name: &str,
 ) -> SettingsSection {
     SettingsSection::new(section_id(), "Themes")
-        .with_root_page(root_page(snapshot, staged_changes))
+        .with_root_page(root_page(snapshot))
         .with_page(editor_page(
-            snapshot,
             editor_model,
             errors,
             staged_changes,
@@ -80,14 +78,6 @@ pub(super) fn row_action(
     field_id: &SettingsFieldId,
     action_id: &SettingsRowActionId,
 ) -> Option<ThemeRowAction> {
-    if field_id.as_str() == ACTIVE_ROW_FIELD_ID {
-        return match action_id.as_str() {
-            SAVE_ACTION_ID => Some(ThemeRowAction::Save),
-            SAVE_AS_ACTION_ID => Some(ThemeRowAction::SaveAs),
-            _ => None,
-        };
-    }
-
     if action_id.as_str() == ACTIVATE_ACTION_ID {
         let id = field_id.as_str().strip_prefix(INSTALLED_ROW_PREFIX)?;
         Some(ThemeRowAction::Activate(InstalledThemeId::new(id).ok()?))
@@ -104,83 +94,39 @@ pub(super) fn page_action(action_id: &SettingsPageActionId) -> Option<ThemePageA
     }
 }
 
-fn root_page(snapshot: &ThemeRepositorySnapshot, staged_changes: bool) -> SettingsPage {
+fn root_page(snapshot: &ThemeRepositorySnapshot) -> SettingsPage {
     let mut page = SettingsPage::new(root_page_id(), "Themes");
     for theme in snapshot.themes() {
-        if theme.is_active() {
-            let mut row =
-                SettingsRow::navigation(ACTIVE_ROW_FIELD_ID, theme.name(), editor_page_id())
-                    .with_subtext(active_subtext(theme.is_built_in()))
-                    .with_modified(staged_changes);
-            for action in active_theme_actions(theme.is_built_in(), staged_changes) {
-                row = row.with_action(action);
-            }
-            page = page.with_row(row);
-        } else {
-            page = page.with_row(
-                SettingsRow::action_only(
-                    format!("{INSTALLED_ROW_PREFIX}{}", theme.id().as_str()),
-                    theme.name(),
-                    SettingsRowAction::new(ACTIVATE_ACTION_ID, "Activate"),
-                )
-                .with_subtext(theme.id().as_str()),
-            );
-        }
+        page = page.with_row(
+            SettingsRow::action_only(
+                format!("{INSTALLED_ROW_PREFIX}{}", theme.id().as_str()),
+                theme.name(),
+                SettingsRowAction::new(ACTIVATE_ACTION_ID, "Activate"),
+            )
+            .with_subtext(theme.id().as_str()),
+        );
     }
     page
 }
 
-fn active_theme_actions(built_in: bool, staged_changes: bool) -> Vec<SettingsRowAction> {
-    let save_action = if staged_changes && !built_in {
-        SettingsRowAction::new(SAVE_ACTION_ID, "Save")
-    } else {
-        SettingsRowAction::new(SAVE_ACTION_ID, "Save").disabled_with_reason(if built_in {
-            "The built-in fallback theme is read-only."
-        } else {
-            "No staged theme changes."
-        })
-    };
-    let save_as_action = if staged_changes {
-        SettingsRowAction::new(SAVE_AS_ACTION_ID, "Save As")
-    } else {
-        SettingsRowAction::new(SAVE_AS_ACTION_ID, "Save As")
-            .disabled_with_reason("No staged theme changes.")
-    };
-
-    vec![save_action, save_as_action]
-}
-
 fn editor_page(
-    snapshot: &ThemeRepositorySnapshot,
     editor_model: Option<ThemeEditorPageModel>,
     errors: &HashMap<SettingsFieldId, String>,
     staged_changes: bool,
     save_as_name: &str,
 ) -> SettingsPage {
-    let active_built_in = snapshot.active_theme_id().as_str() == BUILT_IN_INSTALLED_THEME_ID;
-    let save_action = if staged_changes && !active_built_in {
-        SettingsPageAction::new(SAVE_ACTION_ID, "Save")
-            .with_priority(SettingsPageActionPriority::Primary)
-    } else {
-        SettingsPageAction::new(SAVE_ACTION_ID, "Save")
-            .with_priority(SettingsPageActionPriority::Primary)
-            .disabled_with_reason(if active_built_in {
-                "The built-in fallback theme is read-only."
-            } else {
-                "No staged theme changes."
-            })
-    };
+    let save_action = SettingsPageAction::new(SAVE_ACTION_ID, "Save")
+        .with_priority(SettingsPageActionPriority::Primary)
+        .disabled_with_reason("Theme selection awaits the typed Beryl settings service.");
     let save_as_action = if staged_changes {
         SettingsPageAction::new(SAVE_AS_ACTION_ID, "Save As")
     } else {
         SettingsPageAction::new(SAVE_AS_ACTION_ID, "Save As")
             .disabled_with_reason("No staged theme changes.")
     };
-    let active_theme_name = active_theme_name(snapshot);
-
     let mut page = SettingsPage::new(editor_page_id(), "Theme Editor")
         .with_breadcrumb_segment(SettingsBreadcrumbSegment::linked("Themes", root_page_id()))
-        .with_breadcrumb_segment(SettingsBreadcrumbSegment::new(active_theme_name))
+        .with_breadcrumb_segment(SettingsBreadcrumbSegment::new("Theme Editor"))
         .with_back_target(root_page_id())
         .with_modified(staged_changes)
         .with_action(save_action)
@@ -202,15 +148,6 @@ fn editor_page(
     page
 }
 
-fn active_theme_name(snapshot: &ThemeRepositorySnapshot) -> &str {
-    snapshot
-        .themes()
-        .iter()
-        .find(|theme| theme.is_active())
-        .map(|theme| theme.name())
-        .unwrap_or("Theme Editor")
-}
-
 fn save_as_name_row(save_as_name: &str, errors: &HashMap<SettingsFieldId, String>) -> SettingsRow {
     let field_id = save_as_name_field_id();
     let row = SettingsRow::new(
@@ -223,13 +160,5 @@ fn save_as_name_row(save_as_name: &str, errors: &HashMap<SettingsFieldId, String
     match errors.get(&field_id) {
         Some(error) => row.with_error(error.clone()),
         None => row,
-    }
-}
-
-fn active_subtext(built_in: bool) -> &'static str {
-    if built_in {
-        "Active built-in fallback theme"
-    } else {
-        "Active installed theme"
     }
 }

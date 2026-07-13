@@ -6,10 +6,8 @@ This is a normative supplemental GUI composition file for `design.md`. It owns a
 
 Mount-into: main-window.activity-panel
 
-The activity panel mounts as the optional bounded panel between the transcript region and the composer panel. When visible, it takes height from the transcript region and preserves the pinned composer and status line.
+The feature mounts one project-local [`activity panel`](../../gui/widgets/activity-panel/spec.md) as the optional bounded panel below the transcript region and above any discussion-status strip and composer. The widget owns resize geometry, fixed-height rows, bounded realization, scrolling, truncation, stable row reconciliation, tooltip anchoring, and content-free diagnostics.
 
-The panel has a draggable top border for vertical resize. Resize state persists as workspace-scoped GUI-local state.
+The feature supplies the selected-thread activity projection, stable activity identities, running-first recent ordering, status-marker state, the `Agent` and `Activity` keys, their row values, and the initial top-attached viewport policy defined in `design.md`.
 
-The panel body is a compact single-line row list. Rows do not wrap; long agent labels and activity values truncate within available width.
-
-When visible rows exceed panel height, the panel owns vertical scrolling and uses bounded viewport rendering with small overscan. Otherwise it does not expose scrolling.
+The feature persists committed panel height as window-local Beryl-home state and supplies current minimum and maximum bounds from the conversation layout. Showing the widget takes height only from the transcript region; hiding it unmounts the slot contribution without moving the discussion-status strip, pinned composer, or global status line.

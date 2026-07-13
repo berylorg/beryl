@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::warn;
 
-use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
+use crate::dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE;
 
 pub const YIELD_TOOL: &str = "yield";
 

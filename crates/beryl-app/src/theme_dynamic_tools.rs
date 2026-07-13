@@ -21,7 +21,7 @@ pub use validation::validate_theme_document_value;
 
 use crate::{InstalledThemeId, ThemeDocument};
 
-use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
+use crate::dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE;
 
 pub const READ_THEME_REPOSITORY_TOOL: &str = "read_theme_repository";
 pub const READ_THEME_SCHEMA_TOOL: &str = "read_theme_schema";

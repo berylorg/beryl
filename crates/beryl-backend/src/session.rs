@@ -2,7 +2,7 @@ use std::{
     collections::VecDeque,
     io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    process::{ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
+    process::{ChildStderr, ChildStdin, ChildStdout},
     sync::mpsc::{self, Receiver, RecvTimeoutError},
     thread,
     time::{Duration, Instant},
@@ -17,22 +17,17 @@ use tracing::{debug, warn};
 
 use crate::{
     AccountRateLimitsResponse, ApprovalRequest, ApprovalRequestKind, BackendCommandLineError,
-    BackendConfigDefaults, BackendLaunchSpec, BackendWebSocketEndpoint, CompatibilityError,
-    CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse,
-    DynamicToolCallRequest, DynamicToolCallResponse, HardStopCapabilityProbe,
-    HardStopCapabilityProbeResult, HardStopCapabilityReport, HardStopTarget, HardStopTargetOutcome,
-    InitializeResponse, JsonRpcError, ModelInfo, ModelListOptions, ModelListResponse,
-    ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
-    ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadBranchCapabilities,
+    BackendConfigDefaults, BackendWebSocketEndpoint, CompatibilityError, CompatibilityProbe,
+    CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse, DynamicToolCallRequest,
+    DynamicToolCallResponse, HardStopCapabilityProbe, HardStopCapabilityProbeResult,
+    HardStopCapabilityReport, HardStopTarget, HardStopTargetOutcome, InitializeResponse,
+    JsonRpcError, ModelInfo, ModelListOptions, ModelListResponse, ThreadBranchCapabilities,
     ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport,
-    ThreadForkOptions, ThreadForkResponse, ThreadLoadedListResponse, ThreadReadMetadata,
-    ThreadRollbackResponse, ThreadSessionResponse, ThreadStartOptions, ThreadSummary,
-    ThreadUnarchiveResponse, ThreadUnsubscribeResponse, TurnStartOptions, TurnStartResponse,
-    TurnSteerResponse, TurnStreamEvent, UserInput,
+    ThreadForkOptions, ThreadForkResponse, ThreadReadMetadata, ThreadRollbackResponse,
+    ThreadSessionResponse, ThreadStartOptions, ThreadSummary, ThreadUnsubscribeResponse,
+    TurnStartOptions, TurnStartResponse, TurnSteerResponse, TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
-    managed_process::SupervisedBackendProcess,
-    thread_archive::{THREAD_ARCHIVE_CAPABILITY_PROBES, ThreadArchiveParams},
     thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
     thread_metadata::{ThreadReadMetadataParams, ThreadResumeMetadataParams},
     turn::{
@@ -57,14 +52,10 @@ const PENDING_DYNAMIC_TOOL_REQUEST_LIMIT: usize = 64;
 const STDIO_STDOUT_LINE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 const STDIO_STDERR_LINE_BYTE_LIMIT: usize = 8 * 1024;
 const STDIO_MESSAGE_CHANNEL_BOUND: usize = 64;
-const STDIO_PROCESS_CLOSE_GRACE_TIMEOUT: Duration = Duration::from_millis(250);
-const MANAGED_PROCESS_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "thread/started",
     "thread/status/changed",
     "thread/closed",
-    "thread/archived",
-    "thread/unarchived",
     "thread/name/updated",
     "thread/tokenUsage/updated",
     "account/rateLimits/updated",
@@ -87,18 +78,8 @@ fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
-const STARTUP_STAGES: &[ManagedBackendStartupStage] = &[
-    ManagedBackendStartupStage::LaunchProcess,
-    ManagedBackendStartupStage::InitializeHandshake,
-    ManagedBackendStartupStage::ValidateRuntime,
-    ManagedBackendStartupStage::VerifyRequiredMethods,
-    ManagedBackendStartupStage::Ready,
-];
-
 #[derive(Debug)]
 pub struct ManagedBackendSession {
-    launch_spec: BackendLaunchSpec,
-    process: Option<SupervisedBackendProcess>,
     transport: BackendClientTransport,
     pending_messages: VecDeque<IncomingMessage>,
     pending_message_bytes: usize,
@@ -111,7 +92,6 @@ pub struct ManagedBackendProbeReport {
     initialize: InitializeResponse,
     compatibility: CompatibilitySnapshot,
     method_successes: Vec<ProbeMethodSuccess>,
-    thread_archive_capabilities: ThreadArchiveCapabilities,
     thread_branch_capabilities: ThreadBranchCapabilities,
     config_defaults: BackendConfigDefaults,
     model_list: Vec<ModelInfo>,
@@ -130,21 +110,6 @@ pub struct ManagedBackendClientOptions {
 enum ProbeMethodData {
     ConfigDefaults(BackendConfigDefaults),
     ModelList(Vec<ModelInfo>),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ManagedBackendStartupStage {
-    LaunchProcess,
-    InitializeHandshake,
-    ValidateRuntime,
-    VerifyRequiredMethods,
-    Ready,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ManagedBackendStartupProgress {
-    stage: ManagedBackendStartupStage,
-    detail: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -423,51 +388,6 @@ impl std::error::Error for ManagedWebSocketError {
 }
 
 impl ManagedBackendSession {
-    pub fn launch_and_probe(
-        launch_spec: BackendLaunchSpec,
-        timeout: Duration,
-    ) -> Result<(Self, ManagedBackendProbeReport), ManagedBackendError> {
-        Self::launch_and_probe_with_progress(launch_spec, timeout, |_| {})
-    }
-
-    pub fn launch_and_probe_with_progress<F>(
-        launch_spec: BackendLaunchSpec,
-        timeout: Duration,
-        mut on_progress: F,
-    ) -> Result<(Self, ManagedBackendProbeReport), ManagedBackendError>
-    where
-        F: FnMut(ManagedBackendStartupProgress),
-    {
-        on_progress(ManagedBackendStartupProgress::new(
-            ManagedBackendStartupStage::LaunchProcess,
-            None,
-        ));
-
-        let mut session = Self::launch(launch_spec)?;
-        let report = session.probe_compatibility(timeout, &mut on_progress)?;
-
-        on_progress(ManagedBackendStartupProgress::new(
-            ManagedBackendStartupStage::Ready,
-            None,
-        ));
-
-        Ok((session, report))
-    }
-
-    pub fn launch_spec(&self) -> &BackendLaunchSpec {
-        &self.launch_spec
-    }
-
-    pub fn process_id(&self) -> Option<u32> {
-        self.process
-            .as_ref()
-            .and_then(SupervisedBackendProcess::process_id)
-    }
-
-    pub fn is_process_alive(&mut self) -> bool {
-        !self.child_exited()
-    }
-
     pub fn list_models(
         &mut self,
         timeout: Duration,
@@ -535,7 +455,7 @@ impl ManagedBackendSession {
     ) -> Result<ThreadSessionResponse, ManagedBackendError> {
         self.request(
             "thread/start",
-            &ThreadStartParams::for_workspace(cwd, options),
+            &ThreadStartParams::for_root(cwd, options),
             timeout,
         )
     }
@@ -614,31 +534,6 @@ impl ManagedBackendSession {
         self.request(
             "thread/fork",
             &ThreadForkParams::new(thread_id, options),
-            timeout,
-        )
-    }
-
-    pub fn archive_thread(
-        &mut self,
-        thread_id: &str,
-        timeout: Duration,
-    ) -> Result<(), ManagedBackendError> {
-        let _: ThreadArchiveResponse = self.request(
-            "thread/archive",
-            &ThreadArchiveParams::new(thread_id),
-            timeout,
-        )?;
-        Ok(())
-    }
-
-    pub fn unarchive_thread(
-        &mut self,
-        thread_id: &str,
-        timeout: Duration,
-    ) -> Result<ThreadUnarchiveResponse, ManagedBackendError> {
-        self.request(
-            "thread/unarchive",
-            &ThreadArchiveParams::new(thread_id),
             timeout,
         )
     }
@@ -823,18 +718,6 @@ impl ManagedBackendSession {
         Ok(ThreadBranchCapabilityReport::new(results))
     }
 
-    pub fn probe_thread_archive_capabilities(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<ThreadArchiveCapabilityReport, ManagedBackendError> {
-        let mut results = Vec::with_capacity(THREAD_ARCHIVE_CAPABILITY_PROBES.len());
-        for probe in THREAD_ARCHIVE_CAPABILITY_PROBES {
-            results.push(self.probe_thread_archive_capability(*probe, timeout)?);
-        }
-
-        Ok(ThreadArchiveCapabilityReport::new(results))
-    }
-
     pub fn deny_approval_request(
         &mut self,
         request: &ApprovalRequest,
@@ -945,90 +828,21 @@ impl ManagedBackendSession {
                     );
                 }
             }
-
-            if self.child_exited() {
-                return Err(ManagedBackendError::ProcessExited {
-                    method: "turn stream".to_string(),
-                });
-            }
         }
     }
 
     pub fn shutdown(&mut self) -> Result<(), ManagedBackendError> {
         self.transport.close();
-
-        if let Some(process) = self.process.as_mut() {
-            process.shutdown(
-                STDIO_PROCESS_CLOSE_GRACE_TIMEOUT,
-                MANAGED_PROCESS_KILL_TIMEOUT,
-            )?;
-        }
-
         Ok(())
     }
 
-    fn launch(launch_spec: BackendLaunchSpec) -> Result<Self, ManagedBackendError> {
-        let command_line = launch_spec.command_line()?;
-        let mut command = Command::new(command_line.program());
-        command.args(command_line.args());
-        if let Some(cwd) = command_line.cwd() {
-            command.current_dir(cwd);
-        }
-        command.stdin(Stdio::piped());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-
-        let child = command
-            .spawn()
-            .map_err(|source| ManagedBackendError::Spawn {
-                program: command_line.program().to_string(),
-                source,
-            })?;
-        let mut process = SupervisedBackendProcess::new(launch_spec.clone(), child)?;
-
-        let stdin = process
-            .take_stdin()
-            .ok_or(ManagedBackendError::MissingPipe {
-                stream_name: "stdin",
-            })?;
-        let stdout = process
-            .take_stdout()
-            .ok_or(ManagedBackendError::MissingPipe {
-                stream_name: "stdout",
-            })?;
-        let stderr = process
-            .take_stderr()
-            .ok_or(ManagedBackendError::MissingPipe {
-                stream_name: "stderr",
-            })?;
-
-        let messages = spawn_stdout_reader(stdout);
-        spawn_stderr_logger(stderr, launch_spec.clone());
-
-        Ok(Self {
-            launch_spec,
-            process: Some(process),
-            transport: BackendClientTransport::Stdio {
-                stdin: Some(stdin),
-                messages,
-            },
-            pending_messages: VecDeque::new(),
-            pending_message_bytes: 0,
-            pending_dynamic_tool_requests: 0,
-            next_request_id: 1,
-        })
-    }
-
     pub(crate) fn connect_websocket_uninitialized(
-        launch_spec: BackendLaunchSpec,
         endpoint: BackendWebSocketEndpoint,
         authorization_header_value: String,
     ) -> Result<Self, ManagedBackendError> {
         let transport = WebSocketClientTransport::connect(&endpoint, authorization_header_value)?;
 
         Ok(Self {
-            launch_spec,
-            process: None,
             transport: BackendClientTransport::WebSocket(transport),
             pending_messages: VecDeque::new(),
             pending_message_bytes: 0,
@@ -1038,13 +852,11 @@ impl ManagedBackendSession {
     }
 
     pub fn connect_websocket(
-        launch_spec: BackendLaunchSpec,
         endpoint: BackendWebSocketEndpoint,
         authorization_header_value: String,
         timeout: Duration,
     ) -> Result<Self, ManagedBackendError> {
         Self::connect_websocket_with_options(
-            launch_spec,
             endpoint,
             authorization_header_value,
             ManagedBackendClientOptions::foreground(),
@@ -1053,41 +865,30 @@ impl ManagedBackendSession {
     }
 
     pub fn connect_websocket_with_options(
-        launch_spec: BackendLaunchSpec,
         endpoint: BackendWebSocketEndpoint,
         authorization_header_value: String,
         options: ManagedBackendClientOptions,
         timeout: Duration,
     ) -> Result<Self, ManagedBackendError> {
-        let mut session = Self::connect_websocket_uninitialized(
-            launch_spec,
-            endpoint,
-            authorization_header_value,
-        )?;
+        let mut session =
+            Self::connect_websocket_uninitialized(endpoint, authorization_header_value)?;
         session.initialize_client_with_options(&options, timeout)?;
         Ok(session)
     }
 
-    pub(crate) fn probe_compatibility<F>(
+    pub(crate) fn probe_compatibility(
         &mut self,
+        config_cwd: &Path,
         timeout: Duration,
-        on_progress: &mut F,
-    ) -> Result<ManagedBackendProbeReport, ManagedBackendError>
-    where
-        F: FnMut(ManagedBackendStartupProgress),
-    {
-        let (initialize, compatibility) =
-            self.initialize_client_with_progress(timeout, on_progress)?;
+    ) -> Result<ManagedBackendProbeReport, ManagedBackendError> {
+        let (initialize, compatibility) = self
+            .initialize_client_with_options(&ManagedBackendClientOptions::foreground(), timeout)?;
 
         let mut method_successes = Vec::with_capacity(compatibility.required_method_probes().len());
         let mut config_defaults = BackendConfigDefaults::default();
         let mut model_list = Vec::new();
         for probe in compatibility.required_method_probes() {
-            on_progress(ManagedBackendStartupProgress::new(
-                ManagedBackendStartupStage::VerifyRequiredMethods,
-                Some(probe.method().to_string()),
-            ));
-            if let Some(data) = self.probe_required_method(*probe, timeout)? {
+            if let Some(data) = self.probe_required_method(*probe, config_cwd, timeout)? {
                 match data {
                     ProbeMethodData::ConfigDefaults(defaults) => config_defaults = defaults,
                     ProbeMethodData::ModelList(models) => model_list = models,
@@ -1099,15 +900,11 @@ impl ManagedBackendSession {
         let thread_branch_capabilities = self
             .probe_thread_branch_capabilities(timeout)?
             .capabilities();
-        let thread_archive_capabilities = self
-            .probe_thread_archive_capabilities(timeout)?
-            .capabilities();
 
         Ok(ManagedBackendProbeReport {
             initialize,
             compatibility,
             method_successes,
-            thread_archive_capabilities,
             thread_branch_capabilities,
             config_defaults,
             model_list,
@@ -1119,38 +916,6 @@ impl ManagedBackendSession {
         options: &ManagedBackendClientOptions,
         timeout: Duration,
     ) -> Result<(InitializeResponse, CompatibilitySnapshot), ManagedBackendError> {
-        self.initialize_client_with_progress_and_options(timeout, options, &mut |_| {})
-    }
-
-    fn initialize_client_with_progress<F>(
-        &mut self,
-        timeout: Duration,
-        on_progress: &mut F,
-    ) -> Result<(InitializeResponse, CompatibilitySnapshot), ManagedBackendError>
-    where
-        F: FnMut(ManagedBackendStartupProgress),
-    {
-        self.initialize_client_with_progress_and_options(
-            timeout,
-            &ManagedBackendClientOptions::foreground(),
-            on_progress,
-        )
-    }
-
-    fn initialize_client_with_progress_and_options<F>(
-        &mut self,
-        timeout: Duration,
-        options: &ManagedBackendClientOptions,
-        on_progress: &mut F,
-    ) -> Result<(InitializeResponse, CompatibilitySnapshot), ManagedBackendError>
-    where
-        F: FnMut(ManagedBackendStartupProgress),
-    {
-        on_progress(ManagedBackendStartupProgress::new(
-            ManagedBackendStartupStage::InitializeHandshake,
-            None,
-        ));
-
         let initialize = self.request(
             INITIALIZE_METHOD,
             &InitializeParams {
@@ -1163,13 +928,8 @@ impl ManagedBackendSession {
             timeout,
         )?;
 
-        on_progress(ManagedBackendStartupProgress::new(
-            ManagedBackendStartupStage::ValidateRuntime,
-            None,
-        ));
-
         let compatibility = CompatibilitySnapshot::from_initialize_response(&initialize);
-        compatibility.validate_runtime_mode(self.launch_spec.runtime_mode())?;
+        compatibility.validate_required_app_server_version()?;
 
         self.notify_initialized()?;
 
@@ -1191,13 +951,13 @@ impl ManagedBackendSession {
     fn probe_required_method(
         &mut self,
         probe: CompatibilityProbe,
+        config_cwd: &Path,
         timeout: Duration,
     ) -> Result<Option<ProbeMethodData>, ManagedBackendError> {
         match probe {
             CompatibilityProbe::ConfigRead => {
-                let cwd = self.launch_spec.cwd().to_path_buf();
                 return self
-                    .read_config(&cwd, timeout)
+                    .read_config(config_cwd, timeout)
                     .map(|response| Some(ProbeMethodData::ConfigDefaults(response.config)));
             }
             CompatibilityProbe::ModelList => {
@@ -1209,13 +969,6 @@ impl ManagedBackendSession {
                 self.probe_request_accepts_method(
                     probe.method(),
                     &ThreadCompactStartParams::new(PROBE_THREAD_ID),
-                    timeout,
-                )?;
-            }
-            CompatibilityProbe::ThreadLoadedList => {
-                let _: ThreadLoadedListResponse = self.request(
-                    probe.method(),
-                    &ThreadLoadedListProbeParams { limit: Some(1) },
                     timeout,
                 )?;
             }
@@ -1284,32 +1037,6 @@ impl ManagedBackendSession {
             }
             JsonRpcRequestOutcome::Error(_) => Ok(
                 ThreadBranchCapabilityProbeResult::for_supported_probe(probe),
-            ),
-        }
-    }
-
-    fn probe_thread_archive_capability(
-        &mut self,
-        probe: ThreadArchiveCapabilityProbe,
-        timeout: Duration,
-    ) -> Result<ThreadArchiveCapabilityProbeResult, ManagedBackendError> {
-        let params =
-            serde_json::to_value(ThreadArchiveParams::new(PROBE_THREAD_ID)).map_err(|source| {
-                ManagedBackendError::SerializeRequest {
-                    method: probe.method().to_string(),
-                    source,
-                }
-            })?;
-
-        match self.request_json(probe.method(), &params, timeout)? {
-            JsonRpcRequestOutcome::Result(_) => Ok(
-                ThreadArchiveCapabilityProbeResult::for_supported_probe(probe),
-            ),
-            JsonRpcRequestOutcome::Error(error) if error.code == JSONRPC_METHOD_NOT_FOUND => Ok(
-                ThreadArchiveCapabilityProbeResult::unsupported(probe, error),
-            ),
-            JsonRpcRequestOutcome::Error(_) => Ok(
-                ThreadArchiveCapabilityProbeResult::for_supported_probe(probe),
             ),
         }
     }
@@ -1565,12 +1292,6 @@ impl ManagedBackendSession {
                     );
                 }
             }
-
-            if self.child_exited() {
-                return Err(ManagedBackendError::ProcessExited {
-                    method: method.to_string(),
-                });
-            }
         }
     }
 
@@ -1672,33 +1393,7 @@ impl ManagedBackendSession {
         method: &str,
         timeout: Duration,
     ) -> Result<Option<IncomingMessage>, ManagedBackendError> {
-        let received = match self.transport.recv_message_timeout(method, timeout) {
-            Ok(received) => received,
-            Err(ManagedBackendError::TransportClosed { .. }) if self.child_exited() => {
-                return Err(ManagedBackendError::ProcessExited {
-                    method: method.to_string(),
-                });
-            }
-            Err(error) => return Err(error),
-        };
-
-        match received {
-            Some(message) => Ok(Some(message)),
-            None => {
-                if self.child_exited() {
-                    return Err(ManagedBackendError::ProcessExited {
-                        method: method.to_string(),
-                    });
-                }
-                Ok(None)
-            }
-        }
-    }
-
-    fn child_exited(&mut self) -> bool {
-        self.process
-            .as_mut()
-            .is_some_and(SupervisedBackendProcess::has_exited)
+        self.transport.recv_message_timeout(method, timeout)
     }
 }
 
@@ -1721,10 +1416,6 @@ impl ManagedBackendProbeReport {
 
     pub fn method_successes(&self) -> &[ProbeMethodSuccess] {
         &self.method_successes
-    }
-
-    pub fn thread_archive_capabilities(&self) -> &ThreadArchiveCapabilities {
-        &self.thread_archive_capabilities
     }
 
     pub fn thread_branch_capabilities(&self) -> &ThreadBranchCapabilities {
@@ -1780,54 +1471,6 @@ impl ManagedBackendClientOptions {
 
     pub fn opt_out_notification_methods(&self) -> &[String] {
         &self.opt_out_notification_methods
-    }
-}
-
-impl ManagedBackendStartupStage {
-    pub fn ordered() -> &'static [Self] {
-        STARTUP_STAGES
-    }
-
-    pub fn display_label(self) -> &'static str {
-        match self {
-            Self::LaunchProcess => "Launch managed backend",
-            Self::InitializeHandshake => "Send initialize handshake",
-            Self::ValidateRuntime => "Confirm backend runtime",
-            Self::VerifyRequiredMethods => "Verify required backend methods",
-            Self::Ready => "Keep backend ready for this window",
-        }
-    }
-
-    pub fn display_description(self) -> &'static str {
-        match self {
-            Self::LaunchProcess => {
-                "Start the managed codex app-server process for the selected workspace."
-            }
-            Self::InitializeHandshake => {
-                "Wait for the initialize response and complete the startup handshake."
-            }
-            Self::ValidateRuntime => {
-                "Confirm that the backend runtime matches host-Windows or WSL-Linux."
-            }
-            Self::VerifyRequiredMethods => {
-                "Call the required compatibility methods before the workspace can open."
-            }
-            Self::Ready => "Leave the verified managed backend running for this Beryl window.",
-        }
-    }
-}
-
-impl ManagedBackendStartupProgress {
-    pub fn new(stage: ManagedBackendStartupStage, detail: Option<String>) -> Self {
-        Self { stage, detail }
-    }
-
-    pub fn stage(&self) -> ManagedBackendStartupStage {
-        self.stage
-    }
-
-    pub fn detail(&self) -> Option<&str> {
-        self.detail.as_deref()
     }
 }
 
@@ -2034,13 +1677,6 @@ impl InitializeCapabilities {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ThreadLoadedListProbeParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    limit: Option<u32>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct FsReadFileParams<'a> {
     path: &'a str,
 }
@@ -2224,7 +1860,7 @@ fn spawn_stdout_reader(
     receiver
 }
 
-pub(crate) fn spawn_stderr_logger(stderr: ChildStderr, launch_spec: BackendLaunchSpec) {
+pub(crate) fn spawn_stderr_logger(stderr: ChildStderr, launch_label: String) {
     thread::spawn(move || {
         let mut reader = BufReader::new(stderr);
         loop {
@@ -2238,14 +1874,14 @@ pub(crate) fn spawn_stderr_logger(stderr: ChildStderr, launch_spec: BackendLaunc
                     }
                     let message = truncate_for_log(&line, STDERR_LOG_LIMIT);
                     debug!(
-                        workspace = %launch_spec.display_label(),
+                        launch = %launch_label,
                         message = %message,
                         "backend stderr"
                     );
                 }
                 Err(error) => {
                     warn!(
-                        workspace = %launch_spec.display_label(),
+                        launch = %launch_label,
                         %error,
                         "failed to read backend stderr"
                     );

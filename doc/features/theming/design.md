@@ -14,28 +14,28 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 ## Supplemental Files
 
 - `gui.md` is a normative supplemental GUI composition file for the Themes settings page, theme editor subpage, and theme candidate code panel actions.
-- `theme-editor.md` is a navigation pointer to `gui.md` for older references.
 - The feature entry point remains authoritative for theme model, repository, tools, and how the editor fits into the theming workflow.
 
 ## Appearance Theme Model
 
 - Typography and colors used by Beryl-owned UI and transcript regions are configurable through the active appearance theme.
 - Every Beryl-owned visible appearance value resolves from the active theme model or a documented derivation of an active theme property.
-- Theme roles cover main-window chrome, toolbar and thread-strip regions, buttons, inputs, transcript shell/content, Markdown blocks and inline structures, code panels, syntax-highlight tokens, user input fragments, activity rows, status cells, graph/checklist visuals, selector accents, scrollbars, separators, popups, overlays, notices, media placeholders, warning/error/info states, selection/focus/disabled states, and settings-window regions.
+- Theme roles cover main-window and busy-home-window chrome, toolbar, thread-lineage regions, synthetic discussion-context transcript records, discussion-status strips, buttons, inputs, transcript shell/content, Markdown blocks and inline structures, code panels, syntax-highlight tokens, user input fragments, activity rows, status cells, thread/runtime/root selectors, scrollbars, separators, flyouts, overlays, notices, media placeholders, warning/error/info states, selection/focus/disabled states, and settings-window regions.
 - A theme defines a rooted style-role hierarchy. Each role has a hardcoded supported property set and one value source per supported property.
 - Supported value sources resolve to concrete values from inline values, the same property on the static parent chain, runtime ambient parent, or built-in fallback.
 - Unsupported role-property combinations are not part of the schema and do not inherit into existence.
 - Runtime ambient inheritance is distinct from static inheritance and is used for embedded content whose surrounding render context changes.
-- Role property sets follow semantic category: region roles expose container properties, text roles expose foreground/background and coherent typography, single-primitive roles expose `color`, and controls/rows/menus/status/media/transcript/graph/checklist/workspace/settings roles inherit from appropriate foundation roles.
+- Role property sets follow semantic category: region roles expose container properties, text roles expose foreground/background and coherent typography, single-primitive roles expose `color`, and controls, rows, menus, status, media, transcript, navigation, window, and settings roles inherit from appropriate foundation roles.
 - Transient interaction states may change resolved color properties for hover, pressed, active, selected, focused, disabled, warning, error, info, pending, streaming, and unavailable states, but must not change widget geometry unless a widget contract permits it.
-- The active theme drives both the main workspace window and app-neutral style options passed into reusable settings-window mechanics.
+- The active theme drives both main conversation windows and app-neutral style options passed into reusable settings-window mechanics.
 
 ## Theme Documents And Repository
 
 - Persisted themes use compact TOML theme documents.
 - Compact TOML theme documents store style roles as `[[role]]` records with `id`, optional `static_parent`, and supported property entries whose values are either source keywords or concrete inline values.
 - Installed themes are stored in a portable theme repository under the Beryl home directory so users can share themes without sharing unrelated preferences.
-- The repository stores a TOML manifest for active theme id and order plus one compact TOML theme document per installed theme.
+- The repository stores a TOML manifest for installed-theme order plus one compact TOML theme document per installed theme.
+- The active theme id is a scalar Beryl setting stored in the Beryl-home Fjall settings domain; it is not duplicated in the file-based theme repository manifest.
 - Persisted themes use the current TOML theme schema only.
 - Unsupported entries in installed theme files are ignored on load and omitted on later saves.
 - A legacy flat `theme.toml` at the Beryl home root is outside the installed theme repository. Beryl must not read, import, migrate, rewrite, or delete it.
@@ -70,7 +70,7 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 ## Theme Dynamic Tools
 
 - Beryl may expose bounded app-server dynamic tools for inspecting theme schema, reading theme authoring guidance, validating theme documents, previewing themes, installing themes, updating installed themes, Save As, and activating themes.
-- Theme tools operate only on Beryl-owned theme repository and active-theme state. They must not expose or mutate backend-owned Codex authentication, session storage, configuration, skills, MCP state, transcript history, semantic graph state, workspace members, durable image assets, or unrelated settings.
+- Theme tools operate only on Beryl-owned theme repository and active-theme state. They must not expose or mutate backend-owned Codex authentication, session storage, configuration, skills, MCP state, Syndic conversation history, Beryl-home runtime/root/thread metadata, durable image assets, or unrelated settings.
 - `read_theme_schema` is the bounded structural source for role ids, supported property ids, source keywords, and built-in role metadata.
 - `read_theme_authoring_guide` is explanatory guidance over the same model and must not become a second independent schema.
 - `validate_theme_document` parses and resolves compact TOML through the same validation model as preview, install, update, and Save As.

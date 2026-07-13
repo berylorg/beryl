@@ -85,24 +85,7 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::SettingsRowDisabledText
         | BerylThemeRole::SettingsInputText
         | BerylThemeRole::SettingsButtonPrimaryLabel
-        | BerylThemeRole::SettingsButtonSecondaryLabel
-        | BerylThemeRole::GraphColumnHeaderText
-        | BerylThemeRole::GraphRowTopicText
-        | BerylThemeRole::GraphRowChecklistText
-        | BerylThemeRole::GraphRowChecklistItemText
-        | BerylThemeRole::GraphRowThreadRefText
-        | BerylThemeRole::GraphRowThreadRefMeta
-        | BerylThemeRole::GraphRowSoftLinkText
-        | BerylThemeRole::GraphRowSelectedText
-        | BerylThemeRole::GraphRowPendingText
-        | BerylThemeRole::GraphRowInvalidText
-        | BerylThemeRole::GraphRowErrorText
-        | BerylThemeRole::ChecklistHeader
-        | BerylThemeRole::ChecklistRowNumberText
-        | BerylThemeRole::ChecklistRowText
-        | BerylThemeRole::ChecklistStatusTodoText
-        | BerylThemeRole::ChecklistStatusInProgressText
-        | BerylThemeRole::ChecklistStatusDoneText => TEXT_PROPERTIES,
+        | BerylThemeRole::SettingsButtonSecondaryLabel => TEXT_PROPERTIES,
         BerylThemeRole::Surface
         | BerylThemeRole::SurfaceWindow
         | BerylThemeRole::SurfacePanel
@@ -144,11 +127,8 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         BerylThemeRole::AppWindow => BACKGROUND_FOREGROUND_PROPERTIES,
         BerylThemeRole::AppWindowTitle => TEXT_PROPERTIES,
         BerylThemeRole::MainToolbar => BACKGROUND_PROPERTIES,
-        BerylThemeRole::MainToolbarTitle | BerylThemeRole::MainThreadStripActiveThreadLabel => {
-            TEXT_PROPERTIES
-        }
-        BerylThemeRole::MainThreadStripActiveThread => SURFACE_PROPERTIES,
-        BerylThemeRole::MainThreadStrip | BerylThemeRole::InputPanel => BACKGROUND_PROPERTIES,
+        BerylThemeRole::MainToolbarTitle => TEXT_PROPERTIES,
+        BerylThemeRole::InputPanel => BACKGROUND_PROPERTIES,
         BerylThemeRole::MainSeparator | BerylThemeRole::StructuralSeparator => COLOR_PROPERTIES,
         BerylThemeRole::Panel => SURFACE_PROPERTIES,
         BerylThemeRole::SurfaceRow => SURFACE_PROPERTIES,
@@ -274,63 +254,7 @@ pub fn built_in_theme_supported_properties(role: BerylThemeRole) -> &'static [Be
         | BerylThemeRole::SyntaxTokenEscape
         | BerylThemeRole::SyntaxError => FOREGROUND_PROPERTIES,
 
-        BerylThemeRole::GraphOverlay
-        | BerylThemeRole::GraphColumn
-        | BerylThemeRole::GraphColumnHeader
-        | BerylThemeRole::GraphRowTopic
-        | BerylThemeRole::GraphRowChecklist
-        | BerylThemeRole::GraphRowChecklistItem
-        | BerylThemeRole::GraphRowThreadRef
-        | BerylThemeRole::GraphRowSoftLink
-        | BerylThemeRole::GraphRowSelected
-        | BerylThemeRole::GraphRowInvalid
-        | BerylThemeRole::GraphRowError
-        | BerylThemeRole::ChecklistSidebar
-        | BerylThemeRole::ChecklistRow => SURFACE_PROPERTIES,
         BerylThemeRole::PopupSurface => SURFACE_PROPERTIES,
-        BerylThemeRole::GraphRowHover => BACKGROUND_PROPERTIES,
-        BerylThemeRole::GraphRowPending
-        | BerylThemeRole::GraphRowDisabled
-        | BerylThemeRole::GraphRowDisabledText => NO_PROPERTIES,
-        BerylThemeRole::ChecklistStatusTodo
-        | BerylThemeRole::ChecklistStatusInProgress
-        | BerylThemeRole::ChecklistStatusDone => COLOR_PROPERTIES,
-
-        BerylThemeRole::ThreadSelectorSurface
-        | BerylThemeRole::ThreadSelectorColumn
-        | BerylThemeRole::ThreadSelectorColumnHeader
-        | BerylThemeRole::ThreadSelectorRow
-        | BerylThemeRole::ThreadSelectorRowActive
-        | BerylThemeRole::WorkspacePickerSurface
-        | BerylThemeRole::WorkspacePickerWorkspaceRow
-        | BerylThemeRole::WorkspacePickerMemberRow
-        | BerylThemeRole::WorkspacePickerRuntimeRow
-        | BerylThemeRole::ColumnSelectorColumn
-        | BerylThemeRole::ColumnSelectorHeader
-        | BerylThemeRole::ColumnSelectorRow
-        | BerylThemeRole::ColumnSelectorRowSelected => SURFACE_PROPERTIES,
-        BerylThemeRole::ThreadSelectorHeaderText
-        | BerylThemeRole::ThreadSelectorColumnHeaderText
-        | BerylThemeRole::ThreadSelectorRowLabel
-        | BerylThemeRole::ThreadSelectorRowMeta
-        | BerylThemeRole::ThreadSelectorRowSelectedText
-        | BerylThemeRole::ThreadSelectorRowActiveText
-        | BerylThemeRole::ThreadSelectorRowUnavailableText
-        | BerylThemeRole::WorkspacePickerHeaderText
-        | BerylThemeRole::WorkspacePickerHeaderDetail
-        | BerylThemeRole::WorkspacePickerWorkspaceRowTitle
-        | BerylThemeRole::WorkspacePickerWorkspaceRowPath
-        | BerylThemeRole::WorkspacePickerMemberRowTitle
-        | BerylThemeRole::WorkspacePickerMemberRowPath
-        | BerylThemeRole::WorkspacePickerRuntimeRowText
-        | BerylThemeRole::WorkspacePickerUnavailableText
-        | BerylThemeRole::ColumnSelectorHeaderText => TEXT_PROPERTIES,
-        BerylThemeRole::ThreadSelectorRowSelected
-        | BerylThemeRole::ThreadSelectorRowUnavailable => SURFACE_PROPERTIES,
-        BerylThemeRole::WorkspacePickerRowActive | BerylThemeRole::ColumnSelectorAccent => {
-            COLOR_PROPERTIES
-        }
-
         BerylThemeRole::PopupRowHover | BerylThemeRole::PopupRowSelected => BACKGROUND_PROPERTIES,
         BerylThemeRole::PopupRowNormal | BerylThemeRole::PopupRowDisabled => NO_PROPERTIES,
         BerylThemeRole::OverlayBackdrop => NO_PROPERTIES,

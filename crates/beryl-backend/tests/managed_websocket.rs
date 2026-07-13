@@ -7,10 +7,9 @@ use std::{
 };
 
 use beryl_backend::{
-    BackendLaunchSpec, BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendSession,
+    BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendSession,
     REQUIRED_CODEX_APP_SERVER_VERSION, ThreadStatus, TurnStreamEvent,
 };
-use beryl_model::workspace::RuntimeMode;
 use serde_json::{Value, json};
 use tungstenite::{
     Message, WebSocket, accept_hdr, connect,
@@ -101,8 +100,7 @@ fn managed_websocket_auth_rejects_unauthenticated_and_allows_authorized_initiali
 
     assert!(connect(server_endpoint.listen_url()).is_err());
 
-    let client = connect_test_client(&endpoint);
-    assert!(client.process_id().is_none());
+    let _client = connect_test_client(&endpoint);
 
     server.join().unwrap();
 }
@@ -267,7 +265,7 @@ fn managed_websocket_rejects_deferred_dynamic_tool_request_overflow() {
                             "turnId": "turn_1",
                             "callId": format!("call_{index}"),
                             "namespace": "beryl",
-                            "tool": "read_checklist",
+                            "tool": "read_document_outline",
                             "arguments": {}
                         }
                     })
@@ -321,7 +319,6 @@ fn managed_websocket_rejects_oversized_handshake_read_ahead() {
     });
 
     let error = ManagedBackendSession::connect_websocket(
-        websocket_test_launch(server_endpoint.clone()),
         server_endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -379,7 +376,6 @@ fn managed_websocket_rejects_masked_server_frame() {
     });
 
     let error = ManagedBackendSession::connect_websocket(
-        websocket_test_launch(server_endpoint.clone()),
         server_endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -412,7 +408,6 @@ fn managed_websocket_rejects_reserved_bit_server_frame() {
     });
 
     let error = ManagedBackendSession::connect_websocket(
-        websocket_test_launch(server_endpoint.clone()),
         server_endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -430,7 +425,6 @@ fn managed_websocket_rejects_reserved_bit_server_frame() {
 
 fn connect_test_client(endpoint: &BackendWebSocketEndpoint) -> ManagedBackendSession {
     ManagedBackendSession::connect_websocket(
-        websocket_test_launch(endpoint.clone()),
         endpoint.clone(),
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -475,15 +469,6 @@ fn websocket_key(request: &str) -> &str {
         .find_map(|line| line.strip_prefix("Sec-WebSocket-Key: "))
         .expect("request should include Sec-WebSocket-Key")
         .trim()
-}
-
-fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpec {
-    BackendLaunchSpec::managed_websocket(
-        RuntimeMode::HostWindows,
-        r"C:\work\beryl",
-        endpoint,
-        PathBuf::from(r"C:\tmp\beryl-token.txt"),
-    )
 }
 
 fn accept_authenticated(

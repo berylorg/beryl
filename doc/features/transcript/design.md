@@ -1,6 +1,6 @@
 # Goals
 
-Render the selected conversation as a responsive parent transcript that users can read, scroll, select, copy, quote, inspect through context menus, and navigate without confusing transcript content with loading state or operational activity.
+Render the selected conversation and its explicitly promoted contextual presentation as a responsive parent transcript that users can read, scroll, select, copy, quote, inspect through context menus, and navigate without confusing authored turns with synthetic context, loading state, or operational activity.
 
 Preserve user-visible Markdown structure, transcript media, exact manual scrolling, stable provenance for actions, and coherent selected-thread activation while keeping implementation details in the transcript presentation and Syndic systems.
 
@@ -25,6 +25,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - The transcript presents the selected parent conversation narrative.
 - Transcript narrative includes user-authored input fragments, transcript-visible user media markers, assistant commentary, assistant final answers, assistant text marked transcript-visible by the source, and generated media intended as assistant output.
 - Transcript narrative excludes command execution details, tool calls, protocol records, file-change records, raw reasoning, token accounting, lifecycle/status events, subagent internals, hidden instructions, and other operational records unless a later product feature promotes a specific bounded summary.
+- A branch discussion may contribute one readonly synthetic context item at its exact branch boundary. The item participates in transcript flow but remains explicitly classified as contextual presentation rather than authored narrative or a Syndic turn.
 - Loading, missing-data, pending-range, stale-result, rejected-demand, and budget-fallback states are visible presentation states only. They are not selectable transcript content and must not be copied, quoted, or targeted as assistant-authored turns.
 
 ## Scrolling And Activation
@@ -41,6 +42,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 ## Large Content And Media
 
 - Very large transcript records may appear through bounded chunks, nested widgets, or stable fallbacks.
+- A large synthetic discussion-context item uses the same bounded chunk realization and anchor-preservation rules as other large transcript text and never creates a second fixed-height or independently scrolling viewport.
 - Code blocks, tables, generated images, attachments, and comparable heavy resources may expose their own bounded interaction affordances such as inner scrolling, selection, copy, preview, or fallback states.
 - A nested scrollable code panel does not take vertical pointer-wheel ownership merely because the pointer hovers over it. Clicking the nested code panel selects it for vertical pointer-wheel ownership; while selected, vertical wheel input over that code panel scrolls only the panel and must not co-scroll the transcript. Pressing `Escape` does not clear that wheel ownership.
 - Media rendering must fail visibly and locally when content cannot be admitted, decoded, loaded, or shown within Beryl's resource policy.
@@ -49,7 +51,15 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 ## Selection, Copy, Quote, And Menus
 
 - Selection, Markdown-preserving copy, quote harvesting, and context menus operate only on rendered records whose provenance and geometry are stable.
+- A rendered synthetic discussion-context item permits ordinary text selection and copy but never quote harvesting, replacement edit, branch creation, or an ordinary turn context menu.
 - In streamed huge-content mode, transcript-level selection does not span through unrendered chunks.
 - Nested widgets expose their own copy and selection contracts for their visible resource ranges.
 - If virtualization, release, remeasurement, activation, or missing data destroys stable selection geometry, Beryl closes the selection, quote affordance, or menu instead of pinning unbounded offscreen content.
 - Context menus target rendered transcript content. They do not open for empty space, operational activity, missing data, stale loading state, or transient non-content paint state.
+- A context menu for an exact historical user-input turn exposes `Edit message`. The row stays visible but disabled when the closest replacement-edit gate can be explained; a row without exact stable Syndic provenance exposes no edit command.
+- Entering replacement-edit mode closes the context menu and dims the targeted user-input turn plus its later turns on the selected path without changing their selection, copy, quote, or scrolling behavior.
+- Replacement-edit workflow and path semantics are defined in `doc/features/conversation-threads/design.md`; draft interaction is defined in `doc/features/composer/design.md`.
+- A non-empty stable selection wholly inside rendered assistant reply text exposes `Discuss in new branch` alongside Quote.
+- `Discuss in new branch` requires exact Syndic turn, item/projection revision, selected-range provenance, healthy Beryl-home storage, and selection size within the branch-discussion limit.
+- The action is unavailable for user input, operational records, synthetic discussion-context items, loading or fallback text, cross-record selections without one exact source owner, incomplete active assistant output, or stale geometry.
+- Branch-discussion product behavior is defined in `doc/features/branch-discussions/design.md`.

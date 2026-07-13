@@ -5,8 +5,8 @@ Own Beryl's integration boundary with `codex app-server`.
 ## Non-goals
 
 - Owning GUI window state or rendering.
-- Owning GUI-local conversation graph metadata.
-- Owning Beryl workspace thread catalogs, selected-thread restore, thread selector rows, or thread title authority.
+- Owning Syndic history, Beryl thread metadata, or home-state records.
+- Owning Beryl-home thread catalogs, selected-thread restore, thread selector rows, or thread title authority.
 - Owning shared UI model types that do not depend on backend integration.
 - Owning durable Syndic transcript storage, transcript projection policy, or selected transcript rendering source decisions.
 
@@ -15,10 +15,10 @@ Own Beryl's integration boundary with `codex app-server`.
 ## Launch Ownership
 
 - This crate owns managed host-Windows and WSL-Linux backend launch construction.
-- Host-Windows launch targets `codex app-server`.
-- WSL-Linux launch targets `wsl.exe`, selects the requested distro, sets the requested working directory, and runs a Bash login shell so user-local `PATH` setup is applied before `codex app-server` starts inside WSL.
+- Host-Windows launch executes the caller-supplied validated absolute Codex CLI path directly with `app-server` and never substitutes a `PATH` lookup.
+- WSL-Linux launch targets `wsl.exe`, selects the caller-supplied validated distro, sets the requested working directory, and executes the caller-supplied validated runtime-native Codex CLI path directly with `app-server` inside WSL.
 - Managed app-server launch targets an authenticated loopback WebSocket listener so multiple Beryl backend clients can connect to one Beryl-owned app-server process.
-- Host-Windows managed WebSocket launch binds the app-server to `ws://127.0.0.1:<port>` in the selected workspace directory.
+- Host-Windows managed WebSocket launch binds the app-server to `ws://127.0.0.1:<port>` in the requested execution root.
 - WSL-Linux managed WebSocket launch binds app-server inside the selected distro and assumes the WSL loopback listener is reachable from host Windows on the selected localhost port.
 - This crate owns choosing the managed listener endpoint, constructing the app-server auth flags, creating and cleaning up per-run capability-token files, and preventing raw auth tokens from appearing in process arguments or logs.
 - This crate owns managed backend process supervision for every launch mode it constructs.
@@ -29,7 +29,7 @@ Own Beryl's integration boundary with `codex app-server`.
 
 ## Protocol Boundary
 
-- This crate owns transport I/O, compatibility probing, and normalization of backend events for the rest of the workspace.
+- This crate owns transport I/O, compatibility probing, and normalization of backend events for the other Beryl packages.
 - This crate supplies normalized CAS live events to the CAS-live Syndic transcript system defined in `doc/systems/cas-live-syndic-transcript/design.md`, but does not own Syndic durability, projection, or transcript presentation policy.
 - Compatibility probing is based on the observed initialize handshake plus targeted request validation of required methods and fields.
 - Managed WebSocket is the primary multi-client transport boundary.
@@ -48,17 +48,20 @@ Own Beryl's integration boundary with `codex app-server`.
 - WebSocket transport code must not know JSON-RPC method names, request ids, transcript item schemas, generated-image fields, or backend normalization types.
 - The JSON-RPC session layer owns request id allocation, outstanding-method correlation, notification buffering, response routing, initialize handshake behavior, compatibility probing, and session-level cancellation semantics.
 - Existing typed backend normalization remains the caller-facing boundary after transport reads and JSON-RPC routing complete.
-- This crate does not expose Codex App Server thread-list normalization as a live public boundary. Beryl workspace catalogs, selectors, restore paths, titles, and workspace membership are workspace-plus-Syndic responsibilities, not backend-discovered thread rows.
+- This crate does not expose Codex App Server thread-list normalization as a live public boundary. Beryl-home catalogs, selectors, restore paths, titles, runtimes, roots, and Syndic threads are not backend-discovered rows.
 - Thread-start normalization exposes app-server ephemeral-thread support as an explicit backend protocol capability without deciding which GUI workflows may use it.
 - Thread resume normalization may attach to an exact CAS projection for live execution or control, but it is not selected-thread activation or catalog proof.
-- Thread read normalization is not a Beryl shell catalog, selector, restore, title, or workspace membership authority. Live GUI code must not use metadata-only reads to populate user-visible thread lists.
+- Thread read normalization is not a Beryl shell catalog, selector, restore, title, runtime, root, or Syndic-thread authority. Live GUI code must not use metadata-only reads to populate user-visible thread lists.
 - Thread fork normalization exposes app-server `thread/fork` as creating a backend-owned conversation thread from an existing backend thread without deciding whether the GUI should activate the created thread or how downstream callers should present fork lineage.
 - Thread rollback normalization exposes app-server `thread/rollback` as a backend-owned thread-history mutation targeted by exact thread id and trailing turn count without deciding whether GUI callers use it for branch preparation, source-thread editing, or another history-truncation workflow.
-- Backend request normalization may expose CAS operations needed by fresh execution projection materialization, but this crate does not classify Syndic graph actions, choose context-pack content, or decide when a stale CAS projection is abandoned.
-- Fresh execution projection materialization must cross this crate through an explicit normalized request boundary when app-server supports one. This crate must not smuggle materialized context through ordinary user input, hidden developer instructions, or legacy history mutation on behalf of higher layers.
+- Thread-item injection normalization exposes stable app-server `thread/inject_items` with an exact thread id and ordered raw Responses API item sequence, preserving item order and supported role/content shapes without starting or fabricating a Beryl turn.
+- The normalized injection API accepts only the CAS-live system's closed canonical text-message subset: one user/input-text item or one assistant/output-text item per message, with no arbitrary raw item passthrough, extra fields, unknown types, or CAS-private wrapper conventions.
+- Branch-selection projection uses the canonical assistant/output-text shape because the selected passage originates in assistant output. Recovery history preserves each source message's user or assistant role.
+- The normalized injection boundary reports request success, structured rejection, transport loss, and unknown completion distinctly enough for callers to abandon an ambiguous fresh CAS thread rather than risk duplicate injection.
+- One-time fresh execution-projection recovery crosses the injection boundary only after higher-level orchestration has selected a new empty CAS thread and assembled the exact Syndic-derived item sequence. This crate does not choose the sequence, recovery budget, native-lineage precedence, binding proof, or retry policy.
 - Thread unsubscribe normalization exposes app-server `thread/unsubscribe` and its `notLoaded`, `notSubscribed`, and `unsubscribed` statuses so callers can unload a no-longer-needed loaded thread without treating it as persistent-thread deletion.
 - Thread close notification normalization exposes app-server `thread/closed` as loaded-thread lifecycle state without deciding whether the closed thread was user-visible or a GUI maintenance thread.
-- Thread-name setting normalization is not Beryl thread title authority. Generated and manual Beryl titles are workspace-owned metadata unless a future design explicitly reintroduces backend name publication.
+- Thread-name setting normalization is not Beryl thread title authority. Generated Beryl titles are Beryl-home metadata unless a future design explicitly reintroduces backend name publication.
 - Config-read normalization exposes app-server `config/read` for cwd-scoped model and reasoning configuration fields without deciding GUI fallback or presentation policy.
 - Model-list normalization exposes app-server `model/list`, including model ids, display labels, hidden/default metadata, supported reasoning efforts, and default reasoning effort values without deciding how a GUI presents model selection.
 - Supported reasoning-effort entries from `model/list` are normalized to stable effort identifiers for downstream callers across string, record, and keyed-map wire shapes. If app-server includes additional per-effort metadata, this crate may ignore that metadata until a caller-facing backend contract explicitly needs it.
@@ -94,4 +97,4 @@ Own Beryl's integration boundary with `codex app-server`.
 ## Dependency Boundary
 
 - This crate must not depend on `gpui`.
-- Shared workspace and conversation identity data consumed across crates belongs in `beryl-model`.
+- Shared Beryl identity and presentation values consumed across crates belong in `beryl-model`.

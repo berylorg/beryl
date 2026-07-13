@@ -16,7 +16,7 @@ Contracts:
 
 # Anatomy
 
-The context menu consists of a bordered menu panel, a vertical scroll container, and menu rows.
+The context menu consists of a bordered menu panel, a vertical scroll container, and menu rows. The virtualized-collection variant additionally owns a fixed-row realization window and total scroll extent for caller-unbounded selectable options.
 
 Menu rows are rendered full-width.
 
@@ -38,7 +38,7 @@ Text header rows use a quieter text treatment to separate or label row groups.
 
 # States
 
-Closed, open, focused, scrollable, row-normal, row-hover, row-pressed, row-focused, row-selected, and row-disabled.
+Closed, open, focused, scrollable, static-full-render, virtualized-collection, row-normal, row-hover, row-pressed, row-focused, row-selected, and row-disabled.
 
 # Interaction
 
@@ -58,6 +58,8 @@ Home and End move focus to the first and last interactive rows.
 
 Enter and Space activate the focused interactive row.
 
+Row activation and logical keyboard focus use caller-supplied stable row ids, never realized row indices. In the virtualized-collection variant, keyboard movement reveals and realizes the logically focused row before activation. Same-collection refreshes preserve logical focus, selection, and scroll position when their stable ids remain present.
+
 Disabled command rows must satisfy `disabled-command-tooltip`.
 
 The menu can scroll vertically when its rows exceed the visible height.
@@ -67,6 +69,18 @@ Escape, outside click, or an equivalent dismissal action closes the context menu
 # Layout
 
 The menu is positioned by the owning invocation context.
+
+The default context-menu strategy is static full rendering: every row in one open menu is mounted. This strategy is valid only for a caller-owned command or selection set whose surrounding model contract documents a small maximum row count. The caller must enforce that maximum with a test or source assertion.
+
+The virtualized-collection variant is the menu's picker-style mode for a caller-unbounded set of selectable options. It stores total row count separately, uses one fixed row height, computes a visible logical range from scroll offset and viewport height, realizes only that range plus fixed bounded overscan, and preserves total extent through spacers or an equivalent GPUI list primitive. Row presentation data is range-backed and precomputed outside the row render hot path.
+
+Virtualized collection updates preserve stable row identity, selected-row reveal, logical keyboard focus, scroll position, and row command dispatch. A tooltip or submenu anchored to a row that leaves the realized range closes intentionally. Resize, theme, font-metric, and collection-revision changes reconcile the visible range without mounting the complete collection.
+
+Caller-unbounded command sets or collections that need search, filtering, variable-height rows, retained inputs, or richer picker behavior must use a separate purpose-built virtualized picker or selector. A context menu may contain a bounded command that opens that surface.
+
+Internal scrolling in the default variant only keeps a caller-bounded menu within the available viewport; it does not relax the static row-count bound.
+
+Content-free diagnostics for the virtualized-collection variant expose total row count, realized row count, visible logical range, overscan count, fixed-row strategy, scroll offset, logical-focus presence, selection presence, and range-reconciliation timing. Diagnostics never include row labels, values, commands, or raw stable ids.
 
 The CSS block defines content-derived menu sizing, row sizing, clamping, and internal scrolling.
 
@@ -93,11 +107,12 @@ Spec CSS:
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  block-size: calc(measure("M", var(--font-size), 400) + 2 * var(--padding-y));
+  block-size: calc(measure("M", var(--font-size), var(--font-weight)) + 2 * var(--padding-y));
   inline-size: 100%;
   padding-inline: var(--padding-x);
   gap: var(--gap);
   border-radius: var(--radius);
+  font-weight: var(--font-weight);
   white-space: nowrap;
 }
 
@@ -150,9 +165,9 @@ Spec CSS:
 
 # Variants
 
-Command-only, selection-only, mixed command and selection, grouped, disabled-row, submenu-row, toggle-row, and scrollable.
+Command-only, selection-only, mixed command and selection, grouped, disabled-row, submenu-row, toggle-row, scrollable, static-full-render, and virtualized-collection.
 
-Default variant: mixed command and selection.
+Default variant: mixed command and selection with static full rendering.
 
 # UI Roles
 
@@ -176,6 +191,7 @@ Default variant: mixed command and selection.
   --padding-y: 6px;
   --gap: 8px;
   --radius: 4px;
+  --font-weight: 400;
 }
 
 .context-menu__row[data-state~="hover"] {

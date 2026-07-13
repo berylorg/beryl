@@ -4,7 +4,7 @@ mod syndic_transcript_core;
 use syndic_transcript_core::fixture_provider::InMemorySyndicTranscriptProvider;
 pub(crate) use syndic_transcript_core::*;
 
-mod dynamic_tools {
+mod dynamic_tool_namespace {
     pub(crate) const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
 }
 

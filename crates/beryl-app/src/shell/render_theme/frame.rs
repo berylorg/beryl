@@ -90,7 +90,6 @@ delegate_frame_style! {
     general_ui_background -> gpui::Rgba;
     general_ui_foreground -> gpui::Rgba;
     toolbar_background -> gpui::Rgba;
-    conversation_thread_strip_background -> gpui::Rgba;
     separator_color -> gpui::Rgba;
     primary_button_theme -> ChromeButtonTheme;
     secondary_button_theme -> ChromeButtonTheme;

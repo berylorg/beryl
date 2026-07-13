@@ -109,12 +109,6 @@ fn appearance_theme_overrides(
     );
     insert_color(
         &mut overrides,
-        BerylThemeRole::MainThreadStrip,
-        BerylThemeProperty::Background,
-        &settings.chrome.conversation_thread_strip_background,
-    );
-    insert_color(
-        &mut overrides,
         BerylThemeRole::MainSeparator,
         BerylThemeProperty::Color,
         &settings.chrome.separator,

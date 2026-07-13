@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     thread,
     time::{Duration, Instant},
 };
@@ -9,12 +9,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
-    BerylHomeDir,
     diagnostic_child_control::{
-        DEFAULT_DIAGNOSTIC_THREAD_LIST_LIMIT, DEFAULT_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
+        DEFAULT_DIAGNOSTIC_VISIBLE_ROW_LIMIT, DEFAULT_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
         DEFAULT_DIAGNOSTIC_WAIT_TIMEOUT_MS, DiagnosticStartTurnArguments,
-        DiagnosticStopTurnArguments, DiagnosticThreadListArguments,
-        DiagnosticWaitForStateArguments, DiagnosticWaitPredicate, MAX_DIAGNOSTIC_THREAD_LIST_LIMIT,
+        DiagnosticStopTurnArguments, DiagnosticWaitForStateArguments, DiagnosticWaitPredicate,
         MAX_DIAGNOSTIC_TURN_ID_BYTES, MAX_DIAGNOSTIC_TURN_TEXT_BYTES,
         MAX_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS, MAX_DIAGNOSTIC_WAIT_TIMEOUT_MS,
         MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT, MIN_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
@@ -29,8 +27,7 @@ use crate::{
     gui_control_dynamic_tools::{
         CLOSE_POPUPS_TOOL, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, MAX_SCROLL_REPEAT,
         MAX_SCROLL_WHEEL_DELTA_PX, MAX_UI_VISIBLE_ROW_LIMIT, READ_UI_STATE_TOOL,
-        SCROLL_TRANSCRIPT_TOOL, SWITCH_THREAD_TOOL, SWITCH_WORKSPACE_TOOL,
-        parse_gui_control_tool_request,
+        SCROLL_TRANSCRIPT_TOOL, SWITCH_THREAD_TOOL, parse_gui_control_tool_request,
     },
 };
 
@@ -50,13 +47,11 @@ pub const DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL: &str = "read_media_events";
 pub const DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL: &str =
     "read_transcript_frame_metrics";
 pub const DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL: &str = "read_settings_window";
-pub const DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL: &str = "list_workspace_threads";
 pub const DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL: &str = "create_new_thread";
 pub const DIAGNOSTIC_CHILD_START_TURN_TOOL: &str = "start_turn";
 pub const DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL: &str = "soft_stop_turn";
 pub const DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL: &str = "hard_stop_turn";
 pub const DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL: &str = "wait_for_state";
-pub const DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL: &str = "switch_workspace";
 pub const DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL: &str = "switch_thread";
 pub const DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL: &str = "scroll_transcript";
 pub const DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL: &str = "close_popups";
@@ -109,7 +104,7 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
         ),
         diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_READ_UI_STATE_TOOL,
-            "Read bounded selected workspace, thread, transcript, popup, and background-work UI state from the diagnostic child Beryl.",
+            "Read bounded selected thread, transcript, popup, and background-work UI state from the diagnostic child Beryl.",
             limited_read_schema(MAX_UI_VISIBLE_ROW_LIMIT, DEFAULT_UI_VISIBLE_ROW_LIMIT),
         ),
         diagnostic_child_tool_spec(
@@ -144,11 +139,6 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             empty_object_schema(),
         ),
         diagnostic_child_tool_spec(
-            DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL,
-            "List bounded retained thread inventory for the diagnostic child's selected workspace.",
-            thread_list_schema(),
-        ),
-        diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL,
             "Select a pending new-thread draft in the diagnostic child through the ordinary New Thread path.",
             empty_object_schema(),
@@ -172,11 +162,6 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL,
             "Poll bounded diagnostic child UI or turn state until a predicate matches or times out.",
             wait_for_state_schema(),
-        ),
-        diagnostic_child_tool_spec(
-            DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL,
-            "Switch the diagnostic child Beryl to an exact child-known workspace id through the ordinary workspace activation path.",
-            switch_workspace_schema(),
         ),
         diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL,
@@ -213,13 +198,11 @@ pub fn is_beryl_diagnostic_child_dynamic_tool(request: &DynamicToolCallRequest) 
                 | DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
                 | DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL
                 | DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL
-                | DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
                 | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
                 | DIAGNOSTIC_CHILD_START_TURN_TOOL
                 | DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
                 | DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
                 | DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL
-                | DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL
                 | DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
                 | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
                 | DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL
@@ -249,7 +232,7 @@ pub fn beryl_diagnostic_child_dynamic_tool_shell_response_timeout(
 
 pub(crate) fn dispatch_beryl_diagnostic_child_dynamic_tool_call(
     supervisor: &mut DiagnosticChildSupervisor,
-    supervisor_home: &BerylHomeDir,
+    supervisor_home: &Path,
     request: &DynamicToolCallRequest,
 ) -> DynamicToolCallResponse {
     match diagnostic_child_tool_result(supervisor, supervisor_home, request) {
@@ -286,7 +269,7 @@ fn diagnostic_child_tool_spec(
 
 fn diagnostic_child_tool_result(
     supervisor: &mut DiagnosticChildSupervisor,
-    supervisor_home: &BerylHomeDir,
+    supervisor_home: &Path,
     request: &DynamicToolCallRequest,
 ) -> Result<Value, DiagnosticChildDynamicToolError> {
     validate_namespace(request)?;
@@ -339,12 +322,10 @@ fn diagnostic_child_tool_result(
         | DIAGNOSTIC_CHILD_READ_MEDIA_EVENTS_TOOL
         | DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL
         | DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL
-        | DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL
         | DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL
         | DIAGNOSTIC_CHILD_START_TURN_TOOL
         | DIAGNOSTIC_CHILD_SOFT_STOP_TURN_TOOL
         | DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL
-        | DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL
         | DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL
         | DIAGNOSTIC_CHILD_SCROLL_TRANSCRIPT_TOOL
         | DIAGNOSTIC_CHILD_CLOSE_POPUPS_TOOL => {
@@ -409,13 +390,6 @@ fn child_command_and_params(
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok((DiagnosticChildCommand::ReadSettingsWindow, json!({})))
         }
-        DIAGNOSTIC_CHILD_LIST_WORKSPACE_THREADS_TOOL => {
-            let arguments = parse_arguments::<DiagnosticThreadListArguments>(request.arguments())?;
-            Ok((
-                DiagnosticChildCommand::ListWorkspaceThreads,
-                json!({ "limit": arguments.normalized_limit() }),
-            ))
-        }
         DIAGNOSTIC_CHILD_CREATE_NEW_THREAD_TOOL => {
             parse_arguments::<EmptyArguments>(request.arguments())?;
             Ok((DiagnosticChildCommand::CreateNewThread, json!({})))
@@ -458,11 +432,6 @@ fn child_command_and_params(
             READ_UI_STATE_TOOL,
             request.arguments(),
         ),
-        DIAGNOSTIC_CHILD_SWITCH_WORKSPACE_TOOL => gui_control_child_command(
-            DiagnosticChildCommand::SwitchWorkspace,
-            SWITCH_WORKSPACE_TOOL,
-            request.arguments(),
-        ),
         DIAGNOSTIC_CHILD_SWITCH_THREAD_TOOL => gui_control_child_command(
             DiagnosticChildCommand::SwitchThread,
             SWITCH_THREAD_TOOL,
@@ -495,9 +464,6 @@ fn gui_control_child_command(
     let params = match parsed {
         GuiControlToolRequest::ReadUiState { visible_row_limit } => {
             json!({ "limit": visible_row_limit })
-        }
-        GuiControlToolRequest::SwitchWorkspace(arguments) => {
-            json!({ "workspaceId": arguments.workspace_id })
         }
         GuiControlToolRequest::SwitchThread(arguments) => {
             json!({ "threadId": arguments.thread_id })
@@ -593,25 +559,12 @@ fn wait_predicate_matches(arguments: &DiagnosticWaitForStateArguments, ui_state:
         DiagnosticWaitPredicate::BackendUnavailable => {
             string_field(ui_state, "shellState") == Some("backend_unavailable")
         }
-        DiagnosticWaitPredicate::WorkspaceIdle => {
-            string_field(ui_state, "shellState") == Some("workspace_idle")
-        }
         DiagnosticWaitPredicate::Opening => string_field(ui_state, "shellState") == Some("opening"),
         DiagnosticWaitPredicate::Blocked => string_field(ui_state, "shellState") == Some("blocked"),
-        DiagnosticWaitPredicate::WorkspaceSelected => arguments
-            .workspace_id
-            .as_deref()
-            .is_some_and(|workspace_id| {
-                string_field(ui_state, "selectedWorkspaceId") == Some(workspace_id)
-            }),
         DiagnosticWaitPredicate::ThreadSelected => arguments
             .thread_id
             .as_deref()
             .is_some_and(|thread_id| string_field(ui_state, "selectedThreadId") == Some(thread_id)),
-        DiagnosticWaitPredicate::PendingNewThread => {
-            string_field(ui_state, "shellState") == Some("ready")
-                && ui_state.get("selectedThreadId").is_some_and(Value::is_null)
-        }
         DiagnosticWaitPredicate::SelectedThreadIdle => {
             turn_state_field(ui_state, "selectedThreadState") == Some("idle")
         }
@@ -640,11 +593,6 @@ fn wait_target_identity_matches(
     arguments: &DiagnosticWaitForStateArguments,
     ui_state: &Value,
 ) -> bool {
-    if let Some(workspace_id) = arguments.workspace_id.as_deref()
-        && string_field(ui_state, "selectedWorkspaceId") != Some(workspace_id)
-    {
-        return false;
-    }
     if let Some(thread_id) = arguments.thread_id.as_deref()
         && string_field(ui_state, "selectedThreadId") != Some(thread_id)
     {
@@ -815,7 +763,8 @@ fn bounded_non_empty_argument(
 fn map_supervisor_error(error: DiagnosticChildSupervisorError) -> DiagnosticChildDynamicToolError {
     let message = error.to_string();
     match error {
-        DiagnosticChildSupervisorError::BerylHomeDir(_)
+        DiagnosticChildSupervisorError::InvalidHomePath { .. }
+        | DiagnosticChildSupervisorError::HomePathAccess { .. }
         | DiagnosticChildSupervisorError::HomeCollidesWithSupervisor { .. }
         | DiagnosticChildSupervisorError::InvalidExecutablePath { .. }
         | DiagnosticChildSupervisorError::ExecutablePathAccess { .. } => {
@@ -991,21 +940,6 @@ fn media_events_schema_with_limits(max: usize, default: usize) -> Value {
     })
 }
 
-fn thread_list_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {
-            "limit": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": MAX_DIAGNOSTIC_THREAD_LIST_LIMIT,
-                "default": DEFAULT_DIAGNOSTIC_THREAD_LIST_LIMIT
-            }
-        },
-        "additionalProperties": false
-    })
-}
-
 fn start_turn_schema() -> Value {
     json!({
         "type": "object",
@@ -1053,12 +987,9 @@ fn wait_for_state_schema() -> Value {
                 "enum": [
                     "ready",
                     "backend_unavailable",
-                    "workspace_idle",
                     "opening",
                     "blocked",
-                    "workspace_selected",
                     "thread_selected",
-                    "pending_new_thread",
                     "selected_thread_idle",
                     "selected_thread_active",
                     "selected_thread_compacting",
@@ -1078,10 +1009,6 @@ fn wait_for_state_schema() -> Value {
                 "maximum": MAX_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS,
                 "default": DEFAULT_DIAGNOSTIC_WAIT_POLL_INTERVAL_MS
             },
-            "workspaceId": {
-                "type": "string",
-                "description": "Optional exact selected workspace identity guard."
-            },
             "threadId": {
                 "type": "string",
                 "description": "Optional exact selected thread identity guard."
@@ -1094,26 +1021,10 @@ fn wait_for_state_schema() -> Value {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": MAX_DIAGNOSTIC_WAIT_VISIBLE_ROW_LIMIT,
-                "default": DEFAULT_DIAGNOSTIC_THREAD_LIST_LIMIT
+                "default": DEFAULT_DIAGNOSTIC_VISIBLE_ROW_LIMIT
             }
         },
         "required": ["predicate"],
-        "additionalProperties": false
-    })
-}
-
-fn switch_workspace_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {
-            "workspaceId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": MAX_DIAGNOSTIC_CHILD_STRING_BYTES,
-                "description": "Exact child-known Beryl workspace id."
-            }
-        },
-        "required": ["workspaceId"],
         "additionalProperties": false
     })
 }

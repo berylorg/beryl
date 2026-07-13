@@ -7,10 +7,8 @@ use std::{
 use tracing::warn;
 use wait_timeout::ChildExt;
 
-use beryl_model::workspace::RuntimeMode;
-
 use crate::{
-    BackendLaunchSpec, ManagedBackendError,
+    ManagedBackendError,
     command::{WSL_PROCESS_GROUP_NOT_READY_EXIT_CODE, WslProcessGroupCleanup},
 };
 
@@ -18,7 +16,7 @@ const DROP_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub(crate) struct SupervisedBackendProcess {
-    launch_spec: BackendLaunchSpec,
+    launch_label: String,
     child: Option<Child>,
     host_process_tree: HostProcessTree,
     wsl_process_group: WslProcessGroup,
@@ -26,17 +24,19 @@ pub(crate) struct SupervisedBackendProcess {
 
 impl SupervisedBackendProcess {
     pub(crate) fn new(
-        launch_spec: BackendLaunchSpec,
         child: Child,
+        launch_label: impl Into<String>,
+        supervise_host_process_tree: bool,
+        wsl_process_group_cleanup: Option<WslProcessGroupCleanup>,
     ) -> Result<Self, ManagedBackendError> {
         let mut process = Self {
-            launch_spec,
+            launch_label: launch_label.into(),
             child: Some(child),
             host_process_tree: HostProcessTree::none(),
-            wsl_process_group: WslProcessGroup::none(),
+            wsl_process_group: WslProcessGroup::new(wsl_process_group_cleanup),
         };
 
-        if matches!(process.launch_spec.runtime_mode(), RuntimeMode::HostWindows) {
+        if supervise_host_process_tree {
             let child = process
                 .child
                 .as_ref()
@@ -44,7 +44,6 @@ impl SupervisedBackendProcess {
             process.host_process_tree =
                 HostProcessTree::create_for_child(child, &process.launch_label())?;
         }
-        process.wsl_process_group = WslProcessGroup::from_launch_spec(&process.launch_spec);
 
         Ok(process)
     }
@@ -196,7 +195,7 @@ impl SupervisedBackendProcess {
     }
 
     fn launch_label(&self) -> String {
-        self.launch_spec.launch_program_label().to_string()
+        self.launch_label.clone()
     }
 
     fn status_error(&self, source: io::Error) -> ManagedBackendError {
@@ -237,14 +236,8 @@ struct WslProcessGroup {
 }
 
 impl WslProcessGroup {
-    fn none() -> Self {
-        Self { cleanup: None }
-    }
-
-    fn from_launch_spec(launch_spec: &BackendLaunchSpec) -> Self {
-        Self {
-            cleanup: launch_spec.wsl_process_group_cleanup().cloned(),
-        }
+    fn new(cleanup: Option<WslProcessGroupCleanup>) -> Self {
+        Self { cleanup }
     }
 
     fn terminate(&self, timeout: Duration) -> Result<bool, ManagedBackendError> {

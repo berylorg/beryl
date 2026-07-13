@@ -400,7 +400,7 @@ fn activation_seed_request_respects_start_and_position_placement() {
     let mut core = ResidentTranscriptCore::new(policy_with_limits(4, 16));
     let start = core.begin_activation(TranscriptActivationSeed::new(
         view_id("start-view"),
-        TranscriptActivationSource::ThreadSelector,
+        TranscriptActivationSource::Test,
         TranscriptActivationPlacement::Start,
     ));
     let start_request = start
@@ -418,7 +418,7 @@ fn activation_seed_request_respects_start_and_position_placement() {
     let position = TranscriptViewPosition(42);
     let positioned = core.begin_activation(TranscriptActivationSeed::new(
         view_id("position-view"),
-        TranscriptActivationSource::ThreadGraph,
+        TranscriptActivationSource::Test,
         TranscriptActivationPlacement::Position(position),
     ));
     let positioned_request = positioned

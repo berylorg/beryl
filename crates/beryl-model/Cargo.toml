@@ -6,7 +6,6 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-deunicode.workspace = true
 serde.workspace = true
 
 [dev-dependencies]

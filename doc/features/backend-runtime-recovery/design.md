@@ -1,6 +1,6 @@
 # Goals
 
-Keep Beryl workspaces usable when runtime targets or backend connections are unavailable, while preserving exact backend ownership, security, and thread/runtime bindings.
+Keep Beryl windows and Syndic threads usable when runtimes, roots, or backend connections are unavailable, while preserving exact backend ownership, security, and thread execution bindings.
 
 Let users understand which backend-dependent actions are unavailable, which runtime target is affected, and which recovery actions are available without silently switching context.
 
@@ -8,10 +8,14 @@ Let users understand which backend-dependent actions are unavailable, which runt
 
 - Bundling, installing, or replacing Codex.
 - Exposing operator-managed unauthenticated app-server listeners.
-- Silently switching users to a different backend process, runtime target, workspace member, or thread after failure.
-- Treating backend thread enumeration as the source of workspace identity.
+- Silently switching users to a different backend process, runtime, root, or thread after failure.
+- Treating backend thread enumeration as the source of Beryl thread identity.
 
 # Decisions
+
+## Supplemental Files
+
+- `gui.md` is a normative supplemental GUI composition file for the per-window backend-unavailable notice and Retry command.
 
 ## Implementation References
 
@@ -20,36 +24,38 @@ Let users understand which backend-dependent actions are unavailable, which runt
 
 ## Backend-Unavailable State
 
-- Backend availability is visible per runtime target.
-- Missing `codex`, managed process spawn failure, probe failure, incompatible required capability, or connection loss marks only the affected runtime target backend-unavailable.
-- Backend-unavailable targets disable backend-required operations for that target until successful retry or runtime configuration change.
-- Backend-unavailable state must not detach workspace members, change default runtime, promote another primary member, make the workspace unavailable, or require application exit.
-- Backend-unavailable user-facing states identify the affected runtime target.
+- Backend availability is visible per runtime.
+- Missing or inaccessible configured Codex executable, managed process spawn failure, probe failure, incompatible required capability, or connection loss marks only the affected runtime backend-unavailable.
+- Backend-unavailable runtimes disable backend-required operations for their bound threads until successful retry or runtime configuration recovery.
+- Backend-unavailable state must not erase runtime/root records, change thread bindings, change selected threads, make Syndic history unavailable, or require application exit.
+- Backend-unavailable user-facing states identify the affected runtime.
 
-## Workspace Behavior During Backend Failure
+## Shell Behavior During Backend Failure
 
-- Opening the workspace shell requires only GUI-owned workspace state.
-- Successful startup does not require backend launch, compatibility probing, or backend thread enumeration.
-- If the current primary runtime target cannot launch or probe during startup, Beryl still opens the workspace, keeps workspace/member management available, and disables conversation operations for that target.
-- Workspace selection, workspace picker interaction, default-runtime selection, member attachment, member detachment, and primary-member selection remain available while the primary runtime target is backend-unavailable.
-- Composer submission, new-thread creation, existing-thread activation, thread selector activation, inventory refresh, title generation, backend-derived model/reasoning status, backend-derived context status, context compaction, and turn-control interactions are disabled for the affected backend-unavailable target.
-- A backend-unavailable host-Windows target does not disable usable WSL targets, and a backend-unavailable WSL distro does not disable host-Windows or other WSL distros.
+- Opening the Beryl home and main conversation shells requires no backend launch, compatibility probe, or backend thread enumeration.
+- If a selected thread's runtime cannot launch or probe, Beryl keeps the shell, selected thread, durable draft, thread navigation, runtime/root configuration, and Syndic history available.
+- Composer typing, new empty-thread creation, existing-thread activation, thread selection, and other Fjall-backed operations that require no CAS remain available.
+- Submission, context compaction, turn controls, title-generation maintenance, and other CAS-backed commands are unavailable for affected threads.
+- No thread-rebind command is exposed. An unavailable binding remains exact until its configured runtime and root recover.
+- One backend-unavailable configured executable runtime does not disable other usable executable runtimes, including another runtime in the same Host or WSL environment.
 
 ## Disabled Paths
 
-- Operations that target incompatible or unavailable backends fail or present localized recovery for that target and must not silently switch runtime target, workspace member, backend process, or thread.
+- Operations that target incompatible or unavailable backends fail or present localized recovery and must not silently switch runtime, root, backend process, or thread.
 - Missing branch backend primitives disable branch actions rather than allowing local transcript-copy emulation.
 - Missing edit backend primitives or unprovable rollback scope disable edit actions rather than allowing local transcript mutation emulation.
 - Missing hard-stop support disables only affected hard-stop escalation controls and must not disable soft interruption.
 - CAS historical turn reads are not a user-visible recovery path for selected transcript rendering after CAS-live Syndic capture cutover.
-- If a live stream ends because the user deleted the active turn, no durable transcript turn remains for that deleted work.
-- If a live stream is lost without user-requested active-turn deletion, Beryl preserves explicit incomplete, failed, or unknown-terminal transcript state rather than silently recovering from CAS historical reads.
+- A stopped or lost live stream preserves explicit interrupted, incomplete, failed, or unknown-terminal Syndic turn state rather than deleting work or silently recovering from CAS historical reads.
+- If a stale or lost exclusive CAS projection cannot inject its complete required Syndic prefix once into a fresh CAS thread within the approved and proven budget, submission remains rejected with the draft intact and the window reports that fresh continuation is unavailable because the history is too large or cannot be represented exactly.
 
 ## Connection Loss Recovery
 
-- If the foreground backend connection or managed process is lost, the GUI keeps the current workspace, semantic graph state, checklist selection, runtime state, member state, active transcript selection, and GUI-local drafts intact.
+- If the foreground backend connection or managed process is lost, the GUI keeps Beryl-home state, runtime/root records, selected Syndic thread, active transcript selection, and durable draft intact.
 - If a background backend connection for title generation, inventory refresh, or lazy maintenance fails while the managed process remains usable, Beryl reports or logs only that operation's failure and keeps the active conversation usable.
 - Backend launch, probe, or compatibility failure before a usable connection exists is reported as backend-unavailable for that runtime target, not as application startup failure.
-- On backend disconnect, the GUI presents a blocking recovery path rather than silently switching backend process.
-- Recovery actions may include relaunching a managed backend for the same runtime and resumed thread binding or closing the application instance.
-- The GUI must not silently switch the user to a different backend process after disconnect.
+- Runtime launch, required CAS projection, or foreground connection failure never replaces, hides, or closes an affected main conversation window.
+- Each main conversation window whose selected thread is affected presents its own persistent, non-dismissible backend-unavailable error notice. The notice identifies the affected runtime and exposes a Retry command.
+- Retry targets the same configured runtime, root, backend ownership mode, and exact Syndic thread binding. It may relaunch that managed backend, resume exact native CAS lineage, or establish a fresh projection through one-time recovery injection, but it must not switch the user to another runtime/root binding or silently choose a different Syndic thread.
+- An unsuccessful Retry leaves the notice, selected history, and draft intact. Successful recovery removes the notice only after the selected thread's required CAS-backed operations are usable again.
+- While the notice is present, only affected CAS-backed commands are gated. The main shell, Syndic history, thread navigation, and healthy Fjall-backed draft state remain visible and usable.

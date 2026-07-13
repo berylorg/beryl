@@ -2,7 +2,7 @@
 
 use std::{
     io::{self, BufReader, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::mpsc::{self, Receiver, RecvTimeoutError},
     thread,
@@ -13,14 +13,11 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::{debug, warn};
 
-use crate::{
-    BerylHomeDir, BerylHomeDirError,
-    diagnostic_child_protocol::{
-        BoundedLineRead, DIAGNOSTIC_CHILD_PROTOCOL_NAME, DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
-        DiagnosticChildCommand, DiagnosticProtocolError, DiagnosticProtocolErrorBody,
-        DiagnosticProtocolResponse, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, parse_response_frame,
-        read_bounded_line_bytes, request_frame,
-    },
+use crate::diagnostic_child_protocol::{
+    BoundedLineRead, DIAGNOSTIC_CHILD_PROTOCOL_NAME, DIAGNOSTIC_CHILD_PROTOCOL_VERSION,
+    DiagnosticChildCommand, DiagnosticProtocolError, DiagnosticProtocolErrorBody,
+    DiagnosticProtocolResponse, MAX_DIAGNOSTIC_PROTOCOL_FRAME_BYTES, parse_response_frame,
+    read_bounded_line_bytes, request_frame,
 };
 
 #[path = "diagnostic_child_supervisor/launch.rs"]
@@ -68,8 +65,10 @@ pub(crate) enum DiagnosticChildStatus {
 
 #[derive(Debug, Error)]
 pub(crate) enum DiagnosticChildSupervisorError {
-    #[error("failed to resolve diagnostic child Beryl home: {0}")]
-    BerylHomeDir(#[from] BerylHomeDirError),
+    #[error("invalid diagnostic child Beryl home path {path}: {reason}")]
+    InvalidHomePath { path: PathBuf, reason: &'static str },
+    #[error("failed to inspect diagnostic child Beryl home path {path}: {source}")]
+    HomePathAccess { path: PathBuf, source: io::Error },
     #[error(
         "diagnostic child home {child_home} must be isolated from supervisor home {supervisor_home}"
     )]
@@ -135,7 +134,7 @@ struct DiagnosticChildProcess {
     stdin: ChildStdin,
     stdout_receiver: Receiver<Result<DiagnosticProtocolResponse, DiagnosticProtocolError>>,
     host_process_tree: DiagnosticHostProcessTree,
-    home_dir: BerylHomeDir,
+    home_dir: PathBuf,
     executable_path: PathBuf,
 }
 
@@ -155,7 +154,7 @@ impl Default for DiagnosticChildSupervisor {
 impl DiagnosticChildSupervisor {
     pub(crate) fn start(
         &mut self,
-        supervisor_home: &BerylHomeDir,
+        supervisor_home: &Path,
         launch: DiagnosticChildLaunch,
     ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
         self.start_with_startup_timeout(
@@ -167,7 +166,7 @@ impl DiagnosticChildSupervisor {
 
     fn start_with_startup_timeout(
         &mut self,
-        supervisor_home: &BerylHomeDir,
+        supervisor_home: &Path,
         launch: DiagnosticChildLaunch,
         startup_timeout: Duration,
     ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
@@ -178,11 +177,11 @@ impl DiagnosticChildSupervisor {
             ));
         }
 
-        let child_home = BerylHomeDir::from_explicit_path(launch.child_home().to_path_buf())?;
-        if same_home_path(supervisor_home.root_dir(), child_home.root_dir()) {
+        let child_home = resolved_diagnostic_home_path(launch.child_home())?;
+        if same_home_path(supervisor_home, &child_home) {
             return Err(DiagnosticChildSupervisorError::HomeCollidesWithSupervisor {
-                child_home: child_home.root_dir().to_path_buf(),
-                supervisor_home: supervisor_home.root_dir().to_path_buf(),
+                child_home,
+                supervisor_home: supervisor_home.to_path_buf(),
             });
         }
 
@@ -191,7 +190,7 @@ impl DiagnosticChildSupervisor {
         command
             .arg("--diagnostic-target-stdio")
             .arg("--beryl-home-dir")
-            .arg(child_home.root_dir())
+            .arg(&child_home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -240,7 +239,7 @@ impl DiagnosticChildSupervisor {
     #[cfg(test)]
     pub(crate) fn start_for_test(
         &mut self,
-        supervisor_home: &BerylHomeDir,
+        supervisor_home: &Path,
         launch: DiagnosticChildLaunch,
         startup_timeout: Duration,
     ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
@@ -324,7 +323,7 @@ impl DiagnosticChildSupervisor {
     pub(crate) fn adopt_child_for_test(
         &mut self,
         child: Child,
-        home_dir: BerylHomeDir,
+        home_dir: PathBuf,
         executable_path: PathBuf,
     ) -> Result<(), DiagnosticChildSupervisorError> {
         self.child = Some(DiagnosticChildProcess::from_child_for_test(
@@ -339,7 +338,7 @@ impl DiagnosticChildSupervisor {
     pub(crate) fn retain_startup_failure_child_for_test(
         &mut self,
         child: Child,
-        home_dir: BerylHomeDir,
+        home_dir: PathBuf,
         executable_path: PathBuf,
     ) -> Result<DiagnosticChildStartOutcome, DiagnosticChildSupervisorError> {
         let process =
@@ -481,7 +480,7 @@ impl DiagnosticChildProcess {
     fn identity(&self) -> DiagnosticChildIdentity {
         DiagnosticChildIdentity {
             pid: self.child.id(),
-            home_dir: self.home_dir.root_dir().to_path_buf(),
+            home_dir: self.home_dir.clone(),
             executable_path: self.executable_path.clone(),
         }
     }
@@ -505,7 +504,7 @@ impl DiagnosticChildProcess {
     #[cfg(test)]
     fn from_child_for_test(
         mut child: Child,
-        home_dir: BerylHomeDir,
+        home_dir: PathBuf,
         executable_path: PathBuf,
     ) -> Result<Self, DiagnosticChildSupervisorError> {
         let stdin = child
@@ -734,6 +733,59 @@ fn wait_for_exit(
         }
         thread::sleep(CHILD_WAIT_POLL_INTERVAL);
     }
+}
+
+fn resolved_diagnostic_home_path(path: &Path) -> Result<PathBuf, DiagnosticChildSupervisorError> {
+    if !path.is_absolute() {
+        return Err(DiagnosticChildSupervisorError::InvalidHomePath {
+            path: path.to_path_buf(),
+            reason: "must be absolute",
+        });
+    }
+
+    match std::fs::metadata(path) {
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(DiagnosticChildSupervisorError::InvalidHomePath {
+                path: path.to_path_buf(),
+                reason: "must be a directory",
+            });
+        }
+        Ok(_) => {}
+        Err(source) if source.kind() == io::ErrorKind::NotFound => {}
+        Err(source) => {
+            return Err(DiagnosticChildSupervisorError::HomePathAccess {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    }
+
+    let normalized = normalize_absolute_path(path);
+    Ok(std::fs::canonicalize(&normalized).unwrap_or(normalized))
+}
+
+fn normalize_absolute_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized
+                    .components()
+                    .next_back()
+                    .is_some_and(|component| {
+                        matches!(component, Component::Prefix(_) | Component::RootDir)
+                    })
+                {
+                    normalized.pop();
+                }
+            }
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+    normalized
 }
 
 pub(crate) fn same_home_path(left: &Path, right: &Path) -> bool {

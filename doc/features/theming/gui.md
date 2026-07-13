@@ -1,12 +1,12 @@
 # Theming GUI
 
-This is a normative supplemental GUI composition file for `design.md`. It owns theming feature slot mounts, layout relationships, theme editor composition, and theme-candidate widget composition. Product behavior, theme schema, repository authority, dynamic tools, validation, preview, install, and persistence remain in `design.md`.
+This is a normative supplemental GUI composition file for `design.md`. It owns theming feature slot mounts, external settings-row configuration, theme-editor configuration, and theme-candidate code-panel composition. Product behavior, theme schema, repository authority, dynamic tools, validation, preview, install, and persistence remain in `design.md`.
 
 ## Themes Settings Page
 
-Mount-into: settings-window.body
+Mount-into: settings-window.page-content
 
-The Themes settings page is hosted inside the generic settings window. It appears as the Themes sidebar section and uses ordinary settings-window page layout.
+The Themes settings page is hosted inside the external `settings-window`. It appears as the Themes sidebar section and uses ordinary settings-window page layout and external `settings-row` widgets.
 
 Installed theme rows show theme name, stable id or copy-id action, active or modified state when applicable, and valid actions such as Activate, Rename, Delete, or Edit.
 
@@ -14,36 +14,27 @@ The active theme row exposes Save and Save As when the active theme has staged c
 
 ## Theme Editor Subpage
 
-Mount-into: settings-window.body
+Mount-into: settings-window.page-content
 
 Theme editing opens as a settings subpage from the active theme row. The left settings sidebar remains on Themes, and the editor is not represented as a nested sidebar row.
 
 The editor page header uses standard subpage breadcrumb text shaped as `Themes > <theme name>`. Save and Save As for modified active-theme drafts may appear in the page header as well as on the active theme row. Save and Save As are absent or disabled when there are no staged changes.
 
-The editor body has two vertical regions:
+The page body contains the project-local `theme editor` widget. The page may also contribute non-editor external settings rows, including the Save As name row, through the external page composition. The external settings window continues to own the page header, page scroll, breadcrumb navigation, page actions, settings-row field mechanics, and transient popups.
 
-- A bounded top theme role navigator.
-- A lower selected-role property editor.
+The theming feature supplies the widget with the actual hardcoded UI role schema projection, selected role, stable role and property ids, resolved presentation samples, supported property rows, staged values, and localized validation state. It supplies only real UI role ids; synthetic grouping rows are invalid.
 
-The role navigator presents the actual UI role schema tree as horizontally arranged columns. The first column contains the root role entry. Selecting a role opens the next column for that role's schema children.
+For the selected role, the feature supplies one external `settings-row` per hardcoded supported property. Unsupported role-property combinations are absent. Rows expose the allowed value-source choices, such as concrete value, static parent, ambient parent, or fallback, and expose a concrete value control only when the selected source requires one.
 
-Every navigator row is a real UI role id from the schema tree. Synthetic grouping labels, folder rows, or other non-role navigator items are invalid.
+Property source-choice controls use a down-facing thick triangle visually matched to the theme editor's right-facing child-navigation affordance.
 
-The role navigator owns horizontal scrolling when the role-column trail exceeds visible width. Each role navigator column owns vertical scrolling for role rows that exceed visible column height.
+Static parents remain schema metadata rather than free-form editor fields. Property rows do not add per-row effective-value subtitles. Resolved samples are presentation-only and do not replace explicit property rows. Color-valued properties use the external settings color-input and color-picker path reached through `settings-row`.
 
-The property editor shows the selected role id and one row per hardcoded style property supported by that role. Unsupported role-property combinations are absent from the editor and do not appear through inheritance.
-
-Property rows expose value-source selection, such as concrete value, static parent, ambient parent, or fallback. Concrete value controls appear only when the selected source requires one.
-
-Role static parents are schema metadata displayed through the navigator rather than free-form editor fields. Property rows do not add per-row effective-value subtitles. Resolved samples may appear when useful, but samples are presentation-only and do not replace explicit property rows.
-
-Dropdown source selectors use a down-facing thick triangle glyph visually matched to the step-in triangle family. Step-in navigation continues to use the right-facing thick triangle glyph.
-
-Color-valued properties use the shared settings color input field and in-window color picker mechanics supplied through the settings-window widget family.
+The retained navigator anatomy, selection/focus behavior, nested scrolling, bounded role-row realization, layout, variants, diagnostics, and UI roles are owned only by `doc/gui/widgets/theme-editor/spec.md`. This composition does not redesign the theme hierarchy, inheritance model, editor navigation, or editor workflow.
 
 ## Theme Candidate Code Panel Actions
 
-Mount-into: main-window.transcript-region
+Mount-into: transcript.code-panel-actions
 
 Fenced transcript code blocks with language `beryl-theme` render through the shared project-local `code-panel` widget inside the transcript region.
 

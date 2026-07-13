@@ -2,7 +2,7 @@
 
 This supplemental system doc captures the current model for Syndic's conversation, branching, item, and reference concepts.
 
-It is authoritative for current Syndic vocabulary and accepted model statements. Sections that explicitly say TBD, unresolved, or open question record non-final issues rather than locked behavior.
+It is authoritative for current Syndic vocabulary and accepted model statements.
 
 # Turn DAG
 
@@ -26,15 +26,31 @@ Provider events update turn-owned items, status, metadata, resources, and projec
 
 # Threads
 
-Any turn can be marked as the start of a thread.
+A Syndic thread is a stable named reference over one selected path through the turn DAG.
 
-Thread-starting turns are what the user sees as threads in the UI.
+The thread record owns a stable thread id, one committed conversation-tail turn id when submitted history exists, exactly one current draft id, and a revision covering that mutable binding state.
 
-A thread can have user-facing metadata such as title, archive state, pinned state, timestamps, and workspace binding.
+Walking immutable parent links backward from the committed tail to a root produces the thread's visible submitted conversation path. The current draft is not part of transcript narrative.
 
-The relationship between a thread-starting turn and the visible turn sequence inside that thread is intentionally unresolved.
+Different threads may point to the same committed tail and later diverge by submitting distinct child turns. A turn existing in the DAG never creates a thread by itself.
 
-Thread-scoped DAG view-flattening is TBD. A thread that starts at `B` might eventually show one selected path below `B`, several branch paths below `B`, or a graph-aware view. That policy should be decided separately from the base turn model.
+Generated title, automatic branch-discussion archive state, execution binding, and other application presentation facts are Beryl metadata keyed by Syndic thread id unless a specific Syndic record is named below.
+
+A branch-discussion thread additionally owns the stable parent Syndic thread id used for eventual handoff and the id of the first draft or submitted turn that owns its context envelope. The draft or submitted turn's parent identifies the historical branch point; the parent thread id identifies the mutable handoff destination.
+
+# Current Drafts
+
+Every Syndic thread owns exactly one current draft.
+
+A current draft is durable mutable pre-submission state with a stable id and revision. It owns composer-authored payload plus immutable parentage and an optional immutable typed context envelope.
+
+Ordinary drafts have no branch context. A branch-discussion first draft has the selected source turn as its immutable parent and owns exact selected-text provenance without becoming canonical transcript narrative or starting an execution provider. Beryl may derive one presentation-only synthetic context group at that branch boundary.
+
+Draft autosave may change only composer-authored payload and mutable draft timestamps. Parentage, thread ownership, and context/provenance fields never change after draft creation.
+
+An idle-thread submission transitions the same draft identity into a submitted turn, advances the thread's committed tail, and creates its replacement current draft atomically.
+
+Input accepted while another turn is active or context compaction is running is frozen from the current draft into a durable ordered input fragment or pending-input record owned by that execution lifecycle, then replaced by a new current draft. It does not create a competing active turn.
 
 # Turn Items
 
@@ -74,7 +90,14 @@ Large code blocks should become independently loadable code block resources.
 
 Large Markdown tables should become independently loadable table resources.
 
-Thresholds are TBD, but the intent is that a code block longer than a few short lines or a table larger than a few rows and columns should not be forced into every turn-item page load.
+Inline Markdown projection uses deterministic storage thresholds:
+
+- A paragraph above 16,384 UTF-8 bytes is indexed into source-preserving span chunks whose payload is at most 8,192 UTF-8 bytes, split only at valid source boundaries.
+- A code block is externalized when its body exceeds 4,096 UTF-8 bytes or 64 logical lines. Its inline preview is at most 8 lines and 2,048 UTF-8 bytes.
+- A table is externalized when it exceeds 32 body rows, 12 columns, or 8,192 UTF-8 source bytes. Its inline preview contains the header and at most 4 body rows within 4,096 UTF-8 bytes.
+- One turn-item page carries at most 65,536 UTF-8 bytes of inline Markdown source. Additional large structures are represented through ordered resources rather than enlarging the page.
+
+These are storage and paging thresholds, not visible truncation limits. Exact source remains available through the owning projection or resource.
 
 # Lazy Markdown Widgets
 
@@ -116,28 +139,34 @@ Syndic references should include the resource kind explicitly.
 
 A generic `item` kind should not be used when the referenced object has concrete rendering or loading semantics.
 
-Examples:
+Canonical examples:
 
-- `syndic://turn/<guid>`
-- `syndic://thread/<guid>`
-- `syndic://message/<guid>`
-- `syndic://codeblock/<guid>`
-- `syndic://table/<guid>`
-- `syndic://image/<guid>`
-- `syndic://image/<human_alias>`
-- `syndic://attachment/<guid>`
+- `syndic:///turn/<id>`
+- `syndic:///thread/<id>`
+- `syndic:///message/<id>`
+- `syndic:///codeblock/<id>`
+- `syndic:///table/<id>`
+- `syndic:///image/<id>`
+- `syndic:///attachment/<id>`
+- `syndic:///alias/image/<name>`
 
 The canonical reference for Syndic-owned objects should be ID-based.
 
-The examples use the readable `syndic://kind/<id>` shape.
+Canonical references use the strict `syndic:///kind/<id>` URI shape: scheme `syndic`, empty authority, absolute path, one registered lowercase-ASCII kind segment, and one canonical percent-encoded identifier segment. Parsers reject non-empty authorities, omitted third slashes, dot segments, query strings, fragments, unknown kinds, empty ids, non-canonical percent encoding, and extra path segments.
 
-The exact URI grammar is still TBD. Before implementation, Syndic should decide whether to keep that custom parsing convention or use a stricter URI path form such as `syndic:///kind/<id>`.
+Object ids are globally unique within one Beryl home and never reassigned. A reference is resolved only against that exact home; it cannot address another home or arbitrary filesystem content.
 
-Human-readable aliases can be layered on top of stable IDs where they are useful.
+Human-readable aliases use `syndic:///alias/<kind>/<name>`, are unique within `(Beryl home, kind)` under Unicode normalization and case folding, and never share the canonical object-id grammar.
 
 Aliases are convenience handles that resolve through Syndic.
 
 When a user submits input containing an alias reference, Syndic should resolve it to a concrete ID for that turn. The resolved reference should be captured on the turn so old turns do not silently change if an alias is later retargeted.
+
+Reference resolution enforces the same owning-history and feature authorization as direct typed access. Merely knowing a reference string grants no additional read permission.
+
+Canonical references and captured alias resolutions participate in future reachability analysis, but physical deletion is unavailable. An alias record itself is not proof that otherwise unreachable bytes are safe to retain or delete.
+
+Syndic does not automatically expand a reference into model context. An owning feature or the CAS projection/recovery system must explicitly select bounded metadata, preview text, source ranges, or bytes under its own authority and budgets; otherwise the reference remains ordinary captured text plus typed metadata.
 
 # Heavy Item Storage
 
@@ -155,7 +184,7 @@ Raw model text is not arbitrary binary file generation.
 
 Images are a first-class OpenAI API output mode, and image result bytes or references should become Syndic-addressable generated image items.
 
-Arbitrary files are better modeled as ordinary filesystem outputs created by tools. For example, an agent can write files in a workspace, create archives through a shell or code tool, or produce files in a sandbox/container.
+Arbitrary files are better modeled as ordinary filesystem outputs created by tools. For example, an agent can write files under an execution root, create archives through a shell or code tool, or produce files in a sandbox/container.
 
 Absolute filesystem paths remain the local stable references for those files for now.
 
@@ -193,28 +222,12 @@ They should be rebuildable from canonical provider messages.
 
 # Derived Lineage
 
-Editing a prior user input has two supported lineage shapes.
+Editing a prior user input never changes an existing submitted turn or its parent edge.
 
-If the user keeps the original thread intact, Syndic records a new branch turn whose parent is the edited turn's parent. The new branch does not inherit the original edited turn's descendants.
+For replacement editing, Syndic creates a replacement turn from the edited turn's parent and atomically moves only the selected thread's committed tail and current-draft binding to the replacement path.
 
-If the user chooses replacement editing, Syndic detaches the target turn from its selected-path parent and records one replacement turn from the edited input at that parent.
+The original target and descendants remain immutable durable Syndic turns. They may remain reachable through another thread or become unreachable from every named thread.
 
-Syndic does not support an edit shape that deletes the edited turn and reconnects its original descendants to the edited turn's parent.
-
-The detached target and its descendants remain durable Syndic turns. They may become an isolated graph, or they may remain reachable through another thread view or branch reference.
-
-Syndic does not physically delete detached turns, items, resources, or projections during this rework. The database may grow with isolated unreferenced graphs until a later garbage-collection design is approved.
+Syndic does not physically delete unreachable turns, items, resources, or projections. The database may grow with unreachable records until a later garbage-collection design is approved.
 
 Retry and regenerate are not Beryl product features. Users ask for another attempt by sending another normal input.
-
-# Open Questions
-
-Thread-scoped DAG view-flattening needs refinement.
-
-The `syndic://` namespace needs rules for uniqueness, alias conflicts, permissions, and retention.
-
-The exact `syndic://kind/<id>` versus `syndic:///kind/<id>` URI grammar needs to be decided before implementation.
-
-Markdown projection thresholds need to be defined for paragraph chunking, code block externalization, and table externalization.
-
-The context builder needs a precise policy for when reference metadata, file text, previews, snapshots, or full bytes are included in a model request.

@@ -7,14 +7,9 @@ use std::path::PathBuf;
 use beryl_backend::{DynamicToolCallRequest, DynamicToolSpec};
 use serde_json::Value;
 
-use crate::{AgentPreferences, GuiPreferences, NotificationPreferences, OperationPreferences};
-
-use crate::dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE;
+use crate::dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE;
 pub use parser::parse_beryl_settings_dynamic_tool_request;
-pub use response::{
-    gui_settings_snapshot_value, settings_tool_failure_response, settings_tool_success_response,
-    settings_update_value, settings_validation_value,
-};
+pub use response::{settings_tool_failure_response, settings_tool_success_response};
 
 pub const READ_GUI_SETTINGS_TOOL: &str = "read_gui_settings";
 pub const VALIDATE_GUI_SETTINGS_UPDATE_TOOL: &str = "validate_gui_settings_update";
@@ -23,7 +18,6 @@ pub const UPDATE_GUI_SETTINGS_TOOL: &str = "update_gui_settings";
 pub(super) const MAX_SETTINGS_TOOL_ERROR_BYTES: usize = 512;
 pub(super) const MAX_SETTINGS_TOOL_STRING_BYTES: usize = 64 * 1024;
 pub(super) const MAX_SETTINGS_TOOL_TIMEOUT_STRING_BYTES: usize = 32;
-pub(super) const MAX_SETTINGS_TOOL_INSTALLED_THEME_COUNT: usize = 256;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SettingsDynamicToolRequest {
@@ -88,47 +82,6 @@ pub fn is_beryl_settings_dynamic_tool(request: &DynamicToolCallRequest) -> bool 
             request.tool(),
             READ_GUI_SETTINGS_TOOL | VALIDATE_GUI_SETTINGS_UPDATE_TOOL | UPDATE_GUI_SETTINGS_TOOL
         )
-}
-
-impl GuiSettingsUpdate {
-    pub fn apply_to(
-        &self,
-        current: &GuiPreferences,
-    ) -> Result<GuiPreferences, SettingsDynamicToolError> {
-        let mut next = current.clone();
-        if let Some(operations) = &self.operations
-            && let Some(seconds) = operations.context_compaction_timeout_seconds
-        {
-            next.operations = OperationPreferences::with_context_compaction_timeout_seconds(
-                seconds,
-            )
-            .map_err(|source| {
-                SettingsDynamicToolError::invalid_field(
-                    "operations.contextCompactionTimeoutSeconds",
-                    source.to_string(),
-                )
-            })?;
-        }
-        if let Some(notifications) = &self.notifications
-            && let Some(path) = &notifications.end_turn_sound_path
-        {
-            next.notifications = NotificationPreferences::with_end_turn_sound_path(path.clone())
-                .map_err(|source| {
-                    SettingsDynamicToolError::invalid_field(
-                        "notifications.endTurnSoundPath",
-                        source.to_string(),
-                    )
-                })?;
-        }
-        if let Some(agent) = &self.agent
-            && let Some(developer_instructions) = &agent.developer_instructions
-        {
-            next.agent =
-                AgentPreferences::with_developer_instructions(developer_instructions.clone());
-        }
-        next.validated()
-            .map_err(|source| SettingsDynamicToolError::new("invalid_settings", source.to_string()))
-    }
 }
 
 impl SettingsDynamicToolError {

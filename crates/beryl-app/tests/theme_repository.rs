@@ -4,26 +4,25 @@ mod tempdir_support;
 use std::fs;
 
 use beryl_app::{
-    AppearanceSettings, AppearanceSettingsStore, BerylThemeProperty, BerylThemeRole,
-    InstalledThemeId, MAX_THEME_FONT_FAMILY_BYTES, StylePropertyId, StylePropertySource,
-    StylePropertyValue, ThemeDefinition, ThemeDiagnosticKind, ThemeDocument, ThemeRepositoryError,
-    ThemeRepositoryStore, ThemeResolutionContext, ThemeRoleDefinition,
+    AppearanceSettings, BerylThemeProperty, BerylThemeRole, InstalledThemeId,
+    MAX_THEME_FONT_FAMILY_BYTES, StylePropertyId, StylePropertySource, StylePropertyValue,
+    ThemeDefinition, ThemeDiagnosticKind, ThemeDocument, ThemeRepositoryError,
+    ThemeRepositoryStore, ThemeRoleDefinition,
 };
 
 #[test]
 fn missing_repository_loads_built_in_theme_without_touching_legacy_theme_file() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
-    let legacy_store = AppearanceSettingsStore::new(&root);
-    fs::write(legacy_store.theme_path(), b"legacy theme contents").unwrap();
+    let legacy_theme_path = root.path().join("theme.toml");
+    fs::write(&legacy_theme_path, b"legacy theme contents").unwrap();
 
     let snapshot = store.load_or_default().unwrap();
 
-    assert_eq!(snapshot.active_theme_id().as_str(), "built-in");
     assert_eq!(snapshot.themes().len(), 1);
     assert!(snapshot.themes()[0].is_built_in());
     assert_eq!(
-        fs::read(legacy_store.theme_path()).unwrap(),
+        fs::read(legacy_theme_path).unwrap(),
         b"legacy theme contents"
     );
     assert!(!store.manifest_path().exists());
@@ -31,7 +30,7 @@ fn missing_repository_loads_built_in_theme_without_touching_legacy_theme_file() 
 }
 
 #[test]
-fn save_as_persists_multiple_themes_and_active_identity_across_reload() {
+fn save_as_persists_multiple_installed_themes_across_reload() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
 
@@ -45,7 +44,6 @@ fn save_as_persists_multiple_themes_and_active_identity_across_reload() {
 
     assert_eq!(first.themes().len(), 2);
     assert_eq!(second.themes().len(), 3);
-    assert_eq!(reloaded.active_theme_id().as_str(), "forest");
     assert!(
         reloaded
             .themes()
@@ -61,32 +59,7 @@ fn save_as_persists_multiple_themes_and_active_identity_across_reload() {
 }
 
 #[test]
-fn activating_installed_theme_updates_active_projection_after_reload() {
-    let root = unique_temp_dir();
-    let store = ThemeRepositoryStore::new(&root);
-    store
-        .save_as_theme("Ocean", theme_definition("#102030"))
-        .unwrap();
-    store
-        .save_as_theme("Forest", theme_definition("#203010"))
-        .unwrap();
-
-    let snapshot = store
-        .activate_theme(&InstalledThemeId::from("ocean"))
-        .unwrap();
-    let reloaded = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
-
-    assert_eq!(snapshot.active_theme_id().as_str(), "ocean");
-    assert_eq!(reloaded.active_theme_id().as_str(), "ocean");
-    assert_eq!(
-        active_foreground(&reloaded),
-        StylePropertyValue::color("#102030")
-    );
-    cleanup_temp_dir(root);
-}
-
-#[test]
-fn install_theme_persists_candidate_without_activating_it() {
+fn install_theme_persists_candidate_in_the_repository() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
     store
@@ -98,25 +71,18 @@ fn install_theme_persists_candidate_without_activating_it() {
         .unwrap();
     let reloaded = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
 
-    assert_eq!(snapshot.active_theme_id().as_str(), "ocean");
-    assert_eq!(reloaded.active_theme_id().as_str(), "ocean");
+    assert_eq!(snapshot.themes().len(), 3);
     assert!(
         reloaded
             .themes()
             .iter()
-            .any(|theme| theme.id().as_str() == "candidate"
-                && theme.name() == "Candidate"
-                && !theme.is_active())
-    );
-    assert_eq!(
-        active_foreground(&reloaded),
-        StylePropertyValue::color("#102030")
+            .any(|theme| theme.id().as_str() == "candidate" && theme.name() == "Candidate")
     );
     cleanup_temp_dir(root);
 }
 
 #[test]
-fn deleting_active_theme_recovers_to_first_remaining_theme() {
+fn deleting_installed_theme_removes_its_metadata_and_document() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
     store
@@ -131,8 +97,13 @@ fn deleting_active_theme_recovers_to_first_remaining_theme() {
         .unwrap();
     let reloaded = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
 
-    assert_eq!(snapshot.active_theme_id().as_str(), "ocean");
-    assert_eq!(reloaded.active_theme_id().as_str(), "ocean");
+    assert_eq!(snapshot.themes().len(), 2);
+    assert!(
+        reloaded
+            .themes()
+            .iter()
+            .all(|theme| theme.id().as_str() != "forest")
+    );
     assert!(
         !store
             .theme_document_path(&InstalledThemeId::from("forest"))
@@ -168,7 +139,6 @@ fn corrupt_manifest_and_theme_documents_recover_to_valid_theme_set() {
 
     let snapshot = store.load_or_default().unwrap();
 
-    assert_eq!(snapshot.active_theme_id().as_str(), "built-in");
     assert!(
         snapshot
             .themes()
@@ -225,7 +195,6 @@ fn unsupported_persisted_properties_are_ignored_and_not_reserialized() {
     fs::write(
         store.manifest_path(),
         r#"schema = 1
-active_theme_id = "legacy"
 
 [[theme]]
 id = "legacy"
@@ -287,12 +256,6 @@ background = { value = "#334455" }
 color = { value = "#445566" }
 
 [[role]]
-id = "workspace_picker.row.active"
-foreground = { value = "#556677" }
-color = { value = "#667788" }
-font_weight = { value = 800 }
-
-[[role]]
 id = "media.placeholder"
 foreground = { value = "#778899" }
 background = { value = "#8899aa" }
@@ -352,32 +315,17 @@ font_weight = { value = 790 }
 [[role]]
 id = "settings.button.primary.label"
 font_weight = { value = 640 }
-
-[[role]]
-id = "graph.row.topic"
-foreground = { value = "#5566ff" }
-font_weight = { value = 700 }
-background = { value = "#6677ff" }
-
-[[role]]
-id = "graph.row.topic.text"
-background = { value = "#7788ff" }
-foreground = { value = "#8899ff" }
-
-[[role]]
-id = "checklist.status.todo"
-foreground = { value = "#99aaff" }
-color = { value = "#aabbff" }
 "##,
     )
     .unwrap();
 
     let snapshot = store.load_or_default().unwrap();
 
-    assert_eq!(snapshot.active_theme_id().as_str(), "legacy");
-    assert_eq!(
-        active_foreground(&snapshot),
-        StylePropertyValue::color("#112233")
+    assert!(
+        snapshot
+            .themes()
+            .iter()
+            .any(|theme| theme.id().as_str() == "legacy")
     );
     let definition = store
         .load_theme_definition(&InstalledThemeId::from("legacy"))
@@ -501,25 +449,6 @@ color = { value = "#aabbff" }
         !scrollbar_hover
             .properties()
             .contains_key(&StylePropertyId::from(BerylThemeProperty::Background.id()))
-    );
-    let workspace_active = theme_role(&definition, BerylThemeRole::WorkspacePickerRowActive);
-    assert_eq!(
-        workspace_active
-            .properties()
-            .get(&StylePropertyId::from(BerylThemeProperty::Color.id())),
-        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
-            "#667788"
-        )))
-    );
-    assert!(
-        !workspace_active
-            .properties()
-            .contains_key(&StylePropertyId::from(BerylThemeProperty::Foreground.id()))
-    );
-    assert!(
-        !workspace_active
-            .properties()
-            .contains_key(&StylePropertyId::from(BerylThemeProperty::FontWeight.id()))
     );
     let media_placeholder = theme_role(&definition, BerylThemeRole::MediaPlaceholder);
     assert_eq!(
@@ -680,57 +609,6 @@ color = { value = "#aabbff" }
             StylePropertyValue::font_weight(640)
         ))
     );
-    let graph_topic = theme_role(&definition, BerylThemeRole::GraphRowTopic);
-    assert_eq!(
-        graph_topic
-            .properties()
-            .get(&StylePropertyId::from(BerylThemeProperty::Background.id())),
-        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
-            "#6677ff"
-        )))
-    );
-    assert_eq!(
-        graph_topic
-            .properties()
-            .get(&StylePropertyId::from(BerylThemeProperty::Foreground.id())),
-        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
-            "#5566ff"
-        )))
-    );
-    assert!(
-        !graph_topic
-            .properties()
-            .contains_key(&StylePropertyId::from(BerylThemeProperty::FontWeight.id()))
-    );
-    let graph_topic_text = theme_role(&definition, BerylThemeRole::GraphRowTopicText);
-    assert_eq!(
-        graph_topic_text
-            .properties()
-            .get(&StylePropertyId::from(BerylThemeProperty::Foreground.id())),
-        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
-            "#8899ff"
-        )))
-    );
-    assert!(
-        !graph_topic_text
-            .properties()
-            .contains_key(&StylePropertyId::from(BerylThemeProperty::Background.id()))
-    );
-    let checklist_todo = theme_role(&definition, BerylThemeRole::ChecklistStatusTodo);
-    assert_eq!(
-        checklist_todo
-            .properties()
-            .get(&StylePropertyId::from(BerylThemeProperty::Color.id())),
-        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
-            "#aabbff"
-        )))
-    );
-    assert!(
-        !checklist_todo
-            .properties()
-            .contains_key(&StylePropertyId::from(BerylThemeProperty::Foreground.id()))
-    );
-
     store
         .rename_theme(&InstalledThemeId::from("legacy"), "Renamed")
         .unwrap();
@@ -771,14 +649,6 @@ color = { value = "#aabbff" }
     assert!(
         !role_record_text(&persisted, BerylThemeRole::ScrollbarThumbHover.id())
             .contains("background =")
-    );
-    assert!(
-        !role_record_text(&persisted, BerylThemeRole::WorkspacePickerRowActive.id())
-            .contains("foreground =")
-    );
-    assert!(
-        !role_record_text(&persisted, BerylThemeRole::WorkspacePickerRowActive.id())
-            .contains("font_weight =")
     );
     assert!(
         !role_record_text(&persisted, BerylThemeRole::MediaPlaceholder.id())
@@ -827,22 +697,11 @@ color = { value = "#aabbff" }
         role_record_text(&persisted, BerylThemeRole::SettingsButtonPrimaryLabel.id())
             .contains("font_weight =")
     );
-    assert!(
-        !role_record_text(&persisted, BerylThemeRole::GraphRowTopic.id()).contains("font_weight =")
-    );
-    assert!(
-        !role_record_text(&persisted, BerylThemeRole::GraphRowTopicText.id())
-            .contains("background =")
-    );
-    assert!(
-        !role_record_text(&persisted, BerylThemeRole::ChecklistStatusTodo.id())
-            .contains("foreground =")
-    );
     cleanup_temp_dir(root);
 }
 
 #[test]
-fn old_persisted_separator_border_is_ignored_and_falls_back_to_color() {
+fn old_persisted_separator_border_is_ignored_and_not_reserialized() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
     write_single_theme_repository(
@@ -860,11 +719,11 @@ border = { value = "#ff0000" }
     );
 
     let snapshot = store.load_or_default().unwrap();
-
-    assert_eq!(snapshot.active_theme_id().as_str(), "legacy-separator");
-    assert_eq!(
-        active_separator_color(&snapshot),
-        StylePropertyValue::color("#334155")
+    assert!(
+        snapshot
+            .themes()
+            .iter()
+            .any(|theme| theme.id().as_str() == "legacy-separator")
     );
     let definition = store
         .load_theme_definition(&InstalledThemeId::from("legacy-separator"))
@@ -907,12 +766,18 @@ color = { value = "#010203" }
 "##,
     );
 
-    let snapshot = store.load_or_default().unwrap();
-
-    assert_eq!(snapshot.active_theme_id().as_str(), "mixed-separator");
+    store.load_or_default().unwrap();
+    let definition = store
+        .load_theme_definition(&InstalledThemeId::from("mixed-separator"))
+        .unwrap();
+    let separator = theme_role(&definition, BerylThemeRole::MainSeparator);
     assert_eq!(
-        active_separator_color(&snapshot),
-        StylePropertyValue::color("#010203")
+        separator
+            .properties()
+            .get(&StylePropertyId::from(BerylThemeProperty::Color.id())),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            "#010203"
+        )))
     );
 
     store
@@ -952,10 +817,22 @@ fn repository_write_paths_reject_unsupported_properties_without_mutating() {
     assert_unknown_property_error(update_error);
 
     let reloaded = store.load_or_default().unwrap();
-    assert_eq!(reloaded.active_theme_id().as_str(), "ocean");
+    assert!(
+        reloaded
+            .themes()
+            .iter()
+            .any(|theme| theme.id().as_str() == "ocean")
+    );
+    let ocean = store
+        .load_theme_definition(&InstalledThemeId::from("ocean"))
+        .unwrap();
     assert_eq!(
-        active_foreground(&reloaded),
-        StylePropertyValue::color("#102030")
+        theme_role(&ocean, BerylThemeRole::AppWindow)
+            .properties()
+            .get(&StylePropertyId::from(BerylThemeProperty::Foreground.id())),
+        Some(&StylePropertySource::Concrete(StylePropertyValue::color(
+            "#102030"
+        )))
     );
     assert!(
         !store
@@ -1011,23 +888,20 @@ fn duplicate_discovered_theme_names_are_recovered_deterministically() {
 fn legacy_theme_file_is_preserved_across_repository_operations() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
-    let legacy_store = AppearanceSettingsStore::new(&root);
-    fs::write(legacy_store.theme_path(), b"legacy bytes").unwrap();
+    let legacy_theme_path = root.path().join("theme.toml");
+    fs::write(&legacy_theme_path, b"legacy bytes").unwrap();
 
     store
         .save_as_theme("Ocean", theme_definition("#102030"))
         .unwrap();
     store
-        .activate_theme(&InstalledThemeId::from("ocean"))
+        .rename_theme(&InstalledThemeId::from("ocean"), "Renamed Ocean")
         .unwrap();
     store
         .delete_theme(&InstalledThemeId::from("ocean"))
         .unwrap();
 
-    assert_eq!(
-        fs::read(legacy_store.theme_path()).unwrap(),
-        b"legacy bytes"
-    );
+    assert_eq!(fs::read(legacy_theme_path).unwrap(), b"legacy bytes");
     cleanup_temp_dir(root);
 }
 
@@ -1035,28 +909,6 @@ fn theme_definition(foreground: &str) -> beryl_app::ThemeDefinition {
     let mut settings = AppearanceSettings::default();
     settings.general_ui.foreground = foreground.to_string();
     settings.to_theme_definition().unwrap()
-}
-
-fn active_foreground(snapshot: &beryl_app::ThemeRepositorySnapshot) -> StylePropertyValue {
-    snapshot
-        .active_projection()
-        .resolve_property(
-            BerylThemeRole::AppWindow.id(),
-            BerylThemeProperty::Foreground.id(),
-            &ThemeResolutionContext::new(),
-        )
-        .unwrap()
-}
-
-fn active_separator_color(snapshot: &beryl_app::ThemeRepositorySnapshot) -> StylePropertyValue {
-    snapshot
-        .active_projection()
-        .resolve_property(
-            BerylThemeRole::MainSeparator.id(),
-            BerylThemeProperty::Color.id(),
-            &ThemeResolutionContext::new(),
-        )
-        .unwrap()
 }
 
 fn unsupported_property_definition() -> beryl_app::ThemeDefinition {
@@ -1072,7 +924,6 @@ fn write_single_theme_repository(store: &ThemeRepositoryStore, id: &str, documen
         store.manifest_path(),
         format!(
             r#"schema = 1
-active_theme_id = "{id}"
 
 [[theme]]
 id = "{id}"

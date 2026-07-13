@@ -1,143 +1,166 @@
 # Goals
 
-Build a desktop GUI client for Codex that organizes user work as Beryl-owned semantic workspaces with low memory footprint, responsive UI, and clear ownership between GUI-local state and backend-owned Codex state.
+Build a responsive, low-memory desktop GUI for Codex in which one Beryl home owns durable application state, Syndic owns captured conversation history, and multiple independent conversation windows share process-wide runtime services safely.
+
+Let users create, browse, branch, edit, and resume durable threads without making Codex App Server catalogs or historical reads authoritative and without requiring CAS before the shell can open.
 
 ## Non-goals
 
-- Reimplementing Codex authentication, session storage, configuration, skills, MCP, subagent orchestration, or other non-UI agent behavior in this project.
+- Reimplementing Codex authentication, execution, sandboxing, approvals, configuration, skills, MCP, subagents, or enterprise policy.
 - Restricting the client to Windows only.
-- Guaranteeing that AI-maintained semantic graph updates are always correct without user review or later repair.
-- Making backend conversation history, filesystem roots, or app-server thread inventories the authoritative source of Beryl workspace identity.
-- Providing built-in file diff views, change review workflows, or other agent edit inspection UI in V1.
+- Retaining workspaces, semantic graph, graph upkeep, checklists, or checklist-bound threaded decisions behind renamed models or compatibility adapters.
+- Implementing graph-independent semantic search, turn/resource garbage collection, or the theme hierarchy/editor redesign in the Beryl-home rework.
+- Providing built-in file diff or agent-edit review workflows in V1.
 
 # Decisions
 
 ## Documentation Authority
 
-- Root `doc/design.md` owns project-level goals, non-goals, and global constraints for this workspace project.
-- Feature-owned product behavior, UI contracts, user-visible state, async behavior, and failure behavior are defined in `doc/features/<feature>/design.md`.
-- System-owned internal cross-feature and cross-package architecture is defined in `doc/systems/<system>/design.md`.
-- Package `doc/design.md` files own package public boundary contracts and must not duplicate or contradict feature contracts.
-- `doc/product-features.md` is a navigational index rather than the authority for detailed product behavior.
-- `doc/gui/integration.md` owns Beryl GUI window and slot declarations.
-- `doc/gui/external-specs.md` registers externally owned GUI widget specs visible to Beryl.
-- `doc/gui/widgets/...` owns Beryl-local reusable GUI widget specs and contracts.
-- `doc/features/<feature>/gui.md` owns linked feature GUI composition and slot mounts when a feature needs supplemental GUI structure beyond its `design.md`.
-- `doc/input-hotkeys.md` owns shared baseline text-input behavior. It does not own GUI slots, feature GUI composition, reusable widget anatomy, or widget visual contracts. Feature-specific field behavior belongs in the owning feature doc.
-- Active architectural reworks are tracked under `doc/rework/<name>/REWORK.md`. Rework trackers record archived reference material, cutover boundaries, and exhaustive replacement checklists; target-state design authority remains in the normal feature, system, and package design paths.
+- Root `doc/design.md` owns project-level goals, non-goals, global constraints, and the non-authoritative future-work section after `# Decisions`.
+- `doc/features/<feature>/design.md` owns user-visible behavior, workflows, visible state, disabled and error behavior, and acceptance rules.
+- `doc/systems/<system>/design.md` owns cross-feature and cross-package architecture, durable models, consistency, lifecycle, recovery, and provider integration.
+- Package `doc/design.md` files own only their package's public boundary.
+- `doc/gui/integration.md` owns OS windows and GUI slots; linked feature `gui.md` files own mounted composition.
+- `doc/input-hotkeys.md` owns shared baseline text-input behavior; feature-specific commands remain in feature docs.
+- Active architectural replacements are tracked by `doc/rework/<name>/REWORK.md`, while target-state authority stays in normal feature, system, package, and GUI paths.
 
 ## Feature Design Entry Points
 
-- Workspace startup, workspace identity, workspace picker, runtime environments, workspace members, and workspace persistence are defined in `doc/features/workspaces/design.md`.
-- Backend-unavailable states and user-visible connection-loss recovery are defined in `doc/features/backend-runtime-recovery/design.md`.
-- Conversation thread selection, activation, inventory, binding, branch/edit workflows, automatic thread-title generation, and user-initiated thread-title updates are defined in `doc/features/conversation-threads/design.md`.
-- Threaded decision workflows that bind checklist items to decision child branches, parent handoff turns, resolution outcomes, and child cleanup are defined in `doc/features/threaded-decisions/design.md`.
-- Composer behavior, draft submission, image input, input queues, composer history, quote insertion, and developer-instructions injection on user turns are defined in `doc/features/composer/design.md`.
-- Transcript rendering, visible Markdown behavior, media, selection, quote harvesting, turn context menus, and transcript scroll anchoring are defined in `doc/features/transcript/design.md`.
-- Status line behavior, model/reasoning controls, context/rate-limit display, context compaction controls, and turn stop controls are defined in `doc/features/status-line/design.md`.
-- Activity panel behavior and activity projection are defined in `doc/features/activity-panel/design.md`.
-- Semantic graph, graph overlay, primitive graph tools, graph provenance, and markdown/thread refs are defined in `doc/features/semantic-graph/design.md`.
-- Graph upkeep, graph upkeep instructions, AI-assisted graph maintenance, on-demand source-ref repair, and graph-upkeep write policy are defined in `doc/features/graph-upkeep/design.md`.
-- Semantic search, local knowledge corpus, search dynamic tools, lexical/vector indexing, embedding generation, and search-owned caches are defined in `doc/features/semantic-search/design.md`.
-- Settings window shell, settings rows, settings persistence, and settings dynamic tools are defined in `doc/features/settings/design.md`.
-- Appearance themes, theme repository, Themes settings page, theme candidate code panels, theme dynamic tools, and theme editor authority are defined in `doc/features/theming/design.md`.
-- Workspace notices, turn-error notices, end-turn sounds, and attention-trigger behavior are defined in `doc/features/notifications/design.md`.
-- AI lifecycle yield tool behavior is defined in `doc/features/lifecycle-yield/design.md`.
-- Supervisor diagnostics and diagnostic child control are defined in `doc/features/diagnostics/design.md`.
+- Beryl-home opening, busy-home behavior, unreadable startup, and running store failure are defined in `doc/features/beryl-home/design.md`.
+- Independent main windows, ordinary close, dedicated Exit, session restore, and virtual-desktop placement are defined in `doc/features/main-windows/design.md`.
+- Runtime/CAS unavailability and visible recovery are defined in `doc/features/backend-runtime-recovery/design.md`.
+- Thread creation, executable-path runtime/root configuration, catalog scope, activation, window occupancy, navigation, lineage, generated titles, and the current immutable binding/management boundary are defined in `doc/features/conversation-threads/design.md`.
+- Graph-independent branch discussion and parent resolution handoff are defined in `doc/features/branch-discussions/design.md`.
+- Durable composer behavior, submission, steering/queueing, composer history, quote insertion, and developer-instructions injection are defined in `doc/features/composer/design.md`.
+- Image-asset ownership and visible lifecycle are defined in `doc/features/image-assets/design.md`.
+- Transcript narrative, scrolling, media, selection, quote and branch harvesting, menus, and anchoring are defined in `doc/features/transcript/design.md`.
+- Model/reasoning, context/rate-limit status, compaction, view counts, and stop controls are defined in `doc/features/status-line/design.md`.
+- Bounded live activity is defined in `doc/features/activity-panel/design.md`.
+- Settings-window behavior and Beryl-owned preference persistence are defined in `doc/features/settings/design.md`.
+- Appearance themes, the installed-theme repository, and the retained theme editor are defined in `doc/features/theming/design.md`.
+- Main-window notices and attention sounds are defined in `doc/features/notifications/design.md`.
+- AI lifecycle yield behavior is defined in `doc/features/lifecycle-yield/design.md`.
+- Supervisor and isolated-child diagnostics are defined in `doc/features/diagnostics/design.md`.
 
 ## System Design Entry Points
 
-- Syndic durable conversation history, turn DAGs, references, projections, resources, and replay are defined in `doc/systems/syndic-conversation-history/design.md`.
-- CAS-live Syndic transcript capture, CAS projection bindings, graph-action reflection, durable ingestion of live app-server turn streams, and storage-backed transcript history reads are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
-- Backend runtime launch, listener security, managed app-server lifecycle, capability probing, connection recovery, and protocol ownership are defined in `doc/systems/backend-runtime/design.md`.
-- Transcript presentation internals, residency, renderer demand, shell host boundary, resource admission, diagnostics, and scroll-controller architecture are defined in `doc/systems/transcript-presentation/design.md`.
+- The physical Beryl-home database, typed domains, lock, durability, sessions, claims, catalog, and health gate are defined in `doc/systems/beryl-home-storage/design.md`.
+- Syndic threads, drafts, turn DAG, transcript views, projections, references, resources, and replay are defined in `doc/systems/syndic-conversation-history/design.md`.
+- Exclusive CAS projections, live capture, CAS-native lineage reuse, one-time recovered-history injection, and active-turn coordination are defined in `doc/systems/cas-live-syndic-transcript/design.md`.
+- Branch resolution admission, durable handoff jobs, idempotency, and archive ordering are defined in `doc/systems/branch-discussion-handoff/design.md`.
+- Image content addressing, references, sidecars, and Host/WSL projection are defined in `doc/systems/image-assets/design.md`.
+- Backend runtime launch, listener security, managed lifecycle, capability probing, coalesced warm-up, and connection recovery are defined in `doc/systems/backend-runtime/design.md`.
+- Transcript residency, presentation, renderer demand, resources, diagnostics, and scroll architecture are defined in `doc/systems/transcript-presentation/design.md`.
 - Codex-compatible replacement-agent constraints are defined in `doc/systems/codex-compatible-agent-layer/design.md`.
 
 ## Implementation Technology
 
-- Beryl-owned code must be Rust only.
-- The desktop client is implemented with `gpui`.
-- The application stack must not depend on browser technologies, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native libraries.
-- Beryl may depend on the official `gpui` package or on a fork anchored to upstream Zed `gpui` source when targeted patches are needed to satisfy Beryl's product constraints.
-- GPUI-owned native build dependency set, including transitive C or assembly compilation, remains allowed.
-- A Beryl-maintained GPUI fork must preserve GPUI's public boundary for Beryl and must not be used to remove GPUI-owned build dependencies without an explicit design decision.
-- Beryl's normal dependency on a Beryl-maintained GPUI fork does not require GPUI's HTTP client capability.
-- The fork may gate GPUI-owned HTTP client integration, including `http_client` and `zed-reqwest`, behind an opt-in `gpui` Cargo feature so Beryl builds that do not use GPUI HTTP APIs do not compile that dependency stack.
-- The GPUI HTTP-client feature exception is limited to that dependency set and must preserve GPUI's public HTTP-client boundary for consumers that enable the feature.
-- Beryl consumes the standalone `gpui-text-input`, `gpui-settings-window`, and `gpui-scrollbar` crates for reusable text editing, settings-window mechanics, and scrollbar affordances where practical. Beryl-owned feature code adapts those app-neutral boundaries for Beryl-specific behavior.
+- Beryl-owned code is Rust only.
+- The desktop client uses `gpui` and does not depend on browser technologies, JavaScript toolchains, Node.js, WebView wrappers, or non-Rust native application libraries.
+- Beryl may use the official `gpui` package or a Beryl-maintained fork anchored to upstream Zed `gpui` when targeted patches are required.
+- GPUI-owned transitive native build dependencies remain allowed.
+- A Beryl GPUI fork preserves GPUI's public boundary and may gate GPUI HTTP integration behind an opt-in feature when Beryl does not consume it.
+- Beryl consumes standalone app-neutral `gpui-text-input`, `gpui-settings-window`, and `gpui-scrollbar` packages where practical and keeps product semantics in Beryl-owned adapters.
 
 ## Backend Boundary
 
-- For the current app-server-backed runtime, agent execution, conversation event streams, and Codex-owned state flow through `codex app-server`.
-- For the CAS-live Syndic transcript path, agent execution and policy-sensitive behavior still flow through `codex app-server`, while Beryl captures accepted live turn events into Syndic durable storage for transcript history.
-- Beryl integrates with `codex app-server` as an out-of-process GUI client rather than by directly linking Codex internal crates.
-- Beryl does not bundle or install Codex.
-- Beryl may own narrow GUI-side orchestration using app-server protocol primitives when the app-server protocol does not expose a direct GUI-needed helper.
-- Cross-boundary communication uses the app-server contract rather than direct access to backend storage, process memory, or implementation internals.
-- Syndic-backed transcript presentation consumes Syndic data only through the Beryl-facing provider and residency boundaries defined by the Syndic history and transcript presentation system docs. GPUI render code must not reach through to durable storage, backend process memory, or implementation internals.
-- Authentication, session storage, agent execution, subagents, configuration, skills, MCP state, and other non-UI agent behavior remain backend-owned.
-- App-server live execution event streams remain backend-owned until Beryl captures them. Captured transcript history is Syndic-owned durable state and must not be repopulated from app-server historical transcript reads after the Syndic capture cutover.
-- Beryl may launch and manage app-server processes in V1, but backend process ownership, runtime-target availability, loopback WebSocket auth, capability probing, and recovery behavior are defined by the backend runtime system and recovery feature.
+- Agent execution, live event streams, authentication, sandboxing, approvals, tools, skills, MCP, subagents, managed configuration, and enterprise policy flow through out-of-process `codex app-server`.
+- Beryl does not bundle, install, modify, or directly link Codex internal crates.
+- Beryl may launch and supervise app-server processes and may implement narrow GUI-side orchestration from public protocol primitives.
+- Cross-boundary communication uses the app-server contract rather than Codex storage, process memory, or internal implementation details.
+- Syndic captures accepted live events and becomes durable history authority for captured threads. CAS remains the source of live execution events, not captured transcript reads.
+- Beryl never repopulates captured Syndic history from CAS historical transcript methods.
+- GPUI transcript code consumes Syndic only through the transcript provider and residency boundaries and never reaches durable storage or backend process state directly.
 
 ## Codex App Server Version Invariant
 
-- Each Beryl version targets exactly one Codex App Server contract. This Beryl version is built for `codex-cli 0.137.0` / Codex App Server 0.137.0.
-- Beryl must not carry runtime branches that support older Codex App Server schemas or speculative future schemas. Compatibility checks validate that the configured app-server satisfies the required target contract; they do not choose among multiple implementation paths.
-- If a configured app-server does not satisfy the required target contract, Beryl must report backend incompatibility and stop the affected backend-dependent behavior instead of silently falling back to an older schema.
-- For this target, Beryl validates the app-server version from the `initialize` response userAgent product token that CAS generates as `beryl/<app-server-version>`. Beryl's `clientInfo.version` is the GUI client version echoed later in that userAgent string and is not the CAS version.
-- Upgrading Beryl to a different Codex App Server version requires updating this invariant, the supporting Codex App Server memory notes under `doc/memory/topic/codex-app-server/`, and affected feature docs or tests as one migration. The migration should replace the old single contract rather than layer a new contract beside it.
-- For transcript history in the current 0.137.0 target, Beryl's selected-transcript target is CAS live event capture into Syndic and storage-backed Syndic projection reads as defined by `doc/systems/cas-live-syndic-transcript/design.md`. CAS `thread/turns/list`, full-history `thread/read`, and `thread/turns/items/list` are not live Beryl transcript-history inputs under this rework.
+- This Beryl version targets exactly `codex-cli 0.144.1` / Codex App Server 0.144.1.
+- Beryl carries no runtime branches for older schemas or speculative future schemas.
+- Compatibility validation parses the app-server version from the initialize response user-agent product token and probes every required method and field.
+- The target requires exact CAS-native continuation and fork primitives for the ordinary path, plus stable `thread/inject_items` for one-time recovery when exact CAS lineage cannot be reused.
+- Recovered Syndic history is never a normal per-turn payload. Beryl injects it only into a fresh CAS thread whose native lineage is missing, stale, unavailable, or unprovable, and never repeats that injected prefix on later `turn/start` or `turn/steer` requests.
+- The proven branch-selection channel injects one bounded provenance-framed assistant/output-text item carrying the exact accepted selected passage once before the first branch-local user turn. It does not use `additionalContext`, developer instructions, ordinary user input, or a CAS-private wrapper convention.
+- Generated-schema and dependency evidence for these boundaries is recorded under `doc/memory/topic/codex-app-server/`; compatibility admission additionally requires focused live proof for every load-bearing behavior.
+- An incompatible configured app-server disables affected backend work instead of falling back to another schema.
+- Upgrading the target replaces this single invariant and refreshes its memory evidence, feature/system contracts, normalized package boundary, and tests together.
+- CAS thread lists, thread names, full-history `thread/read`, `thread/turns/list`, and item-history reads are not Beryl catalog, title, restore, or captured-history inputs.
 
 ## Responsibility Split
 
-- The GUI owns presentation, input handling, windowing, desktop integration, semantic workspace state, default-runtime selection, runtime-bound workspace-member registrations, semantic graph state, GUI-local thread refs, thread-title display precedence, automatic and user-initiated thread-title orchestration, derived member-thread inventory snapshots, GUI-local settings, installed themes, and GUI-local persistence.
-- Conversation-history authority remains with the owning history boundary: Syndic for CAS-live histories captured through the Syndic system and storage contracts, and Codex App Server only for backend-owned histories that have not been cut over to Syndic. Beryl rendering, branch/edit UI, titles, and thread links operate through that authority instead of becoming a separate durable history owner.
-- Conversation thread editing mutates backend conversation history only. It must not present or assume rollback of filesystem changes, semantic graph/checklist-item mutations, workspace state, thread-title metadata, durable image assets, in-memory activity records, or other non-history side effects.
-- Deleting or retitling a Beryl workspace changes only GUI-owned workspace state and must not delete or mutate backend-owned Codex thread history.
-- Deleting semantic graph nodes changes only GUI-owned semantic graph state and must not delete or mutate backend-owned Codex thread history.
-- User-facing backend status metadata is presentation state derived from exact app-server responses, notifications, and GUI-held projections. Missing backend fields render as unknown or are omitted rather than guessed.
-- User-facing activity is transient presentation state derived from backend execution stream notifications and bounded GUI-derived records. It is not backend conversation history or durable workspace content.
-- User-visible turn-completion and lifecycle notifications are GUI-local desktop notification side effects and must not affect backend turn completion semantics.
+- Syndic owns stable threads, exactly one current durable draft per thread, submitted turns, immutable parentage, canonical captured events, transcript projections, resources, and exclusive CAS projection bindings.
+- Beryl-home state owns executable-path runtimes, configured roots, per-thread execution bindings and presentation metadata, generated titles, automatic branch-discussion archive state, window/session records, settings, installed themes, asset references, durable host jobs, and compact catalog projections.
+- CAS owns live execution and all Codex policy-sensitive behavior.
+- Main windows own only their selection, navigation, presentation, focus, transient interaction, and in-memory editing projection over the selected durable draft.
+- Resident transcript data, activity records, caches, diagnostics, and render state are bounded runtime projections and never replace durable authority.
+- Thread editing changes one selected Syndic path. It never promises rollback of filesystem changes, settings, assets, activity records, other threads, or external side effects.
+- Beryl exposes no manual thread deletion or automatic empty-thread cleanup; durable turns and resources remain until a future explicit management and garbage-collection design.
 
 ## Cross-Feature Safety Rules
 
-- Beryl must not silently switch a requested operation to another runtime target, workspace member, backend process, thread, turn, or stop target when the requested target cannot be used exactly.
-- Beryl must not start synthetic backend turns, send synthetic user input, or mutate backend history solely to refresh status chrome, apply model/reasoning choices, or decorate activity rows.
-- Beryl must not emulate missing backend fork, rollback, resume, or edit primitives by copying backend-owned transcript history into GUI-local state.
-- Beryl must not use stale GUI-local projections or caches of backend-owned conversation history to generate correctness-sensitive user input. When generated input depends on backend history, Beryl must validate against current backend state or block the operation.
-- Beryl must not terminate guessed OS pids, process names, working directories, or local process trees. Hard-stop behavior requires exact backend-exposed handles.
-- If `codex app-server` requests user approval during a Beryl-managed turn, V1 denies the request, prefers a denial response that interrupts when the protocol supports it, logs the full backend approval request payload for diagnostics, and avoids leaving the turn waiting indefinitely.
-- Turn execution stream inactivity is not itself backend failure. Request and probe timeouts apply to bounded JSON-RPC requests; active streams may remain quiet until terminal events, protocol error, transport disconnect, or backend process exit.
+- Beryl never silently substitutes another Beryl home, runtime, root, backend process, Syndic thread, CAS thread, turn, window, parent, or stop target when the requested identity cannot be used exactly.
+- Beryl never starts synthetic backend turns solely to refresh status chrome, apply pending model settings, enumerate history, or decorate activity rows.
+- Beryl never copies CAS transcript history into a local compatibility model to emulate missing branch, edit, rollback, resume, or materialization behavior.
+- Beryl does not satisfy an architectural contract through lossy encoding, repeated context replay, duplicated authority, undocumented fallback behavior, compatibility glue, or another expedient workaround. If an exact clean design cannot be supported by the targeted dependency boundary, work stops at an explicit architectural blocker until the controlling authority changes.
+- A resilience fallback may run only when its exact primary path is unavailable or unprovable. It must not quietly replace the primary path merely because it is easier to implement.
+- Correctness-sensitive generated input uses current authoritative Syndic and Beryl-home revisions or rejects; stale projections and caches are insufficient.
+- Hard stop requires exact backend-exposed handles and never guesses OS pids, process names, working directories, or process trees.
+- V1 denies app-server approval requests during Beryl-managed turns, prefers a denial that interrupts when supported, logs bounded redacted diagnostic evidence, and avoids leaving turns waiting indefinitely.
+- Quiet live streams are not failures. Bounded request timeouts do not impose an inactivity timeout on active streams.
 
 ## Persistence
 
-- The configured Beryl home directory owns GUI-controlled durable app state, including shared cross-workspace metadata, workspace-scoped state, workspace image assets, `preferences.toml`, and the installed theme repository.
-- The Beryl home directory does not own backend-managed Codex authentication, session storage, configuration, skills, MCP state, or conversation execution history.
-- Changing the configured Beryl home directory does not change any runtime environment's home directory used for implicit workspace members.
-- GUI-owned user settings persist separately from backend-owned Codex configuration.
-- Workspace-scoped GUI-local state is stored under the Beryl home directory's `workspaces/` child.
-- Workspace-scoped GUI-local state must use an embedded pure-Rust storage engine.
-- The design does not require multiple GUI instances to perform concurrent writes to the same workspace-scoped state store, because one GUI instance owns one workspace at a time.
-- Mutable GUI-local cursors such as active workspace selection, active thread selection, window state, and splitter positions may use last-write-wins semantics across GUI instances.
-- Captured transcript history moves into Syndic storage only through the Syndic system and storage contracts. Backend-owned conversation contents and execution history must not move into GUI-local settings or unrelated GUI-local state storage.
-- Resident transcript presentation data, including resident Syndic data used by the transcript renderer, is a bounded GUI-side projection of the selected conversation-history authority and is not durable history.
-- Derived projections and caches are not authoritative when they can be rebuilt from backend data plus GUI-local metadata.
+- The configured Beryl home contains all Beryl-owned durable state and exactly one physical Fjall database for Syndic and Beryl metadata domains.
+- Logical ownership remains separated by typed keyspaces and APIs even though the physical database is shared.
+- Beryl-home sidecars contain durable image and heavy Syndic resources; installed theme documents remain in the home theme repository.
+- Beryl does not store Codex authentication, Codex configuration, skills, MCP state, capability tokens, or backend-owned policy state.
+- One OS process owns a home at a time; multiple main windows share that process and store.
+- Correctness-sensitive accepted mutations complete the durability barrier defined by the Beryl-home storage system before they are reported saved.
+- Old workspace-era persisted state is not read, imported, dual-written, or adapted by the target architecture.
+- Derived catalog, transcript-presentation, search, media, activity, and diagnostic projections are not authoritative when their source records can rebuild them.
 
 ## Responsiveness And Performance
 
-- UI responsiveness, including input latency and render latency, is a first-order design constraint rather than deferred polish.
-- Beryl UI must not flicker. Asynchronous work must not blank, swap out, or replace established user-visible content with transient loading placeholders or temporary `Opening ...` labels when the prior content can remain coherent until the replacement content is ready to apply.
-- Beryl UI must not introduce flicker through transient viewport changes. When asynchronous work replaces a coherent UI region such as the selected transcript, the replacement content and its initial viewport state must apply as one transaction; render, prepaint, deferred, or post-frame callbacks must not revise that activation-owned viewport after the first visible frame.
-- RAM efficiency and CPU efficiency are first-order design constraints.
-- The application must not perform blocking filesystem, process, network, parsing, image decoding, persistence, or backend protocol work on the thread that drives `gpui`.
-- Interactive code paths must avoid avoidable algorithmic complexity cliffs as transcript size, semantic graph size, workspace count, or backend event volume grows.
-- Any Beryl-owned runtime data structure retaining data derived from user input, backend events, filesystem contents, workspace contents, generated output, dependency callbacks, or other externally variable sources must have deterministic growth bounds unless the retained data is exact durable domain state.
-- Caches, queues, projections, maps, histories, retry sets, diagnostic buffers, media stores, and dependency-facing handles must either enforce deterministic limits or be documented as exact durable domain state.
-- Expensive recomputation on hot paths should be replaced with reasonable caching or incremental maintenance when necessary for responsiveness.
-- Background backend clients must be bounded, cancellable, and lower priority than foreground turn streaming and transcript activation.
-- Implementation work must prefer predictable latency and bounded resource use over shortcuts that compromise responsiveness.
+- Input and render latency, RAM use, and CPU use are first-order constraints.
+- The GPUI thread performs no blocking filesystem, process, network, parsing, image decode, persistence, or backend protocol work.
+- Established coherent content remains visible during asynchronous replacement whenever possible; Beryl does not flicker through temporary blank or opening surfaces.
+- Selected-thread content and its initial viewport publish in one transaction and are not corrected by later render callbacks.
+- Complete catalog metadata may reside in memory as exact compact domain state, while GUI row construction remains fixed-height and virtualized.
+- Every externally variable runtime cache, queue, projection, history, retry set, diagnostic buffer, media store, and dependency-facing handle has deterministic count and byte bounds unless it is exact durable domain state.
+- Background work is bounded, cancellable, and lower priority than foreground turn streaming and selected transcript activation.
+- Implementation favors predictable latency and explicit rejection over unbounded retention or hidden fallback work.
 
 ## Platform Targeting
 
-- Windows is the primary target platform for product quality and developer attention.
-- The design must preserve the ability to run the GUI on other platforms supported by `gpui` when the backend boundary permits it.
+- Windows is the primary product-quality and developer-attention target.
+- The architecture preserves operation on other GPUI-supported platforms when the backend and windowing boundaries permit it.
+
+# TODO
+
+This section is a non-authoritative issue-tracker substitute. Items here express future intent and provisional constraints only. They must be reviewed and promoted into authoritative feature and system docs before implementation.
+
+## Semantic Search
+
+- Reintroduce semantic search after the Beryl-home rework is complete.
+- The future feature should search documents and conversation history without depending on semantic graph records or graph-derived ranking.
+- No current semantic-search feature design or implementation remains live merely to preserve this intent.
+
+## Theme Hierarchy And Editor
+
+- After the Beryl-home rework closes, redesign the theme role hierarchy and the theme editor's presentation of inheritance.
+- Preserve the ability to configure every intended GUI piece and to inherit style properties between roles.
+- Do not treat the current hierarchy or editor navigation as automatically preserved target behavior.
+
+## Collect Garbage
+
+- Design an explicit user-invoked operation for proving and reclaiming unreachable Syndic turns, projections, sidecars, image assets, abandoned CAS provenance, and related Beryl metadata.
+- Until that design exists, any future thread/reference removal must retain underlying durable records and bytes.
+
+## Runtime, Root, And Thread Management
+
+- Design explicit removal of configured Codex executable runtimes and roots after the Beryl-home rework.
+- Design explicit rebinding of an existing thread to another runtime/root without weakening exact history, draft, and CAS-projection identity.
+- Reconsider manual thread rename, pin, archive, and delete commands only as later product work. The current rework retains automatic generated titles and automatic branch-discussion archive after successful handoff.
+
+## Later Navigation Exploration
+
+- Consider branch-sibling visualization and click-to-focus for threads already open in another main window without changing the immediate flat recent-first selector contract.

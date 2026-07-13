@@ -3,12 +3,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    diagnostic_dynamic_tools::{RuntimeTargetDiagnostic, VisibleMediaSnapshot},
-    dynamic_tools::BERYL_DYNAMIC_TOOL_NAMESPACE,
+    diagnostic_dynamic_tools::VisibleMediaSnapshot,
+    dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE,
 };
 
 pub(crate) const READ_UI_STATE_TOOL: &str = "read_ui_state";
-pub(crate) const SWITCH_WORKSPACE_TOOL: &str = "switch_workspace";
 pub(crate) const SWITCH_THREAD_TOOL: &str = "switch_thread";
 pub(crate) const SCROLL_TRANSCRIPT_TOOL: &str = "scroll_transcript";
 pub(crate) const CLOSE_POPUPS_TOOL: &str = "close_popups";
@@ -25,9 +24,7 @@ const MAX_CONTROL_STRING_BYTES: usize = 512;
 pub(crate) struct UiStateSnapshot {
     pub shell_state: String,
     pub selected_surface: String,
-    pub selected_workspace_id: Option<String>,
     pub selected_thread_id: Option<String>,
-    pub selected_runtime_target: Option<RuntimeTargetDiagnostic>,
     pub backend_unavailable: Option<BackendUnavailableUiState>,
     pub turn_state: TurnUiState,
     pub transcript: TranscriptUiState,
@@ -36,7 +33,6 @@ pub(crate) struct UiStateSnapshot {
     pub activity_panel: ActivityPanelUiState,
     pub popups: PopupUiState,
     pub background_work: BackgroundWorkUiState,
-    pub pending_activation: Option<PendingActivationUiState>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -44,7 +40,6 @@ pub(crate) struct UiStateSnapshot {
 pub(crate) struct BackendUnavailableUiState {
     pub kind: String,
     pub message: String,
-    pub runtime_target: RuntimeTargetDiagnostic,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -85,8 +80,6 @@ pub(crate) struct TranscriptUiState {
     pub presentation_range: Option<UiRangeDiagnostic>,
     pub scroll_position: TranscriptScrollPositionDiagnostic,
     pub user_scrolled: bool,
-    pub pending_thread_activation_label: Option<String>,
-    pub pending_thread_activation_progress: Option<f32>,
     pub older_history_loading: bool,
     pub visible_rows: Vec<VisibleTranscriptRowDiagnostic>,
     pub visible_row_count: usize,
@@ -159,13 +152,6 @@ pub(crate) struct ActivityPanelUiState {
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PopupUiState {
-    pub workspace_picker_open: bool,
-    pub workspace_picker_row_action_menu_open: bool,
-    pub workspace_picker_member_action_menu_open: bool,
-    pub workspace_picker_runtime_selector_open: bool,
-    pub workspace_picker_rename_editor_open: bool,
-    pub thread_selector_open: bool,
-    pub graph_thread_link_menu_open: bool,
     pub transcript_branch_menu_open: bool,
     pub status_line_operations_open: bool,
     pub composer_image_popup_open: bool,
@@ -178,84 +164,7 @@ pub(crate) struct PopupUiState {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BackgroundWorkUiState {
     pub backend_work_receivers: usize,
-    pub thread_activation_pending: bool,
     pub turn_stream_pending: bool,
-    pub workspace_transition_pending: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PendingActivationUiState {
-    pub pending_label: Option<String>,
-    pub pending_thread_id: Option<String>,
-    pub pending_progress: Option<f32>,
-    pub staged_thread_id: Option<String>,
-    pub staged_source: Option<String>,
-    pub staged_metadata_turn_count: Option<usize>,
-    pub ready_for_publication: Option<bool>,
-    pub progress_cap: Option<f32>,
-    pub presentability: Option<PendingActivationPresentabilityUiState>,
-    pub media_admission: Option<PendingActivationMediaAdmissionUiState>,
-    pub prepublication_preparation: Option<PendingActivationPrepublicationUiState>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PendingActivationPresentabilityUiState {
-    pub row_count: usize,
-    pub presentable_rows: usize,
-    pub missing_full_detail_rows: usize,
-    pub markdown_plan_pending_rows: usize,
-    pub completed_media_pending_rows: usize,
-    pub terminal_fallback_media_items: usize,
-    pub live_pending_placeholder_items: usize,
-    pub structural_readiness_settled: bool,
-    pub presentable: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PendingActivationMediaAdmissionUiState {
-    pub row_count: usize,
-    pub completed_media_items: usize,
-    pub ready_completed_media_items: usize,
-    pub pending_completed_media_items: usize,
-    pub terminal_fallback_completed_media_items: usize,
-    pub scheduled_loads: usize,
-    pub source_backed_preloads: usize,
-    pub requested_upload_bytes: usize,
-    pub scan_start_row_index: usize,
-    pub scan_start_item_index: usize,
-    pub scanned_rows: usize,
-    pub scanned_media_items: usize,
-    pub deferred_completed_media_items: usize,
-    pub prefix_recheck_required: bool,
-    pub waiting_on_prefix_media: bool,
-    pub rows_budget_exhausted: bool,
-    pub media_budget_exhausted: bool,
-    pub time_budget_exhausted: bool,
-    pub settled: bool,
-    pub requires_retry: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PendingActivationPrepublicationUiState {
-    pub has_layout: bool,
-    pub row_count: usize,
-    pub prepared_rows: usize,
-    pub pending_rows: usize,
-    pub prepared_block_units: usize,
-    pub prepared_media_items: usize,
-    pub preparation_bytes: usize,
-    pub rows_budget_exhausted: bool,
-    pub block_budget_exhausted: bool,
-    pub media_budget_exhausted: bool,
-    pub byte_budget_exhausted: bool,
-    pub time_budget_exhausted: bool,
-    pub in_flight_budget_exhausted: bool,
-    pub settled: bool,
-    pub requires_retry: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -263,15 +172,6 @@ pub(crate) struct PendingActivationPrepublicationUiState {
 pub(crate) struct SwitchThreadResult {
     pub status: String,
     pub thread_id: String,
-    pub message: Option<String>,
-    pub ui_state: UiStateSnapshot,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SwitchWorkspaceResult {
-    pub status: String,
-    pub workspace_id: String,
     pub message: Option<String>,
     pub ui_state: UiStateSnapshot,
 }
@@ -301,11 +201,6 @@ pub(crate) struct SwitchThreadArguments {
     pub thread_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SwitchWorkspaceArguments {
-    pub workspace_id: String,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ScrollTranscriptArguments {
     pub command: ScrollTranscriptCommand,
@@ -325,7 +220,6 @@ pub(crate) enum ScrollTranscriptCommand {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum GuiControlToolRequest {
     ReadUiState { visible_row_limit: usize },
-    SwitchWorkspace(SwitchWorkspaceArguments),
     SwitchThread(SwitchThreadArguments),
     ScrollTranscript(ScrollTranscriptArguments),
     ClosePopups,
@@ -337,11 +231,7 @@ pub(crate) fn is_beryl_gui_control_dynamic_tool(request: &DynamicToolCallRequest
         .is_none_or(|namespace| namespace == BERYL_DYNAMIC_TOOL_NAMESPACE)
         && matches!(
             request.tool(),
-            READ_UI_STATE_TOOL
-                | SWITCH_WORKSPACE_TOOL
-                | SWITCH_THREAD_TOOL
-                | SCROLL_TRANSCRIPT_TOOL
-                | CLOSE_POPUPS_TOOL
+            READ_UI_STATE_TOOL | SWITCH_THREAD_TOOL | SCROLL_TRANSCRIPT_TOOL | CLOSE_POPUPS_TOOL
         )
 }
 
@@ -363,13 +253,6 @@ pub(crate) fn parse_gui_control_tool_request(
             Ok(GuiControlToolRequest::ReadUiState {
                 visible_row_limit: arguments.limit.unwrap_or(DEFAULT_UI_VISIBLE_ROW_LIMIT),
             })
-        }
-        SWITCH_WORKSPACE_TOOL => {
-            let arguments = parse_arguments::<SwitchWorkspaceSchemaArguments>(arguments)?;
-            let workspace_id = bounded_non_empty_argument("workspaceId", arguments.workspace_id)?;
-            Ok(GuiControlToolRequest::SwitchWorkspace(
-                SwitchWorkspaceArguments { workspace_id },
-            ))
         }
         SWITCH_THREAD_TOOL => {
             let arguments = parse_arguments::<SwitchThreadSchemaArguments>(arguments)?;
@@ -467,12 +350,6 @@ struct EmptyArguments {}
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LimitedReadArguments {
     limit: Option<usize>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SwitchWorkspaceSchemaArguments {
-    workspace_id: String,
 }
 
 #[derive(Deserialize)]

@@ -2,14 +2,12 @@
 
 This is a normative supplemental GUI composition file for `design.md`. It owns notification feature slot mounts, layout relationships, and widget composition. Product behavior, notice queueing, sound eligibility, lifecycle notification policy, and failure handling remain in `design.md`.
 
-## Main Workspace Notices
+## Main Conversation Notices
 
 Mount-into: main-window.overlays
 
-Notices mount in the main overlay layer near the top-right of the workspace window below the toolbar and thread strip.
+The feature mounts one project-local [`main-window notice`](../../gui/widgets/main-window-notice/spec.md) near the top-right of the conversation window below the toolbar and any visible thread-lineage strip. The widget owns one visible notice's anatomy, bounded selectable detail, close-control placement, overlay anchoring, replacement continuity, warning/error/info treatment, and content-free diagnostics.
 
-The notice container renders at most one active notice at a time. It is bounded to the OS window and does not shift the toolbar, thread strip, transcript region, activity panel, composer panel, or status line.
+The feature supplies at most one active bounded notice record from its FIFO queue, including stable notice identity, content revision, title, detail, variant, and exact dismissal effect. Queue caps, deduplication, coalescing, ordering, and the decision to advance after dismissal remain in `design.md`; queued records are not mounted behind the visible widget.
 
-Notice anatomy includes title, detail text, optional variant treatment, and a visible close action. Notice text supports ordinary text selection and copy.
-
-Warning, error, and info variants resolve background, border, foreground, and close-control treatment from active theme notice roles.
+Replacing or dismissing the visible notice does not shift the toolbar, thread-lineage strip, transcript region, activity panel, composer panel, or status line. When dismissal advances the queue, the feature supplies the next notice as a replacement in the same overlay anchor.

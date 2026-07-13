@@ -30,12 +30,6 @@ impl AppearanceSettings {
                     BerylThemeProperty::Background,
                     "#020617",
                 ),
-                conversation_thread_strip_background: color(
-                    theme,
-                    BerylThemeRole::MainThreadStrip,
-                    BerylThemeProperty::Background,
-                    "#091220",
-                ),
                 separator: color(
                     theme,
                     BerylThemeRole::MainSeparator,

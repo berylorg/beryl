@@ -1,10 +1,9 @@
 use std::time::{Duration, Instant};
 
-use beryl_backend::{BackendConfigDefaults, HardStopTarget, HardStopTargetOutcome, ModelInfo};
-use beryl_model::workspace::WorkspaceId;
+use beryl_backend::{HardStopTarget, HardStopTargetOutcome, ModelInfo};
 use gpui::{Bounds, Pixels, Point};
 
-use super::status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets, ThreadTurnDefaults};
+use super::status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets};
 
 pub(crate) const HARD_STOP_HOLD_DURATION: Duration = Duration::from_secs(3);
 
@@ -86,10 +85,7 @@ pub(crate) struct HardStopHoldState {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct StatusModelListCache {
-    target: Option<WorkspaceId>,
-    loading_target: Option<WorkspaceId>,
     models: Option<Vec<ModelInfo>>,
-    config_defaults: Option<BackendConfigDefaults>,
     loading: bool,
     last_error: Option<String>,
 }
@@ -468,10 +464,6 @@ impl HardStopHoldState {
 }
 
 impl StatusModelListCache {
-    pub(crate) fn target(&self) -> Option<&WorkspaceId> {
-        self.target.as_ref()
-    }
-
     pub(crate) fn models(&self) -> Option<&[ModelInfo]> {
         self.models.as_deref()
     }
@@ -484,92 +476,31 @@ impl StatusModelListCache {
         self.last_error.as_deref()
     }
 
-    pub(crate) fn begin_loading_for(&mut self, target: WorkspaceId) {
-        if self.target.as_ref() != Some(&target) {
-            self.models = None;
-            self.config_defaults = None;
-        }
-        self.target = Some(target.clone());
-        self.loading_target = Some(target);
+    pub(crate) fn begin_loading(&mut self) {
+        self.models = None;
         self.loading = true;
         self.last_error = None;
     }
 
-    #[cfg(test)]
     pub(crate) fn finish_loaded(&mut self, models: Vec<ModelInfo>) {
-        self.finish_loaded_with_config(models, BackendConfigDefaults::default());
-    }
-
-    pub(crate) fn finish_loaded_for_target(
-        &mut self,
-        target: WorkspaceId,
-        models: Vec<ModelInfo>,
-        config_defaults: BackendConfigDefaults,
-    ) {
-        self.loading_target = None;
-        self.target = Some(target);
-        self.config_defaults = Some(config_defaults);
         self.models = Some(models);
         self.loading = false;
         self.last_error = None;
     }
 
-    pub(crate) fn finish_loaded_with_config(
-        &mut self,
-        models: Vec<ModelInfo>,
-        config_defaults: BackendConfigDefaults,
-    ) {
-        let Some(target) = self.loading_target.take() else {
-            self.models = None;
-            self.config_defaults = None;
-            self.loading = false;
-            self.last_error =
-                Some("Beryl discarded a model list loaded without a runtime target.".to_string());
-            return;
-        };
-        self.finish_loaded_for_target(target, models, config_defaults);
-    }
-
     pub(crate) fn finish_failed(&mut self, message: String) {
-        if let Some(target) = self.loading_target.take() {
-            self.target = Some(target);
-        }
         self.loading = false;
         self.last_error = Some(message);
     }
 
-    pub(crate) fn should_load_for(&self, target: &WorkspaceId) -> bool {
-        !self.loading && (self.models.is_none() || self.target.as_ref() != Some(target))
+    pub(crate) fn should_load(&self) -> bool {
+        !self.loading && self.models.is_none()
     }
 
     pub(crate) fn find_model(&self, value: &str) -> Option<&ModelInfo> {
         self.models()?
             .iter()
             .find(|model| model.model == value || model.id == value || model.display_name == value)
-    }
-
-    pub(crate) fn effective_default_turn_defaults(&self) -> Option<ThreadTurnDefaults> {
-        let config_defaults = self.config_defaults.as_ref();
-        let model = config_defaults
-            .and_then(|defaults| defaults.model.clone())
-            .or_else(|| self.default_model_for_new_thread());
-        let reasoning_effort =
-            config_defaults.and_then(|defaults| defaults.model_reasoning_effort.clone());
-
-        if model.is_none() && reasoning_effort.is_none() {
-            return None;
-        }
-
-        Some(ThreadTurnDefaults::new(model, reasoning_effort))
-    }
-
-    fn default_model_for_new_thread(&self) -> Option<String> {
-        let models = self.models()?;
-        models
-            .iter()
-            .find(|model| model.is_default)
-            .or_else(|| models.iter().find(|model| !model.hidden))
-            .map(|model| model.model.clone())
     }
 }
 

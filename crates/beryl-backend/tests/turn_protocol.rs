@@ -509,39 +509,6 @@ fn thread_closed_notification_parses_from_turn_stream() {
 }
 
 #[test]
-fn thread_archive_notifications_parse_from_turn_stream() {
-    let archived = parse_turn_stream_event(
-        "thread/archived",
-        Some(json!({
-            "threadId": "thread_branch"
-        })),
-    )
-    .unwrap()
-    .unwrap();
-
-    let TurnStreamEvent::ThreadArchived { thread_id } = archived else {
-        panic!("expected thread archived");
-    };
-
-    assert_eq!(thread_id, "thread_branch");
-
-    let unarchived = parse_turn_stream_event(
-        "thread/unarchived",
-        Some(json!({
-            "threadId": "thread_branch"
-        })),
-    )
-    .unwrap()
-    .unwrap();
-
-    let TurnStreamEvent::ThreadUnarchived { thread_id } = unarchived else {
-        panic!("expected thread unarchived");
-    };
-
-    assert_eq!(thread_id, "thread_branch");
-}
-
-#[test]
 fn thread_started_notification_preserves_agent_nickname_metadata() {
     let event = parse_turn_stream_event(
         "thread/started",
@@ -1371,7 +1338,7 @@ fn dynamic_tool_call_request_preserves_call_context_and_arguments() {
             "turnId": "turn_123",
             "callId": "call_123",
             "namespace": "beryl",
-            "tool": "apply_graph_patch",
+            "tool": "inspect_runtime_state",
             "arguments": {
                 "ops": []
             }
@@ -1386,9 +1353,9 @@ fn dynamic_tool_call_request_preserves_call_context_and_arguments() {
     assert_eq!(request.turn_id(), "turn_123");
     assert_eq!(request.call_id(), "call_123");
     assert_eq!(request.namespace(), Some("beryl"));
-    assert_eq!(request.tool(), "apply_graph_patch");
+    assert_eq!(request.tool(), "inspect_runtime_state");
     assert_eq!(request.arguments(), &json!({ "ops": [] }));
-    assert!(request.summary().contains("apply_graph_patch"));
+    assert!(request.summary().contains("inspect_runtime_state"));
     assert!(request.pretty_arguments().contains("ops"));
 }
 
@@ -1415,7 +1382,7 @@ fn dynamic_tool_call_response_serializes_text_content() {
 fn dynamic_tool_call_response_serializes_image_content() {
     let response =
         DynamicToolCallResponse::failure(vec![DynamicToolCallOutputContentItem::image_url(
-            "file:///tmp/graph.png",
+            "file:///tmp/preview.png",
         )]);
     let serialized = serde_json::to_value(response).unwrap();
 
@@ -1426,7 +1393,7 @@ fn dynamic_tool_call_response_serializes_image_content() {
             "contentItems": [
                 {
                     "type": "inputImage",
-                    "imageUrl": "file:///tmp/graph.png"
+                    "imageUrl": "file:///tmp/preview.png"
                 }
             ]
         })
@@ -1620,7 +1587,7 @@ fn thread_session_deserializes_user_message_items() {
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Explain the workspace"
+                                "text": "Explain the protocol"
                             }
                         ]
                     }
@@ -1641,7 +1608,7 @@ fn thread_session_deserializes_user_message_items() {
     assert_eq!(
         message.content,
         vec![UserInput::Text {
-            text: "Explain the workspace".to_string()
+            text: "Explain the protocol".to_string()
         }]
     );
 }

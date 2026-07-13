@@ -19,8 +19,6 @@ use crate::appearance::theme::{
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct ManifestToml {
     schema: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    active_theme_id: Option<String>,
     #[serde(default, rename = "theme")]
     themes: Vec<ManifestThemeToml>,
 }
@@ -63,16 +61,7 @@ impl ThemeRepositoryStore {
         }
         recover_duplicate_names(&mut ordered);
 
-        let active_theme_id = manifest
-            .and_then(|manifest| manifest.active_theme_id)
-            .and_then(|id| InstalledThemeId::new(id).ok())
-            .filter(|id| id_is_built_in(id) || ordered.iter().any(|theme| &theme.id == id))
-            .unwrap_or_else(InstalledThemeId::built_in);
-
-        Ok(LoadedThemeRepository {
-            active_theme_id,
-            themes: ordered,
-        })
+        Ok(LoadedThemeRepository { themes: ordered })
     }
 
     fn read_manifest(&self) -> Result<Option<ManifestToml>, ThemeRepositoryError> {
@@ -194,7 +183,6 @@ impl ThemeRepositoryStore {
         ensure_directory(&self.repository_dir())?;
         let manifest = ManifestToml {
             schema: THEME_REPOSITORY_SCHEMA_VERSION,
-            active_theme_id: Some(loaded.active_theme_id.as_str().to_string()),
             themes: loaded
                 .themes
                 .iter()

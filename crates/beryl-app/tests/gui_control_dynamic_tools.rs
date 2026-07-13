@@ -3,7 +3,7 @@
 #[path = "../src/memory_diagnostics.rs"]
 mod memory_diagnostics;
 
-mod dynamic_tools {
+mod dynamic_tool_namespace {
     pub const BERYL_DYNAMIC_TOOL_NAMESPACE: &str = "beryl";
 }
 
@@ -22,9 +22,9 @@ use gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CLOSE_POPUPS_TOOL,
     ClosePopupsResult, GuiControlToolRequest, MarkdownCacheUiState, PopupUiState,
     READ_UI_STATE_TOOL, SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON,
-    SWITCH_THREAD_TOOL, SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState,
-    TurnViewUiState, UiStateSnapshot, close_popups_tool_response,
-    parse_beryl_gui_control_dynamic_tool_request, ui_state_tool_response,
+    SWITCH_THREAD_TOOL, ScrollTranscriptCommand, TranscriptUiState, TurnViewUiState,
+    UiStateSnapshot, close_popups_tool_response, parse_beryl_gui_control_dynamic_tool_request,
+    ui_state_tool_response,
 };
 use serde_json::{Value, json};
 
@@ -127,31 +127,6 @@ fn switch_thread_requires_exact_non_empty_thread_id() {
 }
 
 #[test]
-fn switch_workspace_requires_exact_non_empty_workspace_id() {
-    let empty = parse_beryl_gui_control_dynamic_tool_request(&tool_request(
-        SWITCH_WORKSPACE_TOOL,
-        json!({ "workspaceId": "" }),
-    ))
-    .unwrap_err();
-    assert_eq!(empty.kind(), "invalid_arguments");
-
-    let valid = parse_beryl_gui_control_dynamic_tool_request(&tool_request(
-        SWITCH_WORKSPACE_TOOL,
-        json!({ "workspaceId": "untitled-1" }),
-    ))
-    .unwrap();
-
-    assert_eq!(
-        valid,
-        GuiControlToolRequest::SwitchWorkspace(
-            gui_control_dynamic_tools::SwitchWorkspaceArguments {
-                workspace_id: "untitled-1".to_string(),
-            }
-        )
-    );
-}
-
-#[test]
 fn close_popups_response_reports_settings_window_transient_popup_state() {
     let request = tool_request(CLOSE_POPUPS_TOOL, json!({}));
     let response = close_popups_tool_response(
@@ -162,9 +137,7 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
             ui_state: UiStateSnapshot {
                 shell_state: "ready".to_string(),
                 selected_surface: "settings".to_string(),
-                selected_workspace_id: None,
                 selected_thread_id: None,
-                selected_runtime_target: None,
                 backend_unavailable: None,
                 turn_state: gui_control_dynamic_tools::TurnUiState::default(),
                 transcript: TranscriptUiState::default(),
@@ -177,7 +150,6 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
                     ..PopupUiState::default()
                 },
                 background_work: BackgroundWorkUiState::default(),
-                pending_activation: None,
             },
         },
     );
@@ -197,24 +169,16 @@ fn close_popups_response_reports_settings_window_transient_popup_state() {
 
 #[test]
 fn ui_state_response_reports_backend_unavailable_reason() {
-    let runtime_target = diagnostic_dynamic_tools::RuntimeTargetDiagnostic {
-        runtime: "Host Windows".to_string(),
-        canonical_path: r"C:\Users\operator".to_string(),
-        display_label: r"Host Windows:C:\Users\operator".to_string(),
-    };
     let request = tool_request(READ_UI_STATE_TOOL, json!({ "limit": 1 }));
     let response = ui_state_tool_response(
         &request,
         UiStateSnapshot {
             shell_state: "backend_unavailable".to_string(),
             selected_surface: "conversation".to_string(),
-            selected_workspace_id: Some("untitled-1".to_string()),
             selected_thread_id: None,
-            selected_runtime_target: Some(runtime_target.clone()),
             backend_unavailable: Some(BackendUnavailableUiState {
                 kind: "missing_executable".to_string(),
                 message: "Backend unavailable for Host Windows.".to_string(),
-                runtime_target,
             }),
             turn_state: gui_control_dynamic_tools::TurnUiState::default(),
             transcript: TranscriptUiState::default(),
@@ -223,7 +187,6 @@ fn ui_state_response_reports_backend_unavailable_reason() {
             activity_panel: ActivityPanelUiState::default(),
             popups: PopupUiState::default(),
             background_work: BackgroundWorkUiState::default(),
-            pending_activation: None,
         },
     );
     let payload = response_json(&response);
@@ -233,10 +196,6 @@ fn ui_state_response_reports_backend_unavailable_reason() {
     assert_eq!(
         payload["result"]["backendUnavailable"]["kind"],
         "missing_executable"
-    );
-    assert_eq!(
-        payload["result"]["backendUnavailable"]["runtimeTarget"]["canonicalPath"],
-        r"C:\Users\operator"
     );
 }
 
@@ -248,9 +207,7 @@ fn ui_state_response_reports_status_line_turn_view() {
         UiStateSnapshot {
             shell_state: "ready".to_string(),
             selected_surface: "conversation".to_string(),
-            selected_workspace_id: Some("untitled-1".to_string()),
             selected_thread_id: Some("thread_1".to_string()),
-            selected_runtime_target: None,
             backend_unavailable: None,
             turn_state: gui_control_dynamic_tools::TurnUiState {
                 selected_thread_state: "idle".to_string(),
@@ -267,7 +224,6 @@ fn ui_state_response_reports_status_line_turn_view() {
             activity_panel: ActivityPanelUiState::default(),
             popups: PopupUiState::default(),
             background_work: BackgroundWorkUiState::default(),
-            pending_activation: None,
         },
     );
     let payload = response_json(&response);

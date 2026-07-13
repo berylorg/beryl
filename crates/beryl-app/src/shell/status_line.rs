@@ -2,10 +2,6 @@ use beryl_backend::{
     AccountRateLimitsResponse, HardStopTarget, RateLimitSnapshot, RateLimitWindow,
     ThreadSessionMetadata, ThreadStatus, ThreadTokenUsage, TurnStartOptions,
 };
-use beryl_model::conversation::{
-    ConversationThreadTokenUsageSnapshot, ConversationTokenUsageBreakdown,
-    WorkspaceConversationState,
-};
 use std::collections::{BTreeMap, HashMap};
 
 const UNKNOWN_LABEL: &str = "Unknown";
@@ -18,8 +14,6 @@ const SPARK_LIMIT_TOKEN: &str = "spark";
 pub(crate) struct StatusLineState {
     session_metadata: ThreadSessionMetadata,
     account_rate_limits: AccountRateLimitStatus,
-    pending_new_thread_defaults: ThreadTurnDefaults,
-    effective_new_thread_defaults: ThreadTurnDefaults,
     pending_turn_defaults_by_thread: HashMap<String, ThreadTurnDefaults>,
     effective_turn_defaults_by_thread: HashMap<String, ThreadTurnDefaults>,
     turn_state_overrides_by_thread: HashMap<String, StatusLineTurnStateOverride>,
@@ -379,48 +373,6 @@ impl StatusLineState {
         true
     }
 
-    pub(crate) fn set_effective_new_thread_defaults(
-        &mut self,
-        defaults: Option<ThreadTurnDefaults>,
-    ) -> bool {
-        let defaults = defaults.unwrap_or_default();
-        if self.effective_new_thread_defaults == defaults {
-            return false;
-        }
-        self.effective_new_thread_defaults = defaults;
-        true
-    }
-
-    pub(crate) fn clear_pending_new_thread_defaults(&mut self) -> bool {
-        if self.pending_new_thread_defaults.is_empty() {
-            return false;
-        }
-        self.pending_new_thread_defaults = ThreadTurnDefaults::default();
-        true
-    }
-
-    pub(crate) fn set_pending_new_thread_defaults(&mut self, defaults: ThreadTurnDefaults) -> bool {
-        let defaults = if defaults.is_empty() {
-            ThreadTurnDefaults::default()
-        } else {
-            defaults
-        };
-        if self.pending_new_thread_defaults == defaults {
-            return false;
-        }
-        self.pending_new_thread_defaults = defaults;
-        true
-    }
-
-    pub(crate) fn bind_pending_new_thread_defaults_to_thread(&mut self, thread_id: &str) -> bool {
-        if self.pending_new_thread_defaults.is_empty() {
-            return false;
-        }
-
-        let defaults = std::mem::take(&mut self.pending_new_thread_defaults);
-        self.set_pending_turn_defaults(thread_id, defaults)
-    }
-
     #[allow(dead_code)]
     pub(crate) fn set_pending_turn_defaults(
         &mut self,
@@ -459,14 +411,10 @@ impl StatusLineState {
         &self,
         selected_thread_id: Option<&str>,
     ) -> TurnStartOptions {
-        match selected_thread_id {
-            Some(thread_id) => self
-                .pending_turn_defaults_by_thread
-                .get(thread_id)
-                .map(ThreadTurnDefaults::to_turn_start_options)
-                .unwrap_or_default(),
-            None => self.pending_new_thread_defaults.to_turn_start_options(),
-        }
+        selected_thread_id
+            .and_then(|thread_id| self.pending_turn_defaults_by_thread.get(thread_id))
+            .map(ThreadTurnDefaults::to_turn_start_options)
+            .unwrap_or_default()
     }
 
     pub(crate) fn effective_turn_context_defaults(
@@ -554,41 +502,6 @@ impl StatusLineState {
 
         self.token_usage_by_thread.insert(thread_id, token_usage);
         true
-    }
-
-    pub(crate) fn apply_token_usage_snapshot(
-        &mut self,
-        known_thread: bool,
-        thread_id: String,
-        snapshot: &ConversationThreadTokenUsageSnapshot,
-    ) -> bool {
-        if !known_thread || self.token_usage_by_thread.contains_key(&thread_id) {
-            return false;
-        }
-
-        self.token_usage_by_thread
-            .insert(thread_id, thread_token_usage_from_snapshot(snapshot));
-        true
-    }
-
-    pub(crate) fn hydrate_token_usage_snapshots(
-        &mut self,
-        workspace_state: &WorkspaceConversationState,
-        mut is_known_thread: impl FnMut(&str) -> bool,
-    ) -> bool {
-        let mut changed = false;
-        for thread in workspace_state.threads() {
-            let thread_id = thread.thread_id().as_str();
-            let Some(snapshot) = thread.token_usage_snapshot() else {
-                continue;
-            };
-            changed |= self.apply_token_usage_snapshot(
-                is_known_thread(thread_id),
-                thread_id.to_string(),
-                snapshot,
-            );
-        }
-        changed
     }
 
     #[cfg(test)]
@@ -724,9 +637,8 @@ impl StatusLineState {
     }
 
     fn model_for_status(&self, selected_thread_id: Option<&str>) -> Option<&str> {
-        match selected_thread_id {
-            Some(thread_id) => self
-                .pending_turn_defaults_by_thread
+        selected_thread_id.and_then(|thread_id| {
+            self.pending_turn_defaults_by_thread
                 .get(thread_id)
                 .and_then(ThreadTurnDefaults::model)
                 .or_else(|| {
@@ -734,18 +646,13 @@ impl StatusLineState {
                         .get(thread_id)
                         .and_then(ThreadTurnDefaults::model)
                 })
-                .or(self.session_metadata.model.as_deref()),
-            None => self
-                .pending_new_thread_defaults
-                .model()
-                .or_else(|| self.effective_new_thread_defaults.model()),
-        }
+                .or(self.session_metadata.model.as_deref())
+        })
     }
 
     fn reasoning_effort_for_status(&self, selected_thread_id: Option<&str>) -> Option<&str> {
-        match selected_thread_id {
-            Some(thread_id) => self
-                .pending_turn_defaults_by_thread
+        selected_thread_id.and_then(|thread_id| {
+            self.pending_turn_defaults_by_thread
                 .get(thread_id)
                 .and_then(ThreadTurnDefaults::reasoning_effort)
                 .or_else(|| {
@@ -753,12 +660,8 @@ impl StatusLineState {
                         .get(thread_id)
                         .and_then(ThreadTurnDefaults::reasoning_effort)
                 })
-                .or(self.session_metadata.reasoning_effort.as_deref()),
-            None => self
-                .pending_new_thread_defaults
-                .reasoning_effort()
-                .or_else(|| self.effective_new_thread_defaults.reasoning_effort()),
-        }
+                .or(self.session_metadata.reasoning_effort.as_deref())
+        })
     }
 }
 
@@ -1082,29 +985,7 @@ fn non_empty(value: Option<String>) -> Option<String> {
     value.and_then(|value| (!value.is_empty()).then_some(value))
 }
 
-fn thread_token_usage_from_snapshot(
-    snapshot: &ConversationThreadTokenUsageSnapshot,
-) -> ThreadTokenUsage {
-    ThreadTokenUsage {
-        last: token_usage_breakdown_from_snapshot(snapshot.last()),
-        total: token_usage_breakdown_from_snapshot(snapshot.total()),
-        model_context_window: snapshot.model_context_window(),
-    }
-}
-
 fn remaining_percent_from_rate_limit_window(window: &RateLimitWindow) -> u8 {
     let used = window.used_percent.clamp(0, 100);
     (100 - used) as u8
-}
-
-fn token_usage_breakdown_from_snapshot(
-    value: &ConversationTokenUsageBreakdown,
-) -> beryl_backend::TokenUsageBreakdown {
-    beryl_backend::TokenUsageBreakdown {
-        cached_input_tokens: value.cached_input_tokens(),
-        input_tokens: value.input_tokens(),
-        output_tokens: value.output_tokens(),
-        reasoning_output_tokens: value.reasoning_output_tokens(),
-        total_tokens: value.total_tokens(),
-    }
 }

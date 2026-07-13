@@ -1,0 +1,14 @@
+[package]
+name = "beryl-state"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+beryl-home-store.workspace = true
+beryl-model.workspace = true
+
+[dev-dependencies]
+beryl-home-store = { workspace = true, features = ["test-faults"] }
+tempfile.workspace = true

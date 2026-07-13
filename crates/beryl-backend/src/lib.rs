@@ -1,40 +1,4 @@
-//! Backend launch and protocol-facing types for Beryl.
-//!
-//! Protocol item structs, including generic thread items, are exported so GUI
-//! layers can preserve and synthesize bounded protocol-shaped records.
-//!
-//! ```no_run
-//! use std::time::Duration;
-//!
-//! use beryl_backend::ManagedBackendServer;
-//! use beryl_model::workspace::WorkspaceId;
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
-//! let (mut server, mut foreground, _report) =
-//!     ManagedBackendServer::launch_and_probe_for_workspace(
-//!         workspace,
-//!         Duration::from_secs(30),
-//!     )?;
-//! let connector = server.client_connector();
-//! let mut background = connector.connect_client(Duration::from_secs(30))?;
-//! # let _ = (&mut server, &mut foreground, &mut background);
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ```no_run
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use beryl_backend::BackendLaunchSpec;
-//! use beryl_model::workspace::WorkspaceId;
-//!
-//! let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
-//! let launch = BackendLaunchSpec::managed_stdio_for_workspace(workspace);
-//! let command = launch.command_line()?;
-//! assert_eq!(command.program(), "codex");
-//! # Ok(())
-//! # }
-//! ```
+//! Protocol and transport-facing types for Beryl's Codex App Server boundary.
 
 mod activity;
 mod auth;
@@ -46,7 +10,6 @@ mod managed_process;
 mod protocol;
 mod server;
 mod session;
-mod thread_archive;
 mod thread_branch;
 mod thread_metadata;
 mod turn;
@@ -60,15 +23,8 @@ pub use activity::{
     ToolActivityAgentLabel, ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent,
     ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource,
 };
-pub use auth::ManagedBackendAuthMaterial;
-pub use command::{
-    BackendCommandLine, BackendCommandLineError, BackendLaunchSpec, BackendTransport,
-    BackendWebSocketConfig, BackendWebSocketEndpoint,
-};
-pub use discovery::{
-    RuntimeDiscoveryError, WorkspacePathError, canonicalize_host_path, canonicalize_wsl_home_path,
-    canonicalize_wsl_path, list_wsl_distros, strip_windows_extended_prefix,
-};
+pub use command::{BackendCommandLine, BackendCommandLineError, BackendWebSocketEndpoint};
+pub use discovery::strip_windows_extended_prefix;
 pub use dynamic_tool::{
     DynamicToolCallOutputContentItem, DynamicToolCallRequest, DynamicToolCallResponse,
     DynamicToolSpec, parse_dynamic_tool_call_request,
@@ -81,17 +37,12 @@ pub use protocol::{
     BackendConfigDefaults, BackendEvent, CompatibilityError, CompatibilityProbe,
     CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse, InitializeResponse, JsonRpcError,
     ModelInfo, ModelListOptions, ModelListResponse, ProtocolPhase,
-    REQUIRED_CODEX_APP_SERVER_VERSION, ThreadLoadedListResponse, ThreadSummary,
+    REQUIRED_CODEX_APP_SERVER_VERSION, ThreadSummary,
 };
-pub use server::{ManagedBackendClientConnector, ManagedBackendServer};
+pub use server::ManagedBackendClientConnector;
 pub use session::{
     ManagedBackendClientOptions, ManagedBackendError, ManagedBackendProbeReport,
-    ManagedBackendSession, ManagedBackendStartupProgress, ManagedBackendStartupStage,
-    ManagedWebSocketError, ProbeMethodSuccess,
-};
-pub use thread_archive::{
-    ThreadArchiveCapabilities, ThreadArchiveCapabilityProbe, ThreadArchiveCapabilityProbeResult,
-    ThreadArchiveCapabilityReport, ThreadArchiveResponse, ThreadUnarchiveResponse,
+    ManagedBackendSession, ManagedWebSocketError, ProbeMethodSuccess,
 };
 pub use thread_branch::{
     ThreadBranchCapabilities, ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult,

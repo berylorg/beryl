@@ -12,15 +12,14 @@ Show bounded live and recent backend activity for the selected conversation with
 
 ## GUI Supplement
 
-- `gui.md` is a normative supplemental GUI composition file for activity-panel placement, resize geometry, and row-list layout.
+- `gui.md` is the normative supplemental GUI composition file for mounting and configuring the project-local `activity panel` widget. Reusable resize, row-viewport, scrolling, and layout mechanics live in that widget's spec.
 
 ## Visibility And Layout
 
 - The activity panel has no main-toolbar mode control. Its visibility behavior is fixed to Auto.
-- In Auto behavior, the panel is visible from the moment a parent turn is accepted in the conversation view until that turn ends, and while selected-thread context compaction is active. It is hidden outside active-work periods.
-- Legacy persisted activity mode values are ignored by the conversation view; loaded workspaces use Auto behavior.
-- The panel height persists as workspace-scoped GUI-local state.
-- The panel is vertically resizable by dragging its top border, taking space from or returning space to the transcript region while preserving the pinned composer and status line.
+- In Auto behavior, the panel is visible from the moment a parent turn is accepted for the selected thread until that turn ends, and while selected-thread context compaction is active. It is hidden outside active-work periods.
+- The panel height persists as window-local Beryl-home state.
+- The panel is vertically resizable by dragging its top border, taking space from or returning space to the transcript region while preserving any discussion-status strip, the pinned composer, and the global status line.
 - If visible rows exceed the panel height, the panel owns vertical scrolling. Otherwise it does not scroll.
 - Row rendering is bounded to the viewport-visible range plus small overscan while preserving scroll geometry for the full visible row set.
 - The initial viewport defaults to the top of the sorted row list, where running and newest activity appears.
@@ -28,9 +27,9 @@ Show bounded live and recent backend activity for the selected conversation with
 ## Activity Projection
 
 - Activity is transient presentation state derived from normalized backend stream events and bounded GUI-derived records.
-- Activity records are in-memory session history. They survive thread switching within the loaded workspace and are discarded on app restart or workspace/backend-session teardown.
+- Activity records are in-memory process-session history. They survive thread switching and are discarded on app restart or managed-runtime teardown.
 - Visible rows are scoped to the selected backend conversation thread and that thread's observed subagent activity.
-- When the workspace is on a pending new-thread draft, visible activity is empty rather than stale rows from the previous selection.
+- A pristine draft-only selected thread has no visible activity until its first turn is accepted.
 - Activity state is keyed by backend thread id, turn id, and item id so lifecycle updates remain exact across overlapping threads and subagents.
 - Running activity is retained until terminal state. Completed activity may be pruned by deterministic row, byte, and selected-thread retention windows.
 - Background metadata resolution for unresolved subagent names is bounded, cancellable, and lower priority than foreground turn streaming.

@@ -3,8 +3,6 @@
 #[path = "support/tempdir.rs"]
 mod tempdir_support;
 
-pub use beryl_app::{BerylHomeDir, BerylHomeDirError};
-
 #[path = "../src/diagnostic_child_protocol.rs"]
 mod diagnostic_child_protocol;
 
@@ -30,7 +28,7 @@ use diagnostic_child_supervisor::{
 #[test]
 fn start_rejects_supervisor_home_as_child_home() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-supervisor-home-");
-    let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
 
     let launch = DiagnosticChildLaunch::new(root.path(), PathBuf::from("not-needed"));
@@ -46,7 +44,7 @@ fn start_rejects_supervisor_home_as_child_home() {
 fn start_rejects_invalid_executable_paths_before_spawn() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-supervisor-home-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let home = root.path().to_path_buf();
     let directory = tempdir_support::temp_dir("beryl-diagnostic-executable-dir-");
     let over_limit = root.path().join("x".repeat(1100));
     let cases = [
@@ -101,7 +99,7 @@ fn start_rejects_invalid_executable_paths_before_spawn() {
 fn start_verifies_startup_protocol_before_reporting_started() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-supervisor-home-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let home = root.path().to_path_buf();
     let executable = fake_child_executable(root.path(), FakeChildBehavior::HandshakeOk);
     let mut supervisor = DiagnosticChildSupervisor::default();
     let launch = DiagnosticChildLaunch::new(child.path(), executable.clone());
@@ -145,7 +143,7 @@ fn startup_protocol_failures_are_cleaned_up_without_retaining_child() {
     for (behavior, message) in cases {
         let root = tempdir_support::temp_dir("beryl-diagnostic-supervisor-home-");
         let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-        let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+        let home = root.path().to_path_buf();
         let executable = fake_child_executable(root.path(), behavior);
         let mut supervisor = DiagnosticChildSupervisor::default();
         let launch = DiagnosticChildLaunch::new(child.path(), executable);
@@ -190,7 +188,7 @@ fn startup_protocol_failures_are_cleaned_up_without_retaining_child() {
 fn startup_protocol_timeout_is_cleaned_up_without_retaining_child() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-supervisor-home-");
     let child = tempdir_support::temp_dir("beryl-diagnostic-child-home-");
-    let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let home = root.path().to_path_buf();
     let executable = fake_child_executable(root.path(), FakeChildBehavior::Timeout);
     let mut supervisor = DiagnosticChildSupervisor::default();
     let launch = DiagnosticChildLaunch::new(child.path(), executable);
@@ -211,7 +209,7 @@ fn startup_protocol_timeout_is_cleaned_up_without_retaining_child() {
 #[test]
 fn startup_cleanup_failure_retains_child_for_stop_retry() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-supervisor-home-");
-    let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
 
     let error = supervisor
@@ -268,7 +266,7 @@ fn spawned_child_guard_cleans_unclaimed_process() {
 #[test]
 fn failed_stop_keeps_child_owned_for_retry() {
     let root = tempdir_support::temp_dir("beryl-diagnostic-stop-ownership-");
-    let home = BerylHomeDir::from_explicit_path(root.path()).unwrap();
+    let home = root.path().to_path_buf();
     let mut supervisor = DiagnosticChildSupervisor::default();
     supervisor
         .adopt_child_for_test(spawn_sleep_child(), home, PathBuf::from("test-child"))

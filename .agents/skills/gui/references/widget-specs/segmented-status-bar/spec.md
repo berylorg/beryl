@@ -28,7 +28,7 @@ A segment may be passive text, a readout selector, an action-menu segment, or a 
 
 The segmented status bar reads as a compact status or readout strip attached to a panel or window edge.
 
-For example, one segment may display `Context 79%  5h 100%  Weekly 85%`.
+A segment may display several short readout pairs in one compact run.
 
 Interactive segments show hover, pressed, focused, and open feedback while retaining the compact status-bar appearance.
 

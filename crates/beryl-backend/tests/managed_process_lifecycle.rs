@@ -8,13 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use beryl_backend::{
-    BackendLaunchSpec, BackendWebSocketEndpoint,
-    lifecycle_test_support::{
-        spawn_host_powershell_script, spawn_sleeping_host_process, wsl_shutdown_command_line,
-    },
+use beryl_backend::lifecycle_test_support::{
+    spawn_host_powershell_script, spawn_sleeping_host_process,
 };
-use beryl_model::workspace::RuntimeMode;
 
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -111,39 +107,6 @@ fn windows_job_object_cleanup_kills_descendant_processes() {
     temp_dir
         .close()
         .expect("test temp dir should be removable after process cleanup");
-}
-
-#[test]
-fn wsl_process_group_shutdown_command_targets_pidfile_process_group() {
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string(),
-        },
-        "/work/beryl",
-        BackendWebSocketEndpoint::loopback(49155),
-        "/tmp/beryl-token.txt",
-    );
-    let command = wsl_shutdown_command_line(&launch)
-        .expect("WSL cleanup command line should build")
-        .expect("WSL launch should have cleanup command");
-
-    assert_eq!(command.program(), "wsl.exe");
-    assert_eq!(command.cwd(), None);
-    assert_eq!(command.args().len(), 6);
-    assert_eq!(command.args()[0], "--distribution");
-    assert_eq!(command.args()[1], "Ubuntu");
-    assert_eq!(command.args()[2], "--exec");
-    assert_eq!(command.args()[3], "/bin/bash");
-    assert_eq!(command.args()[4], "-lc");
-
-    let shell = &command.args()[5];
-    assert!(shell.contains("pid_file="));
-    assert!(shell.contains("/tmp/beryl-codex-app-server/process-"));
-    assert!(shell.contains("cat \"$pid_file\""));
-    assert!(shell.contains("kill -TERM -- -\"$pid\""));
-    assert!(shell.contains("kill -KILL -- -\"$pid\""));
-    assert!(shell.contains("rm -f \"$pid_file\""));
-    assert!(shell.contains("exit 2"));
 }
 
 #[cfg(target_os = "windows")]

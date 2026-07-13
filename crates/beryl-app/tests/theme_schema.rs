@@ -377,10 +377,10 @@ fn phase52_transcript_markdown_composer_and_code_roles_use_split_parents() {
 }
 
 #[test]
-fn phase53_graph_checklist_and_settings_roles_use_split_parents() {
+fn settings_roles_use_split_parents() {
     let schema = built_in_theme_schema();
 
-    for (role, expected_parent) in PHASE53_PARENT_EDGES {
+    for (role, expected_parent) in SETTINGS_PARENT_EDGES {
         let schema_role = schema
             .roles()
             .iter()
@@ -389,7 +389,7 @@ fn phase53_graph_checklist_and_settings_roles_use_split_parents() {
         assert_eq!(
             schema_role.static_parent().map(|parent| parent.as_str()),
             expected_parent.map(BerylThemeRole::id),
-            "{} should keep its graph/checklist/settings static parent",
+            "{} should keep its settings static parent",
             role.id()
         );
     }
@@ -551,10 +551,6 @@ fn representative_roles_expose_only_render_consumed_properties() {
         (
             BerylThemeRole::StatusValueWorking,
             property_set(&[BerylThemeProperty::Foreground]),
-        ),
-        (
-            BerylThemeRole::WorkspacePickerRowActive,
-            property_set(&[BerylThemeProperty::Color]),
         ),
         (BerylThemeRole::StatusLineCell, surface_property_set()),
         (
@@ -972,8 +968,6 @@ const INTERACTION_STATE_THEME_ROLES: &[BerylThemeRole] = &[
     BerylThemeRole::StatusValueStreaming,
     BerylThemeRole::SurfaceRowUnavailable,
     BerylThemeRole::NoticeSuccess,
-    BerylThemeRole::GraphRowInvalid,
-    BerylThemeRole::ThreadSelectorRowUnavailable,
     BerylThemeRole::FocusRing,
 ];
 
@@ -1509,108 +1503,12 @@ const PHASE51_APP_PARENT_EDGES: &[(BerylThemeRole, Option<BerylThemeRole>)] = &[
         Some(BerylThemeRole::TextValue),
     ),
     (
-        BerylThemeRole::MainThreadStrip,
-        Some(BerylThemeRole::SurfaceWindow),
-    ),
-    (
-        BerylThemeRole::MainThreadStripActiveThread,
-        Some(BerylThemeRole::ControlButton),
-    ),
-    (
-        BerylThemeRole::MainThreadStripActiveThreadLabel,
-        Some(BerylThemeRole::ControlButtonLabel),
-    ),
-    (
         BerylThemeRole::MainSeparator,
         Some(BerylThemeRole::PrimitiveSeparator),
     ),
     (
         BerylThemeRole::StructuralSeparator,
         Some(BerylThemeRole::PrimitiveSeparator),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorSurface,
-        Some(BerylThemeRole::PopupSurface),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorColumn,
-        Some(BerylThemeRole::ColumnSelectorColumn),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorColumnHeader,
-        Some(BerylThemeRole::ColumnSelectorHeader),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorColumnHeaderText,
-        Some(BerylThemeRole::ControlListHeader),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorRowLabel,
-        Some(BerylThemeRole::ControlRowLabel),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorRow,
-        Some(BerylThemeRole::ColumnSelectorRow),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorRowMeta,
-        Some(BerylThemeRole::TextMuted),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorRowSelected,
-        Some(BerylThemeRole::ColumnSelectorRowSelected),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorRowActive,
-        Some(BerylThemeRole::ThreadSelectorRowSelected),
-    ),
-    (
-        BerylThemeRole::ThreadSelectorRowActiveText,
-        Some(BerylThemeRole::ThreadSelectorRowSelectedText),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerWorkspaceRow,
-        Some(BerylThemeRole::SurfaceRow),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerWorkspaceRowTitle,
-        Some(BerylThemeRole::ControlRowLabel),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerWorkspaceRowPath,
-        Some(BerylThemeRole::TextCode),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerMemberRow,
-        Some(BerylThemeRole::SurfaceRow),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerMemberRowTitle,
-        Some(BerylThemeRole::ControlRowLabel),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerRuntimeRow,
-        Some(BerylThemeRole::ControlMenuItem),
-    ),
-    (
-        BerylThemeRole::WorkspacePickerRowActive,
-        Some(BerylThemeRole::PrimitiveAccentMarker),
-    ),
-    (
-        BerylThemeRole::ColumnSelectorColumn,
-        Some(BerylThemeRole::ControlList),
-    ),
-    (
-        BerylThemeRole::ColumnSelectorRow,
-        Some(BerylThemeRole::SurfaceRow),
-    ),
-    (
-        BerylThemeRole::ColumnSelectorRowSelected,
-        Some(BerylThemeRole::SurfaceRowSelected),
-    ),
-    (
-        BerylThemeRole::ColumnSelectorAccent,
-        Some(BerylThemeRole::PrimitiveAccentMarker),
     ),
     (
         BerylThemeRole::StatusLineCell,
@@ -1782,7 +1680,7 @@ const PHASE52_PARENT_EDGES: &[(BerylThemeRole, Option<BerylThemeRole>)] = &[
     ),
 ];
 
-const PHASE53_PARENT_EDGES: &[(BerylThemeRole, Option<BerylThemeRole>)] = &[
+const SETTINGS_PARENT_EDGES: &[(BerylThemeRole, Option<BerylThemeRole>)] = &[
     (
         BerylThemeRole::SettingsSidebar,
         Some(BerylThemeRole::ControlList),
@@ -1826,58 +1724,6 @@ const PHASE53_PARENT_EDGES: &[(BerylThemeRole, Option<BerylThemeRole>)] = &[
     (
         BerylThemeRole::SettingsButtonSecondaryLabel,
         Some(BerylThemeRole::ButtonSecondaryLabel),
-    ),
-    (
-        BerylThemeRole::GraphColumn,
-        Some(BerylThemeRole::ColumnSelectorColumn),
-    ),
-    (
-        BerylThemeRole::GraphColumnHeader,
-        Some(BerylThemeRole::ColumnSelectorHeader),
-    ),
-    (
-        BerylThemeRole::GraphColumnHeaderText,
-        Some(BerylThemeRole::ColumnSelectorHeaderText),
-    ),
-    (
-        BerylThemeRole::GraphRowTopic,
-        Some(BerylThemeRole::ColumnSelectorRow),
-    ),
-    (
-        BerylThemeRole::GraphRowTopicText,
-        Some(BerylThemeRole::ControlRowLabel),
-    ),
-    (
-        BerylThemeRole::GraphRowThreadRefText,
-        Some(BerylThemeRole::TextLink),
-    ),
-    (
-        BerylThemeRole::GraphRowSoftLinkText,
-        Some(BerylThemeRole::MarkdownEmphasis),
-    ),
-    (
-        BerylThemeRole::ChecklistSidebar,
-        Some(BerylThemeRole::SurfacePanel),
-    ),
-    (
-        BerylThemeRole::ChecklistHeader,
-        Some(BerylThemeRole::ControlListHeader),
-    ),
-    (
-        BerylThemeRole::ChecklistRow,
-        Some(BerylThemeRole::SurfaceRow),
-    ),
-    (
-        BerylThemeRole::ChecklistStatusTodo,
-        Some(BerylThemeRole::PrimitiveAccentMarker),
-    ),
-    (
-        BerylThemeRole::ChecklistStatusInProgress,
-        Some(BerylThemeRole::PrimitiveAccentMarker),
-    ),
-    (
-        BerylThemeRole::ChecklistStatusDone,
-        Some(BerylThemeRole::PrimitiveAccentMarker),
     ),
 ];
 
@@ -1996,24 +1842,7 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::SettingsRowDisabledText
         | BerylThemeRole::SettingsInputText
         | BerylThemeRole::SettingsButtonPrimaryLabel
-        | BerylThemeRole::SettingsButtonSecondaryLabel
-        | BerylThemeRole::GraphColumnHeaderText
-        | BerylThemeRole::GraphRowTopicText
-        | BerylThemeRole::GraphRowChecklistText
-        | BerylThemeRole::GraphRowChecklistItemText
-        | BerylThemeRole::GraphRowThreadRefText
-        | BerylThemeRole::GraphRowThreadRefMeta
-        | BerylThemeRole::GraphRowSoftLinkText
-        | BerylThemeRole::GraphRowSelectedText
-        | BerylThemeRole::GraphRowPendingText
-        | BerylThemeRole::GraphRowInvalidText
-        | BerylThemeRole::GraphRowErrorText
-        | BerylThemeRole::ChecklistHeader
-        | BerylThemeRole::ChecklistRowNumberText
-        | BerylThemeRole::ChecklistRowText
-        | BerylThemeRole::ChecklistStatusTodoText
-        | BerylThemeRole::ChecklistStatusInProgressText
-        | BerylThemeRole::ChecklistStatusDoneText => property_set(&[
+        | BerylThemeRole::SettingsButtonSecondaryLabel => property_set(&[
             BerylThemeProperty::Foreground,
             BerylThemeProperty::TextBackground,
             BerylThemeProperty::FontFamily,
@@ -2067,14 +1896,9 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
             BerylThemeProperty::Background,
             BerylThemeProperty::Foreground,
         ]),
-        BerylThemeRole::AppWindowTitle
-        | BerylThemeRole::MainToolbarTitle
-        | BerylThemeRole::MainThreadStripActiveThreadLabel => text_property_set(),
+        BerylThemeRole::AppWindowTitle | BerylThemeRole::MainToolbarTitle => text_property_set(),
         BerylThemeRole::MainToolbar => property_set(&[BerylThemeProperty::Background]),
-        BerylThemeRole::MainThreadStripActiveThread => surface_property_set(),
-        BerylThemeRole::MainThreadStrip | BerylThemeRole::InputPanel => {
-            property_set(&[BerylThemeProperty::Background])
-        }
+        BerylThemeRole::InputPanel => property_set(&[BerylThemeProperty::Background]),
         BerylThemeRole::MainSeparator | BerylThemeRole::StructuralSeparator => {
             property_set(&[BerylThemeProperty::Color])
         }
@@ -2107,26 +1931,11 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::TranscriptContextMenu
         | BerylThemeRole::TranscriptPending
         | BerylThemeRole::TranscriptUnavailable
-        | BerylThemeRole::ChecklistSidebar
-        | BerylThemeRole::ThreadSelectorRowSelected
-        | BerylThemeRole::ThreadSelectorRowUnavailable
         | BerylThemeRole::PopupSurface
         | BerylThemeRole::NoticeInfo
         | BerylThemeRole::NoticeWarning
         | BerylThemeRole::NoticeError
-        | BerylThemeRole::NoticeSuccess
-        | BerylThemeRole::GraphOverlay
-        | BerylThemeRole::GraphColumn
-        | BerylThemeRole::GraphColumnHeader
-        | BerylThemeRole::GraphRowTopic
-        | BerylThemeRole::GraphRowChecklist
-        | BerylThemeRole::GraphRowChecklistItem
-        | BerylThemeRole::GraphRowThreadRef
-        | BerylThemeRole::GraphRowSoftLink
-        | BerylThemeRole::GraphRowSelected
-        | BerylThemeRole::GraphRowInvalid
-        | BerylThemeRole::GraphRowError
-        | BerylThemeRole::ChecklistRow => property_set(&[
+        | BerylThemeRole::NoticeSuccess => property_set(&[
             BerylThemeProperty::Background,
             BerylThemeProperty::Border,
             BerylThemeProperty::Foreground,
@@ -2144,9 +1953,6 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::InputFieldFocused
         | BerylThemeRole::InputError
         | BerylThemeRole::SettingsRowDisabled
-        | BerylThemeRole::GraphRowPending
-        | BerylThemeRole::GraphRowDisabled
-        | BerylThemeRole::GraphRowDisabledText
         | BerylThemeRole::CodePanelSelection
         | BerylThemeRole::ComposerImageMarker
         | BerylThemeRole::PopupRowNormal
@@ -2161,7 +1967,6 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::SettingsRowHover
         | BerylThemeRole::SettingsRowModified
         | BerylThemeRole::CodePanelContainer
-        | BerylThemeRole::GraphRowHover
         | BerylThemeRole::PopupRowHover
         | BerylThemeRole::PopupRowSelected => property_set(&[BerylThemeProperty::Background]),
         BerylThemeRole::StatusValueWorking
@@ -2247,9 +2052,6 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
         | BerylThemeRole::CodePanelResizeHandle
         | BerylThemeRole::InputCaret
         | BerylThemeRole::SettingsInputCaret
-        | BerylThemeRole::ChecklistStatusTodo
-        | BerylThemeRole::ChecklistStatusInProgress
-        | BerylThemeRole::ChecklistStatusDone
         | BerylThemeRole::ScrollbarThumbNormal
         | BerylThemeRole::ScrollbarThumbHover
         | BerylThemeRole::ScrollbarThumbDragging
@@ -2274,44 +2076,12 @@ fn expected_supported_property_ids(role: BerylThemeRole) -> BTreeSet<&'static st
             BerylThemeProperty::Foreground,
             BerylThemeProperty::TextBackground,
         ]),
-        BerylThemeRole::ThreadSelectorSurface
-        | BerylThemeRole::ThreadSelectorColumn
-        | BerylThemeRole::ThreadSelectorColumnHeader
-        | BerylThemeRole::ThreadSelectorRow
-        | BerylThemeRole::ThreadSelectorRowActive
-        | BerylThemeRole::WorkspacePickerSurface
-        | BerylThemeRole::WorkspacePickerWorkspaceRow
-        | BerylThemeRole::WorkspacePickerMemberRow
-        | BerylThemeRole::WorkspacePickerRuntimeRow
-        | BerylThemeRole::ColumnSelectorColumn
-        | BerylThemeRole::ColumnSelectorHeader
-        | BerylThemeRole::ColumnSelectorRow
-        | BerylThemeRole::ColumnSelectorRowSelected
-        | BerylThemeRole::StatusLineCell
-        | BerylThemeRole::ActivityRow => surface_property_set(),
-        BerylThemeRole::ThreadSelectorHeaderText
-        | BerylThemeRole::ThreadSelectorColumnHeaderText
-        | BerylThemeRole::ThreadSelectorRowLabel
-        | BerylThemeRole::ThreadSelectorRowMeta
-        | BerylThemeRole::ThreadSelectorRowSelectedText
-        | BerylThemeRole::ThreadSelectorRowActiveText
-        | BerylThemeRole::ThreadSelectorRowUnavailableText
-        | BerylThemeRole::WorkspacePickerHeaderText
-        | BerylThemeRole::WorkspacePickerHeaderDetail
-        | BerylThemeRole::WorkspacePickerWorkspaceRowTitle
-        | BerylThemeRole::WorkspacePickerWorkspaceRowPath
-        | BerylThemeRole::WorkspacePickerMemberRowTitle
-        | BerylThemeRole::WorkspacePickerMemberRowPath
-        | BerylThemeRole::WorkspacePickerRuntimeRowText
-        | BerylThemeRole::WorkspacePickerUnavailableText
-        | BerylThemeRole::ColumnSelectorHeaderText
-        | BerylThemeRole::StatusLineLabel
+        BerylThemeRole::StatusLineCell | BerylThemeRole::ActivityRow => surface_property_set(),
+        BerylThemeRole::StatusLineLabel
         | BerylThemeRole::StatusLineValue
         | BerylThemeRole::ActivityLabel
         | BerylThemeRole::ActivityValue => text_property_set(),
-        BerylThemeRole::WorkspacePickerRowActive
-        | BerylThemeRole::ColumnSelectorAccent
-        | BerylThemeRole::ActivityIndicatorRunning
+        BerylThemeRole::ActivityIndicatorRunning
         | BerylThemeRole::ActivityIndicatorOk
         | BerylThemeRole::ActivityIndicatorError
         | BerylThemeRole::ActivityResizeHandle => property_set(&[BerylThemeProperty::Color]),
@@ -2357,8 +2127,6 @@ const SINGLE_PRIMITIVE_COLOR_THEME_ROLES: &[BerylThemeRole] = &[
     BerylThemeRole::PrimitiveScrollbarThumb,
     BerylThemeRole::MainSeparator,
     BerylThemeRole::StructuralSeparator,
-    BerylThemeRole::WorkspacePickerRowActive,
-    BerylThemeRole::ColumnSelectorAccent,
     BerylThemeRole::ActivityIndicatorRunning,
     BerylThemeRole::ActivityIndicatorOk,
     BerylThemeRole::ActivityIndicatorError,
@@ -2369,9 +2137,6 @@ const SINGLE_PRIMITIVE_COLOR_THEME_ROLES: &[BerylThemeRole] = &[
     BerylThemeRole::MarkdownThematicBreak,
     BerylThemeRole::CodePanelBorder,
     BerylThemeRole::CodePanelResizeHandle,
-    BerylThemeRole::ChecklistStatusTodo,
-    BerylThemeRole::ChecklistStatusInProgress,
-    BerylThemeRole::ChecklistStatusDone,
     BerylThemeRole::SettingsInputCaret,
     BerylThemeRole::ScrollbarThumbNormal,
     BerylThemeRole::ScrollbarThumbHover,

@@ -1,15 +1,8 @@
 use std::collections::HashMap;
 
-use std::path::PathBuf;
-
 use gpui_settings_window::{
     SettingsFieldId, SettingsFieldKind, SettingsRow, SettingsRowAction, SettingsRowActionId,
     SettingsSection, SettingsSectionId,
-};
-
-use crate::{
-    NotificationPreferences, NotificationSoundPathError, parse_notification_sound_path_text,
-    validate_notification_sound_path,
 };
 
 const NOTIFICATIONS_SECTION: &str = "notifications";
@@ -23,21 +16,12 @@ pub(crate) enum NotificationSettingsRowAction {
     ClearEndTurnSound,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct NotificationSettingsDraft {
     end_turn_sound_path: String,
 }
 
 impl NotificationSettingsDraft {
-    pub(crate) fn from_preferences(preferences: &NotificationPreferences) -> Self {
-        Self {
-            end_turn_sound_path: preferences
-                .end_turn_sound_path()
-                .map(|path| path.display().to_string())
-                .unwrap_or_default(),
-        }
-    }
-
     pub(crate) fn set_field_value(&mut self, field_id: &SettingsFieldId, value: String) -> bool {
         if *field_id != end_turn_sound_field_id() {
             return false;
@@ -51,28 +35,9 @@ impl NotificationSettingsDraft {
         self.end_turn_sound_path = value;
     }
 
-    pub(crate) fn set_end_turn_sound_path_from_picker(&mut self, path: PathBuf) {
-        self.end_turn_sound_path = path.display().to_string();
-    }
-
     #[allow(dead_code)]
     pub(crate) fn end_turn_sound_path_value(&self) -> &str {
         &self.end_turn_sound_path
-    }
-
-    pub(crate) fn to_preferences(
-        &self,
-    ) -> Result<NotificationPreferences, HashMap<SettingsFieldId, String>> {
-        match parse_notification_sound_path_text(&self.end_turn_sound_path) {
-            Ok(end_turn_sound_path) => Ok(NotificationPreferences {
-                end_turn_sound_path,
-            }),
-            Err(error) => {
-                let mut errors = HashMap::new();
-                errors.insert(end_turn_sound_field_id(), notification_sound_error(error));
-                Err(errors)
-            }
-        }
     }
 }
 
@@ -138,19 +103,4 @@ pub(crate) fn row_action(
         return Some(NotificationSettingsRowAction::ClearEndTurnSound);
     }
     None
-}
-
-pub(crate) fn validate_picked_end_turn_sound_path(path: &std::path::Path) -> Result<(), String> {
-    validate_notification_sound_path(path).map_err(notification_sound_error)
-}
-
-pub(crate) fn notification_sound_error(error: NotificationSoundPathError) -> String {
-    match error {
-        NotificationSoundPathError::NotAbsolute => {
-            "End-turn sound path must be absolute.".to_string()
-        }
-        NotificationSoundPathError::NotWav => {
-            "End-turn sound path must point to a .wav file.".to_string()
-        }
-    }
 }

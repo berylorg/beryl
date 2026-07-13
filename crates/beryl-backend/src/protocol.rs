@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use beryl_model::workspace::RuntimeMode;
 use serde::{Deserialize, Serialize, de};
 use serde_json::Value;
 use thiserror::Error;
@@ -37,7 +36,6 @@ pub enum CompatibilityProbe {
     ConfigRead,
     ModelList,
     ThreadCompactStart,
-    ThreadLoadedList,
     ThreadResumeMetadata,
     ThreadUnsubscribe,
     TurnInterrupt,
@@ -50,7 +48,6 @@ impl CompatibilityProbe {
             Self::ConfigRead => "config/read",
             Self::ModelList => "model/list",
             Self::ThreadCompactStart => "thread/compact/start",
-            Self::ThreadLoadedList => "thread/loaded/list",
             Self::ThreadResumeMetadata => "thread/resume",
             Self::ThreadUnsubscribe => "thread/unsubscribe",
             Self::TurnInterrupt => "turn/interrupt",
@@ -63,7 +60,6 @@ const REQUIRED_COMPATIBILITY_PROBES: &[CompatibilityProbe] = &[
     CompatibilityProbe::ConfigRead,
     CompatibilityProbe::ModelList,
     CompatibilityProbe::ThreadCompactStart,
-    CompatibilityProbe::ThreadLoadedList,
     CompatibilityProbe::ThreadResumeMetadata,
     CompatibilityProbe::ThreadUnsubscribe,
     CompatibilityProbe::TurnInterrupt,
@@ -108,37 +104,11 @@ impl CompatibilitySnapshot {
         REQUIRED_COMPATIBILITY_PROBES
     }
 
-    pub fn validate_runtime_mode(
-        &self,
-        runtime_mode: &RuntimeMode,
-    ) -> Result<(), CompatibilityError> {
-        self.validate_required_app_server_version()?;
-
-        let (expected_platform_family, expected_platform_os) = match runtime_mode {
-            RuntimeMode::HostWindows => ("windows", "windows"),
-            RuntimeMode::WslLinux { .. } => ("unix", "linux"),
-        };
-
-        if self.platform_family != expected_platform_family {
-            return Err(CompatibilityError::PlatformFamilyMismatch {
-                runtime_mode: runtime_mode.display_name(),
-                expected_platform_family,
-                actual_platform_family: self.platform_family.clone(),
-            });
-        }
-
-        if self.platform_os != expected_platform_os {
-            return Err(CompatibilityError::PlatformOsMismatch {
-                runtime_mode: runtime_mode.display_name(),
-                expected_platform_os,
-                actual_platform_os: self.platform_os.clone(),
-            });
-        }
-
-        Ok(())
+    pub(crate) fn validate_required_app_server_version(&self) -> Result<(), CompatibilityError> {
+        self.validate_required_app_server_version_value()
     }
 
-    fn validate_required_app_server_version(&self) -> Result<(), CompatibilityError> {
+    fn validate_required_app_server_version_value(&self) -> Result<(), CompatibilityError> {
         let Some(actual_version) = parse_codex_app_server_user_agent(&self.user_agent) else {
             if self.user_agent.trim().is_empty() {
                 return Err(CompatibilityError::AppServerVersionMissing {
@@ -237,22 +207,6 @@ pub enum CompatibilityError {
         required_version: &'static str,
         actual_version: String,
         user_agent: String,
-    },
-    #[error(
-        "runtime mode {runtime_mode} requires backend platform family {expected_platform_family}, got {actual_platform_family}"
-    )]
-    PlatformFamilyMismatch {
-        runtime_mode: String,
-        expected_platform_family: &'static str,
-        actual_platform_family: String,
-    },
-    #[error(
-        "runtime mode {runtime_mode} requires backend platform os {expected_platform_os}, got {actual_platform_os}"
-    )]
-    PlatformOsMismatch {
-        runtime_mode: String,
-        expected_platform_os: &'static str,
-        actual_platform_os: String,
     },
 }
 
@@ -516,14 +470,6 @@ impl<'de> Deserialize<'de> for ThreadSummary {
             ephemeral: wire.ephemeral,
         })
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadLoadedListResponse {
-    pub data: Vec<String>,
-    #[serde(default)]
-    pub next_cursor: Option<String>,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]

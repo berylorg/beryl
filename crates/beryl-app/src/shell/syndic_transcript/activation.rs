@@ -40,8 +40,6 @@ impl TranscriptActivationSeed {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TranscriptActivationSource {
-    ThreadSelector,
-    ThreadGraph,
     BackendReopen,
     StartupRestore,
     NewThread,

@@ -4,17 +4,14 @@
 mod tempdir_support;
 
 use beryl_app::{
-    AgentPreferences, AppearanceSettings, BerylThemeProperty, BerylThemeRole, GuiPreferences,
-    INSTALL_THEME_TOOL, MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES, MAX_THEME_TOOL_NAME_BYTES,
-    NotificationPreferences, OperationPreferences, PREVIEW_THEME_TOOL,
-    READ_THEME_AUTHORING_GUIDE_TOOL, SAVE_THEME_AS_TOOL, SettingsDynamicToolRequest,
-    ThemeAuthoringGuideSection, ThemeDocument, ThemeDynamicToolRequest, ThemeRepositoryStore,
-    ThemeSaveAsSource, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL,
-    VALIDATE_GUI_SETTINGS_UPDATE_TOOL, VALIDATE_THEME_DOCUMENT_TOOL,
-    built_in_theme_supported_properties, gui_settings_snapshot_value,
+    AppearanceSettings, BerylThemeProperty, BerylThemeRole, INSTALL_THEME_TOOL,
+    MAX_THEME_TOOL_NAME_BYTES, PREVIEW_THEME_TOOL, READ_THEME_AUTHORING_GUIDE_TOOL,
+    SAVE_THEME_AS_TOOL, ThemeAuthoringGuideSection, ThemeDocument, ThemeDynamicToolRequest,
+    ThemeRepositoryStore, ThemeSaveAsSource, UPDATE_GUI_SETTINGS_TOOL, UPDATE_THEME_TOOL,
+    VALIDATE_THEME_DOCUMENT_TOOL, built_in_theme_supported_properties,
     parse_beryl_settings_dynamic_tool_request, parse_beryl_theme_dynamic_tool_request,
-    settings_validation_value, theme_authoring_guide_value, theme_repository_value,
-    theme_schema_value, validate_theme_document_value,
+    theme_authoring_guide_value, theme_repository_value, theme_schema_value,
+    validate_theme_document_value,
 };
 use beryl_backend::{DynamicToolCallRequest, parse_dynamic_tool_call_request};
 use serde_json::{Value, json};
@@ -184,7 +181,7 @@ font_weight = { value = 700 }
 }
 
 #[test]
-fn theme_repository_read_value_bounds_metadata_and_active_document() {
+fn theme_repository_read_value_bounds_installed_metadata_without_active_document() {
     let root = unique_temp_dir();
     let store = ThemeRepositoryStore::new(&root);
     let snapshot = store
@@ -193,30 +190,18 @@ fn theme_repository_read_value_bounds_metadata_and_active_document() {
 
     let metadata_only = theme_repository_value(&snapshot, false).unwrap();
     let with_document = theme_repository_value(&snapshot, true).unwrap();
-    let active_document = &with_document["activeDocument"];
-    let active_document_text = active_document["text"].as_str().unwrap();
-
-    assert_eq!(metadata_only["activeThemeId"], "ocean");
     assert_eq!(metadata_only["activeDocument"], Value::Null);
+    assert_eq!(with_document["activeDocument"], Value::Null);
     assert_eq!(metadata_only["themesTruncated"], false);
-    assert_eq!(active_document["themeId"], "ocean");
-    assert_eq!(active_document["name"], "Ocean");
-    assert_eq!(active_document["truncated"], false);
-    assert_eq!(
-        active_document["byteLimit"],
-        MAX_THEME_ACTIVE_DOCUMENT_RESPONSE_BYTES
+    assert_eq!(metadata_only["themeCount"], 2);
+    assert!(metadata_only.get("activeThemeId").is_none());
+    assert!(
+        metadata_only["themes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|theme| theme["id"] == "ocean" && theme["name"] == "Ocean")
     );
-    assert_eq!(
-        active_document["byteLength"],
-        active_document_text.len() as u64
-    );
-    assert_eq!(
-        active_document["retainedByteLength"],
-        active_document_text.len() as u64
-    );
-    assert_eq!(active_document["omittedByteLength"], 0);
-    assert!(active_document_text.contains("[[role]]"));
-    assert!(active_document_text.contains("id = \"ocean\""));
 
     root.close().unwrap();
 }
@@ -265,26 +250,6 @@ fn theme_schema_read_value_reports_role_specific_supported_properties() {
     assert_eq!(code_panel_properties, expected);
     assert!(!code_panel_properties.contains(&BerylThemeProperty::Border.id().to_string()));
     assert!(!code_panel_properties.contains(&BerylThemeProperty::TextBackground.id().to_string()));
-
-    let graph_topic = theme_schema_value(Some(BerylThemeRole::GraphRowTopic.id()), 8).unwrap();
-    let graph_topic_properties = property_ids(&first_role(&graph_topic)["properties"]);
-    assert_eq!(
-        graph_topic_properties,
-        vec![
-            BerylThemeProperty::Background.id().to_string(),
-            BerylThemeProperty::Border.id().to_string(),
-            BerylThemeProperty::Foreground.id().to_string(),
-        ]
-    );
-    assert!(!graph_topic_properties.contains(&BerylThemeProperty::FontWeight.id().to_string()));
-
-    let checklist_status =
-        theme_schema_value(Some(BerylThemeRole::ChecklistStatusTodo.id()), 8).unwrap();
-    let checklist_status_properties = property_ids(&first_role(&checklist_status)["properties"]);
-    assert_eq!(
-        checklist_status_properties,
-        vec![BerylThemeProperty::Color.id().to_string()]
-    );
 
     let popup_surface = theme_schema_value(Some(BerylThemeRole::PopupSurface.id()), 8).unwrap();
     let popup_surface_properties = property_ids(&first_role(&popup_surface)["properties"]);
@@ -678,14 +643,7 @@ foreground = { value = "#112233" }
 #[test]
 fn theme_validation_path_is_source_level_non_mutating() {
     let validation_source = include_str!("../src/theme_dynamic_tools/validation.rs");
-    let dynamic_theme_source = include_str!("../src/shell/dynamic_theme.rs");
-    let immediate_body = rust_function_body(
-        dynamic_theme_source,
-        "fn handle_beryl_theme_immediate_tool_result",
-    );
 
-    assert!(immediate_body.contains("ThemeDynamicToolRequest::ValidateDocument"));
-    assert!(immediate_body.contains("validate_theme_document_value("));
     assert!(!validation_source.contains("handle_dynamic_theme_preview"));
     assert!(!validation_source.contains("theme_candidate_state"));
     assert!(!validation_source.contains(".install_theme("));
@@ -695,112 +653,11 @@ fn theme_validation_path_is_source_level_non_mutating() {
 }
 
 #[test]
-fn settings_snapshot_redacts_local_paths_and_developer_instruction_text() {
-    let root = unique_temp_dir();
-    let secret_sound_path = root.path().join("top-secret-sound.wav");
-    let developer_instructions = "do not expose this instruction";
-    let preferences = GuiPreferences {
-        operations: OperationPreferences::with_context_compaction_timeout_seconds(120).unwrap(),
-        notifications: NotificationPreferences::with_end_turn_sound_path(Some(
-            secret_sound_path.clone(),
-        ))
-        .unwrap(),
-        agent: AgentPreferences::with_developer_instructions(Some(
-            developer_instructions.to_string(),
-        )),
-    };
-    let themes = ThemeRepositoryStore::new(&root).load_or_default().unwrap();
-
-    let snapshot = gui_settings_snapshot_value(&preferences, &themes);
-    let encoded = serde_json::to_string(&snapshot).unwrap();
-
-    assert_eq!(
-        snapshot["notifications"]["endTurnSoundPath"]["configured"],
-        true
-    );
-    assert_eq!(
-        snapshot["notifications"]["endTurnSoundPath"]["extension"],
-        "wav"
-    );
-    assert!(snapshot["notifications"]["endTurnSoundPath"]["pathByteLength"].is_number());
-    assert_eq!(
-        snapshot["agent"]["developerInstructions"]["characterCount"],
-        developer_instructions.chars().count()
-    );
-    assert_eq!(snapshot["appearance"]["installedThemeCount"], 1);
-    assert_eq!(snapshot["appearance"]["installedThemesTruncated"], false);
-    assert!(snapshot["agent"]["developerInstructions"]["fingerprint"].is_string());
-    assert!(!encoded.contains("top-secret-sound"));
-    assert!(!encoded.contains(developer_instructions));
-
-    root.close().unwrap();
-}
-
-#[test]
-fn settings_update_parser_preserves_explicit_null_and_reports_noop_validation() {
-    let root = unique_temp_dir();
-    let secret_sound_path = root.path().join("notify.wav");
-    let current = GuiPreferences {
-        operations: OperationPreferences::with_context_compaction_timeout_seconds(120).unwrap(),
-        notifications: NotificationPreferences::with_end_turn_sound_path(Some(secret_sound_path))
-            .unwrap(),
-        agent: AgentPreferences::with_developer_instructions(Some("current".to_string())),
-    };
-    let clear_request = dynamic_tool_request(
-        UPDATE_GUI_SETTINGS_TOOL,
-        json!({
-            "notifications": {
-                "endTurnSoundPath": null
-            },
-            "agent": {
-                "developerInstructions": null
-            }
-        }),
-    );
-    let noop_request = dynamic_tool_request(
-        VALIDATE_GUI_SETTINGS_UPDATE_TOOL,
-        json!({
-            "operations": {
-                "contextCompactionTimeoutSeconds": 120
-            }
-        }),
-    );
-
-    let SettingsDynamicToolRequest::Update { update } =
-        parse_beryl_settings_dynamic_tool_request(&clear_request).unwrap()
-    else {
-        panic!("expected settings update request");
-    };
-    let cleared = update.apply_to(&current).unwrap();
-    assert_eq!(cleared.notifications.end_turn_sound_path(), None);
-    assert_eq!(cleared.agent.developer_instructions(), None);
-
-    let SettingsDynamicToolRequest::Validate { update } =
-        parse_beryl_settings_dynamic_tool_request(&noop_request).unwrap()
-    else {
-        panic!("expected settings validation request");
-    };
-    let validation = settings_validation_value(&current, &update).unwrap();
-    assert_eq!(validation["valid"], true);
-    assert_eq!(validation["changed"], false);
-
-    root.close().unwrap();
-}
-
-#[test]
-fn settings_update_parser_rejects_unknown_keys_and_invalid_values() {
+fn settings_update_parser_rejects_unknown_keys_and_oversized_values() {
     let unknown_key_request = dynamic_tool_request(
         UPDATE_GUI_SETTINGS_TOOL,
         json!({
-            "workspace": {}
-        }),
-    );
-    let invalid_timeout_request = dynamic_tool_request(
-        UPDATE_GUI_SETTINGS_TOOL,
-        json!({
-            "operations": {
-                "contextCompactionTimeoutSeconds": 0
-            }
+            "unknown": {}
         }),
     );
     let oversized_timeout_request = dynamic_tool_request(
@@ -811,30 +668,13 @@ fn settings_update_parser_rejects_unknown_keys_and_invalid_values() {
             }
         }),
     );
-    let invalid_sound_path_request = dynamic_tool_request(
-        UPDATE_GUI_SETTINGS_TOOL,
-        json!({
-            "notifications": {
-                "endTurnSoundPath": "relative.mp3"
-            }
-        }),
-    );
-
     let unknown_key_error =
         parse_beryl_settings_dynamic_tool_request(&unknown_key_request).unwrap_err();
     assert_eq!(unknown_key_error.kind(), "invalid_arguments");
 
-    let invalid_timeout_error =
-        parse_beryl_settings_dynamic_tool_request(&invalid_timeout_request).unwrap_err();
-    assert_eq!(invalid_timeout_error.kind(), "invalid_field");
-
     let oversized_timeout_error =
         parse_beryl_settings_dynamic_tool_request(&oversized_timeout_request).unwrap_err();
     assert_eq!(oversized_timeout_error.kind(), "invalid_field");
-
-    let invalid_sound_path_error =
-        parse_beryl_settings_dynamic_tool_request(&invalid_sound_path_request).unwrap_err();
-    assert_eq!(invalid_sound_path_error.kind(), "invalid_field");
 }
 
 fn first_role(value: &Value) -> &Value {
@@ -881,29 +721,6 @@ fn dynamic_tool_request(tool: &str, arguments: Value) -> DynamicToolCallRequest 
     )
     .unwrap()
     .unwrap()
-}
-
-fn rust_function_body<'a>(source: &'a str, function_signature: &str) -> &'a str {
-    let signature_index = source
-        .find(function_signature)
-        .unwrap_or_else(|| panic!("missing function {function_signature}"));
-    let after_signature = &source[signature_index..];
-    let open_offset = after_signature
-        .find('{')
-        .unwrap_or_else(|| panic!("missing body for function {function_signature}"));
-    let body_start = signature_index + open_offset;
-    let mut depth = 0usize;
-    for (offset, ch) in source[body_start..].char_indices() {
-        if ch == '{' {
-            depth += 1;
-        } else if ch == '}' {
-            depth -= 1;
-            if depth == 0 {
-                return &source[body_start..=body_start + offset];
-            }
-        }
-    }
-    panic!("unterminated body for function {function_signature}");
 }
 
 fn theme_document_text(foreground: &str) -> String {

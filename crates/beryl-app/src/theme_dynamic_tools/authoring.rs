@@ -153,7 +153,7 @@ fn role_groups_section() -> Value {
         "title": "Role groups",
         "groups": [
             { "prefix": "app.", "use": "overall window defaults and app-level foreground/background" },
-            { "prefix": "main.", "use": "main toolbar, thread strip, and separators" },
+            { "prefix": "main.", "use": "main toolbar and separators" },
             { "prefix": "button.", "use": "shared primary and secondary button surfaces plus label text" },
             { "prefix": "input.", "use": "composer and text input surfaces" },
             { "prefix": "settings.", "use": "settings window, sidebar, pages, rows, inputs, popups, and settings buttons" },
@@ -161,8 +161,6 @@ fn role_groups_section() -> Value {
             { "prefix": "markdown.", "use": "rendered Markdown paragraph, heading, emphasis, links, inline code, lists, and fallbacks" },
             { "prefix": "code_panel.", "use": "fenced code block container, header, body, buttons, selection, and resize handle" },
             { "prefix": "syntax.", "use": "parser-backed code token colors" },
-            { "prefix": "graph.", "use": "graph overlay columns and rows" },
-            { "prefix": "checklist.", "use": "checklist status markers and legacy checklist roles" },
             { "prefix": "status.", "use": "bottom status line and dynamic turn-state values" },
             { "prefix": "notice.", "use": "info, warning, error, and success notices" },
             { "prefix": "media.", "use": "transcript media placeholders, borders, and captions" }

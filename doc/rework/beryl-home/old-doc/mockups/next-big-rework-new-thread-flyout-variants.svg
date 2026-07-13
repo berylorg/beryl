@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2520" height="1640" viewBox="0 0 2520 1640" role="img" aria-labelledby="title description">
+  <title id="title">New Thread runtime and root flyout layout variants</title>
+  <desc id="description">Three exploratory Beryl flyout layouts: a two-pane browser, an expandable runtime tree, and a search-first recent-target picker, plus the common zero-runtime state.</desc>
+
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#090d16"/>
+      <stop offset="1" stop-color="#030407"/>
+    </linearGradient>
+    <linearGradient id="accent-button" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f5876"/>
+      <stop offset="1" stop-color="#173a5e"/>
+    </linearGradient>
+    <style>
+      text { font-family: Roboto, "Segoe UI", Arial, sans-serif; }
+      .board-title { fill: #f3f7fb; font-size: 34px; font-weight: 650; letter-spacing: -0.5px; }
+      .board-subtitle { fill: #92a2b7; font-size: 16px; }
+      .tag { fill: #7dd3fc; font-size: 12px; font-weight: 700; letter-spacing: 1.4px; }
+      .card { fill: #0a0e16; stroke: #253148; stroke-width: 1; }
+      .card-title { fill: #f3f7fb; font-size: 22px; font-weight: 650; }
+      .card-kicker { fill: #7dd3fc; font-size: 12px; font-weight: 700; letter-spacing: 1.2px; }
+      .recommended { fill: #103022; stroke: #22c55e; stroke-width: 1; }
+      .recommended-text { fill: #bbf7d0; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; }
+      .shell { fill: #000000; stroke: #171717; stroke-width: 1; }
+      .button { fill: #1e293b; stroke: #475569; stroke-width: 1; }
+      .button-accent { fill: url(#accent-button); stroke: #38bdf8; stroke-width: 1; }
+      .button-disabled { fill: #1a2233; stroke: #334155; stroke-width: 1; }
+      .button-label { fill: #f3f7fb; font-size: 13px; font-weight: 550; }
+      .button-label-disabled { fill: #8b98aa; font-size: 13px; font-weight: 550; }
+      .thread-title { fill: #aaaaaa; font-size: 13px; }
+      .flyout { fill: #101827; stroke: #3a4860; stroke-width: 1.25; }
+      .flyout-title { fill: #f3f7fb; font-size: 19px; font-weight: 650; }
+      .flyout-subtitle { fill: #92a2b7; font-size: 13px; }
+      .section-label { fill: #7f8ea3; font-size: 11px; font-weight: 700; letter-spacing: 1.1px; }
+      .label { fill: #e9eef5; font-size: 14px; font-weight: 520; }
+      .small-label { fill: #e9eef5; font-size: 13px; font-weight: 520; }
+      .muted { fill: #92a2b7; font-size: 12px; }
+      .micro { fill: #7f8ea3; font-size: 11px; }
+      .accent-text { fill: #7dd3fc; font-size: 12px; font-weight: 600; }
+      .row { fill: #111827; stroke: #2f3b52; stroke-width: 1; }
+      .row-selected { fill: #173a5e; stroke: #38bdf8; stroke-width: 1; }
+      .row-hover { fill: #1f2b42; stroke: #40516b; stroke-width: 1; }
+      .field { fill: #0f172a; stroke: #334155; stroke-width: 1; }
+      .divider { stroke: #2a3549; stroke-width: 1; }
+      .hairline { stroke: #3a4860; stroke-width: 1; }
+      .icon-ring { fill: #142337; stroke: #40516b; stroke-width: 1; }
+      .icon-ring-selected { fill: #164e63; stroke: #22d3ee; stroke-width: 1; }
+      .status-ready { fill: #22c55e; }
+      .status-warm { fill: #f59e0b; }
+      .note-title { fill: #dbe7f4; font-size: 13px; font-weight: 650; }
+      .note { fill: #92a2b7; font-size: 12px; }
+      .pill { fill: #12283b; stroke: #38bdf8; stroke-width: 1; }
+      .pill-text { fill: #bae6fd; font-size: 11px; font-weight: 650; }
+      .footer-band { fill: #0c121f; stroke: #253148; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="2520" height="1640" fill="url(#board)"/>
+  <circle cx="2260" cy="-160" r="520" fill="#0d2a40" opacity="0.35"/>
+  <circle cx="180" cy="1580" r="420" fill="#102038" opacity="0.25"/>
+
+  <text x="48" y="58" class="board-title">New Thread · runtime/root flyout explorations</text>
+  <text x="48" y="90" class="board-subtitle">Three deliberately different information architectures, shown in the split-button’s real shell context.</text>
+  <rect x="2166" y="38" width="306" height="34" rx="17" fill="#0c1c2b" stroke="#285270"/>
+  <text x="2319" y="60" text-anchor="middle" class="tag">EXPLORATORY · NOT AUTHORITY</text>
+
+  <!-- Variant A card -->
+  <rect x="40" y="128" width="786" height="1260" rx="18" class="card"/>
+  <text x="68" y="169" class="card-kicker">VARIANT A</text>
+  <text x="68" y="202" class="card-title">Two-pane target browser</text>
+  <rect x="592" y="158" width="202" height="26" rx="13" class="recommended"/>
+  <text x="693" y="176" text-anchor="middle" class="recommended-text">MY STARTING POINT</text>
+
+  <rect x="64" y="226" width="738" height="74" rx="9" class="shell"/>
+  <rect x="82" y="246" width="116" height="34" rx="6" class="button"/>
+  <text x="140" y="268" text-anchor="middle" class="button-label">New Thread</text>
+  <rect x="198" y="246" width="40" height="34" rx="6" class="button-accent"/>
+  <line x1="198" y1="248" x2="198" y2="278" stroke="#38bdf8" opacity="0.6"/>
+  <text x="218" y="266" text-anchor="middle" class="button-label">•••</text>
+  <rect x="252" y="246" width="532" height="34" rx="6" fill="#070a0f" stroke="#242c3b"/>
+  <text x="270" y="268" class="thread-title">Current thread · Beryl redesign</text>
+  <path d="M207 300 L218 288 L229 300 Z" fill="#101827" stroke="#3a4860" stroke-width="1"/>
+
+  <rect x="64" y="299" width="738" height="764" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="90" y="340" class="flyout-title">Choose where the new thread runs</text>
+  <text x="90" y="365" class="flyout-subtitle">Pick a runtime, then one of its roots. Nothing changes until you confirm.</text>
+  <line x1="64" y1="386" x2="802" y2="386" class="divider"/>
+
+  <text x="90" y="416" class="section-label">RUNTIMES</text>
+  <text x="342" y="416" class="section-label">ROOTS IN WINDOWS</text>
+  <line x1="318" y1="386" x2="318" y2="908" class="divider"/>
+
+  <!-- Variant A runtime rows -->
+  <rect x="82" y="433" width="218" height="70" rx="7" class="row-selected"/>
+  <circle cx="106" cy="468" r="14" class="icon-ring-selected"/>
+  <path d="M99 461 h6 v6 h-6 Z M107 461 h6 v6 h-6 Z M99 469 h6 v6 h-6 Z M107 469 h6 v6 h-6 Z" fill="#7dd3fc"/>
+  <text x="128" y="459" class="small-label">Windows</text>
+  <text x="128" y="479" class="muted">Host runtime</text>
+  <circle cx="282" cy="450" r="4" class="status-ready"/>
+  <text x="282" y="491" text-anchor="end" class="micro">3 roots</text>
+
+  <rect x="82" y="513" width="218" height="70" rx="7" class="row"/>
+  <circle cx="106" cy="548" r="14" class="icon-ring"/>
+  <text x="106" y="552" text-anchor="middle" class="accent-text">›_</text>
+  <text x="128" y="539" class="small-label">Ubuntu 24.04</text>
+  <text x="128" y="559" class="muted">WSL</text>
+  <circle cx="282" cy="530" r="4" class="status-ready"/>
+  <text x="282" y="571" text-anchor="end" class="micro">2 roots</text>
+
+  <rect x="82" y="593" width="218" height="70" rx="7" class="row"/>
+  <circle cx="106" cy="628" r="14" class="icon-ring"/>
+  <text x="106" y="632" text-anchor="middle" class="accent-text">›_</text>
+  <text x="128" y="619" class="small-label">Debian</text>
+  <text x="128" y="639" class="muted">WSL</text>
+  <circle cx="282" cy="610" r="4" class="status-warm"/>
+  <text x="282" y="651" text-anchor="end" class="micro">Starting…</text>
+
+  <rect x="82" y="849" width="218" height="40" rx="6" class="button"/>
+  <text x="102" y="874" class="accent-text">＋</text>
+  <text x="124" y="874" class="button-label">Add runtime</text>
+
+  <!-- Variant A root list -->
+  <rect x="340" y="433" width="440" height="38" rx="6" class="field"/>
+  <circle cx="362" cy="451" r="7" fill="none" stroke="#7f8ea3" stroke-width="1.5"/>
+  <line x1="367" y1="457" x2="373" y2="463" stroke="#7f8ea3" stroke-width="1.5"/>
+  <text x="384" y="457" class="muted">Filter roots…</text>
+
+  <rect x="340" y="483" width="440" height="74" rx="7" class="row-selected"/>
+  <circle cx="366" cy="520" r="14" class="icon-ring-selected"/>
+  <path d="M357 520 h18 M360 516 v11 h12 v-11 M358 516 l8-7 8 7" fill="none" stroke="#7dd3fc" stroke-width="1.4"/>
+  <text x="390" y="510" class="small-label">C:\Users\Operator\p\berylorg\beryl</text>
+  <text x="390" y="532" class="muted">Current root · 12 threads</text>
+  <text x="758" y="524" text-anchor="end" class="accent-text">✓</text>
+
+  <rect x="340" y="567" width="440" height="74" rx="7" class="row"/>
+  <circle cx="366" cy="604" r="14" class="icon-ring"/>
+  <path d="M357 604 h18 M360 600 v11 h12 v-11 M358 600 l8-7 8 7" fill="none" stroke="#92a2b7" stroke-width="1.4"/>
+  <text x="390" y="594" class="small-label">C:\Users\Operator</text>
+  <text x="390" y="616" class="muted">Home · always available</text>
+  <rect x="707" y="587" width="51" height="20" rx="10" class="pill"/>
+  <text x="732.5" y="601" text-anchor="middle" class="pill-text">HOME</text>
+
+  <rect x="340" y="651" width="440" height="74" rx="7" class="row"/>
+  <circle cx="366" cy="688" r="14" class="icon-ring"/>
+  <path d="M357 684 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.4"/>
+  <text x="390" y="678" class="small-label">D:\Research</text>
+  <text x="390" y="700" class="muted">Last used yesterday · 4 threads</text>
+
+  <rect x="340" y="735" width="440" height="74" rx="7" class="row"/>
+  <circle cx="366" cy="772" r="14" class="icon-ring"/>
+  <path d="M357 768 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.4"/>
+  <text x="390" y="762" class="small-label">D:\Scratch</text>
+  <text x="390" y="784" class="muted">2 threads</text>
+
+  <rect x="340" y="849" width="440" height="40" rx="6" class="button"/>
+  <text x="360" y="874" class="accent-text">＋</text>
+  <text x="382" y="874" class="button-label">Add root to Windows</text>
+
+  <!-- Variant A confirmation footer -->
+  <line x1="64" y1="908" x2="802" y2="908" class="divider"/>
+  <text x="90" y="938" class="section-label">NEW THREAD TARGET</text>
+  <text x="90" y="966" class="label">Windows</text>
+  <text x="157" y="966" class="muted">·</text>
+  <text x="170" y="966" class="muted">C:\Users\Operator\p\berylorg\beryl</text>
+  <text x="90" y="991" class="micro">An eligible empty thread may be reused here.</text>
+  <rect x="584" y="944" width="196" height="42" rx="7" class="button-accent"/>
+  <text x="682" y="970" text-anchor="middle" class="button-label">New thread here</text>
+  <text x="90" y="1034" class="micro">Esc cancels · Enter confirms the selected root</text>
+
+  <!-- Variant A rationale -->
+  <text x="68" y="1110" class="note-title">Why it works</text>
+  <text x="68" y="1136" class="note">Runtime context stays fixed while roots are scanned; add actions live beside</text>
+  <text x="68" y="1156" class="note">the collection they change. Explicit confirmation prevents an exploratory click</text>
+  <text x="68" y="1176" class="note">from creating or switching a thread.</text>
+  <text x="68" y="1214" class="note-title">Tradeoff</text>
+  <text x="68" y="1240" class="note">Widest flyout. Both lists should use stable row ids and bounded rendering if</text>
+  <text x="68" y="1260" class="note">their counts can grow.</text>
+  <rect x="68" y="1294" width="174" height="26" rx="13" class="pill"/>
+  <text x="155" y="1312" text-anchor="middle" class="pill-text">EXPLICIT COMMIT</text>
+  <rect x="252" y="1294" width="188" height="26" rx="13" fill="#151c2a" stroke="#344258"/>
+  <text x="346" y="1312" text-anchor="middle" class="micro">BEST AT MEDIUM SCALE</text>
+
+  <!-- Variant B card -->
+  <rect x="866" y="128" width="786" height="1260" rx="18" class="card"/>
+  <text x="894" y="169" class="card-kicker">VARIANT B</text>
+  <text x="894" y="202" class="card-title">Expandable runtime tree</text>
+  <rect x="890" y="226" width="738" height="74" rx="9" class="shell"/>
+  <rect x="908" y="246" width="116" height="34" rx="6" class="button"/>
+  <text x="966" y="268" text-anchor="middle" class="button-label">New Thread</text>
+  <rect x="1024" y="246" width="40" height="34" rx="6" class="button-accent"/>
+  <line x1="1024" y1="248" x2="1024" y2="278" stroke="#38bdf8" opacity="0.6"/>
+  <text x="1044" y="266" text-anchor="middle" class="button-label">•••</text>
+  <rect x="1078" y="246" width="532" height="34" rx="6" fill="#070a0f" stroke="#242c3b"/>
+  <text x="1096" y="268" class="thread-title">Current thread · Beryl redesign</text>
+  <path d="M1033 300 L1044 288 L1055 300 Z" fill="#101827" stroke="#3a4860" stroke-width="1"/>
+
+  <rect x="950" y="299" width="618" height="764" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="976" y="340" class="flyout-title">New thread location</text>
+  <text x="976" y="365" class="flyout-subtitle">Expand a runtime, then activate a root to create immediately.</text>
+  <line x1="950" y1="386" x2="1568" y2="386" class="divider"/>
+
+  <rect x="976" y="407" width="566" height="38" rx="6" class="field"/>
+  <circle cx="998" cy="425" r="7" fill="none" stroke="#7f8ea3" stroke-width="1.5"/>
+  <line x1="1003" y1="431" x2="1009" y2="437" stroke="#7f8ea3" stroke-width="1.5"/>
+  <text x="1020" y="431" class="muted">Filter runtimes and roots…</text>
+
+  <!-- Variant B Windows group -->
+  <rect x="976" y="461" width="566" height="50" rx="7" class="row"/>
+  <text x="996" y="491" class="accent-text">⌄</text>
+  <circle cx="1028" cy="486" r="13" class="icon-ring-selected"/>
+  <path d="M1021 479 h6 v6 h-6 Z M1029 479 h6 v6 h-6 Z M1021 487 h6 v6 h-6 Z M1029 487 h6 v6 h-6 Z" fill="#7dd3fc"/>
+  <text x="1050" y="481" class="small-label">Windows</text>
+  <text x="1050" y="499" class="micro">Host · ready</text>
+  <text x="1520" y="491" text-anchor="end" class="micro">3 roots</text>
+
+  <rect x="1004" y="519" width="538" height="56" rx="7" class="row"/>
+  <path d="M1024 545 h16 M1027 541 v10 h10 v-10 M1025 541 l7-6 7 6" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1054" y="542" class="small-label">C:\Users\Operator</text>
+  <text x="1054" y="560" class="micro">Home · non-removable</text>
+  <rect x="1470" y="536" width="50" height="20" rx="10" class="pill"/>
+  <text x="1495" y="550" text-anchor="middle" class="pill-text">HOME</text>
+
+  <rect x="1004" y="583" width="538" height="62" rx="7" class="row-hover"/>
+  <path d="M1024 609 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#dbe7f4" stroke-width="1.3"/>
+  <text x="1054" y="606" class="small-label">C:\Users\Operator\p\berylorg\beryl</text>
+  <text x="1054" y="626" class="micro">Current · 12 threads</text>
+  <text x="1520" y="616" text-anchor="end" class="accent-text">New thread  ›</text>
+
+  <rect x="1004" y="653" width="538" height="56" rx="7" class="row"/>
+  <path d="M1024 679 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1054" y="676" class="small-label">D:\Research</text>
+  <text x="1054" y="694" class="micro">Last used yesterday</text>
+
+  <rect x="1004" y="717" width="538" height="38" rx="6" fill="#111827" stroke="#334155"/>
+  <text x="1024" y="741" class="accent-text">＋</text>
+  <text x="1046" y="741" class="small-label">Add root to Windows</text>
+
+  <!-- Variant B Ubuntu group -->
+  <rect x="976" y="769" width="566" height="50" rx="7" class="row"/>
+  <text x="996" y="799" class="accent-text">›</text>
+  <circle cx="1028" cy="794" r="13" class="icon-ring"/>
+  <text x="1028" y="798" text-anchor="middle" class="accent-text">›_</text>
+  <text x="1050" y="789" class="small-label">Ubuntu 24.04</text>
+  <text x="1050" y="807" class="micro">WSL · ready</text>
+  <text x="1520" y="799" text-anchor="end" class="micro">2 roots</text>
+
+  <rect x="976" y="827" width="566" height="50" rx="7" class="row"/>
+  <text x="996" y="857" class="accent-text">›</text>
+  <circle cx="1028" cy="852" r="13" class="icon-ring"/>
+  <text x="1028" y="856" text-anchor="middle" class="accent-text">›_</text>
+  <text x="1050" y="847" class="small-label">Debian</text>
+  <text x="1050" y="865" class="micro">WSL · starting…</text>
+  <circle cx="1520" cy="852" r="4" class="status-warm"/>
+
+  <line x1="950" y1="898" x2="1568" y2="898" class="divider"/>
+  <rect x="976" y="920" width="566" height="42" rx="7" class="button"/>
+  <text x="996" y="946" class="accent-text">＋</text>
+  <text x="1018" y="946" class="button-label">Add runtime</text>
+  <text x="976" y="1002" class="micro">Root rows are commands · Esc closes without creating</text>
+  <rect x="976" y="1017" width="250" height="24" rx="12" fill="#34260f" stroke="#f59e0b"/>
+  <text x="1101" y="1034" text-anchor="middle" fill="#fde68a" font-size="11" font-weight="650">ONE CLICK COMMITS</text>
+
+  <!-- Variant B rationale -->
+  <text x="894" y="1110" class="note-title">Why it works</text>
+  <text x="894" y="1136" class="note">Narrow, familiar, and visually honest about the runtime/root hierarchy. Add-root</text>
+  <text x="894" y="1156" class="note">stays inside its runtime; Add runtime remains global.</text>
+  <text x="894" y="1214" class="note-title">Tradeoff</text>
+  <text x="894" y="1240" class="note">More vertical travel, and direct root activation is fast but less forgiving. With</text>
+  <text x="894" y="1260" class="note">many expanded runtimes this becomes a virtualized tree rather than a simple menu.</text>
+  <rect x="894" y="1294" width="154" height="26" rx="13" fill="#34260f" stroke="#f59e0b"/>
+  <text x="971" y="1312" text-anchor="middle" fill="#fde68a" font-size="11" font-weight="650">DIRECT COMMIT</text>
+  <rect x="1058" y="1294" width="178" height="26" rx="13" fill="#151c2a" stroke="#344258"/>
+  <text x="1147" y="1312" text-anchor="middle" class="micro">SMALLEST FOOTPRINT</text>
+
+  <!-- Variant C card -->
+  <rect x="1692" y="128" width="786" height="1260" rx="18" class="card"/>
+  <text x="1720" y="169" class="card-kicker">VARIANT C</text>
+  <text x="1720" y="202" class="card-title">Search + recent targets</text>
+  <rect x="1716" y="226" width="738" height="74" rx="9" class="shell"/>
+  <rect x="1734" y="246" width="116" height="34" rx="6" class="button"/>
+  <text x="1792" y="268" text-anchor="middle" class="button-label">New Thread</text>
+  <rect x="1850" y="246" width="40" height="34" rx="6" class="button-accent"/>
+  <line x1="1850" y1="248" x2="1850" y2="278" stroke="#38bdf8" opacity="0.6"/>
+  <text x="1870" y="266" text-anchor="middle" class="button-label">•••</text>
+  <rect x="1904" y="246" width="532" height="34" rx="6" fill="#070a0f" stroke="#242c3b"/>
+  <text x="1922" y="268" class="thread-title">Current thread · Beryl redesign</text>
+  <path d="M1859 300 L1870 288 L1881 300 Z" fill="#101827" stroke="#3a4860" stroke-width="1"/>
+
+  <rect x="1716" y="299" width="738" height="764" rx="10" class="flyout" filter="url(#shadow)"/>
+  <text x="1742" y="340" class="flyout-title">Find a thread target</text>
+  <text x="1742" y="365" class="flyout-subtitle">Optimized for returning to a small set of roots across several runtimes.</text>
+  <line x1="1716" y1="386" x2="2454" y2="386" class="divider"/>
+
+  <rect x="1742" y="407" width="686" height="44" rx="7" class="field"/>
+  <circle cx="1766" cy="428" r="8" fill="none" stroke="#7dd3fc" stroke-width="1.6"/>
+  <line x1="1772" y1="434" x2="1779" y2="441" stroke="#7dd3fc" stroke-width="1.6"/>
+  <text x="1792" y="434" class="muted">Search path, root name, or runtime…</text>
+  <rect x="2356" y="417" width="54" height="24" rx="5" fill="#151c2a" stroke="#344258"/>
+  <text x="2383" y="433" text-anchor="middle" class="micro">Ctrl F</text>
+
+  <text x="1742" y="483" class="section-label">RECENT TARGETS</text>
+  <rect x="1742" y="497" width="686" height="66" rx="7" class="row-selected"/>
+  <circle cx="1768" cy="530" r="13" class="icon-ring-selected"/>
+  <path d="M1759 526 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#7dd3fc" stroke-width="1.3"/>
+  <text x="1792" y="523" class="small-label">beryl</text>
+  <text x="1792" y="543" class="micro">C:\Users\Operator\p\berylorg\beryl · current</text>
+  <rect x="2333" y="516" width="75" height="22" rx="11" class="pill"/>
+  <text x="2370.5" y="531" text-anchor="middle" class="pill-text">WINDOWS</text>
+
+  <rect x="1742" y="571" width="686" height="66" rx="7" class="row"/>
+  <circle cx="1768" cy="604" r="13" class="icon-ring"/>
+  <path d="M1759 600 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1792" y="597" class="small-label">beryl · Linux</text>
+  <text x="1792" y="617" class="micro">~/code/beryl · used 2 hours ago</text>
+  <rect x="2315" y="590" width="93" height="22" rx="11" fill="#151c2a" stroke="#344258"/>
+  <text x="2361.5" y="605" text-anchor="middle" class="micro">UBUNTU 24.04</text>
+
+  <rect x="1742" y="645" width="686" height="66" rx="7" class="row"/>
+  <circle cx="1768" cy="678" r="13" class="icon-ring"/>
+  <path d="M1759 674 h8 l3 4 h7 v9 h-18 Z" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1792" y="671" class="small-label">Research</text>
+  <text x="1792" y="691" class="micro">D:\Research · used yesterday</text>
+  <rect x="2333" y="664" width="75" height="22" rx="11" fill="#151c2a" stroke="#344258"/>
+  <text x="2370.5" y="679" text-anchor="middle" class="micro">WINDOWS</text>
+
+  <text x="1742" y="745" class="section-label">RUNTIMES &amp; ROOTS</text>
+  <rect x="1742" y="759" width="686" height="52" rx="7" class="row"/>
+  <circle cx="1768" cy="785" r="12" class="icon-ring-selected"/>
+  <path d="M1761 778 h6 v6 h-6 Z M1769 778 h6 v6 h-6 Z M1761 786 h6 v6 h-6 Z M1769 786 h6 v6 h-6 Z" fill="#7dd3fc"/>
+  <text x="1792" y="781" class="small-label">Windows</text>
+  <text x="1792" y="798" class="micro">3 roots · ready</text>
+  <text x="2265" y="790" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="2285" y1="769" x2="2285" y2="801" class="divider"/>
+  <text x="2305" y="790" class="accent-text">＋ Add root</text>
+
+  <rect x="1742" y="819" width="686" height="52" rx="7" class="row"/>
+  <circle cx="1768" cy="845" r="12" class="icon-ring"/>
+  <text x="1768" y="849" text-anchor="middle" class="accent-text">›_</text>
+  <text x="1792" y="841" class="small-label">Ubuntu 24.04</text>
+  <text x="1792" y="858" class="micro">2 roots · ready</text>
+  <text x="2265" y="850" text-anchor="end" class="accent-text">Browse roots</text>
+  <line x1="2285" y1="829" x2="2285" y2="861" class="divider"/>
+  <text x="2305" y="850" class="accent-text">＋ Add root</text>
+
+  <rect x="1742" y="883" width="212" height="38" rx="6" class="button"/>
+  <text x="1762" y="907" class="accent-text">＋</text>
+  <text x="1784" y="907" class="button-label">Add runtime</text>
+
+  <line x1="1716" y1="936" x2="2454" y2="936" class="divider"/>
+  <text x="1742" y="965" class="section-label">SELECTED TARGET</text>
+  <text x="1742" y="993" class="label">beryl</text>
+  <text x="1781" y="993" class="muted">· Windows · C:\Users\Operator\p\berylorg\beryl</text>
+  <rect x="2232" y="964" width="196" height="42" rx="7" class="button-accent"/>
+  <text x="2330" y="990" text-anchor="middle" class="button-label">New thread here</text>
+  <text x="1742" y="1034" class="micro">Arrow keys select · Enter confirms · Esc cancels</text>
+
+  <!-- Variant C rationale -->
+  <text x="1720" y="1110" class="note-title">Why it works</text>
+  <text x="1720" y="1136" class="note">The common path is nearly flat: recent targets first, search always focused,</text>
+  <text x="1720" y="1156" class="note">runtime management still visible below. Friendly to keyboard-heavy use.</text>
+  <text x="1720" y="1214" class="note-title">Tradeoff</text>
+  <text x="1720" y="1240" class="note">The hierarchy is less obvious, and ranking becomes product behavior. It needs</text>
+  <text x="1720" y="1260" class="note">clear stable ordering so the flyout never feels like a moving target.</text>
+  <rect x="1720" y="1294" width="174" height="26" rx="13" class="pill"/>
+  <text x="1807" y="1312" text-anchor="middle" class="pill-text">EXPLICIT COMMIT</text>
+  <rect x="1904" y="1294" width="190" height="26" rx="13" fill="#151c2a" stroke="#344258"/>
+  <text x="1999" y="1312" text-anchor="middle" class="micro">BEST FOR MANY TARGETS</text>
+
+  <!-- Common first-run state -->
+  <rect x="40" y="1412" width="2438" height="178" rx="16" class="footer-band"/>
+  <text x="68" y="1448" class="card-kicker">SHARED FIRST-RUN ENTRANCE</text>
+  <text x="68" y="1478" class="note-title">Zero runtimes uses the same split button</text>
+  <text x="68" y="1502" class="note">Primary stays disabled; the secondary segment draws attention.</text>
+  <text x="68" y="1522" class="note">Adding the first runtime provisions Home and the first thread.</text>
+
+  <rect x="432" y="1442" width="116" height="34" rx="6" class="button-disabled"/>
+  <text x="490" y="1464" text-anchor="middle" class="button-label-disabled">New Thread</text>
+  <rect x="548" y="1442" width="42" height="34" rx="6" class="button-accent"/>
+  <text x="569" y="1462" text-anchor="middle" class="button-label">•••</text>
+  <rect x="402" y="1492" width="258" height="40" rx="6" fill="#111827" stroke="#0f172a" filter="url(#soft-shadow)"/>
+  <text x="531" y="1517" text-anchor="middle" fill="#ffffff" font-size="12">Add a runtime using ••• first.</text>
+  <path d="M558 1492 L569 1481 L580 1492 Z" fill="#111827" stroke="#0f172a"/>
+
+  <text x="690" y="1473" fill="#7dd3fc" font-size="26">→</text>
+  <rect x="732" y="1432" width="660" height="138" rx="9" class="flyout" filter="url(#soft-shadow)"/>
+  <circle cx="774" cy="1480" r="23" class="icon-ring-selected"/>
+  <text x="774" y="1486" text-anchor="middle" fill="#7dd3fc" font-size="23">＋</text>
+  <text x="814" y="1469" class="label">No runtimes yet</text>
+  <text x="814" y="1492" class="muted">Add Windows or a WSL runtime to begin.</text>
+  <text x="814" y="1513" class="micro">Its user-home root is created automatically.</text>
+  <rect x="1162" y="1472" width="204" height="42" rx="7" class="button-accent"/>
+  <text x="1264" y="1498" text-anchor="middle" class="button-label">Add runtime</text>
+  <text x="814" y="1546" class="micro">The runtime picker/probe may continue from this command.</text>
+
+  <text x="1422" y="1509" fill="#7dd3fc" font-size="26">→</text>
+  <rect x="1470" y="1444" width="252" height="54" rx="8" class="row-selected"/>
+  <circle cx="1496" cy="1471" r="12" class="icon-ring-selected"/>
+  <path d="M1489 1464 h6 v6 h-6 Z M1497 1464 h6 v6 h-6 Z M1489 1472 h6 v6 h-6 Z M1497 1472 h6 v6 h-6 Z" fill="#7dd3fc"/>
+  <text x="1518" y="1467" class="small-label">Windows</text>
+  <text x="1518" y="1485" class="micro">Runtime</text>
+  <text x="1737" y="1478" fill="#7dd3fc" font-size="20">＋</text>
+  <rect x="1764" y="1444" width="278" height="54" rx="8" class="row"/>
+  <path d="M1783 1472 h16 M1786 1468 v10 h10 v-10 M1784 1468 l7-6 7 6" fill="none" stroke="#92a2b7" stroke-width="1.3"/>
+  <text x="1812" y="1467" class="small-label">C:\Users\Operator</text>
+  <text x="1812" y="1485" class="micro">Home root · non-removable</text>
+  <text x="2057" y="1478" fill="#7dd3fc" font-size="20">＋</text>
+  <rect x="2084" y="1444" width="358" height="54" rx="8" class="row"/>
+  <circle cx="2110" cy="1471" r="11" fill="#103022" stroke="#22c55e"/>
+  <text x="2110" y="1476" text-anchor="middle" fill="#bbf7d0" font-size="13">✓</text>
+  <text x="2132" y="1467" class="small-label">First durable thread + draft</text>
+  <text x="2132" y="1485" class="micro">Claimed before the shell switches</text>
+  <text x="1470" y="1534" class="micro">One successful setup action produces a usable window context.</text>
+  <text x="2438" y="1564" text-anchor="end" class="micro">Mockup only · 2026-07-10</text>
+</svg>

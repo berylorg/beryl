@@ -1,6 +1,6 @@
 #[test]
-fn phase7_render_sources_do_not_use_appearance_settings_or_literal_colors() {
-    for (path, source) in PHASE7_RENDER_SOURCES {
+fn retained_render_sources_do_not_use_appearance_settings_or_literal_colors() {
+    for (path, source) in RETAINED_RENDER_SOURCES {
         let source_without_functional_transparency =
             source.replace("rgba(0x00000000)", "FUNCTIONAL_TRANSPARENT_TEXT");
 
@@ -23,129 +23,13 @@ fn phase7_render_sources_do_not_use_appearance_settings_or_literal_colors() {
     }
 }
 
-#[test]
-fn phase7_graph_and_checklist_sources_name_surface_roles() {
-    let graph_overlay = include_str!("../src/shell/render/graph_overlay.rs");
-    let graph_rows = include_str!("../src/shell/render/graph_overlay/rows.rs");
-    let graph_menu_rows = include_str!("../src/shell/render/graph_link_menu_rows.rs");
-
-    for role in [
-        "BerylThemeRole::GraphOverlay",
-        "BerylThemeRole::GraphColumn",
-        "BerylThemeRole::GraphColumnHeader",
-        "BerylThemeRole::GraphRowPendingText",
-        "BerylThemeRole::GraphRowErrorText",
-    ] {
-        assert!(
-            graph_overlay.contains(role),
-            "graph overlay should use {role}"
-        );
-    }
-
-    for role in [
-        "BerylThemeRole::GraphRowTopic",
-        "BerylThemeRole::GraphRowTopicText",
-        "BerylThemeRole::GraphRowChecklistItem",
-        "BerylThemeRole::GraphRowChecklistItemText",
-        "BerylThemeRole::GraphRowThreadRef",
-        "BerylThemeRole::GraphRowThreadRefText",
-        "BerylThemeRole::GraphRowThreadRefMeta",
-        "BerylThemeRole::GraphRowSoftLink",
-        "BerylThemeRole::GraphRowSoftLinkText",
-        "BerylThemeRole::GraphRowHover",
-        "BerylThemeRole::GraphRowSelected",
-        "BerylThemeRole::GraphRowSelectedText",
-        "BerylThemeRole::GraphRowInvalid",
-        "BerylThemeRole::GraphRowInvalidText",
-        "BerylThemeRole::ChecklistStatusTodo",
-        "BerylThemeRole::ChecklistStatusInProgress",
-        "BerylThemeRole::ChecklistStatusDone",
-    ] {
-        assert!(graph_rows.contains(role), "graph rows should use {role}");
-    }
-
-    assert!(
-        graph_menu_rows.contains("BerylThemeRole::GraphRowError"),
-        "held destructive graph action progress should resolve from graph error styling"
-    );
-}
-
-#[test]
-fn phase7_selector_notice_and_status_sources_name_state_roles() {
-    let conversation = include_str!("../src/shell/render/conversation.rs");
-    let thread_selector = include_str!("../src/shell/render/thread_selector.rs");
-    let workspace_picker = include_str!("../src/shell/render/workspace_picker.rs");
-
-    for role in [
-        "BerylThemeRole::NoticeInfo",
-        "BerylThemeRole::NoticeWarning",
-        "BerylThemeRole::NoticeError",
-        "BerylThemeRole::NoticeSuccess",
-        "BerylThemeRole::StatusValuePending",
-        "BerylThemeRole::StatusValueUnavailable",
-        "BerylThemeRole::StatusValueStreaming",
-    ] {
-        assert!(
-            conversation.contains(role),
-            "conversation shell should use {role}"
-        );
-    }
-
-    for role in [
-        "BerylThemeRole::ThreadSelectorSurface",
-        "BerylThemeRole::ThreadSelectorRowSelected",
-        "BerylThemeRole::ThreadSelectorRowUnavailable",
-    ] {
-        assert!(
-            thread_selector.contains(role),
-            "thread selector should use {role}"
-        );
-    }
-
-    for role in [
-        "BerylThemeRole::WorkspacePickerSurface",
-        "BerylThemeRole::WorkspacePickerWorkspaceRow",
-        "BerylThemeRole::WorkspacePickerMemberRow",
-        "BerylThemeRole::WorkspacePickerRowActive",
-    ] {
-        assert!(
-            workspace_picker.contains(role),
-            "workspace picker should use {role}"
-        );
-    }
-}
-
-const PHASE7_RENDER_SOURCES: &[(&str, &str)] = &[
+const RETAINED_RENDER_SOURCES: &[(&str, &str)] = &[
     (
-        "src/shell/render/graph_overlay.rs",
-        include_str!("../src/shell/render/graph_overlay.rs"),
+        "src/shell/render/common.rs",
+        include_str!("../src/shell/render/common.rs"),
     ),
     (
-        "src/shell/render/graph_overlay/rows.rs",
-        include_str!("../src/shell/render/graph_overlay/rows.rs"),
-    ),
-    (
-        "src/shell/render/graph_link_menu.rs",
-        include_str!("../src/shell/render/graph_link_menu.rs"),
-    ),
-    (
-        "src/shell/render/graph_link_menu_rows.rs",
-        include_str!("../src/shell/render/graph_link_menu_rows.rs"),
-    ),
-    (
-        "src/shell/render/thread_selector.rs",
-        include_str!("../src/shell/render/thread_selector.rs"),
-    ),
-    (
-        "src/shell/render/workspace_picker.rs",
-        include_str!("../src/shell/render/workspace_picker.rs"),
-    ),
-    (
-        "src/shell/render/workspace_picker_row_menu.rs",
-        include_str!("../src/shell/render/workspace_picker_row_menu.rs"),
-    ),
-    (
-        "src/shell/render/conversation.rs",
-        include_str!("../src/shell/render/conversation.rs"),
+        "src/shell/render/status_operation.rs",
+        include_str!("../src/shell/render/status_operation.rs"),
     ),
 ];

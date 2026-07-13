@@ -1,0 +1,136 @@
+#![allow(dead_code)]
+
+pub mod phase9;
+
+use std::path::Path;
+
+use beryl_home_store::{
+    CommandError, CommitReceipt, HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    MutationContribution,
+};
+use beryl_model::{
+    AdmittedHostPath, Availability, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
+    RuntimeNativePath, SyndicThreadId,
+};
+use beryl_state::{
+    AvailabilitySnapshot, BerylState, CreateRuntimeWithHomeRoot, RootRegistration,
+    RuntimeRegistration, ThreadMetadataKind, UnixMillis,
+};
+
+pub fn open(path: &Path) -> (HomeStore, BerylState) {
+    let mut store =
+        HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap();
+    let state = BerylState::register(&mut store).unwrap();
+    (store, state)
+}
+
+pub fn host_runtime(
+    runtime_byte: u8,
+    root_byte: u8,
+    executable: &str,
+    root: &str,
+) -> CreateRuntimeWithHomeRoot {
+    let mode = RuntimeMode::host();
+    let runtime = RuntimeRegistration::new(
+        RuntimeId::from_bytes([runtime_byte; 16]),
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, executable).unwrap(),
+        mode.clone(),
+        RuntimeNativePath::from_admitted(mode.clone(), PathFlavor::Windows, executable).unwrap(),
+        UnixMillis::new(10),
+        AvailabilitySnapshot::observed(Availability::Available, UnixMillis::new(11)).unwrap(),
+    )
+    .unwrap();
+    let root = RootRegistration::new(
+        RootId::from_bytes([root_byte; 16]),
+        RuntimeNativePath::from_admitted(mode, PathFlavor::Windows, root).unwrap(),
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, root).unwrap(),
+        UnixMillis::new(10),
+        AvailabilitySnapshot::unknown(),
+    );
+    CreateRuntimeWithHomeRoot::new(runtime, root).unwrap()
+}
+
+pub fn wsl_runtime(
+    runtime_byte: u8,
+    root_byte: u8,
+    distro: &str,
+    executable_host: &str,
+    executable_native: &str,
+    root_host: &str,
+    root_native: &str,
+) -> CreateRuntimeWithHomeRoot {
+    let mode = RuntimeMode::wsl(distro).unwrap();
+    let runtime = RuntimeRegistration::new(
+        RuntimeId::from_bytes([runtime_byte; 16]),
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, executable_host).unwrap(),
+        mode.clone(),
+        RuntimeNativePath::from_admitted(mode.clone(), PathFlavor::Posix, executable_native)
+            .unwrap(),
+        UnixMillis::new(20),
+        AvailabilitySnapshot::unknown(),
+    )
+    .unwrap();
+    let root = RootRegistration::new(
+        RootId::from_bytes([root_byte; 16]),
+        RuntimeNativePath::from_admitted(mode, PathFlavor::Posix, root_native).unwrap(),
+        AdmittedHostPath::from_admitted(PathFlavor::Windows, root_host).unwrap(),
+        UnixMillis::new(20),
+        AvailabilitySnapshot::unknown(),
+    );
+    CreateRuntimeWithHomeRoot::new(runtime, root).unwrap()
+}
+
+pub fn execute(
+    store: &HomeStore,
+    contribution: MutationContribution,
+) -> Result<CommitReceipt, CommandError> {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command.add(contribution).unwrap();
+    store.execute(command)
+}
+
+pub fn create_host_runtime(
+    store: &HomeStore,
+    state: BerylState,
+    runtime_byte: u8,
+    root_byte: u8,
+    executable: &str,
+    root: &str,
+) {
+    let contribution = state.runtime_roots().create_runtime_with_home_root(
+        state.runtime_roots().revision(store).unwrap(),
+        host_runtime(runtime_byte, root_byte, executable, root),
+    );
+    execute(store, contribution).unwrap();
+}
+
+pub fn binding(runtime_byte: u8, root_byte: u8, path: &str) -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([runtime_byte; 16]),
+        RootId::from_bytes([root_byte; 16]),
+        RuntimeNativePath::from_admitted(RuntimeMode::host(), PathFlavor::Windows, path).unwrap(),
+    )
+}
+
+pub fn create_metadata(
+    store: &HomeStore,
+    state: BerylState,
+    thread_byte: u8,
+    binding: ExecutionBinding,
+    kind: ThreadMetadataKind,
+) {
+    let thread_id = SyndicThreadId::from_bytes([thread_byte; 16]);
+    let contribution = state.thread_metadata().create(
+        state.thread_metadata().revision(store).unwrap(),
+        beryl_state::CreateThreadMetadata::new(thread_id, binding, kind),
+    );
+    execute(store, contribution).unwrap();
+}
+
+pub fn contributor_source<T: std::error::Error + 'static>(error: &CommandError) -> Option<&T> {
+    match error {
+        CommandError::ContributorValidation { source, .. }
+        | CommandError::ContributorAssembly { source, .. } => source.downcast_ref::<T>(),
+        _ => None,
+    }
+}

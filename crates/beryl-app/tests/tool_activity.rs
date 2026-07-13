@@ -7,7 +7,6 @@ use beryl_backend::{
     JsonRpcError, ThreadItem, ThreadReadMetadata, ThreadSessionMetadata, ThreadSummary, TurnInfo,
     TurnStatus, TurnStreamEvent,
 };
-use beryl_model::workspace::WorkspaceId;
 use serde_json::{Value, json};
 use tool_activity::{
     ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET, ACTIVITY_COMPLETED_ROW_BUDGET,
@@ -193,44 +192,6 @@ fn projection_shows_single_relative_file_change_path() {
 }
 
 #[test]
-fn projection_shows_single_host_absolute_file_change_path_relative_to_root() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-
-    assert_eq!(
-        projected_file_change_display_value_for_target(
-            json!([
-                {
-                    "path": r"C:\work\beryl\src\lib.rs",
-                    "diff": "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,3 @@\n-old\n+new\n+\n",
-                    "kind": {"type": "update"}
-                }
-            ]),
-            &execution_target,
-        ),
-        r"Patching src\lib.rs, +2 -1"
-    );
-}
-
-#[test]
-fn projection_shows_single_wsl_absolute_file_change_path_relative_to_root() {
-    let execution_target = WorkspaceId::wsl_linux("Ubuntu", "/home/me/project");
-
-    assert_eq!(
-        projected_file_change_display_value_for_target(
-            json!([
-                {
-                    "path": "/home/me/project/src/lib.rs",
-                    "diff": "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,3 @@\n-old\n+new\n+\n",
-                    "kind": {"type": "update"}
-                }
-            ]),
-            &execution_target,
-        ),
-        "Patching src/lib.rs, +2 -1"
-    );
-}
-
-#[test]
 fn projection_shows_duplicate_same_file_change_path_with_summed_counts() {
     assert_eq!(
         projected_file_change_display_value(json!([
@@ -265,25 +226,6 @@ fn projection_shows_multi_file_change_patch_summary() {
             }
         ])),
         "Patching 2 files, +3 -2"
-    );
-}
-
-#[test]
-fn projection_shows_aggregate_for_absolute_file_change_path_outside_root() {
-    let execution_target = WorkspaceId::host_windows(r"C:\work\beryl");
-
-    assert_eq!(
-        projected_file_change_display_value_for_target(
-            json!([
-                {
-                    "path": r"C:\work\other\src\lib.rs",
-                    "diff": "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,3 @@\n-old\n+new\n+\n",
-                    "kind": {"type": "update"}
-                }
-            ]),
-            &execution_target,
-        ),
-        "Patching 1 file, +2 -1"
     );
 }
 
@@ -499,29 +441,6 @@ fn projection_retains_history_and_finishes_lingering_running_rows() {
     assert_eq!(
         projection.rows()[0].status,
         ToolActivityRowStatus::FinishedError
-    );
-}
-
-#[test]
-fn archive_notification_finishes_lingering_running_rows() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_branch", "turn_branch", command_item("cmd_branch")),
-        Some("Decision".to_string()),
-    );
-    assert_eq!(projection.rows()[0].status, ToolActivityRowStatus::Running);
-
-    projection.apply_stream_event(
-        &TurnStreamEvent::ThreadArchived {
-            thread_id: "thread_branch".to_string(),
-        },
-        None,
-    );
-
-    assert_eq!(
-        projection.rows()[0].status,
-        ToolActivityRowStatus::FinishedOk
     );
 }
 
@@ -1024,7 +943,7 @@ fn projection_keeps_observed_subagent_empty_until_metadata_nickname_resolves() {
 
     let mut display_summary = thread_summary("thread_child", None);
     display_summary.name = Some("Research".to_string());
-    projection.apply_thread_summary_agent_labels([&display_summary]);
+    projection.apply_subagent_thread_summaries([&display_summary]);
 
     let child_row = projection
         .rows()
@@ -1038,7 +957,7 @@ fn projection_keeps_observed_subagent_empty_until_metadata_nickname_resolves() {
     );
 
     let nickname_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&nickname_summary]);
+    projection.apply_subagent_thread_summaries([&nickname_summary]);
 
     let child_row = projection
         .rows()
@@ -1324,15 +1243,11 @@ fn projection_applies_activity_metadata_to_multiple_receiver_threads() {
 
 #[test]
 fn projection_repairs_child_rows_from_thread_summary_agent_nicknames() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
+    let mut projection = observed_child_projection();
     assert_eq!(projection.rows()[0].agent_label, "");
 
     let child_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&child_summary]);
+    projection.apply_subagent_thread_summaries([&child_summary]);
 
     let child_row = projection
         .rows()
@@ -1430,70 +1345,10 @@ fn projection_keeps_subagent_read_metadata_unresolved_when_nickname_is_absent() 
 }
 
 #[test]
-fn projection_ignores_non_subagent_cas_name_with_model_metadata() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started("thread_main", "turn_main", command_item("cmd_1")),
-        None,
-    );
-
-    let mut metadata = thread_read_metadata("thread_main", None, Some("gpt-5.5"), Some("xhigh"));
-    metadata.thread.name = Some("Research".to_string());
-    projection.apply_thread_read_metadata([&metadata]);
-
-    let row = row_for_activity(&projection, "dir");
-    assert_eq!(row.agent_label, "thread_main preview");
-}
-
-#[test]
-fn projection_uses_thread_summary_preview_for_non_subagent_when_nickname_is_absent() {
-    let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
-
-    let mut child_summary = thread_summary("thread_child", None);
-    child_summary.name = Some("Research".to_string());
-    projection.apply_thread_summary_agent_labels([&child_summary]);
-
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible");
-    assert_eq!(child_row.agent_label, "thread_child preview");
-
-    let child_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&child_summary]);
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after nickname");
-    assert_eq!(child_row.agent_label, "Hooke");
-
-    let mut later_display_summary = thread_summary("thread_child", None);
-    later_display_summary.name = Some("Renamed Thread".to_string());
-    projection.apply_thread_summary_agent_labels([&later_display_summary]);
-    let child_row = projection
-        .rows()
-        .iter()
-        .find(|row| row.tool_display_value == "dir")
-        .expect("child command row should remain visible after display update");
-    assert_eq!(child_row.agent_label, "Hooke");
-}
-
-#[test]
 fn projection_keeps_thread_metadata_nickname_above_later_activity_labels() {
-    let mut projection = ToolActivityProjection::default();
-
-    projection.apply_stream_event(
-        &started("thread_child", "turn_child", command_item("cmd_1")),
-        None,
-    );
+    let mut projection = observed_child_projection();
     let child_summary = thread_summary("thread_child", Some("Hooke"));
-    projection.apply_thread_summary_agent_labels([&child_summary]);
+    projection.apply_subagent_thread_summaries([&child_summary]);
 
     projection.apply_stream_event(
         &started(
@@ -1723,29 +1578,14 @@ fn file_change_item(item_id: &str, changes: Value) -> ThreadItem {
 }
 
 fn projected_file_change_display_value(changes: Value) -> String {
-    projected_file_change_display_value_for_execution_target(changes, None)
-}
-
-fn projected_file_change_display_value_for_target(
-    changes: Value,
-    execution_target: &WorkspaceId,
-) -> String {
-    projected_file_change_display_value_for_execution_target(changes, Some(execution_target))
-}
-
-fn projected_file_change_display_value_for_execution_target(
-    changes: Value,
-    execution_target: Option<&WorkspaceId>,
-) -> String {
     let mut projection = ToolActivityProjection::default();
-    projection.apply_stream_event_with_execution_target(
+    projection.apply_stream_event(
         &started(
             "thread_main",
             "turn_1",
             file_change_item("patch_1", changes),
         ),
         Some("Main".to_string()),
-        execution_target,
     );
     projection.rows()[0].tool_display_value.clone()
 }

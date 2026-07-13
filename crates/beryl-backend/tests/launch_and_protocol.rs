@@ -1,47 +1,21 @@
 use std::{
-    error::Error as _,
     net::{TcpListener, TcpStream},
-    path::{Path, PathBuf},
+    path::PathBuf,
     thread,
     time::Duration,
 };
 
 use beryl_backend::{
-    BackendLaunchSpec, BackendTransport, BackendWebSocketEndpoint, CompatibilityError,
-    CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse,
-    DynamicToolCallResponse, DynamicToolSpec, HardStopCapabilityProbe, HardStopTarget,
-    HardStopTargetOutcome, InitializeResponse, ManagedBackendAuthMaterial,
-    ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession,
-    ManagedBackendStartupProgress, ManagedBackendStartupStage, ManagedWebSocketError,
+    BackendWebSocketEndpoint, CompatibilityError, CompatibilityProbe, CompatibilitySnapshot,
+    ConfigReadOptions, ConfigReadResponse, DynamicToolCallResponse, DynamicToolSpec,
+    HardStopCapabilityProbe, HardStopTarget, HardStopTargetOutcome, InitializeResponse,
+    ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession, ManagedWebSocketError,
     ModelListOptions, ModelListResponse, NonSteerableTurnKind, REQUIRED_CODEX_APP_SERVER_VERSION,
-    ThreadArchiveCapabilityProbe, ThreadBranchCapabilityProbe, ThreadForkOptions,
-    ThreadLoadedListResponse, ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStatus,
-    TurnStreamEvent, UserInput, active_turn_not_steerable_error,
+    ThreadBranchCapabilityProbe, ThreadForkOptions, ThreadStartOptions, ThreadStatus,
+    TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
 };
-use beryl_model::workspace::{RuntimeMode, WorkspaceId};
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
-
-#[test]
-fn host_windows_compatibility_stdio_launch_is_explicit() {
-    let workspace = WorkspaceId::host_windows(r"C:\work\beryl");
-    let launch = BackendLaunchSpec::managed_stdio_for_workspace(workspace.clone());
-    let command = launch
-        .command_line()
-        .expect("host stdio command line should build");
-
-    assert_eq!(launch.transport(), BackendTransport::ManagedStdio);
-    assert_eq!(command.program(), "codex");
-    assert_eq!(
-        command.args(),
-        &[
-            "app-server".to_string(),
-            "--listen".to_string(),
-            "stdio://".to_string(),
-        ]
-    );
-    assert_eq!(command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
-}
 
 #[test]
 fn websocket_transport_error_display_includes_source_detail() {
@@ -55,325 +29,6 @@ fn websocket_transport_error_display_includes_source_detail() {
 
     assert!(display.contains("thread/read"));
     assert!(display.contains("message too large"));
-}
-
-#[test]
-fn wsl_linux_compatibility_stdio_launch_uses_bash_login_shell_and_process_group() {
-    let workspace = WorkspaceId::wsl_linux("Ubuntu", "/work/beryl");
-    let launch = BackendLaunchSpec::managed_stdio_for_workspace(workspace);
-    let command = launch
-        .command_line()
-        .expect("WSL stdio command line should build");
-
-    assert_eq!(command.program(), "wsl.exe");
-    assert_wsl_launch_prefix(command.args(), "Ubuntu", "/work/beryl");
-    assert_wsl_process_group_shell_command(command.args()[7].as_str(), &["stdio://"]);
-    assert_eq!(command.cwd(), None);
-}
-
-#[test]
-fn host_windows_managed_websocket_launch_uses_loopback_and_token_file() {
-    let endpoint = BackendWebSocketEndpoint::loopback(49152);
-    let token_file = PathBuf::from(r"C:\tmp\beryl-token.txt");
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::HostWindows,
-        r"C:\work\beryl",
-        endpoint.clone(),
-        token_file.clone(),
-    );
-    let command = launch
-        .command_line()
-        .expect("host websocket command line should build");
-
-    let BackendTransport::ManagedWebSocket(config) = launch.transport() else {
-        panic!("expected managed websocket transport");
-    };
-    assert_eq!(config.endpoint(), &endpoint);
-    assert_eq!(config.backend_token_file_path(), token_file.as_path());
-    assert!(config.endpoint().is_loopback());
-    assert_eq!(config.endpoint().listen_url(), "ws://127.0.0.1:49152");
-    assert_eq!(command.program(), "codex");
-    assert_eq!(
-        command.args(),
-        &[
-            "app-server".to_string(),
-            "--listen".to_string(),
-            "ws://127.0.0.1:49152".to_string(),
-            "--ws-auth".to_string(),
-            "capability-token".to_string(),
-            "--ws-token-file".to_string(),
-            r"C:\tmp\beryl-token.txt".to_string(),
-        ]
-    );
-    assert_eq!(command.cwd(), Some(&PathBuf::from(r"C:\work\beryl")));
-}
-
-#[test]
-fn wsl_linux_managed_websocket_launch_uses_loopback_bash_login_shell_and_process_group() {
-    let endpoint = BackendWebSocketEndpoint::loopback(49153);
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string(),
-        },
-        "/work/beryl",
-        endpoint,
-        "/tmp/beryl-token.txt",
-    );
-    let command = launch
-        .command_line()
-        .expect("WSL websocket command line should build");
-
-    assert_eq!(command.program(), "wsl.exe");
-    assert_wsl_launch_prefix(command.args(), "Ubuntu", "/work/beryl");
-    assert_wsl_process_group_shell_command(
-        command.args()[7].as_str(),
-        &[
-            "ws://127.0.0.1:49153",
-            "--ws-auth",
-            "capability-token",
-            "--ws-token-file",
-            "/tmp/beryl-token.txt",
-        ],
-    );
-    assert_eq!(command.cwd(), None);
-}
-
-#[test]
-fn wsl_linux_launch_keeps_supervised_shell_alive_while_waiting_for_process_group() {
-    let endpoint = BackendWebSocketEndpoint::loopback(49155);
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string(),
-        },
-        "/work/beryl",
-        endpoint,
-        "/tmp/beryl-token.txt",
-    );
-    let command = launch
-        .command_line()
-        .expect("WSL websocket command line should build");
-    let shell = command.args()[7].as_str();
-    let outer = wsl_launch_outer_shell_tokens(shell);
-    let inner = wsl_launch_inner_shell_command(shell);
-    let codex_args = wsl_launch_codex_args_from_inner(&inner);
-
-    assert!(
-        !outer
-            .windows(2)
-            .any(|window| window[0] == "exec" && window[1] == "setsid"),
-        "WSL launch shell must not exec setsid because Beryl supervises the outer shell"
-    );
-    assert!(
-        shell.contains("& child=$!"),
-        "WSL launch shell must record the child PID"
-    );
-    assert!(
-        shell.contains("wait \"$child\""),
-        "WSL launch shell must wait for the child process group starter"
-    );
-    assert!(
-        shell.contains("exit \"$status\""),
-        "WSL launch shell must propagate the waited child status"
-    );
-    assert!(inner.contains("\"$$\""));
-    assert_eq!(codex_args[0], "app-server");
-    assert!(codex_args.iter().any(|arg| arg == "--listen"));
-}
-
-#[test]
-fn wsl_linux_launch_shell_quotes_special_codex_arguments() {
-    let endpoint = BackendWebSocketEndpoint::loopback(49156);
-    let token_file = format!("/tmp/token dir/it'has $HOME; back\\slash caf\u{00e9}.txt");
-    let distro_name = "Ubuntu Dev's";
-    let cwd = "/work/beryl folder/$literal";
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::WslLinux {
-            distro_name: distro_name.to_string(),
-        },
-        cwd,
-        endpoint,
-        token_file.clone(),
-    );
-    let command = launch
-        .command_line()
-        .expect("WSL websocket command line should build");
-
-    assert_eq!(command.program(), "wsl.exe");
-    assert_wsl_launch_prefix(command.args(), distro_name, cwd);
-    assert_eq!(
-        wsl_launch_codex_args(command.args()[7].as_str()),
-        vec![
-            "app-server".to_string(),
-            "--listen".to_string(),
-            "ws://127.0.0.1:49156".to_string(),
-            "--ws-auth".to_string(),
-            "capability-token".to_string(),
-            "--ws-token-file".to_string(),
-            token_file,
-        ]
-    );
-}
-
-#[test]
-fn wsl_linux_launch_rejects_nul_in_shell_quoted_argument() {
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string(),
-        },
-        "/work/beryl",
-        BackendWebSocketEndpoint::loopback(49157),
-        "/tmp/beryl-token\0.txt",
-    );
-    let error = launch
-        .command_line()
-        .expect_err("NUL bytes should be rejected before spawning WSL");
-
-    assert_eq!(error.field(), "codex app-server argument");
-    assert_eq!(
-        error
-            .source()
-            .and_then(|source| source.downcast_ref::<shlex::QuoteError>()),
-        Some(&shlex::QuoteError::Nul)
-    );
-}
-
-fn assert_wsl_launch_prefix(args: &[String], distro_name: &str, cwd: &str) {
-    assert_eq!(args.len(), 8);
-    assert_eq!(args[0], "--distribution");
-    assert_eq!(args[1], distro_name);
-    assert_eq!(args[2], "--cd");
-    assert_eq!(args[3], cwd);
-    assert_eq!(args[4], "--exec");
-    assert_eq!(args[5], "/bin/bash");
-    assert_eq!(args[6], "-lc");
-}
-
-fn assert_wsl_process_group_shell_command(shell: &str, expected_fragments: &[&str]) {
-    let inner = wsl_launch_inner_shell_command(shell);
-    let codex_args = wsl_launch_codex_args_from_inner(&inner);
-
-    assert!(inner.contains("printf"));
-    assert!(inner.contains("\"$$\""));
-    assert!(inner.contains("/tmp/beryl-codex-app-server/process-"));
-    assert!(inner.contains(".pid"));
-    assert_eq!(codex_args[0], "app-server");
-    assert!(codex_args.iter().any(|arg| arg == "--listen"));
-
-    for fragment in expected_fragments {
-        assert!(
-            codex_args.iter().any(|arg| arg == fragment),
-            "missing WSL launch fragment {fragment:?} in {codex_args:?}"
-        );
-    }
-}
-
-fn wsl_launch_codex_args(shell: &str) -> Vec<String> {
-    let inner = wsl_launch_inner_shell_command(shell);
-    wsl_launch_codex_args_from_inner(&inner)
-}
-
-fn wsl_launch_outer_shell_tokens(shell: &str) -> Vec<String> {
-    shlex::split(shell).expect("outer WSL shell command should parse")
-}
-
-fn wsl_launch_inner_shell_command(shell: &str) -> String {
-    let outer = wsl_launch_outer_shell_tokens(shell);
-    assert_eq!(outer[0], "mkdir");
-    assert_eq!(outer[1], "-p");
-    assert_eq!(outer[2], "/tmp/beryl-codex-app-server");
-    assert_eq!(outer[3], "&&");
-    let setsid_index = outer
-        .iter()
-        .position(|arg| arg == "setsid")
-        .expect("outer WSL shell command should start a setsid child");
-    assert_ne!(
-        outer
-            .get(setsid_index.saturating_sub(1))
-            .map(String::as_str),
-        Some("exec")
-    );
-    assert_eq!(
-        outer.get(setsid_index + 1).map(String::as_str),
-        Some("/bin/bash")
-    );
-    assert_eq!(outer.get(setsid_index + 2).map(String::as_str), Some("-lc"));
-
-    outer
-        .get(setsid_index + 3)
-        .expect("outer WSL shell command should pass an inner shell command")
-        .clone()
-}
-
-fn wsl_launch_codex_args_from_inner(inner: &str) -> Vec<String> {
-    let codex_start = inner
-        .find("; codex ")
-        .expect("inner WSL shell command should launch codex")
-        + 2;
-    let codex_end = inner[codex_start..]
-        .find("; status=$?")
-        .expect("inner WSL shell command should capture codex exit status")
-        + codex_start;
-    let codex_command = &inner[codex_start..codex_end];
-    let mut codex_tokens =
-        shlex::split(codex_command).expect("codex WSL shell command should parse");
-
-    assert_eq!(codex_tokens.remove(0), "codex");
-    codex_tokens
-}
-
-#[test]
-fn websocket_auth_material_writes_redacted_token_file_and_cleans_up() {
-    let mut auth = ManagedBackendAuthMaterial::generate(&RuntimeMode::HostWindows).unwrap();
-    let host_path = auth.host_token_file_path().to_path_buf();
-    assert_eq!(auth.backend_token_file_path(), host_path.as_path());
-    assert_token_file_name(&host_path);
-
-    let token = std::fs::read_to_string(auth.host_token_file_path()).unwrap();
-
-    assert_eq!(token.len(), 64);
-    assert!(token.chars().all(|ch| ch.is_ascii_hexdigit()));
-    assert!(is_lowercase_hex(&token));
-    assert_eq!(auth.authorization_header_value(), format!("Bearer {token}"));
-    assert!(!format!("{auth:?}").contains(&token));
-
-    let launch = BackendLaunchSpec::managed_websocket(
-        RuntimeMode::HostWindows,
-        r"C:\work\beryl",
-        BackendWebSocketEndpoint::loopback(49154),
-        auth.backend_token_file_path().to_path_buf(),
-    );
-    assert!(
-        launch
-            .command_line()
-            .expect("host websocket command line should build")
-            .args()
-            .iter()
-            .all(|arg| !arg.contains(&token))
-    );
-
-    auth.cleanup().unwrap();
-    assert!(!host_path.exists());
-}
-
-fn assert_token_file_name(path: &Path) {
-    let file_name = path
-        .file_name()
-        .and_then(|file_name| file_name.to_str())
-        .expect("token path should end with a UTF-8 file name");
-    let nonce = file_name
-        .strip_prefix("token-")
-        .and_then(|suffix| suffix.strip_suffix(".txt"))
-        .expect("token file name should include token nonce");
-
-    assert_eq!(nonce.len(), 32);
-    assert!(is_lowercase_hex(nonce));
-}
-
-fn is_lowercase_hex(value: &str) -> bool {
-    value
-        .as_bytes()
-        .iter()
-        .all(|&byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 #[test]
@@ -411,9 +66,7 @@ fn websocket_client_initializes_routes_responses_and_buffers_notifications() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -468,9 +121,7 @@ fn websocket_client_reads_large_single_frame_response() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -529,9 +180,7 @@ fn websocket_turn_start_serializes_ordered_user_input() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -602,9 +251,7 @@ fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -673,9 +320,7 @@ fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_res
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -712,8 +357,8 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                 "developerInstructions": "Use project-specific review instructions.",
                 "dynamicTools": [
                     {
-                        "name": "apply_graph_patch",
-                        "description": "Apply a bounded semantic graph patch.",
+                        "name": "inspect_runtime_state",
+                        "description": "Inspect bounded runtime state.",
                         "inputSchema": {
                             "type": "object",
                             "required": ["ops"],
@@ -767,9 +412,7 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -783,8 +426,8 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                 .with_developer_instructions("Use project-specific review instructions.")
                 .with_dynamic_tool(
                     DynamicToolSpec::new(
-                        "apply_graph_patch",
-                        "Apply a bounded semantic graph patch.",
+                        "inspect_runtime_state",
+                        "Inspect bounded runtime state.",
                         json!({
                             "type": "object",
                             "required": ["ops"],
@@ -862,9 +505,7 @@ fn websocket_thread_start_omits_developer_instructions_when_unset() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -974,9 +615,7 @@ fn websocket_thread_fork_and_rollback_use_observed_branch_protocol() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -999,134 +638,6 @@ fn websocket_thread_fork_and_rollback_use_observed_branch_protocol() {
     assert_eq!(rollback.thread.summary().id, "thread_branch");
     assert_eq!(rollback.thread.turns.len(), 1);
     assert_eq!(rollback.thread.turns[0].id, "turn_1");
-    server.join().unwrap();
-}
-
-#[test]
-fn websocket_thread_archive_and_unarchive_use_observed_protocol() {
-    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
-        expect_initialize(&mut socket, 1);
-        expect_initialized(&mut socket);
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/archive"));
-        assert_eq!(
-            request["params"],
-            json!({
-                "threadId": "thread_branch"
-            })
-        );
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "result": {}
-                })
-                .to_string(),
-            ))
-            .unwrap();
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(3));
-        assert_eq!(request["method"], json!("thread/unarchive"));
-        assert_eq!(
-            request["params"],
-            json!({
-                "threadId": "thread_branch"
-            })
-        );
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 3,
-                    "result": {
-                        "thread": {
-                            "createdAt": 1,
-                            "cwd": "C:/work/beryl",
-                            "ephemeral": false,
-                            "id": "thread_branch",
-                            "modelProvider": "openai",
-                            "preview": "Decision branch",
-                            "status": {
-                                "type": "notLoaded"
-                            },
-                            "turns": [],
-                            "updatedAt": 2
-                        }
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-    });
-    let launch = websocket_test_launch(endpoint.clone());
-    let mut client = ManagedBackendSession::connect_websocket(
-        launch,
-        endpoint,
-        "Bearer test-token".to_string(),
-        Duration::from_secs(2),
-    )
-    .unwrap();
-
-    client
-        .archive_thread("thread_branch", Duration::from_secs(2))
-        .unwrap();
-
-    let unarchive = client
-        .unarchive_thread("thread_branch", Duration::from_secs(2))
-        .unwrap();
-    assert_eq!(unarchive.thread.summary().id, "thread_branch");
-    assert_eq!(unarchive.thread.status, ThreadStatus::NotLoaded);
-    server.join().unwrap();
-}
-
-#[test]
-fn websocket_thread_archive_preserves_request_error_detail() {
-    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
-        expect_initialize(&mut socket, 1);
-        expect_initialized(&mut socket);
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/archive"));
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "error": {
-                        "code": -32600,
-                        "message": "no rollout found for thread id thread_branch"
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-    });
-    let launch = websocket_test_launch(endpoint.clone());
-    let mut client = ManagedBackendSession::connect_websocket(
-        launch,
-        endpoint,
-        "Bearer test-token".to_string(),
-        Duration::from_secs(2),
-    )
-    .unwrap();
-
-    let error = client
-        .archive_thread("thread_branch", Duration::from_secs(2))
-        .unwrap_err();
-    let ManagedBackendError::RequestFailed { method, error } = error else {
-        panic!("expected request failure");
-    };
-    assert_eq!(method, "thread/archive");
-    assert_eq!(error.code, -32600);
-    assert_eq!(
-        error.message,
-        "no rollout found for thread id thread_branch"
-    );
     server.join().unwrap();
 }
 
@@ -1173,9 +684,7 @@ fn websocket_thread_fork_metadata_only_sets_exclude_turns() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1211,7 +720,7 @@ fn websocket_dynamic_tool_call_request_streams_and_response_serializes() {
                         "turnId": "turn_1",
                         "callId": "call_1",
                         "namespace": "beryl",
-                        "tool": "read_checklist",
+                        "tool": "read_document_outline",
                         "arguments": {
                             "nodeId": "node_1"
                         }
@@ -1239,9 +748,7 @@ fn websocket_dynamic_tool_call_request_streams_and_response_serializes() {
             })
         );
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1259,7 +766,7 @@ fn websocket_dynamic_tool_call_request_streams_and_response_serializes() {
     assert_eq!(request.turn_id(), "turn_1");
     assert_eq!(request.call_id(), "call_1");
     assert_eq!(request.namespace(), Some("beryl"));
-    assert_eq!(request.tool(), "read_checklist");
+    assert_eq!(request.tool(), "read_document_outline");
     assert_eq!(request.arguments(), &json!({ "nodeId": "node_1" }));
 
     client
@@ -1291,7 +798,7 @@ fn websocket_dynamic_tool_call_request_defers_while_waiting_for_response() {
                         "threadId": "thread_1",
                         "turnId": "turn_1",
                         "callId": "call_1",
-                        "tool": "read_workspace_graph_summary",
+                        "tool": "read_runtime_summary",
                         "arguments": {}
                     }
                 })
@@ -1311,9 +818,7 @@ fn websocket_dynamic_tool_call_request_defers_while_waiting_for_response() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1332,7 +837,7 @@ fn websocket_dynamic_tool_call_request_defers_while_waiting_for_response() {
     let TurnStreamEvent::DynamicToolCallRequested(request) = event else {
         panic!("expected deferred dynamic tool call request");
     };
-    assert_eq!(request.tool(), "read_workspace_graph_summary");
+    assert_eq!(request.tool(), "read_runtime_summary");
 
     server.join().unwrap();
 }
@@ -1372,9 +877,7 @@ fn websocket_notification_defers_while_waiting_for_response() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1442,9 +945,7 @@ fn websocket_turn_steer_serializes_expected_turn_and_ordered_user_input() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1519,9 +1020,7 @@ fn websocket_hard_stop_requests_serialize_exact_backend_handles() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1562,9 +1061,7 @@ fn websocket_hard_stop_turn_target_interrupts_exact_child_turn() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1602,9 +1099,7 @@ fn websocket_hard_stop_target_outcome_preserves_failed_target() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1674,9 +1169,7 @@ fn websocket_hard_stop_capability_probe_reports_optional_method_support() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1755,9 +1248,7 @@ fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1781,87 +1272,6 @@ fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
     assert!(report.capabilities().thread_fork());
     assert!(!report.capabilities().thread_rollback());
     assert!(!report.capabilities().thread_branching());
-    server.join().unwrap();
-}
-
-#[test]
-fn websocket_thread_archive_capability_probe_reports_optional_method_support() {
-    let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
-        expect_initialize(&mut socket, 1);
-        expect_initialized(&mut socket);
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(2));
-        assert_eq!(request["method"], json!("thread/archive"));
-        assert_eq!(
-            request["params"],
-            json!({
-                "threadId": "00000000-0000-0000-0000-000000000000"
-            })
-        );
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "error": {
-                        "code": -32600,
-                        "message": "no rollout found for thread id"
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-
-        let request = read_json(&mut socket);
-        assert_eq!(request["id"], json!(3));
-        assert_eq!(request["method"], json!("thread/unarchive"));
-        assert_eq!(
-            request["params"],
-            json!({
-                "threadId": "00000000-0000-0000-0000-000000000000"
-            })
-        );
-        socket
-            .send(Message::text(
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": 3,
-                    "error": {
-                        "code": -32601,
-                        "message": "method not found"
-                    }
-                })
-                .to_string(),
-            ))
-            .unwrap();
-    });
-    let launch = websocket_test_launch(endpoint.clone());
-    let mut client = ManagedBackendSession::connect_websocket(
-        launch,
-        endpoint,
-        "Bearer test-token".to_string(),
-        Duration::from_secs(2),
-    )
-    .unwrap();
-
-    let report = client
-        .probe_thread_archive_capabilities(Duration::from_secs(2))
-        .unwrap();
-    assert_eq!(report.probe_results().len(), 2);
-    assert_eq!(
-        report.probe_results()[0].probe(),
-        ThreadArchiveCapabilityProbe::ThreadArchive
-    );
-    assert!(report.probe_results()[0].supported());
-    assert_eq!(
-        report.probe_results()[1].probe(),
-        ThreadArchiveCapabilityProbe::ThreadUnarchive
-    );
-    assert!(!report.probe_results()[1].supported());
-    assert!(report.capabilities().thread_archive());
-    assert!(!report.capabilities().thread_unarchive());
-    assert!(!report.capabilities().thread_archiving());
     server.join().unwrap();
 }
 
@@ -1894,9 +1304,7 @@ fn websocket_turn_steer_preserves_non_steerable_request_error() {
             ))
             .unwrap();
     });
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -1969,9 +1377,7 @@ fn websocket_clients_initialize_independently_and_start_request_ids_at_one() {
     });
 
     for _ in 0..2 {
-        let launch = websocket_test_launch(endpoint.clone());
         let mut client = ManagedBackendSession::connect_websocket(
-            launch,
             endpoint.clone(),
             "Bearer test-token".to_string(),
             Duration::from_secs(2),
@@ -2030,9 +1436,7 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
         expect_initialized(&mut socket);
     });
 
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket_with_options(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         ManagedBackendClientOptions::request_only(),
@@ -2092,9 +1496,7 @@ fn websocket_thread_read_metadata_uses_metadata_only_request_and_normalizes_nick
             .unwrap();
     });
 
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -2158,9 +1560,7 @@ fn websocket_thread_read_metadata_details_preserve_runtime_metadata_when_exposed
             .unwrap();
     });
 
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -2225,9 +1625,7 @@ fn websocket_account_rate_limits_read_uses_null_params_and_deserializes_multi_bu
             .unwrap();
     });
 
-    let launch = websocket_test_launch(endpoint.clone());
     let mut client = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),
@@ -2258,12 +1656,6 @@ fn compatibility_probe_responses_deserialize_from_observed_shapes() {
         "codexHome": "C:/Users/example/.codex",
         "platformFamily": "windows",
         "platformOs": "windows"
-    }))
-    .unwrap();
-
-    let loaded_threads: ThreadLoadedListResponse = serde_json::from_value(json!({
-        "data": ["thread_123"],
-        "nextCursor": null
     }))
     .unwrap();
 
@@ -2314,8 +1706,6 @@ fn compatibility_probe_responses_deserialize_from_observed_shapes() {
     .unwrap();
 
     assert_eq!(initialize.codex_home, "C:/Users/example/.codex");
-    assert_eq!(loaded_threads.data, vec!["thread_123".to_string()]);
-    assert_eq!(loaded_threads.next_cursor, None);
     assert_eq!(models.data.len(), 1);
     assert_eq!(models.data[0].id, "gpt-5.5");
     assert_eq!(models.data[0].display_name, "GPT-5.5");
@@ -2451,7 +1841,7 @@ fn config_read_options_serialize_cwd_and_layer_controls() {
 }
 
 #[test]
-fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
+fn compatibility_snapshot_exposes_required_probes_and_platform_facts() {
     let host_snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
         user_agent: app_server_user_agent("0.137.0"),
         codex_home: "C:/Users/example/.codex".to_string(),
@@ -2465,7 +1855,6 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
             CompatibilityProbe::ConfigRead,
             CompatibilityProbe::ModelList,
             CompatibilityProbe::ThreadCompactStart,
-            CompatibilityProbe::ThreadLoadedList,
             CompatibilityProbe::ThreadResumeMetadata,
             CompatibilityProbe::ThreadUnsubscribe,
             CompatibilityProbe::TurnInterrupt,
@@ -2482,41 +1871,14 @@ fn compatibility_snapshot_exposes_required_probes_and_runtime_validation() {
             "config/read",
             "model/list",
             "thread/compact/start",
-            "thread/loaded/list",
             "thread/resume",
             "thread/unsubscribe",
             "turn/interrupt",
             "turn/steer",
         ]
     );
-    assert_eq!(
-        host_snapshot.validate_runtime_mode(&RuntimeMode::HostWindows),
-        Ok(())
-    );
-    assert!(matches!(
-        host_snapshot.validate_runtime_mode(&RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string()
-        }),
-        Err(CompatibilityError::PlatformFamilyMismatch {
-            expected_platform_family: "unix",
-            actual_platform_family,
-            ..
-        }) if actual_platform_family == "windows"
-    ));
-
-    let wsl_snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
-        user_agent: app_server_user_agent("0.137.0"),
-        codex_home: "/home/example/.codex".to_string(),
-        platform_family: "unix".to_string(),
-        platform_os: "linux".to_string(),
-    });
-
-    assert_eq!(
-        wsl_snapshot.validate_runtime_mode(&RuntimeMode::WslLinux {
-            distro_name: "Ubuntu".to_string()
-        }),
-        Ok(())
-    );
+    assert_eq!(host_snapshot.platform_family(), "windows");
+    assert_eq!(host_snapshot.platform_os(), "windows");
 }
 
 #[test]
@@ -2594,44 +1956,6 @@ fn websocket_initialize_rejects_missing_malformed_legacy_and_nonmatching_app_ser
     }
 }
 
-#[test]
-fn managed_backend_startup_progress_exposes_ordered_operator_steps() {
-    assert_eq!(
-        ManagedBackendStartupStage::ordered(),
-        &[
-            ManagedBackendStartupStage::LaunchProcess,
-            ManagedBackendStartupStage::InitializeHandshake,
-            ManagedBackendStartupStage::ValidateRuntime,
-            ManagedBackendStartupStage::VerifyRequiredMethods,
-            ManagedBackendStartupStage::Ready,
-        ]
-    );
-    assert_eq!(
-        ManagedBackendStartupStage::VerifyRequiredMethods.display_label(),
-        "Verify required backend methods"
-    );
-
-    let progress = ManagedBackendStartupProgress::new(
-        ManagedBackendStartupStage::VerifyRequiredMethods,
-        Some("config/read".to_string()),
-    );
-
-    assert_eq!(
-        progress.stage(),
-        ManagedBackendStartupStage::VerifyRequiredMethods
-    );
-    assert_eq!(progress.detail(), Some("config/read"));
-}
-
-fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpec {
-    BackendLaunchSpec::managed_websocket(
-        RuntimeMode::HostWindows,
-        r"C:\work\beryl",
-        endpoint,
-        r"C:\tmp\beryl-token.txt",
-    )
-}
-
 fn app_server_user_agent(version: &str) -> String {
     format!("beryl/{version} (Windows 10.0.26200; aarch64) WindowsTerminal (beryl; 0.1.0)")
 }
@@ -2677,9 +2001,7 @@ fn run_websocket_initialize_version_gate(
         }
     });
 
-    let launch = websocket_test_launch(endpoint.clone());
     let result = ManagedBackendSession::connect_websocket(
-        launch,
         endpoint,
         "Bearer test-token".to_string(),
         Duration::from_secs(2),

@@ -18,8 +18,6 @@ use crate::{
 const THREAD_STATUS_CHANGED_METHOD: &str = "thread/status/changed";
 const THREAD_STARTED_METHOD: &str = "thread/started";
 const THREAD_CLOSED_METHOD: &str = "thread/closed";
-const THREAD_ARCHIVED_METHOD: &str = "thread/archived";
-const THREAD_UNARCHIVED_METHOD: &str = "thread/unarchived";
 const TURN_STARTED_METHOD: &str = "turn/started";
 const TURN_COMPLETED_METHOD: &str = "turn/completed";
 const ITEM_STARTED_METHOD: &str = "item/started";
@@ -360,12 +358,6 @@ pub enum TurnStreamEvent {
         status: ThreadStatus,
     },
     ThreadClosed {
-        thread_id: String,
-    },
-    ThreadArchived {
-        thread_id: String,
-    },
-    ThreadUnarchived {
         thread_id: String,
     },
     TurnStarted {
@@ -1128,7 +1120,7 @@ impl<'de> Deserialize<'de> for ThreadItem {
 }
 
 impl ThreadStartParams {
-    pub(crate) fn for_workspace(path: &Path, options: ThreadStartOptions) -> Self {
+    pub(crate) fn for_root(path: &Path, options: ThreadStartOptions) -> Self {
         Self {
             cwd: Some(path.display().to_string()),
             ephemeral: options.ephemeral,
@@ -1378,18 +1370,6 @@ pub fn parse_turn_stream_event(
                 thread_id: params.thread_id,
             }
         }
-        THREAD_ARCHIVED_METHOD => {
-            let params: ThreadArchivedNotification = serde_json::from_value(params)?;
-            TurnStreamEvent::ThreadArchived {
-                thread_id: params.thread_id,
-            }
-        }
-        THREAD_UNARCHIVED_METHOD => {
-            let params: ThreadUnarchivedNotification = serde_json::from_value(params)?;
-            TurnStreamEvent::ThreadUnarchived {
-                thread_id: params.thread_id,
-            }
-        }
         TURN_STARTED_METHOD => {
             let params: TurnNotification = serde_json::from_value(params)?;
             TurnStreamEvent::TurnStarted {
@@ -1519,18 +1499,6 @@ struct ThreadStatusChangedNotification {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ThreadClosedNotification {
-    thread_id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ThreadArchivedNotification {
-    thread_id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ThreadUnarchivedNotification {
     thread_id: String,
 }
 
