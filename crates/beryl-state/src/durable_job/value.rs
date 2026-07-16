@@ -1,8 +1,7 @@
 use std::{error::Error, fmt, num::NonZeroU64};
 
-use beryl_model::{
-    CasThreadId, CasTurnId, DynamicToolCallId, SyndicAcceptedInputId, SyndicDraftId, SyndicTurnId,
-};
+use beryl_model::{CasThreadId, CasTurnId, DynamicToolCallId, SyndicAcceptedInputId, SyndicTurnId};
+pub use beryl_model::{DiscussionContextDigest, DiscussionContextOwnerId};
 
 /// Maximum UTF-8 bytes retained for one admitted branch-resolution payload.
 pub const RESOLUTION_TEXT_MAX_BYTES: usize = 64 * 1024;
@@ -121,29 +120,6 @@ impl ResolutionText {
 
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Immutable identity of the draft or submitted turn that owns discussion context.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum DiscussionContextOwnerId {
-    Draft(SyndicDraftId),
-    SubmittedTurn(SyndicTurnId),
-}
-
-/// Exact digest from the immutable discussion context envelope.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct DiscussionContextDigest([u8; 32]);
-
-impl DiscussionContextDigest {
-    #[must_use]
-    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
-        Self(bytes)
-    }
-
-    #[must_use]
-    pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 }

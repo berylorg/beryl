@@ -5,9 +5,9 @@ mod support;
 use std::{num::NonZeroU64, sync::Arc, thread, time::Duration};
 
 use beryl_home_store::{
-    CommandError, HealthVerificationError, HomeCommand, HomeHealthSnapshot, HomeHealthState,
-    HomeOpenError, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore, ReadError,
-    RecoveryRetrySchedule,
+    CommandError, CommitReceiptError, DomainValidationError, HealthVerificationError, HomeCommand,
+    HomeHealthSnapshot, HomeHealthState, HomeOpenError, HomeOpenOptions, HomeRecoveryError,
+    HomeSchemaVersion, HomeStore, ReadError, RecoveryRetrySchedule,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
@@ -134,6 +134,48 @@ fn failed_verification_force_recovers_only_the_same_locked_home() {
 }
 
 #[test]
+fn same_home_recovery_rejects_a_prior_generation_success_receipt() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open_with_faults(directory.path(), faults.clone());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let prior_generation = store.health().generation().unwrap();
+    let receipt = store
+        .execute(command(&store, alpha, 1, b"durable prior result"))
+        .unwrap();
+    let receipt_domain_revision = store
+        .receipt_domain_revision(&receipt, alpha)
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.generation(), prior_generation);
+
+    faults.fail_next(FaultPoint::BeforeCommit);
+    assert!(matches!(
+        store.execute(command(&store, alpha, 2, b"indeterminate")),
+        Err(CommandError::Commit { .. })
+    ));
+    faults.fail_next(FaultPoint::BeforeVerification);
+    assert!(store.verify_health().is_err());
+    let recovery = store.recover_same_home().unwrap();
+    let current = store.domain_handle::<AlphaDomain>().unwrap();
+
+    assert!(recovery.generation() > prior_generation);
+    assert_eq!(store.home_revision().unwrap(), receipt.home_revision());
+    assert_eq!(
+        store.domain_revision(current).unwrap(),
+        receipt_domain_revision
+    );
+    assert!(matches!(
+        store.receipt_domain_revision(&receipt, current),
+        Err(CommitReceiptError::StaleOrForeign {
+            receipt_generation,
+            current_generation,
+        }) if receipt_generation == prior_generation
+            && current_generation == recovery.generation()
+    ));
+}
+
+#[test]
 fn recovery_is_single_flight_and_new_signals_join_the_active_attempt() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
@@ -199,37 +241,6 @@ fn failed_recovery_can_retry_the_same_home_without_replacement_creation() {
 }
 
 #[test]
-fn recovery_rejects_a_removed_database_without_creating_a_replacement() {
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = open_with_faults(directory.path(), faults.clone());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(store.execute(command(&store, alpha, 1, b"x")).is_err());
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
-
-    let database_path = store.database_path().to_path_buf();
-    let moved_path = directory.path().join("moved-state");
-    let block = faults.block_next(FaultPoint::BeforeReopen);
-    let store = Arc::new(store);
-    let recovering = Arc::clone(&store);
-    let worker = thread::spawn(move || recovering.recover_same_home());
-    assert!(block.wait_until_reached(Duration::from_secs(10)));
-    std::fs::rename(&database_path, &moved_path).unwrap();
-    block.release();
-
-    assert!(matches!(
-        worker.join().unwrap(),
-        Err(HomeRecoveryError::Layout { .. })
-    ));
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-    assert!(!database_path.exists());
-    assert!(moved_path.exists());
-}
-
-#[test]
 fn retry_schedule_uses_the_accepted_bounded_delays() {
     let mut schedule = RecoveryRetrySchedule::default();
     let delays: Vec<_> = (0..7).map(|_| schedule.next_delay()).collect();
@@ -265,11 +276,21 @@ fn recovery_rejects_validator_disagreement_and_remains_failed() {
     );
     assert!(matches!(
         store.verify_health(),
-        Err(HealthVerificationError::Validation { .. })
+        Err(HealthVerificationError::DomainValidation(
+            DomainValidationError::Rejected {
+                domain: "validated",
+                ..
+            }
+        ))
     ));
     assert!(matches!(
         store.recover_same_home(),
-        Err(HomeRecoveryError::Domain(_))
+        Err(HomeRecoveryError::DomainValidation(
+            DomainValidationError::Rejected {
+                domain: "validated",
+                ..
+            }
+        ))
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 }

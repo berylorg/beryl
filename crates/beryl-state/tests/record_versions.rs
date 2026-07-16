@@ -3,37 +3,43 @@ mod support;
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainReader, DomainRegistrationError,
-    DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceFamily,
-    KeyspaceSchemaVersion, ReadError, RecordCodec, RecordVersion, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
 };
 use beryl_model::{RuntimeId, SyndicThreadId};
 use tempfile::tempdir;
 
 use support::{binding, create_host_runtime, create_metadata, open};
 
-const RUNTIME_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("runtimes", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("runtime-executable-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("roots", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("root-id-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("root-path-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("runtime-home-root-index", KeyspaceSchemaVersion::new(1)),
-];
-const METADATA_FAMILIES: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(1),
-)];
-
 struct RuntimeV2Probe;
 struct RuntimeRecordV2;
+struct ExecutableIndexBytes;
+struct RootRecordBytes;
+struct RootIdIndexBytes;
+struct RootPathIndexBytes;
+struct HomeRootIndexBytes;
 struct MetadataV2Probe;
 struct MetadataRecordV2;
+
+const RUNTIME_FAMILIES: &[RecordFamily<RuntimeV2Probe>] = &[
+    RecordFamily::new::<RuntimeRecordV2>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<ExecutableIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootRecordBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootIdIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootPathIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<HomeRootIndexBytes>(KeyspaceSchemaVersion::new(1)),
+];
+const METADATA_FAMILIES: &[RecordFamily<MetadataV2Probe>] =
+    &[RecordFamily::new::<MetadataRecordV2>(
+        KeyspaceSchemaVersion::new(1),
+    )];
 
 impl StorageDomain for RuntimeV2Probe {
     const NAME: &'static str = "beryl-runtime-root";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = RUNTIME_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = RUNTIME_FAMILIES;
     type ValidationError = ProbeError;
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -54,7 +60,7 @@ impl StorageDomain for RuntimeV2Probe {
 impl StorageDomain for MetadataV2Probe {
     const NAME: &'static str = "beryl-thread-metadata";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = METADATA_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = METADATA_FAMILIES;
     type ValidationError = ProbeError;
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -110,6 +116,48 @@ v2_codec!(
     |key: &RuntimeId| key.as_bytes().to_vec(),
     |encoded: &[u8]| decode_id(encoded).map(RuntimeId::from_bytes)
 );
+
+macro_rules! passthrough_codec {
+    ($codec:ident, $family:literal, $max_key:expr, $max_value:expr) => {
+        impl RecordCodec<RuntimeV2Probe> for $codec {
+            type Key = Vec<u8>;
+            type Value = Vec<u8>;
+            type Error = ProbeCodecError;
+
+            const FAMILY: &'static str = $family;
+            const VERSION: RecordVersion = RecordVersion::new(1);
+            const MAX_KEY_BYTES: usize = $max_key;
+            const MAX_VALUE_BYTES: usize = $max_value;
+
+            fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+                Ok(key.clone())
+            }
+
+            fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+                Ok(encoded.to_vec())
+            }
+
+            fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+                Ok(value.clone())
+            }
+
+            fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+                Ok(encoded.to_vec())
+            }
+        }
+    };
+}
+
+passthrough_codec!(
+    ExecutableIndexBytes,
+    "runtime-executable-index",
+    u16::MAX as usize,
+    16
+);
+passthrough_codec!(RootRecordBytes, "roots", 32, 132 * 1024);
+passthrough_codec!(RootIdIndexBytes, "root-id-index", 16, 16);
+passthrough_codec!(RootPathIndexBytes, "root-path-index", u16::MAX as usize, 16);
+passthrough_codec!(HomeRootIndexBytes, "runtime-home-root-index", 16, 16);
 v2_codec!(
     MetadataRecordV2,
     MetadataV2Probe,
@@ -131,6 +179,12 @@ impl fmt::Display for ProbeError {
 impl Error for ProbeError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.0)
+    }
+}
+
+impl DomainCallbackError for ProbeError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Ok(DomainCallbackSource::Read(self.0))
     }
 }
 
@@ -195,12 +249,15 @@ fn both_product_domains_reject_an_unsupported_record_version_on_reopen() {
 }
 
 fn assert_version_error(error: DomainRegistrationError) {
-    let DomainRegistrationError::Validation { source, .. } = error else {
-        panic!("expected validation error, got {error}");
+    let DomainRegistrationError::ValidationAccess {
+        source: DomainCallbackSource::Read(source),
+        ..
+    } = error
+    else {
+        panic!("expected typed validation-access error, got {error}");
     };
-    let probe = source.downcast_ref::<ProbeError>().unwrap();
     assert!(matches!(
-        probe.0,
+        source,
         ReadError::UnsupportedRecordVersion {
             supported,
             found: 1,

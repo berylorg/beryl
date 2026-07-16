@@ -7,15 +7,32 @@ use std::{
 
 use beryl_backend::{
     BackendWebSocketEndpoint, CompatibilityError, CompatibilityProbe, CompatibilitySnapshot,
-    ConfigReadOptions, ConfigReadResponse, DynamicToolCallResponse, DynamicToolSpec,
-    HardStopCapabilityProbe, HardStopTarget, HardStopTargetOutcome, InitializeResponse,
-    ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession, ManagedWebSocketError,
-    ModelListOptions, ModelListResponse, NonSteerableTurnKind, REQUIRED_CODEX_APP_SERVER_VERSION,
-    ThreadBranchCapabilityProbe, ThreadForkOptions, ThreadStartOptions, ThreadStatus,
-    TurnStartOptions, TurnStatus, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
+    ConfigReadOptions, ConfigReadResponse, DynamicToolCallResponse, DynamicToolFunctionSpec,
+    DynamicToolNamespaceSpec, HardStopCapabilityProbe, HardStopTarget, HardStopTargetOutcome,
+    InitializeResponse, ManagedBackendClientOptions, ManagedBackendError, ManagedBackendSession,
+    ManagedWebSocketError, ModelListOptions, ModelListResponse, NonIdempotentRequestOutcome,
+    NonSteerableTurnKind, REQUIRED_CODEX_APP_SERVER_VERSION, ThreadBranchCapabilityProbe,
+    ThreadLoadOptions, ThreadStartOptions, ThreadStatus, TurnStartOptions, TurnStreamEvent,
+    UserInput, active_turn_not_steerable_error,
 };
+use beryl_model::{CasThreadId, CasTurnId};
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket, accept_hdr};
+
+fn cas_thread_id(value: &str) -> CasThreadId {
+    CasThreadId::new(value).unwrap()
+}
+
+fn cas_turn_id(value: &str) -> CasTurnId {
+    CasTurnId::new(value).unwrap()
+}
+
+fn exact_response<T: std::fmt::Debug>(outcome: NonIdempotentRequestOutcome<T>) -> T {
+    match outcome {
+        NonIdempotentRequestOutcome::ExactResponse { response } => response,
+        other => panic!("expected exact backend response, got {other:?}"),
+    }
+}
 
 #[test]
 fn websocket_transport_error_display_includes_source_detail() {
@@ -171,7 +188,9 @@ fn websocket_turn_start_serializes_ordered_user_input() {
                     "result": {
                         "turn": {
                             "id": "turn_1",
-                            "items": [],
+                            "items": {
+                                "poison": "turn/start response items must not be materialized"
+                            },
                             "status": "inProgress"
                         }
                     }
@@ -187,9 +206,9 @@ fn websocket_turn_start_serializes_ordered_user_input() {
     )
     .unwrap();
 
-    let response = client
-        .start_turn_with_user_input_options(
-            "thread_1",
+    let response = exact_response(
+        client.start_turn_with_user_input_options(
+            &cas_thread_id("thread_1"),
             vec![
                 UserInput::text("First fragment"),
                 UserInput::text("Second fragment"),
@@ -198,10 +217,10 @@ fn websocket_turn_start_serializes_ordered_user_input() {
                 .with_model("gpt-5.5")
                 .with_reasoning_effort("high"),
             Duration::from_secs(2),
-        )
-        .unwrap();
+        ),
+    );
 
-    assert_eq!(response.turn.id, "turn_1");
+    assert_eq!(response.turn_id().as_str(), "turn_1");
     server.join().unwrap();
 }
 
@@ -258,20 +277,18 @@ fn websocket_turn_start_serializes_hidden_developer_instructions_context() {
     )
     .unwrap();
 
-    let response = client
-        .start_turn_with_user_input_options(
-            "thread_1",
-            vec![UserInput::text("Follow up")],
-            TurnStartOptions::default().with_developer_instructions_context(
-                Some("Use the operator's project rules.".to_string()),
-                "gpt-5.5",
-                Some("high".to_string()),
-            ),
-            Duration::from_secs(2),
-        )
-        .unwrap();
+    let response = exact_response(client.start_turn_with_user_input_options(
+        &cas_thread_id("thread_1"),
+        vec![UserInput::text("Follow up")],
+        TurnStartOptions::default().with_developer_instructions_context(
+            Some("Use the operator's project rules.".to_string()),
+            "gpt-5.5",
+            Some("high".to_string()),
+        ),
+        Duration::from_secs(2),
+    ));
 
-    assert_eq!(response.turn.id, "turn_1");
+    assert_eq!(response.turn_id().as_str(), "turn_1");
     server.join().unwrap();
 }
 
@@ -327,16 +344,14 @@ fn websocket_turn_start_serializes_disabled_developer_instructions_as_hidden_res
     )
     .unwrap();
 
-    let response = client
-        .start_turn_with_user_input_options(
-            "thread_1",
-            vec![UserInput::text("Follow up")],
-            TurnStartOptions::default().with_developer_instructions_context(None, "gpt-5.5", None),
-            Duration::from_secs(2),
-        )
-        .unwrap();
+    let response = exact_response(client.start_turn_with_user_input_options(
+        &cas_thread_id("thread_1"),
+        vec![UserInput::text("Follow up")],
+        TurnStartOptions::default().with_developer_instructions_context(None, "gpt-5.5", None),
+        Duration::from_secs(2),
+    ));
 
-    assert_eq!(response.turn.id, "turn_1");
+    assert_eq!(response.turn_id().as_str(), "turn_1");
     server.join().unwrap();
 }
 
@@ -355,32 +370,50 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
                 "cwd": "C:\\work\\beryl",
                 "ephemeral": false,
                 "developerInstructions": "Use project-specific review instructions.",
+                "model": "gpt-5.5",
+                "modelProvider": "openai",
+                "approvalPolicy": "on-request",
+                "sandbox": "workspace-write",
                 "dynamicTools": [
                     {
-                        "name": "inspect_runtime_state",
-                        "description": "Inspect bounded runtime state.",
-                        "inputSchema": {
-                            "type": "object",
-                            "required": ["ops"],
-                            "properties": {
-                                "ops": {
-                                    "type": "array"
-                                }
+                        "type": "namespace",
+                        "name": "beryl",
+                        "description": "Beryl-owned tools.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "inspect_runtime_state",
+                                "description": "Inspect bounded runtime state.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "required": ["ops"],
+                                    "properties": {
+                                        "ops": {
+                                            "type": "array"
+                                        }
+                                    }
+                                },
+                                "deferLoading": true
                             }
-                        },
-                        "namespace": "beryl",
-                        "deferLoading": true
+                        ]
                     },
                     {
-                        "name": "status",
-                        "description": "Read diagnostic child process lifecycle status.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {},
-                            "additionalProperties": false
-                        },
-                        "namespace": "beryl_diagnostic",
-                        "deferLoading": false
+                        "type": "namespace",
+                        "name": "beryl_diagnostic",
+                        "description": "Beryl diagnostic-child tools.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "status",
+                                "description": "Read diagnostic child process lifecycle status.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {},
+                                    "additionalProperties": false
+                                },
+                                "deferLoading": false
+                            }
+                        ]
                     }
                 ]
             })
@@ -424,41 +457,57 @@ fn websocket_thread_start_serializes_dynamic_tools_and_developer_instructions() 
             &PathBuf::from(r"C:\work\beryl"),
             ThreadStartOptions::persistent()
                 .with_developer_instructions("Use project-specific review instructions.")
+                .with_model("gpt-5.5")
+                .with_model_provider("openai")
+                .with_approval_policy(beryl_backend::ThreadApprovalPolicy::OnRequest)
+                .with_sandbox(beryl_backend::ThreadSandboxMode::WorkspaceWrite)
                 .with_dynamic_tool(
-                    DynamicToolSpec::new(
-                        "inspect_runtime_state",
-                        "Inspect bounded runtime state.",
-                        json!({
-                            "type": "object",
-                            "required": ["ops"],
-                            "properties": {
-                                "ops": {
-                                    "type": "array"
-                                }
-                            }
-                        }),
+                    DynamicToolNamespaceSpec::new(
+                        "beryl",
+                        "Beryl-owned tools.",
+                        vec![
+                            DynamicToolFunctionSpec::new(
+                                "inspect_runtime_state",
+                                "Inspect bounded runtime state.",
+                                json!({
+                                    "type": "object",
+                                    "required": ["ops"],
+                                    "properties": {
+                                        "ops": {
+                                            "type": "array"
+                                        }
+                                    }
+                                }),
+                            )
+                            .with_defer_loading(true),
+                        ],
                     )
-                    .with_namespace("beryl")
-                    .with_defer_loading(true),
+                    .into(),
                 )
                 .with_dynamic_tool(
-                    DynamicToolSpec::new(
-                        "status",
-                        "Read diagnostic child process lifecycle status.",
-                        json!({
-                            "type": "object",
-                            "properties": {},
-                            "additionalProperties": false
-                        }),
+                    DynamicToolNamespaceSpec::new(
+                        "beryl_diagnostic",
+                        "Beryl diagnostic-child tools.",
+                        vec![
+                            DynamicToolFunctionSpec::new(
+                                "status",
+                                "Read diagnostic child process lifecycle status.",
+                                json!({
+                                    "type": "object",
+                                    "properties": {},
+                                    "additionalProperties": false
+                                }),
+                            )
+                            .with_defer_loading(false),
+                        ],
                     )
-                    .with_namespace("beryl_diagnostic")
-                    .with_defer_loading(false),
+                    .into(),
                 ),
             Duration::from_secs(2),
         )
         .unwrap();
 
-    assert_eq!(response.thread.summary().id, "thread_1");
+    assert_eq!(response.thread_id().as_str(), "thread_1");
     server.join().unwrap();
 }
 
@@ -516,7 +565,7 @@ fn websocket_thread_start_omits_developer_instructions_when_unset() {
         .start_thread(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap();
 
-    assert_eq!(response.thread.summary().id, "thread_1");
+    assert_eq!(response.thread_id().as_str(), "thread_1");
     server.join().unwrap();
 }
 
@@ -532,7 +581,10 @@ fn websocket_thread_fork_and_rollback_use_observed_branch_protocol() {
         assert_eq!(
             request["params"],
             json!({
-                "threadId": "thread_source"
+                "threadId": "thread_source",
+                "cwd": "C:\\work\\beryl",
+                "excludeTurns": true,
+                "ephemeral": false
             })
         );
         socket
@@ -622,27 +674,27 @@ fn websocket_thread_fork_and_rollback_use_observed_branch_protocol() {
     )
     .unwrap();
 
+    let source_thread_id = CasThreadId::new("thread_source").unwrap();
+    let branch_thread_id = CasThreadId::new("thread_branch").unwrap();
+    let load_options = ThreadLoadOptions::for_root(r"C:\work\beryl");
     let fork = client
-        .fork_thread("thread_source", Duration::from_secs(2))
+        .fork_thread(&source_thread_id, &load_options, Duration::from_secs(2))
         .unwrap();
-    assert_eq!(fork.thread.summary().id, "thread_branch");
-    assert_eq!(fork.thread.status, ThreadStatus::Idle);
-    assert_eq!(fork.thread.turns.len(), 2);
-    assert_eq!(fork.thread.turns[0].status, TurnStatus::Completed);
+    assert_eq!(fork.thread_id().as_str(), "thread_branch");
+    assert_eq!(fork.status(), &ThreadStatus::Idle);
     assert_eq!(fork.metadata().model.as_deref(), Some("gpt-5.5"));
     assert_eq!(fork.metadata().reasoning_effort.as_deref(), Some("high"));
 
     let rollback = client
-        .rollback_thread("thread_branch", 1, Duration::from_secs(2))
+        .rollback_thread(&branch_thread_id, 1, Duration::from_secs(2))
         .unwrap();
-    assert_eq!(rollback.thread.summary().id, "thread_branch");
-    assert_eq!(rollback.thread.turns.len(), 1);
-    assert_eq!(rollback.thread.turns[0].id, "turn_1");
+    assert_eq!(rollback.thread_id().as_str(), "thread_branch");
+    assert_eq!(rollback.status(), &ThreadStatus::Idle);
     server.join().unwrap();
 }
 
 #[test]
-fn websocket_thread_fork_metadata_only_sets_exclude_turns() {
+fn websocket_thread_fork_through_turn_sets_exact_lineage_boundary() {
     let (endpoint, server) = spawn_fake_app_server("Bearer test-token", |mut socket| {
         expect_initialize(&mut socket, 1);
         expect_initialized(&mut socket);
@@ -654,7 +706,10 @@ fn websocket_thread_fork_metadata_only_sets_exclude_turns() {
             request["params"],
             json!({
                 "threadId": "thread_source",
-                "excludeTurns": true
+                "cwd": "C:\\work\\beryl",
+                "excludeTurns": true,
+                "ephemeral": false,
+                "lastTurnId": "turn_1"
             })
         );
         socket
@@ -691,15 +746,18 @@ fn websocket_thread_fork_metadata_only_sets_exclude_turns() {
     )
     .unwrap();
 
+    let source_thread_id = CasThreadId::new("thread_source").unwrap();
+    let last_turn_id = CasTurnId::new("turn_1").unwrap();
+    let load_options = ThreadLoadOptions::for_root(r"C:\work\beryl");
     let fork = client
-        .fork_thread_with_options(
-            "thread_source",
-            ThreadForkOptions::metadata_only(),
+        .fork_thread_through_turn(
+            &source_thread_id,
+            &last_turn_id,
+            &load_options,
             Duration::from_secs(2),
         )
         .unwrap();
-    assert_eq!(fork.thread.summary().id, "thread_branch");
-    assert!(fork.thread.turns.is_empty());
+    assert_eq!(fork.thread_id().as_str(), "thread_branch");
     server.join().unwrap();
 }
 
@@ -952,19 +1010,17 @@ fn websocket_turn_steer_serializes_expected_turn_and_ordered_user_input() {
     )
     .unwrap();
 
-    let response = client
-        .steer_turn_with_user_input(
-            "thread_1",
-            "turn_1",
-            vec![
-                UserInput::text("First steering fragment"),
-                UserInput::text("Second steering fragment"),
-            ],
-            Duration::from_secs(2),
-        )
-        .unwrap();
+    let response = exact_response(client.steer_turn_with_user_input(
+        &cas_thread_id("thread_1"),
+        &cas_turn_id("turn_1"),
+        vec![
+            UserInput::text("First steering fragment"),
+            UserInput::text("Second steering fragment"),
+        ],
+        Duration::from_secs(2),
+    ));
 
-    assert_eq!(response.turn_id, "turn_1");
+    assert_eq!(response.turn_id().as_str(), "turn_1");
     server.join().unwrap();
 }
 
@@ -1028,13 +1084,17 @@ fn websocket_hard_stop_requests_serialize_exact_backend_handles() {
     .unwrap();
 
     client
-        .interrupt_turn("thread_parent", "turn_parent", Duration::from_secs(2))
+        .interrupt_turn(
+            &cas_thread_id("thread_parent"),
+            &cas_turn_id("turn_parent"),
+            Duration::from_secs(2),
+        )
         .unwrap();
     client
         .terminate_command_execution("proc_123", Duration::from_secs(2))
         .unwrap();
     client
-        .clean_thread_background_terminals("thread_parent", Duration::from_secs(2))
+        .clean_thread_background_terminals(&cas_thread_id("thread_parent"), Duration::from_secs(2))
         .unwrap();
     server.join().unwrap();
 }
@@ -1069,7 +1129,7 @@ fn websocket_hard_stop_turn_target_interrupts_exact_child_turn() {
     .unwrap();
 
     let outcome = client.request_hard_stop_target(
-        &HardStopTarget::turn("thread_child", "turn_child"),
+        &HardStopTarget::turn(cas_thread_id("thread_child"), cas_turn_id("turn_child")),
         Duration::from_secs(2),
     );
     assert!(outcome.is_success());
@@ -1207,7 +1267,10 @@ fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
         assert_eq!(
             request["params"],
             json!({
-                "threadId": "00000000-0000-0000-0000-000000000000"
+                "threadId": "00000000-0000-0000-0000-000000000000",
+                "cwd": "C:\\work\\beryl",
+                "excludeTurns": true,
+                "ephemeral": false
             })
         );
         socket
@@ -1256,7 +1319,7 @@ fn websocket_thread_branch_capability_probe_reports_optional_method_support() {
     .unwrap();
 
     let report = client
-        .probe_thread_branch_capabilities(Duration::from_secs(2))
+        .probe_thread_branch_capabilities(&PathBuf::from(r"C:\work\beryl"), Duration::from_secs(2))
         .unwrap();
     assert_eq!(report.probe_results().len(), 2);
     assert_eq!(
@@ -1311,19 +1374,16 @@ fn websocket_turn_steer_preserves_non_steerable_request_error() {
     )
     .unwrap();
 
-    let error = client
-        .steer_turn_with_user_input(
-            "thread_1",
-            "turn_1",
-            vec![UserInput::text("Steer this")],
-            Duration::from_secs(2),
-        )
-        .unwrap_err();
+    let outcome = client.steer_turn_with_user_input(
+        &cas_thread_id("thread_1"),
+        &cas_turn_id("turn_1"),
+        vec![UserInput::text("Steer this")],
+        Duration::from_secs(2),
+    );
 
-    let ManagedBackendError::RequestFailed { method, error } = error else {
-        panic!("expected turn/steer request failure");
+    let NonIdempotentRequestOutcome::ExactRejection { error } = outcome else {
+        panic!("expected exact turn/steer rejection");
     };
-    assert_eq!(method, "turn/steer");
     assert_eq!(error.code, -32000);
     assert_eq!(error.message, "active turn cannot be steered");
     assert_eq!(
@@ -1417,6 +1477,16 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
                 .iter()
                 .any(|method| method.as_str() == Some("item/completed"))
         );
+        assert!(
+            opt_out_methods
+                .iter()
+                .any(|method| method.as_str() == Some("item/plan/delta"))
+        );
+        assert!(
+            opt_out_methods
+                .iter()
+                .any(|method| method.as_str() == Some("item/fileChange/patchUpdated"))
+        );
 
         socket
             .send(Message::text(
@@ -1424,7 +1494,7 @@ fn websocket_request_only_client_initializes_with_notification_opt_outs() {
                     "jsonrpc": "2.0",
                     "id": 1,
                     "result": {
-                        "userAgent": app_server_user_agent("0.137.0"),
+                        "userAgent": app_server_user_agent(REQUIRED_CODEX_APP_SERVER_VERSION),
                         "codexHome": "C:/Users/example/.codex",
                         "platformFamily": "windows",
                         "platformOs": "windows"
@@ -1843,7 +1913,7 @@ fn config_read_options_serialize_cwd_and_layer_controls() {
 #[test]
 fn compatibility_snapshot_exposes_required_probes_and_platform_facts() {
     let host_snapshot = CompatibilitySnapshot::from_initialize_response(&InitializeResponse {
-        user_agent: app_server_user_agent("0.137.0"),
+        user_agent: app_server_user_agent(REQUIRED_CODEX_APP_SERVER_VERSION),
         codex_home: "C:/Users/example/.codex".to_string(),
         platform_family: "windows".to_string(),
         platform_os: "windows".to_string(),
@@ -1855,9 +1925,13 @@ fn compatibility_snapshot_exposes_required_probes_and_platform_facts() {
             CompatibilityProbe::ConfigRead,
             CompatibilityProbe::ModelList,
             CompatibilityProbe::ThreadCompactStart,
-            CompatibilityProbe::ThreadResumeMetadata,
+            CompatibilityProbe::ThreadFork,
+            CompatibilityProbe::ThreadInjectItems,
+            CompatibilityProbe::ThreadResume,
+            CompatibilityProbe::ThreadRollback,
             CompatibilityProbe::ThreadUnsubscribe,
             CompatibilityProbe::TurnInterrupt,
+            CompatibilityProbe::TurnStart,
             CompatibilityProbe::TurnSteer,
         ]
     );
@@ -1871,9 +1945,13 @@ fn compatibility_snapshot_exposes_required_probes_and_platform_facts() {
             "config/read",
             "model/list",
             "thread/compact/start",
+            "thread/fork",
+            "thread/inject_items",
             "thread/resume",
+            "thread/rollback",
             "thread/unsubscribe",
             "turn/interrupt",
+            "turn/start",
             "turn/steer",
         ]
     );

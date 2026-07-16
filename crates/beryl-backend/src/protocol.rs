@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, de};
 use serde_json::Value;
 use thiserror::Error;
 
-pub const REQUIRED_CODEX_APP_SERVER_VERSION: &str = "0.137.0";
+pub const REQUIRED_CODEX_APP_SERVER_VERSION: &str = "0.144.1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProtocolPhase {
@@ -36,9 +36,13 @@ pub enum CompatibilityProbe {
     ConfigRead,
     ModelList,
     ThreadCompactStart,
-    ThreadResumeMetadata,
+    ThreadFork,
+    ThreadInjectItems,
+    ThreadResume,
+    ThreadRollback,
     ThreadUnsubscribe,
     TurnInterrupt,
+    TurnStart,
     TurnSteer,
 }
 
@@ -48,9 +52,13 @@ impl CompatibilityProbe {
             Self::ConfigRead => "config/read",
             Self::ModelList => "model/list",
             Self::ThreadCompactStart => "thread/compact/start",
-            Self::ThreadResumeMetadata => "thread/resume",
+            Self::ThreadFork => "thread/fork",
+            Self::ThreadInjectItems => "thread/inject_items",
+            Self::ThreadResume => "thread/resume",
+            Self::ThreadRollback => "thread/rollback",
             Self::ThreadUnsubscribe => "thread/unsubscribe",
             Self::TurnInterrupt => "turn/interrupt",
+            Self::TurnStart => "turn/start",
             Self::TurnSteer => "turn/steer",
         }
     }
@@ -60,9 +68,13 @@ const REQUIRED_COMPATIBILITY_PROBES: &[CompatibilityProbe] = &[
     CompatibilityProbe::ConfigRead,
     CompatibilityProbe::ModelList,
     CompatibilityProbe::ThreadCompactStart,
-    CompatibilityProbe::ThreadResumeMetadata,
+    CompatibilityProbe::ThreadFork,
+    CompatibilityProbe::ThreadInjectItems,
+    CompatibilityProbe::ThreadResume,
+    CompatibilityProbe::ThreadRollback,
     CompatibilityProbe::ThreadUnsubscribe,
     CompatibilityProbe::TurnInterrupt,
+    CompatibilityProbe::TurnStart,
     CompatibilityProbe::TurnSteer,
 ];
 

@@ -1,6 +1,6 @@
 use std::{
+    any::TypeId,
     collections::HashSet,
-    error::Error,
     marker::PhantomData,
     sync::{
         Arc,
@@ -12,14 +12,17 @@ use beryl_model::{DomainRevision, HomeRevision};
 use thiserror::Error;
 
 use crate::{
-    AdmittedSidecar, DomainHandle, DomainReader, ReadError, RecordCodec, StorageDomain,
-    domain::{RegisteredDomain, StoreInstanceId},
-    read::{encode_key, encode_value},
+    AdmittedSidecar, DomainCallbackError, DomainHandle, DomainReader, ReadError, RecordCodec,
+    StorageDomain,
+    domain::{DomainOwnerId, RegisteredDomain, StoreInstanceId, callback::ErasedCallbackError},
+    read::{encode_stored_key, encode_value},
 };
 
 mod result;
 
-pub use result::{CommandError, CommitReceipt, RevisionConflict};
+pub use result::{
+    CommandError, CommitReceipt, CommitReceiptError, ContributorCallbackStage, RevisionConflict,
+};
 
 /// Cooperative cancellation observed only before serialized writer admission.
 #[derive(Clone, Default)]
@@ -49,7 +52,7 @@ impl CommandCancellation {
 /// One domain-owned revision-checked mutation plan.
 pub trait DomainMutation<D: StorageDomain>: Send + 'static {
     /// Domain-owned validation or contribution failure.
-    type Error: Error + Send + Sync + 'static;
+    type Error: DomainCallbackError;
 
     /// Validates current authoritative state before any batch is assembled.
     ///
@@ -80,6 +83,14 @@ pub enum MutationBuildError {
         /// Unknown logical family.
         family: &'static str,
     },
+    /// The family is registered to a different exact Rust codec type.
+    #[error("record codec does not own family `{family}` in domain `{domain}`")]
+    CodecTypeMismatch {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Logical family with a different registered codec owner.
+        family: &'static str,
+    },
     /// The same physical key is changed twice by one domain contribution.
     #[error("domain `{domain}` contributes more than one mutation for the same record key")]
     DuplicateRecord {
@@ -107,7 +118,7 @@ pub struct MutationBuilder<'a, D: StorageDomain> {
     domain: &'a RegisteredDomain,
     pending: Vec<PendingMutation>,
     touched: HashSet<(usize, Vec<u8>)>,
-    _typed: PhantomData<fn() -> D>,
+    _typed: PhantomData<fn(D) -> D>,
 }
 
 impl<'a, D: StorageDomain> MutationBuilder<'a, D> {
@@ -126,26 +137,37 @@ impl<'a, D: StorageDomain> MutationBuilder<'a, D> {
         key: &R::Key,
         value: &R::Value,
     ) -> Result<(), MutationBuildError> {
-        let family_slot = self.family_slot(R::FAMILY)?;
-        let key = encode_key::<D, R>(key)?;
+        let family_slot = self.family_slot::<R>(R::FAMILY)?;
+        let key = encode_stored_key::<D, R>(key)?;
         let value = encode_value::<D, R>(value)?;
         self.push(family_slot, key, PendingAction::Put(value))
     }
 
     /// Adds one typed deletion.
     pub fn delete<R: RecordCodec<D>>(&mut self, key: &R::Key) -> Result<(), MutationBuildError> {
-        let family_slot = self.family_slot(R::FAMILY)?;
-        let key = encode_key::<D, R>(key)?;
+        let family_slot = self.family_slot::<R>(R::FAMILY)?;
+        let key = encode_stored_key::<D, R>(key)?;
         self.push(family_slot, key, PendingAction::Delete)
     }
 
-    fn family_slot(&self, name: &'static str) -> Result<usize, MutationBuildError> {
-        self.domain
+    fn family_slot<R: RecordCodec<D>>(
+        &self,
+        name: &'static str,
+    ) -> Result<usize, MutationBuildError> {
+        let slot = self
+            .domain
             .family_slot(name)
             .ok_or(MutationBuildError::UnknownFamily {
                 domain: D::NAME,
                 family: name,
-            })
+            })?;
+        if self.domain.families[slot].codec_type != TypeId::of::<R>() {
+            return Err(MutationBuildError::CodecTypeMismatch {
+                domain: D::NAME,
+                family: name,
+            });
+        }
+        Ok(slot)
     }
 
     fn push(
@@ -175,17 +197,17 @@ pub(crate) trait ErasedContribution: Send {
         &self,
         snapshot: &fjall::Snapshot,
         domain: &RegisteredDomain,
-    ) -> Result<(), Box<dyn Error + Send + Sync>>;
+    ) -> Result<(), ErasedCallbackError>;
     fn assemble(
         &self,
         snapshot: &fjall::Snapshot,
         domain: &RegisteredDomain,
-    ) -> Result<Vec<PendingMutation>, Box<dyn Error + Send + Sync>>;
+    ) -> Result<Vec<PendingMutation>, ErasedCallbackError>;
 }
 
 struct TypedContribution<D: StorageDomain, M: DomainMutation<D>> {
     mutation: M,
-    _typed: PhantomData<fn() -> D>,
+    _typed: PhantomData<fn(D) -> D>,
 }
 
 impl<D: StorageDomain, M: DomainMutation<D>> ErasedContribution for TypedContribution<D, M> {
@@ -193,40 +215,75 @@ impl<D: StorageDomain, M: DomainMutation<D>> ErasedContribution for TypedContrib
         &self,
         snapshot: &fjall::Snapshot,
         domain: &RegisteredDomain,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    ) -> Result<(), ErasedCallbackError> {
         self.mutation
             .validate(&DomainReader::new(snapshot, domain))
-            .map_err(|source| Box::new(source) as Box<dyn Error + Send + Sync>)
+            .map_err(ErasedCallbackError::from_typed)
     }
 
     fn assemble(
         &self,
         snapshot: &fjall::Snapshot,
         domain: &RegisteredDomain,
-    ) -> Result<Vec<PendingMutation>, Box<dyn Error + Send + Sync>> {
+    ) -> Result<Vec<PendingMutation>, ErasedCallbackError> {
         let reader = DomainReader::new(snapshot, domain);
         let mut builder = MutationBuilder::<D>::new(domain);
         self.mutation
             .contribute(&reader, &mut builder)
-            .map_err(|source| Box::new(source) as Box<dyn Error + Send + Sync>)?;
+            .map_err(ErasedCallbackError::from_typed)?;
         Ok(builder.into_pending())
     }
 }
 
-/// Opaque, typed domain contribution accepted by a home command.
-pub struct MutationContribution {
+pub(crate) struct DomainMutationPlan {
     pub(crate) store: StoreInstanceId,
     pub(crate) slot: usize,
+    pub(crate) owner: DomainOwnerId,
     pub(crate) domain: &'static str,
-    pub(crate) expected_revision: DomainRevision,
     pub(crate) mutation: Box<dyn ErasedContribution>,
+}
+
+/// Opaque, typed domain contribution accepted by a home command.
+pub struct MutationContribution {
+    pub(crate) plan: DomainMutationPlan,
+    pub(crate) expected_revision: DomainRevision,
+}
+
+/// One typed single-domain mutation whose physical revisions are captured only after writer
+/// admission.
+///
+/// The domain mutation must still carry and validate every logical record revision that authorizes
+/// its effect. This boundary prevents unrelated home or same-domain commits from making a prepared
+/// single-domain mutation stale before it reaches the serialized writer; it is not a blind-write
+/// or retry capability.
+pub struct CurrentDomainCommand {
+    pub(crate) plan: DomainMutationPlan,
+    pub(crate) cancellation: CommandCancellation,
+}
+
+impl std::fmt::Debug for CurrentDomainCommand {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CurrentDomainCommand")
+            .field("domain", &self.plan.domain)
+            .finish_non_exhaustive()
+    }
+}
+
+impl CurrentDomainCommand {
+    /// Associates a cooperative pre-admission cancellation signal.
+    #[must_use]
+    pub fn with_cancellation(mut self, cancellation: CommandCancellation) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
 }
 
 impl std::fmt::Debug for MutationContribution {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("MutationContribution")
-            .field("domain", &self.domain)
+            .field("domain", &self.plan.domain)
             .field("expected_revision", &self.expected_revision)
             .finish_non_exhaustive()
     }
@@ -240,14 +297,35 @@ impl<D: StorageDomain> DomainHandle<D> {
         mutation: M,
     ) -> MutationContribution {
         MutationContribution {
-            store: self.store,
-            slot: self.slot,
-            domain: D::NAME,
+            plan: DomainMutationPlan {
+                store: self.store,
+                slot: self.slot,
+                owner: self.owner,
+                domain: D::NAME,
+                mutation: Box::new(TypedContribution::<D, M> {
+                    mutation,
+                    _typed: PhantomData,
+                }),
+            },
             expected_revision,
-            mutation: Box::new(TypedContribution::<D, M> {
-                mutation,
-                _typed: PhantomData,
-            }),
+        }
+    }
+
+    /// Seals one domain-owned plan whose physical revisions will be captured under writer
+    /// admission.
+    pub fn current_command<M: DomainMutation<D>>(self, mutation: M) -> CurrentDomainCommand {
+        CurrentDomainCommand {
+            plan: DomainMutationPlan {
+                store: self.store,
+                slot: self.slot,
+                owner: self.owner,
+                domain: D::NAME,
+                mutation: Box::new(TypedContribution::<D, M> {
+                    mutation,
+                    _typed: PhantomData,
+                }),
+            },
+            cancellation: CommandCancellation::new(),
         }
     }
 }
@@ -299,10 +377,11 @@ impl HomeCommand {
         contribution: MutationContribution,
     ) -> Result<&mut Self, CommandBuildError> {
         if self.contributions.iter().any(|existing| {
-            existing.store == contribution.store && existing.slot == contribution.slot
+            existing.plan.store == contribution.plan.store
+                && existing.plan.slot == contribution.plan.slot
         }) {
             return Err(CommandBuildError::DuplicateDomain {
-                domain: contribution.domain,
+                domain: contribution.plan.domain,
             });
         }
         self.contributions.push(contribution);

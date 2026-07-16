@@ -72,6 +72,18 @@ Preserve exact runtime, root, backend-process, Syndic-thread, CAS-thread, turn, 
 - Compatibility probing validates the required app-server contract for the current Beryl target version and capability set.
 - Required capabilities include exact thread resume by id for approved live execution/control, live turn event streaming suitable for Syndic capture, model listing, cwd-scoped config reads, ordered text and local-image user input on turn start or steering, developer-instructions payloads, filesystem reads for runtime-readable transcript media, active-turn steering by expected turn id, active-turn interruption, thread compaction, dynamic tool registration, and reverse dynamic tool calls.
 - Required capabilities include exact native CAS continuation and fork plus stable 0.144.1 `thread/inject_items` with the recovery semantics defined by `doc/systems/cas-live-syndic-transcript/design.md`.
+- Foreground-stream compatibility is release-scoped. For pinned CAS 0.144.1 it requires an
+  uninterrupted full-notification subscription, serial item-before-terminal FIFO consumption for
+  normally finishing ordinary turns, a
+  closed disposition for every public pinned item variant, typed item-delta discrimination, and
+  fail-closed loss handling because reconnect, resume, late subscription, and process restart do
+  not replay notifications. A CAS-version change must refresh the retained source and installed
+  runtime proofs before admission can rely on equivalent semantics.
+- Hosted Responses image generation is not a required or supported CAS 0.144.1 producer capability:
+  the pinned client cannot send the native `image_generation` tool declaration. Standalone
+  `image_gen.imagegen` is the admitted image-generation path and is probed and normalized
+  separately. Parser tolerance for an unsolicited hosted item from a nonconforming custom provider
+  does not admit that provider behavior.
 - Branch execution additionally requires the exact one-time selected-context projection proven by `doc/systems/cas-live-syndic-transcript/design.md`; schema presence without accepted-limit and trust-semantics proof is insufficient.
 - CAS thread-list, CAS historical turn reads through `thread/turns/list`, and full-history `thread/read` are not Beryl catalog or transcript capabilities. Compatibility probing must not require them, and live backend code must not retain them as a fallback surface.
 - Branch-discussion creation is Syndic-native and performs no CAS work before first user submission. Its later execution prefers exact CAS-native inherited parent context and uses fresh recovery injection only when that lineage is unavailable or unprovable.

@@ -1,4 +1,4 @@
-use beryl_backend::{ThreadItem, ThreadStatus, TurnInfo, TurnStreamEvent};
+use beryl_backend::{ThreadItem, ThreadStatus, TurnStreamEvent};
 
 const CONTEXT_COMPACTION_ITEM_TYPE: &str = "contextCompaction";
 
@@ -39,12 +39,6 @@ pub(crate) fn context_compaction_turn_id<'a>(
     event: &'a TurnStreamEvent,
 ) -> Option<&'a str> {
     match event {
-        TurnStreamEvent::TurnStarted { thread_id, turn }
-        | TurnStreamEvent::TurnCompleted { thread_id, turn }
-            if thread_id == target_thread_id && turn_contains_context_compaction(turn) =>
-        {
-            Some(turn.id.as_str())
-        }
         TurnStreamEvent::ItemStarted {
             thread_id,
             turn_id,
@@ -56,7 +50,7 @@ pub(crate) fn context_compaction_turn_id<'a>(
             turn_id,
             item,
             ..
-        } if thread_id == target_thread_id && item_is_context_compaction(item) => {
+        } if thread_id.as_str() == target_thread_id && item_is_context_compaction(item) => {
             Some(turn_id.as_str())
         }
         _ => None,
@@ -71,10 +65,6 @@ fn event_is_context_compaction_activity(target_thread_id: &str, event: &TurnStre
         } if thread_id == target_thread_id => true,
         _ => context_compaction_turn_id(target_thread_id, event).is_some(),
     }
-}
-
-fn turn_contains_context_compaction(turn: &TurnInfo) -> bool {
-    turn.items.iter().any(item_is_context_compaction)
 }
 
 fn item_is_context_compaction(item: &ThreadItem) -> bool {

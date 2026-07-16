@@ -5,10 +5,16 @@ license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[features]
+default = []
+test-faults = ["beryl-home-store/test-faults", "syndic-storage/test-faults"]
+
 [dependencies]
 base64.workspace = true
 beryl-backend.workspace = true
+beryl-home-store.workspace = true
 beryl-model.workspace = true
+beryl-state.workspace = true
 gpui.workspace = true
 gpui-scrollbar.workspace = true
 gpui-settings-window.workspace = true
@@ -21,6 +27,8 @@ once_cell.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+syndic-storage.workspace = true
 tempfile.workspace = true
 taplo.workspace = true
 thiserror.workspace = true
@@ -30,6 +38,7 @@ unicode-segmentation.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+tungstenite.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle.workspace = true

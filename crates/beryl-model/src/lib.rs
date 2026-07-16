@@ -8,8 +8,8 @@
 //!
 //! ```
 //! use beryl_model::{
-//!     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
-//!     RuntimeNativePath,
+//!     CasConversationToolProfile, CasNativeTurnCount, ExecutionBinding, PathFlavor, RootId,
+//!     RuntimeId, RuntimeMode, RuntimeNativePath,
 //! };
 //!
 //! let runtime_id = RuntimeId::from_bytes([1; 16]);
@@ -23,7 +23,9 @@
 //! let binding = ExecutionBinding::new(runtime_id, root_id, root_path);
 //!
 //! assert_eq!(binding.runtime_id(), runtime_id);
-//! # Ok::<(), beryl_model::ValueError>(())
+//! assert_eq!(CasNativeTurnCount::ZERO.checked_next()?.get(), 1);
+//! assert_eq!(CasConversationToolProfile::v1([3; 32]).digest(), [3; 32]);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 #![forbid(unsafe_code)]
 
@@ -34,24 +36,34 @@ mod placement;
 mod provenance;
 mod revision;
 mod runtime;
+mod syndic;
 
 pub use asset::{AssetId, AssetIdentityVersion};
 pub use availability::{Availability, UnavailableReason};
 pub use ids::{
     BerylHomeId, CommandId, IdempotencyKey, IdentityParseError, JobId, ResolutionIntentId, RootId,
-    RuntimeId, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    SyndicProjectionId, SyndicQueuedInputId, SyndicRetryRecordId, SyndicThreadId, SyndicTurnId,
-    VirtualDesktopId, WindowId,
+    RuntimeId, SyndicAcceptedInputId, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId,
+    SyndicExecutionSnapshotId, SyndicItemId, SyndicProjectionId, SyndicResourceId,
+    SyndicRetryRecordId, SyndicThreadId, SyndicTurnId, VirtualDesktopId, WindowId,
 };
 pub use placement::{
     MonitorHint, MonitorId, PlacementError, WindowBounds, WindowDisplayState, WindowPlacement,
 };
-pub use provenance::{CasThreadId, CasTurnId, DynamicToolCallId, DynamicToolName, Provenance};
+pub use provenance::{
+    CasItemId, CasThreadId, CasTurnId, DynamicToolCallId, DynamicToolName, Provenance,
+};
 pub use revision::{
-    BindingRevision, ClaimRevision, DomainRevision, DraftRevision, HomeRevision, JobRevision,
-    RevisionError, SessionRevision, ThreadRevision,
+    AcceptedInputRevision, BindingRevision, ClaimRevision, ContentRevision, DomainRevision,
+    DraftRevision, HomeRevision, InputGateRevision, JobRevision, ProjectionRevision, RevisionError,
+    SessionRevision, ThreadRevision,
 };
 pub use runtime::{
     AdmittedHostPath, ExecutionBinding, PathFlavor, RuntimeMode, RuntimeNativePath, ValueError,
     WslDistributionName,
+};
+pub use syndic::{
+    CasConversationToolProfile, CasConversationToolProfileVersion, CasGenerationError,
+    CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
+    CasNativeTurnCountError, CasProcessGeneration, DiscussionContextDigest,
+    DiscussionContextOwnerId, RecoveryItemSequenceDigest, SyndicContentDigest, SyndicPathDigest,
 };

@@ -1,7 +1,8 @@
 #[path = "../src/shell/context_compaction.rs"]
 mod context_compaction;
 
-use beryl_backend::{ThreadItem, ThreadStatus, TurnInfo, TurnStatus, TurnStreamEvent};
+use beryl_backend::{ThreadItem, ThreadStatus, TurnStreamEvent};
+use beryl_model::{CasThreadId, CasTurnId};
 use context_compaction::ContextCompactionStreamState;
 use serde_json::json;
 
@@ -32,14 +33,7 @@ fn deferred_startup_idle_then_compaction_activity_then_idle_finishes() {
         },
     ));
 
-    assert!(!state.observe(
-        "thread_1",
-        &TurnStreamEvent::ItemStarted {
-            thread_id: "thread_1".to_string(),
-            turn_id: "turn_compact".to_string(),
-            item: context_compaction_item(),
-        },
-    ));
+    assert!(!state.observe("thread_1", &compaction_started("thread_1", "turn_compact"),));
 
     assert!(state.observe(
         "thread_1",
@@ -54,14 +48,7 @@ fn deferred_startup_idle_then_compaction_activity_then_idle_finishes() {
 fn compaction_item_then_idle_finishes() {
     let mut state = ContextCompactionStreamState::default();
 
-    assert!(!state.observe(
-        "thread_1",
-        &TurnStreamEvent::ItemStarted {
-            thread_id: "thread_1".to_string(),
-            turn_id: "turn_1".to_string(),
-            item: context_compaction_item(),
-        },
-    ));
+    assert!(!state.observe("thread_1", &compaction_started("thread_1", "turn_1"),));
     assert_eq!(state.active_turn_id(), Some("turn_1"));
 
     assert!(state.observe(
@@ -148,14 +135,7 @@ fn deferred_idle_then_active_then_idle_finishes() {
 fn other_thread_compaction_activity_does_not_finish_selected_thread() {
     let mut state = ContextCompactionStreamState::default();
 
-    assert!(!state.observe(
-        "thread_1",
-        &TurnStreamEvent::ItemStarted {
-            thread_id: "thread_2".to_string(),
-            turn_id: "turn_1".to_string(),
-            item: context_compaction_item(),
-        },
-    ));
+    assert!(!state.observe("thread_1", &compaction_started("thread_2", "turn_1"),));
 
     assert!(!state.observe(
         "thread_1",
@@ -190,22 +170,10 @@ fn other_thread_active_does_not_finish_selected_thread() {
 }
 
 #[test]
-fn turn_with_compaction_item_then_idle_finishes() {
+fn completed_compaction_item_then_idle_finishes() {
     let mut state = ContextCompactionStreamState::default();
 
-    assert!(!state.observe(
-        "thread_1",
-        &TurnStreamEvent::TurnCompleted {
-            thread_id: "thread_1".to_string(),
-            turn: TurnInfo {
-                id: "turn_1".to_string(),
-                status: TurnStatus::Completed,
-                items_view: beryl_backend::TurnItemsView::Full,
-                items: vec![context_compaction_item()],
-                error: None,
-            },
-        },
-    ));
+    assert!(!state.observe("thread_1", &compaction_completed("thread_1", "turn_1"),));
 
     assert!(state.observe(
         "thread_1",
@@ -222,4 +190,20 @@ fn context_compaction_item() -> ThreadItem {
         "type": "contextCompaction"
     }))
     .unwrap()
+}
+
+fn compaction_started(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ItemStarted {
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
+        item: context_compaction_item(),
+    }
+}
+
+fn compaction_completed(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
+    TurnStreamEvent::ItemCompleted {
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
+        item: context_compaction_item(),
+    }
 }

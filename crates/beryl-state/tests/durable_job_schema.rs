@@ -3,9 +3,10 @@ mod support;
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainReader, DomainRegistrationError,
-    DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceFamily,
-    KeyspaceSchemaVersion, ReadError, RecordCodec, RecordVersion, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
 };
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicDraftId,
@@ -20,21 +21,25 @@ use tempfile::tempdir;
 
 use support::{execute, open};
 
-const JOB_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("records", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("live-jobs", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("request-idempotency", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("discussion-attempts", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("latest-attempts", KeyspaceSchemaVersion::new(1)),
-];
-
 struct DurableJobV2Probe;
 struct JobRecordV2;
+struct LiveJobBytes;
+struct RequestIdempotencyBytes;
+struct DiscussionAttemptBytes;
+struct LatestAttemptBytes;
+
+const JOB_FAMILIES: &[RecordFamily<DurableJobV2Probe>] = &[
+    RecordFamily::new::<JobRecordV2>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<LiveJobBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RequestIdempotencyBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<DiscussionAttemptBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<LatestAttemptBytes>(KeyspaceSchemaVersion::new(1)),
+];
 
 impl StorageDomain for DurableJobV2Probe {
     const NAME: &'static str = "beryl-durable-job";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = JOB_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = JOB_FAMILIES;
     type ValidationError = ProbeError;
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -79,6 +84,42 @@ impl RecordCodec<DurableJobV2Probe> for JobRecordV2 {
     }
 }
 
+macro_rules! passthrough_codec {
+    ($codec:ident, $family:literal, $max_key:expr, $max_value:expr) => {
+        impl RecordCodec<DurableJobV2Probe> for $codec {
+            type Key = Vec<u8>;
+            type Value = Vec<u8>;
+            type Error = ProbeCodecError;
+
+            const FAMILY: &'static str = $family;
+            const VERSION: RecordVersion = RecordVersion::new(1);
+            const MAX_KEY_BYTES: usize = $max_key;
+            const MAX_VALUE_BYTES: usize = $max_value;
+
+            fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+                Ok(key.clone())
+            }
+
+            fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+                Ok(encoded.to_vec())
+            }
+
+            fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+                Ok(value.clone())
+            }
+
+            fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+                Ok(encoded.to_vec())
+            }
+        }
+    };
+}
+
+passthrough_codec!(LiveJobBytes, "live-jobs", 16, 128 * 1024);
+passthrough_codec!(RequestIdempotencyBytes, "request-idempotency", 1024, 64);
+passthrough_codec!(DiscussionAttemptBytes, "discussion-attempts", 24, 16);
+passthrough_codec!(LatestAttemptBytes, "latest-attempts", 16, 24);
+
 #[derive(Debug)]
 struct ProbeError(ReadError);
 
@@ -91,6 +132,12 @@ impl fmt::Display for ProbeError {
 impl Error for ProbeError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.0)
+    }
+}
+
+impl DomainCallbackError for ProbeError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Ok(DomainCallbackSource::Read(self.0))
     }
 }
 
@@ -141,12 +188,15 @@ fn durable_job_records_reject_an_unsupported_record_version_on_reopen() {
     ))
     .unwrap();
     let error = probe.register_domain::<DurableJobV2Probe>().unwrap_err();
-    let DomainRegistrationError::Validation { source, .. } = error else {
-        panic!("expected validation error, got {error}");
+    let DomainRegistrationError::ValidationAccess {
+        source: DomainCallbackSource::Read(source),
+        ..
+    } = error
+    else {
+        panic!("expected typed validation-access error, got {error}");
     };
-    let probe = source.downcast_ref::<ProbeError>().unwrap();
     assert!(matches!(
-        probe.0,
+        source,
         ReadError::UnsupportedRecordVersion {
             supported,
             found: 1,

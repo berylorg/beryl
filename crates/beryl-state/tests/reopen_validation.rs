@@ -1,31 +1,36 @@
 use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion,
-    MutationBuildError, MutationBuilder, RecordCodec, RecordVersion, StorageDomain,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::RuntimeId;
 use beryl_state::{BerylStateBootstrap, BerylStateRegistrationError};
 use tempfile::tempdir;
 
-const RUNTIME_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("runtimes", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("runtime-executable-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("roots", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("root-id-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("root-path-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("runtime-home-root-index", KeyspaceSchemaVersion::new(1)),
-];
-
 struct IncompleteRuntimeDomain;
 struct RuntimeBytes;
 struct ExecutableIndexBytes;
+struct RootBytes;
+struct RootIdIndexBytes;
+struct RootPathIndexBytes;
+struct HomeRootIndexBytes;
+
+const RUNTIME_FAMILIES: &[RecordFamily<IncompleteRuntimeDomain>] = &[
+    RecordFamily::new::<RuntimeBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<ExecutableIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootIdIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootPathIndexBytes>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<HomeRootIndexBytes>(KeyspaceSchemaVersion::new(1)),
+];
 
 impl StorageDomain for IncompleteRuntimeDomain {
     const NAME: &'static str = "beryl-runtime-root";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = RUNTIME_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = RUNTIME_FAMILIES;
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -82,6 +87,10 @@ byte_codec!(
     u16::MAX as usize,
     16
 );
+byte_codec!(RootBytes, "roots", 32, 132 * 1024);
+byte_codec!(RootIdIndexBytes, "root-id-index", 16, 16);
+byte_codec!(RootPathIndexBytes, "root-path-index", u16::MAX as usize, 16);
+byte_codec!(HomeRootIndexBytes, "runtime-home-root-index", 16, 16);
 
 struct SeedRuntimeWithoutHomeRoot {
     runtime_key: Vec<u8>,
@@ -101,6 +110,12 @@ impl fmt::Display for FixtureMutationError {
 impl Error for FixtureMutationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.0)
+    }
+}
+
+impl DomainCallbackError for FixtureMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Err(self)
     }
 }
 

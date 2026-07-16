@@ -11,34 +11,144 @@ use sha2::{Digest, Sha256};
 
 use super::*;
 
-pub(super) fn ensure_directory(
-    store: &HomeStore,
-    parent: &Path,
+pub(super) struct SidecarDirectoryChain {
+    _home: platform::RetainedDirectory,
+    _root: platform::RetainedDirectory,
+    _namespace: platform::RetainedDirectory,
+    shard: platform::RetainedDirectory,
+    shard_path: PathBuf,
+}
+
+impl SidecarDirectoryChain {
+    pub(super) fn shard_path(&self) -> &Path {
+        &self.shard_path
+    }
+}
+
+pub(super) fn retain_sidecar_directories(
+    home_path: &Path,
+    address: &SidecarAddress,
+    faults: &FaultController,
+    create_missing: bool,
+    repair_barriers: bool,
+) -> Result<SidecarDirectoryChain, SidecarError> {
+    let home = retain_directory(home_path, false)?;
+    let root_path = home_path.join(SIDECAR_DIRECTORY);
+    let root = retain_directory(&root_path, create_missing)?;
+    if repair_barriers {
+        flush_directory(faults, FaultPoint::BeforeSidecarRootDirectorySync, &home)?;
+    }
+
+    let namespace_path = root_path.join(address.namespace.as_str());
+    let namespace = retain_directory(&namespace_path, create_missing)?;
+    if repair_barriers {
+        flush_directory(
+            faults,
+            FaultPoint::BeforeSidecarNamespaceDirectorySync,
+            &root,
+        )?;
+    }
+
+    let shard_path = namespace_path.join(
+        digest_hex(address.digest)
+            .get(..2)
+            .expect("SHA-256 hex always has a shard"),
+    );
+    let shard = retain_directory(&shard_path, create_missing)?;
+    if repair_barriers {
+        flush_directory(
+            faults,
+            FaultPoint::BeforeSidecarShardDirectorySync,
+            &namespace,
+        )?;
+    }
+
+    Ok(SidecarDirectoryChain {
+        _home: home,
+        _root: root,
+        _namespace: namespace,
+        shard,
+        shard_path,
+    })
+}
+
+pub(super) fn open_and_verify_final(
+    faults: &FaultController,
+    directories: &SidecarDirectoryChain,
+    address: &SidecarAddress,
+    expected_bytes: Option<&[u8]>,
+    expected_identity: Option<platform::FileIdentity>,
+    repair_final_barrier: bool,
+) -> Result<File, SidecarError> {
+    let path = final_path(directories.shard_path(), address);
+    let mut retained = platform::open_retained_file(&path).map_err(map_final_open_error)?;
+    faults
+        .check(FaultPoint::BeforeSidecarVerification)
+        .map_err(|source| storage(SidecarStage::OpenFinal, source))?;
+    if expected_identity.is_some_and(|expected| expected != retained.identity) {
+        return Err(SidecarError::InvalidLayout);
+    }
+    verify_file(&mut retained.file, address, expected_bytes)?;
+    if repair_final_barrier {
+        flush_directory(
+            faults,
+            FaultPoint::BeforeSidecarFinalDirectorySync,
+            &directories.shard,
+        )?;
+    }
+    Ok(retained.file)
+}
+
+fn retain_directory(
     path: &Path,
-) -> Result<(), SidecarError> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) => ensure_ordinary_directory(&metadata),
-        Err(source) if source.kind() == io::ErrorKind::NotFound => {
+    create_missing: bool,
+) -> Result<platform::RetainedDirectory, SidecarError> {
+    match platform::open_directory(path) {
+        Ok(directory) => Ok(directory),
+        Err(platform::OpenObjectError::Io(source))
+            if create_missing && source.kind() == io::ErrorKind::NotFound =>
+        {
             match fs::create_dir(path) {
                 Ok(()) => {}
                 Err(source) if source.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(source) => return Err(storage(SidecarStage::CreateDirectory, source)),
             }
-            let metadata = fs::symlink_metadata(path)
-                .map_err(|source| storage(SidecarStage::CreateDirectory, source))?;
-            ensure_ordinary_directory(&metadata)?;
-            flush_directory(store, parent)
+            platform::open_directory(path).map_err(map_directory_open_error)
         }
-        Err(source) => Err(storage(SidecarStage::CreateDirectory, source)),
+        Err(source) => Err(map_directory_open_error(source)),
     }
 }
 
-pub(super) fn flush_directory(store: &HomeStore, path: &Path) -> Result<(), SidecarError> {
-    store
-        .faults
-        .check(FaultPoint::BeforeSidecarDirectorySync)
+fn flush_directory(
+    faults: &FaultController,
+    point: FaultPoint,
+    directory: &platform::RetainedDirectory,
+) -> Result<(), SidecarError> {
+    faults
+        .check(point)
         .map_err(|source| storage(SidecarStage::FlushDirectory, source))?;
-    platform::flush_directory(path).map_err(|source| storage(SidecarStage::FlushDirectory, source))
+    platform::flush_directory(directory)
+        .map_err(|source| storage(SidecarStage::FlushDirectory, source))
+}
+
+fn map_directory_open_error(source: platform::OpenObjectError) -> SidecarError {
+    match source {
+        platform::OpenObjectError::InvalidLayout => SidecarError::InvalidLayout,
+        platform::OpenObjectError::Io(source) if source.kind() == io::ErrorKind::NotFound => {
+            SidecarError::Missing
+        }
+        platform::OpenObjectError::Io(source) => storage(SidecarStage::CreateDirectory, source),
+    }
+}
+
+fn map_final_open_error(source: platform::OpenObjectError) -> SidecarError {
+    match source {
+        platform::OpenObjectError::InvalidLayout => SidecarError::InvalidLayout,
+        platform::OpenObjectError::Io(source) if source.kind() == io::ErrorKind::NotFound => {
+            SidecarError::Missing
+        }
+        platform::OpenObjectError::Io(source) => storage(SidecarStage::OpenFinal, source),
+    }
 }
 
 pub(super) fn verify_file(
@@ -84,13 +194,6 @@ pub(super) fn verify_file(
     Ok(())
 }
 
-pub(super) fn sidecar_shard(home: &Path, address: &SidecarAddress) -> PathBuf {
-    let digest = digest_hex(address.digest);
-    home.join(SIDECAR_DIRECTORY)
-        .join(address.namespace.as_str())
-        .join(digest.get(..2).expect("SHA-256 hex always has a shard"))
-}
-
 pub(super) fn final_path(directory: &Path, address: &SidecarAddress) -> PathBuf {
     directory.join(digest_hex(address.digest))
 }
@@ -115,27 +218,6 @@ pub(super) fn ensure_bound(actual: u64, limit: SidecarByteLimit) -> Result<(), S
     } else {
         Ok(())
     }
-}
-
-fn ensure_ordinary_directory(metadata: &fs::Metadata) -> Result<(), SidecarError> {
-    if metadata.is_dir() && !is_reparse_point(metadata) {
-        Ok(())
-    } else {
-        Err(SidecarError::InvalidLayout)
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn is_reparse_point(metadata: &fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt;
-
-    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
-    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_reparse_point(metadata: &fs::Metadata) -> bool {
-    metadata.file_type().is_symlink()
 }
 
 pub(super) fn storage(

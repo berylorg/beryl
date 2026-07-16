@@ -4,6 +4,7 @@ use beryl_model::{JobId, JobRevision};
 use super::super::{
     BranchHandoffJobLifecycle, BranchHandoffJobState, DurableJobDomain, DurableJobMutationError,
     HandoffFailureEvidence, ParentCasIdentity, ParentHandoffIdentity,
+    record::failure_state_is_compatible,
 };
 use super::{advance, ensure_revision, put_live_transition, put_terminal_transition, required_job};
 
@@ -228,12 +229,6 @@ impl DomainMutation<DurableJobDomain> for RecordRetryableHandoffFailure {
     type Error = DurableJobMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, DurableJobDomain>) -> Result<(), Self::Error> {
-        if !self.evidence.kind().is_retryable() {
-            return Err(DurableJobMutationError::FailureKindMismatch {
-                expected: "retryable",
-                actual: self.evidence.kind(),
-            });
-        }
         let job = validate_current(reader, self.job_id, self.expected_job_revision)?;
         if !matches!(
             job.lifecycle(),
@@ -247,7 +242,11 @@ impl DomainMutation<DurableJobDomain> for RecordRetryableHandoffFailure {
                 job.lifecycle(),
             ));
         }
-        validate_failure_checkpoint(&job, &self.evidence)?;
+        validate_failure_checkpoint(
+            &job,
+            &self.evidence,
+            BranchHandoffJobLifecycle::RetryableFailed,
+        )?;
         Ok(())
     }
 
@@ -299,17 +298,15 @@ impl DomainMutation<DurableJobDomain> for RecordTerminalHandoffFailure {
     type Error = DurableJobMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, DurableJobDomain>) -> Result<(), Self::Error> {
-        if !self.evidence.kind().is_terminal() {
-            return Err(DurableJobMutationError::FailureKindMismatch {
-                expected: "terminal",
-                actual: self.evidence.kind(),
-            });
-        }
         let job = validate_current(reader, self.job_id, self.expected_job_revision)?;
         if !job.lifecycle().is_live() {
             return Err(invalid_transition("a live job", job.lifecycle()));
         }
-        validate_failure_checkpoint(&job, &self.evidence)?;
+        validate_failure_checkpoint(
+            &job,
+            &self.evidence,
+            BranchHandoffJobLifecycle::TerminalFailed,
+        )?;
         Ok(())
     }
 
@@ -386,25 +383,10 @@ fn validate_current(
 fn validate_failure_checkpoint(
     job: &super::super::BranchHandoffJobRecord,
     evidence: &HandoffFailureEvidence,
+    failure_lifecycle: BranchHandoffJobLifecycle,
 ) -> Result<(), DurableJobMutationError> {
     let checkpoint = job.state.checkpoint().ok_or_else(invariant_transition)?;
-    let lifecycle = checkpoint.lifecycle();
-    let valid = match evidence.kind() {
-        super::super::HandoffFailureKind::CasRejectedBeforeAcceptance => {
-            lifecycle == BranchHandoffJobLifecycle::StartingParent
-        }
-        super::super::HandoffFailureKind::UnrecoverablePostAppend => matches!(
-            lifecycle,
-            BranchHandoffJobLifecycle::StartingParent | BranchHandoffJobLifecycle::ParentActive
-        ),
-        super::super::HandoffFailureKind::ParentInterrupted
-        | super::super::HandoffFailureKind::ParentIncomplete
-        | super::super::HandoffFailureKind::ParentTerminalFailure => {
-            lifecycle == BranchHandoffJobLifecycle::ParentActive
-        }
-        _ => true,
-    };
-    if valid {
+    if failure_state_is_compatible(failure_lifecycle, &checkpoint, evidence.kind()) {
         Ok(())
     } else {
         Err(DurableJobMutationError::FailureKindMismatch {

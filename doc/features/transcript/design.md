@@ -28,6 +28,13 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - A branch discussion may contribute one readonly synthetic context item at its exact branch boundary. The item participates in transcript flow but remains explicitly classified as contextual presentation rather than authored narrative or a Syndic turn.
 - Loading, missing-data, pending-range, stale-result, rejected-demand, and budget-fallback states are visible presentation states only. They are not selectable transcript content and must not be copied, quoted, or targeted as assistant-authored turns.
 
+## Live Turn Presentation
+
+- Transcript-visible assistant text follows the arrival cadence of normalized CAS text deltas. Beryl appends each received delta on the next available GUI frame and does not replay it through a fixed-rate character or token animation.
+- One CAS delta may contain multiple characters, and multiple deltas received between two GUI frames may naturally become visible together. Beryl introduces no additional pacing, so pauses and apparent throughput reflect when text reaches Beryl within ordinary frame scheduling rather than a simulated typewriter rate.
+- Durable Syndic coalescing is independent from visible live cadence. The transcript may temporarily present one bounded non-authoritative live suffix beyond its durable Syndic prefix, then replace that suffix only after the corresponding Syndic projection proves exact prefix agreement.
+- Durable takeover must not duplicate, omit, reorder, blank, or visibly restyle an already matching live prefix merely because its storage or projection revision changed. Until takeover, the transient suffix has no stable historical provenance and cannot authorize selection-derived history commands.
+
 ## Scrolling And Activation
 
 - Manual transcript scrolling is exact pixel displacement from wheel, touchpad, keyboard, or smoothed input deltas.
@@ -60,6 +67,6 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - Entering replacement-edit mode closes the context menu and dims the targeted user-input turn plus its later turns on the selected path without changing their selection, copy, quote, or scrolling behavior.
 - Replacement-edit workflow and path semantics are defined in `doc/features/conversation-threads/design.md`; draft interaction is defined in `doc/features/composer/design.md`.
 - A non-empty stable selection wholly inside rendered assistant reply text exposes `Discuss in new branch` alongside Quote.
-- `Discuss in new branch` requires exact Syndic turn, item/projection revision, selected-range provenance, healthy Beryl-home storage, and selection size within the branch-discussion limit.
-- The action is unavailable for user input, operational records, synthetic discussion-context items, loading or fallback text, cross-record selections without one exact source owner, incomplete active assistant output, or stale geometry.
+- `Discuss in new branch` requires an exact proven-terminal Syndic turn, a current finalized assistant item/projection revision, selected-range provenance, healthy Beryl-home storage, and selection size within the branch-discussion limit.
+- The action is unavailable for user input, operational records, synthetic discussion-context items, loading or fallback text, cross-record selections without one exact source owner, live or unknown-terminal assistant output, stale or incomplete projection work, or stale geometry.
 - Branch-discussion product behavior is defined in `doc/features/branch-discussions/design.md`.

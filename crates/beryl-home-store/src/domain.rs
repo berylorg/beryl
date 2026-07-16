@@ -1,4 +1,5 @@
 use std::{
+    any::TypeId,
     collections::{HashMap, HashSet},
     error::Error,
     fmt,
@@ -10,41 +11,20 @@ use fjall::Keyspace;
 use thiserror::Error;
 
 use crate::{
-    DomainReader, DomainSchemaVersion, KeyspaceSchemaVersion, SidecarVerifier,
+    DomainReader, DomainSchemaVersion, KeyspaceSchemaVersion, RecordFamily, SidecarVerifier,
+    codec::ErasedEnvelopeValidator,
     metadata::{DomainMetadata, PersistedFamily},
 };
 
+pub(crate) mod callback;
+mod definition;
 mod registration;
 pub(crate) mod reopen;
+mod validation;
+
+pub use callback::{DomainCallbackError, DomainCallbackSource};
 
 const MAX_COMPONENT_BYTES: usize = 64;
-
-/// Stable declaration of one keyspace family owned by a logical domain.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct KeyspaceFamily {
-    name: &'static str,
-    schema: KeyspaceSchemaVersion,
-}
-
-impl KeyspaceFamily {
-    /// Declares one logical family and its exact persisted schema.
-    #[must_use]
-    pub const fn new(name: &'static str, schema: KeyspaceSchemaVersion) -> Self {
-        Self { name, schema }
-    }
-
-    /// Returns the domain-local family name.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        self.name
-    }
-
-    /// Returns the exact family schema.
-    #[must_use]
-    pub const fn schema(self) -> KeyspaceSchemaVersion {
-        self.schema
-    }
-}
 
 /// Typed logical owner of private record families inside one Beryl home.
 pub trait StorageDomain: Send + Sync + Sized + 'static {
@@ -52,16 +32,17 @@ pub trait StorageDomain: Send + Sync + Sized + 'static {
     const NAME: &'static str;
     /// Exact persisted domain schema.
     const SCHEMA_VERSION: DomainSchemaVersion;
-    /// Complete stable family declaration for this domain schema.
-    const KEYSPACES: &'static [KeyspaceFamily];
+    /// Complete typed record-family declaration for this domain schema.
+    const FAMILIES: &'static [RecordFamily<Self>];
     /// Domain-owned invariant-validation failure.
-    type ValidationError: Error + Send + Sync + 'static;
+    type ValidationError: DomainCallbackError;
 
-    /// Validates authoritative records through bounded typed reads.
+    /// Exhaustively validates authoritative invariants through bounded reads.
     ///
-    /// Validation must be deterministic, bounded, and free of external I/O or
-    /// durable side effects. It runs while store admission is controlled and
-    /// must not attempt to enter the home writer recursively.
+    /// Validation may take work proportional to the domain, but must use
+    /// bounded memory, be deterministic, and remain free of external I/O or
+    /// durable side effects. It runs only during registration, explicit
+    /// verification, and recovery, never on the ordinary serialized writer.
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError>;
 
     /// Validates authoritative records plus their referenced physical sidecars.
@@ -79,11 +60,21 @@ pub trait StorageDomain: Send + Sync + Sized + 'static {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct StoreInstanceId(pub(crate) u64);
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct DomainOwnerId(TypeId);
+
+impl DomainOwnerId {
+    pub(crate) fn of<D: StorageDomain>() -> Self {
+        Self(TypeId::of::<D>())
+    }
+}
+
 /// Opaque registration token for one typed logical domain.
 pub struct DomainHandle<D: StorageDomain> {
     pub(crate) store: StoreInstanceId,
     pub(crate) slot: usize,
-    _domain: PhantomData<fn() -> D>,
+    pub(crate) owner: DomainOwnerId,
+    _domain: PhantomData<fn(D) -> D>,
 }
 
 impl<D: StorageDomain> Copy for DomainHandle<D> {}
@@ -104,10 +95,11 @@ impl<D: StorageDomain> fmt::Debug for DomainHandle<D> {
 }
 
 impl<D: StorageDomain> DomainHandle<D> {
-    pub(crate) const fn new(store: StoreInstanceId, slot: usize) -> Self {
+    pub(crate) fn new(store: StoreInstanceId, slot: usize) -> Self {
         Self {
             store,
             slot,
+            owner: DomainOwnerId::of::<D>(),
             _domain: PhantomData,
         }
     }
@@ -138,6 +130,14 @@ pub enum DomainDefinitionError {
         /// Owning domain.
         domain: &'static str,
         /// Duplicate family.
+        family: &'static str,
+    },
+    /// One family codec declares bounds the physical validator cannot honor.
+    #[error("domain `{domain}` family `{family}` declares an invalid record codec contract")]
+    InvalidRecordCodec {
+        /// Owning domain.
+        domain: &'static str,
+        /// Invalid family.
         family: &'static str,
     },
 }
@@ -174,6 +174,13 @@ pub enum DomainRegistrationError {
     #[error("domain `{domain}` is already registered in this home generation")]
     DuplicateDomain {
         /// Stable duplicate domain name.
+        domain: &'static str,
+    },
+
+    /// The stable declaration is already owned by another Rust type in this process.
+    #[error("domain `{domain}` is owned by another Rust type in this process")]
+    OwnerTypeMismatch {
+        /// Stable domain name whose live owner differs.
         domain: &'static str,
     },
 
@@ -246,6 +253,16 @@ pub enum DomainRegistrationError {
         source: Box<dyn Error + Send + Sync>,
     },
 
+    /// Storage-owned access failed while validating authoritative records.
+    #[error("domain `{domain}` could not validate authoritative records: {source}")]
+    ValidationAccess {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Exact typed read or sidecar failure.
+        #[source]
+        source: crate::DomainCallbackSource,
+    },
+
     /// Fjall failed during registration.
     #[error("domain `{domain}` registration failed during {stage:?}: {source}")]
     Storage {
@@ -259,15 +276,33 @@ pub enum DomainRegistrationError {
     },
 }
 
-/// Failure from re-running all registered domain validators.
+/// Failure from exhaustive validation of registered authoritative domains.
 #[derive(Debug, Error)]
-#[error("domain `{domain}` failed invariant validation: {source}")]
-pub struct DomainValidationError {
-    /// Stable domain name.
-    pub domain: &'static str,
-    /// Domain-owned validation failure or typed read failure.
-    #[source]
-    pub source: Box<dyn Error + Send + Sync>,
+pub enum DomainValidationError {
+    /// The process-wide health gate is not accepting state-dependent work.
+    #[error(transparent)]
+    HealthGate(#[from] crate::HealthGateError),
+    /// A panic poisoned the in-process generation lock.
+    #[error("the Beryl-home generation lock is poisoned")]
+    GenerationPoisoned,
+    /// A typed home-store read or sidecar verification failed.
+    #[error("domain `{domain}` could not validate authoritative records: {source}")]
+    Access {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Exact storage-owned source.
+        #[source]
+        source: crate::DomainCallbackSource,
+    },
+    /// The domain rejected a fully decoded authoritative invariant.
+    #[error("domain `{domain}` failed invariant validation: {source}")]
+    Rejected {
+        /// Stable domain name.
+        domain: &'static str,
+        /// Domain-owned semantic source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
 }
 
 /// Why a caller could not reacquire a typed handle after home recovery.
@@ -285,27 +320,38 @@ pub enum DomainHandleError {
         /// Stable requested domain name.
         domain: &'static str,
     },
+    /// The stable declaration belongs to a different Rust owner type.
+    #[error("domain `{domain}` is registered to another Rust owner type")]
+    OwnerTypeMismatch {
+        /// Stable requested domain name.
+        domain: &'static str,
+    },
 }
 
 pub(crate) struct RegisteredFamily {
     pub(crate) logical_name: &'static str,
     pub(crate) physical_name: String,
     pub(crate) schema: KeyspaceSchemaVersion,
+    pub(crate) codec_type: TypeId,
+    pub(crate) max_key_bytes: usize,
+    pub(crate) max_stored_value_bytes: usize,
+    pub(crate) validate_envelope: ErasedEnvelopeValidator,
     pub(crate) keyspace: Keyspace,
 }
 
 pub(crate) type ErasedValidator =
-    fn(&fjall::Snapshot, &RegisteredDomain) -> Result<(), Box<dyn Error + Send + Sync>>;
+    fn(&fjall::Snapshot, &RegisteredDomain) -> Result<(), callback::ErasedCallbackError>;
 pub(crate) type ErasedReopenValidator = fn(
     &fjall::Snapshot,
     &RegisteredDomain,
     &SidecarVerifier<'_>,
-) -> Result<(), Box<dyn Error + Send + Sync>>;
+) -> Result<(), callback::ErasedCallbackError>;
 
 #[derive(Clone)]
 pub(crate) struct DomainBlueprint {
     pub(crate) name: &'static str,
     pub(crate) schema: DomainSchemaVersion,
+    pub(crate) owner: DomainOwnerId,
     pub(crate) families: Vec<FamilyBlueprint>,
     pub(crate) validator: ErasedValidator,
     pub(crate) reopen_validator: ErasedReopenValidator,
@@ -316,6 +362,10 @@ pub(crate) struct FamilyBlueprint {
     pub(crate) logical_name: &'static str,
     pub(crate) physical_name: String,
     pub(crate) schema: KeyspaceSchemaVersion,
+    pub(crate) codec_type: TypeId,
+    pub(crate) max_key_bytes: usize,
+    pub(crate) max_stored_value_bytes: usize,
+    pub(crate) validate_envelope: ErasedEnvelopeValidator,
 }
 
 impl DomainBlueprint {
@@ -339,6 +389,7 @@ impl DomainBlueprint {
 pub(crate) struct RegisteredDomain {
     pub(crate) name: &'static str,
     pub(crate) schema: DomainSchemaVersion,
+    pub(crate) owner: DomainOwnerId,
     pub(crate) families: Vec<RegisteredFamily>,
     family_slots: HashMap<&'static str, usize>,
     validator: ErasedValidator,
@@ -371,21 +422,6 @@ impl RegisteredDomain {
                 .collect(),
         }
     }
-
-    pub(crate) fn validate(
-        &self,
-        snapshot: &fjall::Snapshot,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        (self.validator)(snapshot, self)
-    }
-
-    pub(crate) fn validate_reopen(
-        &self,
-        snapshot: &fjall::Snapshot,
-        sidecars: &SidecarVerifier<'_>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        (self.reopen_validator)(snapshot, self, sidecars)
-    }
 }
 
 #[derive(Default)]
@@ -396,10 +432,6 @@ pub(crate) struct DomainRegistry {
 }
 
 impl DomainRegistry {
-    pub(crate) fn contains_name(&self, name: &str) -> bool {
-        self.names.contains_key(name)
-    }
-
     pub(crate) fn contains_physical_name(&self, name: &str) -> bool {
         self.physical_names.contains(name)
     }

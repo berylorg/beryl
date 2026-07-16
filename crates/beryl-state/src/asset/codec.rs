@@ -3,8 +3,7 @@ use std::num::NonZeroU64;
 use beryl_home_store::{RecordCodec, RecordVersion};
 use beryl_model::{
     AssetId, AssetIdentityVersion, DomainRevision, SyndicAcceptedInputId, SyndicDraftId,
-    SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicQueuedInputId,
-    SyndicRetryRecordId,
+    SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
 };
 
 use crate::{
@@ -37,9 +36,9 @@ impl AssetReferenceIndexKey {
     pub(super) fn maximum(asset_id: AssetId) -> Self {
         Self {
             asset_id,
-            owner: AssetReferenceOwner::TranscriptProjection(SyndicProjectionId::from_bytes(
-                [u8::MAX; 16],
-            )),
+            owner: AssetReferenceOwner::TranscriptProjection {
+                projection_id: SyndicProjectionId::from_bytes([u8::MAX; 16]),
+            },
         }
     }
 }
@@ -268,25 +267,30 @@ fn encode_owner(encoder: &mut Encoder, owner: AssetReferenceOwner) {
             encoder.fixed(draft_id.as_bytes());
             encoder.fixed(marker_id.as_bytes());
         }
-        AssetReferenceOwner::AcceptedInput(id) => {
+        AssetReferenceOwner::AcceptedInputMarker {
+            input_id,
+            marker_id,
+        } => {
             encoder.u8(1);
-            encoder.fixed(id.as_bytes());
+            encoder.fixed(input_id.as_bytes());
+            encoder.fixed(marker_id.as_bytes());
         }
-        AssetReferenceOwner::SubmittedTurnItem(id) => {
+        AssetReferenceOwner::SubmittedTurnItemMarker { item_id, marker_id } => {
             encoder.u8(2);
-            encoder.fixed(id.as_bytes());
+            encoder.fixed(item_id.as_bytes());
+            encoder.fixed(marker_id.as_bytes());
         }
-        AssetReferenceOwner::QueuedInput(id) => {
-            encoder.u8(3);
-            encoder.fixed(id.as_bytes());
-        }
-        AssetReferenceOwner::RetryRecord(id) => {
+        AssetReferenceOwner::RetryRecordMarker {
+            retry_id,
+            marker_id,
+        } => {
             encoder.u8(4);
-            encoder.fixed(id.as_bytes());
+            encoder.fixed(retry_id.as_bytes());
+            encoder.fixed(marker_id.as_bytes());
         }
-        AssetReferenceOwner::TranscriptProjection(id) => {
+        AssetReferenceOwner::TranscriptProjection { projection_id } => {
             encoder.u8(5);
-            encoder.fixed(id.as_bytes());
+            encoder.fixed(projection_id.as_bytes());
         }
     }
 }
@@ -297,21 +301,21 @@ fn decode_owner(decoder: &mut Decoder<'_>) -> Result<AssetReferenceOwner, CodecE
             draft_id: SyndicDraftId::from_bytes(decoder.fixed()?),
             marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
         }),
-        1 => Ok(AssetReferenceOwner::AcceptedInput(
-            SyndicAcceptedInputId::from_bytes(decoder.fixed()?),
-        )),
-        2 => Ok(AssetReferenceOwner::SubmittedTurnItem(
-            SyndicItemId::from_bytes(decoder.fixed()?),
-        )),
-        3 => Ok(AssetReferenceOwner::QueuedInput(
-            SyndicQueuedInputId::from_bytes(decoder.fixed()?),
-        )),
-        4 => Ok(AssetReferenceOwner::RetryRecord(
-            SyndicRetryRecordId::from_bytes(decoder.fixed()?),
-        )),
-        5 => Ok(AssetReferenceOwner::TranscriptProjection(
-            SyndicProjectionId::from_bytes(decoder.fixed()?),
-        )),
+        1 => Ok(AssetReferenceOwner::AcceptedInputMarker {
+            input_id: SyndicAcceptedInputId::from_bytes(decoder.fixed()?),
+            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
+        }),
+        2 => Ok(AssetReferenceOwner::SubmittedTurnItemMarker {
+            item_id: SyndicItemId::from_bytes(decoder.fixed()?),
+            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
+        }),
+        4 => Ok(AssetReferenceOwner::RetryRecordMarker {
+            retry_id: SyndicRetryRecordId::from_bytes(decoder.fixed()?),
+            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
+        }),
+        5 => Ok(AssetReferenceOwner::TranscriptProjection {
+            projection_id: SyndicProjectionId::from_bytes(decoder.fixed()?),
+        }),
         tag => Err(CodecError::InvalidTag {
             kind: "asset reference owner",
             tag,

@@ -3,12 +3,16 @@ use std::{
     io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{ChildStderr, ChildStdin, ChildStdout},
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc::{self, Receiver, RecvTimeoutError},
+    },
     thread,
     time::{Duration, Instant},
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use beryl_model::{CasThreadId, CasTurnId};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -16,23 +20,31 @@ use thiserror::Error;
 use tracing::{debug, warn};
 
 use crate::{
-    AccountRateLimitsResponse, ApprovalRequest, ApprovalRequestKind, BackendCommandLineError,
-    BackendConfigDefaults, BackendWebSocketEndpoint, CompatibilityError, CompatibilityProbe,
-    CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse, DynamicToolCallRequest,
-    DynamicToolCallResponse, HardStopCapabilityProbe, HardStopCapabilityProbeResult,
-    HardStopCapabilityReport, HardStopTarget, HardStopTargetOutcome, InitializeResponse,
-    JsonRpcError, ModelInfo, ModelListOptions, ModelListResponse, ThreadBranchCapabilities,
-    ThreadBranchCapabilityProbe, ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport,
-    ThreadForkOptions, ThreadForkResponse, ThreadReadMetadata, ThreadRollbackResponse,
-    ThreadSessionResponse, ThreadStartOptions, ThreadSummary, ThreadUnsubscribeResponse,
-    TurnStartOptions, TurnStartResponse, TurnSteerResponse, TurnStreamEvent, UserInput,
+    AccountRateLimitsResponse, ApprovalRequest, ApprovalRequestKind, ApprovalResponseDisposition,
+    BackendCommandLineError, BackendConfigDefaults, BackendWebSocketEndpoint, CompatibilityError,
+    CompatibilityProbe, CompatibilitySnapshot, ConfigReadOptions, ConfigReadResponse,
+    DynamicToolCallRequest, DynamicToolCallResponse, HardStopCapabilityProbe,
+    HardStopCapabilityProbeResult, HardStopCapabilityReport, HardStopTarget, HardStopTargetOutcome,
+    InitializeResponse, JsonRpcError, ModelInfo, ModelListOptions, ModelListResponse, StartedTurn,
+    SteeredTurn, ThreadBranchCapabilities, ThreadBranchCapabilityProbe,
+    ThreadBranchCapabilityProbeResult, ThreadBranchCapabilityReport, ThreadInjectionBatch,
+    ThreadInjectionOutcome, ThreadLoadOptions, ThreadReadMetadata, ThreadSessionResponse,
+    ThreadStartOptions, ThreadSummary, ThreadUnsubscribeResponse, TurnStartOptions,
+    TurnStreamEvent, UserInput,
     dynamic_tool::{is_dynamic_tool_call_method, parse_dynamic_tool_call_request},
     hard_stop::HARD_STOP_CAPABILITY_PROBES,
-    thread_branch::{THREAD_BRANCH_CAPABILITY_PROBES, ThreadForkParams, ThreadRollbackParams},
-    thread_metadata::{ThreadReadMetadataParams, ThreadResumeMetadataParams},
+    thread_branch::THREAD_BRANCH_CAPABILITY_PROBES,
+    thread_injection::{
+        THREAD_INJECT_ITEMS_METHOD, ThreadInjectItemsParams, ThreadInjectItemsResponse,
+    },
+    thread_lineage::{
+        FreshIdleThread, FreshLoadedThreadSession, LoadedThreadSession, ThreadForkParams,
+        ThreadLineageResponse, ThreadResumeParams, ThreadRollbackParams,
+    },
+    thread_metadata::ThreadReadMetadataParams,
     turn::{
-        ThreadStartParams, TurnStartParams, TurnSteerParams, parse_approval_request,
-        parse_turn_stream_event,
+        ThreadStartParams, TurnStartParams, TurnStartResponseWire, TurnSteerParams,
+        TurnSteerResponseWire, parse_approval_request, parse_turn_stream_event,
     },
     websocket_transport::WebSocketClientTransport,
 };
@@ -45,13 +57,13 @@ const PROBE_THREAD_ID: &str = "00000000-0000-0000-0000-000000000000";
 const PROBE_TURN_ID: &str = "00000000-0000-0000-0000-000000000001";
 const PROBE_COMMAND_EXEC_PROCESS_ID: &str = "beryl-hard-stop-probe";
 const STDERR_LOG_LIMIT: usize = 240;
-const INVALID_JSON_ERROR_LINE_LIMIT: usize = 4 * 1024;
 const PENDING_MESSAGE_COUNT_LIMIT: usize = 1024;
 const PENDING_MESSAGE_BYTE_BUDGET: usize = 16 * 1024 * 1024;
 const PENDING_DYNAMIC_TOOL_REQUEST_LIMIT: usize = 64;
 const STDIO_STDOUT_LINE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 const STDIO_STDERR_LINE_BYTE_LIMIT: usize = 8 * 1024;
 const STDIO_MESSAGE_CHANNEL_BOUND: usize = 64;
+static NEXT_APPROVAL_RESPONSE_AUTHORITY_GENERATION: AtomicU64 = AtomicU64::new(0);
 const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "thread/started",
     "thread/status/changed",
@@ -65,26 +77,95 @@ const REQUEST_ONLY_NOTIFICATION_METHODS: &[&str] = &[
     "item/started",
     "item/completed",
     "item/agentMessage/delta",
+    "item/plan/delta",
     "item/reasoning/summaryPartAdded",
     "item/reasoning/summaryTextDelta",
     "item/reasoning/textDelta",
     "item/commandExecution/outputDelta",
     "item/fileChange/outputDelta",
+    "item/fileChange/patchUpdated",
     "item/mcpToolCall/progress",
     "codex/event/collab_agent_spawn_end",
 ];
+
+fn probe_thread_id() -> CasThreadId {
+    CasThreadId::new(PROBE_THREAD_ID).expect("fixed compatibility-probe thread id is valid")
+}
+
+fn probe_turn_id() -> CasTurnId {
+    CasTurnId::new(PROBE_TURN_ID).expect("fixed compatibility-probe turn id is valid")
+}
 
 fn elapsed_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
+fn allocate_approval_response_authority_generation() -> Result<u64, ManagedBackendError> {
+    NEXT_APPROVAL_RESPONSE_AUTHORITY_GENERATION
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |generation| {
+            generation.checked_add(1)
+        })
+        .ok()
+        .and_then(|generation| generation.checked_add(1))
+        .ok_or(ManagedBackendError::ApprovalResponseAuthorityExhausted)
+}
+
 #[derive(Debug)]
 pub struct ManagedBackendSession {
     transport: BackendClientTransport,
+    initialize: Option<InitializeResponse>,
+    compatibility: Option<CompatibilitySnapshot>,
+    initialized_notification_profile: Option<InitializedNotificationProfile>,
     pending_messages: VecDeque<IncomingMessage>,
     pending_message_bytes: usize,
     pending_dynamic_tool_requests: usize,
     next_request_id: u64,
+    approval_response_authority_generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InitializedNotificationProfile {
+    FullTurnStream,
+    OptedOut,
+}
+
+/// One normalized live event and its approximate pre-event-parse retained bytes.
+///
+/// The byte count is derived directly from the incoming JSON-RPC notification,
+/// server request, or error message before its payload is parsed into a
+/// [`TurnStreamEvent`]. It is suitable for applying bounded in-memory queue
+/// accounting without reserializing the normalized event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TurnStreamEnvelope {
+    event: TurnStreamEvent,
+    approximate_retained_bytes: usize,
+}
+
+impl TurnStreamEnvelope {
+    fn new(event: TurnStreamEvent, approximate_retained_bytes: usize) -> Self {
+        Self {
+            event,
+            approximate_retained_bytes,
+        }
+    }
+
+    /// Returns the normalized event carried by this envelope.
+    #[must_use]
+    pub fn event(&self) -> &TurnStreamEvent {
+        &self.event
+    }
+
+    /// Consumes the envelope and returns its normalized event.
+    #[must_use]
+    pub fn into_event(self) -> TurnStreamEvent {
+        self.event
+    }
+
+    /// Returns the incoming message's approximate pre-event-parse retained bytes.
+    #[must_use]
+    pub const fn approximate_retained_bytes(&self) -> usize {
+        self.approximate_retained_bytes
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -278,9 +359,43 @@ pub enum ManagedBackendError {
         source: ManagedWebSocketError,
     },
     #[error("backend returned a JSON-RPC error for {method}: {error}")]
-    RequestFailed { method: String, error: JsonRpcError },
+    RequestFailed {
+        method: String,
+        error: Box<JsonRpcError>,
+    },
+    #[error("approval response for {method} was already sent")]
+    ApprovalResponseAlreadySent { method: String },
+    #[error("approval request for {method} does not belong to this backend session")]
+    ApprovalResponseAuthorityMismatch { method: String },
+    #[error("backend-session approval response authority generation is exhausted")]
+    ApprovalResponseAuthorityExhausted,
+    #[error("retained approval response state was lost while handling {method}")]
+    PendingApprovalStateLost { method: String },
+    #[error(
+        "backend {method} response named CAS thread {actual:?} instead of expected {expected:?}"
+    )]
+    ThreadResponseIdentityMismatch {
+        method: String,
+        expected: CasThreadId,
+        actual: CasThreadId,
+    },
+    #[error(
+        "backend {method} response reused source CAS thread {source_thread:?} as its fork result"
+    )]
+    ForkResponseReusedSource {
+        method: String,
+        source_thread: CasThreadId,
+    },
+    #[error("backend {method} response named CAS turn {actual:?} instead of expected {expected:?}")]
+    TurnResponseIdentityMismatch {
+        method: String,
+        expected: CasTurnId,
+        actual: CasTurnId,
+    },
     #[error("backend response line did not match JSON-RPC response or notification shape")]
     UnexpectedMessageShape,
+    #[error("backend client session has not completed its initialize handshake")]
+    ClientNotInitialized,
     #[error(
         "bounded backend resource exceeded while handling {method}: {resource} exceeded limit {limit}"
     )]
@@ -303,6 +418,77 @@ pub enum ManagedBackendError {
     },
     #[error(transparent)]
     Compatibility(#[from] CompatibilityError),
+}
+
+impl ManagedBackendError {
+    /// Returns whether this failure proves that the exact client connection can no longer
+    /// authorize loaded-thread subscriptions.
+    #[must_use]
+    pub const fn invalidates_connection_authority(&self) -> bool {
+        matches!(
+            self,
+            Self::WriteRequest { .. }
+                | Self::ReadTransport { .. }
+                | Self::InvalidJsonLine { .. }
+                | Self::DeserializeResponse { .. }
+                | Self::DecodeBase64Response { .. }
+                | Self::RequestTimeout { .. }
+                | Self::ProcessExited { .. }
+                | Self::TransportClosed { .. }
+                | Self::WebSocketTransport { .. }
+                | Self::ThreadResponseIdentityMismatch { .. }
+                | Self::ForkResponseReusedSource { .. }
+                | Self::TurnResponseIdentityMismatch { .. }
+                | Self::UnexpectedMessageShape
+                | Self::BoundedResourceExceeded { .. }
+                | Self::DeserializeNotification { .. }
+                | Self::DeserializeServerRequest { .. }
+                | Self::PendingApprovalStateLost { .. }
+        )
+    }
+}
+
+/// Exact normalized outcome of one non-idempotent backend request.
+///
+/// `turn/start` and `turn/steer` have no provider idempotency key or
+/// authoritative delivery readback. Callers may retry only
+/// [`Self::ProvenNotDispatched`] or apply method-specific policy to an exact
+/// rejection. [`Self::CompletionUnknown`] means the request may have crossed
+/// the transport and must not be replayed automatically.
+#[must_use = "non-idempotent request outcomes must be classified"]
+#[derive(Debug)]
+pub enum NonIdempotentRequestOutcome<T> {
+    /// CAS returned one matching response that decoded and passed identity checks.
+    ExactResponse { response: T },
+    /// CAS returned one matching structured JSON-RPC rejection.
+    ExactRejection { error: JsonRpcError },
+    /// Local evidence proves no request bytes were offered to the transport.
+    ProvenNotDispatched { error: Box<ManagedBackendError> },
+    /// The request may have been dispatched, but no authoritative outcome survived.
+    CompletionUnknown { error: Box<ManagedBackendError> },
+}
+
+/// Normalized outcome of one `turn/start` request.
+pub type TurnStartOutcome = NonIdempotentRequestOutcome<StartedTurn>;
+
+/// Normalized outcome of one `turn/steer` request.
+pub type TurnSteerOutcome = NonIdempotentRequestOutcome<SteeredTurn>;
+
+impl<T> NonIdempotentRequestOutcome<T> {
+    fn map_exact_response<U>(self, map: impl FnOnce(T) -> U) -> NonIdempotentRequestOutcome<U> {
+        match self {
+            Self::ExactResponse { response } => NonIdempotentRequestOutcome::ExactResponse {
+                response: map(response),
+            },
+            Self::ExactRejection { error } => NonIdempotentRequestOutcome::ExactRejection { error },
+            Self::ProvenNotDispatched { error } => {
+                NonIdempotentRequestOutcome::ProvenNotDispatched { error }
+            }
+            Self::CompletionUnknown { error } => {
+                NonIdempotentRequestOutcome::CompletionUnknown { error }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -365,14 +551,6 @@ impl ManagedWebSocketError {
             source: Some(Box::new(source)),
         }
     }
-
-    pub(crate) fn from_utf8(source: std::string::FromUtf8Error) -> Self {
-        Self {
-            message: format!("text message was not valid UTF-8: {source}"),
-            io_error_kind: None,
-            source: Some(Box::new(source)),
-        }
-    }
 }
 
 impl std::fmt::Display for ManagedWebSocketError {
@@ -388,6 +566,14 @@ impl std::error::Error for ManagedWebSocketError {
 }
 
 impl ManagedBackendSession {
+    #[cfg(feature = "lifecycle-test-support")]
+    #[doc(hidden)]
+    pub fn last_websocket_ingress_test_metrics(
+        &self,
+    ) -> Option<(usize, usize, usize, usize, bool)> {
+        self.transport.last_websocket_ingress_test_metrics()
+    }
+
     pub fn list_models(
         &mut self,
         timeout: Duration,
@@ -443,7 +629,7 @@ impl ManagedBackendSession {
         &mut self,
         cwd: &Path,
         timeout: Duration,
-    ) -> Result<ThreadSessionResponse, ManagedBackendError> {
+    ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
         self.start_thread_with_options(cwd, ThreadStartOptions::persistent(), timeout)
     }
 
@@ -452,24 +638,36 @@ impl ManagedBackendSession {
         cwd: &Path,
         options: ThreadStartOptions,
         timeout: Duration,
-    ) -> Result<ThreadSessionResponse, ManagedBackendError> {
-        self.request(
+    ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
+        self.request::<ThreadLineageResponse>(
             "thread/start",
             &ThreadStartParams::for_root(cwd, options),
             timeout,
         )
+        .map(ThreadLineageResponse::into_fresh)
     }
 
-    pub fn resume_thread_metadata(
+    pub fn resume_thread(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
+        options: &ThreadLoadOptions,
         timeout: Duration,
-    ) -> Result<ThreadSessionResponse, ManagedBackendError> {
-        self.request(
-            "thread/resume",
-            &ThreadResumeMetadataParams::new(thread_id),
-            timeout,
-        )
+    ) -> Result<LoadedThreadSession, ManagedBackendError> {
+        let loaded = self
+            .request::<ThreadLineageResponse>(
+                "thread/resume",
+                &ThreadResumeParams::new(thread_id, options),
+                timeout,
+            )
+            .map(ThreadLineageResponse::into_loaded)?;
+        if loaded.thread_id() != thread_id {
+            return Err(ManagedBackendError::ThreadResponseIdentityMismatch {
+                method: "thread/resume".to_string(),
+                expected: thread_id.clone(),
+                actual: loaded.thread_id().clone(),
+            });
+        }
+        Ok(loaded)
     }
 
     fn read_thread_metadata_response(
@@ -519,67 +717,150 @@ impl ManagedBackendSession {
 
     pub fn fork_thread(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
+        options: &ThreadLoadOptions,
         timeout: Duration,
-    ) -> Result<ThreadForkResponse, ManagedBackendError> {
-        self.fork_thread_with_options(thread_id, ThreadForkOptions::default(), timeout)
+    ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
+        let fresh = self
+            .request::<ThreadLineageResponse>(
+                "thread/fork",
+                &ThreadForkParams::full(thread_id, options),
+                timeout,
+            )
+            .map(ThreadLineageResponse::into_fresh)?;
+        if fresh.thread_id() == thread_id {
+            return Err(ManagedBackendError::ForkResponseReusedSource {
+                method: "thread/fork".to_string(),
+                source_thread: thread_id.clone(),
+            });
+        }
+        Ok(fresh)
     }
 
-    pub fn fork_thread_with_options(
+    pub fn fork_thread_through_turn(
         &mut self,
-        thread_id: &str,
-        options: ThreadForkOptions,
+        thread_id: &CasThreadId,
+        last_turn_id: &CasTurnId,
+        options: &ThreadLoadOptions,
         timeout: Duration,
-    ) -> Result<ThreadForkResponse, ManagedBackendError> {
-        self.request(
-            "thread/fork",
-            &ThreadForkParams::new(thread_id, options),
-            timeout,
-        )
+    ) -> Result<FreshLoadedThreadSession, ManagedBackendError> {
+        let fresh = self
+            .request::<ThreadLineageResponse>(
+                "thread/fork",
+                &ThreadForkParams::through_turn(thread_id, last_turn_id, options),
+                timeout,
+            )
+            .map(ThreadLineageResponse::into_fresh)?;
+        if fresh.thread_id() == thread_id {
+            return Err(ManagedBackendError::ForkResponseReusedSource {
+                method: "thread/fork".to_string(),
+                source_thread: thread_id.clone(),
+            });
+        }
+        Ok(fresh)
     }
 
     pub fn rollback_thread(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         num_turns: u32,
         timeout: Duration,
-    ) -> Result<ThreadRollbackResponse, ManagedBackendError> {
-        self.request(
-            "thread/rollback",
-            &ThreadRollbackParams::new(thread_id, num_turns),
+    ) -> Result<LoadedThreadSession, ManagedBackendError> {
+        let loaded = self
+            .request::<ThreadLineageResponse>(
+                "thread/rollback",
+                &ThreadRollbackParams::new(thread_id, num_turns),
+                timeout,
+            )
+            .map(ThreadLineageResponse::into_loaded)?;
+        if loaded.thread_id() != thread_id {
+            return Err(ManagedBackendError::ThreadResponseIdentityMismatch {
+                method: "thread/rollback".to_string(),
+                expected: thread_id.clone(),
+                actual: loaded.thread_id().clone(),
+            });
+        }
+        Ok(loaded)
+    }
+
+    /// Injects one validated recovery prefix into one consumed fresh-idle thread.
+    ///
+    /// Every outcome consumes `target`. An unsuccessful outcome never
+    /// authorizes retrying injection against that same CAS thread.
+    pub fn inject_thread_items(
+        &mut self,
+        target: FreshIdleThread,
+        batch: &ThreadInjectionBatch,
+        timeout: Duration,
+    ) -> ThreadInjectionOutcome {
+        let thread_id = target.thread_id().clone();
+        let loaded = target.into_loaded();
+        let outcome = self.request_json(
+            THREAD_INJECT_ITEMS_METHOD,
+            &ThreadInjectItemsParams::new(&thread_id, batch),
             timeout,
-        )
+        );
+
+        match outcome {
+            Ok(JsonRpcRequestOutcome::Result(result)) => {
+                match serde_json::from_value::<ThreadInjectItemsResponse>(result) {
+                    Ok(_) => ThreadInjectionOutcome::Succeeded { thread: loaded },
+                    Err(source) => ThreadInjectionOutcome::CompletionUnknown {
+                        thread_id,
+                        error: Box::new(ManagedBackendError::DeserializeResponse {
+                            method: THREAD_INJECT_ITEMS_METHOD.to_string(),
+                            source,
+                        }),
+                    },
+                }
+            }
+            Ok(JsonRpcRequestOutcome::Error(error)) => ThreadInjectionOutcome::Rejected {
+                thread_id,
+                rejection: crate::ThreadInjectionRejection::from_json_rpc(error),
+            },
+            Err(error) if injection_transport_was_lost(&error) => {
+                ThreadInjectionOutcome::TransportLost {
+                    thread_id,
+                    error: Box::new(error),
+                }
+            }
+            Err(error) => ThreadInjectionOutcome::CompletionUnknown {
+                thread_id,
+                error: Box::new(error),
+            },
+        }
     }
 
     pub fn start_turn(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         text: &str,
         timeout: Duration,
-    ) -> Result<TurnStartResponse, ManagedBackendError> {
+    ) -> TurnStartOutcome {
         self.start_turn_with_options(thread_id, text, TurnStartOptions::default(), timeout)
     }
 
     pub fn start_turn_with_options(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         text: &str,
         options: TurnStartOptions,
         timeout: Duration,
-    ) -> Result<TurnStartResponse, ManagedBackendError> {
-        self.request(
+    ) -> TurnStartOutcome {
+        self.non_idempotent_request::<TurnStartResponseWire>(
             "turn/start",
             &TurnStartParams::text(thread_id, text, options),
             timeout,
         )
+        .map_exact_response(|response| response.into_started(thread_id.clone()))
     }
 
     pub fn start_turn_with_user_input(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         input: Vec<UserInput>,
         timeout: Duration,
-    ) -> Result<TurnStartResponse, ManagedBackendError> {
+    ) -> TurnStartOutcome {
         self.start_turn_with_user_input_options(
             thread_id,
             input,
@@ -590,35 +871,60 @@ impl ManagedBackendSession {
 
     pub fn start_turn_with_user_input_options(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         input: Vec<UserInput>,
         options: TurnStartOptions,
         timeout: Duration,
-    ) -> Result<TurnStartResponse, ManagedBackendError> {
-        self.request(
+    ) -> TurnStartOutcome {
+        self.non_idempotent_request::<TurnStartResponseWire>(
             "turn/start",
             &TurnStartParams::input(thread_id, input, options),
             timeout,
         )
+        .map_exact_response(|response| response.into_started(thread_id.clone()))
     }
 
     pub fn steer_turn_with_user_input(
         &mut self,
-        thread_id: &str,
-        expected_turn_id: &str,
+        thread_id: &CasThreadId,
+        expected_turn_id: &CasTurnId,
         input: Vec<UserInput>,
         timeout: Duration,
-    ) -> Result<TurnSteerResponse, ManagedBackendError> {
-        self.request(
+    ) -> TurnSteerOutcome {
+        match self.non_idempotent_request::<TurnSteerResponseWire>(
             "turn/steer",
             &TurnSteerParams::input(thread_id, expected_turn_id, input),
             timeout,
-        )
+        ) {
+            NonIdempotentRequestOutcome::ExactResponse { response } => {
+                let steered = response.into_steered(thread_id.clone());
+                if steered.turn_id() == expected_turn_id {
+                    NonIdempotentRequestOutcome::ExactResponse { response: steered }
+                } else {
+                    NonIdempotentRequestOutcome::CompletionUnknown {
+                        error: Box::new(ManagedBackendError::TurnResponseIdentityMismatch {
+                            method: "turn/steer".to_string(),
+                            expected: expected_turn_id.clone(),
+                            actual: steered.turn_id().clone(),
+                        }),
+                    }
+                }
+            }
+            NonIdempotentRequestOutcome::ExactRejection { error } => {
+                NonIdempotentRequestOutcome::ExactRejection { error }
+            }
+            NonIdempotentRequestOutcome::ProvenNotDispatched { error } => {
+                NonIdempotentRequestOutcome::ProvenNotDispatched { error }
+            }
+            NonIdempotentRequestOutcome::CompletionUnknown { error } => {
+                NonIdempotentRequestOutcome::CompletionUnknown { error }
+            }
+        }
     }
 
     pub fn compact_thread(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         timeout: Duration,
     ) -> Result<(), ManagedBackendError> {
         let _: EmptyResponse = self.request(
@@ -631,8 +937,8 @@ impl ManagedBackendSession {
 
     pub fn interrupt_turn(
         &mut self,
-        thread_id: &str,
-        turn_id: &str,
+        thread_id: &CasThreadId,
+        turn_id: &CasTurnId,
         timeout: Duration,
     ) -> Result<(), ManagedBackendError> {
         let _: EmptyResponse = self.request(
@@ -658,7 +964,7 @@ impl ManagedBackendSession {
 
     pub fn clean_thread_background_terminals(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         timeout: Duration,
     ) -> Result<(), ManagedBackendError> {
         let _: EmptyResponse = self.request(
@@ -708,11 +1014,12 @@ impl ManagedBackendSession {
 
     pub fn probe_thread_branch_capabilities(
         &mut self,
+        config_cwd: &Path,
         timeout: Duration,
     ) -> Result<ThreadBranchCapabilityReport, ManagedBackendError> {
         let mut results = Vec::with_capacity(THREAD_BRANCH_CAPABILITY_PROBES.len());
         for probe in THREAD_BRANCH_CAPABILITY_PROBES {
-            results.push(self.probe_thread_branch_capability(*probe, timeout)?);
+            results.push(self.probe_thread_branch_capability(*probe, config_cwd, timeout)?);
         }
 
         Ok(ThreadBranchCapabilityReport::new(results))
@@ -722,6 +1029,18 @@ impl ManagedBackendSession {
         &mut self,
         request: &ApprovalRequest,
     ) -> Result<(), ManagedBackendError> {
+        if request.response_authority_generation()
+            != Some(self.approval_response_authority_generation)
+        {
+            return Err(ManagedBackendError::ApprovalResponseAuthorityMismatch {
+                method: request.method().to_string(),
+            });
+        }
+        if request.response_disposition() != ApprovalResponseDisposition::ResponseRequired {
+            return Err(ManagedBackendError::ApprovalResponseAlreadySent {
+                method: request.method().to_string(),
+            });
+        }
         let result = match request.kind() {
             ApprovalRequestKind::CommandExecution | ApprovalRequestKind::FileChange => {
                 json!({ "decision": "cancel" })
@@ -734,7 +1053,9 @@ impl ManagedBackendSession {
                 })
             }
         };
-        self.write_server_response(request.method(), request.request_id(), &result)
+        self.write_server_response(request.method(), request.request_id(), &result)?;
+        request.set_response_disposition(ApprovalResponseDisposition::Denied);
+        Ok(())
     }
 
     pub fn respond_dynamic_tool_call(
@@ -747,7 +1068,7 @@ impl ManagedBackendSession {
 
     pub fn unsubscribe_thread(
         &mut self,
-        thread_id: &str,
+        thread_id: &CasThreadId,
         timeout: Duration,
     ) -> Result<ThreadUnsubscribeResponse, ManagedBackendError> {
         self.request(
@@ -757,78 +1078,79 @@ impl ManagedBackendSession {
         )
     }
 
+    /// Returns exact proof that initialization retained the full turn-stream profile.
+    ///
+    /// An uninitialized session, a request-only session, or a session initialized
+    /// with any custom notification opt-out returns `false`.
+    #[must_use]
+    pub fn has_full_turn_stream(&self) -> bool {
+        matches!(
+            self.initialized_notification_profile,
+            Some(InitializedNotificationProfile::FullTurnStream)
+        )
+    }
+
+    /// Drains at most one normalized envelope already buffered by request handling.
+    ///
+    /// This method never reads the transport. Unsupported buffered messages are
+    /// discarded in FIFO order, while invalid notifications and server requests
+    /// remain fatal errors.
+    pub fn drain_buffered_turn_stream_envelope(
+        &mut self,
+    ) -> Result<Option<TurnStreamEnvelope>, ManagedBackendError> {
+        loop {
+            let Some(message) = self.pop_pending_message() else {
+                return Ok(None);
+            };
+            if let Some(envelope) =
+                normalize_turn_stream_message(message, self.approval_response_authority_generation)?
+            {
+                return Ok(Some(envelope));
+            }
+        }
+    }
+
+    /// Polls the sole session stream reader for one normalized envelope.
+    ///
+    /// Already-buffered messages are examined before the deadline, so a zero
+    /// timeout can still drain an event retained while a request was in flight.
+    /// A quiet interval returns `Ok(None)`; transport and protocol failures remain
+    /// explicit errors.
+    pub fn poll_turn_stream_envelope(
+        &mut self,
+        idle_timeout: Duration,
+    ) -> Result<Option<TurnStreamEnvelope>, ManagedBackendError> {
+        let deadline = Instant::now() + idle_timeout;
+
+        loop {
+            if let Some(envelope) = self.drain_buffered_turn_stream_envelope()? {
+                return Ok(Some(envelope));
+            }
+
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return Ok(None);
+            };
+            let Some(message) = self.recv_message_timeout("turn stream", remaining)? else {
+                return Ok(None);
+            };
+            if let Some(envelope) =
+                normalize_turn_stream_message(message, self.approval_response_authority_generation)?
+            {
+                return Ok(Some(envelope));
+            }
+        }
+    }
+
+    /// Returns the next normalized turn-stream event, if the stream stays quiet.
+    ///
+    /// New code that needs retained-byte accounting should use
+    /// [`Self::poll_turn_stream_envelope`].
     pub fn next_turn_stream_event(
         &mut self,
         idle_timeout: Duration,
     ) -> Result<Option<TurnStreamEvent>, ManagedBackendError> {
-        let deadline = Instant::now() + idle_timeout;
-
-        loop {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-                return Ok(None);
-            };
-
-            let message = if let Some(message) = self.pop_pending_message() {
-                message
-            } else {
-                match self.recv_message_timeout("turn stream", remaining)? {
-                    Some(message) => message,
-                    None => return Ok(None),
-                }
-            };
-
-            match message {
-                IncomingMessage::Notification { method, params } => {
-                    match parse_turn_stream_event(&method, params) {
-                        Ok(Some(event)) => return Ok(Some(event)),
-                        Ok(None) => {
-                            warn!(
-                                notification_method = method,
-                                "ignoring unsupported backend notification during turn stream"
-                            );
-                        }
-                        Err(source) => {
-                            return Err(ManagedBackendError::DeserializeNotification {
-                                method,
-                                source,
-                            });
-                        }
-                    }
-                }
-                IncomingMessage::ServerRequest { id, method, params } => {
-                    if let Some(request) =
-                        parse_approval_request(id.clone(), &method, params.clone())
-                    {
-                        return Ok(Some(TurnStreamEvent::ApprovalRequested(request)));
-                    }
-                    match parse_dynamic_tool_call_request(id, &method, params) {
-                        Ok(Some(request)) => {
-                            return Ok(Some(TurnStreamEvent::DynamicToolCallRequested(request)));
-                        }
-                        Ok(None) => {}
-                        Err(source) => {
-                            return Err(ManagedBackendError::DeserializeServerRequest {
-                                method,
-                                source,
-                            });
-                        }
-                    }
-                    warn!(
-                        request_method = method,
-                        "ignoring unsupported backend server request during turn stream"
-                    );
-                }
-                IncomingMessage::Error { error, .. } => {
-                    return Ok(Some(TurnStreamEvent::ProtocolError { error }));
-                }
-                IncomingMessage::Response { id, .. } => {
-                    warn!(
-                        response_id = id,
-                        "ignoring unexpected backend response during turn stream"
-                    );
-                }
-            }
-        }
+        self.poll_turn_stream_envelope(idle_timeout)
+            .map(|envelope| envelope.map(TurnStreamEnvelope::into_event))
     }
 
     pub fn shutdown(&mut self) -> Result<(), ManagedBackendError> {
@@ -840,14 +1162,20 @@ impl ManagedBackendSession {
         endpoint: BackendWebSocketEndpoint,
         authorization_header_value: String,
     ) -> Result<Self, ManagedBackendError> {
+        let approval_response_authority_generation =
+            allocate_approval_response_authority_generation()?;
         let transport = WebSocketClientTransport::connect(&endpoint, authorization_header_value)?;
 
         Ok(Self {
             transport: BackendClientTransport::WebSocket(transport),
+            initialize: None,
+            compatibility: None,
+            initialized_notification_profile: None,
             pending_messages: VecDeque::new(),
             pending_message_bytes: 0,
             pending_dynamic_tool_requests: 0,
             next_request_id: 1,
+            approval_response_authority_generation,
         })
     }
 
@@ -876,13 +1204,22 @@ impl ManagedBackendSession {
         Ok(session)
     }
 
-    pub(crate) fn probe_compatibility(
+    /// Probes every exact 0.144.1 method shape required by Beryl.
+    ///
+    /// The session must already have completed its initialize handshake.
+    pub fn probe_compatibility(
         &mut self,
         config_cwd: &Path,
         timeout: Duration,
     ) -> Result<ManagedBackendProbeReport, ManagedBackendError> {
-        let (initialize, compatibility) = self
-            .initialize_client_with_options(&ManagedBackendClientOptions::foreground(), timeout)?;
+        let initialize = self
+            .initialize
+            .clone()
+            .ok_or(ManagedBackendError::ClientNotInitialized)?;
+        let compatibility = self
+            .compatibility
+            .clone()
+            .ok_or(ManagedBackendError::ClientNotInitialized)?;
 
         let mut method_successes = Vec::with_capacity(compatibility.required_method_probes().len());
         let mut config_defaults = BackendConfigDefaults::default();
@@ -897,9 +1234,7 @@ impl ManagedBackendSession {
             method_successes.push(ProbeMethodSuccess { probe: *probe });
         }
 
-        let thread_branch_capabilities = self
-            .probe_thread_branch_capabilities(timeout)?
-            .capabilities();
+        let thread_branch_capabilities = ThreadBranchCapabilities::new(true, true);
 
         Ok(ManagedBackendProbeReport {
             initialize,
@@ -932,6 +1267,15 @@ impl ManagedBackendSession {
         compatibility.validate_required_app_server_version()?;
 
         self.notify_initialized()?;
+
+        self.initialize = Some(initialize.clone());
+        self.compatibility = Some(compatibility.clone());
+        self.initialized_notification_profile =
+            Some(if options.opt_out_notification_methods.is_empty() {
+                InitializedNotificationProfile::FullTurnStream
+            } else {
+                InitializedNotificationProfile::OptedOut
+            });
 
         Ok((initialize, compatibility))
     }
@@ -966,41 +1310,91 @@ impl ManagedBackendSession {
                     .map(|models| Some(ProbeMethodData::ModelList(models)));
             }
             CompatibilityProbe::ThreadCompactStart => {
+                let thread_id = probe_thread_id();
                 self.probe_request_accepts_method(
                     probe.method(),
-                    &ThreadCompactStartParams::new(PROBE_THREAD_ID),
+                    &ThreadCompactStartParams::new(&thread_id),
                     timeout,
                 )?;
             }
-            CompatibilityProbe::ThreadResumeMetadata => {
+            CompatibilityProbe::ThreadFork => {
+                let thread_id = probe_thread_id();
+                let options = ThreadLoadOptions::for_root(config_cwd);
                 self.probe_request_accepts_method(
                     probe.method(),
-                    &ThreadResumeMetadataParams::new(PROBE_THREAD_ID),
+                    &ThreadForkParams::full(&thread_id, &options),
+                    timeout,
+                )?;
+            }
+            CompatibilityProbe::ThreadInjectItems => {
+                let thread_id = probe_thread_id();
+                let batch = ThreadInjectionBatch::new(vec![
+                    crate::ThreadInjectionItem::user_input_text("Beryl compatibility probe")
+                        .expect("fixed compatibility text is valid"),
+                ])
+                .expect("fixed compatibility batch is valid");
+                self.probe_request_accepts_method(
+                    probe.method(),
+                    &ThreadInjectItemsParams::new(&thread_id, &batch),
+                    timeout,
+                )?;
+            }
+            CompatibilityProbe::ThreadResume => {
+                let thread_id = probe_thread_id();
+                let options = ThreadLoadOptions::for_root(config_cwd);
+                self.probe_request_accepts_method(
+                    probe.method(),
+                    &ThreadResumeParams::new(&thread_id, &options),
+                    timeout,
+                )?;
+            }
+            CompatibilityProbe::ThreadRollback => {
+                let thread_id = probe_thread_id();
+                self.probe_request_accepts_method(
+                    probe.method(),
+                    &ThreadRollbackParams::new(&thread_id, 1),
                     timeout,
                 )?;
             }
             CompatibilityProbe::ThreadUnsubscribe => {
+                let thread_id = probe_thread_id();
                 let _: ThreadUnsubscribeResponse = self.request(
                     probe.method(),
-                    &ThreadUnsubscribeParams::new(PROBE_THREAD_ID),
+                    &ThreadUnsubscribeParams::new(&thread_id),
                     timeout,
                 )?;
             }
             CompatibilityProbe::TurnSteer => {
+                let thread_id = probe_thread_id();
+                let turn_id = probe_turn_id();
                 self.probe_request_accepts_method(
                     probe.method(),
                     &TurnSteerParams::input(
-                        PROBE_THREAD_ID,
-                        PROBE_TURN_ID,
+                        &thread_id,
+                        &turn_id,
                         vec![UserInput::text("Beryl compatibility probe")],
                     ),
                     timeout,
                 )?;
             }
-            CompatibilityProbe::TurnInterrupt => {
+            CompatibilityProbe::TurnStart => {
+                let thread_id = probe_thread_id();
                 self.probe_request_accepts_method(
                     probe.method(),
-                    &TurnInterruptParams::new(PROBE_THREAD_ID, PROBE_TURN_ID),
+                    &TurnStartParams::text(
+                        &thread_id,
+                        "Beryl compatibility probe",
+                        TurnStartOptions::default(),
+                    ),
+                    timeout,
+                )?;
+            }
+            CompatibilityProbe::TurnInterrupt => {
+                let thread_id = probe_thread_id();
+                let turn_id = probe_turn_id();
+                self.probe_request_accepts_method(
+                    probe.method(),
+                    &TurnInterruptParams::new(&thread_id, &turn_id),
                     timeout,
                 )?;
             }
@@ -1012,15 +1406,17 @@ impl ManagedBackendSession {
     fn probe_thread_branch_capability(
         &mut self,
         probe: ThreadBranchCapabilityProbe,
+        config_cwd: &Path,
         timeout: Duration,
     ) -> Result<ThreadBranchCapabilityProbeResult, ManagedBackendError> {
+        let thread_id = probe_thread_id();
+        let options = ThreadLoadOptions::for_root(config_cwd);
         let params = match probe {
-            ThreadBranchCapabilityProbe::ThreadFork => serde_json::to_value(ThreadForkParams::new(
-                PROBE_THREAD_ID,
-                ThreadForkOptions::default(),
-            )),
+            ThreadBranchCapabilityProbe::ThreadFork => {
+                serde_json::to_value(ThreadForkParams::full(&thread_id, &options))
+            }
             ThreadBranchCapabilityProbe::ThreadRollback => {
-                serde_json::to_value(ThreadRollbackParams::new(PROBE_THREAD_ID, 1))
+                serde_json::to_value(ThreadRollbackParams::new(&thread_id, 1))
             }
         }
         .map_err(|source| ManagedBackendError::SerializeRequest {
@@ -1046,12 +1442,13 @@ impl ManagedBackendSession {
         probe: HardStopCapabilityProbe,
         timeout: Duration,
     ) -> Result<HardStopCapabilityProbeResult, ManagedBackendError> {
+        let thread_id = probe_thread_id();
         let params = match probe {
             HardStopCapabilityProbe::CommandExecTerminate => serde_json::to_value(
                 CommandExecTerminateParams::new(PROBE_COMMAND_EXEC_PROCESS_ID),
             ),
             HardStopCapabilityProbe::ThreadBackgroundTerminalsClean => {
-                serde_json::to_value(ThreadBackgroundTerminalsCleanParams::new(PROBE_THREAD_ID))
+                serde_json::to_value(ThreadBackgroundTerminalsCleanParams::new(&thread_id))
             }
         }
         .map_err(|source| ManagedBackendError::SerializeRequest {
@@ -1086,7 +1483,7 @@ impl ManagedBackendSession {
             {
                 Err(ManagedBackendError::RequestFailed {
                     method: method.to_string(),
-                    error,
+                    error: Box::new(error),
                 })
             }
             JsonRpcRequestOutcome::Error(_) => Ok(()),
@@ -1121,8 +1518,44 @@ impl ManagedBackendSession {
             }
             JsonRpcRequestOutcome::Error(error) => Err(ManagedBackendError::RequestFailed {
                 method: method.to_string(),
-                error,
+                error: Box::new(error),
             }),
+        }
+    }
+
+    fn non_idempotent_request<R: DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: &impl Serialize,
+        timeout: Duration,
+    ) -> NonIdempotentRequestOutcome<R> {
+        match self.request_json_with_dispatch_evidence(method, params, timeout) {
+            Ok(JsonRpcRequestOutcome::Result(result)) => {
+                match serde_json::from_value(result).map_err(|source| {
+                    ManagedBackendError::DeserializeResponse {
+                        method: method.to_string(),
+                        source,
+                    }
+                }) {
+                    Ok(response) => NonIdempotentRequestOutcome::ExactResponse { response },
+                    Err(error) => NonIdempotentRequestOutcome::CompletionUnknown {
+                        error: Box::new(error),
+                    },
+                }
+            }
+            Ok(JsonRpcRequestOutcome::Error(error)) => {
+                NonIdempotentRequestOutcome::ExactRejection { error }
+            }
+            Err(RequestAttemptFailure::ProvenNotDispatched(error)) => {
+                NonIdempotentRequestOutcome::ProvenNotDispatched {
+                    error: Box::new(error),
+                }
+            }
+            Err(RequestAttemptFailure::CompletionUnknown(error)) => {
+                NonIdempotentRequestOutcome::CompletionUnknown {
+                    error: Box::new(error),
+                }
+            }
         }
     }
 
@@ -1132,11 +1565,21 @@ impl ManagedBackendSession {
         params: &impl Serialize,
         timeout: Duration,
     ) -> Result<JsonRpcRequestOutcome, ManagedBackendError> {
+        self.request_json_with_dispatch_evidence(method, params, timeout)
+            .map_err(RequestAttemptFailure::into_error)
+    }
+
+    fn request_json_with_dispatch_evidence(
+        &mut self,
+        method: &str,
+        params: &impl Serialize,
+        timeout: Duration,
+    ) -> Result<JsonRpcRequestOutcome, RequestAttemptFailure> {
         let request_id = self.next_request_id;
         self.next_request_id += 1;
         let request_started = Instant::now();
 
-        let write_metrics = self.write_message(
+        let write_metrics = self.write_message_with_dispatch_evidence(
             method,
             &JsonRpcRequest {
                 jsonrpc: "2.0",
@@ -1146,6 +1589,18 @@ impl ManagedBackendSession {
             },
         )?;
 
+        self.wait_for_json_rpc_response(method, request_id, timeout, request_started, write_metrics)
+            .map_err(RequestAttemptFailure::CompletionUnknown)
+    }
+
+    fn wait_for_json_rpc_response(
+        &mut self,
+        method: &str,
+        request_id: u64,
+        timeout: Duration,
+        request_started: Instant,
+        write_metrics: MessageWriteMetrics,
+    ) -> Result<JsonRpcRequestOutcome, ManagedBackendError> {
         let deadline = Instant::now() + timeout;
         let response_wait_started = Instant::now();
         let mut interleaved_notification_count = 0_usize;
@@ -1237,18 +1692,34 @@ impl ManagedBackendSession {
                     id,
                     method: request_method,
                     params,
+                    approval_response_disposition: _,
                 } => {
                     interleaved_server_request_count += 1;
-                    if let Some(request) =
+                    if let Some(mut request) =
                         parse_approval_request(id.clone(), &request_method, params.clone())
                     {
+                        request.bind_response_authority(
+                            self.approval_response_authority_generation,
+                            ApprovalResponseDisposition::ResponseRequired,
+                        );
                         denied_approval_request_count += 1;
+                        self.push_pending_message(
+                            method,
+                            IncomingMessage::ServerRequest {
+                                id: id.clone(),
+                                method: request_method.clone(),
+                                params,
+                                approval_response_disposition:
+                                    ApprovalResponseDisposition::ResponseRequired,
+                            },
+                        )?;
                         warn!(
                             approval = %request.summary(),
                             approval_payload = %request.pretty_params(),
-                            "denying backend approval request received while waiting for another response"
+                            "denying and retaining backend approval request received while waiting for another response"
                         );
                         self.deny_approval_request(&request)?;
+                        self.mark_last_pending_approval_auto_denied(method, &id)?;
                     } else if is_dynamic_tool_call_method(&request_method) {
                         deferred_dynamic_tool_request_count += 1;
                         self.push_pending_message(
@@ -1257,6 +1728,8 @@ impl ManagedBackendSession {
                                 id,
                                 method: request_method.clone(),
                                 params,
+                                approval_response_disposition:
+                                    ApprovalResponseDisposition::ResponseRequired,
                             },
                         )?;
                         warn!(
@@ -1307,6 +1780,26 @@ impl ManagedBackendSession {
         Some(message)
     }
 
+    fn mark_last_pending_approval_auto_denied(
+        &mut self,
+        method: &str,
+        request_id: &Value,
+    ) -> Result<(), ManagedBackendError> {
+        match self.pending_messages.back_mut() {
+            Some(IncomingMessage::ServerRequest {
+                id,
+                approval_response_disposition,
+                ..
+            }) if id == request_id => {
+                *approval_response_disposition = ApprovalResponseDisposition::AutoDenied;
+                Ok(())
+            }
+            _ => Err(ManagedBackendError::PendingApprovalStateLost {
+                method: method.to_string(),
+            }),
+        }
+    }
+
     fn push_pending_message(
         &mut self,
         method: &str,
@@ -1353,17 +1846,35 @@ impl ManagedBackendSession {
         method: &str,
         message: &impl Serialize,
     ) -> Result<MessageWriteMetrics, ManagedBackendError> {
+        self.write_message_with_dispatch_evidence(method, message)
+            .map_err(RequestAttemptFailure::into_error)
+    }
+
+    fn write_message_with_dispatch_evidence(
+        &mut self,
+        method: &str,
+        message: &impl Serialize,
+    ) -> Result<MessageWriteMetrics, RequestAttemptFailure> {
         let serialize_started = Instant::now();
         let line = serde_json::to_string(message).map_err(|source| {
-            ManagedBackendError::SerializeRequest {
+            RequestAttemptFailure::ProvenNotDispatched(ManagedBackendError::SerializeRequest {
                 method: method.to_string(),
                 source,
-            }
+            })
         })?;
         let serialize = serialize_started.elapsed();
         let bytes = line.len();
         let transport_started = Instant::now();
-        self.transport.write_message(method, &line)?;
+        self.transport
+            .write_message(method, &line)
+            .map_err(|failure| match failure {
+                TransportWriteFailure::ProvenNotDispatched(error) => {
+                    RequestAttemptFailure::ProvenNotDispatched(error)
+                }
+                TransportWriteFailure::MayHaveDispatched(error) => {
+                    RequestAttemptFailure::CompletionUnknown(error)
+                }
+            })?;
         Ok(MessageWriteMetrics {
             serialize,
             transport: transport_started.elapsed(),
@@ -1492,6 +2003,7 @@ enum IncomingMessage {
         id: Value,
         method: String,
         params: Option<Value>,
+        approval_response_disposition: ApprovalResponseDisposition,
     },
 }
 
@@ -1499,15 +2011,16 @@ impl IncomingMessage {
     fn approximate_retained_bytes(&self) -> usize {
         match self {
             Self::Response { result, .. } => json_value_retained_byte_len(result),
-            Self::Error { id, error } => id
-                .map(|_| std::mem::size_of::<u64>())
-                .unwrap_or_default()
+            Self::Error { id, error } => std::mem::size_of::<i64>()
+                .saturating_add(id.map(|_| std::mem::size_of::<u64>()).unwrap_or_default())
                 .saturating_add(error.message.len())
                 .saturating_add(optional_json_value_retained_byte_len(error.data.as_ref())),
             Self::Notification { method, params } => method
                 .len()
                 .saturating_add(optional_json_value_retained_byte_len(params.as_ref())),
-            Self::ServerRequest { id, method, params } => json_value_retained_byte_len(id)
+            Self::ServerRequest {
+                id, method, params, ..
+            } => json_value_retained_byte_len(id)
                 .saturating_add(method.len())
                 .saturating_add(optional_json_value_retained_byte_len(params.as_ref())),
         }
@@ -1521,9 +2034,92 @@ impl IncomingMessage {
     }
 }
 
+fn normalize_turn_stream_message(
+    message: IncomingMessage,
+    approval_response_authority_generation: u64,
+) -> Result<Option<TurnStreamEnvelope>, ManagedBackendError> {
+    let approximate_retained_bytes = message.approximate_retained_bytes();
+    let event = match message {
+        IncomingMessage::Notification { method, params } => {
+            match parse_turn_stream_event(&method, params) {
+                Ok(Some(event)) => Some(event),
+                Ok(None) => {
+                    warn!(
+                        notification_method = method,
+                        "ignoring unsupported backend notification during turn stream"
+                    );
+                    None
+                }
+                Err(source) => {
+                    return Err(ManagedBackendError::DeserializeNotification { method, source });
+                }
+            }
+        }
+        IncomingMessage::ServerRequest {
+            id,
+            method,
+            params,
+            approval_response_disposition,
+        } => {
+            if let Some(mut request) = parse_approval_request(id.clone(), &method, params.clone()) {
+                request.bind_response_authority(
+                    approval_response_authority_generation,
+                    approval_response_disposition,
+                );
+                Some(TurnStreamEvent::ApprovalRequested(request))
+            } else {
+                match parse_dynamic_tool_call_request(id, &method, params) {
+                    Ok(Some(request)) => Some(TurnStreamEvent::DynamicToolCallRequested(request)),
+                    Ok(None) => {
+                        warn!(
+                            request_method = method,
+                            "ignoring unsupported backend server request during turn stream"
+                        );
+                        None
+                    }
+                    Err(source) => {
+                        return Err(ManagedBackendError::DeserializeServerRequest {
+                            method,
+                            source,
+                        });
+                    }
+                }
+            }
+        }
+        IncomingMessage::Error { error, .. } => Some(TurnStreamEvent::ProtocolError { error }),
+        IncomingMessage::Response { id, .. } => {
+            warn!(
+                response_id = id,
+                "ignoring unexpected backend response during turn stream"
+            );
+            None
+        }
+    };
+
+    Ok(event.map(|event| TurnStreamEnvelope::new(event, approximate_retained_bytes)))
+}
+
 enum JsonRpcRequestOutcome {
     Result(Value),
     Error(JsonRpcError),
+}
+
+enum RequestAttemptFailure {
+    ProvenNotDispatched(ManagedBackendError),
+    CompletionUnknown(ManagedBackendError),
+}
+
+impl RequestAttemptFailure {
+    fn into_error(self) -> ManagedBackendError {
+        match self {
+            Self::ProvenNotDispatched(error) | Self::CompletionUnknown(error) => error,
+        }
+    }
+}
+
+pub(crate) enum TransportWriteFailure {
+    ProvenNotDispatched(ManagedBackendError),
+    MayHaveDispatched(ManagedBackendError),
 }
 
 struct MessageWriteMetrics {
@@ -1541,22 +2137,28 @@ enum BackendClientTransport {
 }
 
 impl BackendClientTransport {
-    fn write_message(&mut self, method: &str, line: &str) -> Result<(), ManagedBackendError> {
+    fn write_message(&mut self, method: &str, line: &str) -> Result<(), TransportWriteFailure> {
         match self {
             Self::Stdio { stdin, .. } => {
                 let Some(stdin) = stdin.as_mut() else {
-                    return Err(ManagedBackendError::TransportClosed {
-                        method: method.to_string(),
-                    });
+                    return Err(TransportWriteFailure::ProvenNotDispatched(
+                        ManagedBackendError::TransportClosed {
+                            method: method.to_string(),
+                        },
+                    ));
                 };
                 let mut bytes = line.as_bytes().to_vec();
                 bytes.push(b'\n');
                 stdin
                     .write_all(&bytes)
                     .and_then(|()| stdin.flush())
-                    .map_err(|source| ManagedBackendError::WriteRequest {
-                        method: method.to_string(),
-                        source,
+                    .map_err(|source| {
+                        TransportWriteFailure::MayHaveDispatched(
+                            ManagedBackendError::WriteRequest {
+                                method: method.to_string(),
+                                source,
+                            },
+                        )
                     })
             }
             Self::WebSocket(transport) => transport.write_message(method, line),
@@ -1577,22 +2179,28 @@ impl BackendClientTransport {
                 }),
             },
             Self::WebSocket(transport) => {
-                match transport.recv_text_message_timeout(method, timeout)? {
-                    Some(text) => {
-                        let parse_started = Instant::now();
-                        let incoming = parse_incoming_message(&text).map(Some);
-                        debug!(
-                            method,
-                            response_bytes = text.len(),
-                            response_parse_ms = elapsed_ms(parse_started.elapsed()),
-                            "parsed backend JSON-RPC response"
-                        );
-                        incoming
-                    }
+                match transport.recv_json_value_timeout(method, timeout)? {
+                    Some(value) => parse_incoming_value(value).map(Some),
                     None => Ok(None),
                 }
             }
         }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    fn last_websocket_ingress_test_metrics(&self) -> Option<(usize, usize, usize, usize, bool)> {
+        let Self::WebSocket(transport) = self else {
+            return None;
+        };
+        transport.last_ingress_stats().map(|stats| {
+            (
+                stats.message_bytes,
+                stats.maximum_transport_chunk_bytes,
+                stats.maximum_parser_buffer_bytes,
+                stats.discarded_image_result_bytes,
+                stats.retained_item_result_present,
+            )
+        })
     }
 
     fn close(&mut self) {
@@ -1696,11 +2304,11 @@ struct FsReadFileResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ThreadCompactStartParams<'a> {
-    thread_id: &'a str,
+    thread_id: &'a CasThreadId,
 }
 
 impl<'a> ThreadCompactStartParams<'a> {
-    fn new(thread_id: &'a str) -> Self {
+    fn new(thread_id: &'a CasThreadId) -> Self {
         Self { thread_id }
     }
 }
@@ -1708,12 +2316,12 @@ impl<'a> ThreadCompactStartParams<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TurnInterruptParams<'a> {
-    thread_id: &'a str,
-    turn_id: &'a str,
+    thread_id: &'a CasThreadId,
+    turn_id: &'a CasTurnId,
 }
 
 impl<'a> TurnInterruptParams<'a> {
-    fn new(thread_id: &'a str, turn_id: &'a str) -> Self {
+    fn new(thread_id: &'a CasThreadId, turn_id: &'a CasTurnId) -> Self {
         Self { thread_id, turn_id }
     }
 }
@@ -1733,11 +2341,11 @@ impl<'a> CommandExecTerminateParams<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ThreadBackgroundTerminalsCleanParams<'a> {
-    thread_id: &'a str,
+    thread_id: &'a CasThreadId,
 }
 
 impl<'a> ThreadBackgroundTerminalsCleanParams<'a> {
-    fn new(thread_id: &'a str) -> Self {
+    fn new(thread_id: &'a CasThreadId) -> Self {
         Self { thread_id }
     }
 }
@@ -1745,11 +2353,11 @@ impl<'a> ThreadBackgroundTerminalsCleanParams<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ThreadUnsubscribeParams<'a> {
-    thread_id: &'a str,
+    thread_id: &'a CasThreadId,
 }
 
 impl<'a> ThreadUnsubscribeParams<'a> {
-    fn new(thread_id: &'a str) -> Self {
+    fn new(thread_id: &'a CasThreadId) -> Self {
         Self { thread_id }
     }
 }
@@ -1901,6 +2509,17 @@ fn truncate_for_log(line: &str, limit: usize) -> String {
     format!("{truncated}...")
 }
 
+fn injection_transport_was_lost(error: &ManagedBackendError) -> bool {
+    matches!(
+        error,
+        ManagedBackendError::WriteRequest { .. }
+            | ManagedBackendError::ReadTransport { .. }
+            | ManagedBackendError::ProcessExited { .. }
+            | ManagedBackendError::TransportClosed { .. }
+            | ManagedBackendError::WebSocketTransport { .. }
+    )
+}
+
 fn bounded_resource_exceeded(
     method: &str,
     resource: &'static str,
@@ -1939,11 +2558,12 @@ fn json_value_retained_byte_len(value: &Value) -> usize {
 }
 
 fn parse_incoming_message(line: &str) -> Result<IncomingMessage, ManagedBackendError> {
-    let value: Value =
-        serde_json::from_str(line).map_err(|source| ManagedBackendError::InvalidJsonLine {
-            line: truncate_for_log(line, INVALID_JSON_ERROR_LINE_LIMIT),
+    let value = crate::incoming_json::decode_value(line).map_err(|source| {
+        ManagedBackendError::InvalidJsonLine {
+            line: crate::incoming_json::redacted_invalid_json(),
             source,
-        })?;
+        }
+    })?;
 
     parse_incoming_value(value)
 }
@@ -1959,6 +2579,7 @@ fn parse_incoming_value(value: Value) -> Result<IncomingMessage, ManagedBackendE
                 id,
                 method: method.to_string(),
                 params: object.get("params").cloned(),
+                approval_response_disposition: ApprovalResponseDisposition::ResponseRequired,
             });
         }
         return Ok(IncomingMessage::Notification {

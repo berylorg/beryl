@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-use beryl_home_store::{MutationBuildError, ReadError};
+use beryl_home_store::{DomainCallbackError, DomainCallbackSource, MutationBuildError, ReadError};
 use beryl_model::{RootId, RuntimeId};
 
 use crate::{RecordRevision, ValueError};
@@ -98,6 +98,15 @@ impl Error for RuntimeRootMutationError {
     }
 }
 
+impl DomainCallbackError for RuntimeRootMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
+        }
+    }
+}
+
 impl From<ReadError> for RuntimeRootMutationError {
     fn from(source: ReadError) -> Self {
         Self::Read(source)
@@ -136,6 +145,15 @@ impl Error for RuntimeRootValidationError {
         match self {
             Self::Read(source) => Some(source),
             Self::Invariant(_) => None,
+        }
+    }
+}
+
+impl DomainCallbackError for RuntimeRootValidationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
         }
     }
 }

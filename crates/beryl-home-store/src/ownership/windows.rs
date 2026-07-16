@@ -31,6 +31,11 @@ use windows::{
 use super::CanonicalHomeIdentity;
 use crate::{HomeCloseError, HomeLockCapability, HomeOpenError, HomeOpenStage};
 
+#[path = "windows/state_directory.rs"]
+mod state_directory;
+
+use state_directory::RetainedStateDirectory;
+
 const INITIAL_FINAL_PATH_UNITS: usize = 512;
 const MAX_FINAL_PATH_UNITS: usize = 32_768;
 const LOCK_RANGE_BYTES: u32 = 1;
@@ -71,6 +76,7 @@ impl OpenedHomeDirectory {
 
         let handle = OpenOptions::new()
             .read(true)
+            .write(true)
             .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
             .open(configured_path)
@@ -173,6 +179,7 @@ impl OpenedHomeDirectory {
 pub(crate) struct HomeOwnership {
     directory: OpenedHomeDirectory,
     lock_file: File,
+    state_directory: Option<RetainedStateDirectory>,
     locked: bool,
 }
 
@@ -220,6 +227,7 @@ impl HomeOwnership {
             Ok(()) => Ok(Self {
                 directory,
                 lock_file,
+                state_directory: None,
                 locked: true,
             }),
             Err(source) if is_win32(&source, ERROR_LOCK_VIOLATION) => Err(HomeOpenError::Busy {
@@ -255,7 +263,29 @@ impl HomeOwnership {
         self.directory.canonical_identity()
     }
 
+    pub(crate) fn retain_state_directory(&mut self, path: &Path) -> io::Result<()> {
+        debug_assert!(self.state_directory.is_none());
+        self.state_directory = Some(RetainedStateDirectory::open_or_create(
+            path,
+            &self.directory._handle,
+        )?);
+        Ok(())
+    }
+
+    pub(crate) fn require_same_state_directory(&self, path: &Path) -> io::Result<()> {
+        self.state_directory
+            .as_ref()
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "the retained Beryl state directory is unavailable",
+                )
+            })?
+            .require_same(path)
+    }
+
     pub(crate) fn release(&mut self) -> Result<(), HomeCloseError> {
+        drop(self.state_directory.take());
         if !std::mem::replace(&mut self.locked, false) {
             return Ok(());
         }

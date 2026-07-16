@@ -1,9 +1,9 @@
 use beryl_model::{JobId, JobRevision, ResolutionIntentId, SyndicThreadId, SyndicTurnId};
 
 use super::{
-    DiscussionContextDigest, DiscussionContextOwnerId, HandoffFailureEvidence, ParentCasIdentity,
-    ParentHandoffIdentity, ParentQueueOrdinal, ResolutionAttemptOrdinal, ResolutionRequestIdentity,
-    ResolutionText,
+    DiscussionContextDigest, DiscussionContextOwnerId, HandoffFailureEvidence, HandoffFailureKind,
+    ParentCasIdentity, ParentHandoffIdentity, ParentQueueOrdinal, ResolutionAttemptOrdinal,
+    ResolutionRequestIdentity, ResolutionText,
 };
 
 /// Derives the stable handoff job identity owned by one admitted intent.
@@ -259,6 +259,44 @@ impl BranchHandoffCheckpoint {
             Self::ParentActive { cas, .. } => Some(cas),
             _ => None,
         }
+    }
+}
+
+pub(super) const fn failure_state_is_compatible(
+    failure_lifecycle: BranchHandoffJobLifecycle,
+    checkpoint: &BranchHandoffCheckpoint,
+    kind: HandoffFailureKind,
+) -> bool {
+    let disposition_matches = match failure_lifecycle {
+        BranchHandoffJobLifecycle::RetryableFailed => kind.is_retryable(),
+        BranchHandoffJobLifecycle::TerminalFailed => kind.is_terminal(),
+        _ => false,
+    };
+    if !disposition_matches {
+        return false;
+    }
+
+    let checkpoint_lifecycle = checkpoint.lifecycle();
+    match kind {
+        HandoffFailureKind::CasRejectedBeforeAcceptance => {
+            matches!(
+                checkpoint_lifecycle,
+                BranchHandoffJobLifecycle::StartingParent
+            )
+        }
+        HandoffFailureKind::UnrecoverablePostAppend => matches!(
+            checkpoint_lifecycle,
+            BranchHandoffJobLifecycle::StartingParent | BranchHandoffJobLifecycle::ParentActive
+        ),
+        HandoffFailureKind::ParentInterrupted
+        | HandoffFailureKind::ParentIncomplete
+        | HandoffFailureKind::ParentTerminalFailure => {
+            matches!(
+                checkpoint_lifecycle,
+                BranchHandoffJobLifecycle::ParentActive
+            )
+        }
+        _ => true,
     }
 }
 

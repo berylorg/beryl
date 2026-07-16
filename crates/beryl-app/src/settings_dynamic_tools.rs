@@ -4,7 +4,7 @@ mod schema;
 
 use std::path::PathBuf;
 
-use beryl_backend::{DynamicToolCallRequest, DynamicToolSpec};
+use beryl_backend::{DynamicToolCallRequest, DynamicToolFunctionSpec};
 use serde_json::Value;
 
 use crate::dynamic_tool_namespace::BERYL_DYNAMIC_TOOL_NAMESPACE;
@@ -54,7 +54,7 @@ pub struct SettingsDynamicToolError {
     message: String,
 }
 
-pub fn beryl_settings_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
+pub fn beryl_settings_dynamic_tool_specs() -> Vec<DynamicToolFunctionSpec> {
     vec![
         settings_tool_spec(
             READ_GUI_SETTINGS_TOOL,
@@ -113,8 +113,10 @@ impl std::fmt::Display for SettingsDynamicToolError {
 
 impl std::error::Error for SettingsDynamicToolError {}
 
-fn settings_tool_spec(name: &str, description: &str, input_schema: Value) -> DynamicToolSpec {
-    DynamicToolSpec::new(name, description, input_schema)
-        .with_namespace(BERYL_DYNAMIC_TOOL_NAMESPACE)
-        .with_defer_loading(false)
+fn settings_tool_spec(
+    name: &str,
+    description: &str,
+    input_schema: Value,
+) -> DynamicToolFunctionSpec {
+    DynamicToolFunctionSpec::new(name, description, input_schema).with_defer_loading(false)
 }

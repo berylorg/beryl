@@ -161,7 +161,10 @@ fn status_projection_carries_hard_stop_targets_for_selected_turn() {
     let target = CancellableActiveTurn::ordinary("thread_1", "turn_1");
     let hard_targets = status_line::SelectedTurnHardStopTargets::new(
         target.clone(),
-        vec![beryl_backend::HardStopTarget::turn("thread_1", "turn_1")],
+        vec![beryl_backend::HardStopTarget::turn(
+            beryl_model::CasThreadId::new("thread_1").unwrap(),
+            beryl_model::CasTurnId::new("turn_1").unwrap(),
+        )],
         Vec::new(),
     );
 

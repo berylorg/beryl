@@ -3,12 +3,12 @@ use std::num::NonZeroU64;
 use beryl_home_store::{
     AdmittedSidecar, CommandBuildError, CursorDirection, CursorRange, CursorReadLimits,
     DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeStore,
-    KeyspaceFamily, KeyspaceSchemaVersion, MutationContribution, PointReadLimit, ReadError,
+    KeyspaceSchemaVersion, MutationContribution, PointReadLimit, ReadError, RecordFamily,
     SidecarAddress, SidecarVerifier, StorageDomain,
 };
 use beryl_model::{
     AssetId, DomainRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicDraftMarkerId,
-    SyndicItemId, SyndicProjectionId, SyndicQueuedInputId, SyndicRetryRecordId,
+    SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
 };
 
 use crate::{RecordRevision, StatePage, UnixMillis};
@@ -16,13 +16,21 @@ use crate::{RecordRevision, StatePage, UnixMillis};
 mod codec;
 mod error;
 mod mutation;
+mod status;
 #[cfg(test)]
 mod tests;
 mod validate;
 
 use codec::{AssetMetadataCodec, AssetReferenceCodec, AssetReferenceIndexCodec};
-pub use error::{AssetAdmissionError, AssetMutationError, AssetValidationError, AssetValueError};
-pub use mutation::{AddAssetReference, CreateAssetWithReference, RemoveAssetReference};
+pub use error::{
+    AssetAdmissionError, AssetMutationError, AssetReferenceBatchError, AssetReferenceStatusError,
+    AssetValidationError, AssetValueError,
+};
+pub use mutation::{
+    AddAssetReference, AddAssetReferences, AssetReferenceAddition, AssetReferenceMove,
+    CreateAssetWithReference, MoveAssetReferences, RemoveAssetReference,
+};
+pub use status::{AssetReferenceAdditionStatus, AssetReferenceMoveStatus};
 
 const ASSET_NAMESPACE: &str = "images";
 const ASSET_METADATA_LIMIT: usize = 1_024;
@@ -30,10 +38,13 @@ const ASSET_REFERENCE_LIMIT: usize = 256;
 const MAX_MEDIA_TYPE_BYTES: usize = 127;
 const MAX_ASSET_BYTES: u64 = 512 * 1_024 * 1_024;
 
-const ASSET_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("metadata", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("references", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("references_by_asset", KeyspaceSchemaVersion::new(1)),
+/// Maximum number of exact per-marker references in one atomic batch.
+pub const MAX_ASSET_REFERENCE_BATCH: usize = 1_024;
+
+const ASSET_FAMILIES: &[RecordFamily<AssetDomain>] = &[
+    RecordFamily::new::<AssetMetadataCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<AssetReferenceCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<AssetReferenceIndexCodec>(KeyspaceSchemaVersion::new(1)),
 ];
 
 pub(crate) struct AssetDomain;
@@ -41,7 +52,7 @@ pub(crate) struct AssetDomain;
 impl StorageDomain for AssetDomain {
     const NAME: &'static str = "beryl-assets";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = ASSET_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = ASSET_FAMILIES;
     type ValidationError = AssetValidationError;
 
     fn validate(
@@ -113,11 +124,21 @@ pub enum AssetReferenceOwner {
         draft_id: SyndicDraftId,
         marker_id: SyndicDraftMarkerId,
     },
-    AcceptedInput(SyndicAcceptedInputId),
-    SubmittedTurnItem(SyndicItemId),
-    QueuedInput(SyndicQueuedInputId),
-    RetryRecord(SyndicRetryRecordId),
-    TranscriptProjection(SyndicProjectionId),
+    AcceptedInputMarker {
+        input_id: SyndicAcceptedInputId,
+        marker_id: SyndicDraftMarkerId,
+    },
+    SubmittedTurnItemMarker {
+        item_id: SyndicItemId,
+        marker_id: SyndicDraftMarkerId,
+    },
+    RetryRecordMarker {
+        retry_id: SyndicRetryRecordId,
+        marker_id: SyndicDraftMarkerId,
+    },
+    TranscriptProjection {
+        projection_id: SyndicProjectionId,
+    },
 }
 
 /// Sidecar publication state represented by this first schema.
@@ -217,6 +238,15 @@ impl AssetState {
         store.domain_revision(self.handle)
     }
 
+    /// Returns this domain's revision from a still-current successful command.
+    pub fn committed_revision(
+        &self,
+        store: &HomeStore,
+        receipt: &beryl_home_store::CommitReceipt,
+    ) -> Result<Option<DomainRevision>, beryl_home_store::CommitReceiptError> {
+        store.receipt_domain_revision(receipt, self.handle)
+    }
+
     pub fn metadata(
         &self,
         store: &HomeStore,
@@ -301,6 +331,44 @@ impl AssetState {
         command: AddAssetReference,
     ) -> MutationContribution {
         self.handle.contribution(expected_revision, command)
+    }
+
+    /// Adds one bounded exact set of new owner references atomically.
+    #[must_use]
+    pub fn add_references(
+        &self,
+        expected_revision: DomainRevision,
+        command: AddAssetReferences,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    /// Moves one complete bounded set of exact owner references atomically.
+    #[must_use]
+    pub fn move_references(
+        &self,
+        expected_revision: DomainRevision,
+        command: MoveAssetReferences,
+    ) -> MutationContribution {
+        self.handle.contribution(expected_revision, command)
+    }
+
+    /// Coherently classifies every reference in one exact move description.
+    pub fn reference_move_status(
+        &self,
+        store: &HomeStore,
+        command: &MoveAssetReferences,
+    ) -> Result<AssetReferenceMoveStatus, AssetReferenceStatusError> {
+        status::move_status(self, store, command)
+    }
+
+    /// Coherently classifies every destination in one exact addition description.
+    pub fn reference_addition_status(
+        &self,
+        store: &HomeStore,
+        command: &AddAssetReferences,
+    ) -> Result<AssetReferenceAdditionStatus, AssetReferenceStatusError> {
+        status::addition_status(self, store, command)
     }
 
     #[must_use]

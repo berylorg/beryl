@@ -3,19 +3,15 @@
 use std::{error::Error, fmt, io, num::NonZeroU64};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, DomainRegistrationError, DomainSchemaVersion,
-    HealthVerificationError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeRecoveryError,
-    HomeSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion, MutationBuildError,
-    MutationBuilder, PointReadLimit, RecordCodec, RecordVersion, SidecarAddress, SidecarByteLimit,
-    SidecarDigest, SidecarError, SidecarNamespace, SidecarVerifier, StorageDomain,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    DomainRegistrationError, DomainSchemaVersion, DomainValidationError, HealthVerificationError,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec,
+    RecordFamily, RecordVersion, SidecarAddress, SidecarByteLimit, SidecarDigest, SidecarError,
+    SidecarNamespace, SidecarVerifier, StorageDomain,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
-
-const FAMILIES: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "references",
-    KeyspaceSchemaVersion::new(1),
-)];
 
 struct ReferenceDomain;
 struct ReferenceRecord;
@@ -47,10 +43,22 @@ impl Error for ReferenceError {
     }
 }
 
+impl DomainCallbackError for ReferenceError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            Self::Sidecar(source) => Ok(DomainCallbackSource::Sidecar(source)),
+            semantic => Err(semantic),
+        }
+    }
+}
+
 impl StorageDomain for ReferenceDomain {
     const NAME: &'static str = "sidecar-references";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = &[RecordFamily::new::<ReferenceRecord>(
+        KeyspaceSchemaVersion::new(1),
+    )];
     type ValidationError = ReferenceError;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -241,12 +249,22 @@ fn missing_referenced_sidecar_fails_verification_and_same_home_reopen() {
     );
     assert!(matches!(
         store.verify_health(),
-        Err(HealthVerificationError::Validation { .. })
+        Err(HealthVerificationError::DomainValidation(
+            DomainValidationError::Access {
+                domain: "sidecar-references",
+                source: DomainCallbackSource::Sidecar(SidecarError::Missing),
+            }
+        ))
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
     assert!(matches!(
         store.recover_same_home(),
-        Err(HomeRecoveryError::Domain(_))
+        Err(HomeRecoveryError::DomainValidation(
+            DomainValidationError::Access {
+                domain: "sidecar-references",
+                source: DomainCallbackSource::Sidecar(SidecarError::Missing),
+            }
+        ))
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
 }
@@ -270,9 +288,9 @@ fn existing_domain_registration_runs_its_sidecar_reopen_validator() {
     let mut reopened = open(directory.path(), faults);
     assert!(matches!(
         reopened.register_domain::<ReferenceDomain>(),
-        Err(DomainRegistrationError::Validation {
+        Err(DomainRegistrationError::ValidationAccess {
             domain: "sidecar-references",
-            ..
+            source: DomainCallbackSource::Sidecar(SidecarError::Missing),
         })
     ));
 }

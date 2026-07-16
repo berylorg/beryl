@@ -58,6 +58,12 @@ bounded_external_value!(
     MAX_EXTERNAL_ID_BYTES
 );
 bounded_external_value!(
+    /// Exact opaque Codex App Server item identity.
+    CasItemId,
+    "CAS item identity",
+    MAX_EXTERNAL_ID_BYTES
+);
+bounded_external_value!(
     /// Exact opaque Codex App Server dynamic-tool call identity.
     DynamicToolCallId,
     "dynamic tool call identity",

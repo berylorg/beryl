@@ -1,19 +1,19 @@
 mod support;
 
-use std::convert::Infallible;
+use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion,
-    MutationBuilder, RecordCodec, RecordVersion, StorageDomain,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_state::{BerylState, BerylStateRegistrationError};
 use tempfile::tempdir;
 
-const SETTINGS_FAMILIES: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(1),
-)];
+const SETTINGS_FAMILIES: &[RecordFamily<RawSettingsDomain>] = &[RecordFamily::new::<
+    RawSettingRecordV1,
+>(KeyspaceSchemaVersion::new(1))];
 
 struct RawSettingsDomain;
 struct RawSettingRecordV1;
@@ -21,7 +21,7 @@ struct RawSettingRecordV1;
 impl StorageDomain for RawSettingsDomain {
     const NAME: &'static str = "beryl-settings";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = SETTINGS_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = SETTINGS_FAMILIES;
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -76,8 +76,35 @@ struct PutRawSetting {
     value: Vec<u8>,
 }
 
+#[derive(Debug)]
+struct RawMutationError(MutationBuildError);
+
+impl fmt::Display for RawMutationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl Error for RawMutationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl From<MutationBuildError> for RawMutationError {
+    fn from(source: MutationBuildError) -> Self {
+        Self(source)
+    }
+}
+
+impl DomainCallbackError for RawMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Err(self)
+    }
+}
+
 impl DomainMutation<RawSettingsDomain> for PutRawSetting {
-    type Error = beryl_home_store::MutationBuildError;
+    type Error = RawMutationError;
 
     fn validate(&self, _reader: &DomainReader<'_, RawSettingsDomain>) -> Result<(), Self::Error> {
         Ok(())
@@ -88,7 +115,8 @@ impl DomainMutation<RawSettingsDomain> for PutRawSetting {
         _reader: &DomainReader<'_, RawSettingsDomain>,
         mutations: &mut MutationBuilder<'_, RawSettingsDomain>,
     ) -> Result<(), Self::Error> {
-        mutations.put::<RawSettingRecordV1>(&self.key, &self.value)
+        mutations.put::<RawSettingRecordV1>(&self.key, &self.value)?;
+        Ok(())
     }
 }
 
@@ -127,8 +155,12 @@ fn settings_reopen_rejects_an_unknown_setting_schema() {
         panic!("expected domain registration failure, got {error}");
     };
     assert_eq!(domain, "beryl-settings");
-    let DomainRegistrationError::Validation { source, .. } = source else {
-        panic!("expected settings validation failure, got {source}");
+    let DomainRegistrationError::ValidationAccess {
+        source: DomainCallbackSource::Read(source),
+        ..
+    } = source
+    else {
+        panic!("expected settings validation-access failure, got {source}");
     };
     assert!(source.to_string().contains("uses schema 2"));
 }

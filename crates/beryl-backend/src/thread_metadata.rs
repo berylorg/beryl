@@ -10,13 +10,6 @@ pub struct ThreadReadMetadata {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadResumeMetadataParams<'a> {
-    pub thread_id: &'a str,
-    pub exclude_turns: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct ThreadReadMetadataParams<'a> {
     pub thread_id: &'a str,
     #[serde(rename = "includeTurns")]
@@ -28,15 +21,6 @@ impl ThreadReadMetadata {
         Self {
             thread: response.thread.summary(),
             session_metadata: response.metadata(),
-        }
-    }
-}
-
-impl<'a> ThreadResumeMetadataParams<'a> {
-    pub(crate) fn new(thread_id: &'a str) -> Self {
-        Self {
-            thread_id,
-            exclude_turns: true,
         }
     }
 }

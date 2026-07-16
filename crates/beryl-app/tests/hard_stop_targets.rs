@@ -6,8 +6,9 @@ mod hard_stop_targets;
 mod status_line;
 
 use beryl_backend::{
-    HardStopCapabilities, HardStopTarget, ThreadItem, TurnInfo, TurnStatus, TurnStreamEvent,
+    HardStopCapabilities, HardStopTarget, ThreadItem, TurnStatus, TurnStreamEvent,
 };
+use beryl_model::{CasThreadId, CasTurnId};
 use hard_stop_targets::HardStopTargetProjection;
 use serde_json::json;
 use status_line::{CancellableActiveTurn, HardStopLimitation};
@@ -46,12 +47,12 @@ fn projection_includes_selected_parent_subagent_command_and_background_targets()
     assert!(
         targets
             .targets
-            .contains(&HardStopTarget::turn("thread_parent", "turn_parent"))
+            .contains(&turn_target("thread_parent", "turn_parent"))
     );
     assert!(
         targets
             .targets
-            .contains(&HardStopTarget::turn("thread_child", "turn_child"))
+            .contains(&turn_target("thread_child", "turn_child"))
     );
     assert!(
         targets
@@ -66,13 +67,9 @@ fn projection_includes_selected_parent_subagent_command_and_background_targets()
     assert!(
         targets
             .targets
-            .contains(&HardStopTarget::background_terminals("thread_parent"))
+            .contains(&background_target("thread_parent"))
     );
-    assert!(
-        targets
-            .targets
-            .contains(&HardStopTarget::background_terminals("thread_child"))
-    );
+    assert!(targets.targets.contains(&background_target("thread_child")));
 }
 
 #[test]
@@ -112,19 +109,21 @@ fn projection_omits_subagents_not_owned_by_selected_parent_turn() {
         )))
         .expect("selected parent turn should have a hard-stop projection");
 
-    assert!(targets.targets.contains(&HardStopTarget::turn(
-        "thread_child_owned",
-        "turn_child_owned"
-    )));
+    assert!(
+        targets
+            .targets
+            .contains(&turn_target("thread_child_owned", "turn_child_owned"))
+    );
     assert!(
         targets
             .targets
             .contains(&HardStopTarget::command_execution("proc_child_owned"))
     );
-    assert!(!targets.targets.contains(&HardStopTarget::turn(
-        "thread_child_other",
-        "turn_child_other"
-    )));
+    assert!(
+        !targets
+            .targets
+            .contains(&turn_target("thread_child_other", "turn_child_other"))
+    );
     assert!(
         !targets
             .targets
@@ -133,7 +132,7 @@ fn projection_omits_subagents_not_owned_by_selected_parent_turn() {
     assert!(
         !targets
             .targets
-            .contains(&HardStopTarget::background_terminals("thread_child_other"))
+            .contains(&background_target("thread_child_other"))
     );
 }
 
@@ -170,7 +169,7 @@ fn projection_keeps_context_compaction_hard_stop_thread_local() {
     assert!(
         targets
             .targets
-            .contains(&HardStopTarget::turn("thread_parent", "turn_compact"))
+            .contains(&turn_target("thread_parent", "turn_compact"))
     );
     assert!(
         targets
@@ -180,23 +179,19 @@ fn projection_keeps_context_compaction_hard_stop_thread_local() {
     assert!(
         targets
             .targets
-            .contains(&HardStopTarget::background_terminals("thread_parent"))
+            .contains(&background_target("thread_parent"))
     );
     assert!(
         !targets
             .targets
-            .contains(&HardStopTarget::turn("thread_child", "turn_child"))
+            .contains(&turn_target("thread_child", "turn_child"))
     );
     assert!(
         !targets
             .targets
             .contains(&HardStopTarget::command_execution("proc_child"))
     );
-    assert!(
-        !targets
-            .targets
-            .contains(&HardStopTarget::background_terminals("thread_child"))
-    );
+    assert!(!targets.targets.contains(&background_target("thread_child")));
 }
 
 #[test]
@@ -223,7 +218,7 @@ fn projection_reports_unsupported_and_missing_handles_as_limitations() {
 
     assert_eq!(
         targets.targets,
-        vec![HardStopTarget::turn("thread_parent", "turn_parent")]
+        vec![turn_target("thread_parent", "turn_parent")]
     );
     assert!(targets.limitations.contains(
         &HardStopLimitation::CommandExecutionTerminateUnsupported {
@@ -276,31 +271,37 @@ fn projection_removes_completed_command_execution_process_handles() {
 
 fn started(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemStarted {
-        thread_id: thread_id.to_string(),
-        turn_id: turn_id.to_string(),
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
         item,
     }
 }
 
 fn completed(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemCompleted {
-        thread_id: thread_id.to_string(),
-        turn_id: turn_id.to_string(),
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
         item,
     }
 }
 
 fn turn_started(thread_id: &str, turn_id: &str) -> TurnStreamEvent {
     TurnStreamEvent::TurnStarted {
-        thread_id: thread_id.to_string(),
-        turn: TurnInfo {
-            id: turn_id.to_string(),
-            status: TurnStatus::InProgress,
-            items_view: beryl_backend::TurnItemsView::Full,
-            items: Vec::new(),
-            error: None,
-        },
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
+        status: TurnStatus::InProgress,
     }
+}
+
+fn turn_target(thread_id: &str, turn_id: &str) -> HardStopTarget {
+    HardStopTarget::turn(
+        CasThreadId::new(thread_id).unwrap(),
+        CasTurnId::new(turn_id).unwrap(),
+    )
+}
+
+fn background_target(thread_id: &str) -> HardStopTarget {
+    HardStopTarget::background_terminals(CasThreadId::new(thread_id).unwrap())
 }
 
 fn command_item_with_process(item_id: &str, process_id: Option<&str>) -> ThreadItem {

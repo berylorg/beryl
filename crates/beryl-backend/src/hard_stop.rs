@@ -1,3 +1,5 @@
+use beryl_model::{CasThreadId, CasTurnId};
+
 use crate::JsonRpcError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,9 +28,16 @@ pub struct HardStopCapabilities {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HardStopTarget {
-    Turn { thread_id: String, turn_id: String },
-    CommandExecution { process_id: String },
-    BackgroundTerminals { thread_id: String },
+    Turn {
+        thread_id: CasThreadId,
+        turn_id: CasTurnId,
+    },
+    CommandExecution {
+        process_id: String,
+    },
+    BackgroundTerminals {
+        thread_id: CasThreadId,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,11 +148,8 @@ impl HardStopCapabilities {
 }
 
 impl HardStopTarget {
-    pub fn turn(thread_id: impl Into<String>, turn_id: impl Into<String>) -> Self {
-        Self::Turn {
-            thread_id: thread_id.into(),
-            turn_id: turn_id.into(),
-        }
+    pub fn turn(thread_id: CasThreadId, turn_id: CasTurnId) -> Self {
+        Self::Turn { thread_id, turn_id }
     }
 
     pub fn command_execution(process_id: impl Into<String>) -> Self {
@@ -152,10 +158,8 @@ impl HardStopTarget {
         }
     }
 
-    pub fn background_terminals(thread_id: impl Into<String>) -> Self {
-        Self::BackgroundTerminals {
-            thread_id: thread_id.into(),
-        }
+    pub fn background_terminals(thread_id: CasThreadId) -> Self {
+        Self::BackgroundTerminals { thread_id }
     }
 
     pub fn kind(&self) -> HardStopTargetKind {

@@ -28,6 +28,7 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 ## Physical Home Layout
 
 - One Beryl home owns exactly one Fjall database for durable Syndic records and Beryl application metadata.
+- After the home lock is acquired and before Fjall opens, Beryl creates or opens the final `state` component without following a reparse point, validates an ordinary local directory, and retains its opened-object identity and no-delete handle for the complete store lifetime. A durable header with the same home id does not make another physical directory the same recovery candidate.
 - The home also owns bounded sidecar directories for large image and Syndic resource payloads and the file-based installed-theme repository.
 - Image bytes are ordinary content-addressed sidecar files under the Beryl home, never Fjall values or blob payloads. Fjall stores their typed metadata, durable references, and sidecar state.
 - Scalar application settings, runtime/root configuration, thread presentation metadata, window/session state, durable orchestration jobs, catalog projections, and asset references live in Beryl-owned Fjall keyspaces.
@@ -48,6 +49,14 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - Beryl asset keyspaces own asset metadata and durable references. Asset bytes remain sidecars addressed through typed asset identities.
 - No domain may scan, decode, mutate, or infer another domain's private records. Cross-domain joins and commits use explicit typed operations.
 
+## Typed Domain Authority And Validation
+
+- Every live logical-domain blueprint, handle, and command contribution is bound to its exact Rust owner type in addition to the durable stable name and schema. Every declared record family is bound to one exact codec type. These process-local identities are not persisted, and a same-name/schema type or alternate same-name codec cannot reacquire another live owner's authority.
+- Registration of existing state, explicit health verification, and same-home recovery use one store-owned exhaustive validation path. It streams every physical record with bounded memory, checks physical key/value bounds, applies the exact owning codec to every key and versioned value envelope, and only then runs the domain's cross-record and sidecar invariants.
+- Cursor-only sentinel keys may define finite typed query bounds but are illegal stored identities. Unknown, malformed, oversized, sentinel, and otherwise out-of-range raw keys fail exhaustive validation even when they lie outside every ordinary typed cursor range.
+- Domain callbacks return storage-owned `ReadError` and `SidecarError` provenance through an explicit typed channel. Semantic domain rejection remains separate; the store never classifies health by searching an arbitrary erased error chain.
+- Exhaustive work runs only during lifecycle maintenance, away from the serialized writer and GPUI thread. It may take total work proportional to durable domain size but retains only bounded records and state at once.
+
 ## Home Ownership Lock
 
 - Before opening Fjall, Beryl creates or opens one fixed lock file inside the requested home and attempts a non-blocking exclusive OS file lock.
@@ -58,20 +67,35 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 - UNC homes are supported only when the filesystem supplies reliable exclusive file locking and durable rename/sync behavior. If those guarantees cannot be established, opening fails closed rather than weakening ownership.
 - The Beryl home is a host-owned directory. WSL runtime paths never acquire or identify its lock.
 - Diagnostic lock contents may include bounded process identity, but Beryl never trusts file contents as proof that the owner is alive and never breaks a live OS lock.
+- The retained `state` directory handle is separate from a replaceable Fjall generation. It denies compatible rename, deletion, and replacement until every Fjall handle has drained and the home is being released, and recovery compares the live final path with that exact retained object before opening an engine candidate.
 
 ## Serialized Writer And Revision Checks
 
 - One process-wide home-store writer serializes every Fjall mutation while bounded point and cursor reads may execute concurrently through typed read APIs.
 - Serializing commits is an internal atomicity mechanism, not a durable database lock and not a restriction on simultaneous CAS turns for different Syndic threads.
 - Every correctness-sensitive mutation carries the expected revisions of the records it read, including thread, draft, window claim, session, job, or binding revisions as applicable.
-- The writer validates all expected revisions immediately before assembling the commit. A mismatch rejects the whole command with a typed conflict; it never merges opaque payloads or creates a competing same-thread child.
+- A typed operation that mutates exactly one domain from exact logical record revisions may use a
+  writer-admitted current-domain command. That opaque command captures only the physical home and
+  domain revisions after it owns the serialized writer; it still validates every operation-owned
+  logical revision, never retries semantic rejection, and cannot carry another domain or a
+  sidecar. Unrelated commits therefore cannot make a live-event or projection command stale while
+  it waits for writer admission.
+- Caller-sampled physical revisions remain required for heterogeneous cross-domain and
+  sidecar-retaining commands because their participants must share one explicitly prepared atomic
+  basis.
+- The writer validates all expected revisions, exact participant owner identities, and persistent registration declarations immediately before assembling the commit. It then runs only operation-bounded contributor validation and assembly; it never performs a whole-domain scan. A mismatch rejects the whole command with a typed conflict; it never merges opaque payloads or creates a competing same-thread child.
 - One accepted command writes every participating keyspace mutation in one Fjall write batch, commits the batch, and completes the required persistence barrier before reporting durable success.
+- Cancellation is authoritative only before writer admission. Once an operation enters the serialized writer, callers drain its outcome and never interpret a later cancellation request as proof that the batch did not commit.
+- A surfaced storage or persistence failure after writer admission is an ambiguous durable outcome, not proof that the old records remain current. Callers gate publication, retain their coherent local user state, and wait for same-home verification or recovery before rereading the exact natural identities and revisions needed to reconcile whether the whole old or whole new atomic state became durable.
+- Durable success returns an opaque receipt carrying the exact process-local healthy home generation, committed home revision, and revisions of only the participating domains. Domain owners project their own affected revision from that receipt; an unaffected domain yields no revision.
+- Publication based on a successful asynchronous completion must validate its receipt against the exact current healthy generation and private store instance. Equal durable revision numbers do not make a prior-generation or foreign receipt current.
 - A command that spans Syndic and Beryl metadata is all-or-nothing at the typed home-store boundary. Partial logical success is not published even if later background work such as CAS delivery has not yet occurred.
 - Callers cannot hold a transaction or writer guard across asynchronous CAS, filesystem, windowing, or model work. External work uses prepare, short revision-checked commit, execute, and short result-commit steps with durable intent records where recovery is required.
 
 ## Durability Classes
 
 - User input admission, draft flush, thread/draft creation, thread claim, runtime/root creation, generated-title or automatic-archive metadata mutation, session restore-set mutation, resolution intent, handoff-job transition, and CAS-binding transition require `SyncAll` before the caller may report them saved or accepted.
+- A lifecycle flush waits for any already-admitted correctness-sensitive command and then reconciles or persists the latest exact state. It does not attempt to cancel admitted work or let close, Exit, switching, or submission continue from an ambiguous outcome.
 - Live assistant deltas and other replayable stream updates may be coalesced into bounded short commits, but every published commit preserves a valid incomplete turn and uses `SyncAll`. A crash may lose only the uncommitted stream suffix.
 - High-frequency window geometry and transcript-position state may be coalesced by durable key, but explicit Exit, ordinary window close, thread switch, and application shutdown create flush barriers.
 - Rebuildable catalog indexes may lag their source records only when a durable stale marker makes that state explicit. Catalog publication waits for a coherent rebuilt snapshot rather than mixing source and stale index revisions.
@@ -81,6 +105,9 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 
 - Large asset and Syndic resource bytes may live in content-addressed sidecar files under the Beryl home.
 - Sidecar creation writes a new temporary file, flushes its contents, atomically renames it to its digest-derived final path, and flushes the containing directory where the platform supports that guarantee before committing a first durable metadata reference.
+- Admission opens each sidecar ancestor without following its final component, validates and retains an ordinary directory through publication, and flushes the exact parent link for the sidecar root, namespace, and shard on every token-producing attempt. Existing directories receive the same bounded barriers so an earlier interrupted creation is repaired rather than assumed durable.
+- Fresh publication, existing-file reuse, retry after an interrupted post-rename barrier, and concurrent no-replacement collision all converge on one retained final-object path. It rejects a reparse point or non-ordinary object, verifies exact content through that handle, and flushes the retained shard before an admission token exists.
+- A successful publisher also requires the retained final file to have the same opened-object identity as its already-flushed temporary file. Another verified content-addressed publisher may win a no-replacement collision, but an identical-byte replacement between this publisher's rename and final open is not accepted as its publication.
 - A committed metadata reference must never point at a sidecar that was not fully written and renamed.
 - A crash may leave an unreferenced completed sidecar or temporary file. Such files remain inert until the future explicit garbage-collection design; ordinary startup does not guess that they are safe to delete.
 - No sidecar bytes are deleted before the future explicit garbage-collection design, including after reference removal or when bytes appear unreachable.
@@ -88,21 +115,23 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 ## Store Health State
 
 - The process-wide store health state is `opening`, `healthy`, `verifying`, `failed`, or `reopening`.
-- Any Fjall structural error, failed persistence barrier, unexpected missing referenced keyspace, or sidecar invariant violation rejects the current operation and moves the store to `verifying` before another state-dependent command is admitted.
+- A surfaced transient storage or persistence error rejects the current operation and moves a healthy store to `verifying` before another state-dependent command is admitted. Malformed durable records, invalid trusted codec or registration contracts, poisoned authoritative locks, missing required keyspaces, and sidecar invariant violations move it directly to `failed`. Semantic mutation rejection leaves a healthy store healthy.
 - A panic unwinding through an admitted writer fails the store closed immediately. Same-home recovery may cross the resulting poisoned unit writer lock, but clears that poison only after it publishes a fully validated replacement generation; it never clears poisoned authoritative registration or generation state.
-- Verification performs bounded engine checks and domain invariant reads away from the GPUI thread. Errors classified as corruption or unreopenable state transition directly to `failed`; other errors receive one bounded verification attempt before failure is declared.
+- Verification performs its persistence barrier plus bounded-memory exhaustive physical-family and domain-invariant validation away from both the serialized writer and GPUI thread. Any failed verification leaves the store `failed`; only complete success reopens the same generation.
 - While `verifying`, mutating commands and reads that could publish new application state are gated. Already coherent in-memory windows remain intact.
 - `failed` closes the shared Fjall admission gate for every operation identified by `doc/features/beryl-home/design.md` and retains each current window's identity, placement, selected thread, and last coherent resident surface in memory. The store does not fall back to CAS or cached projections as durable authority.
 - On the transition to `failed`, CAS-live coordination uses the exact active-turn identities already held in memory to request best-effort interruption of every active CAS turn. It neither closes windows nor releases their thread claims when an interruption request fails or cannot be durably confirmed.
 - CAS events, command results, and other incoming work observed while the Fjall gate is closed cannot be committed or published as durable Syndic state. The last successfully committed lifecycle record remains the recovery starting point.
-- Recovery closes and reopens the same database, reacquires typed keyspaces, validates required schema and invariants, and confirms a persistence barrier before returning to `healthy`.
+- Recovery closes and reopens only the database in the exact retained physical `state` directory, reacquires each retained exact-owner domain blueprint and typed family, exhaustively validates required schema, every record envelope, domain invariants, and sidecars, and confirms a persistence barrier before returning to `healthy`.
 - A failed recovery leaves the process in `failed`; it never initializes an empty replacement database at the same path.
 - Running-session recovery uses one process-wide single-flight loop with delays of 1, 2, 5, 10, and 30 seconds, then repeats at 30 seconds while failure persists.
 - A new failure signal while recovery is active joins that attempt instead of creating another loop. Successful validation cancels later retries and publishes one new healthy home generation.
+- Publishing a new healthy generation invalidates every prior-generation typed handle, prepared command, sidecar token, and command receipt before any delayed completion may update caller-visible state.
 - After successful same-home validation, CAS-live recovery reconciles every affected turn from its exact Syndic thread, Syndic turn, CAS thread, CAS turn, binding, and sequence identities before new turn work is admitted for that thread. It never guesses an identity, imports CAS history, or starts a second same-thread turn while exact terminal state remains unresolved.
 
 ## Reopen Validation
 
+- Before domain-specific invariant reads, store-owned validation visits every physical key and value in every registered family through its exact codec. Typed cursor endpoints cannot hide malformed records outside an ordinary query range.
 - Reopen validation checks the active session generation, window-record references, thread/draft uniqueness, committed-tail reachability, monotonic revisions, exclusive thread claims, CAS binding reverse uniqueness, pending-job state, catalog stale markers, and metadata-to-sidecar references.
 - Rebuildable catalog projections may be marked stale and rebuilt from validated source records.
 - Missing or corrupt authoritative thread, draft, session, job, binding, or asset-reference records fail validation rather than being silently dropped.
@@ -176,7 +205,7 @@ Provide the process lock, session bootstrap, runtime/root registry, thread catal
 ## Crash And Fault Verification
 
 - Release verification includes subprocess harnesses that terminate writers at every Beryl-controlled cut before commit, after commit but before `SyncAll`, and after `SyncAll`, then reopen the same home and validate every domain invariant. Fjall exposes no deterministic downstream cut inside its private batch-commit body; the suppressed private journal-write error remains the explicit issue #304 gap and is never counted as covered.
-- Fault injection covers full disk, denied writes, disappearing removable or network storage, truncated sidecar creation, failed rename, failed directory sync, process abort, panic, forced termination, and repeated reopen failure.
+- Fault injection covers full disk, denied writes, disappearing removable or network storage, truncated sidecar creation, failed rename, failed directory sync, process abort, panic, forced termination, repeated reopen failure, and bounded exact-codec-rejected physical record envelopes through the non-production `test-faults` boundary.
 - Lock tests cover concurrent processes, process death with the lock file left in place, path case aliases, symlinks, junctions, UNC paths, and explicit orderly release.
 - Concurrency tests cover competing draft saves, simultaneous different-thread submissions, claim-or-create races, session close versus Exit, resolution admission versus queued input, CAS binding transitions, and stale expected revisions.
 - Tests assert that no failed command is reported accepted, no two windows own one thread, no thread has two current drafts or active turns, no durable metadata points at missing committed sidecar bytes, and no recovery path reads CAS history.

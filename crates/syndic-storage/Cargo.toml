@@ -5,10 +5,12 @@ license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
-[dependencies]
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
+[features]
+default = []
+test-faults = ["beryl-home-store/test-faults"]
 
-[dev-dependencies]
-tempfile.workspace = true
+[dependencies]
+beryl-home-store.workspace = true
+beryl-model.workspace = true
+sha2.workspace = true
+thiserror.workspace = true

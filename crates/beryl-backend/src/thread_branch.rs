@@ -1,6 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-use crate::{JsonRpcError, ThreadInfo, ThreadSessionMetadata};
+use crate::JsonRpcError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThreadBranchCapabilityProbe {
@@ -26,50 +24,10 @@ pub struct ThreadBranchCapabilities {
     thread_rollback: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadForkOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub exclude_turns: Option<bool>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadForkResponse {
-    pub thread: ThreadInfo,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub model_provider: Option<String>,
-    #[serde(default)]
-    pub reasoning_effort: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadRollbackResponse {
-    pub thread: ThreadInfo,
-}
-
 pub(crate) const THREAD_BRANCH_CAPABILITY_PROBES: &[ThreadBranchCapabilityProbe] = &[
     ThreadBranchCapabilityProbe::ThreadFork,
     ThreadBranchCapabilityProbe::ThreadRollback,
 ];
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadForkParams<'a> {
-    thread_id: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    exclude_turns: Option<bool>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadRollbackParams<'a> {
-    thread_id: &'a str,
-    num_turns: u32,
-}
 
 impl ThreadBranchCapabilityProbe {
     pub fn method(self) -> &'static str {
@@ -156,47 +114,4 @@ impl ThreadBranchCapabilities {
     pub fn thread_branching(&self) -> bool {
         self.thread_fork && self.thread_rollback
     }
-}
-
-impl ThreadForkOptions {
-    pub fn metadata_only() -> Self {
-        Self {
-            exclude_turns: Some(true),
-        }
-    }
-}
-
-impl ThreadForkResponse {
-    pub fn metadata(&self) -> ThreadSessionMetadata {
-        ThreadSessionMetadata {
-            model: normalize_optional_string(self.model.clone()),
-            model_provider: normalize_optional_string(self.model_provider.clone()),
-            reasoning_effort: normalize_optional_string(self.reasoning_effort.clone()),
-        }
-    }
-}
-
-impl<'a> ThreadForkParams<'a> {
-    pub(crate) fn new(thread_id: &'a str, options: ThreadForkOptions) -> Self {
-        Self {
-            thread_id,
-            exclude_turns: options.exclude_turns,
-        }
-    }
-}
-
-impl<'a> ThreadRollbackParams<'a> {
-    pub(crate) fn new(thread_id: &'a str, num_turns: u32) -> Self {
-        Self {
-            thread_id,
-            num_turns,
-        }
-    }
-}
-
-fn normalize_optional_string(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let value = value.trim();
-        (!value.is_empty()).then(|| value.to_string())
-    })
 }

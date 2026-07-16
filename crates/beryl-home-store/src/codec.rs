@@ -1,6 +1,8 @@
-use std::{error::Error, fmt, marker::PhantomData, num::NonZeroU32, ops::Bound};
+use std::{any::TypeId, error::Error, fmt, marker::PhantomData, num::NonZeroU32, ops::Bound};
 
-use crate::StorageDomain;
+use crate::{ReadError, StorageDomain};
+
+pub(crate) const RECORD_VERSION_BYTES: usize = size_of::<u32>();
 
 macro_rules! schema_version {
     ($(#[$meta:meta])* $name:ident) => {
@@ -49,6 +51,81 @@ schema_version!(
     RecordVersion
 );
 
+pub(crate) type ErasedEnvelopeValidator = fn(&[u8], &[u8]) -> Result<(), ReadError>;
+
+/// Exact typed record family owned by one logical storage domain.
+///
+/// Stable family name and schema are persisted. Rust owner and codec identity,
+/// bounds, and the envelope validator remain process-local capabilities.
+#[derive(Clone, Copy)]
+pub struct RecordFamily<D: StorageDomain> {
+    name: &'static str,
+    schema: KeyspaceSchemaVersion,
+    codec_type: fn() -> TypeId,
+    max_key_bytes: usize,
+    max_stored_value_bytes: usize,
+    validate_envelope: ErasedEnvelopeValidator,
+    _domain: PhantomData<fn(D) -> D>,
+}
+
+impl<D: StorageDomain> RecordFamily<D> {
+    /// Declares the sole typed codec and physical-family schema for one family.
+    #[must_use]
+    pub const fn new<R: RecordCodec<D>>(schema: KeyspaceSchemaVersion) -> Self {
+        Self {
+            name: R::FAMILY,
+            schema,
+            codec_type: rust_type_id::<R>,
+            max_key_bytes: R::MAX_KEY_BYTES,
+            max_stored_value_bytes: R::MAX_VALUE_BYTES.saturating_add(RECORD_VERSION_BYTES),
+            validate_envelope: crate::read::validate_record_envelope::<D, R>,
+            _domain: PhantomData,
+        }
+    }
+
+    /// Returns the stable domain-local family name.
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// Returns the exact persisted family schema.
+    #[must_use]
+    pub const fn schema(&self) -> KeyspaceSchemaVersion {
+        self.schema
+    }
+
+    pub(crate) fn codec_type(&self) -> TypeId {
+        (self.codec_type)()
+    }
+
+    pub(crate) const fn max_key_bytes(&self) -> usize {
+        self.max_key_bytes
+    }
+
+    pub(crate) const fn max_stored_value_bytes(&self) -> usize {
+        self.max_stored_value_bytes
+    }
+
+    pub(crate) const fn envelope_validator(&self) -> ErasedEnvelopeValidator {
+        self.validate_envelope
+    }
+}
+
+impl<D: StorageDomain> fmt::Debug for RecordFamily<D> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RecordFamily")
+            .field("name", &self.name)
+            .field("schema", &self.schema)
+            .finish_non_exhaustive()
+    }
+}
+
+fn rust_type_id<T: 'static>() -> TypeId {
+    TypeId::of::<T>()
+}
+
 /// Typed codec for one record family owned by a logical domain.
 ///
 /// Implementations stay private to their domain package. Encoded keys and
@@ -75,6 +152,14 @@ pub trait RecordCodec<D: StorageDomain>: Send + Sync + 'static {
     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error>;
     /// Decodes one internal key before returning it to the domain caller.
     fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error>;
+    /// Rejects cursor-only sentinels or other keys that are not legal records.
+    ///
+    /// The default admits every decoded key. Codecs whose key type also carries
+    /// finite cursor bounds override this hook so those bounds can be encoded
+    /// for iteration without ever becoming point or stored-record identities.
+    fn validate_stored_key(_key: &Self::Key) -> Result<(), Self::Error> {
+        Ok(())
+    }
     /// Encodes one typed value payload for a pending mutation.
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error>;
     /// Decodes one payload after the store validates the exact record version.

@@ -1,7 +1,6 @@
 use std::{
     error::Error,
     fs::File,
-    io::ErrorKind,
     num::NonZeroU64,
     path::{Path, PathBuf},
 };
@@ -227,18 +226,9 @@ impl<'a> SidecarVerifier<'a> {
         limit: SidecarByteLimit,
     ) -> Result<(), SidecarError> {
         ensure_bound(address.length, limit)?;
-        let path = final_path(&sidecar_shard(self.home, address), address);
-        self.faults
-            .check(FaultPoint::BeforeSidecarVerification)
-            .map_err(|source| storage(SidecarStage::OpenFinal, source))?;
-        let mut file = platform::open_retained(&path).map_err(|source| {
-            if source.kind() == ErrorKind::NotFound {
-                SidecarError::Missing
-            } else {
-                storage(SidecarStage::OpenFinal, source)
-            }
-        })?;
-        verify_file(&mut file, address, None)
+        let directories =
+            retain_sidecar_directories(self.home, address, self.faults, false, false)?;
+        open_and_verify_final(self.faults, &directories, address, None, None, false).map(drop)
     }
 }
 

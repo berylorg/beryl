@@ -16,13 +16,13 @@ Provide revision-checked runtime/root, thread metadata, session/window, settings
 
 ## Public Boundary
 
-- `beryl-state` registers the Beryl-owned logical keyspace families required by `doc/systems/beryl-home-storage/design.md` through the sealed typed-domain boundary exposed by `beryl-home-store`.
-- It owns record schemas, codecs, domain validation, typed bounded queries, mutation validation, revision rules, and batch contributions for those keyspaces.
+- `beryl-state` registers the Beryl-owned logical record families required by `doc/systems/beryl-home-storage/design.md` through the typed-domain boundary exposed by `beryl-home-store`.
+- It owns each domain's exact Rust owner type, one exact codec type per family, record schemas, domain validation, typed bounded queries, mutation validation, revision rules, and batch contributions. Stable names and schema versions remain durable declarations rather than substitutes for live type identity.
 - It receives an opaque registered-domain handle. It never receives or exposes a raw database, keyspace, Fjall batch, transaction, writer guard, lock, or byte encoding.
 - Callers use stable Beryl and Syndic identity values plus expected revisions. Stored key layout and codec versions remain private.
 - Commands that affect only Beryl domains execute through this package's typed command contributors. Commands that must be atomic with Syndic changes contribute both domain mutations to one `beryl-home-store` command coordinated by the owning system.
-- Successful mutation results contain the committed home revision and affected Beryl domain revisions. Conflicts, validation failures, health-gate failures, unsupported schemas, and persistence failures remain distinct typed outcomes.
-- After successful same-home recovery, callers reacquire the complete `BerylState` handle set for the new generation. Handles, prepared commands, and sidecar tokens from the prior generation cannot authorize later work.
+- Successful mutation results contain the exact process-local healthy home generation, committed home revision, and affected Beryl domain revisions. Each Beryl domain projects only its own receipt-bound revision through its opaque state handle, returns `None` when that domain was unaffected, and never exposes the underlying home-store domain handle.
+- After successful same-home recovery, callers reacquire the complete `BerylState` handle set for the new generation. Handles, prepared commands, sidecar tokens, and successful command receipts from the prior generation cannot authorize later work; a delayed receipt is rejected even when its durable revision numbers still equal the current records.
 
 ## Runtime And Root Domain
 
@@ -90,6 +90,8 @@ Provide revision-checked runtime/root, thread metadata, session/window, settings
 - Schema V1 owns only branch-discussion handoff jobs. Each record retains exact intent, ordered attempt, child, parent, context owner and digest, resolving Syndic turn, correlated CAS tool request, parent queue ordinal, admitted resolution, parent Syndic/CAS identities when reached, lifecycle state, and job revision.
 - Job ids are deterministically derived from the admitted resolution-intent identity. Exact CAS thread, turn, and tool-call identity forms the durable request-idempotency key; repeated delivery is answered from that index rather than creating another job.
 - Lifecycle states are exactly `waiting_resolving_turn`, `waiting_parent`, `starting_parent`, `parent_active`, `retryable_failed`, `terminal_failed`, and `succeeded`. Retryable failure retains the exact checkpoint and resumes the same job and parent identities; terminal states leave the live-job index and never regress.
+- Runtime unavailable, root unavailable, CAS unavailable, and delivery failure proven before dispatch are retryable at every non-failure checkpoint. Exact CAS rejection before acceptance is retryable only at `starting_parent`. Remote completion unknown after possible parent-start dispatch is not retryable; proven execution-session loss converges the parent turn incomplete and the job terminally. Invariant violation and missing parent are terminal at every non-failure checkpoint; unrecoverable post-append is terminal only at `starting_parent` or `parent_active`; parent interruption, incomplete termination, and terminal failure are terminal only at `parent_active`.
+- One compatibility rule owns both retryable-versus-terminal classification and checkpoint eligibility. Mutation admission and every persisted-record decode use that same rule, so ordinary registration, verification, and recovery reject structurally decodable but semantically incompatible failure records.
 - Resolution text is bounded to 64 KiB and failure detail to 2 KiB. Failure kinds must agree with retryability and with the retained lifecycle checkpoint.
 - Records, live jobs, request admissions, ordered discussion attempts, and latest-attempt pointers occupy separate typed families whose reopen validator proves their two-way agreement.
 
@@ -110,11 +112,12 @@ Provide revision-checked runtime/root, thread metadata, session/window, settings
 ## Asset Metadata Domain
 
 - Asset records store opaque asset id, versioned digest and byte length, validated media facts, sidecar state, creation revision, and asset revision.
-- Typed asset-reference records name exact owner kind and owner id without duplicating the owner's content.
+- Typed asset-reference records name an exact marker-bearing owner or projection without duplicating the owner's content. Marker-bearing keys include both the owning draft, accepted input, submitted item, or retry record identity and the stable marker identity, so one owner may reference multiple assets.
 - Sidecar bytes and runtime staging remain outside this package. First-reference and reference-removal commands coordinate metadata with the home-store sidecar ordering and owning durable-domain mutation.
 - Removing the final known reference does not delete bytes.
 - `AssetId` is the shared SHA-256-v1 digest plus exact nonzero byte length. Schema V1 admits at most 512 MiB per asset and retains an ASCII graphic media type of at most 127 bytes, optional nonzero dimensions, creation domain revision, committed-sidecar state, reference count, and metadata revision.
-- Durable owner variants are current-draft marker, accepted input, submitted turn item, queued input, retry record, and transcript projection. Transient clipboard tokens are not written as durable references.
+- Durable owner variants are current-draft marker, accepted-input marker, submitted-turn-item marker, retry-record marker when a separate retry snapshot exists, and transcript projection. Queued, steering, delivering, retryable, and delivery-unknown states reuse the accepted-input marker owner; they are not separate reference identities. Transient clipboard tokens are not written as durable references.
+- A bounded reference-move contribution validates the complete exact source-owner and destination-owner set, preserves each asset id and metadata reference count, and updates primary and per-asset indexes atomically. Draft admission combines that contribution with the owning Syndic mutation in one home command.
 - First metadata publication is exposed only as a contribution bundle that also owns the matching admitted `images` sidecar token. Digest, length, namespace, and byte ceiling must agree before the home command can be assembled.
 - Existing-asset reference addition and reference removal update the primary owner record, the per-asset index, metadata count, and revision in one contribution. Duplicate owners, mismatched asset identity, count overflow or underflow, and stale metadata revision reject the whole mutation.
 - Removing the final reference retains zero-reference metadata and the sidecar. There is no metadata deletion or byte-deletion command.
@@ -124,8 +127,15 @@ Provide revision-checked runtime/root, thread metadata, session/window, settings
 
 - Every non-fixed read requires explicit row, byte, or range limits. Exact catalog streaming additionally reports accumulated byte cost and stops with a typed bound failure if the documented compact-domain invariant is violated.
 - Stored labels, paths, normalized search fields, failure evidence, setting values, and job payloads have schema-specific byte limits enforced before batch contribution.
-- Domain validation checks runtime/root uniqueness, non-removable roots, metadata-to-thread identity shape, session/window references, claim reverse uniqueness, job state machines, catalog source revisions, and metadata-to-sidecar references.
-- Reopen validation reports authoritative corruption instead of dropping records or consulting CAS history.
+- Ordinary mutation validation and contribution perform only operation-bounded typed reads. They never invoke a complete domain scan while holding the home writer.
+- During registration, explicit health verification, and recovery, the home store first visits every raw record envelope and applies the family's exact codec, including its stored-key legality hook. Beryl-state domain validation then checks runtime/root uniqueness, non-removable roots, metadata-to-thread identity shape, session/window references, claim reverse uniqueness, job state machines, catalog source revisions, and metadata-to-sidecar references with bounded memory.
+- Every mutation and validation error explicitly extracts a direct typed home-store read failure, and asset validation additionally extracts a direct sidecar failure. Other errors remain semantic domain rejections; Beryl-state does not hide storage provenance behind an arbitrary source chain.
+- Reopen validation reports authoritative corruption instead of dropping records, narrowing a scan to typed cursor sentinels, or consulting CAS history.
+
+## Fault-Test Boundary
+
+- The `test-faults` Cargo feature exposes only typed schema-corruption contributions needed to prove persisted Beryl-state rejection. Normal builds contain no corruption command, alternate codec, compatibility reader, or storage bypass.
+- Durable-job corruption fixtures preserve otherwise coherent indexes so tests prove the exact failure-kind/checkpoint rule rather than succeeding because an unrelated index invariant failed first.
 
 ## Dependency Boundary
 

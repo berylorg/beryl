@@ -9,6 +9,7 @@ mod hard_stop;
 use std::time::Duration;
 
 use beryl_backend::{HardStopTarget, HardStopTargetOutcome};
+use beryl_model::{CasThreadId, CasTurnId};
 use hard_stop::{HardStopBackend, request_hard_stop};
 use status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets};
 
@@ -19,10 +20,10 @@ fn request_hard_stop_interrupts_selected_turn_before_other_exact_targets() {
         CancellableActiveTurn::ordinary("thread_parent", "turn_parent"),
         vec![
             HardStopTarget::command_execution("proc_1"),
-            HardStopTarget::turn("thread_parent", "turn_parent"),
-            HardStopTarget::turn("thread_child", "turn_child"),
+            turn_target("thread_parent", "turn_parent"),
+            turn_target("thread_child", "turn_child"),
             HardStopTarget::command_execution("proc_1"),
-            HardStopTarget::background_terminals("thread_parent"),
+            background_target("thread_parent"),
         ],
         Vec::new(),
     );
@@ -33,16 +34,10 @@ fn request_hard_stop_interrupts_selected_turn_before_other_exact_targets() {
     assert_eq!(
         backend.requests,
         vec![
-            (
-                HardStopTarget::turn("thread_parent", "turn_parent"),
-                timeout
-            ),
+            (turn_target("thread_parent", "turn_parent"), timeout),
             (HardStopTarget::command_execution("proc_1"), timeout),
-            (HardStopTarget::turn("thread_child", "turn_child"), timeout),
-            (
-                HardStopTarget::background_terminals("thread_parent"),
-                timeout
-            ),
+            (turn_target("thread_child", "turn_child"), timeout),
+            (background_target("thread_parent"), timeout),
         ]
     );
     assert!(outcomes.iter().all(HardStopTargetOutcome::is_success));
@@ -57,9 +52,9 @@ fn request_hard_stop_preserves_per_target_failures_and_continues() {
     let selected_targets = SelectedTurnHardStopTargets::new(
         CancellableActiveTurn::ordinary("thread_parent", "turn_parent"),
         vec![
-            HardStopTarget::turn("thread_parent", "turn_parent"),
+            turn_target("thread_parent", "turn_parent"),
             HardStopTarget::command_execution("proc_1"),
-            HardStopTarget::background_terminals("thread_parent"),
+            background_target("thread_parent"),
         ],
         Vec::new(),
     );
@@ -79,6 +74,17 @@ fn request_hard_stop_preserves_per_target_failures_and_continues() {
             && message == "backend rejected target"
     ));
     assert!(outcomes[2].is_success());
+}
+
+fn turn_target(thread_id: &str, turn_id: &str) -> HardStopTarget {
+    HardStopTarget::turn(
+        CasThreadId::new(thread_id).unwrap(),
+        CasTurnId::new(turn_id).unwrap(),
+    )
+}
+
+fn background_target(thread_id: &str) -> HardStopTarget {
+    HardStopTarget::background_terminals(CasThreadId::new(thread_id).unwrap())
 }
 
 #[derive(Default)]

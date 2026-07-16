@@ -2,43 +2,48 @@ use std::path::PathBuf;
 
 use beryl_backend::{
     AccountRateLimitsResponse, DynamicToolCallOutputContentItem, DynamicToolCallResponse,
-    JsonRpcError, NonSteerableTurnKind, ProtocolPhase, ThreadForkResponse, ThreadItem,
-    ThreadRollbackResponse, ThreadSessionResponse, ThreadStatus, ThreadUnsubscribeResponse,
-    ThreadUnsubscribeStatus, ToolActivityEvent, ToolActivityFileChangeSummary,
-    ToolActivityLifecycle, ToolActivitySource, TurnStartOptions, TurnStartResponse, TurnStatus,
-    TurnSteerResponse, TurnStreamEvent, UserInput, active_turn_not_steerable_error,
-    parse_approval_request, parse_dynamic_tool_call_request, parse_turn_stream_event,
+    JsonRpcError, NonSteerableTurnKind, ThreadSessionResponse, ThreadStatus,
+    ThreadUnsubscribeResponse, ThreadUnsubscribeStatus, ToolActivityEvent,
+    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStartOptions,
+    TurnStreamEvent, UserInput, active_turn_not_steerable_error, parse_approval_request,
+    parse_dynamic_tool_call_request, parse_turn_stream_event,
 };
 use serde_json::{Value, json};
 
 fn parse_tool_activity(method: &str, item: Value) -> ToolActivityEvent {
-    parse_turn_stream_event(
-        method,
-        Some(json!({
-            "threadId": "thread_123",
-            "turnId": "turn_123",
-            "item": item
-        })),
-    )
-    .unwrap()
-    .unwrap()
-    .tool_activity()
-    .expect("expected normalized tool activity")
+    let mut params = json!({
+        "threadId": "thread_123",
+        "turnId": "turn_123",
+        "item": item
+    });
+    params[if method == "item/started" {
+        "startedAtMs"
+    } else {
+        "completedAtMs"
+    }] = json!(1_752_689_600_123_u64);
+    parse_turn_stream_event(method, Some(params))
+        .unwrap()
+        .unwrap()
+        .tool_activity()
+        .expect("expected normalized tool activity")
 }
 
 fn parse_item_activity(method: &str, item: Value) -> ToolActivityEvent {
-    parse_turn_stream_event(
-        method,
-        Some(json!({
-            "threadId": "thread_123",
-            "turnId": "turn_123",
-            "item": item
-        })),
-    )
-    .unwrap()
-    .unwrap()
-    .activity()
-    .expect("expected normalized activity")
+    let mut params = json!({
+        "threadId": "thread_123",
+        "turnId": "turn_123",
+        "item": item
+    });
+    params[if method == "item/started" {
+        "startedAtMs"
+    } else {
+        "completedAtMs"
+    }] = json!(1_752_689_600_123_u64);
+    parse_turn_stream_event(method, Some(params))
+        .unwrap()
+        .unwrap()
+        .activity()
+        .expect("expected normalized activity")
 }
 
 #[test]
@@ -270,57 +275,6 @@ fn thread_session_response_preserves_runtime_metadata_when_exposed() {
     assert_eq!(metadata.model.as_deref(), Some("gpt-5.5"));
     assert_eq!(metadata.model_provider.as_deref(), Some("openai"));
     assert_eq!(metadata.reasoning_effort.as_deref(), Some("xhigh"));
-}
-
-#[test]
-fn thread_branch_responses_preserve_fork_parent_metadata() {
-    let fork_response: ThreadForkResponse = serde_json::from_value(json!({
-        "thread": {
-            "cliVersion": "0.128.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "forkedFromId": "thread_parent",
-            "id": "thread_child",
-            "modelProvider": "openai",
-            "preview": "Forked work",
-            "source": "appServer",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-    let rollback_response: ThreadRollbackResponse = serde_json::from_value(json!({
-        "thread": {
-            "cliVersion": "0.128.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "forkedFromId": "thread_source",
-            "id": "thread_rollback",
-            "modelProvider": "openai",
-            "preview": "Rollback work",
-            "source": "appServer",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    assert_eq!(
-        fork_response.thread.summary().forked_from_id.as_deref(),
-        Some("thread_parent")
-    );
-    assert_eq!(
-        rollback_response.thread.summary().forked_from_id.as_deref(),
-        Some("thread_source")
-    );
 }
 
 #[test]
@@ -667,6 +621,7 @@ fn tool_activity_normalizes_operational_item_started_notifications() {
                 "id": "cmd_1",
                 "type": "commandExecution",
                 "command": "rg activity",
+                "commandActions": [],
                 "cwd": "C:/work/beryl",
                 "processId": "proc_123",
                 "status": "inProgress"
@@ -1080,15 +1035,15 @@ fn tool_activity_ignores_spawn_model_metadata_on_non_collab_items() {
 }
 
 #[test]
-fn collab_agent_tool_activity_extracts_legacy_agent_label_updates() {
+fn collab_agent_tool_activity_accepts_typed_agent_states() {
     let activity = parse_tool_activity(
         "item/started",
         json!({
             "id": "agent_1",
             "type": "collabAgentToolCall",
             "agentsStates": {
-                "thread_child": {"agentNickname": "Hooke"},
-                "agent_state_2": {"threadId": "thread_other", "nickname": "Noether"}
+                "thread_child": {"status": "running", "message": "working"},
+                "thread_other": {"status": "completed", "message": null}
             },
             "receiverThreadIds": ["thread_child", "thread_other"],
             "senderThreadId": "thread_parent",
@@ -1097,19 +1052,7 @@ fn collab_agent_tool_activity_extracts_legacy_agent_label_updates() {
         }),
     );
 
-    assert_eq!(activity.agent_label_updates.len(), 2);
-    assert!(
-        activity
-            .agent_label_updates
-            .iter()
-            .any(|update| { update.thread_id == "thread_child" && update.label == "Hooke" })
-    );
-    assert!(
-        activity
-            .agent_label_updates
-            .iter()
-            .any(|update| { update.thread_id == "thread_other" && update.label == "Noether" })
-    );
+    assert!(activity.agent_label_updates.is_empty());
     assert_eq!(
         activity.receiver_thread_ids,
         vec!["thread_child".to_string(), "thread_other".to_string()]
@@ -1145,6 +1088,7 @@ fn activity_normalizes_reasoning_item_started_notifications() {
         Some(json!({
             "threadId": "thread_123",
             "turnId": "turn_123",
+            "startedAtMs": 1_752_689_600_123_u64,
             "item": {
                 "id": "reasoning_1",
                 "type": "reasoning",
@@ -1229,35 +1173,13 @@ fn activity_normalizes_reasoning_summary_text_delta_as_update() {
 }
 
 #[test]
-fn activity_does_not_expose_reasoning_text_delta() {
-    let event = parse_turn_stream_event(
-        "item/reasoning/textDelta",
-        Some(json!({
-            "threadId": "thread_123",
-            "turnId": "turn_123",
-            "itemId": "reasoning_1",
-            "contentIndex": 0,
-            "delta": "Raw hidden reasoning details."
-        })),
-    )
-    .unwrap()
-    .unwrap();
-
-    assert!(event.activity().is_none());
-    assert!(event.tool_activity().is_none());
-    let TurnStreamEvent::ReasoningTextDelta { delta, .. } = event else {
-        panic!("expected raw reasoning text delta event");
-    };
-    assert_eq!(delta, "Raw hidden reasoning details.");
-}
-
-#[test]
 fn activity_preserves_child_thread_identity_for_reasoning() {
     let event = parse_turn_stream_event(
         "item/started",
         Some(json!({
             "threadId": "thread_child",
             "turnId": "turn_child",
+            "startedAtMs": 1_752_689_600_123_u64,
             "item": {
                 "id": "reasoning_child",
                 "type": "reasoning",
@@ -1282,6 +1204,7 @@ fn tool_activity_ignores_non_operational_items() {
         Some(json!({
             "threadId": "thread_123",
             "turnId": "turn_123",
+            "startedAtMs": 1_752_689_600_123_u64,
             "item": {
                 "id": "message_1",
                 "type": "agentMessage",
@@ -1411,32 +1334,6 @@ fn thread_unsubscribe_response_deserializes_status() {
 }
 
 #[test]
-fn turn_start_response_deserializes_in_progress_turns() {
-    let response: TurnStartResponse = serde_json::from_value(json!({
-        "turn": {
-            "id": "turn_123",
-            "items": [],
-            "status": "inProgress"
-        }
-    }))
-    .unwrap();
-
-    assert_eq!(response.turn.id, "turn_123");
-    assert_eq!(response.turn.status, TurnStatus::InProgress);
-    assert!(response.turn.items.is_empty());
-}
-
-#[test]
-fn turn_steer_response_deserializes_turn_id() {
-    let response: TurnSteerResponse = serde_json::from_value(json!({
-        "turnId": "turn_123"
-    }))
-    .unwrap();
-
-    assert_eq!(response.turn_id, "turn_123");
-}
-
-#[test]
 fn active_turn_not_steerable_error_recognizes_codex_error_info() {
     let error = JsonRpcError {
         code: -32000,
@@ -1522,206 +1419,6 @@ fn user_input_local_image_serializes_in_order_with_label_text() {
 }
 
 #[test]
-fn agent_message_phase_deserializes_final_answer() {
-    let response: TurnStartResponse = serde_json::from_value(json!({
-        "turn": {
-            "id": "turn_123",
-            "items": [
-                {
-                    "id": "item_1",
-                    "type": "agentMessage",
-                    "phase": "final_answer",
-                    "text": "done"
-                }
-            ],
-            "status": "completed"
-        }
-    }))
-    .unwrap();
-
-    let item = response.turn.items.first().unwrap();
-    let beryl_backend::ThreadItem::AgentMessage(message) = item else {
-        panic!("expected agent message item");
-    };
-
-    assert_eq!(message.phase, Some(ProtocolPhase::FinalAnswer));
-    assert_eq!(response.turn.status, TurnStatus::Completed);
-    assert!(matches!(
-        serde_json::from_value::<ThreadStatus>(json!({
-            "type": "idle"
-        })),
-        Ok(ThreadStatus::Idle)
-    ));
-}
-
-#[test]
-fn thread_session_deserializes_user_message_items() {
-    let response: ThreadSessionResponse = serde_json::from_value(json!({
-        "approvalPolicy": "never",
-        "approvalsReviewer": "user",
-        "cwd": "C:/work/beryl",
-        "model": "gpt-5.4",
-        "modelProvider": "openai",
-        "sandbox": {
-            "mode": "danger-full-access",
-            "networkAccess": true
-        },
-        "thread": {
-            "cliVersion": "0.118.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_123",
-            "modelProvider": "openai",
-            "preview": "hello",
-            "source": "appServer",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [{
-                "id": "turn_123",
-                "items": [
-                    {
-                        "id": "item_user",
-                        "type": "userMessage",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "Explain the protocol"
-                            }
-                        ]
-                    }
-                ],
-                "status": "completed"
-            }],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    let item = response.thread.turns[0].items.first().unwrap();
-    let beryl_backend::ThreadItem::UserMessage(message) = item else {
-        panic!("expected user message item");
-    };
-
-    assert_eq!(message.id, "item_user");
-    assert_eq!(
-        message.content,
-        vec![UserInput::Text {
-            text: "Explain the protocol".to_string()
-        }]
-    );
-}
-
-#[test]
-fn thread_session_preserves_context_compaction_as_generic_item() {
-    let response: ThreadSessionResponse = serde_json::from_value(json!({
-        "approvalPolicy": "never",
-        "approvalsReviewer": "user",
-        "cwd": "C:/work/beryl",
-        "model": "gpt-5.4",
-        "modelProvider": "openai",
-        "sandbox": {
-            "mode": "danger-full-access",
-            "networkAccess": true
-        },
-        "thread": {
-            "cliVersion": "0.118.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_123",
-            "modelProvider": "openai",
-            "preview": "hello",
-            "source": "appServer",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [{
-                "id": "turn_123",
-                "items": [
-                    {
-                        "id": "item_compact",
-                        "type": "contextCompaction"
-                    }
-                ],
-                "status": "completed"
-            }],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    let item = response.thread.turns[0].items.first().unwrap();
-    let beryl_backend::ThreadItem::Generic(item) = item else {
-        panic!("expected generic item");
-    };
-
-    assert_eq!(item.item_type, "contextCompaction");
-}
-
-#[test]
-fn thread_session_deserializes_image_generation_items() {
-    let response: ThreadSessionResponse = serde_json::from_value(json!({
-        "approvalPolicy": "never",
-        "approvalsReviewer": "user",
-        "cwd": "C:/work/beryl",
-        "model": "gpt-5.4",
-        "modelProvider": "openai",
-        "sandbox": {
-            "mode": "danger-full-access",
-            "networkAccess": true
-        },
-        "thread": {
-            "cliVersion": "0.128.0",
-            "createdAt": 1,
-            "cwd": "C:/work/beryl",
-            "ephemeral": false,
-            "id": "thread_123",
-            "modelProvider": "openai",
-            "preview": "hello",
-            "source": "appServer",
-            "status": {
-                "type": "idle"
-            },
-            "turns": [{
-                "id": "turn_123",
-                "items": [
-                    {
-                        "id": "image_generation_1",
-                        "type": "imageGeneration",
-                        "result": "iVBORw0KGgo=",
-                        "revisedPrompt": "A small blue glass bird on a desk",
-                        "savedPath": "C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png",
-                        "status": "generating"
-                    }
-                ],
-                "status": "completed"
-            }],
-            "updatedAt": 2
-        }
-    }))
-    .unwrap();
-
-    let item = response.thread.turns[0].items.first().unwrap();
-    let ThreadItem::ImageGeneration(item) = item else {
-        panic!("expected image generation item");
-    };
-
-    assert_eq!(item.id, "image_generation_1");
-    assert_eq!(item.status.as_deref(), Some("generating"));
-    assert_eq!(
-        item.revised_prompt.as_deref(),
-        Some("A small blue glass bird on a desk")
-    );
-    assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
-    assert_eq!(
-        item.saved_path.as_deref(),
-        Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")
-    );
-}
-
-#[test]
 fn thread_session_response_deserializes_thread_metadata() {
     let response: ThreadSessionResponse = serde_json::from_value(json!({
         "thread": {
@@ -1743,47 +1440,5 @@ fn thread_session_response_deserializes_thread_metadata() {
     .unwrap();
 
     assert_eq!(response.thread.summary().id, "thread_123");
-    assert!(response.thread.turns.is_empty());
-}
-
-#[test]
-fn image_generation_stream_event_preserves_result_while_generating() {
-    let event = parse_turn_stream_event(
-        "item/completed",
-        Some(json!({
-            "threadId": "thread_123",
-            "turnId": "turn_123",
-            "item": {
-                "id": "image_generation_1",
-                "type": "imageGeneration",
-                "result": "iVBORw0KGgo=",
-                "revisedPrompt": "A small blue glass bird on a desk",
-                "savedPath": "C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png",
-                "status": "generating"
-            }
-        })),
-    )
-    .unwrap()
-    .unwrap();
-
-    let TurnStreamEvent::ItemCompleted {
-        thread_id,
-        turn_id,
-        item,
-    } = event
-    else {
-        panic!("expected completed image generation item");
-    };
-    let ThreadItem::ImageGeneration(item) = item else {
-        panic!("expected image generation item");
-    };
-
-    assert_eq!(thread_id, "thread_123");
-    assert_eq!(turn_id, "turn_123");
-    assert_eq!(item.status.as_deref(), Some("generating"));
-    assert_eq!(item.result.as_deref(), Some("iVBORw0KGgo="));
-    assert_eq!(
-        item.saved_path.as_deref(),
-        Some("C:/Users/user/.codex/generated_images/thread_123/image_generation_1.png")
-    );
+    assert_eq!(response.thread.status, ThreadStatus::NotLoaded);
 }

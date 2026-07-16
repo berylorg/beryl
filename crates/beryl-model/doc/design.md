@@ -35,14 +35,19 @@ Provide shared pure-data identities and values used across Beryl packages withou
 
 ## Thread Presentation Values
 
-- Stable Syndic thread, turn, draft, draft-marker, item, accepted-input, queued-input, retry-record, and transcript-projection identities may cross package boundaries without making this crate the owner of their stored record schemas.
+- Stable Syndic thread, turn, draft, draft-marker, content, item, accepted-input, retry-record, transcript-projection, resource, and execution-snapshot identities may cross package boundaries without making this crate the owner of their stored record schemas.
+- `SyndicContentId` is the stable 128-bit lookup identity derived from an exact chunk-chain digest. `SyndicContentDigest` retains the complete 256-bit comparison authority so a truncated-identity collision is rejected rather than aliased.
+- Idle submission preserves one exact 128-bit identity payload while changing its typed identity from draft to submitted turn. Queueing preserves the accepted-input identity and therefore has no separate queued-input identity type.
 - Shared values may identify a Syndic thread, its execution binding, generated Beryl title metadata, automatic branch-discussion archive state, activity timestamp, parent-thread lineage summary, current window claim, and catalog availability.
 - Beryl presentation metadata never contains CAS thread names or CAS catalog rows as authority.
 - Thread title precedence is represented through explicit generated, Syndic-summary, and untitled sources rather than an inferred string.
 
 ## Revision And Command Values
 
-- Opaque revision values identify home, domain, thread, draft, binding, claim, session, and job revisions without exposing storage-engine compare-and-swap primitives.
+- Opaque revision values identify home, domain, thread, draft, chunked-content manifest, accepted-input, per-thread input gate, projection, binding, claim, session, and job revisions without exposing storage-engine compare-and-swap primitives.
+- `CasNativeTurnCount` is the zero-capable exact number of actual CAS model turns represented by a
+  loaded thread prefix. Its checked increment and ordering are independent of Syndic
+  conversation-DAG depth.
 - Typed expected-revision sets and conflict reports may be shared across packages.
 - Idempotency identities remain distinct from user-facing ids and CAS ids.
 - Resolution-intent identity remains distinct from its derived durable handoff-job identity and from the external tool-call identity that admitted it.
@@ -52,6 +57,7 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - Shared provenance values distinguish user-authored input, Beryl-generated handoff input, CAS live events, dynamic tool calls, and durable recovery actions.
 - Dynamic tool-call provenance may store exact app-server thread id, turn id, tool name, and tool-call id as opaque external identities.
 - Provenance values must not contain authentication material, capability tokens, hidden developer instructions, or unbounded payload text.
+- Exact CAS item ids, managed-process generations, loaded-thread generations, and distinct discussion-context, selected-path, and recovery-sequence digest domains may cross the backend, Syndic, and orchestration boundaries without owning provider calls or stored proof records.
 
 ## Asset Identity
 

@@ -1,0 +1,73 @@
+{
+  "schema": "beryl.cas-phase13.hosted-image-reachability.v1",
+  "generated_at_utc": "2026-07-16T06:13:16.2240645Z",
+  "codex_version": "codex-cli 0.144.1",
+  "codex_sha256": "D3D92E9C10A6F3371A425214C3DF67EB97EC5C2FF1B88876410FE0E61D4791DA",
+  "source_reference_commit": "44918ea10c0f99151c6710411b4322c2f5c96bea",
+  "probe_script_sha256": "8A0735A2550A646AED3CEAE4379981A35F074B095D48032192E60CFE47DBD849",
+  "source_full_report_sha256": "62E470E692B5DCEB78DFEC64A57E97096CB469243DB2FDD84A2A71A624105EC2",
+  "selected_provider": "beryl_probe",
+  "selected_model": "gpt-5.4",
+  "selected_model_input_modalities": ["text", "image"],
+  "provider_capabilities": {
+    "namespaceTools": true,
+    "imageGeneration": true,
+    "webSearch": true
+  },
+  "credential_boundary": {
+    "isolated_codex_home": true,
+    "loopback_only_provider": true,
+    "requires_openai_auth": false,
+    "sensitive_request_header_count": 0
+  },
+  "outbound_request": {
+    "path": "/v1/responses",
+    "bytes": 31251,
+    "sha256": "38F66625498A1E9CC85A05E450CB3760E646F266F058C7681B4ECAEB823F754E",
+    "tools_is_json_array": true,
+    "tool_count": 10,
+    "native_image_generation_tool_count": 0,
+    "native_image_generation_tools_json": "[]",
+    "native_image_generation_tools_sha256": "4F53CDA18C2BAA0C0354BB5F9A3ECBE5ED12AB4D8E11BA873C2F11161202B945",
+    "standalone_image_gen_namespace_count": 0,
+    "image_generation_include_count": 0,
+    "tool_choice": "auto"
+  },
+  "semantic_result": {
+    "boundary_conclusion": "native_hosted_image_generation_not_admitted",
+    "native_hosted_image_generation_admitted": false,
+    "hosted_image_generation_call_sent": false,
+    "hosted_item_lifecycle": "not_exercised_because_native_tool_not_admitted",
+    "control_assistant_lifecycle": ["item/started", "item/completed"]
+  },
+  "notifications_sha256": "4885D061220C62100855E4E5F57ED26B5DC4C25851316DC5BBE3DFA15C4BD023",
+  "checks_passed": 21,
+  "checks_total": 21,
+  "check_names": [
+    "installed-runtime-version",
+    "provider-declares-image-generation-capability",
+    "selected-model-catalog-entry-exactly-one",
+    "selected-model-accepts-image-input",
+    "provider-request-1-loopback-responses-path",
+    "provider-request-1-has-no-sensitive-auth-header",
+    "provider-request-1-selected-model",
+    "provider-request-2-loopback-responses-path",
+    "provider-request-2-has-no-sensitive-auth-header",
+    "provider-request-2-selected-model",
+    "responses-tools-is-json-array",
+    "native-admission-derived-only-from-native-tool",
+    "native-admission-stable-across-continuation",
+    "mock-response-obeys-admission-guard",
+    "unadmitted-hosted-image-never-emitted",
+    "unadmitted-hosted-image-absent-from-public-history",
+    "unadmitted-hosted-image-absent-from-provider-history",
+    "control-assistant-ordinary-lifecycle-exact",
+    "no-standalone-imagegen-substitution-at-boundary",
+    "no-image-result-include-without-native-tool",
+    "continuation-response-is-control-only"
+  ],
+  "limitations": [
+    "The hosted parser/lifecycle path was not stimulated because the request did not admit the native tool.",
+    "The separate standalone image_gen.imagegen extension and Images API backend were not exercised."
+  ]
+}

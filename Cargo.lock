@@ -556,7 +556,9 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "beryl-backend",
+ "beryl-home-store",
  "beryl-model",
+ "beryl-state",
  "gpui",
  "gpui-scrollbar",
  "gpui-settings-window",
@@ -571,11 +573,14 @@ dependencies = [
  "rodio",
  "serde",
  "serde_json",
+ "sha2",
+ "syndic-storage",
  "taplo",
  "tempfile",
  "thiserror 2.0.18",
  "toml 0.9.12+spec-1.1.0",
  "tracing",
+ "tungstenite",
  "unicode-segmentation",
  "windows 0.61.3",
 ]
@@ -5434,9 +5439,9 @@ dependencies = [
 name = "syndic-storage"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
- "tempfile",
+ "beryl-home-store",
+ "beryl-model",
+ "sha2",
  "thiserror 2.0.18",
 ]
 

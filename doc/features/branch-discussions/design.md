@@ -22,9 +22,9 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 
 ## Discuss In New Branch
 
-- A stable rendered assistant-text selection exposes `Discuss in new branch` alongside Quote.
+- A stable rendered assistant-text selection from a finalized reply exposes `Discuss in new branch` alongside Quote.
 - Activating it creates a new durable Syndic discussion thread and switches the invoking window to that exact thread through ordinary activation.
-- The discussion's first current draft has the source turn as immutable parent and owns the exact selected text plus source turn, item, projection revision, and selected-range provenance.
+- The discussion's first current draft has the source turn as immutable parent and owns the exact selected text plus source turn, item, finalized projection revision, and selected-range provenance.
 - The discussion thread separately owns the exact parent Syndic thread id used for eventual handoff.
 - Creation performs no CAS request and runs no model.
 - Selected context longer than the approved 65,536-byte UTF-8 limit is rejected before thread creation and the source selection remains intact.
@@ -38,6 +38,8 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 - The context item scrolls, anchors, virtualizes, and remeasures with the transcript instead of reserving fixed window space. Large selected passages use the transcript's existing bounded chunk presentation.
 - The context remains selectable and copyable but cannot be edited, quoted as if it were a transcript message, branched again, or targeted by ordinary turn actions.
 - Missing or invalid provenance never causes Beryl to substitute similar transcript text. The stable branch-boundary item shows an explicit unavailable-context state while preserving the discussion thread.
+- Later replacement or divergence in the parent thread does not remove or invalidate an already admitted discussion context. The recorded parent thread remains the handoff destination while the quoted source turn remains immutable historical context.
+- Replacing the discussion's first submitted input likewise does not remove or relocate the synthetic context item; its stable context-owner identity remains durable even when that original first turn is no longer on the discussion's selected path.
 
 ## Discussion Status
 
@@ -62,7 +64,14 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 
 ## Resolution Tool
 
-- Beryl registers one discussion-scoped dynamic tool on the discussion's exclusive CAS projection.
+- Every persistent Beryl conversation CAS lineage receives the same versioned, deterministically
+  ordered conversation-tool registry at its initial `thread/start`, including the branch-discussion
+  resolution tool. Native continuation, resume, and fork retain that unchanged tool profile so a
+  frequently used discussion branch does not require a fresh reconstructed prompt prefix.
+- Registration advertises a cache-stable capability; it does not authorize resolution. The
+  resolution handler admits a call only when exact CAS thread, active CAS turn, Syndic discussion
+  thread, current attempt state, and durable revisions prove that the correlated turn is an open
+  branch discussion.
 - The user initiates resolution conversationally. The AI calls the tool with the proposed resolution payload; it does not supply authoritative parent, child, thread, job, or archive identities.
 - A tool call outside the exact bound discussion and active turn is rejected.
 - If accepted future-turn input is queued, the call returns a structured retryable deferred result and changes no state. Beryl does not retry automatically.
@@ -100,6 +109,9 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 - Retryable handoff failure keeps the admitted resolution, disabled composer, unarchived discussion, and exact parent binding.
 - The discussion status strip exposes a `Retry handoff` command that retries the existing job only; it is not a resolve or archive command.
 - Terminal handoff failure ends the live attempt, leaves the discussion unarchived, preserves `Handoff failed`, removes `Retry handoff`, and makes the composer editable again subject to ordinary gates.
+- A parent handoff start with unknown remote completion becomes terminal failure after its owning
+  execution session is proven gone. Beryl retains the incomplete parent turn and never exposes
+  `Retry handoff` for a request that might already have executed.
 - The terminally failed attempt and any parent handoff turn already appended for it remain durable. Beryl never creates a second parent turn or starts a fresh resolution attempt automatically.
 - The user may continue the discussion and later initiate resolution conversationally again. A later tool admission creates a fresh intent and job from the then-current discussion; it is not a retry or replacement of the terminally failed attempt.
 - Multiple attempts are allowed only sequentially after terminal failure. A retryable failure retains the sole live attempt, while successful handoff archives the discussion and permits no later attempt.

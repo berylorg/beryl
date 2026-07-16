@@ -5,10 +5,9 @@ use std::{
 };
 
 use beryl_backend::{
-    AgentMessageItem, ProtocolPhase, ThreadItem, ThreadReadMetadata, ThreadSessionMetadata,
-    ThreadSummary, ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStatus,
-    TurnStreamEvent,
+    AgentMessageItem, CompletedTurnStatus, ProtocolPhase, ThreadItem, ThreadReadMetadata,
+    ThreadSessionMetadata, ThreadSummary, ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent,
+    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStreamEvent,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -364,18 +363,17 @@ impl ToolActivityProjection {
                 thread_id,
                 turn_id,
                 item: ThreadItem::AgentMessage(item),
-            } => self.apply_subagent_handoff_activity(thread_id, turn_id, item),
+            } => self.apply_subagent_handoff_activity(thread_id.as_str(), turn_id.as_str(), item),
             TurnStreamEvent::ThreadStarted { thread } => self
                 .apply_thread_agent_nickname(thread.id.as_str(), thread.agent_nickname.as_deref()),
             TurnStreamEvent::AgentLabelUpdated { thread_id, label } => {
                 self.apply_thread_agent_nickname(thread_id.as_str(), Some(label.as_str()))
             }
-            TurnStreamEvent::TurnCompleted { thread_id, turn } => {
-                match final_status_from_turn_status(turn.status) {
-                    Some(status) => self.finish_running_for_turn(thread_id, &turn.id, status),
-                    None => false,
-                }
-            }
+            TurnStreamEvent::TurnCompleted { thread_id, turn } => self.finish_running_for_turn(
+                thread_id.as_str(),
+                turn.id.as_str(),
+                final_status_from_turn_status(turn.status),
+            ),
             TurnStreamEvent::ThreadClosed { thread_id } => {
                 self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
             }
@@ -687,7 +685,7 @@ impl ToolActivityProjection {
         let key = ToolActivityKey {
             thread_id: thread_id.to_string(),
             turn_id: turn_id.to_string(),
-            item_id: item.id.clone(),
+            item_id: item.id.as_str().to_owned(),
         };
         let tool_display_value = subagent_handoff_display_value(item.text.as_bytes().len());
 
@@ -1827,10 +1825,11 @@ fn final_status_from_item_status(raw_item_status: Option<&str>) -> ToolActivityR
     }
 }
 
-fn final_status_from_turn_status(status: TurnStatus) -> Option<ToolActivityRowStatus> {
+fn final_status_from_turn_status(status: CompletedTurnStatus) -> ToolActivityRowStatus {
     match status {
-        TurnStatus::Completed => Some(ToolActivityRowStatus::FinishedOk),
-        TurnStatus::Interrupted | TurnStatus::Failed => Some(ToolActivityRowStatus::FinishedError),
-        TurnStatus::InProgress => None,
+        CompletedTurnStatus::Completed => ToolActivityRowStatus::FinishedOk,
+        CompletedTurnStatus::Interrupted | CompletedTurnStatus::Failed => {
+            ToolActivityRowStatus::FinishedError
+        }
     }
 }

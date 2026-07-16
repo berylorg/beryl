@@ -2,7 +2,7 @@ use crate::encoding::{CodecError, Decoder, Encoder};
 
 use super::super::{
     BranchHandoffCheckpoint, BranchHandoffJobState, HandoffFailureEvidence, HandoffFailureKind,
-    ParentCasIdentity, ParentHandoffIdentity,
+    ParentCasIdentity, ParentHandoffIdentity, record::failure_state_is_compatible,
 };
 
 pub(super) fn encode_state(encoder: &mut Encoder, state: &BranchHandoffJobState) {
@@ -53,16 +53,28 @@ pub(super) fn decode_state(decoder: &mut Decoder<'_>) -> Result<BranchHandoffJob
         4 => {
             let resume = decode_checkpoint(decoder)?;
             let evidence = decode_evidence(decoder)?;
-            if !evidence.kind().is_retryable() {
-                return Err(invalid("retryable job contains terminal failure evidence"));
+            if !failure_state_is_compatible(
+                super::super::BranchHandoffJobLifecycle::RetryableFailed,
+                &resume,
+                evidence.kind(),
+            ) {
+                return Err(invalid(
+                    "retryable failure kind is incompatible with its retained checkpoint",
+                ));
             }
             Ok(BranchHandoffJobState::RetryableFailed { resume, evidence })
         }
         5 => {
             let stopped_at = decode_checkpoint(decoder)?;
             let evidence = decode_evidence(decoder)?;
-            if !evidence.kind().is_terminal() {
-                return Err(invalid("terminal job contains retryable failure evidence"));
+            if !failure_state_is_compatible(
+                super::super::BranchHandoffJobLifecycle::TerminalFailed,
+                &stopped_at,
+                evidence.kind(),
+            ) {
+                return Err(invalid(
+                    "terminal failure kind is incompatible with its retained checkpoint",
+                ));
             }
             Ok(BranchHandoffJobState::TerminalFailed {
                 stopped_at,

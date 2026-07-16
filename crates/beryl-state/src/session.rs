@@ -1,6 +1,6 @@
 use beryl_home_store::{
-    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceFamily,
-    KeyspaceSchemaVersion, MutationContribution, ReadError, StorageDomain,
+    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationContribution, ReadError, RecordFamily, StorageDomain,
 };
 use beryl_model::{
     ClaimRevision, RootId, RuntimeId, SessionRevision, SyndicThreadId, WindowId, WindowPlacement,
@@ -13,6 +13,8 @@ mod codec;
 mod error;
 mod mutation;
 mod validate;
+
+use codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec};
 
 pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
@@ -32,11 +34,11 @@ pub const SESSION_WINDOW_V1_BYTES: usize = 655;
 pub(crate) const CLAIM_V1_BYTES: usize = 49;
 pub(crate) const MAX_SESSION_CLAIMS: usize = MAX_RESTORABLE_WINDOWS * 2;
 
-const SESSION_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("active-header", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("windows", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("claims-by-window", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("claims-by-thread", KeyspaceSchemaVersion::new(1)),
+const SESSION_FAMILIES: &[RecordFamily<SessionDomain>] = &[
+    RecordFamily::new::<SessionHeaderCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<SessionWindowCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<ClaimByWindowCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<ClaimByThreadCodec>(KeyspaceSchemaVersion::new(1)),
 ];
 
 pub(crate) struct SessionDomain;
@@ -44,7 +46,7 @@ pub(crate) struct SessionDomain;
 impl StorageDomain for SessionDomain {
     const NAME: &'static str = "beryl-session";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = SESSION_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = SESSION_FAMILIES;
     type ValidationError = error::SessionValidationError;
 
     fn validate(
@@ -325,6 +327,15 @@ impl SessionState {
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
         store.domain_revision(self.handle)
+    }
+
+    /// Returns this domain's revision from a still-current successful command.
+    pub fn committed_revision(
+        &self,
+        store: &HomeStore,
+        receipt: &beryl_home_store::CommitReceipt,
+    ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
+        store.receipt_domain_revision(receipt, self.handle)
     }
 
     /// Reads the active header and exactly its referenced window records, then

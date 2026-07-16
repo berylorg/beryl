@@ -4,7 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolSpec};
+use beryl_backend::{
+    DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolFunctionSpec,
+    DynamicToolNamespaceSpec, DynamicToolSpec,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -66,7 +69,7 @@ const DEFAULT_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 32;
 const MAX_CHILD_TRANSCRIPT_FRAME_METRIC_LIMIT: usize = 64;
 
 pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
-    vec![
+    let tools = vec![
         diagnostic_child_tool_spec(
             DIAGNOSTIC_CHILD_START_TOOL,
             "Start one isolated diagnostic child Beryl process with an explicit Beryl home directory and optional executable path.",
@@ -178,6 +181,14 @@ pub fn beryl_diagnostic_child_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             "Close transient popups in the diagnostic child Beryl.",
             empty_object_schema(),
         ),
+    ];
+    vec![
+        DynamicToolNamespaceSpec::new(
+            BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE,
+            "Beryl diagnostic-child tools.",
+            tools,
+        )
+        .into(),
     ]
 }
 
@@ -261,10 +272,8 @@ fn diagnostic_child_tool_spec(
     name: &str,
     description: &str,
     input_schema: Value,
-) -> DynamicToolSpec {
-    DynamicToolSpec::new(name, description, input_schema)
-        .with_namespace(BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE)
-        .with_defer_loading(false)
+) -> DynamicToolFunctionSpec {
+    DynamicToolFunctionSpec::new(name, description, input_schema).with_defer_loading(false)
 }
 
 fn diagnostic_child_tool_result(

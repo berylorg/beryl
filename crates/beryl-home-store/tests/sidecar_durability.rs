@@ -171,7 +171,7 @@ fn failure_after_atomic_rename_retains_unreferenced_final_bytes() {
 #[test]
 fn rename_and_directory_flush_failures_never_publish_a_metadata_token() {
     for point in [
-        FaultPoint::BeforeSidecarDirectorySync,
+        FaultPoint::BeforeSidecarRootDirectorySync,
         FaultPoint::BeforeSidecarRename,
     ] {
         let directory = tempdir().unwrap();

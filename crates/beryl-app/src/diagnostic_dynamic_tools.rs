@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, ops::Range, time::Duration};
 
-use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolSpec};
+use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolFunctionSpec};
 use gpui::{
     RendererDiagnosticSnapshot as GpuiRendererDiagnosticSnapshot,
     WindowRendererDiagnosticSnapshot as GpuiWindowRendererDiagnosticSnapshot,
@@ -1035,39 +1035,39 @@ impl MediaDiagnosticEvent {
     }
 }
 
-pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
+pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolFunctionSpec> {
     vec![
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_PROCESS_DIAGNOSTICS_TOOL,
             "Read a bounded Beryl GUI process identity snapshot.",
             empty_object_schema(),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_MEMORY_DIAGNOSTICS_TOOL,
             "Read bounded Beryl GUI process memory counters and related UI labels.",
             empty_object_schema(),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_RENDERER_DIAGNOSTICS_TOOL,
             "Read bounded Beryl GUI renderer resource counters and byte estimates.",
             empty_object_schema(),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_RETAINED_STATE_SUMMARY_TOOL,
             "Read bounded retained-state counters for Beryl GUI projections and caches.",
             empty_object_schema(),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_VISIBLE_MEDIA_TOOL,
             "Read bounded metadata for media currently retained in the visible transcript projection.",
             limited_read_schema(MAX_VISIBLE_MEDIA_LIMIT, DEFAULT_VISIBLE_MEDIA_LIMIT),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_MEDIA_EVENTS_TOOL,
             "Read a bounded metadata-only ring of recent transcript media lifecycle events.",
             media_events_schema(),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_TRANSCRIPT_FRAME_METRICS_TOOL,
             "Read a bounded content-free ring of recent transcript render frame timing metrics.",
             media_events_schema_with_limits(
@@ -1075,17 +1075,14 @@ pub fn beryl_diagnostic_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                 DEFAULT_TRANSCRIPT_FRAME_METRIC_LIMIT,
             ),
         ),
-        DynamicToolSpec::new(
+        DynamicToolFunctionSpec::new(
             READ_SETTINGS_WINDOW_DIAGNOSTICS_TOOL,
             "Read bounded content-free settings-window render and synchronization diagnostics.",
             empty_object_schema(),
         ),
     ]
     .into_iter()
-    .map(|tool| {
-        tool.with_namespace(BERYL_DYNAMIC_TOOL_NAMESPACE)
-            .with_defer_loading(false)
-    })
+    .map(|tool| tool.with_defer_loading(false))
     .collect()
 }
 

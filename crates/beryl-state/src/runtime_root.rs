@@ -1,7 +1,7 @@
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainHandle, DomainRegistrationError,
-    DomainSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion, MutationContribution,
-    PointReadLimit, ReadError, StorageDomain,
+    DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationContribution, PointReadLimit,
+    ReadError, RecordFamily, StorageDomain,
 };
 use beryl_model::{AdmittedHostPath, RootId, RuntimeId, RuntimeMode, RuntimeNativePath};
 
@@ -14,7 +14,7 @@ mod validate;
 
 use codec::{
     ExecutableIndexCodec, RootIdIndexCodec, RootPathIndexCodec, RootRecordCodec,
-    RuntimeRecordCodec, RuntimeRootKey,
+    RuntimeHomeRootIndexCodec, RuntimeRecordCodec, RuntimeRootKey,
 };
 pub use error::RuntimeRootMutationError;
 use error::RuntimeRootValidationError;
@@ -26,13 +26,13 @@ pub use mutation::{
 const RUNTIME_RECORD_LIMIT: usize = 132 * 1024;
 const ROOT_RECORD_LIMIT: usize = 132 * 1024;
 
-const RUNTIME_ROOT_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("runtimes", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("runtime-executable-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("roots", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("root-id-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("root-path-index", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("runtime-home-root-index", KeyspaceSchemaVersion::new(1)),
+const RUNTIME_ROOT_FAMILIES: &[RecordFamily<RuntimeRootDomain>] = &[
+    RecordFamily::new::<RuntimeRecordCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<ExecutableIndexCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootRecordCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootIdIndexCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RootPathIndexCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RuntimeHomeRootIndexCodec>(KeyspaceSchemaVersion::new(1)),
 ];
 
 pub(crate) struct RuntimeRootDomain;
@@ -40,7 +40,7 @@ pub(crate) struct RuntimeRootDomain;
 impl StorageDomain for RuntimeRootDomain {
     const NAME: &'static str = "beryl-runtime-root";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = RUNTIME_ROOT_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = RUNTIME_ROOT_FAMILIES;
     type ValidationError = RuntimeRootValidationError;
 
     fn validate(
@@ -300,6 +300,15 @@ impl RuntimeRootState {
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
         store.domain_revision(self.handle)
+    }
+
+    /// Returns this domain's revision from a still-current successful command.
+    pub fn committed_revision(
+        &self,
+        store: &HomeStore,
+        receipt: &beryl_home_store::CommitReceipt,
+    ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
+        store.receipt_domain_revision(receipt, self.handle)
     }
 
     pub fn runtime(

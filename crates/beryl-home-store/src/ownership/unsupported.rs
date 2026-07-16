@@ -49,6 +49,14 @@ impl HomeOwnership {
         unreachable!("unsupported platform never opens a home")
     }
 
+    pub(crate) fn retain_state_directory(&mut self, _path: &Path) -> io::Result<()> {
+        unreachable!("unsupported platform never opens a home")
+    }
+
+    pub(crate) fn require_same_state_directory(&self, _path: &Path) -> io::Result<()> {
+        unreachable!("unsupported platform never opens a home")
+    }
+
     pub(crate) fn release(&mut self) -> Result<(), HomeCloseError> {
         unreachable!("unsupported platform never opens a home")
     }

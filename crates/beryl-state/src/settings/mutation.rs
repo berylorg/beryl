@@ -1,7 +1,8 @@
 use std::{collections::BTreeSet, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, MutationBuildError, MutationBuilder, PointReadLimit, ReadError,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, MutationBuildError,
+    MutationBuilder, PointReadLimit, ReadError,
 };
 
 use crate::{RecordRevision, ValueError};
@@ -252,6 +253,15 @@ impl Error for SettingsMutationError {
             Self::Build(source) => Some(source),
             Self::Value(source) => Some(source),
             _ => None,
+        }
+    }
+}
+
+impl DomainCallbackError for SettingsMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
         }
     }
 }

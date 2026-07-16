@@ -1,9 +1,10 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainHandle, DomainRegistrationError,
-    DomainSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion, MutationBuildError,
-    MutationContribution, ReadError, ReadLimitError, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationBuildError, MutationContribution, ReadError, ReadLimitError, RecordFamily,
+    StorageDomain,
 };
 use beryl_model::{DomainRevision, SyndicThreadId};
 
@@ -43,9 +44,9 @@ pub const CATALOG_MAX_STORED_ROW_BYTES: usize = 16 + 4 + CATALOG_RECORD_LIMIT;
 /// Maximum stored bytes for one recency-index record, including key and version envelope.
 pub const CATALOG_MAX_STORED_RECENCY_BYTES: usize = 24 + 4 + CATALOG_RECORD_LIMIT;
 
-const CATALOG_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("rows", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("recency", KeyspaceSchemaVersion::new(1)),
+const CATALOG_FAMILIES: &[RecordFamily<CatalogDomain>] = &[
+    RecordFamily::new::<CatalogRowCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<CatalogRecencyCodec>(KeyspaceSchemaVersion::new(1)),
 ];
 
 pub(crate) struct CatalogDomain;
@@ -53,7 +54,7 @@ pub(crate) struct CatalogDomain;
 impl StorageDomain for CatalogDomain {
     const NAME: &'static str = "beryl-catalog";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = CATALOG_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = CATALOG_FAMILIES;
     type ValidationError = CatalogValidationError;
 
     fn validate(
@@ -160,6 +161,15 @@ impl CatalogState {
 
     pub fn revision(&self, store: &HomeStore) -> Result<DomainRevision, ReadError> {
         store.domain_revision(self.handle)
+    }
+
+    /// Returns this domain's revision from a still-current successful command.
+    pub fn committed_revision(
+        &self,
+        store: &HomeStore,
+        receipt: &beryl_home_store::CommitReceipt,
+    ) -> Result<Option<DomainRevision>, beryl_home_store::CommitReceiptError> {
+        store.receipt_domain_revision(receipt, self.handle)
     }
 
     pub fn row(
@@ -373,6 +383,15 @@ impl Error for CatalogMutationError {
     }
 }
 
+impl DomainCallbackError for CatalogMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
+        }
+    }
+}
+
 impl From<ReadError> for CatalogMutationError {
     fn from(source: ReadError) -> Self {
         Self::Read(source)
@@ -411,6 +430,15 @@ impl Error for CatalogValidationError {
         match self {
             Self::Read(source) => Some(source),
             Self::Invariant(_) => None,
+        }
+    }
+}
+
+impl DomainCallbackError for CatalogValidationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
         }
     }
 }

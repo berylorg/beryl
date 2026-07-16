@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use serde_json::Value;
 use soketto::{
     Parsing,
     base::{Codec, Header, OpCode},
@@ -14,13 +15,15 @@ use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 use tracing::debug;
 
 use crate::{
-    BackendWebSocketEndpoint,
-    session::{ManagedBackendError, ManagedWebSocketError},
+    BackendWebSocketEndpoint, incoming_json,
+    session::{ManagedBackendError, ManagedWebSocketError, TransportWriteFailure},
 };
 
 mod message;
+mod reader;
 
 use message::{MessagePayload, PayloadRead};
+use reader::{PayloadReaderState, WebSocketPayloadReader};
 
 const READ_CHUNK_BYTES: usize = 8 * 1024;
 const WEBSOCKET_FRAME_PAYLOAD_BUDGET: usize = 64 * 1024 * 1024;
@@ -34,6 +37,17 @@ pub(crate) struct WebSocketClientTransport {
     read_codec: Codec,
     write_codec: Codec,
     pending_read: VecDeque<u8>,
+    last_ingress_stats: Option<WebSocketIngressStats>,
+    closed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WebSocketIngressStats {
+    pub(crate) message_bytes: usize,
+    pub(crate) maximum_transport_chunk_bytes: usize,
+    pub(crate) maximum_parser_buffer_bytes: usize,
+    pub(crate) discarded_image_result_bytes: usize,
+    pub(crate) retained_item_result_present: bool,
 }
 
 impl WebSocketClientTransport {
@@ -58,6 +72,8 @@ impl WebSocketClientTransport {
             read_codec,
             write_codec: Codec::new(),
             pending_read: stream.pending_read,
+            last_ingress_stats: None,
+            closed: false,
         })
     }
 
@@ -65,87 +81,127 @@ impl WebSocketClientTransport {
         &self.endpoint
     }
 
+    pub(crate) fn last_ingress_stats(&self) -> Option<WebSocketIngressStats> {
+        self.last_ingress_stats
+    }
+
     pub(crate) fn write_message(
         &mut self,
         method: &str,
         line: &str,
-    ) -> Result<(), ManagedBackendError> {
+    ) -> Result<(), TransportWriteFailure> {
+        if self.closed {
+            return Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::TransportClosed {
+                    method: method.to_string(),
+                },
+            ));
+        }
         self.write_frame_payload(OpCode::Text, line.as_bytes())
-            .map_err(|source| self.transport_error(method, source))
+            .map_err(|failure| match failure {
+                FrameWriteFailure::ProvenNotDispatched(source) => {
+                    TransportWriteFailure::ProvenNotDispatched(self.transport_error(method, source))
+                }
+                FrameWriteFailure::MayHaveDispatched(source) => {
+                    TransportWriteFailure::MayHaveDispatched(self.transport_error(method, source))
+                }
+            })
     }
 
-    pub(crate) fn recv_text_message_timeout(
+    pub(crate) fn recv_json_value_timeout(
         &mut self,
         method: &str,
         timeout: Duration,
-    ) -> Result<Option<String>, ManagedBackendError> {
+    ) -> Result<Option<Value>, ManagedBackendError> {
         self.set_read_timeout(Some(timeout), method)?;
         let receive_started = Instant::now();
-        let mut payload = MessagePayload::new(method, WEBSOCKET_TEXT_MESSAGE_BUDGET);
-        let mut chunk = [0_u8; READ_CHUNK_BYTES];
-        let mut bytes = Vec::new();
-        let mut saw_message_byte = false;
-        let mut first_frame_after = None;
-        let mut first_payload_after = None;
+        let state = PayloadReaderState::default();
+        let reader =
+            WebSocketPayloadReader::new(self, method, WEBSOCKET_TEXT_MESSAGE_BUDGET, state.clone());
+        let decoded = incoming_json::decode_reader(reader, READ_CHUNK_BYTES);
 
-        loop {
-            let was_started = payload.started;
-            match self.read_message_payload_chunk(method, &mut payload, &mut chunk) {
-                Ok(PayloadRead::Idle) if !saw_message_byte && !payload.started => {
-                    return Ok(None);
-                }
-                Ok(PayloadRead::Idle) => {
-                    return Err(self.transport_error(
-                        method,
-                        ManagedWebSocketError::protocol(
-                            "timed out while reading WebSocket message",
-                        ),
-                    ));
-                }
-                Ok(PayloadRead::Bytes(count)) => {
-                    if !was_started && payload.started && first_frame_after.is_none() {
-                        first_frame_after = Some(receive_started.elapsed());
-                    }
-                    if first_payload_after.is_none() {
-                        first_payload_after = Some(receive_started.elapsed());
-                    }
-                    saw_message_byte = true;
-                    bytes.extend_from_slice(&chunk[..count]);
-                }
-                Ok(PayloadRead::Complete) => {
-                    debug!(
-                        method,
-                        response_bytes = bytes.len(),
-                        wait_first_frame_ms = first_frame_after.map(elapsed_ms),
-                        wait_first_payload_ms = first_payload_after.map(elapsed_ms),
-                        full_message_ms = elapsed_ms(receive_started.elapsed()),
-                        "received backend WebSocket text message"
-                    );
-                    return String::from_utf8(bytes).map(Some).map_err(|source| {
-                        self.transport_error(method, ManagedWebSocketError::from_utf8(source))
-                    });
-                }
-                Ok(PayloadRead::Pong) => {}
-                Ok(PayloadRead::Close) => {
-                    return Err(ManagedBackendError::TransportClosed {
-                        method: method.to_string(),
-                    });
-                }
-                Ok(PayloadRead::Binary) => return Err(ManagedBackendError::UnexpectedMessageShape),
-                Err(error) => return Err(self.transport_error(method, error)),
-            }
+        if let Some(error) = state.take_failure() {
+            self.close();
+            return Err(error);
         }
+        if !state.started() {
+            return Ok(None);
+        }
+        let decoded = match decoded {
+            Ok(decoded) => decoded,
+            Err(source) => {
+                self.close();
+                return Err(ManagedBackendError::InvalidJsonLine {
+                    line: incoming_json::redacted_invalid_json(),
+                    source,
+                });
+            }
+        };
+        if !state.complete() {
+            let error = self.transport_error(
+                method,
+                ManagedWebSocketError::protocol(
+                    "incoming JSON parser stopped before the WebSocket message completed",
+                ),
+            );
+            self.close();
+            return Err(error);
+        }
+
+        let ingress_stats = WebSocketIngressStats {
+            message_bytes: state.bytes_read(),
+            maximum_transport_chunk_bytes: state.maximum_chunk_bytes(),
+            maximum_parser_buffer_bytes: decoded.stats.maximum_buffered_input_bytes,
+            discarded_image_result_bytes: decoded.stats.discarded_image_result_bytes,
+            retained_item_result_present: decoded
+                .value
+                .pointer("/params/item")
+                .and_then(Value::as_object)
+                .is_some_and(|item| item.contains_key("result")),
+        };
+        self.last_ingress_stats = Some(ingress_stats);
+
+        debug!(
+            method,
+            response_bytes = ingress_stats.message_bytes,
+            maximum_transport_chunk_bytes = ingress_stats.maximum_transport_chunk_bytes,
+            maximum_parser_buffer_bytes = ingress_stats.maximum_parser_buffer_bytes,
+            discarded_image_result_bytes = ingress_stats.discarded_image_result_bytes,
+            retained_item_result_present = ingress_stats.retained_item_result_present,
+            wait_first_frame_ms = state.first_frame_after().map(elapsed_ms),
+            wait_first_payload_ms = state.first_payload_after().map(elapsed_ms),
+            full_message_ms = elapsed_ms(receive_started.elapsed()),
+            "received and parsed backend WebSocket JSON message"
+        );
+        Ok(Some(decoded.value))
     }
 
     pub(crate) fn close(&mut self) {
+        if self.closed {
+            return;
+        }
         let _ = self.write_close_frame("close");
         let _ = self.stream.shutdown(Shutdown::Both);
+        self.closed = true;
     }
 }
 
 enum HeaderRead {
     Idle,
     Header(Header),
+}
+
+enum FrameWriteFailure {
+    ProvenNotDispatched(ManagedWebSocketError),
+    MayHaveDispatched(ManagedWebSocketError),
+}
+
+impl FrameWriteFailure {
+    fn into_error(self) -> ManagedWebSocketError {
+        match self {
+            Self::ProvenNotDispatched(error) | Self::MayHaveDispatched(error) => error,
+        }
+    }
 }
 
 impl WebSocketClientTransport {
@@ -247,8 +303,8 @@ impl WebSocketClientTransport {
     }
 
     fn write_close_frame(&mut self, method: &str) -> Result<(), ManagedBackendError> {
-        let code = 1000_u16.to_be_bytes();
-        self.write_frame_payload(OpCode::Close, &code)
+        self.write_frame_payload(OpCode::Close, &1000_u16.to_be_bytes())
+            .map_err(FrameWriteFailure::into_error)
             .map_err(|source| self.transport_error(method, source))
     }
 
@@ -256,10 +312,12 @@ impl WebSocketClientTransport {
         &mut self,
         opcode: OpCode,
         payload: &[u8],
-    ) -> Result<(), ManagedWebSocketError> {
+    ) -> Result<(), FrameWriteFailure> {
         let mut header = Header::new(opcode);
         let mut mask = [0_u8; 4];
-        getrandom::fill(&mut mask).map_err(ManagedWebSocketError::from_mask_generation)?;
+        getrandom::fill(&mut mask)
+            .map_err(ManagedWebSocketError::from_mask_generation)
+            .map_err(FrameWriteFailure::ProvenNotDispatched)?;
         header
             .set_masked(true)
             .set_mask(u32::from_be_bytes(mask))
@@ -273,6 +331,7 @@ impl WebSocketClientTransport {
             .and_then(|()| self.stream.write_all(&masked_payload))
             .and_then(|()| self.stream.flush())
             .map_err(ManagedWebSocketError::from_io)
+            .map_err(FrameWriteFailure::MayHaveDispatched)
     }
 
     fn set_read_timeout(

@@ -1,4 +1,4 @@
-use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolSpec};
+use beryl_backend::{DynamicToolCallRequest, DynamicToolCallResponse, DynamicToolFunctionSpec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::warn;
@@ -22,13 +22,12 @@ pub struct BerylLifecycleDynamicToolDispatch {
     outcome: Option<LifecycleYieldOutcome>,
 }
 
-pub fn beryl_lifecycle_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
-    vec![DynamicToolSpec::new(
+pub fn beryl_lifecycle_dynamic_tool_specs() -> Vec<DynamicToolFunctionSpec> {
+    vec![DynamicToolFunctionSpec::new(
         YIELD_TOOL,
         "Yield control to Beryl with one semantic lifecycle outcome after the current turn reaches a natural boundary. Beryl owns all stop, notification, compaction, and resume policy.",
         yield_schema(),
     )
-    .with_namespace(BERYL_DYNAMIC_TOOL_NAMESPACE)
     .with_defer_loading(false)]
 }
 

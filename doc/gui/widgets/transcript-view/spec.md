@@ -32,6 +32,8 @@ A synthetic-context group has an owner-supplied stable semantic identity and ins
 
 The transient affordance layer holds selection actions and menu anchors only while their exact realized geometry remains valid. Menus themselves use the referenced built-in widgets in the owning window overlay.
 
+One live authored-content record may combine a host-supplied durable prefix with one bounded transient suffix carrying the same exact item identity and a later logical-text frontier. The suffix is local presentation state until the host replaces it from an exactly matching durable projection; it is not a second transcript record or an independently scrolling surface.
+
 The widget consumes a host-supplied resident presentation snapshot and reports viewport, measurement, selection, menu-anchor, and nested-resource demand facts. It does not load, retain, evict, flatten, parse, or persist conversation history.
 
 # Look
@@ -46,7 +48,7 @@ The transcript viewport has no visual scrollbar chrome. Nested code and table pa
 
 # States
 
-The widget supports coherent, empty narrative, activation-pending, active, inert, tail-following, manually detached, leading-edge clamped, trailing-edge clamped, remeasuring, fallback-present, selection-active, selection-unavailable, menu-anchored, and nested-scroll-routed states.
+The widget supports coherent, empty narrative, activation-pending, active, inert, tail-following, manually detached, arrival-streaming, durable-reconciling, leading-edge clamped, trailing-edge clamped, remeasuring, fallback-present, selection-active, selection-unavailable, menu-anchored, and nested-scroll-routed states.
 
 Presentation records support authored content, synthetic context, local fallback, live, incomplete, context unavailable, resource pending, resource unavailable, and remeasurement pending states supplied by the owning feature and host.
 
@@ -68,6 +70,8 @@ Nested scroll routing follows `scroll-ownership` and the nested widget's own int
 
 While activation is pending, the retained coherent frame does not accept selection, menu, media, or navigation interaction. Publishing the replacement frame and initial viewport state is one visible transition.
 
+An arrival-streaming record exposes every newly supplied normalized text delta on the next frame that consumes it. The widget does not subdivide, delay, timestamp-replay, or animate that delta character by character; multiple deltas received before one frame may naturally publish together. Exact durable-prefix reconciliation replaces the matching transient suffix without producing duplicate text or a blank intermediate record.
+
 The widget realizes only records and synthetic-context chunks present in the current host-supplied realized-frame snapshot, including its bounded overscan. Rendering, hit testing, measurement, and accessibility construction never walk nonresident history, unreconciled context chunks, or elements outside that frame.
 
 Stable presentation identity and synthetic-context group/chunk identity, not visible index, own measurement, selection, focus, nested-widget state, and menu anchoring across frame changes. A revision change invalidates measurements and facts from earlier revisions.
@@ -85,6 +89,8 @@ Presentation records occupy the available inline size, may contain variable-heig
 A synthetic-context group occupies one semantic position at its host-supplied insertion boundary. Its realized chunks stack inside one visual group with bounded chunk spacing; unrealized chunks retain host-supplied virtual extent. The group has no inner scroll container, so ordinary transcript scrolling carries the complete item through the viewport.
 
 Remeasurement after width, font, theme, content, resource, fallback, or nested-widget changes preserves the active semantic anchor or detached manual position through stable realized identities and current measurements.
+
+Live-tail growth and durable reconciliation retain the same outer record identity. They may change its measured extent, but they do not insert a second row or reset the current semantic anchor solely because the authoritative frontier advanced.
 
 The selection and transient-affordance layers overlay the realized frame without changing record measurement or scroll geometry. Activation-pending dimming likewise does not alter layout.
 

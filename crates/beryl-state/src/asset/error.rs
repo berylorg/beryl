@@ -1,6 +1,8 @@
 use std::{error::Error, fmt};
 
-use beryl_home_store::{MutationBuildError, ReadError, SidecarError};
+use beryl_home_store::{
+    DomainCallbackError, DomainCallbackSource, MutationBuildError, ReadError, SidecarError,
+};
 use beryl_model::{AssetId, DomainRevision};
 
 use crate::{RecordRevision, ValueError};
@@ -27,6 +29,83 @@ impl fmt::Display for AssetValueError {
 }
 
 impl Error for AssetValueError {}
+
+/// Why a bounded exact asset-reference batch description was rejected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AssetReferenceBatchError {
+    Empty,
+    TooMany {
+        maximum: usize,
+        actual: usize,
+    },
+    DuplicateSource(AssetReferenceOwner),
+    DuplicateDestination(AssetReferenceOwner),
+    SourceDestinationOverlap(AssetReferenceOwner),
+    ConflictingRecordRevision {
+        asset_id: AssetId,
+        first: RecordRevision,
+        second: RecordRevision,
+    },
+    RecordRevisionExhausted {
+        asset_id: AssetId,
+    },
+    Value(AssetValueError),
+}
+
+impl fmt::Display for AssetReferenceBatchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("asset-reference batch must not be empty"),
+            Self::TooMany { maximum, actual } => write!(
+                formatter,
+                "asset-reference batch has {actual} entries, exceeding {maximum}"
+            ),
+            Self::DuplicateSource(owner) => {
+                write!(formatter, "asset-reference batch repeats source {owner:?}")
+            }
+            Self::DuplicateDestination(owner) => {
+                write!(
+                    formatter,
+                    "asset-reference batch repeats destination {owner:?}"
+                )
+            }
+            Self::SourceDestinationOverlap(owner) => write!(
+                formatter,
+                "asset-reference batch uses {owner:?} as both source and destination"
+            ),
+            Self::ConflictingRecordRevision {
+                asset_id,
+                first,
+                second,
+            } => write!(
+                formatter,
+                "asset-reference batch has conflicting revisions {} and {} for {asset_id:?}",
+                first.get(),
+                second.get()
+            ),
+            Self::RecordRevisionExhausted { asset_id } => write!(
+                formatter,
+                "asset-reference batch cannot advance exhausted metadata for {asset_id:?}"
+            ),
+            Self::Value(source) => source.fmt(formatter),
+        }
+    }
+}
+
+impl Error for AssetReferenceBatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Value(source) => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl From<AssetValueError> for AssetReferenceBatchError {
+    fn from(source: AssetValueError) -> Self {
+        Self::Value(source)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssetAdmissionError {
@@ -128,6 +207,15 @@ impl fmt::Display for AssetMutationError {
 
 impl Error for AssetMutationError {}
 
+impl DomainCallbackError for AssetMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
+        }
+    }
+}
+
 impl From<ReadError> for AssetMutationError {
     fn from(source: ReadError) -> Self {
         Self::Read(source)
@@ -152,6 +240,38 @@ impl From<ValueError> for AssetMutationError {
     }
 }
 
+/// Why a bounded reference reconciliation read could not publish one coherent status.
+#[derive(Debug)]
+pub enum AssetReferenceStatusError {
+    Read(ReadError),
+    ConcurrentChange,
+}
+
+impl fmt::Display for AssetReferenceStatusError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read(source) => source.fmt(formatter),
+            Self::ConcurrentChange => formatter
+                .write_str("asset references changed concurrently during exact reconciliation"),
+        }
+    }
+}
+
+impl Error for AssetReferenceStatusError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(source) => Some(source),
+            Self::ConcurrentChange => None,
+        }
+    }
+}
+
+impl From<ReadError> for AssetReferenceStatusError {
+    fn from(source: ReadError) -> Self {
+        Self::Read(source)
+    }
+}
+
 #[derive(Debug)]
 pub enum AssetValidationError {
     Read(ReadError),
@@ -170,6 +290,16 @@ impl fmt::Display for AssetValidationError {
 }
 
 impl Error for AssetValidationError {}
+
+impl DomainCallbackError for AssetValidationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            Self::Sidecar(source) => Ok(DomainCallbackSource::Sidecar(source)),
+            source => Err(source),
+        }
+    }
+}
 
 impl From<ReadError> for AssetValidationError {
     fn from(source: ReadError) -> Self {

@@ -6,15 +6,25 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "test-faults")]
+mod corruption;
+
+#[cfg(feature = "test-faults")]
+pub use corruption::{PersistedCorruptionError, PersistedCorruptionStage};
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum FaultPoint {
+    BeforeReadConfirmation,
     BeforeCommit,
     AfterCommitBeforePersist,
     AfterPersist,
     BeforeVerification,
     BeforeReopen,
     AfterReopen,
-    BeforeSidecarDirectorySync,
+    BeforeSidecarRootDirectorySync,
+    BeforeSidecarNamespaceDirectorySync,
+    BeforeSidecarShardDirectorySync,
+    BeforeSidecarFinalDirectorySync,
     BeforeSidecarWrite,
     BeforeSidecarFileSync,
     BeforeSidecarRename,

@@ -287,7 +287,7 @@ mod diagnostic_child_dynamic_tools;
 
 use beryl_backend::{
     DynamicToolCallOutputContentItem, DynamicToolCallRequest, DynamicToolCallResponse,
-    parse_dynamic_tool_call_request,
+    DynamicToolSpec, parse_dynamic_tool_call_request,
 };
 use diagnostic_child_dynamic_tools::{
     BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE, DIAGNOSTIC_CHILD_HARD_STOP_TURN_TOOL,
@@ -688,23 +688,32 @@ fn diagnostic_child_stop_tools_require_and_forward_expected_turn_identity() {
 #[test]
 fn diagnostic_child_limit_schemas_match_their_runtime_caps() {
     let specs = beryl_diagnostic_child_dynamic_tool_specs();
-    let start_schema = specs
+    let [DynamicToolSpec::Namespace(namespace)] = specs.as_slice() else {
+        panic!("diagnostic-child tools must use one canonical namespace");
+    };
+    assert_eq!(namespace.name, BERYL_DIAGNOSTIC_DYNAMIC_TOOL_NAMESPACE);
+    let start_schema = namespace
+        .tools
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_START_TOOL)
         .unwrap();
-    let renderer_schema = specs
+    let renderer_schema = namespace
+        .tools
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_RENDERER_TOOL)
         .unwrap();
-    let frame_metrics_schema = specs
+    let frame_metrics_schema = namespace
+        .tools
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_TRANSCRIPT_FRAME_METRICS_TOOL)
         .unwrap();
-    let settings_window_schema = specs
+    let settings_window_schema = namespace
+        .tools
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_READ_SETTINGS_WINDOW_TOOL)
         .unwrap();
-    let wait_schema = specs
+    let wait_schema = namespace
+        .tools
         .iter()
         .find(|spec| spec.name == DIAGNOSTIC_CHILD_WAIT_FOR_STATE_TOOL)
         .unwrap();

@@ -19,6 +19,7 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - `shell-boundary.md` is the normative supplemental shell-facing host boundary for activation, rendering, scrolling, diagnostics, selection, quote, menus, media actions, and provider demand.
 - `doc/features/transcript/design.md` owns user-visible transcript behavior.
 - `doc/systems/syndic-conversation-history/design.md` owns durable history, canonical items, transcript views, Markdown projections, resources, and replay.
+- `doc/systems/cas-live-syndic-transcript/design.md` owns normalized live-event routing and durable CAS capture; this system consumes only its exact target-scoped presentation facts.
 
 ## System Boundary
 
@@ -39,6 +40,14 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - A missing, stale, or invalid envelope produces one stable unavailable-context group at the descriptor's exact insertion boundary. The host never searches transcript text for a substitute.
 - Beryl-local records such as synthetic context, carets, budget fallbacks, loading affordances, and transient UI state must declare that they are local presentation state rather than Syndic-authored transcript content.
 - Missing data, pending data, stale data, rejected data, and loading state are not transcript content.
+
+## Live Tail
+
+- The exact routed live-turn stream may contribute one bounded transient suffix to the active transcript-visible item while durable CAS capture independently coalesces that same ordered text into Syndic.
+- The suffix is process-local presentation state keyed by exact thread, turn, item, kind, and logical-text frontier. It never becomes canonical history, a recovery source, a second item, or authority for history commands.
+- The transcript host publishes every normalized text delta on the next GUI frame that consumes it. It keeps no paced character-reveal queue and does not replay original timestamps; multiple deltas already pending at one frame boundary may naturally publish together.
+- Resident durable projection and transient suffix form one visible record. As Syndic projection catches up, the host removes only the exact matching prefix from transient ownership; a mismatch, gap, stale identity, or reversed frontier fails closed rather than guessing or duplicating text.
+- The host retains no second whole-item live model. Its transient suffix and pending event channel stay bounded independently of total response size, while already reconciled text belongs only to ordinary resident Syndic projection data.
 
 ## Residency And Demand
 

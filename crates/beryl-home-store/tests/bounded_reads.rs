@@ -1,12 +1,12 @@
 mod support;
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, HomeCommand, PointReadLimit, ReadError,
-    RecordVersion,
+    CommandError, CursorDirection, CursorRange, CursorReadLimits, HomeCommand, HomeHealthState,
+    MutationBuildError, PointReadLimit, ReadError,
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, BytesRecordV2, PutBytes, open_home};
+use support::{AlphaDomain, BytesRecord, BytesRecordV2, FixtureMutationError, PutBytes, open_home};
 
 #[test]
 fn typed_point_and_cursor_reads_return_only_decoded_records() {
@@ -46,6 +46,7 @@ fn typed_point_and_cursor_reads_return_only_decoded_records() {
     assert_eq!(page.records()[1].value(), b"two");
     assert!(page.has_more());
     assert!(page.stored_bytes() <= 128);
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
     let reverse = store
         .read_cursor::<AlphaDomain, BytesRecord<AlphaDomain>>(
@@ -94,10 +95,21 @@ fn point_and_cursor_materialization_obey_explicit_byte_bounds() {
         ),
         Err(ReadError::BoundExceeded { .. })
     ));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(
+        store
+            .read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
+                alpha,
+                &1,
+                PointReadLimit::new(64).unwrap(),
+            )
+            .unwrap(),
+        Some(vec![7; 32])
+    );
 }
 
 #[test]
-fn reversed_cursor_range_and_unsupported_record_version_are_typed() {
+fn reversed_cursor_range_and_non_owning_record_codec_are_typed() {
     let directory = tempdir().unwrap();
     let mut store = open_home(directory.path());
     let alpha = store.register_domain::<AlphaDomain>().unwrap();
@@ -114,6 +126,7 @@ fn reversed_cursor_range_and_unsupported_record_version_are_typed() {
             family: "records"
         })
     ));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
@@ -122,19 +135,20 @@ fn reversed_cursor_range_and_unsupported_record_version_are_typed() {
             PutBytes::<AlphaDomain, BytesRecordV2<AlphaDomain>>::new(1, b"v2".to_vec()),
         ))
         .unwrap();
-    store.execute(command).unwrap();
-
     assert!(matches!(
-        store.read_point::<AlphaDomain, BytesRecord<AlphaDomain>>(
-            alpha,
-            &1,
-            PointReadLimit::new(64).unwrap(),
-        ),
-        Err(ReadError::UnsupportedRecordVersion {
-            supported,
-            found: 2,
-            ..
-        }) if supported == RecordVersion::new(1)
+        store.execute(command),
+        Err(CommandError::ContributorAssembly {
+            domain: "alpha",
+            source,
+        }) if matches!(
+            source.downcast_ref::<FixtureMutationError>(),
+            Some(FixtureMutationError::Build(
+                MutationBuildError::CodecTypeMismatch {
+                    domain: "alpha",
+                    family: "records",
+                }
+            ))
+        )
     ));
 }
 

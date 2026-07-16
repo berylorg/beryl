@@ -62,6 +62,10 @@ When no branch discussion is selected, the slot contributes no persistent empty 
 
 This slot is the pinned panel near the bottom of the conversation body, above the status line. It is for user-authored draft input and draft-adjacent controls for the selected conversation thread.
 
+The ordinary conversation composer and an execution-blocking native-lineage recovery prompt are
+mutually exclusive contents of this slot. Replacing one with the other does not create an overlay,
+modal interaction boundary, second panel row, or different top-level window layout.
+
 #### Slot: main-window.status-line
 
 This slot is the fixed-height strip anchored to the bottom edge of the main conversation window. It is for compact status readouts and selected-thread control affordances that are not transcript content.

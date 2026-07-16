@@ -3,7 +3,8 @@
 #[path = "../src/shell/surface_notice.rs"]
 mod surface_notice;
 
-use beryl_backend::{TurnError, TurnInfo, TurnStatus};
+use beryl_backend::{CompletedTurn, CompletedTurnStatus, TurnError};
+use beryl_model::CasTurnId;
 use surface_notice::{
     MAX_REPORTED_SURFACE_NOTICE_SOURCE_KEYS, SurfaceNotice, SurfaceNoticeQueue,
     SurfaceNoticeSourceKey, backend_turn_error_detail, local_turn_failure_notice,
@@ -90,9 +91,10 @@ fn queue_overflow_keeps_active_notice_and_bounds_queued_notices() {
 fn selected_failed_backend_turn_builds_turn_error_notice() {
     let turn = turn_info(
         "turn_1",
-        TurnStatus::Failed,
+        CompletedTurnStatus::Failed,
         Some(TurnError {
             message: "backend rejected turn".to_string(),
+            codex_error_info: None,
             additional_details: None,
         }),
     );
@@ -155,7 +157,7 @@ fn clear_with_title_removes_matching_active_and_queued_notices() {
 
 #[test]
 fn interrupted_backend_turn_without_error_payload_does_not_build_notice() {
-    let turn = turn_info("turn_1", TurnStatus::Interrupted, None);
+    let turn = turn_info("turn_1", CompletedTurnStatus::Interrupted, None);
 
     assert!(selected_backend_turn_error_notice(Some("thread_1"), "thread_1", &turn).is_none());
 }
@@ -164,12 +166,14 @@ fn interrupted_backend_turn_without_error_payload_does_not_build_notice() {
 fn backend_error_detail_uses_non_empty_additional_details_only() {
     let detail = backend_turn_error_detail(Some(&TurnError {
         message: "primary message".to_string(),
+        codex_error_info: None,
         additional_details: Some("  extra context  ".to_string()),
     }));
     assert_eq!(detail, "primary message\n\nextra context");
 
     let detail = backend_turn_error_detail(Some(&TurnError {
         message: "primary message".to_string(),
+        codex_error_info: None,
         additional_details: Some("   ".to_string()),
     }));
     assert_eq!(detail, "primary message");
@@ -197,12 +201,10 @@ fn turn_error_key(index: usize) -> SurfaceNoticeSourceKey {
     }
 }
 
-fn turn_info(id: &str, status: TurnStatus, error: Option<TurnError>) -> TurnInfo {
-    TurnInfo {
-        id: id.to_string(),
+fn turn_info(id: &str, status: CompletedTurnStatus, error: Option<TurnError>) -> CompletedTurn {
+    CompletedTurn {
+        id: CasTurnId::new(id).unwrap(),
         status,
-        items_view: beryl_backend::TurnItemsView::Full,
-        items: Vec::new(),
         error,
     }
 }

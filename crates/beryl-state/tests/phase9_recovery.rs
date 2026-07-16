@@ -3,8 +3,8 @@ mod support;
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    CommandError, HealthVerificationError, HomeCommand, HomeHealthState, ReadError,
-    SidecarNamespace,
+    CommandError, CommitReceiptError, HealthVerificationError, HomeCommand, HomeHealthState,
+    ReadError, SidecarNamespace,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{AssetId, RuntimeId, SyndicThreadId, WindowId};
@@ -187,6 +187,24 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     assert_eq!(saved_windows[0].window_id(), window_id);
 
     let prior_generation = store.health().generation().unwrap();
+    let theme = prior_state
+        .settings()
+        .setting(&store, SettingKey::ActiveThemeId)
+        .unwrap()
+        .unwrap();
+    let prior_generation_receipt = execute(
+        &store,
+        prior_state.settings().apply(
+            prior_state.settings().revision(&store).unwrap(),
+            ApplySettings::new(vec![SettingUpdate::new(
+                SettingKey::ActiveThemeId,
+                ExpectedSettingRevision::Exact(theme.revision()),
+                SettingValue::active_theme_id("current-generation-receipt").unwrap(),
+            )])
+            .unwrap(),
+        ),
+    )
+    .unwrap();
     let stale_sidecar = store
         .admit_sidecar(
             SidecarNamespace::new("images").unwrap(),
@@ -250,6 +268,17 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     assert_eq!(store.home_id(), home_id);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
     let current_state = BerylState::reacquire(&store).unwrap();
+
+    assert!(matches!(
+        current_state
+            .settings()
+            .committed_revision(&store, &prior_generation_receipt),
+        Err(CommitReceiptError::StaleOrForeign {
+            receipt_generation,
+            current_generation,
+        }) if receipt_generation == prior_generation
+            && current_generation == recovery.generation()
+    ));
 
     assert!(matches!(
         prior_state.settings().revision(&store),

@@ -1,6 +1,6 @@
 # Reason For Investigation
 
-Checkpoint 2 Phase 1 needs a Windows implementation contract for retaining exclusive ownership of a Beryl home, recognizing the same opened home through path aliases, and making bounded sidecar publication durable. The investigation had to identify the exact `windows` crate symbols and features, distinguish lock contention from storage or capability failures, and determine whether the same guarantees can be established for remote/UNC homes.
+Checkpoint 2 Phase 1 needed a Windows implementation contract for retaining exclusive ownership of a Beryl home, recognizing the same opened home through path aliases, and making bounded sidecar publication durable. Phase 13 refreshed that investigation after completion review found that recovery retained no exact `state` object and that several sidecar reuse paths omitted durability repair or followed a final reparse point. The investigation had to identify the exact `windows` crate symbols and features, distinguish lock contention from storage or capability failures, determine whether the same guarantees can be established for remote/UNC homes, and prove the opened-object primitives required by those repairs.
 
 This note is dependency and platform evidence. The controlling product and system decisions remain in `doc/systems/beryl-home-storage/design.md`, `crates/beryl-home-store/doc/design.md`, and `doc/plan.md`.
 
@@ -14,7 +14,7 @@ Generic remote/UNC homes must fail closed. Windows exposes protocol and handle m
 
 The workspace dependency is `windows = "0.61"`; `Cargo.lock` resolves `windows` `0.61.3` with checksum `9babd3a767a4c1aef6900409f85f5d53ce2544ccdfaa86dad48c91782c6d6893`. The relevant generated bindings are in `windows-0.61.3/src/Windows/Win32/Storage/FileSystem/mod.rs`, `Foundation/mod.rs`, and `System/WindowsProgramming/mod.rs`.
 
-The future package that owns this code should declare these Windows features itself:
+`beryl-home-store`, which now owns this code, declares these Windows features itself:
 
 - `Win32_Foundation`
 - `Win32_Storage_FileSystem`
@@ -23,7 +23,7 @@ The future package that owns this code should declare these Windows features its
 
 `Win32_System_IO` gates `LockFileEx` and `UnlockFileEx`. `Win32_System_WindowsProgramming` provides `DRIVE_REMOTE`, `FILE_RENAME_FLAG_REPLACE_IF_EXISTS`, and the `REMOTE_PROTOCOL_INFO_FLAG_*` constants. `Win32_Security` is additionally required only if the implementation calls the generated `CreateFileW` wrapper, whose signature includes `SECURITY_ATTRIBUTES`. Opening through `std::os::windows::fs::OpenOptionsExt` avoids that extra binding feature while still exposing access, share, and custom flag controls.
 
-`cargo tree -e features -i windows@0.61.3` showed `Win32_Storage_FileSystem` and `Win32_System_IO` in the current workspace-wide feature union through other dependencies. That union is not package authority: the future home-store manifest must declare every feature it uses. `Win32_System_WindowsProgramming` was not present in the observed union.
+The package manifest directly declares all four features above. A workspace-wide transitive feature union is not package authority and must not substitute for those declarations.
 
 ## Retained Lock Ownership
 
@@ -49,6 +49,16 @@ Use `GetFinalPathNameByHandleW` only for diagnostics and a resolved display path
 
 This opened-object identity closes path-alias mistakes but does not create Win32 `openat` semantics. Later string-based child opens are not automatically rooted in the retained directory handle. Operations where a rename or reparse race matters must retain the relevant opened handles and recheck their volume or object identity. Denying share-delete on the retained home and lock handles removes the most important root and ownership-file replacement races.
 
+## Retained State And Sidecar Object Authority
+
+Phase 13 applies the same opened-object rule to the physical `state` directory. Open its final component with `OpenOptionsExt`, explicit `FILE_SHARE_READ | FILE_SHARE_WRITE`, and `FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT`. Rust's default Windows share mode includes delete sharing, so it is not sufficient for retained non-replacement ownership. Validate the retained handle itself as a directory whose attributes do not contain `FILE_ATTRIBUTE_REPARSE_POINT`, query its complete `FILE_ID_INFO`, and retain that handle outside the replaceable Fjall generation. Immediately before forced recovery, reopen the final component identically and require the same volume serial and 128-bit file id. This prevents a renamed or copied database directory with the same durable Beryl header from becoming the recovery candidate.
+
+Final sidecar files use the corresponding file contract: explicit `FILE_SHARE_READ`, `FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT`, handle-based ordinary-file validation, and no delete sharing. `FILE_FLAG_OPEN_REPARSE_POINT` protects only the final path component, so each sidecar ancestor directory must also be opened no-follow, validated as an ordinary directory, and retained through publication.
+
+For a successful self-publication, query the flushed temporary file's `FILE_ID_INFO` before closing it. After `MoveFileExW` succeeds, open the final path no-follow and require the same complete object identity before authorizing metadata. This detects an identical-byte replacement during the post-rename race, which digest and length verification alone cannot detect. Existing-file reuse and rename-collision deduplication intentionally have no self-published identity to compare; they instead require an ordinary retained final object with exact content.
+
+Directory creation success is not durable link authority by itself. Every admission must flush the parent of the sidecar root, namespace, and shard even when the child already existed, because an earlier process may have created the child and failed before its parent barrier. Every token-producing path must likewise flush the final containing shard after retaining and validating the exact final file. Repeating these bounded barriers is durability repair, not publication retry: no bytes or metadata are rewritten and no alternative store is consulted.
+
 ## Remote And UNC Admission
 
 Remote detection must inspect the opened handle, not just the supplied path. Query `GetFileInformationByHandleEx(..., FileRemoteProtocolInfo, ...)` into `FILE_REMOTE_PROTOCOL_INFO`, and treat a successful remote protocol result as remote. Final-path and `GetDriveTypeW` information may conservatively corroborate that result. Input-string checks alone miss mapped drives, symlink or junction targets, and extended aliases.
@@ -73,7 +83,7 @@ Publish with `MoveFileExW` using `MOVEFILE_WRITE_THROUGH` and, only when replace
 
 `ReplaceFileW` is not the strict primitive for this path. Its `REPLACEFILE_WRITE_THROUGH` flag is documented as unsupported, and its documented partial-failure errors (`ERROR_UNABLE_TO_REMOVE_REPLACED`, `ERROR_UNABLE_TO_MOVE_REPLACEMENT`, and `ERROR_UNABLE_TO_MOVE_REPLACEMENT_2`) can leave renamed or inherited intermediate state. It also preserves selected attributes of the replaced file, which is not needed for content-addressed sidecars.
 
-If a content-addressed final name already exists, validate its expected length and digest and discard the temporary file when it matches. A mismatch is a conflict or corruption signal; do not blindly replace it.
+If a content-addressed final name already exists, validate its retained ordinary-file object, expected length, and digest. A mismatch is a conflict or corruption signal; do not blindly replace it. Beryl's current no-deletion authority keeps the losing temporary file as an inert orphan rather than discarding it.
 
 The local sequence is therefore:
 
@@ -117,6 +127,7 @@ The generated `CreateFileW` binding was also inspected, but using `OpenOptionsEx
 - Cargo registry source `windows-0.61.3/src/Windows/Win32/Foundation/mod.rs`: `HANDLE` close behavior and Win32 error constants.
 - Cargo registry source `windows-0.61.3/src/Windows/Win32/System/WindowsProgramming/mod.rs`: remote-drive, rename, and remote-protocol flags.
 - Cargo registry source `windows-core-0.61.2/src/handles.rs`, `windows-result-0.3.4/src/error.rs`, and `windows-result-0.3.4/src/hresult.rs`: owning-handle and error-conversion behavior.
+- Rust 1.92.0 standard-library source `library/std/src/sys/fs/windows.rs`: `File::metadata` queries the already-open handle through `GetFileInformationByHandle` / `GetFileInformationByHandleEx`, and `File::sync_all` reaches `FlushFileBuffers`.
 
 Commands run on 2026-07-13:
 
@@ -125,6 +136,12 @@ Commands run on 2026-07-13:
 - `rg -n --glob 'Cargo.toml' --glob '*.rs' '\bwindows\b|Win32_' .`
 - `rg -n` searches for the named functions, types, constants, feature gates, and error symbols in the exact registry sources above.
 - `Get-Content` inspections of the generated bindings and their `windows-core` / `windows-result` support code.
+
+Phase 13 refresh commands run on 2026-07-13:
+
+- `cargo tree -e features -i windows@0.61.3 -p beryl-home-store`
+- `rustc --print sysroot`
+- Focused `rg -n` inspection of `File::metadata`, `File::sync_all`, `FILE_ID_INFO`, `FileIdInfo`, `FILE_FLAG_OPEN_REPARSE_POINT`, file attributes and types, share flags, `MoveFileExW`, and `FlushFileBuffers` in the exact sources above.
 
 No runtime capability probe or power-fault experiment was performed. The result is an API, generated-binding, and protocol-specification investigation; the implementation still needs focused Windows tests for contention, aliases, unsupported filesystems, rename failures, and flush failures.
 

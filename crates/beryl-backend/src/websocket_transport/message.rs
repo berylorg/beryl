@@ -1,6 +1,6 @@
 use soketto::base::OpCode;
 
-use super::{HeaderRead, WebSocketClientTransport};
+use super::{FrameWriteFailure, HeaderRead, WebSocketClientTransport};
 use crate::session::ManagedWebSocketError;
 
 pub(super) struct MessagePayload<'a> {
@@ -123,7 +123,8 @@ impl WebSocketClientTransport {
                 let control = self.read_control_payload(&header)?;
                 match header.opcode() {
                     OpCode::Ping => {
-                        self.write_frame_payload(OpCode::Pong, &control)?;
+                        self.write_frame_payload(OpCode::Pong, &control)
+                            .map_err(FrameWriteFailure::into_error)?;
                         return Ok(PayloadRead::Pong);
                     }
                     OpCode::Pong => return Ok(PayloadRead::Pong),

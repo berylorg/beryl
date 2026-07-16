@@ -3,9 +3,10 @@ mod support;
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainReader, DomainRegistrationError,
-    DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceFamily,
-    KeyspaceSchemaVersion, ReadError, RecordCodec, RecordVersion, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
 };
 use beryl_model::{AdmittedHostPath, PathFlavor};
 use beryl_state::{
@@ -337,10 +338,10 @@ fn settings_cursor_obeys_item_and_byte_bounds() {
     ));
 }
 
-const SETTINGS_FAMILIES: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(1),
-)];
+const SETTINGS_FAMILIES: &[RecordFamily<SettingsV2Probe>] =
+    &[RecordFamily::new::<SettingRecordV2>(
+        KeyspaceSchemaVersion::new(1),
+    )];
 
 struct SettingsV2Probe;
 struct SettingRecordV2;
@@ -348,7 +349,7 @@ struct SettingRecordV2;
 impl StorageDomain for SettingsV2Probe {
     const NAME: &'static str = "beryl-settings";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = SETTINGS_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = SETTINGS_FAMILIES;
     type ValidationError = ProbeError;
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -409,6 +410,12 @@ impl Error for ProbeError {
     }
 }
 
+impl DomainCallbackError for ProbeError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Ok(DomainCallbackSource::Read(self.0))
+    }
+}
+
 #[derive(Debug)]
 struct ProbeCodecError;
 
@@ -441,12 +448,15 @@ fn settings_reopen_rejects_an_unsupported_record_version() {
     ))
     .unwrap();
     let error = probe.register_domain::<SettingsV2Probe>().unwrap_err();
-    let DomainRegistrationError::Validation { source, .. } = error else {
-        panic!("expected validation error, got {error}");
+    let DomainRegistrationError::ValidationAccess {
+        source: DomainCallbackSource::Read(source),
+        ..
+    } = error
+    else {
+        panic!("expected typed validation-access error, got {error}");
     };
-    let probe = source.downcast_ref::<ProbeError>().unwrap();
     assert!(matches!(
-        probe.0,
+        source,
         ReadError::UnsupportedRecordVersion {
             supported,
             found: 1,

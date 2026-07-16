@@ -12,6 +12,12 @@ use super::{
     },
 };
 
+pub(super) mod add_references;
+mod move_references;
+
+pub use add_references::{AddAssetReferences, AssetReferenceAddition};
+pub use move_references::{AssetReferenceMove, MoveAssetReferences};
+
 /// Create metadata and its first durable owner reference.
 pub struct CreateAssetWithReference {
     asset_id: AssetId,
@@ -309,7 +315,7 @@ fn ensure_revision(
     }
 }
 
-fn ensure_asset_bound(asset_id: AssetId) -> Result<(), AssetMutationError> {
+fn ensure_asset_bound(asset_id: AssetId) -> Result<(), super::AssetValueError> {
     let actual = asset_id.length().get();
     if actual <= MAX_ASSET_BYTES {
         Ok(())
@@ -317,8 +323,7 @@ fn ensure_asset_bound(asset_id: AssetId) -> Result<(), AssetMutationError> {
         Err(super::AssetValueError::ByteBoundExceeded {
             maximum: MAX_ASSET_BYTES,
             actual,
-        }
-        .into())
+        })
     }
 }
 

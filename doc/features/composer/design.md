@@ -28,16 +28,29 @@ Provide one reliable durable per-thread composer for ordinary input, active-turn
 - The panel is not manually resizable and does not expose a persistent `Run Turn` or submit button.
 - The input field wraps text at its visible width and does not horizontally scroll. When wrapped content exceeds the panel's maximum height, the field owns vertical scrolling and keeps the caret or active selection endpoint reachable.
 - Backend-unavailable or otherwise submission-disabled states render the composer disabled for submission while preserving draft text, image markers, caret, selection, and undo history.
+- Ordinary CAS warm-up and backend unavailability keep the editor available for drafting. The
+  composer is replaced only by the explicit native-lineage recovery decision defined by the
+  backend-runtime-recovery feature when execution needs that decision; the hidden editor state and
+  durable draft remain intact.
 - A draft containing at least one image marker and no non-whitespace text is non-empty for submission.
 
 ## Durable Current Draft
 
 - Every Syndic thread owns exactly one current durable draft; the composer edits that draft's mutable payload.
+- Draft metadata references one exact sealed content manifest whose ordered content is stored in bounded chunks. Internal record and chunk ceilings do not impose a whole-draft size limit; pasted text sized for million-token or larger model contexts remains durable.
 - The current draft is not transcript narrative and is never sent to CAS before submission.
 - Composer edits update in-memory state immediately and mark the exact draft revision dirty.
 - Dirty-only autosave runs every 30 seconds by default. Settings may tune the required interval from 5 through 300 whole seconds but may not disable autosave.
+- Publishing a committed autosave-interval change rearms the next dirty-draft deadline from that publication time using the new interval; it does not preserve a deadline derived from the superseded setting.
+- A save or same-home reconciliation that started under an older timer generation cannot replace the interval or deadline anchor of a newer committed setting publication.
 - Thread switch, ordinary window close, application Exit, and submission create dirty-draft flush barriers instead of waiting for the timer.
+- Autosave constructs changed content through bounded staged chunk commits and publishes the new sealed manifest reference with the draft revision in one final atomic command. A crash may leave unreachable partial content, but the current draft remains wholly old or wholly new.
+- A flush drains an already-admitted save instead of cancelling it. If that save has an ambiguous post-admission storage outcome, the barrier remains unsatisfied until same-home verification or recovery rereads and reconciles the exact draft identity, revision, and payload.
 - Draft content survives restart, thread switching, CAS failure and retry, ordinary window close/reopen, and application Exit.
+- Native-lineage recovery-prompt entry does not clear, submit, rewrite, or discard the current
+  draft. Leaving the prompt after recovery restores the exact unadmitted editor state, while an
+  already admitted pending input remains owned by its durable Syndic identity.
+- During draft-save failure or reconciliation, the visible editor payload, caret, selection, and undo history remain intact. No save success, thread switch, close, Exit, or submission is published from an ambiguous durable outcome.
 - A replacement-edit draft carries a durable typed target separate from its mutable payload. Restart or thread reactivation restores edit mode against that exact target instead of silently treating the text as an ordinary append.
 - Cancelling replacement edit clears only the typed edit target and keeps the mutable draft payload and editor state.
 - A persistent Beryl-home store failure disables editing because Beryl cannot durably own further draft changes.
@@ -102,8 +115,10 @@ Provide one reliable durable per-thread composer for ordinary input, active-turn
 ## Submission And Queuing
 
 - When a non-empty draft is accepted for submission, it clears immediately and appears in the transcript as one distinct user input fragment.
-- Rejected submissions, including empty drafts, backend-unavailable targets, storage failures, path-preparation failures, or serialization failures, keep the draft intact and report the rejection.
+- Rejected submissions, including empty drafts, backend-unavailable targets, pre-admission storage rejection, path-preparation failure, or serialization failure, keep the draft intact and report the rejection. A post-admission storage failure keeps the visible editor intact but is reconciled against recovered durable state before Beryl classifies the submission as rejected or accepted.
 - Acceptance requires one durable Syndic admission that freezes the exact draft payload into a submitted turn, active-turn input, or queued input and atomically establishes the replacement current draft before the composer clears, transcript projection mutates, delivery state changes, or image-label protected state advances.
+- Admission reuses the sealed draft content reference and records ordered marker-resolution facts separately; it does not copy an arbitrarily large text payload into a submitted-turn, accepted-input, or canonical-item metadata record.
+- For image-bearing input, that same admission resolves every stable marker and final label to its exact durable asset id and atomically transfers its per-marker reference to the submitted item or accepted-input owner. Missing, stale, duplicated, or disagreeing marker references reject before admission and leave the draft intact.
 - When the current draft carries a replacement-edit target, acceptance uses the replacement-edit mutation defined by the conversation-thread feature instead of ordinary append, steering, or queueing.
 - If the current Syndic path has a valid CAS projection binding, an accepted new user turn is delivered through ordinary CAS turn start behavior.
 - If the current Syndic path has a stale or unbound CAS projection binding, accepted execution must first obtain a fresh CAS projection through the CAS-live Syndic system boundary.
@@ -118,8 +133,12 @@ Provide one reliable durable per-thread composer for ordinary input, active-turn
 - During selected-thread context compaction, accepted fragments are rendered immediately and queued for the next backend turn after compaction completes. Beryl must not try to steer a compaction operation.
 - Multiple queued fragments preserve accepted order and remain separate visible user blocks.
 - Pending queue admission is part of submission acceptance. Over-budget pending fragments must be rejected before composer clear, transcript projection, backend delivery queue state, or image-label protected state mutates.
-- User input fragments accepted before or during a stop request remain visible and ordered. If they cannot be delivered to the interrupted turn, they remain queued for the next eligible turn.
-- Accepted fragments are delivered through app-server turn primitives or preserved as pending GUI-held input with explicit failure presentation. Beryl must not mutate backend history locally to pretend delivery succeeded.
+- User input fragments accepted before or during a stop request remain visible and ordered. Work
+  proven not dispatched remains queued for the next eligible turn. A possibly dispatched fragment
+  whose response was lost becomes delivery-unknown durable history and is not queued or replayed.
+- Accepted fragments are delivered through app-server turn primitives or preserved in durable
+  pending, terminal failure, or delivery-unknown state with explicit presentation. Beryl must not
+  mutate backend history locally to pretend delivery succeeded.
 
 ## Composer History
 

@@ -85,8 +85,24 @@ typed_revision!(
     DraftRevision
 );
 typed_revision!(
+    /// Revision of one chunked Syndic content frontier.
+    ContentRevision
+);
+typed_revision!(
     /// Revision of one execution-projection binding.
     BindingRevision
+);
+typed_revision!(
+    /// Revision of one durable accepted-input record.
+    AcceptedInputRevision
+);
+typed_revision!(
+    /// Revision of one thread's durable input-admission gate.
+    InputGateRevision
+);
+typed_revision!(
+    /// Revision of one Syndic transcript or resource projection frontier.
+    ProjectionRevision
 );
 typed_revision!(
     /// Revision of one durable main-window thread claim.

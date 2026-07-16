@@ -1,9 +1,9 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainHandle, DomainRegistrationError,
-    DomainSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion, MutationContribution,
-    PointReadLimit, ReadError, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationContribution, PointReadLimit, ReadError, RecordFamily, StorageDomain,
 };
 
 use crate::{RecordRevision, StatePage};
@@ -21,17 +21,17 @@ pub use mutation::{
 pub use value::{SettingKey, SettingSchemaVersion, SettingValue, SettingValueError};
 
 pub(crate) const SETTINGS_RECORD_LIMIT: usize = 64 * 1024;
-const SETTINGS_FAMILIES: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(1),
-)];
+const SETTINGS_FAMILIES: &[RecordFamily<SettingsDomain>] =
+    &[RecordFamily::new::<SettingRecordCodec>(
+        KeyspaceSchemaVersion::new(1),
+    )];
 
 pub(crate) struct SettingsDomain;
 
 impl StorageDomain for SettingsDomain {
     const NAME: &'static str = "beryl-settings";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = SETTINGS_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = SETTINGS_FAMILIES;
     type ValidationError = SettingsValidationError;
 
     fn validate(
@@ -105,6 +105,15 @@ impl SettingsState {
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
         store.domain_revision(self.handle)
+    }
+
+    /// Returns this domain's revision from a still-current successful command.
+    pub fn committed_revision(
+        &self,
+        store: &HomeStore,
+        receipt: &beryl_home_store::CommitReceipt,
+    ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
+        store.receipt_domain_revision(receipt, self.handle)
     }
 
     pub fn setting(
@@ -181,6 +190,15 @@ impl Error for SettingsValidationError {
         match self {
             Self::Read(source) => Some(source),
             Self::Invariant(_) => None,
+        }
+    }
+}
+
+impl DomainCallbackError for SettingsValidationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
         }
     }
 }

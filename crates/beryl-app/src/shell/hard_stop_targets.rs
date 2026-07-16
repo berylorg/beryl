@@ -4,6 +4,7 @@ use beryl_backend::{
     HardStopCapabilities, HardStopTarget, ThreadStatus, ToolActivityEvent, ToolActivityLifecycle,
     ToolActivitySource, TurnStreamEvent,
 };
+use beryl_model::{CasThreadId, CasTurnId};
 
 use super::status_line::{
     CancellableActiveTurn, CancellableActiveTurnKind, HardStopLimitation,
@@ -55,19 +56,15 @@ impl HardStopTargetProjection {
         let mut limitations = Vec::new();
         push_unique_target(
             &mut targets,
-            HardStopTarget::turn(
-                selected_turn.thread_id.clone(),
-                selected_turn.turn_id.clone(),
-            ),
+            exact_turn_target(&selected_turn.thread_id, &selected_turn.turn_id)?,
         );
 
         let associated_threads = self.associated_thread_ids(&selected_turn);
         for thread_id in associated_threads.iter().skip(1) {
             if let Some(turn_id) = self.active_turn_by_thread.get(thread_id) {
-                push_unique_target(
-                    &mut targets,
-                    HardStopTarget::turn(thread_id.clone(), turn_id.clone()),
-                );
+                if let Some(target) = exact_turn_target(thread_id, turn_id) {
+                    push_unique_target(&mut targets, target);
+                }
             }
         }
 
@@ -91,11 +88,11 @@ impl HardStopTargetProjection {
         }
 
         match event {
-            TurnStreamEvent::TurnStarted { thread_id, turn } => {
-                self.set_active_turn(thread_id, turn.id.as_str())
-            }
+            TurnStreamEvent::TurnStarted {
+                thread_id, turn_id, ..
+            } => self.set_active_turn(thread_id.as_str(), turn_id.as_str()),
             TurnStreamEvent::TurnCompleted { thread_id, turn } => {
-                self.finish_turn(thread_id, &turn.id)
+                self.finish_turn(thread_id.as_str(), turn.id.as_str())
             }
             TurnStreamEvent::ThreadStatusChanged { thread_id, status }
                 if matches!(status, ThreadStatus::Idle) =>
@@ -318,10 +315,9 @@ impl HardStopTargetProjection {
     ) {
         for thread_id in associated_threads {
             if self.capabilities.thread_background_terminals_clean() {
-                push_unique_target(
-                    targets,
-                    HardStopTarget::background_terminals(thread_id.clone()),
-                );
+                if let Ok(thread_id) = CasThreadId::new(thread_id) {
+                    push_unique_target(targets, HardStopTarget::background_terminals(thread_id));
+                }
             } else {
                 limitations.push(HardStopLimitation::BackgroundTerminalCleanupUnsupported {
                     thread_id: thread_id.clone(),
@@ -375,6 +371,13 @@ fn push_unique_target(targets: &mut Vec<HardStopTarget>, target: HardStopTarget)
     if !targets.contains(&target) {
         targets.push(target);
     }
+}
+
+fn exact_turn_target(thread_id: &str, turn_id: &str) -> Option<HardStopTarget> {
+    Some(HardStopTarget::turn(
+        CasThreadId::new(thread_id).ok()?,
+        CasTurnId::new(turn_id).ok()?,
+    ))
 }
 
 fn non_empty(value: &str) -> Option<&str> {

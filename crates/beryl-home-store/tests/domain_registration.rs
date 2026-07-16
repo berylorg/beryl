@@ -1,8 +1,9 @@
 mod support;
 
 use beryl_home_store::{
-    CommandError, DomainDefinitionError, DomainRegistrationError, HomeCommand, HomeOpenError,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, HomeUnreadableStage, KeyspaceSchemaVersion,
+    DomainDefinitionError, DomainRegistrationError, DomainValidationError, HomeCommand,
+    HomeOpenError, HomeOpenOptions, HomeSchemaVersion, HomeStore, HomeUnreadableStage,
+    KeyspaceSchemaVersion,
 };
 use fjall::{Config, Database, KeyspaceCreateOptions, PersistMode};
 use tempfile::tempdir;
@@ -180,9 +181,10 @@ fn existing_domain_validator_runs_before_registration_is_published() {
             PutBytes::<ValidatedDomain>::new(2, b"later".to_vec()),
         ))
         .unwrap();
+    store.execute(rejected).unwrap();
     assert!(matches!(
-        store.execute(rejected),
-        Err(CommandError::DomainValidation {
+        store.validate_registered_domains(),
+        Err(DomainValidationError::Rejected {
             domain: "validated",
             ..
         })

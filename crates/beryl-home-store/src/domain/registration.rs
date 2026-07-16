@@ -1,70 +1,10 @@
-use std::{collections::HashSet, error::Error};
+use std::error::Error;
 
-use beryl_model::DomainRevision;
 use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode, Readable};
 
 use super::reopen::validate_registry;
 use super::*;
-use crate::{DomainReader, HomeStore, health::FailureSeverity, store::StoreGeneration};
-
-impl DomainBlueprint {
-    fn for_domain<D: StorageDomain>() -> Result<Self, DomainDefinitionError> {
-        validate_component("domain", D::NAME)?;
-        if D::KEYSPACES.is_empty() {
-            return Err(DomainDefinitionError::NoKeyspaces { domain: D::NAME });
-        }
-
-        let mut seen = HashSet::new();
-        let mut families = Vec::with_capacity(D::KEYSPACES.len());
-        for family in D::KEYSPACES {
-            validate_component("keyspace family", family.name)?;
-            if !seen.insert(family.name) {
-                return Err(DomainDefinitionError::DuplicateKeyspace {
-                    domain: D::NAME,
-                    family: family.name,
-                });
-            }
-            families.push(FamilyBlueprint {
-                logical_name: family.name,
-                physical_name: physical_name(D::NAME, family.name),
-                schema: family.schema,
-            });
-        }
-        families.sort_by(|left, right| left.logical_name.cmp(right.logical_name));
-
-        Ok(Self {
-            name: D::NAME,
-            schema: D::SCHEMA_VERSION,
-            families,
-            validator: validate_typed::<D>,
-            reopen_validator: validate_reopen_typed::<D>,
-        })
-    }
-
-    fn initial_metadata(&self) -> DomainMetadata {
-        self.metadata(DomainRevision::new(1).expect("one is a valid initial revision"))
-    }
-}
-
-fn validate_component(kind: &'static str, name: &str) -> Result<(), DomainDefinitionError> {
-    let valid = !name.is_empty()
-        && name.len() <= MAX_COMPONENT_BYTES
-        && name.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_-".contains(&byte)
-        });
-    if valid {
-        Ok(())
-    } else {
-        Err(DomainDefinitionError::InvalidName {
-            kind,
-            name: name.to_owned(),
-        })
-    }
-}
-
-fn physical_name(domain: &str, family: &str) -> String {
-    format!("d.{domain}.{family}")
-}
+use crate::{HomeStore, health::FailureSeverity, store::StoreGeneration};
 
 impl HomeStore {
     /// Registers or reacquires one typed logical domain before process services start.
@@ -77,13 +17,6 @@ impl HomeStore {
     ) -> Result<DomainHandle<D>, DomainRegistrationError> {
         let definition = DomainBlueprint::for_domain::<D>()?;
         let sidecars = crate::SidecarVerifier::new(self);
-        let _writer = match self.writer.lock() {
-            Ok(writer) => writer,
-            Err(_) => {
-                self.health.signal_failure(FailureSeverity::Structural);
-                return Err(DomainRegistrationError::RegistryPoisoned);
-            }
-        };
         let admission = self.health.admit()?;
         let mut registrations = match self.registrations.lock() {
             Ok(registrations) => registrations,
@@ -128,41 +61,26 @@ impl HomeStore {
 
     /// Runs every registered authoritative-domain validator on one snapshot.
     pub fn validate_registered_domains(&self) -> Result<(), DomainValidationError> {
-        let admission = self
-            .health
-            .admit()
-            .map_err(|source| DomainValidationError {
-                domain: "_beryl_home",
-                source: Box::new(source),
-            })?;
+        let admission = self.health.admit()?;
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {
                 admission.fail(FailureSeverity::Structural);
-                return Err(DomainValidationError {
-                    domain: "_beryl_home",
-                    source: Box::new(std::io::Error::other("home generation lock is poisoned")),
-                });
+                return Err(DomainValidationError::GenerationPoisoned);
             }
         };
         let generation = match generation.as_ref() {
             Some(generation) => generation,
             None => {
                 admission.fail(FailureSeverity::Structural);
-                return Err(DomainValidationError {
-                    domain: "_beryl_home",
-                    source: Box::new(std::io::Error::other("healthy home generation is missing")),
-                });
+                return Err(DomainValidationError::GenerationPoisoned);
             }
         };
         let result = validate_registry(generation);
-        if result.is_err() {
-            admission.fail(FailureSeverity::Structural);
-        } else if let Err(source) = admission.confirm() {
-            return Err(DomainValidationError {
-                domain: "_beryl_home",
-                source: Box::new(source),
-            });
+        if let Err(error) = &result {
+            admission.fail(validation_failure_severity(error));
+        } else {
+            admission.confirm()?;
         }
         result
     }
@@ -187,13 +105,17 @@ impl HomeStore {
         let slot = generation
             .registry
             .slot_for(D::NAME)
-            .filter(|slot| {
-                generation
-                    .registry
-                    .get(*slot)
-                    .is_some_and(|domain| domain.schema == D::SCHEMA_VERSION)
-            })
             .ok_or(DomainHandleError::NotRegistered { domain: D::NAME })?;
+        let domain = generation
+            .registry
+            .get(slot)
+            .ok_or(DomainHandleError::NotRegistered { domain: D::NAME })?;
+        if domain.owner != DomainOwnerId::of::<D>() {
+            return Err(DomainHandleError::OwnerTypeMismatch { domain: D::NAME });
+        }
+        if domain.schema != D::SCHEMA_VERSION {
+            return Err(DomainHandleError::NotRegistered { domain: D::NAME });
+        }
         let handle = DomainHandle::new(generation.instance_id, slot);
         admission.confirm()?;
         Ok(handle)
@@ -205,11 +127,14 @@ impl StoreGeneration {
         &self,
         handle: DomainHandle<D>,
     ) -> Option<&RegisteredDomain> {
-        if handle.store != self.instance_id {
+        if handle.store != self.instance_id || handle.owner != DomainOwnerId::of::<D>() {
             return None;
         }
         let domain = self.registry.get(handle.slot)?;
-        (domain.name == D::NAME && domain.schema == D::SCHEMA_VERSION).then_some(domain)
+        (domain.name == D::NAME
+            && domain.schema == D::SCHEMA_VERSION
+            && domain.owner == handle.owner)
+            .then_some(domain)
     }
 }
 
@@ -218,7 +143,16 @@ fn register_definition<D: StorageDomain>(
     definition: &DomainBlueprint,
     sidecars: &crate::SidecarVerifier<'_>,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
-    if generation.registry.contains_name(definition.name) {
+    if let Some(slot) = generation.registry.slot_for(definition.name) {
+        let registered = generation
+            .registry
+            .get(slot)
+            .expect("a registered domain name always resolves to its slot");
+        if registered.owner != definition.owner {
+            return Err(DomainRegistrationError::OwnerTypeMismatch {
+                domain: definition.name,
+            });
+        }
         return Err(DomainRegistrationError::DuplicateDomain {
             domain: definition.name,
         });
@@ -260,9 +194,19 @@ fn register_definition<D: StorageDomain>(
         let snapshot = generation.database.snapshot();
         registered
             .validate_reopen(&snapshot, sidecars)
-            .map_err(|source| DomainRegistrationError::Validation {
-                domain: D::NAME,
-                source,
+            .map_err(|source| match source {
+                callback::ErasedCallbackError::Access(source) => {
+                    DomainRegistrationError::ValidationAccess {
+                        domain: D::NAME,
+                        source,
+                    }
+                }
+                callback::ErasedCallbackError::Rejected(source) => {
+                    DomainRegistrationError::Validation {
+                        domain: D::NAME,
+                        source,
+                    }
+                }
             })?;
     } else {
         persist_new_registration::<D>(generation, definition)?;
@@ -290,7 +234,7 @@ fn open_existing_families<D: StorageDomain>(
             })?;
         families.push(registered_family(family, keyspace));
     }
-    Ok(registered_domain::<D>(definition, families))
+    Ok(registered_domain(definition, families))
 }
 
 fn create_new_families<D: StorageDomain>(
@@ -315,7 +259,7 @@ fn create_new_families<D: StorageDomain>(
             })?;
         families.push(registered_family(family, keyspace));
     }
-    Ok(registered_domain::<D>(definition, families))
+    Ok(registered_domain(definition, families))
 }
 
 fn persist_new_registration<D: StorageDomain>(
@@ -351,11 +295,15 @@ pub(super) fn registered_family(
         logical_name: definition.logical_name,
         physical_name: definition.physical_name.clone(),
         schema: definition.schema,
+        codec_type: definition.codec_type,
+        max_key_bytes: definition.max_key_bytes,
+        max_stored_value_bytes: definition.max_stored_value_bytes,
+        validate_envelope: definition.validate_envelope,
         keyspace,
     }
 }
 
-fn registered_domain<D: StorageDomain>(
+fn registered_domain(
     definition: &DomainBlueprint,
     families: Vec<RegisteredFamily>,
 ) -> RegisteredDomain {
@@ -367,28 +315,12 @@ fn registered_domain<D: StorageDomain>(
     RegisteredDomain {
         name: definition.name,
         schema: definition.schema,
+        owner: definition.owner,
         families,
         family_slots,
-        validator: validate_typed::<D>,
-        reopen_validator: validate_reopen_typed::<D>,
+        validator: definition.validator,
+        reopen_validator: definition.reopen_validator,
     }
-}
-
-fn validate_typed<D: StorageDomain>(
-    snapshot: &fjall::Snapshot,
-    domain: &RegisteredDomain,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    D::validate(&DomainReader::new(snapshot, domain))
-        .map_err(|source| Box::new(source) as Box<dyn Error + Send + Sync>)
-}
-
-fn validate_reopen_typed<D: StorageDomain>(
-    snapshot: &fjall::Snapshot,
-    domain: &RegisteredDomain,
-    sidecars: &crate::SidecarVerifier<'_>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    D::validate_reopen(&DomainReader::new(snapshot, domain), sidecars)
-        .map_err(|source| Box::new(source) as Box<dyn Error + Send + Sync>)
 }
 
 fn validate_persisted(
@@ -459,10 +391,13 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
     match error {
         DomainRegistrationError::InvalidDefinition(_)
         | DomainRegistrationError::DuplicateDomain { .. }
+        | DomainRegistrationError::OwnerTypeMismatch { .. }
         | DomainRegistrationError::HealthGate(_) => None,
-        DomainRegistrationError::Storage { .. } | DomainRegistrationError::RegistryPoisoned => {
-            Some(FailureSeverity::Verify)
+        DomainRegistrationError::Storage { .. } => Some(FailureSeverity::Verify),
+        DomainRegistrationError::ValidationAccess { source, .. } => {
+            Some(callback::callback_failure_severity(source))
         }
+        DomainRegistrationError::RegistryPoisoned => Some(FailureSeverity::Structural),
         DomainRegistrationError::UnexpectedKeyspace { .. }
         | DomainRegistrationError::MissingKeyspace { .. }
         | DomainRegistrationError::UnsupportedDomainSchema { .. }
@@ -470,5 +405,14 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
         | DomainRegistrationError::IncompatibleKeyspaces { .. }
         | DomainRegistrationError::InvalidMetadata { .. }
         | DomainRegistrationError::Validation { .. } => Some(FailureSeverity::Structural),
+    }
+}
+
+fn validation_failure_severity(error: &DomainValidationError) -> FailureSeverity {
+    match error {
+        DomainValidationError::Access { source, .. } => callback::callback_failure_severity(source),
+        DomainValidationError::HealthGate(_)
+        | DomainValidationError::GenerationPoisoned
+        | DomainValidationError::Rejected { .. } => FailureSeverity::Structural,
     }
 }

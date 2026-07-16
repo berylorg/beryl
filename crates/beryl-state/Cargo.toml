@@ -5,6 +5,9 @@ license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[features]
+test-faults = []
+
 [dependencies]
 beryl-home-store.workspace = true
 beryl-model.workspace = true

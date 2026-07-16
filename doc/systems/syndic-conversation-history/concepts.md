@@ -22,7 +22,7 @@ When a turn has more than one child, that is a branch point. Each child represen
 
 The graph shape is closer to source-control history than to a flat chat log. The stable object is the turn graph; user-visible threads are views over that graph.
 
-Provider events update turn-owned items, status, metadata, resources, and projections. They do not create, remove, or restore graph parent edges unless an explicit Syndic graph operation authorizes that topology change.
+Source-event admission may update turn-owned canonical items and lifecycle only before proven-terminal publication. Bounded finalization and projection work may later consume only events that were already admitted. Neither path creates, removes, or restores graph parent edges or rewrites finalized history. An explicit Syndic graph operation may add a new turn with a new immutable parent edge, but no operation changes an existing turn's parent.
 
 # Threads
 
@@ -42,15 +42,30 @@ A branch-discussion thread additionally owns the stable parent Syndic thread id 
 
 Every Syndic thread owns exactly one current draft.
 
-A current draft is durable mutable pre-submission state with a stable id and revision. It owns composer-authored payload plus immutable parentage and an optional immutable typed context envelope.
+A current draft is durable mutable pre-submission state with a stable id and revision. Its small metadata record references a sealed content manifest whose bounded ordered chunks retain exact composer-authored atoms, plus immutable parentage and an optional immutable typed context envelope. An image atom retains its stable marker identity and final label ordinal while the image-asset system resolves that marker to durable bytes.
 
 Ordinary drafts have no branch context. A branch-discussion first draft has the selected source turn as its immutable parent and owns exact selected-text provenance without becoming canonical transcript narrative or starting an execution provider. Beryl may derive one presentation-only synthetic context group at that branch boundary.
 
-Draft autosave may change only composer-authored payload and mutable draft timestamps. Parentage, thread ownership, and context/provenance fields never change after draft creation.
+`DiscussionContextRange` is a half-open range in absolute canonical logical UTF-8 byte coordinates within the source item, not a projection-local range. It must lie within one finalized source projection, and admission and reopen resolve its exact bytes through bounded logical-range reads over the canonical content indexes.
 
-An idle-thread submission transitions the same draft identity into a submitted turn, advances the thread's committed tail, and creates its replacement current draft atomically.
+Draft autosave may change only the sealed content reference and mutable draft timestamps. Parentage, thread ownership, and context/provenance fields never change after draft creation. Chunk construction is staged and unreachable until one atomic manifest-and-draft publication, so interrupted autosave never exposes a partial payload.
 
-Input accepted while another turn is active or context compaction is running is frozen from the current draft into a durable ordered input fragment or pending-input record owned by that execution lifecycle, then replaced by a new current draft. It does not create a competing active turn.
+An idle-thread submission resolves every marker to its exact durable asset identity, transitions the same draft identity into a submitted turn, creates the typed canonical user-input item, advances the thread's committed tail, and creates its replacement current draft atomically.
+
+That transition preserves the exact 128-bit identity payload while changing its typed identity from draft to submitted turn. It does not allocate an unrelated turn identity.
+
+Input accepted while another turn is active or context compaction is running is frozen from the current draft into one durable ordered accepted-input record with exact resolved marker facts, then replaced by a new current draft. Steering, pending, and next-turn queue states retain the same accepted-input identity and marker ownership; queueing does not manufacture another queued-input identity or a competing active turn.
+
+Accepted-input order is permanent thread history. Separately, one revisioned per-thread input gate owns the accepted-order high-water mark and bounded live steering and next-turn accounting. Only nonterminal delivery work appears in live-route indexes; terminal accepted inputs remain in history without consuming live capacity.
+
+A delivery-unknown accepted input is terminal accepted-input history: Beryl knows one provider
+request may have been dispatched but cannot prove whether the provider accepted it. It leaves every
+live route, retains its sealed content and accepted order, and is never delivered again
+automatically.
+Its provenance also proves that the exact historical CAS thread was retired through a stale binding;
+delivery-unknown may not coexist with usable authority for that projection.
+
+An input admitted for steering retains the exact binding revision, execution snapshot, Syndic turn, CAS thread, and known-or-explicitly-unknown CAS turn observed at the gate revision. Stop, compaction, CAS-turn publication, or steering rejection may reclassify that same accepted-input identity through a revision-checked mutation, never by inferring a target or appending another history entry.
 
 # Turn Items
 
@@ -66,13 +81,25 @@ Items should be metadata-rich enough to render the transcript and reconstruct ag
 
 Large outputs are represented as references.
 
+# Source Event Capture
+
+Live provider traffic is normalized into one monotonic per-turn event sequence rather than retained as an unbounded protocol object.
+
+The current canonical subset is turn activation, text-item start, bounded coalesced text delta, text-item completion, and turn-ending outcome. Assistant text starts with the provider phase when known, retains `unknown` when absent, and may refine `unknown` only from later non-conflicting completion metadata. Operational text remains canonical but is not parent transcript narrative.
+
+Every externally sourced item event retains the exact CAS thread, turn, and item identity. Each canonical item separately indexes the exact source-event subsequence that built it, allowing reopen to reconstruct and validate the item without buffering a whole response or scanning unrelated turn events.
+
+Exact replay at an occupied turn sequence means the event was already admitted. Different data at that sequence is an identity collision, and a gap is an ordering conflict. A proven-terminal event closes the source sequence permanently.
+
+A turn state retains the admitted event count, complete item count, and contiguous finalized-item count. If a terminal turn ends with an open item, finalization may freeze that already captured content and advance the frontier, but it cannot append bytes or manufacture a missing provider event.
+
 # Canonical Messages
 
-Syndic should preserve the original provider message exactly as received.
+Syndic should preserve the original provider message exactly as received through bounded ordered canonical content chunks referenced by the item's metadata record.
 
 This canonical message is the source of truth for rare recovery, replay, export, debugging, and projection rebuilds.
 
-The canonical message does not have to live in the hot read path. It can be stored in a rarely used backing store as long as it is durable and recoverable.
+The canonical message does not have to live in the hot read path. Its manifest and chunks can remain cold as long as they are durable, range-readable, and recoverable. Per-record chunk limits never become a whole-message limit.
 
 Normal Beryl rendering should use Syndic's parsed and indexed projection instead of loading the whole canonical message.
 
@@ -98,6 +125,41 @@ Inline Markdown projection uses deterministic storage thresholds:
 - One turn-item page carries at most 65,536 UTF-8 bytes of inline Markdown source. Additional large structures are represented through ordered resources rather than enlarging the page.
 
 These are storage and paging thresholds, not visible truncation limits. Exact source remains available through the owning projection or resource.
+
+Projection format V1 recognizes GFM block structure through a bounded streaming state machine.
+It retains source line endings and byte ranges exactly. A logical line ends at LF, treats CRLF as
+one ending, and counts a final nonempty unterminated segment as one line. Bare CR remains source
+text rather than an implicit line ending.
+
+Each canonical content reference snapshots both logical UTF-8 bytes and ordered render pieces.
+That distinction matters because an image marker is a real ordered piece with zero logical byte
+width. Projection reaches end-of-input only after both frontiers, so marker-only and trailing-marker
+input remains visible and later live appends cannot enter an older projection snapshot.
+
+Paragraph and fallback span splitting chooses the greatest valid UTF-8 boundary at or below 8,192
+bytes. Every span retains one shared block-group identity and its exact ordinal and source range,
+so splitting never manufactures separate Markdown paragraphs. No split requires grapheme or word
+boundary discovery.
+
+Fenced code recognition accepts the GFM backtick and tilde fence forms. The resource payload is
+the exact code body, excluding the opening and closing fence lines; language metadata derives from
+the bounded opening info string. An unfinished fence remains an open projection group while live
+and is closed deterministically at proven terminal input without inventing a closing fence.
+
+Table recognition uses the bounded GFM header-and-delimiter form. Escaped pipes and code spans are
+handled while counting columns. If a candidate header, delimiter, row, or other construct exceeds
+the parser's bounded decision window before it can be classified safely, it becomes exact
+source-preserving fallback spans instead of forcing whole-block materialization.
+
+Projection and resource identities use a domain-separated SHA-256 derivation over the projection
+format version, owning item identity, source block start, and output ordinal, truncated to the
+stable 128-bit Syndic identity payload. Their revisions likewise derive from immutable record
+facts and exclude item-projection generation. Immutable closed-prefix membership is itself
+generation-independent. A live generation owns only its provisional end-of-input membership
+suffix, set, optional resumable build state, and head selection. Later source revisions resume from
+the stable parser checkpoint and reuse exact closed-prefix projection and resource records without
+replaying source from byte zero. A stored collision with different facts is corruption or mutation
+rejection; it is never resolved by choosing another identity nondeterministically.
 
 # Lazy Markdown Widgets
 
@@ -214,7 +276,7 @@ The canonical graph must be sufficient to reconstruct the context for a new agen
 
 That does not mean every UI projection must load the full graph or every heavy item byte.
 
-Syndic can maintain separate projections for fast UI reads, search, activity, and media browsing, as long as they can be rebuilt or invalidated from the canonical turn graph and reference metadata.
+Syndic can maintain separate projections for fast UI reads, search, activity, and media browsing. Ephemeral or unfinished derived projections may be rebuilt or invalidated from the canonical turn graph and reference metadata; a current item projection under a proven-terminal turn is finalized durable history and cannot be rewritten in place. A named thread's transcript-view index remains rebuildable as its selected path changes, but it only reorders or selects those frozen historical projections.
 
 Markdown block projections are one such derived projection.
 
@@ -227,6 +289,10 @@ Editing a prior user input never changes an existing submitted turn or its paren
 For replacement editing, Syndic creates a replacement turn from the edited turn's parent and atomically moves only the selected thread's committed tail and current-draft binding to the replacement path.
 
 The original target and descendants remain immutable durable Syndic turns. They may remain reachable through another thread or become unreachable from every named thread.
+
+Canonical closure work may finish one of those retained descendants after the replacement. The
+closure changes only that descendant's canonical item and projection frontier. It does not make
+the old branch selected again and does not invalidate the replacement thread's transcript.
 
 Syndic does not physically delete unreachable turns, items, resources, or projections. The database may grow with unreachable records until a later garbage-collection design is approved.
 

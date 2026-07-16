@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use beryl_backend::{TurnError, TurnInfo, TurnStatus};
+use beryl_backend::{CompletedTurn, CompletedTurnStatus, TurnError};
 
 const MAX_SURFACE_NOTICES: usize = 8;
 pub(super) const MAX_REPORTED_SURFACE_NOTICE_SOURCE_KEYS: usize = MAX_SURFACE_NOTICES * 8;
@@ -171,9 +171,9 @@ pub(super) fn backend_turn_error_detail(error: Option<&TurnError>) -> String {
 pub(super) fn selected_backend_turn_error_notice(
     selected_thread_id: Option<&str>,
     event_thread_id: &str,
-    turn: &TurnInfo,
+    turn: &CompletedTurn,
 ) -> Option<SurfaceNotice> {
-    if selected_thread_id != Some(event_thread_id) || turn.status != TurnStatus::Failed {
+    if selected_thread_id != Some(event_thread_id) || turn.status != CompletedTurnStatus::Failed {
         return None;
     }
 
@@ -181,7 +181,7 @@ pub(super) fn selected_backend_turn_error_notice(
         backend_turn_error_detail(turn.error.as_ref()),
         SurfaceNoticeSourceKey::TurnError {
             thread_id: event_thread_id.to_string(),
-            turn_id: turn.id.clone(),
+            turn_id: turn.id.as_str().to_owned(),
         },
     ))
 }

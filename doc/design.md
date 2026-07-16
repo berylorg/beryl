@@ -76,11 +76,11 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 - This Beryl version targets exactly `codex-cli 0.144.1` / Codex App Server 0.144.1.
 - Beryl carries no runtime branches for older schemas or speculative future schemas.
-- Compatibility validation parses the app-server version from the initialize response user-agent product token and probes every required method and field.
+- Compatibility validation parses the app-server version from the initialize response user-agent product token, requires exact 0.144.1, and probes every required method and field through non-destructive typed requests.
 - The target requires exact CAS-native continuation and fork primitives for the ordinary path, plus stable `thread/inject_items` for one-time recovery when exact CAS lineage cannot be reused.
 - Recovered Syndic history is never a normal per-turn payload. Beryl injects it only into a fresh CAS thread whose native lineage is missing, stale, unavailable, or unprovable, and never repeats that injected prefix on later `turn/start` or `turn/steer` requests.
 - The proven branch-selection channel injects one bounded provenance-framed assistant/output-text item carrying the exact accepted selected passage once before the first branch-local user turn. It does not use `additionalContext`, developer instructions, ordinary user input, or a CAS-private wrapper convention.
-- Generated-schema and dependency evidence for these boundaries is recorded under `doc/memory/topic/codex-app-server/`; compatibility admission additionally requires focused live proof for every load-bearing behavior.
+- Generated-schema, source, and focused live evidence for these boundaries is recorded under `doc/memory/topic/codex-app-server/`. Runtime admission combines that pinned-release semantic proof with the exact initialize version and typed non-destructive capability probes; it never creates a synthetic model turn solely to repeat compatibility proof.
 - An incompatible configured app-server disables affected backend work instead of falling back to another schema.
 - Upgrading the target replaces this single invariant and refreshes its memory evidence, feature/system contracts, normalized package boundary, and tests together.
 - CAS thread lists, thread names, full-history `thread/read`, `thread/turns/list`, and item-history reads are not Beryl catalog, title, restore, or captured-history inputs.
@@ -115,6 +115,7 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - Beryl does not store Codex authentication, Codex configuration, skills, MCP state, capability tokens, or backend-owned policy state.
 - One OS process owns a home at a time; multiple main windows share that process and store.
 - Correctness-sensitive accepted mutations complete the durability barrier defined by the Beryl-home storage system before they are reported saved.
+- Large Syndic text is logical durable state assembled from bounded records. A Fjall value ceiling or internal chunk threshold is never a whole-draft, whole-user-input, or whole-canonical-item product limit.
 - Old workspace-era persisted state is not read, imported, dual-written, or adapted by the target architecture.
 - Derived catalog, transcript-presentation, search, media, activity, and diagnostic projections are not authoritative when their source records can rebuild them.
 
@@ -126,6 +127,7 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - Selected-thread content and its initial viewport publish in one transaction and are not corrected by later render callbacks.
 - Complete catalog metadata may reside in memory as exact compact domain state, while GUI row construction remains fixed-height and virtualized.
 - Every externally variable runtime cache, queue, projection, history, retry set, diagnostic buffer, media store, and dependency-facing handle has deterministic count and byte bounds unless it is exact durable domain state.
+- Operations over large exact durable content use bounded pages and bounded staged commits; they do not require one unbounded record, command, or background-worker message.
 - Background work is bounded, cancellable, and lower priority than foreground turn streaming and selected transcript activation.
 - Implementation favors predictable latency and explicit rejection over unbounded retention or hidden fallback work.
 

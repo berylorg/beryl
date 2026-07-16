@@ -18,6 +18,12 @@ Image references configure the editable-atom variant of the project-local `image
 
 During selected-thread activation, the feature keeps the prior coherent composer and draft authoritative until it can publish the target draft with the target transcript. It configures the retained widget as activation-pending without merging early text into the unseen target draft.
 
+When the backend-runtime-recovery feature mounts its `native lineage recovery prompt` into the same
+slot, the ordinary composer is not visible or interactive. The composer feature retains its exact
+editor model, caret, selection, undo history, inner scroll position, and draft binding without
+adding recovery controls to the canonical `conversation composer` widget. Successful recovery
+restores that retained composer when no already-admitted turn owns the input.
+
 ## Composer Marker Menu And Image Preview
 
 Mount-into: main-window.overlays

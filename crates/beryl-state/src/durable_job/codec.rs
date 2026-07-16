@@ -156,6 +156,15 @@ impl RecordCodec<DurableJobDomain> for RequestIdempotencyIndexCodec {
         Ok(key)
     }
 
+    fn validate_stored_key(key: &Self::Key) -> Result<(), Self::Error> {
+        match key {
+            RequestIndexKey::Value(_) => Ok(()),
+            RequestIndexKey::Lower | RequestIndexKey::Upper => {
+                Err(invalid("request-idempotency cursor bound is not storable"))
+            }
+        }
+    }
+
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
         let mut encoder = Encoder::new();
         encoder.fixed(value.job_id.as_bytes());

@@ -7,17 +7,19 @@ use thiserror::Error;
 use crate::{
     CursorDirection, CursorPage, CursorRange, CursorReadLimits, CursorRecord, DomainHandle,
     PointReadLimit, RecordCodec, RecordVersion, StorageDomain,
-    domain::RegisteredDomain,
+    codec::RECORD_VERSION_BYTES,
+    domain::{RegisteredDomain, RegisteredFamily},
+    fault::FaultPoint,
     health::FailureSeverity,
     metadata::{DomainMetadata, decode_home_revision},
     store::{HomeStore, StoreGeneration},
 };
 
-const RECORD_VERSION_BYTES: usize = 4;
-
 mod execute;
 
-pub(crate) use execute::{encode_key, encode_value};
+pub(crate) use execute::{
+    encode_stored_key, encode_value, validate_record_envelope, validate_stored_key_size,
+};
 use execute::{read_cursor, read_point};
 
 /// Codec operation that rejected a typed value or stored record.
@@ -50,6 +52,14 @@ pub enum ReadStage {
     CursorValueSize,
     /// Read one bounded cursor value.
     CursorValue,
+    /// Read one key during exhaustive physical-family validation.
+    PhysicalKey,
+    /// Determine one value size during exhaustive physical-family validation.
+    PhysicalValueSize,
+    /// Read one value during exhaustive physical-family validation.
+    PhysicalValue,
+    /// Confirm one successful read against its admitted healthy generation.
+    Confirmation,
 }
 
 /// Why a typed point or cursor read could not complete.
@@ -79,6 +89,15 @@ pub enum ReadError {
         family: &'static str,
     },
 
+    /// The family is owned by a different exact Rust codec type.
+    #[error("record codec does not own family `{family}` in domain `{domain}`")]
+    CodecTypeMismatch {
+        /// Stable typed domain name.
+        domain: &'static str,
+        /// Logical family registered to another codec type.
+        family: &'static str,
+    },
+
     /// A codec declared unusable bounds.
     #[error("record codec for `{domain}`/`{family}` has an invalid static bound")]
     InvalidCodecContract {
@@ -88,7 +107,7 @@ pub enum ReadError {
         family: &'static str,
     },
 
-    /// The typed codec produced an empty or oversized key.
+    /// Encoding a caller-supplied typed key produced an empty or oversized key.
     #[error(
         "encoded key for `{domain}`/`{family}` has {actual} bytes; accepted range is 1..={maximum}"
     )]
@@ -103,6 +122,21 @@ pub enum ReadError {
         actual: usize,
     },
 
+    /// A physical stored key is empty or exceeds its registered codec envelope.
+    #[error(
+        "stored key for `{domain}`/`{family}` has {actual} bytes; accepted range is 1..={maximum}"
+    )]
+    InvalidStoredKeySize {
+        /// Stable typed domain name.
+        domain: &'static str,
+        /// Logical family name.
+        family: &'static str,
+        /// Registered codec-owned maximum.
+        maximum: usize,
+        /// Physical stored-key size.
+        actual: usize,
+    },
+
     /// The finite cursor endpoints are reversed after typed encoding.
     #[error("encoded cursor range for `{domain}`/`{family}` is reversed")]
     ReversedRange {
@@ -112,8 +146,10 @@ pub enum ReadError {
         family: &'static str,
     },
 
-    /// One stored value exceeds either the codec or caller byte bound.
-    #[error("stored value for `{domain}`/`{family}` has {actual} bytes, exceeding limit {maximum}")]
+    /// Caller-originated encoded bytes exceed an explicit materialization or codec bound.
+    #[error(
+        "encoded bytes for `{domain}`/`{family}` have {actual} bytes, exceeding limit {maximum}"
+    )]
     BoundExceeded {
         /// Stable typed domain name.
         domain: &'static str,
@@ -121,7 +157,22 @@ pub enum ReadError {
         family: &'static str,
         /// Effective byte bound.
         maximum: usize,
-        /// Stored byte size.
+        /// Encoded byte size.
+        actual: usize,
+    },
+
+    /// A physical stored value exceeds its registered codec envelope.
+    #[error(
+        "stored value for `{domain}`/`{family}` has {actual} bytes, exceeding codec envelope {maximum}"
+    )]
+    InvalidStoredValueSize {
+        /// Stable typed domain name.
+        domain: &'static str,
+        /// Logical family name.
+        family: &'static str,
+        /// Registered maximum including the store-owned version prefix.
+        maximum: usize,
+        /// Physical stored-value size.
         actual: usize,
     },
 
@@ -188,7 +239,7 @@ pub enum ReadError {
 pub struct DomainReader<'a, D: StorageDomain> {
     snapshot: &'a Snapshot,
     domain: &'a RegisteredDomain,
-    _typed: std::marker::PhantomData<fn() -> D>,
+    _typed: std::marker::PhantomData<fn(D) -> D>,
 }
 
 impl<'a, D: StorageDomain> DomainReader<'a, D> {
@@ -312,6 +363,10 @@ impl HomeStore {
             }
             return result;
         }
+        if let Err(source) = self.faults.check(FaultPoint::BeforeReadConfirmation) {
+            admission.fail(FailureSeverity::Verify);
+            return Err(storage(ReadStage::Confirmation, source));
+        }
         admission.confirm()?;
         result
     }
@@ -368,12 +423,15 @@ fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
         ReadError::HealthGate(_)
         | ReadError::ForeignDomain { .. }
         | ReadError::UnknownFamily { .. }
+        | ReadError::CodecTypeMismatch { .. }
         | ReadError::InvalidCodecContract { .. }
         | ReadError::InvalidKeySize { .. }
         | ReadError::ReversedRange { .. }
         | ReadError::BoundExceeded { .. } => None,
         ReadError::Storage { .. } => Some(FailureSeverity::Verify),
         ReadError::GenerationPoisoned
+        | ReadError::InvalidStoredKeySize { .. }
+        | ReadError::InvalidStoredValueSize { .. }
         | ReadError::UnsupportedRecordVersion { .. }
         | ReadError::MalformedRecord { .. }
         | ReadError::InvalidRevisionMetadata { .. } => Some(FailureSeverity::Structural),

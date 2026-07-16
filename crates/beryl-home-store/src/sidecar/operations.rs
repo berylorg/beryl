@@ -1,9 +1,4 @@
-use std::{
-    fs::File,
-    io,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{io::Write, path::Path};
 
 use sha2::{Digest, Sha256};
 
@@ -101,20 +96,24 @@ impl HomeStore {
         store: StoreInstanceId,
         generation: HomeGeneration,
     ) -> Result<AdmittedSidecar, SidecarError> {
-        let directory = self.ensure_sidecar_directories(address)?;
-        let final_path = final_path(&directory, address);
-        if final_path.exists() {
-            let file = self.open_and_verify(&final_path, address, Some(bytes))?;
-            return Ok(AdmittedSidecar {
-                address: address.clone(),
-                path: final_path,
-                _file: file,
-                store,
-                generation,
-            });
+        let directories =
+            retain_sidecar_directories(self.canonical_path(), address, &self.faults, true, true)?;
+        let final_path = final_path(directories.shard_path(), address);
+        match open_and_verify_final(&self.faults, &directories, address, Some(bytes), None, true) {
+            Ok(file) => {
+                return Ok(AdmittedSidecar {
+                    address: address.clone(),
+                    path: final_path,
+                    _file: file,
+                    store,
+                    generation,
+                });
+            }
+            Err(SidecarError::Missing) => {}
+            Err(source) => return Err(source),
         }
 
-        let temporary = temporary_path(&directory)?;
+        let temporary = temporary_path(directories.shard_path())?;
         self.faults
             .check(FaultPoint::BeforeSidecarWrite)
             .map_err(|source| storage(SidecarStage::WriteTemporary, source))?;
@@ -127,10 +126,20 @@ impl HomeStore {
             .map_err(|source| storage(SidecarStage::FlushTemporary, source))?;
         file.sync_all()
             .map_err(|source| storage(SidecarStage::FlushTemporary, source))?;
+        let published_identity = platform::file_identity(&file)
+            .map_err(|source| storage(SidecarStage::RenameFinal, source))?;
         drop(file);
 
-        self.publish_or_reuse(&temporary, &final_path, address, bytes)?;
-        let file = self.open_and_verify(&final_path, address, Some(bytes))?;
+        let expected_identity =
+            self.publish_or_reuse(&temporary, &final_path, published_identity)?;
+        let file = open_and_verify_final(
+            &self.faults,
+            &directories,
+            address,
+            Some(bytes),
+            expected_identity,
+            true,
+        )?;
         Ok(AdmittedSidecar {
             address: address.clone(),
             path: final_path,
@@ -145,8 +154,10 @@ impl HomeStore {
         address: &SidecarAddress,
         generation: HomeGeneration,
     ) -> Result<VerifiedSidecar, SidecarError> {
-        let path = final_path(&sidecar_shard(self.canonical_path(), address), address);
-        let file = self.open_and_verify(&path, address, None)?;
+        let directories =
+            retain_sidecar_directories(self.canonical_path(), address, &self.faults, false, true)?;
+        let path = final_path(directories.shard_path(), address);
+        let file = open_and_verify_final(&self.faults, &directories, address, None, None, true)?;
         Ok(VerifiedSidecar {
             address: address.clone(),
             path,
@@ -155,62 +166,24 @@ impl HomeStore {
         })
     }
 
-    fn ensure_sidecar_directories(
-        &self,
-        address: &SidecarAddress,
-    ) -> Result<PathBuf, SidecarError> {
-        let home = self.canonical_path();
-        let root = home.join(SIDECAR_DIRECTORY);
-        ensure_directory(self, home, &root)?;
-        let namespace = root.join(address.namespace.as_str());
-        ensure_directory(self, &root, &namespace)?;
-        let shard = namespace.join(digest_hex(address.digest).get(..2).expect("digest hex"));
-        ensure_directory(self, &namespace, &shard)?;
-        Ok(shard)
-    }
-
     fn publish_or_reuse(
         &self,
         temporary: &Path,
         final_path: &Path,
-        address: &SidecarAddress,
-        bytes: &[u8],
-    ) -> Result<(), SidecarError> {
+        published_identity: platform::FileIdentity,
+    ) -> Result<Option<platform::FileIdentity>, SidecarError> {
         self.faults
             .check(FaultPoint::BeforeSidecarRename)
             .map_err(|source| storage(SidecarStage::RenameFinal, source))?;
         match platform::rename_durable(temporary, final_path) {
-            Ok(()) => {
+            Ok(platform::RenameOutcome::Published) => {
                 self.faults
                     .check(FaultPoint::AfterSidecarRename)
                     .map_err(|source| storage(SidecarStage::RenameFinal, source))?;
-                flush_directory(self, final_path.parent().expect("sidecar has parent"))
+                Ok(Some(published_identity))
             }
-            Err(_rename_error) if final_path.exists() => {
-                self.open_and_verify(final_path, address, Some(bytes))?;
-                Ok(())
-            }
+            Ok(platform::RenameOutcome::Collision) => Ok(None),
             Err(source) => Err(storage(SidecarStage::RenameFinal, source)),
         }
-    }
-
-    fn open_and_verify(
-        &self,
-        path: &Path,
-        address: &SidecarAddress,
-        expected_bytes: Option<&[u8]>,
-    ) -> Result<File, SidecarError> {
-        self.faults
-            .check(FaultPoint::BeforeSidecarVerification)
-            .map_err(|source| storage(SidecarStage::OpenFinal, source))?;
-        let mut file = platform::open_retained(path).map_err(|source| {
-            if source.kind() == io::ErrorKind::NotFound {
-                SidecarError::Missing
-            } else {
-                storage(SidecarStage::OpenFinal, source)
-            }
-        })?;
-        verify_file(&mut file, address, expected_bytes)?;
-        Ok(file)
     }
 }

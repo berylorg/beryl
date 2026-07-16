@@ -18,13 +18,19 @@ Allow many drafts and turns to share exact bytes without making a thread directo
 - Asset identity is a versioned SHA-256 content digest plus byte length; metadata also stores media type, dimensions when validated, creation revision, and sidecar state.
 - A digest collision with different bytes or length is a hard invariant failure. Beryl never overwrites one final sidecar with different content.
 - Asset ids are opaque at feature boundaries even when their storage representation contains a digest.
-- Typed references identify their owner kind and id: current draft marker, accepted input, submitted turn item, queued input, retry record, transcript projection, or transient clipboard token.
+- Every durable marker has one stable marker id and one final per-thread label ordinal before it enters a draft. Syndic retains that marker identity and label in exact input order.
+- Typed references identify one exact owner: current draft plus marker, accepted input plus marker,
+  submitted turn item plus marker, provider-generated turn item, retry record plus marker when a
+  distinct retry snapshot owns bytes, transcript projection, or transient clipboard token.
+- Queueing, steering, retryable delivery, and terminal delivery-unknown states of one accepted input do not create new asset owners. Its accepted-input marker reference survives those disposition and lifecycle changes unchanged.
+- One accepted input or submitted turn item may own many image references because marker identity is part of the reference key. Repeating one marker occurrence retains one marker identity and one asset identity rather than relying on owner-kind cardinality.
 - Reference mutations participate in the same home-store commit as the owning durable record.
 
 ## Physical Byte Storage
 
 - One Beryl home owns one content-addressed image sidecar namespace shared by every thread and reference in that home.
-- Original image bytes are ordinary digest-addressed sidecar files under the Beryl home. They are never stored as Fjall values or blob payloads.
+- Original and provider-generated image bytes are ordinary digest-addressed sidecar files under the
+  Beryl home. They are never stored as Fjall values or blob payloads.
 - Fjall stores typed asset metadata, durable references, and sidecar admission and availability state; those records point to the authoritative sidecar files.
 
 ## Sidecar Admission
@@ -38,8 +44,50 @@ Allow many drafts and turns to share exact bytes without making a thread directo
 ## Reference And Label Evidence
 
 - Beryl asset records prove byte identity and reference ownership; Syndic input records prove per-thread historical label use.
+- Draft-to-turn and draft-to-accepted-input admission resolves every marker to its exact asset id and moves all affected per-marker references in the same home-store command that consumes the draft. The admitted Syndic payload and asset-reference moves must agree exactly in marker identity, label, asset identity, count, and order before admission.
+- Starting replacement edit verifies every target marker against its existing submitted-turn-item reference, retains that historical reference, and adds a separate current-draft-marker reference in the same home-store command that copies the immutable Syndic payload. The historical owner is never moved merely because its turn is being replaced.
 - Label caches contain only acceleration facts and a validated Syndic frontier. Cache eviction makes label-affecting operations wait for bounded Syndic validation again.
 - Asset deduplication never causes label reuse across threads and never merges two distinct draft marker identities.
+
+## Generated Output Admission
+
+- Standalone CAS image generation crosses Beryl's ingress boundary through `savedPath`, not through
+  the protocol item's base64 `result`. The bounded incoming JSON decoder discards `result` before
+  constructing a retained JSON value, normalized backend item, app event, Syndic frame, diagnostic
+  payload, or log record. Beryl never decodes, persists, retries from, or falls back to that base64
+  field.
+- CAS currently still transmits that base64 on the wire alongside `savedPath`; ingress exclusion is
+  a containment boundary for the pinned protocol, not a desired media-transfer design. If a future
+  compatible CAS contract can emit the filesystem path without the base64 field, Beryl should use
+  that path-only contract and remove the now-unnecessary exclusion without changing Syndic or asset
+  authority.
+- The containment boundary pins official CAS 0.144.1's proven discriminant-first serialization and
+  streams JSON directly from bounded WebSocket payload chunks. Reordered or ambiguous target input
+  fails closed; it does not authorize whole-field buffering, external spooling, base64 decoding, or
+  a second media handoff path.
+- A CAS runtime path, hosted URL, protocol item, or CAS historical record is never durable generated
+  media authority. Syndic preserves the exact completed provider item lifecycle immediately, while
+  its generated-media resource carries a separate pending-asset disposition. Canonical resource
+  finalization and history completeness remain behind until Beryl has read the exact produced bytes
+  through the owning runtime boundary and admitted them into the Beryl-home sidecar store.
+- The normalized standalone item and its Syndic provider frame retain exact item identity,
+  lifecycle timestamps, status, optional revised prompt, `savedPath`, and CAS runtime, process,
+  thread, turn, item, and loaded-session provenance. They deliberately contain no `result` field.
+  A successful output with no nonempty `savedPath` has no supported byte handoff and becomes a typed
+  missing generated-media resource; it never re-admits the discarded base64 payload.
+- Admission retains the exact CAS thread, turn, item, runtime, process, and loaded-session provenance
+  while it reads and validates the output away from GPUI. Host output is read from its exact path;
+  WSL output is streamed from the exact selected distribution into host-side admission without
+  treating a WSL cache or project root as durable state.
+- Sidecar bytes are prepared and made durable first. One typed home-store command then publishes the
+  asset metadata/reference, resolves the generated-media resource disposition, and advances only
+  canonical resource-finalization and history-complete frontiers. It never rewrites the completed
+  provider item lifecycle or terminal status. A partial, missing, changed, oversized, unsupported,
+  or unreadable output keeps the resource pending or unavailable and never publishes a path-only
+  transcript asset.
+- The CAS 0.144.1 admitted producer is the standalone `image_gen.imagegen` extension. Native hosted
+  Responses image generation is outside that pinned producer contract; parser tolerance alone does
+  not create a generated-output admission source.
 
 ## Host Runtime Projection
 

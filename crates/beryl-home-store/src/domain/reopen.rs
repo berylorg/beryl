@@ -55,10 +55,7 @@ pub(crate) fn validate_registry(generation: &StoreGeneration) -> Result<(), Doma
     for domain in generation.registry.iter() {
         domain
             .validate(&snapshot)
-            .map_err(|source| DomainValidationError {
-                domain: domain.name,
-                source,
-            })?;
+            .map_err(|source| super::validation::public_validation_error(domain.name, source))?;
     }
     Ok(())
 }
@@ -71,10 +68,7 @@ pub(crate) fn validate_reopen_registry(
     for domain in generation.registry.iter() {
         domain
             .validate_reopen(&snapshot, sidecars)
-            .map_err(|source| DomainValidationError {
-                domain: domain.name,
-                source,
-            })?;
+            .map_err(|source| super::validation::public_validation_error(domain.name, source))?;
     }
     Ok(())
 }
@@ -109,6 +103,7 @@ fn reacquire_families(
     Ok(RegisteredDomain {
         name: blueprint.name,
         schema: blueprint.schema,
+        owner: blueprint.owner,
         families,
         family_slots,
         validator: blueprint.validator,

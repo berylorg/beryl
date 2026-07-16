@@ -4,8 +4,8 @@ use fjall::{PersistMode, Readable};
 use thiserror::Error;
 
 use crate::{
-    DomainRegistrationError, HomeGeneration, HomeHealthSnapshot, HomeHealthState, HomeOpenError,
-    HomeStore,
+    DomainRegistrationError, DomainValidationError, HomeGeneration, HomeHealthSnapshot,
+    HomeHealthState, HomeOpenError, HomeStore,
     domain::reopen::{reacquire_registry, validate_reopen_registry},
     fault::FaultPoint,
     health::HealthMaintenanceError,
@@ -47,6 +47,9 @@ pub enum HealthVerificationError {
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
+    /// One registered domain rejected exhaustive authoritative validation.
+    #[error(transparent)]
+    DomainValidation(#[from] DomainValidationError),
 }
 
 /// Why exact same-home forced recovery did not publish a new generation.
@@ -83,6 +86,16 @@ pub enum HomeRecoveryError {
     /// A registered typed domain could not be reacquired or validated.
     #[error(transparent)]
     Domain(#[from] DomainRegistrationError),
+    /// The reopened home header or registered domain metadata is invalid.
+    #[error("reopened home rejected authoritative control state: {source}")]
+    Validation {
+        /// Bounded structural source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+    /// One reopened domain rejected exhaustive authoritative validation.
+    #[error(transparent)]
+    DomainValidation(#[from] DomainValidationError),
     /// The reopened database failed its final persistence barrier.
     #[error("reopened home persistence barrier failed: {source}")]
     Persistence {
@@ -156,10 +169,11 @@ impl HomeStore {
     }
 
     fn verify_current_generation(&self) -> Result<HomeGeneration, HealthVerificationError> {
-        let _writer = self
-            .writer
-            .lock()
-            .map_err(|_| HealthVerificationError::LockPoisoned)?;
+        drop(
+            self.writer
+                .lock()
+                .map_err(|_| HealthVerificationError::LockPoisoned)?,
+        );
         self.faults
             .check(FaultPoint::BeforeVerification)
             .map_err(|source| HealthVerificationError::Persistence {
@@ -178,8 +192,9 @@ impl HomeStore {
             .map_err(|source| HealthVerificationError::Persistence {
                 source: Box::new(source),
             })?;
-        validate_generation(generation, self)
+        validate_generation_control(generation, self)
             .map_err(|source| HealthVerificationError::Validation { source })?;
+        validate_reopen_registry(generation, &crate::SidecarVerifier::new(self))?;
         self.health
             .snapshot()
             .generation()
@@ -187,10 +202,11 @@ impl HomeStore {
     }
 
     fn recover_same_home_inner(&self) -> Result<RecoveryReceipt, HomeRecoveryError> {
-        let _writer = self
-            .writer
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        drop(
+            self.writer
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        );
         let current = self
             .health
             .snapshot()
@@ -215,6 +231,10 @@ impl HomeStore {
             .map_err(|source| HomeRecoveryError::Layout {
                 source: Box::new(source),
             })?;
+        self.require_same_state_directory()
+            .map_err(|source| HomeRecoveryError::Layout {
+                source: Box::new(source),
+            })?;
         require_existing_layout(self.database_path())?;
         let layout = HomeLayout::at(self.canonical_path());
         let opened = open_existing_database(self.configured_path(), &layout)?;
@@ -228,12 +248,9 @@ impl HomeStore {
             instance_id: next_store_instance(),
         };
         reacquire_registry(&mut generation, &registrations)?;
-        validate_generation(&generation, self).map_err(|source| {
-            HomeRecoveryError::Domain(DomainRegistrationError::Validation {
-                domain: "_beryl_home",
-                source,
-            })
-        })?;
+        validate_generation_control(&generation, self)
+            .map_err(|source| HomeRecoveryError::Validation { source })?;
+        validate_reopen_registry(&generation, &crate::SidecarVerifier::new(self))?;
         generation
             .database
             .persist(PersistMode::SyncAll)
@@ -253,7 +270,7 @@ impl HomeStore {
     }
 }
 
-fn validate_generation(
+fn validate_generation_control(
     generation: &StoreGeneration,
     store: &HomeStore,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -287,8 +304,6 @@ fn validate_generation(
             )));
         }
     }
-    drop(snapshot);
-    validate_reopen_registry(generation, &crate::SidecarVerifier::new(store))?;
     Ok(())
 }
 

@@ -288,7 +288,9 @@ fn min_owner() -> AssetReferenceOwner {
 }
 
 fn max_owner() -> AssetReferenceOwner {
-    AssetReferenceOwner::TranscriptProjection(SyndicProjectionId::from_bytes([u8::MAX; 16]))
+    AssetReferenceOwner::TranscriptProjection {
+        projection_id: SyndicProjectionId::from_bytes([u8::MAX; 16]),
+    }
 }
 
 fn limits() -> CursorReadLimits {

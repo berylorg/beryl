@@ -1,11 +1,15 @@
 use std::num::NonZeroU64;
 
 use beryl_home_store::{
-    HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit, SidecarNamespace,
+    DomainCallbackSource, DomainRegistrationError, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, SidecarByteLimit, SidecarError, SidecarNamespace,
 };
-use beryl_model::{AssetId, SyndicAcceptedInputId};
+use beryl_model::{AssetId, SyndicAcceptedInputId, SyndicDraftMarkerId};
 
 use super::*;
+
+mod batches;
+mod codec;
 
 fn open(path: &std::path::Path) -> HomeStore {
     HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT)).unwrap()
@@ -16,7 +20,10 @@ fn sidecar_limit() -> SidecarByteLimit {
 }
 
 fn owner(byte: u8) -> AssetReferenceOwner {
-    AssetReferenceOwner::AcceptedInput(SyndicAcceptedInputId::from_bytes([byte; 16]))
+    AssetReferenceOwner::AcceptedInputMarker {
+        input_id: SyndicAcceptedInputId::from_bytes([byte; 16]),
+        marker_id: SyndicDraftMarkerId::from_bytes([byte.wrapping_add(128); 16]),
+    }
 }
 
 #[test]
@@ -223,7 +230,10 @@ fn missing_referenced_sidecar_rejects_domain_reopen() {
     let mut reopened = open(directory.path());
     assert!(matches!(
         AssetState::register(&mut reopened),
-        Err(beryl_home_store::DomainRegistrationError::Validation { .. })
+        Err(DomainRegistrationError::ValidationAccess {
+            source: DomainCallbackSource::Sidecar(SidecarError::Missing),
+            ..
+        })
     ));
 }
 

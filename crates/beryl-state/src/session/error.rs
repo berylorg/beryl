@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-use beryl_home_store::{MutationBuildError, ReadError};
+use beryl_home_store::{DomainCallbackError, DomainCallbackSource, MutationBuildError, ReadError};
 use beryl_model::{RevisionError, SessionRevision, SyndicThreadId, WindowId};
 
 use crate::{RecordRevision, ValueError};
@@ -213,6 +213,15 @@ impl Error for SessionMutationError {
     }
 }
 
+impl DomainCallbackError for SessionMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
+        }
+    }
+}
+
 impl From<ReadError> for SessionMutationError {
     fn from(source: ReadError) -> Self {
         Self::Read(source)
@@ -257,6 +266,15 @@ impl Error for SessionValidationError {
         match self {
             Self::Read(source) => Some(source),
             Self::Invariant(_) => None,
+        }
+    }
+}
+
+impl DomainCallbackError for SessionValidationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
         }
     }
 }

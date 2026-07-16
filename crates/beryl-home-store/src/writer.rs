@@ -3,9 +3,10 @@ use std::{cell::RefCell, sync::MutexGuard};
 use fjall::PersistMode;
 
 use crate::{
-    CommandError, CommitReceipt, HomeCommand, RevisionConflict,
+    CommandError, CommitReceipt, ContributorCallbackStage, CurrentDomainCommand, HomeCommand,
+    MutationContribution, RevisionConflict,
     command::{PendingAction, PendingMutation},
-    domain::{RegisteredDomain, StoreInstanceId},
+    domain::{RegisteredDomain, StoreInstanceId, callback::ErasedCallbackError},
     fault::FaultPoint,
     health::FailureSeverity,
     metadata::{HOME_REVISION_KEY, encode_home_revision},
@@ -17,7 +18,7 @@ thread_local! {
     static ACTIVE_WRITERS: RefCell<Vec<StoreInstanceId>> = const { RefCell::new(Vec::new()) };
 }
 
-struct ActiveWriter {
+pub(crate) struct ActiveWriter {
     store: StoreInstanceId,
 }
 
@@ -34,11 +35,11 @@ impl Drop for FailClosedOnWriterPanic<'_> {
 }
 
 impl ActiveWriter {
-    fn already_active(store: StoreInstanceId) -> bool {
+    pub(crate) fn already_active(store: StoreInstanceId) -> bool {
         ACTIVE_WRITERS.with(|active| active.borrow().contains(&store))
     }
 
-    fn enter(store: StoreInstanceId) -> Self {
+    pub(crate) fn enter(store: StoreInstanceId) -> Self {
         ACTIVE_WRITERS.with(|active| active.borrow_mut().push(store));
         Self { store }
     }
@@ -67,13 +68,42 @@ impl HomeStore {
     /// validation, assembly, batch commit, and `SyncAll` complete as one
     /// synchronous result so a caller cannot abandon an indeterminate success.
     pub fn execute(&self, command: HomeCommand) -> Result<CommitReceipt, CommandError> {
-        if command.cancellation.is_cancelled() {
+        let cancellation = command.cancellation.clone();
+        self.execute_serialized(cancellation, |generation, health_generation| {
+            self.execute_admitted(generation, health_generation, command)
+        })
+    }
+
+    /// Executes one typed single-domain mutation after capturing its physical revisions under
+    /// serialized writer admission.
+    ///
+    /// The mutation remains responsible for exact logical record-revision validation. This method
+    /// removes only conflicts caused by unrelated commits between caller preparation and writer
+    /// admission; it never retries a rejected mutation.
+    pub fn execute_current(
+        &self,
+        command: CurrentDomainCommand,
+    ) -> Result<CommitReceipt, CommandError> {
+        let cancellation = command.cancellation.clone();
+        self.execute_serialized(cancellation, |generation, health_generation| {
+            self.execute_current_admitted(generation, health_generation, command)
+        })
+    }
+
+    fn execute_serialized(
+        &self,
+        cancellation: crate::CommandCancellation,
+        operation: impl FnOnce(
+            &StoreGeneration,
+            crate::HomeGeneration,
+        ) -> Result<CommitReceipt, CommandError>,
+    ) -> Result<CommitReceipt, CommandError> {
+        if cancellation.is_cancelled() {
             return Err(CommandError::CancelledBeforeAdmission);
         }
         if ActiveWriter::already_active(self.writer_id) {
             return Err(CommandError::ReentrantWriter);
         }
-
         let _writer = match self.acquire_writer() {
             Ok(writer) => writer,
             Err(error) => {
@@ -81,7 +111,7 @@ impl HomeStore {
                 return Err(error);
             }
         };
-        if command.cancellation.is_cancelled() {
+        if cancellation.is_cancelled() {
             return Err(CommandError::CancelledBeforeAdmission);
         }
         let _active = ActiveWriter::enter(self.writer_id);
@@ -90,9 +120,6 @@ impl HomeStore {
             health: &self.health,
         };
 
-        if command.contributions.is_empty() {
-            return Err(CommandError::EmptyCommand);
-        }
         let generation = match self.generation.read() {
             Ok(generation) => generation,
             Err(_) => {
@@ -107,7 +134,7 @@ impl HomeStore {
                 return Err(CommandError::GenerationPoisoned);
             }
         };
-        let result = self.execute_admitted(generation, admission.generation(), command);
+        let result = operation(generation, admission.generation());
         if let Err(error) = &result {
             if let Some(severity) = command_failure_severity(error) {
                 admission.fail(severity);
@@ -116,6 +143,51 @@ impl HomeStore {
         }
         admission.confirm()?;
         result
+    }
+
+    fn execute_current_admitted(
+        &self,
+        generation: &StoreGeneration,
+        health_generation: crate::HomeGeneration,
+        command: CurrentDomainCommand,
+    ) -> Result<CommitReceipt, CommandError> {
+        let CurrentDomainCommand { plan, cancellation } = command;
+        if plan.store != generation.instance_id {
+            return Err(CommandError::ForeignDomain {
+                domain: plan.domain,
+            });
+        }
+        let domain = generation
+            .registry
+            .get(plan.slot)
+            .filter(|domain| domain.name == plan.domain && domain.owner == plan.owner)
+            .ok_or(CommandError::ForeignDomain {
+                domain: plan.domain,
+            })?;
+        let snapshot = generation.database.snapshot();
+        let current_home = read_home_revision(&snapshot, generation.header_keyspace())
+            .map_err(|source| CommandError::RevisionRead { source })?;
+        let metadata = read_domain_metadata(&snapshot, generation.domains_keyspace(), plan.domain)
+            .map_err(|source| CommandError::RevisionRead { source })?;
+        if metadata != domain.metadata(metadata.revision) {
+            return Err(CommandError::DomainRegistrationInvariant {
+                domain: plan.domain,
+            });
+        }
+        drop(snapshot);
+        self.execute_admitted(
+            generation,
+            health_generation,
+            HomeCommand {
+                expected_home_revision: current_home,
+                cancellation,
+                contributions: vec![MutationContribution {
+                    plan,
+                    expected_revision: metadata.revision,
+                }],
+                sidecars: Vec::new(),
+            },
+        )
     }
 
     fn acquire_writer(&self) -> Result<MutexGuard<'_, ()>, CommandError> {
@@ -128,6 +200,9 @@ impl HomeStore {
         health_generation: crate::HomeGeneration,
         command: HomeCommand,
     ) -> Result<CommitReceipt, CommandError> {
+        if command.contributions.is_empty() {
+            return Err(CommandError::EmptyCommand);
+        }
         if command.sidecars.iter().any(|sidecar| {
             sidecar.store != generation.instance_id || sidecar.generation != health_generation
         }) {
@@ -147,32 +222,35 @@ impl HomeStore {
         }
 
         for contribution in &command.contributions {
-            if contribution.store != generation.instance_id {
+            if contribution.plan.store != generation.instance_id {
                 return Err(CommandError::ForeignDomain {
-                    domain: contribution.domain,
+                    domain: contribution.plan.domain,
                 });
             }
             let domain = generation
                 .registry
-                .get(contribution.slot)
-                .filter(|domain| domain.name == contribution.domain)
+                .get(contribution.plan.slot)
+                .filter(|domain| {
+                    domain.name == contribution.plan.domain
+                        && domain.owner == contribution.plan.owner
+                })
                 .ok_or(CommandError::ForeignDomain {
-                    domain: contribution.domain,
+                    domain: contribution.plan.domain,
                 })?;
             let metadata = read_domain_metadata(
                 &snapshot,
                 generation.domains_keyspace(),
-                contribution.domain,
+                contribution.plan.domain,
             )
             .map_err(|source| CommandError::RevisionRead { source })?;
             if metadata != domain.metadata(metadata.revision) {
                 return Err(CommandError::DomainRegistrationInvariant {
-                    domain: contribution.domain,
+                    domain: contribution.plan.domain,
                 });
             }
             if metadata.revision != contribution.expected_revision {
                 conflicts.push(RevisionConflict::Domain {
-                    domain: contribution.domain,
+                    domain: contribution.plan.domain,
                     expected: contribution.expected_revision,
                     current: metadata.revision,
                 });
@@ -194,44 +272,47 @@ impl HomeStore {
         }
 
         for participant in &prepared {
-            participant.domain.validate(&snapshot).map_err(|source| {
-                CommandError::DomainValidation {
-                    domain: participant.contribution.domain,
-                    source,
-                }
-            })?;
             participant
                 .contribution
+                .plan
                 .mutation
                 .validate(&snapshot, participant.domain)
-                .map_err(|source| CommandError::ContributorValidation {
-                    domain: participant.contribution.domain,
-                    source,
+                .map_err(|source| {
+                    callback_command_error(
+                        participant.contribution.plan.domain,
+                        ContributorCallbackStage::Validation,
+                        source,
+                    )
                 })?;
         }
         for participant in &mut prepared {
             participant.pending = participant
                 .contribution
+                .plan
                 .mutation
                 .assemble(&snapshot, participant.domain)
-                .map_err(|source| CommandError::ContributorAssembly {
-                    domain: participant.contribution.domain,
-                    source,
+                .map_err(|source| {
+                    callback_command_error(
+                        participant.contribution.plan.domain,
+                        ContributorCallbackStage::Contribution,
+                        source,
+                    )
                 })?;
             if participant.pending.is_empty() {
                 return Err(CommandError::EmptyContribution {
-                    domain: participant.contribution.domain,
+                    domain: participant.contribution.plan.domain,
                 });
             }
         }
         drop(snapshot);
 
-        self.commit_prepared(generation, current_home, prepared)
+        self.commit_prepared(generation, health_generation, current_home, prepared)
     }
 
     fn commit_prepared(
         &self,
         generation: &StoreGeneration,
+        health_generation: crate::HomeGeneration,
         current_home: beryl_model::HomeRevision,
         prepared: Vec<PreparedContribution<'_>>,
     ) -> Result<CommitReceipt, CommandError> {
@@ -326,11 +407,12 @@ impl HomeStore {
 
         Ok(CommitReceipt {
             store: generation.instance_id,
+            generation: health_generation,
             home_revision: next_home,
             domains: prepared
                 .iter()
                 .zip(next_domains)
-                .map(|(participant, revision)| (participant.contribution.slot, revision))
+                .map(|(participant, revision)| (participant.contribution.plan.slot, revision))
                 .collect(),
         })
     }
@@ -340,6 +422,28 @@ fn conflict_name(conflict: &RevisionConflict) -> &'static str {
     match conflict {
         RevisionConflict::Home { .. } => "",
         RevisionConflict::Domain { domain, .. } => domain,
+    }
+}
+
+fn callback_command_error(
+    domain: &'static str,
+    stage: ContributorCallbackStage,
+    source: ErasedCallbackError,
+) -> CommandError {
+    match source {
+        ErasedCallbackError::Access(source) => CommandError::ContributorAccess {
+            domain,
+            stage,
+            source,
+        },
+        ErasedCallbackError::Rejected(source) => match stage {
+            ContributorCallbackStage::Validation => {
+                CommandError::ContributorValidation { domain, source }
+            }
+            ContributorCallbackStage::Contribution => {
+                CommandError::ContributorAssembly { domain, source }
+            }
+        },
     }
 }
 
@@ -357,12 +461,14 @@ fn command_failure_severity(error: &CommandError) -> Option<FailureSeverity> {
         | CommandError::EmptyContribution { .. }
         | CommandError::RevisionExhausted { .. }
         | CommandError::Metadata { .. } => None,
+        CommandError::ContributorAccess { source, .. } => {
+            Some(crate::domain::callback::callback_failure_severity(source))
+        }
         CommandError::Commit { .. }
         | CommandError::Persistence { .. }
         | CommandError::RevisionRead { .. } => Some(FailureSeverity::Verify),
         CommandError::WriterPoisoned
         | CommandError::GenerationPoisoned
-        | CommandError::DomainRegistrationInvariant { .. }
-        | CommandError::DomainValidation { .. } => Some(FailureSeverity::Structural),
+        | CommandError::DomainRegistrationInvariant { .. } => Some(FailureSeverity::Structural),
     }
 }

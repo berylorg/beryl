@@ -153,10 +153,10 @@ impl SupervisedBackendProcess {
             return finish_runtime_cleanup(runtime_cleanup_error);
         }
 
-        if self.host_process_tree.terminate(&self.launch_label())? {
-            if self.wait_for_exit(child, kill_timeout)? {
-                return finish_runtime_cleanup(runtime_cleanup_error);
-            }
+        if self.host_process_tree.terminate(&self.launch_label())?
+            && self.wait_for_exit(child, kill_timeout)?
+        {
+            return finish_runtime_cleanup(runtime_cleanup_error);
         }
 
         if let Some(error) = runtime_cleanup_error {

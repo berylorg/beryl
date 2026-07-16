@@ -4,9 +4,10 @@ use std::path::PathBuf;
 mod tool_activity;
 
 use beryl_backend::{
-    JsonRpcError, ThreadItem, ThreadReadMetadata, ThreadSessionMetadata, ThreadSummary, TurnInfo,
-    TurnStatus, TurnStreamEvent,
+    CompletedTurn, CompletedTurnStatus, JsonRpcError, ThreadItem, ThreadReadMetadata,
+    ThreadSessionMetadata, ThreadSummary, TurnStreamEvent, parse_turn_stream_event,
 };
+use beryl_model::{CasThreadId, CasTurnId};
 use serde_json::{Value, json};
 use tool_activity::{
     ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET, ACTIVITY_COMPLETED_ROW_BUDGET,
@@ -340,13 +341,7 @@ fn projection_ignores_raw_reasoning_text_delta_for_activity_rows() {
     let mut projection = ToolActivityProjection::default();
 
     let changed = projection.apply_stream_event(
-        &TurnStreamEvent::ReasoningTextDelta {
-            thread_id: "thread_main".to_string(),
-            turn_id: "turn_1".to_string(),
-            item_id: "reasoning_1".to_string(),
-            content_index: 0,
-            delta: "Raw hidden reasoning details.".to_string(),
-        },
+        &reasoning_text_observed("thread_main", "turn_1", "reasoning_1", 0),
         Some("Main".to_string()),
     );
 
@@ -363,7 +358,7 @@ fn projection_finishes_lingering_reasoning_rows() {
         Some("Main".to_string()),
     );
     projection.apply_stream_event(
-        &turn_completed_with_status("thread_main", "turn_1", TurnStatus::Interrupted),
+        &turn_completed_with_status("thread_main", "turn_1", CompletedTurnStatus::Interrupted),
         None,
     );
 
@@ -392,7 +387,7 @@ fn projection_retains_history_and_finishes_lingering_running_rows() {
     );
 
     projection.apply_stream_event(
-        &turn_completed_with_status("thread_main", "turn_1", TurnStatus::Failed),
+        &turn_completed_with_status("thread_main", "turn_1", CompletedTurnStatus::Failed),
         None,
     );
     let rows = projection.rows();
@@ -681,7 +676,11 @@ fn projection_keeps_retained_spawn_child_ownership_until_child_rows_arrive() {
         Some("Main".to_string()),
     );
     projection.apply_stream_event(
-        &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
+        &turn_completed_with_status(
+            "thread_parent",
+            "turn_parent",
+            CompletedTurnStatus::Completed,
+        ),
         None,
     );
 
@@ -720,11 +719,15 @@ fn projection_prunes_subagent_maps_when_retained_rows_no_longer_reference_them()
     );
     projection.apply_thread_read_metadata([&metadata]);
     projection.apply_stream_event(
-        &turn_completed_with_status("thread_parent", "turn_parent", TurnStatus::Completed),
+        &turn_completed_with_status(
+            "thread_parent",
+            "turn_parent",
+            CompletedTurnStatus::Completed,
+        ),
         None,
     );
     projection.apply_stream_event(
-        &turn_completed_with_status("thread_child", "turn_child", TurnStatus::Completed),
+        &turn_completed_with_status("thread_child", "turn_child", CompletedTurnStatus::Completed),
         None,
     );
 
@@ -1369,16 +1372,16 @@ fn projection_keeps_thread_metadata_nickname_above_later_activity_labels() {
 
 fn started(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemStarted {
-        thread_id: thread_id.to_string(),
-        turn_id: turn_id.to_string(),
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
         item,
     }
 }
 
 fn completed(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemCompleted {
-        thread_id: thread_id.to_string(),
-        turn_id: turn_id.to_string(),
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn_id: CasTurnId::new(turn_id).unwrap(),
         item,
     }
 }
@@ -1389,12 +1392,15 @@ fn reasoning_summary_part_added(
     item_id: &str,
     summary_index: usize,
 ) -> TurnStreamEvent {
-    TurnStreamEvent::ReasoningSummaryPartAdded {
-        thread_id: thread_id.to_string(),
-        turn_id: turn_id.to_string(),
-        item_id: item_id.to_string(),
-        summary_index,
-    }
+    parsed_delta(
+        "item/reasoning/summaryPartAdded",
+        json!({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "itemId": item_id,
+            "summaryIndex": summary_index
+        }),
+    )
 }
 
 fn reasoning_summary_delta(
@@ -1404,27 +1410,52 @@ fn reasoning_summary_delta(
     summary_index: usize,
     delta: &str,
 ) -> TurnStreamEvent {
-    TurnStreamEvent::ReasoningSummaryTextDelta {
-        thread_id: thread_id.to_string(),
-        turn_id: turn_id.to_string(),
-        item_id: item_id.to_string(),
-        summary_index,
-        delta: delta.to_string(),
-    }
+    parsed_delta(
+        "item/reasoning/summaryTextDelta",
+        json!({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "itemId": item_id,
+            "summaryIndex": summary_index,
+            "delta": delta
+        }),
+    )
+}
+
+fn reasoning_text_observed(
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    content_index: usize,
+) -> TurnStreamEvent {
+    parsed_delta(
+        "item/reasoning/textDelta",
+        json!({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "itemId": item_id,
+            "contentIndex": content_index,
+            "delta": "Raw hidden reasoning details."
+        }),
+    )
+}
+
+fn parsed_delta(method: &str, params: Value) -> TurnStreamEvent {
+    parse_turn_stream_event(method, Some(params))
+        .unwrap()
+        .expect("fixture delta method must be recognized")
 }
 
 fn turn_completed_with_status(
     thread_id: &str,
     turn_id: &str,
-    status: TurnStatus,
+    status: CompletedTurnStatus,
 ) -> TurnStreamEvent {
     TurnStreamEvent::TurnCompleted {
-        thread_id: thread_id.to_string(),
-        turn: TurnInfo {
-            id: turn_id.to_string(),
+        thread_id: CasThreadId::new(thread_id).unwrap(),
+        turn: CompletedTurn {
+            id: CasTurnId::new(turn_id).unwrap(),
             status,
-            items_view: beryl_backend::TurnItemsView::Full,
-            items: Vec::new(),
             error: None,
         },
     }

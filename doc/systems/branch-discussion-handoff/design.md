@@ -19,17 +19,25 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 
 - A branch-discussion Syndic thread stores exact parent Syndic thread id and exact context-owner draft or submitted-turn id.
 - Its first draft stores an immutable context envelope containing version, exact selected UTF-8 text, source thread id, source turn id, source item/projection id, source revision, normalized selected range, context digest, and creation time.
-- Branch creation validates stable source provenance and creates the thread, first draft, parent binding, context-owner link, and initial Beryl metadata in one `SyncAll` home-store command.
+- Context-envelope V1 computes its context digest as SHA-256 over the exact selected UTF-8 bytes without trimming, normalization, or framing; source provenance and range remain separately versioned envelope fields.
+- Branch creation accepts only a current assistant projection owned by a proven-terminal source turn. It validates the exact source thread, turn, item, finalized projection identity and revision, selected range, and selected bytes before creating the thread, first draft, parent binding, context-owner link, and initial Beryl metadata in one `SyncAll` home-store command.
+- A projection admitted as branch context is finalized durable history. Its identity, revision, text, resource references, and ordering cannot later be invalidated, rebuilt, or rewritten in place.
+- The source turn must lie on the source thread's selected path at branch admission. That is a creation precondition, not a permanent claim about the mutable parent thread: later replacement may move the parent thread tail without invalidating the discussion, its immutable historical source, or its handoff destination.
 - Context reconstruction reads the exact envelope by context-owner identity. It never searches for similar transcript text.
 - The first idle submission transitions that draft identity into the first submitted discussion turn while retaining the envelope unchanged.
 
 ## Scoped Resolution Tool
 
-- The dynamic tool is registered only for the exact discussion thread's exclusive CAS projection.
+- The branch-resolution tool definition is part of the canonical versioned Beryl conversation-tool
+  registry installed at every persistent conversation lineage's initial CAS `thread/start`.
+  Registration remains identical through native continuation, resume, and fork for stable provider
+  prompt prefixes; it is capability discovery, not mutation authority.
 - The tool accepts one bounded resolution text payload and no parent, child, thread, archive, or job identity arguments.
 - Beryl derives discussion thread, resolving Syndic turn, exact CAS thread/turn, parent thread, context owner, and active binding from the correlated tool request.
 - Resolution text is model-produced content, is bounded before durable admission, and is retained exactly after admission.
-- A tool request with missing correlation, wrong thread, stale active turn, archived discussion, or unavailable parent is rejected without mutation.
+- A tool request with missing correlation, an ordinary non-discussion thread, wrong thread, stale
+  active turn, archived discussion, or unavailable parent is rejected without mutation. No tool
+  argument can widen this handler-side scope.
 
 ## Atomic Admission Against Queued Input
 
@@ -55,11 +63,14 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 ## Handoff Job Lifecycle
 
 - Job states are `waiting_resolving_turn`, `waiting_parent`, `starting_parent`, `parent_active`, `retryable_failed`, `terminal_failed`, and `succeeded`.
+- Runtime unavailable, root unavailable, CAS unavailable, and delivery failure proven before dispatch may enter `retryable_failed` from any of the four non-failure checkpoints. Exact CAS rejection before acceptance may do so only from `starting_parent`. A possibly dispatched parent `turn/start` whose response is lost is not retryable delivery failure.
+- Invariant violation and missing parent may enter `terminal_failed` from any non-failure checkpoint. Unrecoverable post-append may do so only from `starting_parent` or `parent_active`. Parent interruption, incomplete termination, and terminal failure may do so only from `parent_active`.
+- The exact failure disposition and checkpoint matrix is one durable schema invariant shared by transition admission and record decoding. Ordinary registration, verification, and recovery reject any persisted pair outside it rather than interpreting the evidence at a different stage.
 - The handoff composer gate exists exactly while the latest attempt is live. A retryable failure retains that gate and its immutable job; a transition to `terminal_failed` removes the gate in the same durable state change.
 - After tool admission, the job waits until the resolving child CAS turn is no longer active and its tool call plus resolution payload are durable. Terminal success, interruption, or explicit incomplete termination may satisfy this `waiting_resolving_turn` condition because accepted intent is already immutable; it does not remove the handoff composer gate.
 - `waiting_parent` preserves existing parent accepted-input order. The handoff is placed after all parent inputs durably admitted before the job's queue ordinal.
 - Parent active turn, compaction, replacement, rebind, or another same-thread operation keeps the job waiting.
-- Runtime/root/CAS unavailability or a transient delivery failure moves the job to `retryable_failed` without changing the discussion archive state or admitting another attempt.
+- Runtime/root/CAS unavailability or delivery failure proven before dispatch moves the job to `retryable_failed` without changing the discussion archive state or admitting another attempt.
 - Retrying `retryable_failed` resumes only that exact job and any exact parent input already admitted for it. It cannot change the intent payload, allocate another attempt, or append a duplicate parent turn.
 - Invariant failure, missing parent, or an unrecoverable post-append state moves the job to `terminal_failed`, leaves the discussion unarchived, and releases the discussion for later ordinary mutation.
 
@@ -72,6 +83,10 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - Parent admission and the job transition to `starting_parent` occur atomically. Recovery finding the parent turn identity never creates another input for that job.
 - CAS acceptance records exact CAS turn identity and moves the job to `parent_active`.
 - CAS rejection before acceptance moves the job to `retryable_failed` and leaves the existing admitted parent turn pending for retry; it does not append another turn.
+- If parent `turn/start` may have been dispatched but its response is unavailable, the parent turn is
+  never replayed automatically. Proven loss of its execution session converges that parent turn to
+  incomplete, moves the job to `terminal_failed`, leaves the discussion unarchived, and releases
+  its composer gate according to the feature contract.
 
 ## Success, Archive, And Failure
 

@@ -8,6 +8,7 @@ use std::{
 use beryl_backend::{
     HardStopTarget, HardStopTargetOutcome, ManagedBackendClientConnector, ManagedBackendSession,
 };
+use beryl_model::{CasThreadId, CasTurnId};
 
 use super::status_line::{CancellableActiveTurn, SelectedTurnHardStopTargets};
 
@@ -68,23 +69,16 @@ fn run_hard_stop_worker(
 ) {
     let selected_turn = selected_targets.selected_turn.clone();
     let outcome = match connector.connect_client(timeout) {
-        Ok(mut session) => {
-            let outcomes = request_hard_stop(&mut session, &selected_targets, timeout)
-                .unwrap_or_else(|error| {
-                    vec![HardStopTargetOutcome::Failed {
-                        target: HardStopTarget::turn(
-                            selected_turn.thread_id.clone(),
-                            selected_turn.turn_id.clone(),
-                        ),
-                        method: "turn/interrupt",
-                        message: format!("Beryl could not request hard stop: {error}"),
-                    }]
-                });
-            HardStopOutcome::Finished {
+        Ok(mut session) => match request_hard_stop(&mut session, &selected_targets, timeout) {
+            Ok(outcomes) => HardStopOutcome::Finished {
                 selected_turn,
                 outcomes,
-            }
-        }
+            },
+            Err(error) => HardStopOutcome::Failed {
+                selected_turn,
+                message: format!("Beryl could not request hard stop: {error}"),
+            },
+        },
         Err(error) => HardStopOutcome::Failed {
             selected_turn,
             message: format!(
@@ -104,7 +98,7 @@ pub(crate) fn request_hard_stop<B>(
 where
     B: HardStopBackend,
 {
-    let targets = ordered_hard_stop_targets(selected_targets);
+    let targets = ordered_hard_stop_targets(selected_targets)?;
     let mut outcomes = Vec::with_capacity(targets.len());
     for target in targets {
         let outcome = backend
@@ -117,19 +111,24 @@ where
 
 fn ordered_hard_stop_targets(
     selected_targets: &SelectedTurnHardStopTargets,
-) -> Vec<HardStopTarget> {
+) -> Result<Vec<HardStopTarget>, String> {
     let mut targets = Vec::with_capacity(selected_targets.targets.len().saturating_add(1));
     push_unique_target(
         &mut targets,
-        HardStopTarget::turn(
-            selected_targets.selected_turn.thread_id.clone(),
-            selected_targets.selected_turn.turn_id.clone(),
-        ),
+        selected_turn_target(&selected_targets.selected_turn)?,
     );
     for target in &selected_targets.targets {
         push_unique_target(&mut targets, target.clone());
     }
-    targets
+    Ok(targets)
+}
+
+fn selected_turn_target(selected_turn: &CancellableActiveTurn) -> Result<HardStopTarget, String> {
+    let thread_id = CasThreadId::new(&selected_turn.thread_id)
+        .map_err(|error| format!("selected hard-stop thread identity is invalid: {error}"))?;
+    let turn_id = CasTurnId::new(&selected_turn.turn_id)
+        .map_err(|error| format!("selected hard-stop turn identity is invalid: {error}"))?;
+    Ok(HardStopTarget::turn(thread_id, turn_id))
 }
 
 fn push_unique_target(targets: &mut Vec<HardStopTarget>, target: HardStopTarget) {

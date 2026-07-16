@@ -1,9 +1,10 @@
 use std::{error::Error, fmt};
 
 use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainHandle, DomainRegistrationError,
-    DomainSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion, MutationBuildError,
-    MutationContribution, PointReadLimit, ReadError, StorageDomain,
+    CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
+    DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
+    MutationBuildError, MutationContribution, PointReadLimit, ReadError, RecordFamily,
+    StorageDomain,
 };
 use beryl_model::{ExecutionBinding, SyndicThreadId};
 
@@ -23,17 +24,17 @@ pub use mutation::{
 };
 
 const THREAD_METADATA_RECORD_LIMIT: usize = 64 * 1024;
-const THREAD_METADATA_FAMILIES: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(1),
-)];
+const THREAD_METADATA_FAMILIES: &[RecordFamily<ThreadMetadataDomain>] =
+    &[RecordFamily::new::<ThreadMetadataRecordCodec>(
+        KeyspaceSchemaVersion::new(1),
+    )];
 
 pub(crate) struct ThreadMetadataDomain;
 
 impl StorageDomain for ThreadMetadataDomain {
     const NAME: &'static str = "beryl-thread-metadata";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = THREAD_METADATA_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = THREAD_METADATA_FAMILIES;
     type ValidationError = ThreadMetadataValidationError;
 
     fn validate(
@@ -141,6 +142,15 @@ impl ThreadMetadataState {
 
     pub fn revision(&self, store: &HomeStore) -> Result<beryl_model::DomainRevision, ReadError> {
         store.domain_revision(self.handle)
+    }
+
+    /// Returns this domain's revision from a still-current successful command.
+    pub fn committed_revision(
+        &self,
+        store: &HomeStore,
+        receipt: &beryl_home_store::CommitReceipt,
+    ) -> Result<Option<beryl_model::DomainRevision>, beryl_home_store::CommitReceiptError> {
+        store.receipt_domain_revision(receipt, self.handle)
     }
 
     pub fn metadata(
@@ -317,6 +327,15 @@ impl Error for ThreadMetadataMutationError {
     }
 }
 
+impl DomainCallbackError for ThreadMetadataMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
+        }
+    }
+}
+
 impl From<ReadError> for ThreadMetadataMutationError {
     fn from(source: ReadError) -> Self {
         Self::Read(source)
@@ -355,6 +374,15 @@ impl Error for ThreadMetadataValidationError {
         match self {
             Self::Read(source) => Some(source),
             Self::Invariant(_) => None,
+        }
+    }
+}
+
+impl DomainCallbackError for ThreadMetadataValidationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            source => Err(source),
         }
     }
 }

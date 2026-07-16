@@ -5,7 +5,7 @@ mod schema;
 mod schema_output;
 mod validation;
 
-use beryl_backend::{DynamicToolCallRequest, DynamicToolSpec};
+use beryl_backend::{DynamicToolCallRequest, DynamicToolFunctionSpec};
 use serde_json::Value;
 
 pub use authoring::{
@@ -98,7 +98,7 @@ pub struct ThemeDynamicToolError {
     message: String,
 }
 
-pub fn beryl_theme_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
+pub fn beryl_theme_dynamic_tool_specs() -> Vec<DynamicToolFunctionSpec> {
     vec![
         theme_tool_spec(
             READ_THEME_REPOSITORY_TOOL,
@@ -197,8 +197,6 @@ impl std::fmt::Display for ThemeDynamicToolError {
 
 impl std::error::Error for ThemeDynamicToolError {}
 
-fn theme_tool_spec(name: &str, description: &str, input_schema: Value) -> DynamicToolSpec {
-    DynamicToolSpec::new(name, description, input_schema)
-        .with_namespace(BERYL_DYNAMIC_TOOL_NAMESPACE)
-        .with_defer_loading(false)
+fn theme_tool_spec(name: &str, description: &str, input_schema: Value) -> DynamicToolFunctionSpec {
+    DynamicToolFunctionSpec::new(name, description, input_schema).with_defer_loading(false)
 }

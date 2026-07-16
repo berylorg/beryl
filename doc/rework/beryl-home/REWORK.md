@@ -140,13 +140,18 @@ This map is the exhaustive disposition index for the ignored local `old-doc/next
 
 - Draft lines 30-49, 90-92, 117-134, 197-201, 329-391, 579-650, 706-724, 758-798, 815-843, 970-972, 978-979, 988-989, and 994 map to `doc/systems/syndic-conversation-history/design.md`, its `concepts.md`, `crates/syndic-storage/doc/design.md`, `doc/features/composer/design.md`, `doc/features/conversation-threads/design.md`, and `doc/systems/cas-live-syndic-transcript/design.md`.
 - The committed-tail plus exactly-one-current-draft model supersedes early mutable-head and turn-started-thread wording. Parentage is immutable, accepted incomplete turns remain durable, replacement edit branches without detaching history, and this rework exposes no manual thread deletion or automatic empty-thread cleanup.
+- Live canonical items and item projections may advance only while their turn or derived work remains unfinished. Once a proven-terminal turn publishes current item projections, its canonical content and projection identities, revisions, item-local ordering, text, and resource references are finalized immutable history; recovery and later branches never reproject them in place. Named-thread transcript-view indexes remain rebuildable selected-path projections over those frozen records.
 - Draft lines 205-206 and 837-843 describe a possible future thread-reference deletion contract, not current target behavior. Manual thread deletion and its reference-removal semantics are deferred to root `doc/design.md` `# TODO`; only the no-byte-collection invariant remains current.
 - Dirty-only draft autosave uses a required 30-second default and a non-disableable 5-through-300-second setting; restored drafts preload before their window appears, later activation publishes draft and transcript state atomically, and draft-only threads remain until reuse. Future explicit garbage collection maps only to root `doc/design.md` `# TODO`.
 
 ## CAS Projection, Native Lineage, And Recovery Injection
 
 - Draft lines 43-49, 117-134, 197-201, 629-650, 758-798, and 970-972 map to `doc/systems/cas-live-syndic-transcript/design.md`, `doc/systems/backend-runtime/design.md`, `crates/beryl-backend/doc/design.md`, `crates/syndic-storage/doc/design.md`, and `doc/features/backend-runtime-recovery/design.md`.
-- The target uses one exclusive CAS projection per executing Syndic thread and exact binding/proof identities. Exact CAS-native continuation, resume, fork, or rollback lineage is always preferred when it already owns the required parent context.
+- The target uses one exclusive CAS projection per executing Syndic thread and exact binding/proof
+  identities. Exact CAS-native continuation or resume is preferred when the same projection owns
+  the required context. A nonempty earlier prefix uses an inclusive fork into a distinct CAS
+  thread, while an empty prefix uses a fresh native thread. Production projection orchestration
+  never mutates an authoritative source thread through in-place rollback.
 - Fresh recovered-history projection is a resilience fallback only after native lineage is missing, stale, unavailable, or unprovable. It creates one new empty CAS thread, calls stable `thread/inject_items` exactly once with the ordered Syndic-derived item sequence, durably publishes only the session-scoped local binding proof after success, and never replays that prefix on a later turn or steering request.
 - The exact target is Codex App Server 0.144.1. Reproducible native-lineage, stable-injection, and rejected-`additionalContext` evidence lives under `doc/memory/topic/codex-app-server/` and `doc/failures/cas-additional-context-materialization.md`.
 - Unmodified 0.144.1 silently truncates each additional-context value above approximately 4,000 bytes and loses replay-dedup state across omission or resume. The Operator rejected multi-entry or repeated replay as an architectural workaround. `additionalContext` is not recovered-history transport.
@@ -158,7 +163,7 @@ This map is the exhaustive disposition index for the ignored local `old-doc/next
 ## Branch Discussion And Handoff
 
 - Draft lines 188-191, 235-258, 369-391, 658-678, 800-813, 931, 953, and 973-976 map to `doc/features/branch-discussions/design.md`, its `gui.md`, `doc/systems/branch-discussion-handoff/design.md`, the CAS-projection system, the Syndic system/package, the composer and transcript features, and Beryl-home durable jobs.
-- A selected assistant reply creates a new thread whose first durable draft owns immutable source provenance and discussion context; no CAS work runs until user submission.
+- A selected finalized assistant reply creates a new thread whose first durable draft owns immutable source provenance and discussion context; no CAS work runs until user submission. Branch admission resolves the exact selected bytes through a current finalized projection, which remains permanently addressable and unchanged.
 - Resolution remains conversational through a discussion-scoped dynamic tool. Queued input yields retryable no-state-change deferral; each accepted attempt disables input, persists one idempotent parent-handoff job, and archives only after the exact parent turn succeeds. A later fresh attempt is permitted only after the prior attempt ends terminally failed and releases the child for discussion.
 - The earlier separate context-only turn and fixed discussion-context panel are discarded. The accepted target renders one synthetic context item in transcript flow and one fixed discussion-status strip immediately above the composer. Successful handoff leaves the owning window on the archived readonly child; retryable work remains temporarily input-locked, while terminal failure reopens the unarchived child and permits a later explicit fresh resolution attempt. No parent-deletion command is exposed.
 
@@ -343,7 +348,13 @@ No live `thread/inject_items` backend implementation exists yet. Checkpoint 1 mu
 
 ## Cut 1F: Clean Settings, Diagnostics, Themes, And Secondary Surfaces
 
-Lifecycle, theme, settings, diagnostic, and future discussion-resolution tool families survive through their feature-owned schema modules, but later orchestration registers them only within exact target feature/projection scope. There is no all-user-thread compatibility registry.
+Lifecycle, theme, settings, diagnostic, and future discussion-resolution tool families survive
+through their feature-owned schema modules. The removed all-user-thread compatibility registry is
+not restored. Later orchestration composes the final feature-owned conversation schemas into one
+canonical versioned and deterministically ordered registry installed at every persistent
+conversation lineage's initial CAS `thread/start`; exact correlated handlers, not per-thread
+registration differences, enforce feature and mutation scope. Native continuation, resume, and
+fork must retain the identical registry profile so branch discussions remain cache-friendly.
 
 Preserve the generic diagnostic child process mechanism and target-compatible process, renderer, transcript-frame, media, settings-window, and bounded retained-state diagnostics. Surgically remove obsolete fields, commands, predicates, dispatch arms, and tests from `diagnostic_child_control.rs`, `diagnostic_child_dynamic_tools.rs`, `diagnostic_child_protocol.rs`, `diagnostic_dynamic_tools.rs`, `gui_control_dynamic_tools.rs`, and `memory_diagnostics.rs`. Archive `shell/diagnostics.rs` and `shell/diagnostic_fixtures.rs` when removal leaves no independent target behavior in those old shell bindings.
 
@@ -605,18 +616,235 @@ The next checkpoint begins when the obsolete architecture is absent from live au
 - [x] Phase 9 integrated verification: one populated home crosses all seven Beryl domains, close/reopen, surfaced failure, failed verification, same-home recovery, complete handle reacquisition, stale-authority rejection, and final validation without mutating its caller-owned session snapshot. Deterministic races cover every accepted Checkpoint 2 concurrency-matrix family.
 - [x] Phase 9 verification: all 72 elevated all-feature `beryl-home-store`, 61 all-feature `beryl-state`, and 16 `beryl-model` nextest cases pass with scoped locked checks, warnings-denied lint/docs, formatting, metadata/dependency/source-size/boundary/whitespace audits, and the exact expected `beryl` bootstrap failure. The full workspace remains intentionally non-building only at that process-entry gap and the already declared retained-theme-test cutover boundary.
 - [x] Checkpoint boundary: unreadable-startup window composition, disabled live controls, resident GPUI-window preservation, and best-effort active-turn interruption require the later target process and multi-window shell. Checkpoint 2 retains their authoritative contracts but gates only the storage/session foundations they consume; the intentional `beryl` compile gap is not filled with a placeholder.
-- [ ] Independent completion review remaining: Phase 10 must audit the complete Checkpoint 2 package graph, public boundary, durability and recovery behavior, schemas, fault coverage, and rework boundaries before Checkpoint 3 begins.
+- [x] Phase 10 independent completion review: three read-only audits confirmed the intended package graph, sole Fjall ownership, obsolete-source removal, and existing test evidence, but correctly blocked completion on public receipt authority, durable-job reopen validation, typed-domain ownership/validation/health classification, physical database replacement identity, and sidecar durability findings.
+- [x] Phase 11 remediation: successful receipts expose exact generation and opaque per-domain revision projections without raw handles or formatting leaks; foreign and obsolete-generation completions reject before publication. One compatibility predicate now governs branch-job mutation and persisted decode, with exhaustive ordinary-reopen, health-verification, and recovery rejection across all 58 incompatible failure pairs. All 75 home-store, 66 state, and 16 model tests pass, and independent follow-up review confirms both findings closed.
+- [x] Phase 12 remediation: live domains and families now carry exact process-local owner and codec authority; ordinary commands perform only bounded participant work; registration, verification, and recovery exhaustively validate every physical record envelope with bounded memory; and typed callback provenance drives exact fail-closed health classification.
+- [x] Phase 12 verification: 83 elevated all-feature and 51 elevated normal-feature home-store cases, 66 all-feature and 64 normal-feature state cases, and 16 model cases pass with locked checks, warnings-denied lint/docs, formatting, metadata/dependency/source-size/boundary/whitespace audits, and the unchanged declared process-entry compile boundary. Fjall rejects empty keys before storage, so Beryl's shared empty-key guard is tested without patching private database files; every other malformed raw envelope class is injected end to end.
+- [x] Phase 13 remediation: retain and verify the exact physical `state` directory across recovery, make every sidecar token-producing path complete all required directory barriers, and reject final-file reparse or non-ordinary objects.
+- [x] Phase 13 verification: 91 elevated all-feature and 51 elevated normal-feature home-store cases, 66 all-feature and 64 normal-feature state cases, and 16 model cases pass. Deterministic tests prove exact retained-state identity, same-header old-copy rejection, all sidecar directory barriers on every token path, collision deduplication and orphan retention, reparse/non-ordinary rejection, retained-final sharing denial, and identical-byte replacement detection. Locked checks, warnings-denied lint/docs, formatting, metadata/dependency/feature/source-size/boundary/no-deletion/whitespace audits, and the unchanged declared process-entry compile boundary pass.
+- [x] Phase 14 completion review: three fresh read-only audits closed every Phase 10 finding and independently confirmed the package graph, typed schemas, bounded command work, lifecycle validation, recovery, retained physical identity, and sidecar durability. The review found one new blocking ordinary-read health-classification defect, so Checkpoint 2 remains open.
+- [x] Phase 15 remediation: ordinary point and cursor reads now distinguish caller-originated limits from malformed stored key/value envelopes, classify only the stored forms structurally, and reconfirm the exact healthy generation before publishing success. The Operator-authorized feature-gated seam persists only a bounded oversized record through an exact current domain/codec and exposes no raw handle, generic writer, or production path. Persisted point/cursor, caller-bound, durable-reopen, seam-confinement, and concurrent admitted-read tests pass with all 97 all-feature and 51 production-feature home-store cases plus the complete state/model and boundary matrix.
+- [x] Phase 16 completion review: three fresh read-only audits found no Critical, High, Medium, Low, or unranked defect across the Phase 15 ordinary-read correction, every prior Phase 10 through Phase 14 finding, the complete package and schema graph, health and recovery, physical ownership, sidecar durability, and rework boundaries. Persisted-envelope tests were confirmed to corrupt the exact registered family and then use ordinary point/cursor reads; production API scans expose neither the seam nor raw Fjall state.
+- [x] Phase 16 verification: 97 elevated all-feature and 51 elevated production-feature `beryl-home-store` tests, 66 all-feature and 64 production-feature `beryl-state` tests, and all 16 `beryl-model` tests pass. Locked normal/all-feature checks, warnings-denied Clippy and Rustdoc, formatting, metadata/dependency/feature/source-size/public-boundary/obsolete-source/no-deletion/`ENV.md`/whitespace audits, the elevated mapped-SMB proof, and the exact expected Beryl bootstrap failure pass.
+- [x] Gate satisfied: Checkpoint 2 is independently complete. Fjall issue #304 remains the sole explicit Operator-accepted dependency gap; every process, GUI, Syndic, CAS, asset, semantic-search, and theme boundary assigned to a later checkpoint remains unimplemented and visible.
 
 The next checkpoint begins when the target home store, lock, durability, and session foundations compile and pass their focused recovery tests.
 
 ## Checkpoint 3: Syndic Threads, Durable Drafts, And CAS Projections
 
 - [x] Done: no target thread/draft/CAS implementation has begun before the home foundation.
-- [ ] Remaining: implement stable Syndic threads with committed conversation tails, exactly one mutable current draft, immutable historical parentage, explicit submitted/incomplete lifecycles, and revisioned compare-and-update APIs.
-- [ ] Remaining: implement atomic thread-plus-draft creation, dirty-only autosave, lifecycle flushing, draft freeze plus replacement, queued/steered input correlation, active-turn gates, replacement edit, and restart recovery.
-- [ ] Remaining: implement one exclusive CAS execution projection per live Syndic thread, exact native-lineage precedence, stale/lost binding recovery, exact CAS/Syndic proof records, and one-time fresh recovery through stable `thread/inject_items` without modifying CAS.
-- [ ] Remaining: implement exact per-thread active-turn routing and process-wide runtime/account correlation while permitting simultaneous turns on different threads.
-- [ ] Blocked: implementation waits for Checkpoint 2 and accepted CAS protocol/system design, including any user-visible oversized-history or unavailable state.
+- [x] Phase 1 package and pure-value boundary: `syndic-storage` now has its final dependency direction through `beryl-home-store` and `beryl-model`, with bounded Syndic lifecycle, ordering, parent/context, transcript-position, recovery-budget, and exact CAS-lineage proof values but no mounted record schema or second physical store. Draft submission preserves the exact typed identity payload, and steering, pending, retry, and next-turn queue dispositions preserve one accepted-input identity.
+- [x] Phase 1 verification: 99 normal-feature and 101 all-feature focused `beryl-model`, `syndic-storage`, and `beryl-state` nextest cases pass with locked normal/all-feature checks, warnings-denied Clippy and Rustdoc, a compiling public-API Cargo example, formatting, metadata/dependency/source-size/forbidden-boundary/obsolete-identity/heading/whitespace audits, and no Syndic storage family registered ahead of Phase 2.
+- [x] Phase 2 fault-seam gate: the Operator authorized one bounded `test-faults`-only exact-codec-rejected physical-envelope corruption seam, with no production or reusable raw-storage API, so ordinary reopen and same-home recovery can exercise every required malformed Syndic record shape.
+- [x] Phase 2 final-projection authority: the Operator confirmed that finished turns are not rewritten. Current projections under proven-terminal turns become finalized immutable history; same-id revision advance and deterministic rebuild are confined to live, stale, or incomplete work before finalization, and context-envelope reopen validation retains exact source-revision closure.
+- [x] Phase 2 exact schema and reopen boundary: registered all 28 private Syndic V1 families through one opaque `beryl-home-store` domain; implemented exact codecs, bounded point/page and stable current-binding reads, complete forward/reverse validation, immutable turn topology and finalized projection closure, exact history-summary derivation, stale CAS reservation, one committed-tail execution blocker per origin thread, ordinary-user-only replacement targets, and context validity across later parent or child path replacement.
+- [x] Phase 2 verification: 15 default-feature and 38 all-feature `syndic-storage` nextest cases pass, including every-family physical and isolated semantic corruption across registration, live verification, reopen, and same-home recovery plus bounded large-history validation. Elevated foundation regressions pass 206 default-feature and 231 all-feature cases across `beryl-model`, `beryl-home-store`, `beryl-state`, and `syndic-storage`; locked checks, warnings-denied Clippy and Rustdoc, the public Cargo example, formatting, metadata/dependency/source-size/forbidden-boundary/whitespace audits, the exact expected process-entry failure, and two independent completion reviews are clean.
+- [x] Phase 3 durability gate: the Operator accepted pre-admission cancellation as the only no-commit cancellation boundary. Admitted draft saves drain to an outcome; surfaced post-admission storage or persistence failure gates publication until same-home verification or recovery and exact current-draft reconciliation determine whether the whole old or whole new atomic state became durable.
+- [x] Phase 3 thread and draft slice: implemented atomic ordinary and historical-tail thread creation, exactly one mutable current draft, immutable thread/parent/context ownership, bounded current-tail and current-draft reads, exact thread-and-draft revision comparison, dirty-only draft updates, and whole-old-or-whole-new reconciliation after ambiguous persistence outcomes.
+- [x] Phase 3 app persistence slice: implemented restart preload, dirty-only timed autosave, exact committed setting publication, explicit lifecycle flush, retained local editor state, one in-flight save per service, executor-issued opaque completion authority bound to the complete request, stale-result rejection, and same-home verification/recovery with exact reread before publication resumes.
+- [x] Phase 3 verification: 18 default-feature and 48 all-feature `syndic-storage` nextest cases pass, together with 18 focused `beryl-app` service, executor, integration, and physical-fault cases. Locked checks, warnings-denied package lint and documentation, formatting, metadata/dependency/source-size/forbidden-boundary/whitespace audits, atomic seven-record fault cuts, racing current-draft reads, exact cross-route rejection, and autosave-setting ordering checks pass.
+- [x] Phase 3 completion review: an independent review found forgeable completion authority, stale timer rearming, and missing physical-fault coverage in the first implementation. The corrected opaque executor result, timer-generation ordering, and whole-old/whole-new same-home reconciliation matrix passed a fresh independent follow-up review with no remaining findings.
+- [x] Phase 4 architecture gate: admission exposed invalid Phase 2 canonical-payload, asset-owner-cardinality, transcript-generation, replacement-parent, and draft-only binding-revision assumptions. The Operator accepted bringing final durable marker labels, resolved submitted atoms, and per-marker reference ownership into Phase 4 while leaving image-byte admission, GUI paste, and runtime projection in their later checkpoint; `doc/failures/syndic-phase4-admission-foundation.md` records the discarded shapes.
+- [x] Phase 4 mutation gate: accepted one independently revisioned input gate per thread, exact known-or-explicitly-unknown CAS steering-target proofs, permanent accepted-order history distinct from bounded live-only steering/next-turn indexes, exact live counters and bytes, and execution snapshots without accepted-input vectors. The V1 live-work ceiling is 256 fragments and 268,435,456 logical UTF-8 bytes per thread; it is not a retained-history or turn-count ceiling.
+- [x] Chunked-content design gate: the Operator accepted small owner metadata, exact manifests, bounded ordered content chunks, staged unreachable construction, and atomic sealed-reference publication. The same authority serves drafts, accepted input, and canonical items; projection chunks remain derived and cannot substitute for canonical source.
+- [x] Phase 4 chunked-content foundation: replaced embedded whole draft, accepted-input, and canonical-item payload values with shared exact content manifests and bounded chunks; corrected Phase 3 preload, autosave, staging resume, atomic publication, and reconciliation; retained exact separately ordered marker resolutions; and proved multi-million-token-scale logical content without unbounded records, commands, or read pages.
+- [x] Phase 4 chunked-content verification: 22 default-feature and 55 all-feature storage tests, 21 model tests, five app service tests, and 16 focused app persistence/fault tests pass. Exact content above 10 MB survives a chunk-boundary UTF-8 split, interrupted staging, close/reopen, bounded reads, deduplication, atomic seal-plus-owner publication, every persisted command cut, and final reopen while owner records remain compact. Locked checks, scoped warnings-denied lint and documentation, formatting, metadata, active-file size, obsolete-source, and whitespace audits are clean.
+- [x] Phase 5 admission and replacement slice: implemented exact idle draft-to-turn submission, non-idle accepted-input admission under every closed input-gate state, permanent accepted order distinct from bounded live routes, identity-preserving steering rejection, durable replacement-edit start/cancel, sibling or root replacement submission, and bounded absent/exact/collision reconciliation. Draft-only replacement editing leaves the committed CAS binding unchanged.
+- [x] Phase 5 cross-domain asset slice: app-owned command composition moves every draft marker reference to its submitted-turn-item or accepted-input owner in the same `SyncAll` command as Syndic admission. Replacement start verifies matching historical submitted-item ownership, retains it, and atomically adds the copied current-draft owner; disagreement builds no command.
+- [x] Phase 5 verification: 23 default-feature and 68 all-feature `syndic-storage` cases plus five focused `beryl-app` cross-domain cases pass. Proofs cover duplicate activation, stale draft and selected-path revisions, known and unknown steering targets, pending turn, compaction, stopping, exact 256-fragment and 268,435,456-byte live ceilings, steering rejection, root and sibling replacement, restart validation, cross-domain rejection, and before-commit, after-commit-before-persist, and after-persist cuts without partial publication. Locked checks, warnings-denied scoped Clippy and Rustdoc, formatting, metadata/dependency/source-size/archived-source/authority-wording/whitespace audits pass; inactive `beryl-backend` dead-code warnings remain the declared later-checkpoint cutover gap.
+- [x] Phase 6 canonical live-history slice: implemented exact monotonic source-event admission, replay-versus-collision classification, bounded coalesced deltas, canonical assistant and operational items, deterministic live content, exact optional CAS turn/item correlation, complete terminal outcomes, terminal event closure, stale transcript authority, and one-way finalization of already admitted open items without rewriting immutable history.
+- [x] Phase 6 verification: all 20 explicit production-feature and 75 all-feature `syndic-storage` cases pass. Deterministic reopen replay, exact per-item source indexes, multi-chunk UTF-8 text, every terminal outcome, unknown-terminal late evidence, post-terminal rejection, cross-thread isolation, exact CAS identity, and persistence cuts converge to whole old or whole new state. Locked checks, warnings-denied scoped Clippy and Rustdoc, formatting, metadata/dependency/source-size/raw-Fjall/archived-source/unfinished-marker/whitespace audits pass; the declared retained-theme-test and inactive-backend cutover gaps remain unchanged without adapters.
+- [x] Phase 7 architecture correction gate: the Operator required chunked canonical storage,
+  chunked projection construction and rendering, and bounded behavior for arbitrarily large or
+  degenerate Markdown. The invalidated inline-only skeleton is recorded in
+  `doc/failures/syndic-phase7-projection-skeleton.md`; the accepted replacement uses explicit
+  item/transcript build generations, canonical byte-span indexes, source-preserving bounded
+  fallbacks, and canonical-range textual resources without whole-buffer sidecars.
+- [x] Phase 7 bounded transcript and resource slice: implemented exact physical-byte, logical-text,
+  and ordered-piece frontiers; bounded resumable Markdown projection; stable closed prefixes and
+  generation-owned suffixes; canonical-range code and table resources; selected-path transcript
+  builds and 64-entry publication batches; immutable completed generations across unrelated thread
+  revisions; deterministic ancestor skips; and exact selected-versus-off-path finalization without
+  rewriting immutable admitted history.
+- [x] Phase 7 verification: 43 default-feature and 92 all-feature `syndic-storage` cases and all 292
+  all-feature foundation cases pass. Proofs cover multi-million-token content, degenerate Markdown,
+  UTF-8 chunk boundaries, zero-width pieces, 256-record/65,536-byte public page clamps, bounded
+  resource continuation, interruption and reopen, stable-prefix supersession, selected-path
+  membership, and whole-old-or-whole-new fault reconciliation for both final publication commands.
+  Locked checks, warnings-denied Clippy and Rustdoc, formatting, metadata, boundary, source, and
+  whitespace audits pass; independent completion review found no remaining Phase 7 defect. Final
+  GPUI realization and GPU-residency enforcement remain assigned to the later transcript-shell
+  checkpoint and must preserve this bounded provider contract.
+- [x] Phase 8 exact normalized CAS boundary: `beryl-backend` now targets only `codex-cli 0.144.1`,
+  carries typed exact start/resume/full-fork/inclusive-fork/rollback/turn/steer/control inputs,
+  exposes metadata-only lineage and bounded control results, rejects mismatched response identities,
+  and admits one consuming fresh-idle `thread/inject_items` capability with only the closed
+  user/input-text and assistant/output-text subset. The 262,144-byte and derived item-count bounds,
+  normalized rejection without raw error data, explicit transport-loss/unknown-completion outcomes,
+  and absence of any same-thread retry capability implement the accepted recovery contract without
+  contextual replay, developer-instruction transport, raw JSON, or an older schema path.
+- [x] Phase 8 evidence and verification: retained source/schema evidence and the isolated live probe
+  prove native continuation, restart/resume, inclusive fork, rollback, ordered injection, later-turn
+  and full-fork visibility, no implicit or public injected turn, exact branch-context and recovery
+  bounds, validation atomicity, and ambiguity abandonment against the pinned executable. All 200
+  affected all-feature backend/storage tests pass; focused wire and identity fixtures, scoped
+  warnings-denied Clippy, warnings-denied Rustdoc, formatting, metadata, dependency, source-size,
+  archived-source, contextual-fallback, heading, whitespace, and raw-boundary audits pass. Independent
+  review found no blocking defect and assigned typed runtime/process-generation compatibility proof
+  enforcement to the Phase 10 production coordinator.
+- [x] Phase 9 binding-prefix correction and projection preparation: replace the invalidated
+  selected-path/CAS-prefix conflation recorded in
+  `doc/failures/syndic-phase9-binding-prefix.md`; implement exact revisioned binding transitions,
+  permanent CAS-thread reservations, immutable loaded-session execution snapshots, one-way active
+  CAS-turn correlation, stale provenance, and bounded canonical recovery assembly without claiming
+  the pending submitted input as already represented by CAS.
+- [x] Phase 9 evidence and verification: distinct selected-path, CAS-prefix, and recovered-lineage
+  proofs; revisioned binding transitions; permanent reservation and retirement; exact active-turn
+  authority; stale/unbound local terminal convergence; bounded canonical recovery preparation; and
+  reopen validation pass 18 focused binding cases, 25 normal-feature storage cases, 122 all-feature
+  storage cases, and the 322-case integrated foundation matrix with the two Windows symlink cases
+  rerun successfully under their required elevation. Locked checks, warnings-denied lint/docs,
+  formatting, metadata, dependency, archived-source, direct-Fjall, contextual-fallback,
+  source-size, heading, and whitespace audits pass. Fresh independent review found no blocking
+  defect and confirmed that native-versus-recovered coordination and injection proof publication
+  remain Phase 10 work.
+- [x] Phase 10 dynamic-tool design correction and exact proof: replace per-projection tool
+  registration with one versioned deterministic conversation registry whose feature handlers retain
+  exact authorization; persist its profile identity in every usable binding and execution snapshot;
+  and prove on exact `codex-cli 0.144.1` that provider-visible definitions remain byte-identical
+  through inclusive fork and process restart/resume. The retained probe also proves experimental
+  capability enforcement. The final canonical tagged proof is 11,021 bytes with SHA-256
+  `A86607BB83A2378E7F7470985B3EAEC526E38255975AD1ABECF07F5F4FFFBD02` on all three provider
+  requests. Routine cache-unfriendly recovery injection is not a discussion-branch path.
+- [x] Phase 10 loaded-projection correction: replaced the detached unbounded registry with
+  process-owned connection authority and non-cloneable per-thread subscription leases; enforced
+  exact same-connection recovered use/fork; physically removed released entries; invalidated
+  locally before unsubscribe; bulk-revoked on connection/process loss; and durably retired lost
+  recovered authority before replacement. Retirement is serialized with the bounded
+  retired-check-plus-registry acquisition section so no dead connection can insert an entry after
+  bulk invalidation; the
+  invalidated race is recorded in
+  `doc/failures/cas-projection-connection-retirement-race.md`.
+- [x] Decision: authoritative lineage loss retires the native source and creates one fresh recovered
+  projection from Syndic history; a source-preserving or unclassified resume/fork rejection retains
+  the binding and receives bounded automatic retry, with exhaustion reported as unavailable.
+- [x] Resolution: pinned CAS 0.144.1 ordinary resume/fork errors remain unclassified and preserve
+  the source through bounded automatic retry. Exhaustion returns an exact
+  recovery-decision-required capability; explicit Retry preserves the binding, while explicit
+  `Recover from Syndic history` establishes one fresh target projection, retiring a target-owned
+  source but never mutating another thread's fork source. No message, code, or retry-count inference
+  is used.
+- [x] Phase 10 native-rejection implementation: added the bounded three-attempt non-GPUI retry,
+  non-cloneable revision-bound decision capability, same-source explicit Retry, preflighted explicit
+  Recover, target-owned retirement, cross-thread parent preservation, one-time recovery injection,
+  and stale-command rejection. All 35 focused app/library projection cases and both Phase 10
+  publication-fault cases pass; scoped lint, warnings-denied docs, formatting, source-size, and
+  whitespace audits are clean apart from the already-declared inactive-code warnings.
+- [x] Phase 10 native-target mismatch correction: retained an exact-prefix target-owned binding in
+  the typed unavailable plan when its execution binding or tool profile is ineligible; retired
+  only that target before recovery; left mismatched ancestor sources untouched; and preserved the
+  exact typed reason in stale provenance. The invalidated source-erasure path is recorded in
+  `doc/failures/cas-native-target-execution-mismatch.md`.
+- [x] Phase 10 post-retirement revision correction: stale publication returns the exact next
+  binding revision from stale-publication reconciliation and requires bounded replanning to
+  observe precisely that revision. Automatic proven-loss recovery and a consumed operator decision
+  both reject instead of adopting a concurrent later mutation. The invalidated widening path is recorded in
+  `doc/failures/cas-recovery-decision-post-retirement-replan.md`.
+- [x] Phase 10 recovery-completion timestamp correction: recovered-lineage proof records the app's
+  local wall-clock observation immediately after exact injection success as durable
+  recovered-lineage completion authority. The implementation never reuses the earlier request
+  timestamp or silently clamps a clock conversion failure. The invalidated timestamp reuse is recorded in
+  `doc/failures/cas-recovery-request-time-as-completion.md`.
+- [x] Phase 10 post-remote validation correction: native lineage proofs are constructed before remote
+  start, resume, or fork. If the recovered proof cannot be constructed after successful injection,
+  explicitly abandon the loaded target with exact known non-authorizing provenance. The invalidated
+  cut is recorded in `doc/failures/cas-post-remote-lineage-validation.md`.
+- [ ] Remaining: implement pending-turn delivery, active binding and gate publication, steering
+  delivery and next-turn dequeue, restart delivery recovery, and orchestration-driven convergence
+  over the durable Phase 5 admission identities and Phase 6 event boundary.
+- [x] Active-delivery ambiguity resolution: pinned CAS 0.144.1 supplies no idempotency key or exact
+  readback receipt for `turn/start` or `turn/steer`. Proven pre-dispatch failure and exact rejection
+  retain their retry/reclassification paths. A possibly dispatched request with no authoritative
+  response is never replayed automatically: the projection is retired, accepted steering becomes
+  terminal delivery-unknown durable history, and a proven-dead execution session closes its turn
+  capture as incomplete before fresh projection recovery restores readiness without starting a
+  replacement model turn. The invalidated retry path is recorded in
+  `doc/failures/cas-active-input-delivery-ambiguity.md`.
+- [x] Phase 11 exact-delivery implementation: `beryl-backend` distinguishes exact response, exact
+  rejection, proven non-dispatch, and completion unknown. `syndic-storage` revision-fences delivery
+  transitions and makes ambiguous steering terminal only through atomic active-binding abandonment,
+  with exact historical CAS retirement proof and complete old-or-new mixed-route persistence cuts.
+  Completion review removed the invalid standalone terminalization, retained the no-replay guard,
+  and closed with no remaining material finding. The corrections are recorded in
+  `doc/failures/cas-delivery-unknown-without-atomic-retirement.md` and
+  `doc/failures/cas-rebind-before-local-terminal-convergence.md`.
+- [x] Phase 10 exclusive projection implementation: one process-owned coordinator establishes one
+  exclusive CAS execution projection per live Syndic thread with exact native-lineage precedence,
+  stale or lost binding retirement, exact CAS/Syndic proof records, and one-time fresh recovery
+  through stable `thread/inject_items` without modifying CAS.
+- [x] Phase 12 live-event routing implementation: every admitted foreground connection has one sole
+  stream worker and request-only command capability; notification-before-response routing reaches
+  exact bounded thread/turn targets, abnormal target retirement revokes and fences its loaded
+  generation, and runtime/account plus connection-lifecycle facts are shared only by exact runtime
+  and managed-process generation. Target-local failure gates command publication without retiring
+  unrelated targets, while connection-wide failure retires all authority.
+- [x] Phase 12 approval and completion review: response-required, auto-denied, and caller-denied
+  approvals carry shared exact-session response authority and reject foreign or duplicate responses
+  before transport. Fresh reviews invalidated three publication/response gaps, all corrections are
+  recorded in `doc/failures/cas-phase12-router-publication-and-generation.md`, and final independent
+  router and approval reviews found no remaining material issue. All 122 backend and 51 focused app
+  nextest cases pass with doctests, locked checks, warnings-denied lint/docs, formatting, metadata,
+  source-size, forbidden-boundary, heading, and whitespace audits.
+- [x] Phase 13 lifecycle and hosted-image proof: for a normally finishing ordinary turn on one
+  uninterrupted, continuously subscribed connection, pinned CAS 0.144.1 queues same-thread item
+  notifications before a status-only `turn/completed` fence. It supplies no notification replay
+  after reconnect/resume/late subscription, admits completion-only `SubAgentActivity`, and cannot
+  declare the hosted Responses `image_generation` tool. Forced-abort ordering remains unproven and
+  assigned to the later interruption phase. The corrected guarded installed-runtime probe passes
+  21 of 21 assertions with an image-capable provider/model and no native hosted declaration.
+- [x] Phase 13 terminal/history authority correction: the Operator accepted exact provider or local
+  execution outcome and captured-history completeness as independent durable facts. A provider
+  `Complete` outcome may carry a typed history-incomplete reason without changing lifecycle;
+  canonical history summary and finalization remain behind until their own requirements are met.
+- [x] Phase 13 user-correlation projection correction: every provider correlation or lifecycle
+  revision of the visible submitted user item stales its item projection and selected transcript in
+  the same commit. Convergence may coalesce onto the newest revision and reuse unchanged immutable
+  projection content, while finalization continues to require exact source-revision agreement. The
+  focused close/reopen proof and all 151 all-feature Syndic cases pass without relaxing validation.
+- [ ] Phase 13 correction: remove terminal item-snapshot/backfill assumptions, sparse generic and
+  ignored item dispositions, untyped delta mutation, and process-local active/completed per-item
+  proof maps. Replace the lossy activity-only public-item boundary with one closed typed
+  `ProviderItemV1` content stream per provider-created item, bounded start/delta/completion staging,
+  sealed frame references, logical-text spans over the same non-duplicated bytes, and closed typed
+  structured values. Advance Syndic cleanly to domain schema V2 without a V1 compatibility decoder.
+  Implement exact submitted-input correlation, admitted completion-only lifecycles, separate
+  standalone generated-media normalization that discards base64 `result` at bounded incoming JSON
+  ingress and retains `savedPath` plus non-binary metadata with a separate pending-resource
+  disposition until Beryl-owned byte admission, status-only terminal audit requiring every
+  completed typed frame, and
+  fail-closed no-replay stream loss. Provider item/turn lifecycle is never rewritten by later asset
+  admission. The invalidated boundaries and evidence are recorded in
+  `doc/failures/cas-phase13-live-item-exhaustiveness.md`,
+  `doc/failures/cas-phase13-unbounded-item-proof-state.md`,
+  `doc/failures/cas-phase13-activity-only-public-item-loss.md`, and the pinned Codex memory directory.
+  The Operator resolved the image-field mismatch: Beryl depends on CAS `savedPath`, intentionally
+  excludes the upstream base64 `result` before normalization, and permits no inline or Fjall
+  fallback when the path is missing or unusable. The rejected base64-persistence proposal is
+  recorded in `doc/failures/cas-phase13-image-result-persistence.md`.
+- [x] Phase 13 bounded image ingress and lifecycle timestamps: JSON parsing now reads directly from
+  bounded WebSocket payload chunks through fixed 8 KiB transport and parser buffers. The pinned
+  discriminant-first decoder discards standalone image-generation base64 incrementally, retains no
+  result field, and fails closed on reordered or ambiguous target input without buffering, spooling,
+  decoding, or guessing. Ordinary responses, unrelated nested results, fragmented messages,
+  interleaved control frames, redacted failures, and schema-agnostic framing remain exact. Five
+  focused ingress cases and all 161 all-feature backend cases pass.
+- [ ] Phase 13 provider-frame codec review gate: the closed 18-item and nine-delta grammar,
+  constant-resident large-frame validator, typed history-support evidence, non-data locator rule,
+  exact MCP depth accounting, and closed image status pass 14 focused and 165 all-feature storage
+  cases. The first independent review's four findings are corrected, but the Operator-requested safe
+  stop interrupted the post-remediation independent re-review. Resume with that read-only review;
+  no provider-frame staging or publication implementation has begun.
+- [x] Gate satisfied: Checkpoint 2 is complete, and the accepted CAS protocol/system design defines native-lineage precedence, one-time `thread/inject_items` recovery, exact recovery/context budgets, and unavailable-state behavior without modifying CAS.
 - [ ] Verification: competing draft revisions, duplicate submission, stream loss, crash recovery, stale CAS bindings, forked shared history, incomplete turns, replacement edits, and simultaneous different-thread turns preserve exact identities and never create competing same-thread children.
 - [ ] Verification: browsing remains wholly Syndic-backed and no CAS list, name, metadata, or historical transcript API becomes catalog, title, restore, or durable-history authority.
 
@@ -627,11 +855,29 @@ The next checkpoint begins when the target thread/draft model and CAS execution 
 - [x] Done: formalized a partial merged-toolbar, lineage-strip, scoped-flyout, progressive-shell, and main-window lifecycle proposal.
 - [ ] Remaining: implement independent main windows, thread claims, ordinary close versus application Exit, virtual-desktop restoration, active-turn interruption on close, and `Ctrl+Shift+N` acquisition.
 - [ ] Remaining: implement zero-runtime onboarding, OS-native Codex-executable runtime selection, path-derived Host/WSL identity, runtime creation with non-removable home root, OS-native root-directory selection, remembered runtime/root state, empty-restore acquisition, eligible empty-thread claim/reuse, and split New Thread behavior.
-- [ ] Remaining: implement invisible minimal bootstrap, independent catalog/history/CAS readiness, writable drafts with gated submission, coherent dimmed activation, per-window failures, and coalesced runtime warm-up.
+- [ ] Remaining: implement invisible minimal bootstrap, independent catalog/history/CAS readiness,
+  writable drafts with gated submission, bounded draft save/submission preparation that never
+  materializes a second whole-draft buffer, coherent dimmed activation, per-window failures, and
+  coalesced runtime warm-up.
+- [ ] Remaining: mount the native-lineage recovery prompt mutually exclusively in the existing
+  user-input-panel slot, retain the hidden composer state, and route exact Retry and Recover from
+  Syndic history commands without adding a dialog, overlay, or second body row.
 - [ ] Remaining: implement the exhaustive compact recent-first catalog, root/runtime scoping, search, stable snapshots, open-elsewhere unavailability, navigation history, lineage, and fixed-height virtualized row presentation.
+- [ ] Remaining: preserve arrival-paced live assistant text through one bounded transient suffix on
+  the authored transcript record. Every normalized CAS text delta available to a GUI frame appears
+  without synthetic character timing, while exact Syndic-prefix reconciliation removes the
+  transient copy without duplicate text, blanking, or a second whole-response model.
 - [ ] Blocked: implementation waits for Checkpoint 3 and the accepted shell, flyout, row, failure, and activation contracts to be available through target-only boundaries.
 - [ ] Verification: cover zero-runtime, first-runtime, duplicate executable selection, Host/WSL path derivation, native-dialog cancellation, invalid executable/root selection, empty restore set, current pristine thread, simultaneous window acquisition, stale claims, all-roots/root-scoped search, unavailable runtime/root/CAS, open elsewhere, failed activation, draft readiness, restart restoration, unreadable-startup presentation, and in-place preservation of every live window and its resident surface while the shared store is failed.
 - [ ] Verification: rendered row count remains bounded as catalog size grows and content-free diagnostics cover stable identity, focus, tooltip anchoring, visible range, overscan, scroll position, and activation without logging titles, paths, or search text.
+- [ ] Verification: live streaming reflects normalized CAS arrival cadence up to ordinary frame
+  coalescing, introduces no typewriter delay or timestamp replay, keeps transient state bounded
+  under a response of arbitrary size, and transfers to durable Syndic projection only on exact
+  item/frontier agreement.
+- [ ] Verification: arbitrarily large single-draft text is prepared and staged through bounded
+  ranges beyond the editor's one intentional resident representation, while huge or degenerate
+  transcript items retain bounded provider pages, realized records, nested-widget allocations, and
+  GPU residency without flattening a turn or thread.
 
 The next checkpoint begins when the ordinary shell and complete runtime/root/thread-navigation workflow operate only on target Beryl-home and Syndic boundaries.
 
@@ -642,7 +888,7 @@ The next checkpoint begins when the ordinary shell and complete runtime/root/thr
 - [ ] Remaining: implement exact resolution admission, retryable deferral while queued input exists, durable parent-handoff queue, busy-parent ordering, restart recovery, idempotency, failure/retry, composer gating, and archive only after successful handoff.
 - [ ] Remaining: implement the accepted post-archive navigation and missing/unavailable/open-elsewhere parent behavior without a GUI resolve/archive command.
 - [ ] Blocked: implementation waits for Checkpoint 4 and the accepted branch contracts to be implemented through target-only boundaries.
-- [ ] Verification: branch creation performs no CAS work before first user submission; its synthetic context remains presentation-only and outside turn counts; queued input is never discarded; deferred resolution changes no state; accepted resolution forbids later input; retries cannot duplicate a parent handoff; and failed handoff never archives the discussion.
+- [ ] Verification: branch creation performs no CAS work before first user submission; its synthetic context remains presentation-only and outside turn counts; queued input is never discarded; deferred resolution changes no state; accepted resolution forbids later input; retries cannot duplicate a parent handoff; failed handoff never archives the discussion; and the universally registered resolution tool rejects every ordinary, stale, archived, or otherwise wrong-scope correlated turn without mutation.
 
 The next checkpoint begins when branch, explore, resolve, hand off, and archive work entirely through target Syndic, CAS projection, and Beryl-home boundaries.
 
@@ -650,7 +896,9 @@ The next checkpoint begins when branch, explore, resolve, hand off, and archive 
 
 - [x] Done: deferred manual thread rename, pin, archive, delete, existing-thread rebinding, and runtime/root removal until later product designs.
 - [x] Done: deferred explicit turn/resource garbage collection and graph-independent semantic-search implementation until after this rework.
-- [ ] Remaining: implement the accepted Beryl-home or per-thread image-asset ownership model, runtime-readable Host/WSL path projection, labels, collision handling, references, and user-visible cleanup semantics.
+- [ ] Remaining: implement the accepted Beryl-home image-asset ownership model, runtime-readable
+  Host/WSL input projection, reverse Host/WSL generated-output admission, labels, collision handling,
+  references, and user-visible cleanup semantics.
 - [ ] Remaining: wire the completed generated-title and one-way branch-archive metadata contributors into their owning Syndic projection and successful-handoff flows without introducing a general manual thread-management surface.
 - [ ] Remaining: remove graph-dependent semantic-search authority and implementation, then record only non-authoritative future intent and provisional decisions in root TODO material.
 - [ ] Remaining: preserve unreachable turns and resources until a separately designed future `Collect Garbage` operation; do not smuggle collection into asset cleanup or any later reference-removal path.

@@ -1,11 +1,12 @@
 mod support;
 
-use std::convert::Infallible;
+use std::{convert::Infallible, error::Error, fmt};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand,
-    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceFamily, KeyspaceSchemaVersion,
-    MutationBuildError, MutationBuilder, PointReadLimit, RecordCodec, RecordVersion, StorageDomain,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader,
+    DomainRegistrationError, DomainSchemaVersion, HomeCommand, HomeOpenOptions, HomeSchemaVersion,
+    HomeStore, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, PointReadLimit,
+    RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
 use beryl_model::{RootId, RuntimeId};
 use beryl_state::{
@@ -14,11 +15,11 @@ use beryl_state::{
 };
 use tempfile::tempdir;
 
-const FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("active-header", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("windows", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("claims-by-window", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("claims-by-thread", KeyspaceSchemaVersion::new(1)),
+const RAW_SESSION_FAMILIES: &[RecordFamily<RawSessionDomain>] = &[
+    RecordFamily::new::<RawHeaderCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RawWindowCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RawClaimByWindowCodec>(KeyspaceSchemaVersion::new(1)),
+    RecordFamily::new::<RawClaimByThreadCodec>(KeyspaceSchemaVersion::new(1)),
 ];
 
 struct RawSessionDomain;
@@ -30,7 +31,7 @@ struct RawClaimByThreadCodec;
 impl StorageDomain for RawSessionDomain {
     const NAME: &'static str = "beryl-session";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = RAW_SESSION_FAMILIES;
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -123,8 +124,35 @@ struct RawMutation {
     by_thread: Vec<([u8; 16], Vec<u8>)>,
 }
 
+#[derive(Debug)]
+struct RawMutationError(MutationBuildError);
+
+impl fmt::Display for RawMutationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl Error for RawMutationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl From<MutationBuildError> for RawMutationError {
+    fn from(source: MutationBuildError) -> Self {
+        Self(source)
+    }
+}
+
+impl DomainCallbackError for RawMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Err(self)
+    }
+}
+
 impl DomainMutation<RawSessionDomain> for RawMutation {
-    type Error = MutationBuildError;
+    type Error = RawMutationError;
 
     fn validate(&self, _reader: &DomainReader<'_, RawSessionDomain>) -> Result<(), Self::Error> {
         Ok(())
@@ -255,6 +283,10 @@ fn validation_message(error: &BerylStateRegistrationError) -> String {
     match error {
         BerylStateRegistrationError::Domain { source, .. } => match source {
             DomainRegistrationError::Validation { source, .. } => source.to_string(),
+            DomainRegistrationError::ValidationAccess {
+                source: DomainCallbackSource::Read(source),
+                ..
+            } => source.to_string(),
             other => panic!("expected session validation error, got {other}"),
         },
         other => panic!("expected domain registration error, got {other}"),

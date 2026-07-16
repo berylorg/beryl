@@ -25,8 +25,9 @@ Keep image labels stable per conversation while ensuring branching, restart, Hos
 
 - Pasting image clipboard content validates count and byte limits, durably admits the asset and draft reference, and only then inserts its final labeled marker.
 - A marker never enters a durable draft with a provisional label or only transient clipboard bytes.
+- The durable marker retains its final label across autosave, accepted-input queueing or steering, submission, replacement, restart, and transcript projection.
 - Removing the final draft-only marker removes that draft reference and may release its label according to the composer contract, but it does not delete the home asset bytes.
-- Accepted, queued, retryable, or submitted references keep their exact asset id and label across restart.
+- Accepted, queued, retryable, delivery-unknown, or submitted marker references keep their exact marker identity, asset id, and label across restart. Moving one accepted input between delivery dispositions or terminalizing an ambiguous request does not replace its references.
 - Clipboard reconstruction may reuse a live asset id; ordinary text that resembles an image marker remains text.
 
 ## Labels
@@ -41,6 +42,9 @@ Keep image labels stable per conversation while ensuring branching, restart, Hos
 - Composer and transcript markers expose the existing View behavior over the original durable bytes.
 - Missing, corrupt, unsupported, oversized, or temporarily unavailable bytes leave the marker and label visible with a local unavailable state.
 - Preview failure never removes the marker, rewrites the draft, queries CAS history, or substitutes another same-digest-looking file without proof.
+- A generated image becomes transcript media only after Beryl reads the CAS-provided `savedPath`
+  through the exact runtime and admits those bytes as a home asset. Missing or unreadable output is
+  shown as unavailable; Beryl never falls back to the protocol's discarded base64 result.
 
 ## Runtime Submission
 

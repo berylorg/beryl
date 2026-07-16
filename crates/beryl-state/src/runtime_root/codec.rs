@@ -172,6 +172,15 @@ impl RecordCodec<RuntimeRootDomain> for ExecutableIndexCodec {
         Ok(key)
     }
 
+    fn validate_stored_key(key: &Self::Key) -> Result<(), Self::Error> {
+        match key {
+            ExecutableKey::Value(_) => Ok(()),
+            ExecutableKey::Lower | ExecutableKey::Upper => {
+                Err(invariant("executable index cursor bound is not storable"))
+            }
+        }
+    }
+
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
         Ok(encode_runtime_id(*value))
     }
@@ -329,6 +338,15 @@ impl RecordCodec<RuntimeRootDomain> for RootPathIndexCodec {
         };
         decoder.finish()?;
         Ok(key)
+    }
+
+    fn validate_stored_key(key: &Self::Key) -> Result<(), Self::Error> {
+        match key {
+            RootPathKey::Value { .. } => Ok(()),
+            RootPathKey::Lower | RootPathKey::Upper => {
+                Err(invariant("root path index cursor bound is not storable"))
+            }
+        }
     }
 
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {

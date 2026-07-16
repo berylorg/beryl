@@ -3,23 +3,11 @@
 use std::{convert::Infallible, error::Error, fmt, marker::PhantomData, path::Path};
 
 use beryl_home_store::{
-    DomainMutation, DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-    HomeStore, KeyspaceFamily, KeyspaceSchemaVersion, MutationBuildError, MutationBuilder,
-    PointReadLimit, ReadError, RecordCodec, RecordVersion, StorageDomain,
+    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, DomainSchemaVersion,
+    HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, MutationBuildError,
+    MutationBuilder, PointReadLimit, ReadError, RecordCodec, RecordFamily, RecordVersion,
+    StorageDomain,
 };
-
-pub const FAMILIES_V1: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(1),
-)];
-pub const FAMILIES_V2: &[KeyspaceFamily] = &[KeyspaceFamily::new(
-    "records",
-    KeyspaceSchemaVersion::new(2),
-)];
-pub const DUPLICATE_FAMILIES: &[KeyspaceFamily] = &[
-    KeyspaceFamily::new("records", KeyspaceSchemaVersion::new(1)),
-    KeyspaceFamily::new("records", KeyspaceSchemaVersion::new(1)),
-];
 
 pub struct AlphaDomain;
 pub struct BetaDomain;
@@ -34,7 +22,10 @@ macro_rules! simple_domain {
         impl StorageDomain for $name {
             const NAME: &'static str = $stable;
             const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-            const KEYSPACES: &'static [KeyspaceFamily] = FAMILIES_V1;
+            const FAMILIES: &'static [RecordFamily<Self>] =
+                &[RecordFamily::new::<BytesRecord<Self>>(
+                    KeyspaceSchemaVersion::new(1),
+                )];
             type ValidationError = Infallible;
 
             fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -50,7 +41,9 @@ simple_domain!(BetaDomain, "beta");
 impl StorageDomain for AlphaDomainSchema2 {
     const NAME: &'static str = "alpha";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(2);
-    const KEYSPACES: &'static [KeyspaceFamily] = FAMILIES_V1;
+    const FAMILIES: &'static [RecordFamily<Self>] = &[RecordFamily::new::<BytesRecord<Self>>(
+        KeyspaceSchemaVersion::new(1),
+    )];
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -61,7 +54,9 @@ impl StorageDomain for AlphaDomainSchema2 {
 impl StorageDomain for AlphaFamilySchema2 {
     const NAME: &'static str = "alpha";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = FAMILIES_V2;
+    const FAMILIES: &'static [RecordFamily<Self>] = &[RecordFamily::new::<BytesRecord<Self>>(
+        KeyspaceSchemaVersion::new(2),
+    )];
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -72,7 +67,10 @@ impl StorageDomain for AlphaFamilySchema2 {
 impl StorageDomain for DuplicateFamilyDomain {
     const NAME: &'static str = "duplicates";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = DUPLICATE_FAMILIES;
+    const FAMILIES: &'static [RecordFamily<Self>] = &[
+        RecordFamily::new::<BytesRecord<Self>>(KeyspaceSchemaVersion::new(1)),
+        RecordFamily::new::<BytesRecord<Self>>(KeyspaceSchemaVersion::new(1)),
+    ];
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -83,7 +81,7 @@ impl StorageDomain for DuplicateFamilyDomain {
 impl StorageDomain for EmptyDomain {
     const NAME: &'static str = "empty";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = &[];
+    const FAMILIES: &'static [RecordFamily<Self>] = &[];
     type ValidationError = Infallible;
 
     fn validate(_reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -115,10 +113,21 @@ impl Error for ValidatedDomainError {
     }
 }
 
+impl DomainCallbackError for ValidatedDomainError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        match self {
+            Self::Read(source) => Ok(DomainCallbackSource::Read(source)),
+            semantic => Err(semantic),
+        }
+    }
+}
+
 impl StorageDomain for ValidatedDomain {
     const NAME: &'static str = "validated";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const KEYSPACES: &'static [KeyspaceFamily] = FAMILIES_V1;
+    const FAMILIES: &'static [RecordFamily<Self>] = &[RecordFamily::new::<BytesRecord<Self>>(
+        KeyspaceSchemaVersion::new(1),
+    )];
     type ValidationError = ValidatedDomainError;
 
     fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
@@ -208,6 +217,12 @@ impl Error for FixtureMutationError {
             Self::Build(source) => Some(source),
             Self::Rejected(_) => None,
         }
+    }
+}
+
+impl DomainCallbackError for FixtureMutationError {
+    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
+        Err(self)
     }
 }
 

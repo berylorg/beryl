@@ -21,7 +21,8 @@ $codexHome = Join-Path $probeRoot 'codex-home'
 $workRoot = Join-Path $probeRoot 'work'
 $captureRoot = Join-Path $probeRoot 'captures'
 $schemaRoot = Join-Path $probeRoot 'schema'
-foreach ($path in @($probeRoot, $codexHome, $workRoot, $captureRoot, $schemaRoot)) {
+$experimentalSchemaRoot = Join-Path $probeRoot 'schema-experimental'
+foreach ($path in @($probeRoot, $codexHome, $workRoot, $captureRoot, $schemaRoot, $experimentalSchemaRoot)) {
     New-Item -ItemType Directory -Path $path | Out-Null
 }
 
@@ -171,9 +172,15 @@ stream_idle_timeout_ms = 30000
 
 & $CodexPath app-server generate-json-schema --out $schemaRoot
 if ($LASTEXITCODE -ne 0) { throw 'Stable app-server schema generation failed.' }
+& $CodexPath app-server generate-json-schema --experimental --out $experimentalSchemaRoot
+if ($LASTEXITCODE -ne 0) { throw 'Experimental app-server schema generation failed.' }
 $injectSchemaPath = Join-Path $schemaRoot 'v2\ThreadInjectItemsParams.json'
 if (-not (Test-Path -LiteralPath $injectSchemaPath -PathType Leaf)) {
     throw 'Stable schema does not expose ThreadInjectItemsParams.'
+}
+$dynamicToolSchemaPath = Join-Path $experimentalSchemaRoot 'v2\ThreadStartParams.json'
+if (-not (Test-Path -LiteralPath $dynamicToolSchemaPath -PathType Leaf)) {
+    throw 'Experimental schema does not expose ThreadStartParams.'
 }
 
 $script:ProtocolMessages = [Collections.Generic.List[object]]::new()
@@ -284,7 +291,10 @@ function Wait-TurnCompletion {
 }
 
 function Initialize-CasServer {
-    param([Parameter(Mandatory)] [object] $Server)
+    param(
+        [Parameter(Mandatory)] [object] $Server,
+        [bool] $ExperimentalApi = $false
+    )
 
     Send-CasMessage -Server $Server -Message ([ordered]@{
         method = 'initialize'
@@ -295,7 +305,7 @@ function Initialize-CasServer {
                 title = 'Beryl Phase 8 Live Probe'
                 version = '0.1.0'
             }
-            capabilities = [ordered]@{ experimentalApi = $false }
+            capabilities = [ordered]@{ experimentalApi = $ExperimentalApi }
         }
     })
     $response = Wait-CasResponse -Server $Server -Id 0
@@ -333,6 +343,48 @@ function Start-ProbeThread {
         }
     })
     $response = Wait-CasResponse -Server $Server -Id $id
+    return [string]$response.result.thread.id
+}
+
+function Start-DynamicToolProbeThread {
+    param(
+        [Parameter(Mandatory)] [object] $Server,
+        [switch] $AllowError
+    )
+
+    $id = New-CasRequestId
+    Send-CasMessage -Server $Server -Message ([ordered]@{
+        method = 'thread/start'
+        id = $id
+        params = [ordered]@{
+            cwd = $workRoot
+            model = 'gpt-5.4'
+            modelProvider = 'beryl_probe'
+            developerInstructions = 'Beryl cache-stable dynamic-tool lineage probe.'
+            ephemeral = $false
+            approvalPolicy = 'never'
+            sandbox = 'read-only'
+            dynamicTools = @([ordered]@{
+                type = 'namespace'
+                name = 'beryl'
+                description = 'Beryl-owned conversation tools.'
+                tools = @([ordered]@{
+                    type = 'function'
+                    name = 'cache_registry_probe'
+                    description = 'Cache-stable lifecycle registry probe.'
+                    inputSchema = [ordered]@{
+                        type = 'object'
+                        properties = [ordered]@{ probe = [ordered]@{ type = 'string' } }
+                        required = @('probe')
+                        additionalProperties = $false
+                    }
+                    deferLoading = $false
+                })
+            })
+        }
+    })
+    $response = Wait-CasResponse -Server $Server -Id $id -AllowError:$AllowError
+    if ($AllowError) { return $response }
     return [string]$response.result.thread.id
 }
 
@@ -778,6 +830,47 @@ try {
     Assert-MarkerCount -Capture $capture12 -Marker $ambiguousOldMarker -Expected 0 -Name 'ambiguous-old-prefix-not-retried-into-replacement'
     Assert-MarkerCount -Capture $capture12 -Marker $ambiguousNewMarker -Expected 1 -Name 'ambiguous-replacement-prefix-injected-once'
 
+    $dynamicToolsWithoutCapability = Start-DynamicToolProbeThread -Server $server -AllowError
+    $dynamicToolsError = $dynamicToolsWithoutCapability.error
+    Add-Check -Name 'dynamic-tools-require-experimental-capability' -Passed (
+        [int]$dynamicToolsError.code -eq -32600 -and
+        [string]$dynamicToolsError.message -eq 'thread/start.dynamicTools requires experimentalApi capability'
+    ) -Detail "code=$($dynamicToolsError.code) message=$($dynamicToolsError.message)"
+
+    Stop-CasServer -Server $server
+    $server = Start-CasServer
+    [void](Initialize-CasServer -Server $server -ExperimentalApi $true)
+    $dynamicToolThread = Start-DynamicToolProbeThread -Server $server
+    $dynamicToolTurn = Start-ProbeTurn -Server $server -ThreadId $dynamicToolThread -Text 'DYNAMIC_TOOL_SOURCE_TURN_E1A36CB7'
+    $capture13 = Read-CapturedRequest -Number 13
+
+    $dynamicToolFork = Fork-ProbeThread -Server $server -ThreadId $dynamicToolThread -LastTurnId $dynamicToolTurn
+    [void](Start-ProbeTurn -Server $server -ThreadId $dynamicToolFork -Text 'DYNAMIC_TOOL_FORK_TURN_B827459C')
+    $capture14 = Read-CapturedRequest -Number 14
+
+    Stop-CasServer -Server $server
+    $server = Start-CasServer
+    [void](Initialize-CasServer -Server $server -ExperimentalApi $true)
+    Resume-ProbeThread -Server $server -ThreadId $dynamicToolThread
+    [void](Start-ProbeTurn -Server $server -ThreadId $dynamicToolThread -Text 'DYNAMIC_TOOL_RESUME_TURN_773CE024')
+    $capture15 = Read-CapturedRequest -Number 15
+
+    $startToolsJson = ConvertTo-Json -InputObject $capture13.Json.tools -Depth 50 -Compress
+    $forkToolsJson = ConvertTo-Json -InputObject $capture14.Json.tools -Depth 50 -Compress
+    $resumeToolsJson = ConvertTo-Json -InputObject $capture15.Json.tools -Depth 50 -Compress
+    $toolProviderBytes = [Text.Encoding]::UTF8.GetByteCount($startToolsJson)
+    $toolProviderHash = Get-Utf8Sha256 -Text $startToolsJson
+    Add-Check -Name 'dynamic-tools-provider-shape-survives-fork' -Passed ($forkToolsJson -ceq $startToolsJson) -Detail "bytes=$toolProviderBytes sha256=$toolProviderHash"
+    Add-Check -Name 'dynamic-tools-provider-shape-survives-restart-resume' -Passed ($resumeToolsJson -ceq $startToolsJson) -Detail "bytes=$toolProviderBytes sha256=$toolProviderHash"
+
+    $berylTools = @($capture13.Json.tools | Where-Object { $_.type -eq 'namespace' -and $_.name -eq 'beryl' })
+    Add-Check -Name 'dynamic-tools-provider-contains-one-beryl-namespace' -Passed (
+        $berylTools.Count -eq 1 -and
+        @($berylTools[0].tools).Count -eq 1 -and
+        [string]$berylTools[0].tools[0].type -eq 'function' -and
+        [string]$berylTools[0].tools[0].name -eq 'cache_registry_probe'
+    ) -Detail "namespace_count=$($berylTools.Count)"
+
     $captureEvidence = @(Get-CaptureFiles | ForEach-Object {
         [pscustomobject]@{
             name = $_.Name
@@ -791,6 +884,9 @@ try {
         codex_sha256 = $binaryHash
         probe_root = $probeRoot
         schema_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $injectSchemaPath).Hash
+        experimental_thread_start_schema_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dynamicToolSchemaPath).Hash
+        provider_tools_bytes = $toolProviderBytes
+        provider_tools_sha256 = $toolProviderHash
         captures = $captureEvidence
         checks = $script:Checks.ToArray()
         provider_boundary = 'Local provider proves CAS request construction and transport acceptance, not independent hosted-model context-budget admission.'

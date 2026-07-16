@@ -5,8 +5,8 @@ use std::{
 };
 
 use beryl_backend::{
-    ApprovalRequest, ManagedBackendClientConnector, ManagedBackendSession, ModelInfo, ThreadStatus,
-    TurnStreamEvent,
+    ApprovalRequest, ApprovalResponseDisposition, ManagedBackendClientConnector,
+    ManagedBackendSession, ModelInfo, ThreadStatus, TurnStreamEvent,
 };
 use gpui::{
     Bounds, ClickEvent, Context, KeyDownEvent, KeyUpEvent, MouseDownEvent, MouseUpEvent, Pixels,
@@ -1232,14 +1232,21 @@ fn deny_status_operation_approval(
     request: &ApprovalRequest,
     request_timeout: Duration,
 ) -> Result<(), String> {
-    warn!(
-        approval = %request.summary(),
-        approval_payload = %request.pretty_params(),
-        "auto-denying unsupported backend approval request during status operation"
-    );
-    session
-        .deny_approval_request(request)
-        .map_err(|error| format!("Beryl could not deny the backend approval request: {error}"))?;
+    if request.response_disposition() == ApprovalResponseDisposition::ResponseRequired {
+        warn!(
+            approval = %request.summary(),
+            approval_payload = %request.pretty_params(),
+            "auto-denying unsupported backend approval request during status operation"
+        );
+        session.deny_approval_request(request).map_err(|error| {
+            format!("Beryl could not deny the backend approval request: {error}")
+        })?;
+    } else {
+        warn!(
+            approval = %request.summary(),
+            "observed an approval request already denied by the backend session"
+        );
+    }
 
     if request.kind().denial_response_interrupts_turn() {
         return Ok(());

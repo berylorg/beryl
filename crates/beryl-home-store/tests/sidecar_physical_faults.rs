@@ -73,7 +73,7 @@ fn fault_targets_the_final_post_rename_containing_directory_sync() {
     fs::create_dir_all(&shard).unwrap();
 
     faults.fail_next_with_kind(
-        FaultPoint::BeforeSidecarDirectorySync,
+        FaultPoint::BeforeSidecarFinalDirectorySync,
         io::ErrorKind::PermissionDenied,
     );
     let error = store
@@ -95,7 +95,7 @@ fn fault_targets_the_final_post_rename_containing_directory_sync() {
 }
 
 #[test]
-fn final_sidecar_verification_fault_surfaces_before_opening_the_file() {
+fn final_sidecar_verification_fault_surfaces_before_reading_the_retained_file() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();
     let store = open(directory.path(), faults.clone());

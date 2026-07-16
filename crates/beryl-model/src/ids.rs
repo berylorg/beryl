@@ -198,6 +198,11 @@ stable_identity!(
     "syndic_draft_"
 );
 stable_identity!(
+    /// Stable identity for one exact chunked Syndic content object.
+    SyndicContentId,
+    "syndic_content_"
+);
+stable_identity!(
     /// Stable identity for one image marker owned by a Syndic draft.
     SyndicDraftMarkerId,
     "syndic_marker_"
@@ -213,11 +218,6 @@ stable_identity!(
     "syndic_accepted_"
 );
 stable_identity!(
-    /// Stable identity for one durable queued-input record.
-    SyndicQueuedInputId,
-    "syndic_queued_"
-);
-stable_identity!(
     /// Stable identity for one durable retry record.
     SyndicRetryRecordId,
     "syndic_retry_"
@@ -226,6 +226,16 @@ stable_identity!(
     /// Stable identity for one rebuildable Syndic transcript projection.
     SyndicProjectionId,
     "syndic_projection_"
+);
+stable_identity!(
+    /// Stable identity for one range-readable Syndic resource.
+    SyndicResourceId,
+    "syndic_resource_"
+);
+stable_identity!(
+    /// Stable identity for one immutable accepted CAS execution snapshot.
+    SyndicExecutionSnapshotId,
+    "syndic_execution_"
 );
 stable_identity!(
     /// Stable identity for one admitted cross-domain command.
@@ -252,3 +262,39 @@ stable_identity!(
     VirtualDesktopId,
     "desktop_"
 );
+
+impl SyndicDraftId {
+    /// Transitions this draft's stable identity into its submitted-turn type.
+    ///
+    /// Submission preserves the exact 128-bit identity payload. Only the type
+    /// and textual prefix change, so an unrelated turn identity cannot be
+    /// substituted accidentally.
+    #[must_use]
+    pub const fn submitted_turn_id(self) -> SyndicTurnId {
+        SyndicTurnId::from_bytes(self.0)
+    }
+
+    /// Transitions this draft's stable identity into its accepted-input type.
+    ///
+    /// Active-turn or queued admission preserves the exact 128-bit identity
+    /// payload. Only the type and textual prefix change, so one draft cannot
+    /// be silently replaced by an unrelated accepted-input identity.
+    #[must_use]
+    pub const fn accepted_input_id(self) -> SyndicAcceptedInputId {
+        SyndicAcceptedInputId::from_bytes(self.0)
+    }
+}
+
+impl SyndicContentId {
+    /// Derives the content identity from the first 128 bits of its exact digest.
+    #[must_use]
+    pub const fn from_digest(digest: [u8; 32]) -> Self {
+        let mut bytes = [0; ID_BYTES];
+        let mut index = 0;
+        while index < ID_BYTES {
+            bytes[index] = digest[index];
+            index += 1;
+        }
+        Self(bytes)
+    }
+}

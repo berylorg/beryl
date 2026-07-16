@@ -160,7 +160,10 @@ pub fn sidecar_limit() -> SidecarByteLimit {
 }
 
 pub fn asset_owner(seed: u8) -> AssetReferenceOwner {
-    AssetReferenceOwner::AcceptedInput(beryl_model::SyndicAcceptedInputId::from_bytes([seed; 16]))
+    AssetReferenceOwner::AcceptedInputMarker {
+        input_id: beryl_model::SyndicAcceptedInputId::from_bytes([seed; 16]),
+        marker_id: beryl_model::SyndicDraftMarkerId::from_bytes([seed.wrapping_add(128); 16]),
+    }
 }
 
 pub fn thread(seed: u8) -> SyndicThreadId {

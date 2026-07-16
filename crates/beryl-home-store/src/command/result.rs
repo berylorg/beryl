@@ -1,9 +1,21 @@
-use std::error::Error;
+use std::{error::Error, fmt};
 
 use beryl_model::{DomainRevision, HomeRevision, RevisionError};
 use thiserror::Error;
 
-use crate::{DomainHandle, ReadError, StorageDomain, domain::StoreInstanceId};
+use crate::{
+    DomainCallbackSource, DomainHandle, HealthGateError, HomeGeneration, HomeStore, ReadError,
+    StorageDomain, domain::StoreInstanceId, health::FailureSeverity,
+};
+
+/// Domain-callback stage that surfaced a storage-owned access failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContributorCallbackStage {
+    /// Validate current participant state before assembling mutations.
+    Validation,
+    /// Assemble the participant's typed pending mutations.
+    Contribution,
+}
 
 /// Deterministic stale-revision fact returned before validation or assembly.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,11 +39,23 @@ pub enum RevisionConflict {
 }
 
 /// Successful durable command revisions.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CommitReceipt {
     pub(crate) store: StoreInstanceId,
+    pub(crate) generation: HomeGeneration,
     pub(crate) home_revision: HomeRevision,
     pub(crate) domains: Vec<(usize, DomainRevision)>,
+}
+
+impl fmt::Debug for CommitReceipt {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommitReceipt")
+            .field("generation", &self.generation)
+            .field("home_revision", &self.home_revision)
+            .field("affected_domain_count", &self.domains.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl CommitReceipt {
@@ -41,9 +65,13 @@ impl CommitReceipt {
         self.home_revision
     }
 
-    /// Returns the new revision for one participating typed domain.
+    /// Returns the exact process-local healthy generation that committed the command.
     #[must_use]
-    pub fn domain_revision<D: StorageDomain>(
+    pub const fn generation(&self) -> HomeGeneration {
+        self.generation
+    }
+
+    pub(crate) fn domain_revision<D: StorageDomain>(
         &self,
         handle: DomainHandle<D>,
     ) -> Option<DomainRevision> {
@@ -53,6 +81,72 @@ impl CommitReceipt {
         self.domains
             .iter()
             .find_map(|(slot, revision)| (*slot == handle.slot).then_some(*revision))
+    }
+}
+
+/// Why a successful command receipt cannot authorize a current publication.
+#[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
+pub enum CommitReceiptError {
+    /// The process-wide health gate is not accepting state-dependent work.
+    #[error(transparent)]
+    HealthGate(#[from] HealthGateError),
+    /// A panic poisoned the in-process home generation lock.
+    #[error("the Beryl-home generation lock is poisoned")]
+    GenerationPoisoned,
+    /// The receipt belongs to another or obsolete healthy store generation.
+    #[error(
+        "command receipt belongs to another or obsolete Beryl-home generation: receipt {receipt_generation:?}, current {current_generation:?}"
+    )]
+    StaleOrForeign {
+        /// Generation that durably completed the command.
+        receipt_generation: HomeGeneration,
+        /// Current healthy generation asked to accept the result.
+        current_generation: HomeGeneration,
+    },
+    /// The typed domain handle belongs to another or obsolete registration.
+    #[error("domain handle `{domain}` does not belong to this home generation")]
+    ForeignDomain {
+        /// Stable typed domain name.
+        domain: &'static str,
+    },
+}
+
+impl HomeStore {
+    /// Returns one affected domain revision only when the receipt still belongs
+    /// to this store's exact current healthy generation.
+    pub fn receipt_domain_revision<D: StorageDomain>(
+        &self,
+        receipt: &CommitReceipt,
+        handle: DomainHandle<D>,
+    ) -> Result<Option<DomainRevision>, CommitReceiptError> {
+        let admission = self.health.admit()?;
+        let generation_guard = match self.generation.read() {
+            Ok(generation) => generation,
+            Err(_) => {
+                admission.fail(FailureSeverity::Structural);
+                return Err(CommitReceiptError::GenerationPoisoned);
+            }
+        };
+        let generation = match generation_guard.as_ref() {
+            Some(generation) => generation,
+            None => {
+                admission.fail(FailureSeverity::Structural);
+                return Err(CommitReceiptError::GenerationPoisoned);
+            }
+        };
+        if receipt.generation != admission.generation() || receipt.store != generation.instance_id {
+            return Err(CommitReceiptError::StaleOrForeign {
+                receipt_generation: receipt.generation,
+                current_generation: admission.generation(),
+            });
+        }
+        if generation.resolve_domain(handle).is_none() {
+            return Err(CommitReceiptError::ForeignDomain { domain: D::NAME });
+        }
+        let revision = receipt.domain_revision(handle);
+        drop(generation_guard);
+        admission.confirm()?;
+        Ok(revision)
     }
 }
 
@@ -109,14 +203,16 @@ pub enum CommandError {
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
-    /// The registered authoritative-domain validator rejected current state.
-    #[error("domain `{domain}` failed registered invariant validation: {source}")]
-    DomainValidation {
+    /// A storage-owned read or sidecar access failed inside a domain callback.
+    #[error("domain `{domain}` failed storage access during {stage:?}: {source}")]
+    ContributorAccess {
         /// Stable typed domain name.
         domain: &'static str,
-        /// Domain-owned validator source.
+        /// Exact callback stage.
+        stage: ContributorCallbackStage,
+        /// Exact typed storage-owned source.
         #[source]
-        source: Box<dyn Error + Send + Sync>,
+        source: DomainCallbackSource,
     },
     /// A domain failed while building its typed pending mutation set.
     #[error("domain `{domain}` failed command contribution: {source}")]

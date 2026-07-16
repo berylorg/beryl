@@ -4,7 +4,43 @@
 //! session/window/claim, settings, durable-job, catalog, and asset-reference domains through
 //! [`beryl_home_store`] without receiving a database, keyspace, batch, or
 //! encoded record. Callers admit external facts before building short
-//! revision-checked contributions.
+//! revision-checked contributions. Successful command receipts are projected
+//! through each opaque domain state, which rejects obsolete home generations
+//! without exposing the underlying storage-domain handle.
+//!
+//! # Asset Reference Batches
+//!
+//! Marker-bearing owners retain the stable marker identity across bounded atomic
+//! additions and moves. A move description can be cloned for exact post-admission
+//! reconciliation.
+//!
+//! ```
+//! use std::num::NonZeroU64;
+//! use beryl_model::{
+//!     AssetId, SyndicAcceptedInputId, SyndicDraftMarkerId, SyndicItemId,
+//! };
+//! use beryl_state::{AssetReferenceMove, AssetReferenceOwner, MoveAssetReferences};
+//!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let marker_id = SyndicDraftMarkerId::from_bytes([3; 16]);
+//! let source = AssetReferenceOwner::AcceptedInputMarker {
+//!     input_id: SyndicAcceptedInputId::from_bytes([1; 16]),
+//!     marker_id,
+//! };
+//! let destination = AssetReferenceOwner::SubmittedTurnItemMarker {
+//!     item_id: SyndicItemId::from_bytes([2; 16]),
+//!     marker_id,
+//! };
+//! let asset_id = AssetId::sha256_v1([4; 32], NonZeroU64::new(12).unwrap());
+//! let moves = MoveAssetReferences::new(vec![AssetReferenceMove::new(
+//!     source,
+//!     destination,
+//!     asset_id,
+//! )?])?;
+//! assert_eq!(moves.moves().len(), 1);
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! # Example
 //!
@@ -54,7 +90,11 @@
 //!     expected_domain,
 //!     CreateRuntimeWithHomeRoot::new(runtime, root)?,
 //! ))?;
-//! home.execute(command)?;
+//! let receipt = home.execute(command)?;
+//! assert_eq!(
+//!     state.runtime_roots().committed_revision(&home, &receipt)?,
+//!     Some(expected_domain.checked_next()?),
+//! );
 //! # Ok(())
 //! # }
 //! ```
@@ -72,9 +112,12 @@ mod thread_metadata;
 mod value;
 
 pub use asset::{
-    AddAssetReference, AssetAdmissionError, AssetDimensions, AssetMediaType, AssetMetadataRecord,
-    AssetMutationError, AssetReferenceOwner, AssetReferenceRecord, AssetSidecarState, AssetState,
-    AssetValueError, CreateAssetWithReference, FirstAssetContribution, RemoveAssetReference,
+    AddAssetReference, AddAssetReferences, AssetAdmissionError, AssetDimensions, AssetMediaType,
+    AssetMetadataRecord, AssetMutationError, AssetReferenceAddition, AssetReferenceAdditionStatus,
+    AssetReferenceBatchError, AssetReferenceMove, AssetReferenceMoveStatus, AssetReferenceOwner,
+    AssetReferenceRecord, AssetReferenceStatusError, AssetSidecarState, AssetState,
+    AssetValueError, CreateAssetWithReference, FirstAssetContribution, MAX_ASSET_REFERENCE_BATCH,
+    MoveAssetReferences, RemoveAssetReference,
 };
 pub use catalog::{
     CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_MAX_STORED_ROW_BYTES, CatalogArchiveSummary,

@@ -184,6 +184,40 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
 }
 
 #[test]
+fn current_domain_command_shares_post_sync_durability_and_health_semantics() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let generation = store.health().generation().unwrap();
+
+    faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
+    let error = store
+        .execute_current(alpha.current_command(PutBytes::<AlphaDomain>::new(
+            23,
+            b"current already durable".to_vec(),
+        )))
+        .unwrap_err();
+    match error {
+        CommandError::Persistence { source } => {
+            assert_io_kind(source.as_ref(), io::ErrorKind::StorageFull);
+        }
+        other => panic!("unexpected current-domain command error: {other:?}"),
+    }
+    assert_eq!(store.health().state(), HomeHealthState::Verifying);
+
+    let health = store.verify_health().unwrap();
+    assert_eq!(health.state(), HomeHealthState::Healthy);
+    assert_eq!(health.generation(), Some(generation));
+    assert_eq!(store.home_revision().unwrap().get(), 2);
+    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+    assert_eq!(
+        read_value(&store, alpha, 23).as_deref(),
+        Some(b"current already durable".as_slice())
+    );
+}
+
+#[test]
 fn writer_panic_survives_persistent_recovery_faults_until_replacement_succeeds() {
     let directory = tempdir().unwrap();
     let faults = FaultController::new();

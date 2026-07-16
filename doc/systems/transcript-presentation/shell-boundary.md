@@ -32,13 +32,15 @@ The host does not own Syndic canonical history, durable storage, `syndic-storage
 
 The host accepts selected transcript-view activation seeds, previously coherent host state for non-blank activation handoff, typed synthetic-context contribution descriptors, provider responses, invalidation notices, viewport size, theme-dependent measurement changes, manual scroll deltas, explicit navigation requests, live-turn events, renderer demand facts, nested-widget resource demand, selection changes, quote requests, copy requests, context-menu requests, media action requests, popup-close commands, and diagnostic read commands.
 
+Transcript-visible live-turn text events carry exact routed thread, turn, item, normalized kind, ordered text, and logical-frontier facts. The host may publish their bounded transient suffix before durable Syndic projection catches up, but it may not reinterpret them as durable history or replay them through a presentation timer.
+
 Activation seeds name the selected transcript view and requested initial placement. A branch-discussion seed may also name the immutable context-owner identity, expected revision, and insertion parent needed for transcript residency to read and derive one stable synthetic-context group. Seeds do not carry selected context text, legacy history-window objects, or legacy presentation-state objects.
 
 Provider responses carry Syndic transcript-view cursor pages, immutable branch-context envelopes, projection records, resource metadata, resource ranges, revisions, and rejection or stale-result state. They do not carry legacy transcript models.
 
 ## Outputs
 
-The host publishes immutable resident presentation snapshots for the GPUI panel. A snapshot contains only currently resident presentation records, realized synthetic-context chunks, stable group and record identities, realized frame data, provenance, local fallback records, local affordances, and enough revision data for the renderer to reject stale measurements or demand facts.
+The host publishes immutable resident presentation snapshots for the GPUI panel. A snapshot contains only currently resident presentation records, any bounded transient live suffix attached to its exact authored record, realized synthetic-context chunks, stable group and record identities, realized frame data, provenance, local fallback records, local affordances, and enough revision data for the renderer to reject stale measurements or demand facts.
 
 The host also publishes shell-facing status facts, turn-view facts, retained-state diagnostics, transcript-frame diagnostics, visible-media diagnostics, media lifecycle events, copy payloads, quote payloads, context-menu targets, media action targets, and scroll-command outcomes.
 
@@ -71,6 +73,8 @@ Diagnostics may expose Syndic provenance and transcript-view positions. They mus
 - Synthetic context remains presentation-only, occupies its immutable branch-boundary position, does not increment turn counts, and cannot become a quote, branch, edit, or ordinary turn-menu target.
 - Activation publishes content and initial viewport state atomically when a coherent seed is available.
 - A previous coherent transcript may remain visible until the new coherent seed is ready.
+- Every normalized transcript-visible text delta becomes eligible for the next GUI frame without synthetic character pacing. Deltas already pending at one frame boundary may publish together.
+- A transient live suffix remains bounded and non-authoritative. Exact Syndic prefix agreement transfers that range to durable presentation without duplication, blanking, or identity substitution; mismatch fails closed.
 - Manual scrolling remains exact pixel displacement and never snaps to turns, rows, chunks, or transcript boundaries.
 - Resident Syndic data may be released only when current anchor, visible content, active selection contract, and UI pins stay valid.
 - Selection, copy, quote, menus, and media actions operate only on rendered resident records with stable provenance and geometry.
