@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rust-First Automation"
+  short_description: "Build complex project automation in Rust."
+  default_prompt: "Use $rust-first-automation to choose and implement a Rust-first automation boundary for this task."

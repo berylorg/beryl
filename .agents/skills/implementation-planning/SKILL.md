@@ -1,6 +1,6 @@
 ---
 name: implementation-planning
-description: Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; derive edge cases from design docs; keep phases narrowly scoped; track readiness and resumable milestones; record blockers; respect other active planning authorities; and follow stop-after-phase and review-after-completion rules.
+description: Maintain root doc/plan.md implementation plans. Use before implementation work, including single-package work, to create or update the authoritative plan; enforce # Scope and # Phase N status structure; keep one acceptance boundary per phase; pause and replan on material scope growth; maintain a compact sliding execution window; derive edge cases from design docs; record blockers; respect other active planning authorities; and review every phase before completion.
 ---
 
 # Implementation Planning
@@ -26,6 +26,20 @@ When non-empty, `doc/plan.md` must contain:
 
 Track readiness and the latest resumable milestone so later sessions can continue correctly.
 
+Treat `doc/plan.md` as a sliding execution window, not a historical ledger:
+
+- Keep the active `wip` phase detailed enough to execute and verify.
+- Keep only a few future `pending` phases, expressed as concise acceptance-boundary summaries until
+  they become active.
+- Retain at most the immediately preceding `finished` phase as a short outcome.
+- Compact a phase immediately after its completion review succeeds. Remove its task checklist,
+  investigation narrative, incremental results, and test-by-test history before further
+  implementation begins.
+- Remove any older finished-phase outcome when a newer phase finishes.
+- Before deleting material investigation or invalidated-approach history during compaction,
+  preserve it through the applicable project research-memory or failure-record authority. Link the
+  resulting record when useful; do not duplicate its body in the root plan.
+
 If another active skill or project authority constrains planning scope, inputs, sequencing, or continuation, reflect those constraints in `doc/plan.md` without redefining that authority's file format or domain-specific workflow.
 
 ## Planning Workflow
@@ -44,11 +58,33 @@ If another active skill or project authority explicitly allows a constrained exc
 
 ## Phase Sizing
 
-Each phase should contain one hard task at a time, or one tightly coupled task cluster that cannot be verified sensibly if split smaller.
+Each phase must have exactly one primary acceptance boundary.
+
+A phase may contain a tightly coupled task cluster only when no constituent task can be
+independently implemented, verified, reviewed, or resumed. If any constituent task can cross one
+of those boundaries independently, make it a separate phase.
 
 Do not pack multiple hard tasks into a single phase just because they share a feature, package, or milestone. If a phase would require broad investigation, multiple independent code paths, or several verification strategies, split it.
 
+Do not create numbered implementation sequences, subphases, tranche items, or checkpoint items
+inside a phase as substitutes for real phases. Any item substantial enough to carry its own status,
+completion result, resumable milestone, or review is a phase.
+
+An integration phase may connect and jointly verify already accepted components. It must not also
+implement those components or absorb unfinished component work.
+
 When another active skill or project authority limits the current planning window, keep phases inside that window.
+
+## Scope Growth
+
+Pause implementation immediately when material scope growth reveals another hard task or acceptance
+boundary.
+
+Add the newly discovered work as a separate phase and re-establish the execution order before
+continuing. Do not append it to the active phase or broaden that phase's acceptance boundary. Keep
+minor implementation details within the active phase only when they remain necessary to its existing
+acceptance boundary and do not create an independently implementable, verifiable, reviewable, or
+resumable unit.
 
 ## Edge-Case Checklist
 
@@ -69,16 +105,28 @@ For each identified interaction, include a verification case or state why no add
 When executing the plan:
 
 - Keep `doc/plan.md` status current.
+- Apply the scope-growth rule before implementing newly discovered hard work.
 - If a planned step cannot technically work, stop and notify the operator instead of quietly inventing a workaround.
 - In absence of more specific instructions, stop after one phase is finished.
 - If a phase cannot be completed, record the blocking issue in that phase before stopping.
-- When a phase is finished and later phases remain, stop according to the project's continuation policy.
+- Do not begin the next phase until the active phase has passed its completion review and has been
+  compacted.
+- When a phase is finished and later phases remain, stop according to the project's continuation
+  policy after performing that compaction.
 - When all phases in the current plan are finished, follow any continuation rules from other active skills or project authorities before declaring the plan complete.
 
 ## Completion Review
 
-When all phases are finished and the changes touched authoritative docs or code, get a reviewer subagent review and address discovered problems.
+When one phase's implementation and verification are complete, get a reviewer subagent review
+before marking that phase `finished` or beginning the next phase. This review is required for every
+phase, including documentation-only, verification-only, integration, and no-change outcomes.
 
-If the reviewer finds issues that need fixing, plan that work in `doc/plan.md` before implementing the fixes.
+If the reviewer finds issues within the phase's acceptance boundary, keep the phase `wip`, record
+the corrective work in that phase, and address it before repeating review. If a finding reveals a
+new hard task or acceptance boundary, apply the scope-growth rule and create a separate phase.
+
+After review succeeds, mark the phase `finished` and immediately compact it to its heading plus a
+few-line outcome. Remove detailed tasks, edge cases, verification logs, investigation history, and
+resumable diary content. Perform this compaction before starting or expanding another phase.
 
 When all phases are complete and no active skill or project authority requires continuation, leave `doc/plan.md` empty unless the project declares another archival convention.

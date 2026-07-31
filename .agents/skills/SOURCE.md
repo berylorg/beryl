@@ -21,3 +21,4 @@ From `https://github.com/berylorg/skillheap`:
 - gui
 - gui-widgets compatibility redirect
 - gpui-scroll-surfaces
+- rust-first-automation

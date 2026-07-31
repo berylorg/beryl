@@ -11,6 +11,12 @@ When an implementation, live-test, dependency, or design approach is invalidated
 
 Failure logs preserve durable lessons. They do not replace design docs, implementation plans, or bug trackers. If a failure changes target-state design, update the authoritative design docs. If it blocks implementation, update `doc/plan.md`.
 
+Keep one record per durable root failure. When later work exposes another symptom, invalidates an
+intermediate correction, or completes the same lesson, update and compact the existing record
+instead of adding a chronological sibling. Preserve the final invalidated assumption, decisive
+evidence, accepted correction, and unresolved risk; remove routine intermediate attempts and
+superseded test inventories.
+
 ## When To Log
 
 Log a failure when:
@@ -24,6 +30,11 @@ Log a failure when:
 - The project must remember why a plausible approach was rejected.
 
 Do not log routine syntax errors, formatting mistakes, one-off environment issues, or small bugs whose lesson is obvious from the final diff.
+
+Delete a failure record when later review establishes with high confidence that it contains only
+those excluded categories and no authoritative document relies on it. If another record already
+owns the same lesson, merge the durable facts into that survivor and update inbound references
+before deleting the duplicate.
 
 ## Entry Content
 
@@ -45,5 +56,6 @@ Avoid broad transcripts and speculative commentary.
 2. Decide whether the lesson is durable enough for `doc/failures/<scope>.md`.
 3. Update `doc/plan.md` if work is blocked or the implementation sequence changes.
 4. Update authoritative design docs if target state changes.
-5. Add or update the failure note with evidence and course correction.
+5. Add or update the one root failure note with evidence and course correction; merge or compact
+   overlapping history rather than accumulating attempt diaries.
 6. Resume only after the contradiction or invalid assumption is resolved according to authority.
