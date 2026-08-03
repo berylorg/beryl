@@ -163,6 +163,36 @@ This section is a non-authoritative issue-tracker substitute. Items here express
 - Design explicit rebinding of an existing thread to another runtime/root without weakening exact history, draft, and CAS-projection identity.
 - Reconsider manual thread rename, pin, archive, and delete commands only as later product work. The current rework retains automatic generated titles and automatic branch-discussion archive after successful handoff.
 
+## AIPM GUI Skill Local-Adaptation Cleanup
+
+- Review and clean up Beryl's local adaptations to the canonical AIPM `gui` skill. Canonical AIPM
+  and Beryl were synchronized in commit `48414e61ac89d67b479740cf9633ccabe51a14bd`;
+  safe generic GUI improvements and intrinsic-size CSS fixes are already integrated.
+- Treat the remaining local drift as an architectural ownership question before editing. Classify
+  it into user-observable widget guarantees; GPUI realization, overscan, scrolling, anchoring,
+  performance, and content-free diagnostic mechanics; Beryl-wide system or package policy; and
+  material owned by a dedicated local skill such as `gpui-scroll-surfaces`.
+- Keep stable reusable-widget behavior in the generic GUI contract when users can observe it,
+  including focus, selection, navigation, scrolling, refresh, and intentional offscreen-anchor
+  behavior. Preserve the canonical `gui` skill's purpose: widget contracts, shared behavior,
+  composition, and integration into window slots.
+- Move Beryl- or GPUI-specific implementation mechanics out of generic GUI guidance when existing
+  feature, system, package, or local-skill authority owns them. Do not force an extraction when the
+  repository's authority model supports a cleaner placement, and do not create dependencies
+  between otherwise independent skills unless the dependency is necessary and justified.
+- Preserve intentional Windows and Beryl specialization. Update `.agents/skills/SOURCE.md` if the
+  resulting provenance or adaptation classification changes.
+- When this work is promoted for implementation, follow repository instructions and the active
+  `doc/plan.md`, use the `skill-creator` workflow for the existing-skill change, and update the
+  appropriate design and planning authority before implementation.
+- Before committing the eventual cleanup, summarize the proposed ownership boundaries and why
+  retained or moved material belongs in each location. Stop at an architectural blocker rather
+  than applying a local workaround if the documented authority cannot support a sound cleanup.
+- Review the final result for contradictions, dangling references, duplicated authority, and loss
+  of useful Beryl behavior. Run available validation without installing software; Python-based
+  skill validation may be handwaved. Preserve unrelated dirty work, stage and commit only the
+  cleanup, and do not push.
+
 ## Later Navigation Exploration
 
 - Consider branch-sibling visualization and click-to-focus for threads already open in another main window without changing the immediate flat recent-first selector contract.
