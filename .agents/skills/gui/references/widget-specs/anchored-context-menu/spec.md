@@ -83,7 +83,9 @@ Spec CSS:
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  inline-size: clamp(var(--min-width), max-content, min(var(--max-width), available-inline-size));
+  inline-size: max-content;
+  min-inline-size: var(--min-width);
+  max-inline-size: min(var(--max-width), available-inline-size);
   max-block-size: min(var(--max-height), available-block-size);
   margin-block-start: var(--anchor-gap);
   padding-block: var(--padding-y);

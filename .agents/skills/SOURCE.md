@@ -3,6 +3,7 @@
 From `https://github.com/berylorg/aipm`:
 
 - architectural-rework
+- cargo-projects
 - exploration-memory
 - failure-logging
 - feature-design-docs
@@ -12,13 +13,13 @@ From `https://github.com/berylorg/aipm`:
 - system-design-docs
 - workspace-package-policy
 
-From `https://github.com/berylorg/skillheap`:
+# Remote With Local Adaptations
 
-- cargo-projects
+Based on `https://github.com/berylorg/aipm` with Beryl-specific changes:
+
+- gui
+- rust-first-automation
 
 # Local
 
-- gui
-- gui-widgets compatibility redirect
 - gpui-scroll-surfaces
-- rust-first-automation

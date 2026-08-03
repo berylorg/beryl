@@ -1,6 +1,6 @@
 ---
 name: project-doc-authority
-description: Maintain authoritative project documentation hierarchies. Use when Codex must decide where feature, system, package or subproject, project-declared root or parent, plan, rework, research, failure, dependency, API, module, or process rules belong; route and reconcile design authority; preserve Goals/Decisions design structure; reconcile contradictions; or determine which document controls implementation.
+description: Maintain authoritative project documentation hierarchies. Use when Codex must decide where feature, system, package or subproject, additional project-declared, root or parent, plan, rework, research, failure, dependency, API, module, or process rules belong; route and reconcile design authority; preserve Goals/Decisions design structure; reconcile contradictions; or determine which document controls implementation.
 ---
 
 # Project Doc Authority
@@ -10,12 +10,15 @@ description: Maintain authoritative project documentation hierarchies. Use when 
 Use this default authority model unless the project explicitly declares a different one:
 
 1. Project instructions and skills define process and documentation taxonomy. Project-declared root or parent authority docs may refine that taxonomy when they exist.
-2. Feature docs at `doc/features/<feature>/design.md` own user-visible product contracts for one feature.
-3. System docs at `doc/systems/<system>/design.md` own internal cross-feature or cross-package technical architecture.
-4. Workspace-project, package, or subproject `doc/design.md` files own that artifact's public boundary contract.
-5. Rework trackers under `doc/rework/<name>/REWORK.md` own temporary replacement state and must point at target-state design docs.
-6. Root `doc/plan.md` owns implementation sequencing and must derive from design authority.
-7. Code must derive from `doc/plan.md` and must not contradict design docs.
+2. Additional project-declared authorities may own facts within a bounded semantic domain not
+   covered by the default feature, system, or package layers. Each declaration must name its owning
+   docs, scope, consumers, and conflict relationship to the default layers.
+3. Feature docs at `doc/features/<feature>/design.md` own user-visible product contracts for one feature.
+4. System docs at `doc/systems/<system>/design.md` own internal cross-feature or cross-package technical architecture.
+5. Workspace-project, package, or subproject `doc/design.md` files own that artifact's public boundary contract.
+6. Rework trackers under `doc/rework/<name>/REWORK.md` own temporary replacement state and must point at target-state design docs.
+7. Root `doc/plan.md` owns implementation sequencing and must derive from design authority.
+8. Code must derive from `doc/plan.md` and must not contradict design docs.
 
 Skills and agent instructions define process. Design docs define target state. Plans define execution order. Exploration memory and failure notes support reasoning but do not override design authority.
 
@@ -63,6 +66,16 @@ Feature docs must not define internal cross-package architecture, storage models
 Feature docs outrank system and package docs for user-visible behavior. System and package docs must satisfy feature contracts without duplicating them.
 
 Supplemental feature files, including split docs and mockups, are authoritative only when linked from the feature `design.md` with their intended role.
+
+## Additional Authorities
+
+Use an additional project-declared authority when a bounded body of truth is neither user-visible
+product behavior nor implementation architecture and cannot be owned honestly by one package.
+
+The declaration must identify the owning documents, precise semantic boundary, expected consumers,
+and relationship to feature, system, and package authority. The additional authority owns only its
+declared facts; dependent docs must not silently redefine them. If a consumer requires those facts
+to change, update or explicitly reconcile the additional authority before dependent design or code.
 
 ## System Docs
 

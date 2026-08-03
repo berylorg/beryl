@@ -25,9 +25,11 @@ Only well-established, battle-tested third-party crates are allowed unless the o
 
 ## Crate API Docs
 
-Each crate's API surface must be discoverable at a glance via documentation in `lib.rs`.
+Each library crate's API surface must be discoverable at a glance via crate-level documentation in
+`lib.rs`. For a binary-only crate, document the executable's purpose and invocation contract in
+`main.rs` or the project-declared entry-point documentation.
 
-When public APIs change:
+When a library crate's public APIs change:
 
 - Update crate-level docs in `lib.rs`.
 - Include compiling examples that show normal use of the public API.
@@ -36,15 +38,16 @@ When public APIs change:
 
 ## Tests
 
-Place unit tests in the crate-root `tests/` directory, not in main source files.
+Place project tests in the crate-root `tests/` directory as Cargo integration-test targets, not in
+main source files. Do not describe `tests/` targets as Rust unit tests.
 
 Use `cargo-nextest` for tests. Do not use `cargo test` unless the operator explicitly overrides this rule.
 
 Match test coverage to risk:
 
-- Add focused tests for narrow changes.
+- Add focused integration tests for narrow changes.
 - Broaden tests for shared behavior, public APIs, cross-crate contracts, persistence, async behavior, or user-visible workflows.
-- Keep tests in the crate that owns the behavior unless an integration boundary requires a broader test.
+- Keep tests in the crate that owns the behavior unless a workspace boundary requires a broader test.
 
 ## Exploration Memory
 

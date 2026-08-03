@@ -88,7 +88,8 @@ Add these sections when useful:
 - `# Forbidden Local APIs`: names or short categories of obsolete surfaces that new code must not
   use.
 
-Do not add other tracker sections unless the operator explicitly requests one.
+Do not add other tracker sections unless the operator explicitly requests one or a project-declared
+tracker convention requires one.
 
 ## Tracker Brevity And Authority
 
@@ -205,8 +206,9 @@ After each coherent step:
 - Update only the affected `REWORK.md` checkbox state, current blocker, or evidence link, then apply
   the completed-item compaction rule before continuing.
 - Update the durable plan status and resumable milestone.
-- Keep one concise outcome-level verification item for the relevant boundary; put commands, counts,
-  and logs in their normal evidence location.
+- Keep one concise outcome-level verification item for the relevant boundary. Put commands, counts,
+  and logs in the project's normal evidence location when one exists; otherwise retain the minimal
+  command and result needed to make the outcome reproducible.
 
 ## Verification
 

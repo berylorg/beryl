@@ -11,7 +11,7 @@ Use this skill for GUI implementation authority, GUI documentation structure, GU
 
 This skill owns the process, schemas, and bundled reference specs. The project repository owns project-specific GUI facts in `doc/gui/` and `doc/features/<feature>/gui.md`.
 
-Product behavior remains owned by `doc/features/<feature>/design.md`. GUI docs may describe composition, placement, layout, widget dependencies, and visual interaction details, but they must not make feature behavior authority ambiguous.
+Product behavior remains owned by `doc/features/<feature>/design.md`. GUI docs may describe composition, placement, layout, widget dependencies, and widget-local interaction mechanics, but they must not make feature behavior authority ambiguous.
 
 Do not introduce formal slot or mount parameters beyond the section shapes in this skill unless the operator explicitly approves a schema extension.
 
@@ -173,7 +173,7 @@ Before creating a new widget spec, classify the widget as one of these:
 
 Use canonical widget names in docs and dependency lists.
 
-Create a project-local widget spec when no built-in or external spec covers the control and any of these conditions applies:
+Create a project-local widget spec when the project intentionally adapts or overrides an existing built-in or external spec. Otherwise, create one when no built-in or external spec covers the control and any of these conditions applies:
 
 - The same composite anatomy is used by two or more commands, modes, variants, or mounted surfaces, even inside one feature.
 - The composite has a stable identity while internal content or collections change.

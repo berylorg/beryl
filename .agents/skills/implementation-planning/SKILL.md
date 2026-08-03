@@ -29,12 +29,14 @@ Track readiness and the latest resumable milestone so later sessions can continu
 Treat `doc/plan.md` as a sliding execution window, not a historical ledger:
 
 - Keep the active `wip` phase detailed enough to execute and verify.
-- Keep only a few future `pending` phases, expressed as concise acceptance-boundary summaries until
-  they become active.
+- Represent every known future acceptance boundary as a `pending` phase so work cannot disappear
+  from the plan. Keep only the few near-term phases detailed; express later phases as a heading and
+  concise acceptance-boundary summary until they approach activation.
 - Retain at most the immediately preceding `finished` phase as a short outcome.
 - Compact a phase immediately after its completion review succeeds. Remove its task checklist,
   investigation narrative, incremental results, and test-by-test history before further
-  implementation begins.
+  implementation begins, while retaining a concise verification result or durable evidence link in
+  the phase outcome.
 - Remove any older finished-phase outcome when a newer phase finishes.
 - Before deleting material investigation or invalidated-approach history during compaction,
   preserve it through the applicable project research-memory or failure-record authority. Link the
@@ -126,7 +128,8 @@ the corrective work in that phase, and address it before repeating review. If a 
 new hard task or acceptance boundary, apply the scope-growth rule and create a separate phase.
 
 After review succeeds, mark the phase `finished` and immediately compact it to its heading plus a
-few-line outcome. Remove detailed tasks, edge cases, verification logs, investigation history, and
-resumable diary content. Perform this compaction before starting or expanding another phase.
+few-line outcome that includes the verification result or a durable evidence link. Remove detailed
+tasks, edge cases, verification logs, investigation history, and resumable diary content. Perform
+this compaction before starting or expanding another phase.
 
 When all phases are complete and no active skill or project authority requires continuation, leave `doc/plan.md` empty unless the project declares another archival convention.
