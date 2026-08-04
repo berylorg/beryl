@@ -476,6 +476,7 @@ impl ProviderBroker {
                 pages,
                 command: None,
                 active: None,
+                authority_lost: false,
                 #[cfg(feature = "test-faults")]
                 test_metrics: Arc::clone(&test_metrics),
             })),
@@ -1326,6 +1327,7 @@ struct Ingester {
     pages: PagePool,
     command: Option<LiveCommandPermit>,
     active: Option<ActiveIngress>,
+    authority_lost: bool,
     #[cfg(feature = "test-faults")]
     test_metrics: Arc<crate::cas_projection::test_faults::ProviderBrokerTestMetrics>,
 }
@@ -1370,6 +1372,15 @@ impl Ingester {
             };
             self.command = Some(command);
             let (reply, terminal) = self.apply(operation);
+            if self.authority_lost {
+                self.command
+                    .take()
+                    .expect("authority loss retains its outer live command")
+                    .release_after_authority_loss();
+                self.ack.complete_terminal(reply);
+                self.cancelled.store(true, Ordering::Release);
+                break;
+            }
             persistent_failure = self.exact_persistent_failure();
             if terminal || persistent_failure {
                 // The terminal acknowledgement may unblock an owner that immediately waits for
@@ -1386,7 +1397,7 @@ impl Ingester {
             drop(self.command.take());
             self.ack.complete(reply);
         }
-        if !persistent_failure {
+        if !persistent_failure && !self.authority_lost {
             self.abandon_active();
         }
         self.approval.close();
@@ -1605,6 +1616,14 @@ impl Ingester {
             let _ = self.failure_notification.notify();
         }
         self.commands.is_persistent_failure_cut()
+    }
+
+    fn authority_lost_terminal(&mut self) -> (BrokerReply, bool) {
+        self.authority_lost = true;
+        (
+            BrokerReply::Applied(beryl_backend::OrderedTurnStreamCompletion::Applied),
+            true,
+        )
     }
 
     fn live_command(&self) -> &LiveCommandPermit {

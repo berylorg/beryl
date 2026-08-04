@@ -51,40 +51,44 @@ impl ProviderObservationStageCallback for StageCommitter<'_> {
             None
         };
         loop {
-            self.await_current()?;
-            if self.cancelled.load(Ordering::Acquire) {
-                return Err(StageCommitError::Cancelled);
+            if self.home.home_id() != self.home_id {
+                return Err(self.failure(StageCommitError::HomeIdentity));
             }
             let verification = self
                 .command
-                .verification_join(self.home, self.home_id, self.home_generation)
-                .map_err(|source| self.failure(StageCommitError::Authority(source)))?;
-            match self.home.execute_current(
+                .await_current_or_verification(self.home, self.home_id, self.home_generation)
+                .map_err(StageCommitError::Authority)?;
+            if self.cancelled.load(Ordering::Acquire) {
+                return Err(StageCommitError::Cancelled);
+            }
+            let dispatch = self.home.execute_current(
                 self.storage
                     .current_stage_provider_observation_batch(batch.clone()),
-            ) {
-                Ok(_) => return Ok(()),
-                Err(error) if ambiguous_stage_error(&error) => {
-                    match verification.wait_after_ambiguous() {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            return Err(self.failure(StageCommitError::Command(Box::new(error))));
-                        }
-                        Err(source) => {
-                            return Err(self.failure(StageCommitError::Authority(source)));
-                        }
+            );
+            let verified = verification
+                .settle_after_operation()
+                .map_err(StageCommitError::Authority)?
+                .verified_current();
+            let ambiguous = dispatch.as_ref().err().is_some_and(ambiguous_stage_error);
+            if !verified && !ambiguous {
+                return dispatch
+                    .map(|_| ())
+                    .map_err(|error| self.failure(StageCommitError::Command(Box::new(error))));
+            }
+            let current = self.read_current_build()?;
+            match batch.classify_current(current.as_ref()) {
+                ProviderObservationStageBatchState::Next => return Ok(()),
+                ProviderObservationStageBatchState::Expected => match dispatch {
+                    Ok(_) => {
+                        return Err(self.failure(StageCommitError::ReportedSuccessWithoutAdvance));
                     }
-                    let current = self.read_current_build()?;
-                    match batch.classify_current(current.as_ref()) {
-                        ProviderObservationStageBatchState::Next => return Ok(()),
-                        ProviderObservationStageBatchState::Expected => continue,
-                        ProviderObservationStageBatchState::Conflict => {
-                            return Err(StageCommitError::Conflict);
-                        }
+                    Err(error) if ambiguous_stage_error(&error) => continue,
+                    Err(error) => {
+                        return Err(self.failure(StageCommitError::Command(Box::new(error))));
                     }
-                }
-                Err(error) => {
-                    return Err(self.failure(StageCommitError::Command(Box::new(error))));
+                },
+                ProviderObservationStageBatchState::Conflict => {
+                    return Err(StageCommitError::Conflict);
                 }
             }
         }
@@ -92,44 +96,37 @@ impl ProviderObservationStageCallback for StageCommitter<'_> {
 }
 
 impl StageCommitter<'_> {
-    fn await_current(&self) -> Result<(), StageCommitError> {
-        if self.home.home_id() != self.home_id {
-            return Err(self.failure(StageCommitError::HomeIdentity));
-        }
-        self.command
-            .await_current_or_verification(self.home, self.home_id, self.home_generation)
-            .map_err(|source| self.failure(StageCommitError::Authority(source)))
-    }
-
     fn read_current_build(
         &self,
     ) -> Result<Option<ProviderObservationBuildRecord>, StageCommitError> {
         loop {
-            self.await_current()?;
+            if self.home.home_id() != self.home_id {
+                return Err(self.failure(StageCommitError::HomeIdentity));
+            }
             let verification = self
                 .command
-                .verification_join(self.home, self.home_id, self.home_generation)
-                .map_err(|source| self.failure(StageCommitError::Authority(source)))?;
+                .await_current_or_verification(self.home, self.home_id, self.home_generation)
+                .map_err(StageCommitError::Authority)?;
             let current = self.storage.provider_observation_build(
                 self.home,
                 self.identity,
                 provider_point_limit(),
             );
-            match verification.wait_after_ambiguous() {
-                Ok(true) => continue,
-                Ok(false) => {
+            match verification.settle_after_operation() {
+                Ok(settlement) if settlement.verified_current() => continue,
+                Ok(_) => {
                     return current
                         .map_err(|source| self.failure(StageCommitError::Read(Box::new(source))));
                 }
-                Err(source) => {
-                    return Err(self.failure(StageCommitError::Authority(source)));
-                }
+                Err(source) => return Err(StageCommitError::Authority(source)),
             }
         }
     }
 
     fn failure(&self, error: StageCommitError) -> StageCommitError {
-        let _ = self.command.observe_persistent_failure();
+        if !matches!(&error, StageCommitError::Authority(_)) {
+            let _ = self.command.observe_persistent_failure();
+        }
         error
     }
 }
@@ -158,10 +155,21 @@ pub(super) enum StageCommitError {
     HomeIdentity,
     #[error("provider staging command failed before an ambiguous commit: {0}")]
     Command(#[source] Box<CommandError>),
+    #[error("provider staging command reported success without a durable advance")]
+    ReportedSuccessWithoutAdvance,
     #[error("provider staging lost exact verification authority: {0}")]
     Authority(#[source] crate::cas_projection::LiveCommandAdmissionError),
     #[error("provider staging reconciliation read failed: {0}")]
     Read(#[source] Box<syndic_storage::SyndicReadError>),
     #[error("provider staging reconciliation found a conflicting frontier")]
     Conflict,
+}
+
+impl StageCommitError {
+    pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Authority(source) => Some(*source),
+            _ => None,
+        }
+    }
 }

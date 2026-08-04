@@ -266,6 +266,88 @@ fn checked_user_publication_barrier_holds_one_real_permit_and_releases_it() {
 }
 
 #[test]
+fn checked_user_final_event_reconciles_verified_current_without_duplicate_dispatch() {
+    let faults = FaultController::new();
+    let mut fixture = CheckedUserFixture::with_faults(193, faults.clone());
+    let cas_item_id = CasItemId::new("checked-user-item-193").unwrap();
+    fixture.submit_checked(UserMessageEchoLifecycle::Started, cas_item_id.clone());
+    faults.fail_next_in_scope(
+        FaultPoint::AfterPersist,
+        syndic_storage::test_faults::live_source_event_fault_scope(),
+    );
+    let (signal, receiver) = std::sync::mpsc::sync_channel(1);
+    fixture
+        .failure_notification
+        .attach_recovery_supervisor(signal)
+        .unwrap();
+    let home = std::sync::Arc::clone(&fixture.home);
+    let notification = fixture.failure_notification.clone();
+    std::thread::scope(|scope| {
+        let supervisor = scope.spawn(move || {
+            receiver.recv().unwrap();
+            home.verify_health().unwrap();
+            let completed = notification
+                .publish_verified_current_completion()
+                .unwrap();
+            notification.finish_completed_recovery_supervisor_flight(completed, false);
+        });
+        fixture.submit_checked(UserMessageEchoLifecycle::Completed, cas_item_id);
+        supervisor.join().unwrap();
+    });
+
+    assert_eq!(
+        fixture
+            .storage
+            .turn_state(&fixture.home, fixture.turn_id, point_limit())
+            .unwrap()
+            .unwrap()
+            .source_event_count(),
+        3
+    );
+    assert_eq!(
+        fixture.canonical_item().provider_lifecycle(),
+        ProviderItemLifecycle::Completed
+    );
+    assert_eq!(fixture.broker_snapshot().submitted(), 2);
+    assert_eq!(fixture.broker_snapshot().acked(), 2);
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+    assert_eq!(fixture.registration.terminal_reason(), None);
+
+    fixture.close();
+}
+
+#[test]
+fn checked_user_shutdown_authority_drops_permits_without_target_invalidation() {
+    let mut fixture = CheckedUserFixture::new(194);
+    let cas_item_id = CasItemId::new("checked-user-item-194").unwrap();
+    fixture.submit_checked(UserMessageEchoLifecycle::Started, cas_item_id.clone());
+    fixture
+        .failure_notification
+        .publish_shutdown_completion()
+        .unwrap();
+
+    fixture.submit_checked(UserMessageEchoLifecycle::Completed, cas_item_id);
+
+    assert_eq!(
+        fixture
+            .storage
+            .turn_state(&fixture.home, fixture.turn_id, point_limit())
+            .unwrap()
+            .unwrap()
+            .source_event_count(),
+        2
+    );
+    assert_eq!(
+        fixture.canonical_item().provider_lifecycle(),
+        ProviderItemLifecycle::Started
+    );
+    assert_eq!(fixture.commands.active_command_count_for_test(), 0);
+    assert!(fixture.registration.terminal_reason().is_none());
+
+    fixture.close();
+}
+
+#[test]
 fn mismatched_completed_item_closes_the_exact_target_without_advancing_lifecycle() {
     let mut fixture = CheckedUserFixture::new(172);
     let cas_item_id = CasItemId::new("checked-user-item-172").unwrap();

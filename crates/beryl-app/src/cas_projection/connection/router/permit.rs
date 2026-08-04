@@ -173,6 +173,22 @@ impl SourcePublicationPermit {
             ) => Err(SourcePublicationFinishError::Router),
         }
     }
+
+    /// Consumes provider publication authority after an already-typed service-authority loss.
+    ///
+    /// This releases the process-local publication owner and nested live-command permit without
+    /// claiming that publication succeeded and without converting authority loss into target
+    /// failure. Ordinary abandoned permits retain their fail-closed `Drop` behavior.
+    pub(in crate::cas_projection) fn settle_authority_lost(mut self) {
+        let _ = self
+            .router
+            .finish_source_publication(&self, SourcePublicationCompletion::AuthorityLost);
+        self.finished = true;
+        self.command
+            .take()
+            .expect("source publication authority retains its live command")
+            .release_after_authority_loss();
+    }
 }
 
 impl SourcePublicationPostCommit {
@@ -218,6 +234,7 @@ enum SourcePublicationCompletion {
     Published,
     PublishedHeld,
     Terminal(ProvenTerminalOutcome),
+    AuthorityLost,
     Failed,
 }
 
@@ -512,6 +529,13 @@ fn finish_source_publication_locked(
             && target.publication_in_flight == Some(TargetPublication::Source)
     });
     if !valid {
+        if matches!(completion, SourcePublicationCompletion::AuthorityLost) {
+            return SourcePublicationFinishEffect {
+                result: Err(SourcePublicationFinishError::Router),
+                notify: false,
+                wake_scheduler: false,
+            };
+        }
         if let Some(target) = state.targets.get_mut(&permit.thread_id) {
             target.publication_in_flight = None;
         }
@@ -526,6 +550,15 @@ fn finish_source_publication_locked(
         .targets
         .get_mut(&permit.thread_id)
         .expect("validated source target remains registered");
+    if matches!(completion, SourcePublicationCompletion::AuthorityLost) {
+        target.publication_in_flight = None;
+        advance_revision(state);
+        return SourcePublicationFinishEffect {
+            result: Ok(SourcePublicationResolution::Released(None)),
+            notify: true,
+            wake_scheduler: false,
+        };
+    }
     let was_ready = target.turn_state == TargetTurn::Exact
         && target.start_dispatched
         && target.activation_durable
@@ -537,7 +570,8 @@ fn finish_source_publication_locked(
     let closing = match completion {
         SourcePublicationCompletion::Published
         | SourcePublicationCompletion::PublishedHeld
-        | SourcePublicationCompletion::Terminal(_) => target.publication_closing,
+        | SourcePublicationCompletion::Terminal(_)
+        | SourcePublicationCompletion::AuthorityLost => target.publication_closing,
         SourcePublicationCompletion::Failed => Some(
             target
                 .publication_closing

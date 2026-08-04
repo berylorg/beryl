@@ -458,8 +458,7 @@ fn execute_recovered_projection(
             if super::next_turn::ordinary_error_verification_pending(
                 &source,
                 execution.validator.home_generation(),
-            ) || execution.validator.verification_pending()
-            {
+            ) {
                 execution.projection = *projection;
                 let _ = execution.validator.observe_persistent_failure();
                 restore_execution(execution, super::WorkerDisposition::VerificationPending)

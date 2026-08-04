@@ -45,7 +45,6 @@ impl<'a> FrameCommitter<'a> {
         prepared: &PreparedProviderObservationFrame,
     ) -> Result<ProviderItemBuildRecord, PersistenceCutError> {
         loop {
-            self.before_cut()?;
             let dispatch = self.execute_current(|| {
                 self.home.execute_current(
                     self.storage
@@ -66,7 +65,6 @@ impl<'a> FrameCommitter<'a> {
 
     fn dispatch_batch(&self, batch: &ProviderFrameStageBatch) -> Result<(), PersistenceCutError> {
         loop {
-            self.before_cut()?;
             let dispatch = self.execute_current(|| {
                 self.home.execute_current(
                     self.storage
@@ -91,7 +89,6 @@ impl<'a> FrameCommitter<'a> {
         mut current: ProviderItemBuildRecord,
     ) -> Result<ProviderItemBuildRecord, PersistenceCutError> {
         while current.lifecycle() != ProviderItemBuildLifecycle::Sealed {
-            self.before_cut()?;
             let dispatch = self.execute_current(|| {
                 self.home.execute_current(
                     self.storage
@@ -122,39 +119,24 @@ impl<'a> FrameCommitter<'a> {
         Ok(current)
     }
 
-    fn before_cut(&self) -> Result<(), PersistenceCutError> {
+    fn execute_current<T>(
+        &self,
+        execute: impl FnOnce() -> Result<T, CommandError>,
+    ) -> Result<Result<T, CommandError>, PersistenceCutError> {
         if self.home.home_id() != self.home_id {
             return Err(PersistenceCutError::HomeIdentity);
         }
-        self.command
+        let verification = self
+            .command
             .await_current_or_verification(self.home, self.home_id, self.home_generation)
             .map_err(PersistenceCutError::Authority)?;
         if self.cancelled.load(Ordering::Acquire) {
             return Err(PersistenceCutError::Cancelled);
         }
-        Ok(())
-    }
-
-    fn execute_current<T>(
-        &self,
-        execute: impl FnOnce() -> Result<T, CommandError>,
-    ) -> Result<Result<T, CommandError>, PersistenceCutError> {
-        let verification = self
-            .command
-            .verification_join(self.home, self.home_id, self.home_generation)
-            .map_err(PersistenceCutError::Authority)?;
         let dispatch = execute();
-        let ambiguous = dispatch.as_ref().err().is_some_and(ambiguous_command_error);
-        match verification.wait_after_ambiguous() {
-            Ok(true) => {}
-            Ok(false) => {
-                if ambiguous {
-                    let error = dispatch
-                        .err()
-                        .expect("the ambiguous command outcome remains an error");
-                    return Err(PersistenceCutError::Command(Box::new(error)));
-                }
-            }
+        match verification.settle_after_operation() {
+            Ok(settlement) if settlement.verified_current() => {}
+            Ok(_) => {}
             Err(source) => return Err(PersistenceCutError::Authority(source)),
         }
         Ok(dispatch)
@@ -165,19 +147,16 @@ impl<'a> FrameCommitter<'a> {
         item_id: SyndicItemId,
     ) -> Result<Option<ProviderItemBuildRecord>, PersistenceCutError> {
         loop {
-            self.command
-                .await_current_or_verification(self.home, self.home_id, self.home_generation)
-                .map_err(PersistenceCutError::Authority)?;
             let verification = self
                 .command
-                .verification_join(self.home, self.home_id, self.home_generation)
+                .await_current_or_verification(self.home, self.home_id, self.home_generation)
                 .map_err(PersistenceCutError::Authority)?;
             let current = self
                 .storage
                 .provider_item_build(self.home, item_id, self.limit);
-            match verification.wait_after_ambiguous() {
-                Ok(true) => continue,
-                Ok(false) => {
+            match verification.settle_after_operation() {
+                Ok(settlement) if settlement.verified_current() => continue,
+                Ok(_) => {
                     return current.map_err(|source| PersistenceCutError::Read(Box::new(source)));
                 }
                 Err(source) => return Err(PersistenceCutError::Authority(source)),
@@ -202,7 +181,10 @@ impl<'a> FrameCommitter<'a> {
             )?;
             self.complete(staged).map_err(FrameCommitError::Completion)
         })();
-        if result.is_err() {
+        if result
+            .as_ref()
+            .is_err_and(|error| error.authority().is_none())
+        {
             let _ = self.command.observe_persistent_failure();
         }
         result
@@ -230,6 +212,18 @@ pub(in crate::cas_projection::connection::provider_broker) enum FrameCommitError
     Completion(#[source] PersistenceCutError),
 }
 
+impl FrameCommitError {
+    pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Begin(source) | Self::Completion(source) => source.authority(),
+            Self::Stage(syndic_storage::ProviderObservationFrameStageError::Callback(source)) => {
+                source.authority()
+            }
+            Self::Stage(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub(in crate::cas_projection::connection::provider_broker) enum PersistenceCutError {
     #[error("provider-observation frame persistence was cancelled")]
@@ -246,4 +240,13 @@ pub(in crate::cas_projection::connection::provider_broker) enum PersistenceCutEr
     Collision,
     #[error("provider-observation frame reconciliation read failed: {0}")]
     Read(#[source] Box<syndic_storage::SyndicReadError>),
+}
+
+impl PersistenceCutError {
+    fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Authority(source) => Some(*source),
+            _ => None,
+        }
+    }
 }

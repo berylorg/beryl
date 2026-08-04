@@ -130,11 +130,22 @@ ordinary-startup constructor, or compatibility mount is permitted.
   and broker-acknowledgement expectations. The broker now releases every operation's outer drain-
   counted permit before publishing its acknowledgement, so a returned submit cannot still appear
   live at the public completion boundary. Formatting and diff hygiene pass after that correction.
-- Required post-correction nextest verification remains exposed to the reproduced no-output Windows
-  Cargo build stall recorded in `doc/failures/windows-cargo-nextest-build-stall.md`. Two consecutive
-  bounded post-correction retries stalled before compiler or test output and were reclaimed by exact
-  process id; do not clear shared Cargo artifacts or substitute a test runner without Operator
-  direction.
+- The suspected Windows Cargo build stall was a stale-slot lifecycle hang, now corrected by waking
+  the cut worker after locked failed-or-stale publication and consuming immutable gate election
+  instead of mutable home health. Focused verification passed 33/33, the default library passed
+  220/220, and the `test-faults` library passed 393/393 with both checks, formatting, and diff
+  hygiene clean. Fresh completion review accepted that correction but found four remaining Phase 86
+  defects. Those defects are now repaired: waiter registration observes immutable completion while
+  holding the flight lock; one pre-command witness spans provider dispatch and reconciliation;
+  checked-user activation, frame, and final live-event publication preserve exact typed authority;
+  and scheduler settlement classifies only carried error provenance. Scoped corrective reviews and
+  focused regressions passed. The formerly intermittent same-generation supervisor regression now
+  forces a deterministic next-turn health-gated scan and passes without restoring mutable-health
+  inference. Final verification was safely interrupted after the focused cross-boundary gate passed
+  and while the default full library suite was running; rerun that default suite, the full
+  `test-faults` suite, both library checks, formatting, diff hygiene, and a fresh independent Phase 86
+  completion review. No task-owned Cargo, nextest, or test process remains. The corrected environment
+  diagnosis remains in `doc/failures/windows-cargo-nextest-build-stall.md`.
 
 # Phase 87: Split Oversized Verification And Failure-Orchestration Sources (pending)
 

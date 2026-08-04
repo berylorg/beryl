@@ -7,6 +7,7 @@ use syndic_storage::{
     ProviderObservationStagingBytes, ProviderObservationStagingError,
 };
 
+use super::super::staging::StageCommitError;
 use super::{Ingester, TargetRouteOutcome};
 use crate::cas_projection::connection::router::{
     SourcePublicationFinishError, SourcePublicationPermit, SourcePublicationPermitError,
@@ -33,6 +34,20 @@ where
             OrderedTurnStreamRejection::StagingConflict
         }
     }
+}
+
+fn staging_authority(
+    error: &ProviderObservationStagingError<StageCommitError>,
+) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+    match error {
+        ProviderObservationStagingError::Callback(source) => source.authority(),
+        _ => None,
+    }
+}
+
+enum ProviderStagingOutcome {
+    Rejection(OrderedTurnStreamRejection),
+    AuthorityLost,
 }
 
 impl Ingester {
@@ -115,6 +130,7 @@ impl Ingester {
                     false,
                 )
             }
+            Err(error) if staging_authority(&error).is_some() => self.authority_lost_terminal(),
             Err(error) => self.reject(
                 OrderedTurnStreamOperation::ProviderBegin(begin),
                 staging_rejection(&error),
@@ -143,11 +159,19 @@ impl Ingester {
                 observation
                     .stager
                     .control(translated, &mut commit)
-                    .map_err(|error| staging_rejection(&error))
+                    .map_err(|error| {
+                        if staging_authority(&error).is_some() {
+                            ProviderStagingOutcome::AuthorityLost
+                        } else {
+                            ProviderStagingOutcome::Rejection(staging_rejection(&error))
+                        }
+                    })
             }
-            super::ActiveObservation::Compaction(marker) => marker
-                .control(translated)
-                .map_err(|_| OrderedTurnStreamRejection::SchemaMismatch),
+            super::ActiveObservation::Compaction(marker) => {
+                marker.control(translated).map_err(|_| {
+                    ProviderStagingOutcome::Rejection(OrderedTurnStreamRejection::SchemaMismatch)
+                })
+            }
         };
         match result {
             Ok(()) => {
@@ -157,7 +181,8 @@ impl Ingester {
                     false,
                 )
             }
-            Err(rejection) => {
+            Err(ProviderStagingOutcome::AuthorityLost) => self.authority_lost_terminal(),
+            Err(ProviderStagingOutcome::Rejection(rejection)) => {
                 observation.abandon();
                 self.reject(
                     OrderedTurnStreamOperation::ProviderControl(control),
@@ -222,11 +247,17 @@ impl Ingester {
                 observation
                     .stager
                     .fragment(staged, &mut commit)
-                    .map_err(|error| staging_rejection(&error))
+                    .map_err(|error| {
+                        if staging_authority(&error).is_some() {
+                            ProviderStagingOutcome::AuthorityLost
+                        } else {
+                            ProviderStagingOutcome::Rejection(staging_rejection(&error))
+                        }
+                    })
             }
-            super::ActiveObservation::Compaction(marker) => marker
-                .fragment(staged)
-                .map_err(|_| OrderedTurnStreamRejection::SchemaMismatch),
+            super::ActiveObservation::Compaction(marker) => marker.fragment(staged).map_err(|_| {
+                ProviderStagingOutcome::Rejection(OrderedTurnStreamRejection::SchemaMismatch)
+            }),
         };
         match result {
             Ok(()) => {
@@ -238,7 +269,8 @@ impl Ingester {
                     false,
                 )
             }
-            Err(rejection) => {
+            Err(ProviderStagingOutcome::AuthorityLost) => self.authority_lost_terminal(),
+            Err(ProviderStagingOutcome::Rejection(rejection)) => {
                 observation.abandon();
                 self.reject(
                     OrderedTurnStreamOperation::ProviderFragment(fragment),
@@ -289,14 +321,38 @@ impl Ingester {
             observation.stager.abandon();
             return self.failed_permit(route, permit);
         }
-        let (home_generation, storage) =
-            match self.publish_source_activation(&permit, point_limit()) {
-                Ok(authority) => authority,
-                Err(()) => {
-                    observation.stager.abandon();
-                    return self.failed_permit(route, permit);
+        let activation = loop {
+            let verification = match self.live_command().await_current_or_verification(
+                &self.home,
+                self.home_id,
+                self.home_generation,
+            ) {
+                Ok(verification) => verification,
+                Err(_) => {
+                    permit.settle_authority_lost();
+                    return self.authority_lost_terminal();
                 }
             };
+            let attempt = self.publish_source_activation(&permit, point_limit());
+            match verification.settle_after_operation() {
+                Ok(settlement) if settlement.verified_current() => match attempt {
+                    Ok(activation) => break Ok(activation),
+                    Err(()) => continue,
+                },
+                Ok(_) => break attempt,
+                Err(_) => {
+                    permit.settle_authority_lost();
+                    return self.authority_lost_terminal();
+                }
+            }
+        };
+        let (home_generation, storage) = match activation {
+            Ok(authority) => authority,
+            Err(()) => {
+                observation.stager.abandon();
+                return self.failed_permit(route, permit);
+            }
+        };
         if observation.home_generation != home_generation {
             observation.stager.abandon();
             return self.failed_permit(route, permit);
@@ -308,6 +364,10 @@ impl Ingester {
         );
         let sealed = match observation.stager.seal(&mut commit) {
             Ok(sealed) => sealed,
+            Err(error) if staging_authority(&error).is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
             Err(_) => {
                 drop(permit);
                 return self.reject(
@@ -339,6 +399,10 @@ impl Ingester {
             Ok(effect) => effect
                 .into_activity()
                 .map(|activity| activity.bind(&permit)),
+            Err(error) if error.authority().is_some() => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
             Err(_) => {
                 let _ = self.live_command().observe_persistent_failure();
                 return self.failed_permit(route, permit);

@@ -67,3 +67,15 @@ fn recovered_projection_lane_uses_only_direct_in_flight_execution() {
     assert!(!source.contains("obtain_projection_in_flight"));
     assert!(!source.contains("try_acquire_scheduled_ordinary_or_arm"));
 }
+
+#[test]
+fn recovered_projection_keeps_typed_verification_pending_nonterminal() {
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/cas_projection/accepted_input_scheduler/recovered_projection.rs"
+    ));
+
+    assert!(source.contains("ordinary_error_verification_pending("));
+    assert!(source.contains("restore_execution(execution, super::WorkerDisposition::VerificationPending)"));
+    assert!(!source.contains("execution.validator.verification_pending()"));
+}

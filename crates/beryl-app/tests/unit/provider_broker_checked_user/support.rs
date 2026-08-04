@@ -69,6 +69,8 @@ pub(super) struct CheckedUserFixture {
     pub(super) broker: Option<Arc<ProviderBrokerControl>>,
     ingester: Option<RunningProviderBrokerIngester>,
     pub(super) commands: crate::cas_projection::persistent_failure::LiveCommandAuthorizer,
+    pub(super) failure_notification:
+        crate::cas_projection::persistent_failure::PersistentFailureNotification,
     authority: Arc<ConnectionRegistryAuthority>,
     router: Arc<EventRouter>,
     pub(super) registration: TargetRegistration,
@@ -351,7 +353,7 @@ impl CheckedUserFixture {
             stop_coordinator,
             context_compaction,
             commands.clone(),
-            failure_notification,
+            failure_notification.clone(),
             ingester_worker,
         )
         .unwrap();
@@ -365,6 +367,7 @@ impl CheckedUserFixture {
             broker: Some(broker),
             ingester: Some(ingester),
             commands,
+            failure_notification,
             authority,
             router,
             registration,
@@ -483,6 +486,7 @@ impl CheckedUserFixture {
             broker,
             ingester,
             commands: _,
+            failure_notification: _,
             authority,
             router,
             registration,

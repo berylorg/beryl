@@ -171,12 +171,12 @@ impl LiveCommandPermit {
     }
 
     /// Waits for an exact pre-operation `Verifying` state without polling.
-    pub(in crate::cas_projection) fn await_current_or_verification(
-        &self,
-        home: &HomeStore,
+    pub(in crate::cas_projection) fn await_current_or_verification<'permit, 'home>(
+        &'permit self,
+        home: &'home HomeStore,
         home_id: BerylHomeId,
         home_generation: HomeGeneration,
-    ) -> Result<(), LiveCommandAdmissionError> {
+    ) -> Result<LiveCommandVerificationJoin<'permit, 'home>, LiveCommandAdmissionError> {
         self.verification_join(home, home_id, home_generation)?
             .await_pre_operation()
     }
@@ -189,53 +189,94 @@ impl LiveCommandPermit {
             super::PersistentFailureNotification::notify,
         )
     }
+
+    /// Releases this drain-counted permit from an already-typed verification authority loss.
+    ///
+    /// The completed flight is the immutable disposition. Re-notifying here would resample mutable
+    /// home health and could reconstruct a different failure after the typed settlement.
+    pub(in crate::cas_projection) fn release_after_authority_loss(mut self) {
+        self.release_active();
+    }
+
+    fn release_active(&mut self) {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        state.active = state
+            .active
+            .checked_sub(1)
+            .expect("every live-command permit releases one admission");
+        self.released = true;
+        if state.active == 0 {
+            self.inner.drained.notify_all();
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::cas_projection) enum LiveCommandVerificationSettlement {
+    NoVerification,
+    VerifiedCurrent,
+}
+
+impl LiveCommandVerificationSettlement {
+    pub(in crate::cas_projection) const fn verified_current(self) -> bool {
+        matches!(self, Self::VerifiedCurrent)
+    }
 }
 
 impl LiveCommandVerificationJoin<'_, '_> {
-    fn await_pre_operation(mut self) -> Result<(), LiveCommandAdmissionError> {
-        let state = self.notification.exact_epoch_health_state(
-            self.home,
-            self.home_id,
-            self.home_generation,
-            self.permit.service_generation,
-        )?;
-        if !self.observed_verifying && state == HomeHealthState::Healthy {
-            if let Some(completion) = self.wait_for_current_ticket()? {
-                return self.await_verified_chain(completion);
+    fn await_pre_operation(mut self) -> Result<Self, LiveCommandAdmissionError> {
+        loop {
+            let state = self.notification.exact_epoch_health_state(
+                self.home,
+                self.home_id,
+                self.home_generation,
+                self.permit.service_generation,
+            )?;
+            if !self.observed_verifying && state == HomeHealthState::Healthy {
+                let completion = match self.wait_for_current_ticket()? {
+                    Some(completion) => Some(completion),
+                    None => self.completion_after_revalidation()?,
+                };
+                let Some(completion) = completion else {
+                    return Ok(self);
+                };
+                self.await_verified_chain(completion)?;
+                self.refresh_ticket()?;
+                continue;
             }
-            if let Some(completion) = self.completion_after_revalidation()? {
-                return self.await_verified_chain(completion);
+            if !matches!(
+                state,
+                HomeHealthState::Healthy | HomeHealthState::Verifying | HomeHealthState::Failed
+            ) {
+                return Err(LiveCommandAdmissionError::Closed);
             }
-            return Ok(());
+            let completion = self
+                .wait_for_current_ticket()?
+                .ok_or(LiveCommandAdmissionError::Closed)?;
+            self.await_verified_chain(completion)?;
+            self.refresh_ticket()?;
         }
-        if !matches!(
-            state,
-            HomeHealthState::Healthy | HomeHealthState::Verifying | HomeHealthState::Failed
-        ) {
-            return Err(LiveCommandAdmissionError::Closed);
-        }
-        let completion = self
-            .wait_for_current_ticket()?
-            .ok_or(LiveCommandAdmissionError::Closed)?;
-        self.await_verified_chain(completion)
     }
 
-    /// Registers with and waits for the exact post-command verification completion.
+    /// Settles the exact verification witness after one operation.
     ///
-    /// `Ok(true)` is an exact `VerifiedCurrent` completion, `Ok(false)` means no verification
-    /// started or completed since the pre-command baseline, and `Err` is typed authority loss.
-    pub(in crate::cas_projection) fn wait_after_ambiguous(
+    /// Every operation consumes its witness, including a successful command or read.
+    pub(in crate::cas_projection) fn settle_after_operation(
         mut self,
-    ) -> Result<bool, LiveCommandAdmissionError> {
+    ) -> Result<LiveCommandVerificationSettlement, LiveCommandAdmissionError> {
         let completion = match self.wait_for_current_ticket()? {
             Some(completion) => completion,
             None => match self.completion_after_revalidation()? {
                 Some(completion) => completion,
-                None => return Ok(false),
+                None => return Ok(LiveCommandVerificationSettlement::NoVerification),
             },
         };
         self.await_verified_chain(completion)?;
-        Ok(true)
+        Ok(LiveCommandVerificationSettlement::VerifiedCurrent)
     }
 
     fn wait_for_current_ticket(
@@ -305,6 +346,18 @@ impl LiveCommandVerificationJoin<'_, '_> {
         }
     }
 
+    fn refresh_ticket(&mut self) -> Result<(), LiveCommandAdmissionError> {
+        let (ticket, observed_verifying) = self.notification.verification_completion_ticket(
+            self.home,
+            self.home_id,
+            self.home_generation,
+            self.permit.service_generation,
+        )?;
+        self.ticket = ticket;
+        self.observed_verifying = observed_verifying;
+        Ok(())
+    }
+
     fn completion_after_revalidation(
         &self,
     ) -> Result<Option<RecoverySupervisorFlightCompletion>, LiveCommandAdmissionError> {
@@ -346,20 +399,6 @@ impl Drop for LiveCommandPermit {
                 return;
             }
         }
-        {
-            let mut state = self
-                .inner
-                .state
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner());
-            state.active = state
-                .active
-                .checked_sub(1)
-                .expect("every live-command permit releases one admission");
-            self.released = true;
-            if state.active == 0 {
-                self.inner.drained.notify_all();
-            }
-        }
+        self.release_active();
     }
 }

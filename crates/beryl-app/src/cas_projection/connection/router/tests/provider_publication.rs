@@ -258,6 +258,34 @@ fn failed_source_ownership_closes_and_fences_the_exact_target() {
 }
 
 #[test]
+fn authority_lost_source_ownership_releases_without_failing_the_target() {
+    let (router, registration, thread, turn) =
+        exact_target(33, "cas-authority-lost", "turn-authority-lost");
+    let permit = router.acquire_source_publication(&thread, &turn).unwrap();
+    assert_eq!(router.commands.active_command_count_for_test(), 1);
+
+    permit.settle_authority_lost();
+
+    assert_eq!(router.commands.active_command_count_for_test(), 0);
+    assert_eq!(registration.terminal_reason(), None);
+    assert_eq!(router.snapshot().unwrap().target_count(), 1);
+    assert!(
+        router
+            .state
+            .lock()
+            .unwrap()
+            .targets
+            .get(&thread)
+            .is_some_and(|target| target.publication_in_flight.is_none())
+    );
+    router
+        .acquire_source_publication(&thread, &turn)
+        .unwrap()
+        .finish()
+        .unwrap();
+}
+
+#[test]
 fn post_commit_hold_keeps_stop_election_behind_activity_publication() {
     let (router, registration, thread, turn) =
         exact_target(32, "cas-activity-fence", "turn-activity-fence");

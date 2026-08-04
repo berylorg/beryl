@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use beryl_home_store::{HomeGeneration, HomeStore};
 use beryl_model::{BerylHomeId, CasThreadId, CasTurnId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    CasTurnSource, LiveSourceEvent, SourceEventPayload, SourceEventSequence, SyndicPointReadLimit,
-    SyndicStorage, SyndicTimestamp, TurnStateRecord,
+    CasTurnSource, LiveSourceEvent, LiveSourceEventStatus, SourceEventPayload, SourceEventSequence,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnStateRecord,
 };
 use thiserror::Error;
 
@@ -12,6 +12,8 @@ use super::{ProjectionPublicationFailure, publication};
 
 #[derive(Debug, Error)]
 pub(super) enum LiveSourcePublicationError {
+    #[error("the live-source publication lost exact verification authority: {0}")]
+    Authority(#[source] crate::cas_projection::LiveCommandAdmissionError),
     #[error(transparent)]
     Read(#[from] syndic_storage::SyndicReadError),
     #[error(transparent)]
@@ -32,6 +34,15 @@ pub(super) enum LiveSourcePublicationError {
     SystemClockBeforeUnixEpoch(#[source] std::time::SystemTimeError),
     #[error("the system clock milliseconds exceed the durable timestamp range")]
     SystemClockOutOfRange,
+}
+
+impl LiveSourcePublicationError {
+    pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Authority(source) => Some(*source),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,6 +145,30 @@ impl LiveSourceFrontier {
         )
     }
 
+    pub(super) fn read_provider_current(
+        store: &HomeStore,
+        expected_home_id: BerylHomeId,
+        expected_home_generation: HomeGeneration,
+        storage: SyndicStorage,
+        target: &LiveSourceTarget,
+        limit: SyndicPointReadLimit,
+        command: &crate::cas_projection::LiveCommandPermit,
+    ) -> Result<Self, LiveSourcePublicationError> {
+        loop {
+            let verification = command
+                .await_current_or_verification(store, expected_home_id, expected_home_generation)
+                .map_err(LiveSourcePublicationError::Authority)?;
+            let frontier = Self::read(store, storage, target, limit);
+            let settlement = verification
+                .settle_after_operation()
+                .map_err(LiveSourcePublicationError::Authority)?;
+            if settlement.verified_current() {
+                continue;
+            }
+            return frontier;
+        }
+    }
+
     pub(super) fn read_at_least(
         store: &HomeStore,
         storage: SyndicStorage,
@@ -226,6 +261,81 @@ pub(super) fn publish_reconciled(
     }))
     .map_err(|_| LiveSourcePublicationError::PublicationPanicked)??;
     Ok(())
+}
+
+pub(super) fn publish_provider_reconciled(
+    store: &HomeStore,
+    expected_home_id: BerylHomeId,
+    expected_home_generation: HomeGeneration,
+    storage: SyndicStorage,
+    event: &LiveSourceEvent,
+    limit: SyndicPointReadLimit,
+    command: &crate::cas_projection::LiveCommandPermit,
+) -> Result<(), LiveSourcePublicationError> {
+    let verification = command
+        .await_current_or_verification(store, expected_home_id, expected_home_generation)
+        .map_err(LiveSourcePublicationError::Authority)?;
+    let dispatch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        store.execute_current(storage.current_admit_live_source_event(event.clone()))
+    }));
+    verification
+        .settle_after_operation()
+        .map_err(LiveSourcePublicationError::Authority)?;
+    let dispatch = dispatch.map_err(|_| LiveSourcePublicationError::PublicationPanicked)?;
+    match read_provider_event_status(
+        store,
+        expected_home_id,
+        expected_home_generation,
+        storage,
+        event,
+        limit,
+        command,
+    )? {
+        LiveSourceEventStatus::Exact => Ok(()),
+        LiveSourceEventStatus::Absent => match dispatch {
+            Ok(_) => Err(LiveSourcePublicationError::Publication(
+                ProjectionPublicationFailure::Prior,
+            )),
+            Err(source) => Err(LiveSourcePublicationError::Publication(
+                ProjectionPublicationFailure::Command(source),
+            )),
+        },
+        LiveSourceEventStatus::Collision => Err(LiveSourcePublicationError::Publication(
+            ProjectionPublicationFailure::Collision,
+        )),
+    }
+}
+
+fn read_provider_event_status(
+    store: &HomeStore,
+    expected_home_id: BerylHomeId,
+    expected_home_generation: HomeGeneration,
+    storage: SyndicStorage,
+    event: &LiveSourceEvent,
+    limit: SyndicPointReadLimit,
+    command: &crate::cas_projection::LiveCommandPermit,
+) -> Result<LiveSourceEventStatus, LiveSourcePublicationError> {
+    loop {
+        let verification = command
+            .await_current_or_verification(store, expected_home_id, expected_home_generation)
+            .map_err(LiveSourcePublicationError::Authority)?;
+        let status = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            storage.live_source_event_status(store, event, limit)
+        }));
+        let settlement = verification
+            .settle_after_operation()
+            .map_err(LiveSourcePublicationError::Authority)?;
+        if settlement.verified_current() {
+            continue;
+        }
+        return status
+            .map_err(|_| LiveSourcePublicationError::PublicationPanicked)?
+            .map_err(|source| {
+                LiveSourcePublicationError::Publication(
+                    ProjectionPublicationFailure::Reconciliation(source),
+                )
+            });
+    }
 }
 
 fn system_timestamp_at_least(

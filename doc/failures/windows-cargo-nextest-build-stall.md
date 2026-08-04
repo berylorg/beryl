@@ -1,4 +1,4 @@
-# Windows Cargo Nextest Build Stall
+# Beryl Test Hang Misdiagnosed As A Windows Cargo Stall
 
 ## Scope
 
@@ -7,46 +7,51 @@ Phase 86.
 
 ## Invalidated Approach
 
-Repeatedly rerunning the same focused nextest selection after the interrupted Phase 86 draft was
-formatted, split, and proven by `cargo check` was expected to reach test enumeration or produce a
-compiler failure.
+The quiet interval was treated as a Windows Cargo or nextest build-path stall because early process
+sampling watched only Cargo, rustc, linker, and nextest process names. Repeated bounded retries and
+driver-process termination could not distinguish a build stall from a child test that never exited.
 
 ## Evidence
 
-The pre-split focused selection completed 13/13 tests. A later supervisor-only nextest build then
-exceeded 120 seconds without test output. After the source split, the exact combined focused
-selection stalled again under 300-second and verbose 600-second bounds before any `rustc`, linker,
-or test process appeared. Only the task-owned Cargo and cargo-nextest driver processes remained,
-with near-zero CPU, until their exact process ids were stopped and verified gone.
+An ETW process trace of the exact focused command showed that Cargo metadata, the no-run test build,
+test enumeration, and sequential test execution all completed normally. Every selected test exited
+except
+`cas_projection::service_supervisor::tests::stale_slot_validation_completes_exact_provider_waiter`.
+Its test process remained alive for 1,401.8 seconds. Terminating only that exact child process caused
+nextest and the outer Cargo command to exit immediately with code 1.
 
-In contrast, `cargo fmt --all -- --check` passed and
-`cargo check -p beryl-app --lib --features test-faults -j 1` completed after the split in 9.58
-seconds with warnings only. The stall therefore supplies no product-test verdict and no evidence
-that the Phase 86 production wiring failed to compile.
+A symbolized context-switch trace placed the persistent-failure cut worker in
+`PersistentFailureCoordinator::run_worker`, parked in `std::sync::mpsc::Receiver::recv`. Windows Wait
+Chain Traversal showed the test body waiting for the recovery worker, which was waiting to join that
+persistent-failure worker. There was no wait cycle and no active compile, link, disk, or test work.
 
-Later bounded retries proved the failure is intermittent rather than a permanently invalid test
-selection: several invocations compiled and entered the focused suite, exposing ordinary functional
-failures that were corrected in turn. After the broker acknowledgement boundary was corrected to
-release its outer drain-counted permit before publishing completion, two consecutive focused
-retries again produced no compiler or test output for approximately 128 to 133 seconds. Each retry
-was stopped by exact process id and left no Cargo, rustc, or nextest process behind.
+The source path explains the wait. Mismatched stale-slot validation calls
+`PersistentFailureNotification::elect_and_publish_stale_completion`. That path elects the master
+command gate's persistent-failure owner and publishes terminal supervisor completion, but it does
+not signal the persistent-failure worker. Later service settlement observes persistent-failure
+ownership and calls `retain_persistent_failure`, which joins the still-parked worker without first
+requesting shutdown or otherwise waking it.
+
+The system disk was healthy, local, and had approximately 796 GB free. No relevant NTFS, storage,
+resource-exhaustion, Defender, Cargo-lock, or machine-wide process evidence was present.
 
 ## Why It Failed
 
-The exact cause inside the Windows Cargo/nextest build path is not yet established. Repeating the
-same command does not produce additional diagnostic evidence and risks leaving owned driver
-processes behind. Clearing shared target or cache state would be an unapproved workaround and could
-destroy unrelated build state.
+This was a Beryl lifecycle coordination defect, not a Cargo build stall and not a performance-sensitive
+test. One stale-completion route can elect the persistent-failure cut without making the cut worker
+runnable, while the retained-service route assumes an elected cut worker will eventually finish.
+Those two ownership contracts are inconsistent.
 
 ## Course Correction
 
-Stop retrying after the reproduced no-output stall. Terminate only the exact task-owned processes,
-verify cleanup, retain the compile and earlier focused-test evidence without treating it as phase
-acceptance, and record Phase 86 as blocked on its required nextest gate. Do not clear shared Cargo
-artifacts or substitute another test runner without Operator direction.
+Do not clear Cargo artifacts, reboot Windows, update nextest, add a timeout, or classify this as a
+slow test. Diagnose quiet nextest intervals by identifying the active child test and its wait chain.
+Correct the lifecycle contract so every successful persistent-failure election either signals the
+cut worker or transfers settlement to a path that does not join an unsignaled worker.
 
 ## Affected Work
 
 - `doc/plan.md` Phase 86 focused and full `beryl-app` nextest verification.
-- Phase 86 independent completion review and tracker closure remain unavailable until the required
-  test gate can run.
+- Persistent-failure election, stale verification completion, and retained-service settlement.
+- Phase 86 completion review and tracker closure remain pending until the lifecycle defect is fixed
+  and the required functional suites pass.

@@ -16,8 +16,9 @@ use beryl_state::{
 
 use super::*;
 use crate::cas_projection::{
-    PersistentFailureCutHandoff, PersistentFailureGeneration, PersistentFailureNotificationStatus,
-    ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
+    PersistentFailureCutHandoff, PersistentFailureCutState, PersistentFailureGeneration,
+    PersistentFailureNotificationStatus, ScheduledOrdinaryAdmission,
+    ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
     ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
 };
 
@@ -148,57 +149,65 @@ fn successful_same_generation_verification_preserves_current_service() {
     fixture
         .faults
         .fail_next(FaultPoint::AfterCommitBeforePersist);
-    {
-        let command_home = before.live_home_command().unwrap();
-        let mut command = HomeCommand::new(command_home.home().home_revision().unwrap());
-        command
-            .add(settings.apply(
-                settings.revision(command_home.home()).unwrap(),
-                ApplySettings::new(vec![update]).unwrap(),
-            ))
-            .unwrap();
-        command_home.home().execute(command).unwrap_err();
-        assert_eq!(
-            command_home.home().health().state(),
-            HomeHealthState::Verifying
-        );
-    }
+    let command_home = before.live_home_command().unwrap();
+    let mut command = HomeCommand::new(command_home.home().home_revision().unwrap());
+    command
+        .add(settings.apply(
+            settings.revision(command_home.home()).unwrap(),
+            ApplySettings::new(vec![update]).unwrap(),
+        ))
+        .unwrap();
+    command_home.home().execute(command).unwrap_err();
+    assert_eq!(
+        command_home.home().health().state(),
+        HomeHealthState::Verifying
+    );
     let provider_home = before.retained_home_for_recovery();
     let provider_permit = before.live_command_authorizer().authorize().unwrap();
     let provider_join = provider_permit
         .verification_join(&provider_home, before.home_id(), home_generation)
         .unwrap();
-    before.signal_accepted_ready_for_test();
-    drop(before);
+    before.signal_accepted_next_ready_for_test();
 
     assert!(
         verification.wait_until_reached(Duration::from_secs(5)),
         "a scheduler verifying observation signals the supervisor flight"
     );
-    let during = fixture.supervisor.acquire().unwrap();
-    wait_until(|| {
-        during
+    wait_until_named("scheduler verification pause", || {
+        before
             .accepted_input_scheduler_diagnostics()
             .verification_pauses()
             == 1
     });
-    let paused_scheduler = during.accepted_input_scheduler_diagnostics();
+    let paused_scheduler = before.accepted_input_scheduler_diagnostics();
     assert!(!paused_scheduler.fatal());
     assert!(!paused_scheduler.stopped());
-    assert!(during.live_command_authorizer().is_open());
-    assert_eq!(during.service_generation(), service_generation);
-    assert_eq!(during.home_generation(), home_generation);
+    assert!(before.live_command_authorizer().is_open());
+    assert_eq!(before.service_generation(), service_generation);
+    assert_eq!(before.home_generation(), home_generation);
     assert_eq!(
-        std::ptr::from_ref::<ProjectionConnectionService>(&*during),
+        std::ptr::from_ref::<ProjectionConnectionService>(&*before),
         service_pointer
     );
     let paused_pass_count = paused_scheduler.pass_count();
+    drop(command_home);
+    drop(before);
+    let during = fixture.supervisor.acquire().unwrap();
 
     verification.release();
-    assert_eq!(provider_join.wait_after_ambiguous(), Ok(true));
+    assert!(
+        provider_join
+            .settle_after_operation()
+            .unwrap()
+            .verified_current()
+    );
     assert!(provider_permit.is_current());
-    wait_until(|| fixture.supervisor.diagnostics().verification_successes() == 1);
-    wait_until(|| during.accepted_input_scheduler_diagnostics().pass_count() > paused_pass_count);
+    wait_until_named("verification success", || {
+        fixture.supervisor.diagnostics().verification_successes() == 1
+    });
+    wait_until_named("scheduler resume pass", || {
+        during.accepted_input_scheduler_diagnostics().pass_count() > paused_pass_count
+    });
     drop(during);
     let after = fixture.supervisor.acquire().unwrap();
     assert_eq!(after.service_generation(), service_generation);
@@ -260,7 +269,7 @@ fn failed_verification_completes_provider_waiter_before_command_drain() {
         PersistentFailureNotificationStatus::VerificationSignaled
     );
     assert_eq!(
-        join.wait_after_ambiguous(),
+        join.settle_after_operation(),
         Err(crate::cas_projection::LiveCommandAdmissionError::Closed)
     );
     assert!(!permit.is_current());
@@ -324,13 +333,20 @@ fn stale_slot_validation_completes_exact_provider_waiter() {
             .is_none()
     );
     assert_eq!(
-        join.wait_after_ambiguous(),
+        join.settle_after_operation(),
         Err(crate::cas_projection::LiveCommandAdmissionError::Closed)
     );
     assert!(!permit.is_current());
+    wait_until(|| {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Cutting
+    });
 
     verification.release();
-    drop((permit, home, service));
+    drop(permit);
+    wait_until(|| {
+        service.persistent_failure_cut_snapshot().state() == PersistentFailureCutState::Finished
+    });
+    drop((home, service));
     assert!(fixture.supervisor.shutdown().is_err());
 }
 
@@ -371,7 +387,7 @@ fn shutdown_completes_provider_waiter_before_service_drain() {
     let supervisor = fixture.supervisor;
     let shutdown = std::thread::spawn(move || supervisor.shutdown());
     assert_eq!(
-        join.wait_after_ambiguous(),
+        join.settle_after_operation(),
         Err(crate::cas_projection::LiveCommandAdmissionError::Unavailable)
     );
     assert!(permit.is_current());
@@ -489,13 +505,14 @@ fn fail_current_generation(fixture: &Fixture, cycle: u64) {
     drop(service);
 }
 
-fn wait_until(mut predicate: impl FnMut() -> bool) {
+fn wait_until(predicate: impl FnMut() -> bool) {
+    wait_until_named("supervisor state", predicate);
+}
+
+fn wait_until_named(name: &str, mut predicate: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !predicate() {
-        assert!(
-            Instant::now() < deadline,
-            "timed out waiting for supervisor state"
-        );
+        assert!(Instant::now() < deadline, "timed out waiting for {name}");
         std::thread::yield_now();
     }
 }

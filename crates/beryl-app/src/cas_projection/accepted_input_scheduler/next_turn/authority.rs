@@ -169,13 +169,6 @@ impl LeaseValidationAuthority {
         self.projection_retainer.failure_observed() && !self.command.is_current()
     }
 
-    pub(in crate::cas_projection::accepted_input_scheduler) fn verification_pending(&self) -> bool {
-        let health = self.home.health();
-        self.home.home_id() == self.home_id
-            && health.state() == HomeHealthState::Verifying
-            && health.generation() == Some(self.home_generation)
-    }
-
     pub(in crate::cas_projection::accepted_input_scheduler) fn retain_failed_projection(
         &self,
         projection: crate::cas_projection::LoadedCasProjection,

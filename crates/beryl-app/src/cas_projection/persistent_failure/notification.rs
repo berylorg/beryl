@@ -1,5 +1,8 @@
 use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};
 
+#[cfg(all(test, feature = "test-faults"))]
+use std::{collections::HashMap, sync::LazyLock};
+
 use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
 use beryl_model::BerylHomeId;
 
@@ -72,6 +75,18 @@ struct RecoverySupervisorFlightState {
     terminal_completion: Option<RecoverySupervisorFlightCompletion>,
 }
 
+#[cfg(all(test, feature = "test-faults"))]
+#[derive(Debug)]
+struct VerificationJoinObservationHook {
+    observed: mpsc::SyncSender<()>,
+    resume: mpsc::Receiver<()>,
+}
+
+#[cfg(all(test, feature = "test-faults"))]
+static VERIFICATION_JOIN_OBSERVATION_HOOKS: LazyLock<
+    Mutex<HashMap<usize, VerificationJoinObservationHook>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[derive(Debug)]
 pub(super) struct VerificationCompletionCell {
     epoch: u64,
@@ -86,6 +101,45 @@ pub(in crate::cas_projection) struct CompletedRecoverySupervisorFlight {
 }
 
 impl PersistentFailureNotification {
+    #[cfg(all(test, feature = "test-faults"))]
+    fn pause_verification_join_after_prelock_observation(
+        &self,
+        ticket: &Arc<VerificationCompletionCell>,
+    ) -> Result<(), LiveCommandAdmissionError> {
+        let hook = VERIFICATION_JOIN_OBSERVATION_HOOKS
+            .lock()
+            .map_err(|_| LiveCommandAdmissionError::Unavailable)?
+            .remove(&(Arc::as_ptr(ticket) as usize));
+        let Some(hook) = hook else {
+            return Ok(());
+        };
+        // This snapshot models the former pre-lock observation. The actual classification below
+        // must re-observe after acquiring recovery-flight state.
+        let _ = ticket.outcome()?;
+        hook.observed
+            .send(())
+            .map_err(|_| LiveCommandAdmissionError::Unavailable)?;
+        hook.resume
+            .recv()
+            .map_err(|_| LiveCommandAdmissionError::Unavailable)
+    }
+
+    #[cfg(all(test, feature = "test-faults"))]
+    pub(super) fn install_verification_join_observation_hook(
+        &self,
+        ticket: &Arc<VerificationCompletionCell>,
+        observed: mpsc::SyncSender<()>,
+        resume: mpsc::Receiver<()>,
+    ) {
+        VERIFICATION_JOIN_OBSERVATION_HOOKS
+            .lock()
+            .expect("verification join observation hook lock")
+            .insert(
+                Arc::as_ptr(ticket) as usize,
+                VerificationJoinObservationHook { observed, resume },
+            );
+    }
+
     /// Re-reads typed store health and coalesces only exact persistent failure.
     #[must_use]
     pub fn notify(&self) -> PersistentFailureNotificationStatus {
@@ -259,14 +313,18 @@ impl PersistentFailureNotification {
         if !self.matches_exact_epoch(home, home_id, home_generation, service_generation) {
             return Ok(VerificationJoinDisposition::AuthorityLost);
         }
-        if ticket.outcome()?.is_some() {
-            return Ok(VerificationJoinDisposition::Waiting(Arc::clone(ticket)));
-        }
+        #[cfg(all(test, feature = "test-faults"))]
+        self.pause_verification_join_after_prelock_observation(ticket)?;
         let mut flight = self
             .recovery_flight
             .state
             .lock()
             .map_err(|_| LiveCommandAdmissionError::Unavailable)?;
+        // Completion publishes while holding this same flight-state lock. Checking the immutable
+        // ticket outcome here makes that completion authoritative even after active retirement.
+        if ticket.outcome()?.is_some() {
+            return Ok(VerificationJoinDisposition::Waiting(Arc::clone(ticket)));
+        }
         if flight.terminal_completion.is_some() {
             return Ok(VerificationJoinDisposition::AuthorityLost);
         }
@@ -387,7 +445,13 @@ impl PersistentFailureNotification {
             )
             .map(|_| ())
         })? {
-            FailureObservationElection::First | FailureObservationElection::Joined => {}
+            FailureObservationElection::First => match self.signal.try_send(()) {
+                Ok(()) | Err(mpsc::TrySendError::Full(())) => {}
+                Err(mpsc::TrySendError::Disconnected(())) => {
+                    return Err(LiveCommandAdmissionError::Unavailable);
+                }
+            },
+            FailureObservationElection::Joined => {}
             FailureObservationElection::OrdinaryShutdown => {
                 return Err(LiveCommandAdmissionError::Closed);
             }

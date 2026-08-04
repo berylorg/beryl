@@ -8,7 +8,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use beryl_home_store::{HomeGeneration, HomeHealthState, HomeStore};
+use beryl_home_store::{HomeGeneration, HomeStore};
 use beryl_model::BerylHomeId;
 
 use super::{
@@ -1019,7 +1019,6 @@ impl Drop for PersistentFailureCoordinator {
 
 fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
     while receiver.recv().is_ok() {
-        let health = context.home.health();
         if context.stop_requested.load(Ordering::Acquire) {
             finish_worker(
                 &context,
@@ -1030,10 +1029,7 @@ fn run_worker(receiver: mpsc::Receiver<()>, context: WorkerContext) {
             );
             return;
         }
-        if context.home.home_id() != context.home_id
-            || health.state() != HomeHealthState::Failed
-            || health.generation() != Some(context.home_generation)
-        {
+        if !context.notification.failure_observed() {
             continue;
         }
         let identity = PersistentFailureCutIdentity::new(

@@ -577,16 +577,11 @@ pub(in crate::cas_projection::accepted_input_scheduler) fn settle_ordinary_outco
             | OrdinaryTurnExecutionFailure::AfterActivation { .. },
         ) => {}
     }
-    let verification_pending = verification_pending || validator.verification_pending();
-    if verification_pending {
+    let settlement = ordinary_typed_settlement(verification_pending, cut_correlated);
+    if settlement != OrdinaryTurnSettlement::Settled {
         let _ = validator.observe_persistent_failure();
-        OrdinaryTurnSettlement::VerificationPending
-    } else if cut_correlated {
-        let _ = validator.observe_persistent_failure();
-        OrdinaryTurnSettlement::PersistentHomeFailure
-    } else {
-        OrdinaryTurnSettlement::Settled
     }
+    settlement
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -594,6 +589,19 @@ pub(in crate::cas_projection::accepted_input_scheduler) enum OrdinaryTurnSettlem
     Settled,
     VerificationPending,
     PersistentHomeFailure,
+}
+
+fn ordinary_typed_settlement(
+    verification_pending: bool,
+    cut_correlated: bool,
+) -> OrdinaryTurnSettlement {
+    if verification_pending {
+        OrdinaryTurnSettlement::VerificationPending
+    } else if cut_correlated {
+        OrdinaryTurnSettlement::PersistentHomeFailure
+    } else {
+        OrdinaryTurnSettlement::Settled
+    }
 }
 
 fn ordinary_outcome_verification_pending(
@@ -764,4 +772,14 @@ fn fresh_item_id() -> Result<SyndicItemId, ()> {
     let mut bytes = [0_u8; 16];
     getrandom::fill(&mut bytes).map_err(|_| ())?;
     Ok(SyndicItemId::from_bytes(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/ordinary_turn_settlement.rs"
+    ));
 }

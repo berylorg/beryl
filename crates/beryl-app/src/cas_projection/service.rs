@@ -1495,6 +1495,12 @@ impl ProjectionConnectionService {
     }
 
     #[cfg(test)]
+    pub(in crate::cas_projection) fn signal_accepted_next_ready_for_test(&self) {
+        self.scheduler_signal
+            .wake(AcceptedInputWakeReason::AcceptedNextReady);
+    }
+
+    #[cfg(test)]
     pub(in crate::cas_projection) fn fail_admission_reconciliation_for_test(
         &self,
         failures: usize,

@@ -20,7 +20,7 @@ use self::{
     staging::{FrameCommitError, FrameCommitter},
 };
 use crate::cas_projection::live_source::{
-    LiveSourceFrontier, LiveSourcePublicationError, LiveSourceTarget, publish_reconciled,
+    LiveSourceFrontier, LiveSourcePublicationError, LiveSourceTarget, publish_provider_reconciled,
 };
 use crate::cas_projection::stop::{
     PublishedHardStopActivity, PublishedHardStopActivityKind, PublishedHardStopActivityLifecycle,
@@ -79,7 +79,15 @@ pub(super) fn consume(
         ),
         ResolvedObservation::Issue(_) => None,
     };
-    let frontier = match LiveSourceFrontier::read(home, storage, &target, limit) {
+    let frontier = match LiveSourceFrontier::read_provider_current(
+        home,
+        home_id,
+        home_generation,
+        storage,
+        &target,
+        limit,
+        command,
+    ) {
         Ok(frontier) => frontier,
         Err(error) => {
             inspected.abandon();
@@ -117,7 +125,15 @@ pub(super) fn consume(
             SourceEventPayload::ProviderObservationIssue(Box::new(inspected.into_issue(reason))),
         )?,
     };
-    publish_reconciled(home, home_id, home_generation, storage, &event, limit)?;
+    publish_provider_reconciled(
+        home,
+        home_id,
+        home_generation,
+        storage,
+        &event,
+        limit,
+        command,
+    )?;
     Ok(ProviderObservationPublicationEffect { hard_stop_activity })
 }
 
@@ -236,4 +252,14 @@ pub(super) enum ProviderObservationPublicationError {
     Preparation(#[from] syndic_storage::ProviderObservationFramePreparationError),
     #[error(transparent)]
     FrameCommit(#[from] FrameCommitError),
+}
+
+impl ProviderObservationPublicationError {
+    pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::LiveSource(source) => source.authority(),
+            Self::FrameCommit(source) => source.authority(),
+            _ => None,
+        }
+    }
 }

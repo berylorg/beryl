@@ -10,7 +10,7 @@ use syndic_storage::{
 use thiserror::Error;
 
 use super::live_source::{
-    LiveSourceFrontier, LiveSourcePublicationError, LiveSourceTarget, publish_reconciled,
+    LiveSourceFrontier, LiveSourcePublicationError, LiveSourceTarget, publish_provider_reconciled,
 };
 use super::provider_identity;
 
@@ -40,6 +40,19 @@ pub(super) enum ProviderFramePublicationError {
     LiveSource(#[from] LiveSourcePublicationError),
 }
 
+impl ProviderFramePublicationError {
+    pub(super) fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Authority(source) => Some(*source),
+            Self::Stage(syndic_storage::ProviderFrameStageError::Callback(source)) => {
+                source.authority()
+            }
+            Self::LiveSource(source) => source.authority(),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub(super) enum ProviderBatchDispatchError {
     #[error("provider-frame batch command failed before durable admission: {0}")]
@@ -52,6 +65,15 @@ pub(super) enum ProviderBatchDispatchError {
     Read(#[from] SyndicReadError),
     #[error("provider-frame batch lost exact verification authority: {0}")]
     Authority(#[source] crate::cas_projection::LiveCommandAdmissionError),
+}
+
+impl ProviderBatchDispatchError {
+    fn authority(&self) -> Option<crate::cas_projection::LiveCommandAdmissionError> {
+        match self {
+            Self::Authority(source) => Some(*source),
+            _ => None,
+        }
+    }
 }
 
 pub(super) struct PublishedProviderFrame {
@@ -151,13 +173,14 @@ pub(super) fn publish_frame(
             frame: Box::new(sealed.target().clone()),
         },
     )?;
-    publish_reconciled(
+    publish_provider_reconciled(
         store,
         expected_home_id,
         expected_home_generation,
         storage,
         &event,
         limit,
+        command,
     )?;
     Ok(PublishedProviderFrame { completion })
 }
@@ -172,16 +195,13 @@ fn read_initial_frontier(
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<LiveSourceFrontier, ProviderFramePublicationError> {
     loop {
-        command
+        let verification = command
             .await_current_or_verification(store, home_id, home_generation)
             .map_err(ProviderFramePublicationError::Authority)?;
-        let verification = command
-            .verification_join(store, home_id, home_generation)
-            .map_err(ProviderFramePublicationError::Authority)?;
         let frontier = LiveSourceFrontier::read(store, storage, target, limit);
-        match verification.wait_after_ambiguous() {
-            Ok(true) => continue,
-            Ok(false) => return frontier.map_err(ProviderFramePublicationError::LiveSource),
+        match verification.settle_after_operation() {
+            Ok(settlement) if settlement.verified_current() => continue,
+            Ok(_) => return frontier.map_err(ProviderFramePublicationError::LiveSource),
             Err(source) => return Err(ProviderFramePublicationError::Authority(source)),
         }
     }
@@ -197,26 +217,13 @@ fn begin_build(
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<ProviderItemBuildRecord, ProviderFramePublicationError> {
     loop {
-        command
+        let verification = command
             .await_current_or_verification(store, home_id, home_generation)
             .map_err(ProviderFramePublicationError::Authority)?;
-        let verification = command
-            .verification_join(store, home_id, home_generation)
-            .map_err(ProviderFramePublicationError::Authority)?;
         let dispatch = store.execute_current(storage.current_begin_provider_frame_build(prepared));
-        let ambiguous = dispatch.as_ref().err().is_some_and(ambiguous_command_error);
-        match verification.wait_after_ambiguous() {
-            Ok(true) => {}
-            Ok(false) if ambiguous => {
-                return Err(ProviderFramePublicationError::BeginCommand(
-                    dispatch
-                        .err()
-                        .expect("the ambiguous dispatch remains an error"),
-                ));
-            }
-            Ok(false) => {}
-            Err(source) => return Err(ProviderFramePublicationError::Authority(source)),
-        }
+        verification
+            .settle_after_operation()
+            .map_err(ProviderFramePublicationError::Authority)?;
         let durable = read_build(
             store,
             home_id,
@@ -273,27 +280,14 @@ fn dispatch_batch(
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<(), ProviderBatchDispatchError> {
     loop {
-        command
-            .await_current_or_verification(store, home_id, home_generation)
-            .map_err(ProviderBatchDispatchError::Authority)?;
         let verification = command
-            .verification_join(store, home_id, home_generation)
+            .await_current_or_verification(store, home_id, home_generation)
             .map_err(ProviderBatchDispatchError::Authority)?;
         let dispatch =
             store.execute_current(storage.current_stage_provider_frame_batch(batch.clone()));
-        let ambiguous = dispatch.as_ref().err().is_some_and(ambiguous_command_error);
-        match verification.wait_after_ambiguous() {
-            Ok(true) => {}
-            Ok(false) if ambiguous => {
-                return Err(ProviderBatchDispatchError::Command(
-                    dispatch
-                        .err()
-                        .expect("the ambiguous dispatch remains an error"),
-                ));
-            }
-            Ok(false) => {}
-            Err(source) => return Err(ProviderBatchDispatchError::Authority(source)),
-        }
+        verification
+            .settle_after_operation()
+            .map_err(ProviderBatchDispatchError::Authority)?;
         let durable = read_build(
             store,
             home_id,
@@ -326,27 +320,14 @@ fn complete_comparison(
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<ProviderItemBuildRecord, ProviderFramePublicationError> {
     while current.lifecycle() != ProviderItemBuildLifecycle::Sealed {
-        command
-            .await_current_or_verification(store, home_id, home_generation)
-            .map_err(ProviderFramePublicationError::Authority)?;
         let verification = command
-            .verification_join(store, home_id, home_generation)
+            .await_current_or_verification(store, home_id, home_generation)
             .map_err(ProviderFramePublicationError::Authority)?;
         let dispatch =
             store.execute_current(storage.current_compare_provider_completion(current.clone()));
-        let ambiguous = dispatch.as_ref().err().is_some_and(ambiguous_command_error);
-        match verification.wait_after_ambiguous() {
-            Ok(true) => {}
-            Ok(false) if ambiguous => {
-                return Err(ProviderFramePublicationError::CompletionCommand(
-                    dispatch
-                        .err()
-                        .expect("the ambiguous dispatch remains an error"),
-                ));
-            }
-            Ok(false) => {}
-            Err(source) => return Err(ProviderFramePublicationError::Authority(source)),
-        }
+        verification
+            .settle_after_operation()
+            .map_err(ProviderFramePublicationError::Authority)?;
         let durable = read_build(
             store,
             home_id,
@@ -393,16 +374,13 @@ fn read_build(
     command: &crate::cas_projection::LiveCommandPermit,
 ) -> Result<Option<ProviderItemBuildRecord>, ProviderFrameReadError> {
     loop {
-        command
+        let verification = command
             .await_current_or_verification(store, home_id, home_generation)
             .map_err(ProviderFrameReadError::Authority)?;
-        let verification = command
-            .verification_join(store, home_id, home_generation)
-            .map_err(ProviderFrameReadError::Authority)?;
         let current = storage.provider_item_build(store, item_id, limit);
-        match verification.wait_after_ambiguous() {
-            Ok(true) => continue,
-            Ok(false) => return current.map_err(ProviderFrameReadError::Read),
+        match verification.settle_after_operation() {
+            Ok(settlement) if settlement.verified_current() => continue,
+            Ok(_) => return current.map_err(ProviderFrameReadError::Read),
             Err(source) => return Err(ProviderFrameReadError::Authority(source)),
         }
     }

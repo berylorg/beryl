@@ -29,6 +29,11 @@ struct SubmittedUserFrame {
     ordinal: ProviderFrameOrdinalV1,
 }
 
+enum CheckedUserPreparationError {
+    Authority(crate::cas_projection::LiveCommandAdmissionError),
+    Target,
+}
+
 impl Ingester {
     pub(super) fn checked_user_message(
         &mut self,
@@ -64,20 +69,13 @@ impl Ingester {
         let _publication_activity = test_metrics.begin_checked_user_publication();
         let limit = point_limit();
         let prepared = loop {
-            if self
-                .live_command()
-                .await_current_or_verification(&self.home, self.home_id, self.home_generation)
-                .is_err()
-            {
-                break Err(());
-            }
-            let verification = match self.live_command().verification_join(
+            let verification = match self.live_command().await_current_or_verification(
                 &self.home,
                 self.home_id,
                 self.home_generation,
             ) {
                 Ok(verification) => verification,
-                Err(_) => break Err(()),
+                Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
             };
             #[cfg(feature = "test-faults")]
             crate::cas_projection::test_faults::pause_checked_user_publication(
@@ -88,7 +86,9 @@ impl Ingester {
                 message.lifecycle(),
             );
             let attempt = (|| {
-                let (home_generation, storage) = self.publish_source_activation(&permit, limit)?;
+                let (home_generation, storage) = self
+                    .publish_source_activation(&permit, limit)
+                    .map_err(|()| CheckedUserPreparationError::Target)?;
                 let target = LiveSourceTarget::resolve(
                     &self.home,
                     storage,
@@ -97,22 +97,32 @@ impl Ingester {
                     permit.cas_turn_id(),
                     limit,
                 )
-                .map_err(|_| ())?;
-                let frame =
-                    self.submitted_user_frame(&message, &permit, &target, storage, limit)?;
+                .map_err(|_| CheckedUserPreparationError::Target)?;
+                let frame = self
+                    .submitted_user_frame(&message, &permit, &target, storage, limit)
+                    .map_err(|()| CheckedUserPreparationError::Target)?;
                 Ok((home_generation, storage, target, frame))
             })();
-            match verification.wait_after_ambiguous() {
-                Ok(true) => continue,
-                Ok(false) => break attempt,
-                Err(_) => break Err(()),
+            match verification.settle_after_operation() {
+                Ok(settlement) if settlement.verified_current() => match attempt {
+                    Ok(prepared) => break Ok(prepared),
+                    Err(_) => continue,
+                },
+                Ok(_) => break attempt,
+                Err(source) => break Err(CheckedUserPreparationError::Authority(source)),
             }
         };
         let (home_generation, storage, target, frame) = match prepared {
             Ok(prepared) => prepared,
-            Err(()) => return self.failed_checked_user_permit(permit, message),
+            Err(CheckedUserPreparationError::Authority(_)) => {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
+            Err(CheckedUserPreparationError::Target) => {
+                return self.failed_checked_user_permit(permit, message);
+            }
         };
-        if publish_checked_user_frame(
+        if let Err(error) = publish_checked_user_frame(
             &self.home,
             self.home_id,
             home_generation,
@@ -122,9 +132,11 @@ impl Ingester {
             frame,
             limit,
             self.live_command(),
-        )
-        .is_err()
-        {
+        ) {
+            if error.authority().is_some() {
+                permit.settle_authority_lost();
+                return self.authority_lost_terminal();
+            }
             return self.failed_checked_user_permit(permit, message);
         }
         self.finish_checked_user_permit(permit, message)
@@ -283,7 +295,7 @@ fn publish_checked_user_frame(
     submitted: SubmittedUserFrame,
     limit: SyndicPointReadLimit,
     command: &crate::cas_projection::LiveCommandPermit,
-) -> Result<(), ()> {
+) -> Result<(), crate::cas_projection::provider_frame::ProviderFramePublicationError> {
     let item = ProviderItemV1::UserMessage(ProviderUserMessageV1 {
         client_id: None,
         submitted: ProviderSubmittedContentV1 {
@@ -319,7 +331,6 @@ fn publish_checked_user_frame(
         command,
     )
     .map(|_| ())
-    .map_err(|_| ())
 }
 
 fn point_limit() -> SyndicPointReadLimit {

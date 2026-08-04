@@ -260,14 +260,14 @@ fn completion_before_wait_is_not_missed_by_the_pre_command_witness() {
         .publish_verified_current_completion()
         .unwrap();
 
-    assert_eq!(witness.wait_after_ambiguous(), Ok(true));
+    assert!(witness.settle_after_operation().unwrap().verified_current());
     fixture
         .notification
         .finish_recovery_supervisor_flight(false);
 }
 
 #[test]
-fn exact_pre_operation_verifying_joins_then_requires_a_fresh_command_witness() {
+fn exact_pre_operation_verifying_returns_the_command_witness() {
     let service_generation = ProjectionServiceGeneration::allocate().unwrap();
     let fixture = VerifyingNotificationFixture::new(service_generation);
     let home_generation = fixture.home.health().generation().unwrap();
@@ -286,14 +286,11 @@ fn exact_pre_operation_verifying_joins_then_requires_a_fresh_command_witness() {
         notification.publish_verified_current_completion().unwrap();
     });
 
-    permit
+    let witness = permit
         .await_current_or_verification(&fixture.home, fixture.home.home_id(), home_generation)
         .unwrap();
     supervisor.join().unwrap();
-    let fresh = permit
-        .verification_join(&fixture.home, fixture.home.home_id(), home_generation)
-        .unwrap();
-    assert_eq!(fresh.wait_after_ambiguous(), Ok(false));
+    assert!(!witness.settle_after_operation().unwrap().verified_current());
     fixture
         .notification
         .finish_recovery_supervisor_flight(false);
