@@ -34,7 +34,11 @@ The transient affordance layer holds selection actions and menu anchors only whi
 
 One live authored-content record may combine a host-supplied durable prefix with one bounded transient suffix carrying the same exact item identity and a later logical-text frontier. The suffix is local presentation state until the host replaces it from an exactly matching durable projection; it is not a second transcript record or an independently scrolling surface.
 
-The widget consumes a host-supplied resident presentation snapshot and reports viewport, measurement, selection, menu-anchor, and nested-resource demand facts. It does not load, retain, evict, flatten, parse, or persist conversation history.
+The widget consumes a host-supplied resident presentation snapshot whose content refers to immutable
+bounded pages or bounded generations and reports viewport, measurement, selection, menu-anchor, and
+nested-resource demand facts. Snapshot construction and widget reconciliation never deep-clone
+text, resource bytes, nested models, or the resident collection. The widget does not load, retain,
+evict, flatten, parse, or persist conversation history.
 
 # Look
 
@@ -70,7 +74,12 @@ Nested scroll routing follows `scroll-ownership` and the nested widget's own int
 
 While activation is pending, the retained coherent frame does not accept selection, menu, media, or navigation interaction. Publishing the replacement frame and initial viewport state is one visible transition.
 
-An arrival-streaming record exposes every newly supplied normalized text delta on the next frame that consumes it. The widget does not subdivide, delay, timestamp-replay, or animate that delta character by character; multiple deltas received before one frame may naturally publish together. Exact durable-prefix reconciliation replaces the matching transient suffix without producing duplicate text or a blank intermediate record.
+An arrival-streaming record exposes every newly supplied bounded normalized-text fragment on the
+next frame that consumes it. The widget preserves parent-delta identity and order and does not
+subdivide, delay, timestamp-replay, or animate a fragment character by character; multiple
+fragments received before one frame may naturally publish together. Exact durable-prefix
+reconciliation replaces the matching transient suffix without producing duplicate text or a blank
+intermediate record.
 
 The widget realizes only records and synthetic-context chunks present in the current host-supplied realized-frame snapshot, including its bounded overscan. Rendering, hit testing, measurement, and accessibility construction never walk nonresident history, unreconciled context chunks, or elements outside that frame.
 

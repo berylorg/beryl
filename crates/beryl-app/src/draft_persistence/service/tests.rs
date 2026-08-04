@@ -96,6 +96,39 @@ fn conflict_suspends_and_exact_seed_chains_pending_flush() {
 }
 
 #[test]
+fn exact_revision_conflict_retries_dirty_autosave() {
+    let fixture = Fixture::new(4);
+    let mut service = new_service(&fixture);
+    service
+        .edit(payload("local"), SyndicTimestamp::from_unix_millis(1))
+        .expect("edit");
+    let request = match service.poll_autosave(time(30)).expect("start") {
+        DraftAutosaveAction::Started(request) => request,
+        other => panic!("unexpected action: {other:?}"),
+    };
+    service
+        .complete(
+            completion(
+                &request,
+                DraftSaveOutcome::RequiresReconciliation(DraftSuspensionCause::RevisionConflict),
+            ),
+            time(30),
+        )
+        .expect("suspend");
+
+    let prior_binding = service.binding();
+    let retry = match service.reconcile(fixture.seed(31)).expect("reconcile") {
+        DraftReconciliationAction::Chained(request) => request,
+        other => panic!("unexpected reconciliation action: {other:?}"),
+    };
+
+    assert!(service.binding().generation() > prior_binding.generation());
+    assert_ne!(retry.token(), request.token());
+    assert_eq!(service.editor_payload(), &payload("local"));
+    assert!(service.is_dirty());
+}
+
+#[test]
 fn ambiguous_failure_accepts_only_a_whole_old_or_new_state() {
     let fixture = Fixture::new(5);
     let mut service = new_service(&fixture);

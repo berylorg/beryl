@@ -1,17 +1,19 @@
+mod binding;
 mod cas;
 
+pub use binding::BindingHeadRecord;
 pub use cas::*;
 
 use beryl_model::{
-    AcceptedInputRevision, BindingRevision, DiscussionContextOwnerId, DraftRevision,
-    ProjectionRevision, SyndicAcceptedInputId, SyndicDraftId, SyndicItemId, SyndicPathDigest,
-    SyndicProjectionId, SyndicResourceId, SyndicThreadId, SyndicTurnId, ThreadRevision,
+    BindingRevision, DiscussionContextOwnerId, DraftRevision, ProjectionRevision,
+    SyndicAcceptedInputId, SyndicDraftId, SyndicItemId, SyndicPathDigest, SyndicProjectionId,
+    SyndicResourceId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
-    AcceptedInputOrdinal, BindingLifecycle, ItemProjectionGeneration, ItemSourceEventOrdinal,
-    ProjectionOrdinal, ResourceOrdinal, SourceEventSequence, TranscriptGeneration,
-    TranscriptPosition, TurnDepth, TurnItemOrdinal,
+    AcceptedInputOrdinal, AcceptedRouteGeneration, BindingLifecycle, ItemProjectionGeneration,
+    ItemSourceEventOrdinal, ProjectionOrdinal, ResourceOrdinal, SourceEventSequence,
+    TranscriptGeneration, TranscriptPosition, TurnDepth, TurnItemOrdinal,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -139,7 +141,7 @@ pub struct AcceptedOrderIndexRecord {
     pub(crate) thread_id: SyndicThreadId,
     pub(crate) ordinal: AcceptedInputOrdinal,
     pub(crate) input_id: SyndicAcceptedInputId,
-    pub(crate) input_revision: AcceptedInputRevision,
+    pub(crate) route_generation: AcceptedRouteGeneration,
 }
 impl AcceptedOrderIndexRecord {
     #[must_use]
@@ -147,13 +149,13 @@ impl AcceptedOrderIndexRecord {
         thread_id: SyndicThreadId,
         ordinal: AcceptedInputOrdinal,
         input_id: SyndicAcceptedInputId,
-        input_revision: AcceptedInputRevision,
+        route_generation: AcceptedRouteGeneration,
     ) -> Self {
         Self {
             thread_id,
             ordinal,
             input_id,
-            input_revision,
+            route_generation,
         }
     }
     #[must_use]
@@ -169,95 +171,8 @@ impl AcceptedOrderIndexRecord {
         self.input_id
     }
     #[must_use]
-    pub const fn input_revision(&self) -> AcceptedInputRevision {
-        self.input_revision
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AcceptedSteeringIndexRecord {
-    pub(crate) thread_id: SyndicThreadId,
-    pub(crate) turn_id: SyndicTurnId,
-    pub(crate) ordinal: AcceptedInputOrdinal,
-    pub(crate) input_id: SyndicAcceptedInputId,
-    pub(crate) input_revision: AcceptedInputRevision,
-}
-impl AcceptedSteeringIndexRecord {
-    #[must_use]
-    pub const fn new(
-        thread_id: SyndicThreadId,
-        turn_id: SyndicTurnId,
-        ordinal: AcceptedInputOrdinal,
-        input_id: SyndicAcceptedInputId,
-        input_revision: AcceptedInputRevision,
-    ) -> Self {
-        Self {
-            thread_id,
-            turn_id,
-            ordinal,
-            input_id,
-            input_revision,
-        }
-    }
-    #[must_use]
-    pub const fn thread_id(&self) -> SyndicThreadId {
-        self.thread_id
-    }
-    #[must_use]
-    pub const fn turn_id(&self) -> SyndicTurnId {
-        self.turn_id
-    }
-    #[must_use]
-    pub const fn ordinal(&self) -> AcceptedInputOrdinal {
-        self.ordinal
-    }
-    #[must_use]
-    pub const fn input_id(&self) -> SyndicAcceptedInputId {
-        self.input_id
-    }
-    #[must_use]
-    pub const fn input_revision(&self) -> AcceptedInputRevision {
-        self.input_revision
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AcceptedNextTurnIndexRecord {
-    pub(crate) thread_id: SyndicThreadId,
-    pub(crate) ordinal: AcceptedInputOrdinal,
-    pub(crate) input_id: SyndicAcceptedInputId,
-    pub(crate) input_revision: AcceptedInputRevision,
-}
-impl AcceptedNextTurnIndexRecord {
-    #[must_use]
-    pub const fn new(
-        thread_id: SyndicThreadId,
-        ordinal: AcceptedInputOrdinal,
-        input_id: SyndicAcceptedInputId,
-        input_revision: AcceptedInputRevision,
-    ) -> Self {
-        Self {
-            thread_id,
-            ordinal,
-            input_id,
-            input_revision,
-        }
-    }
-    #[must_use]
-    pub const fn thread_id(&self) -> SyndicThreadId {
-        self.thread_id
-    }
-    #[must_use]
-    pub const fn ordinal(&self) -> AcceptedInputOrdinal {
-        self.ordinal
-    }
-    #[must_use]
-    pub const fn input_id(&self) -> SyndicAcceptedInputId {
-        self.input_id
-    }
-    #[must_use]
-    pub const fn input_revision(&self) -> AcceptedInputRevision {
-        self.input_revision
+    pub const fn route_generation(&self) -> AcceptedRouteGeneration {
+        self.route_generation
     }
 }
 
@@ -550,45 +465,5 @@ impl ProjectionResourceIndexRecord {
     #[must_use]
     pub const fn resource_digest(&self) -> [u8; 32] {
         self.resource_digest
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BindingHeadRecord {
-    pub(crate) thread_id: SyndicThreadId,
-    pub(crate) revision: BindingRevision,
-    pub(crate) lifecycle: BindingLifecycle,
-    pub(crate) selected_path_digest: SyndicPathDigest,
-}
-impl BindingHeadRecord {
-    #[must_use]
-    pub const fn new(
-        thread_id: SyndicThreadId,
-        revision: BindingRevision,
-        lifecycle: BindingLifecycle,
-        selected_path_digest: SyndicPathDigest,
-    ) -> Self {
-        Self {
-            thread_id,
-            revision,
-            lifecycle,
-            selected_path_digest,
-        }
-    }
-    #[must_use]
-    pub const fn thread_id(&self) -> SyndicThreadId {
-        self.thread_id
-    }
-    #[must_use]
-    pub const fn revision(&self) -> BindingRevision {
-        self.revision
-    }
-    #[must_use]
-    pub const fn lifecycle(&self) -> BindingLifecycle {
-        self.lifecycle
-    }
-    #[must_use]
-    pub const fn selected_path_digest(&self) -> SyndicPathDigest {
-        self.selected_path_digest
     }
 }

@@ -1,51 +1,54 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, PointReadLimit};
-use beryl_model::{AssetId, DomainRevision};
-
-use crate::{RecordRevision, UnixMillis};
-
-use super::{
-    ASSET_METADATA_LIMIT, ASSET_REFERENCE_LIMIT, AssetDimensions, AssetDomain, AssetMediaType,
-    AssetMetadataRecord, AssetMutationError, AssetReferenceOwner, AssetReferenceRecord,
-    AssetSidecarState, MAX_ASSET_BYTES,
-    codec::{
-        AssetMetadataCodec, AssetReferenceCodec, AssetReferenceIndexCodec, AssetReferenceIndexKey,
-    },
+use beryl_model::{
+    AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, SealedContentMarkerSummary,
+    SyndicDraftMarkerId, advance_content_marker_digest, content_marker_digest_seed,
 };
 
-pub(super) mod add_references;
-mod move_references;
+use crate::RecordRevision;
 
-pub use add_references::{AddAssetReferences, AssetReferenceAddition};
-pub use move_references::{AssetReferenceMove, MoveAssetReferences};
+use super::{
+    ASSET_ENTRY_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT, ASSET_METADATA_LIMIT,
+    ASSET_REFERENCE_PAGE_MAX_ENTRIES, AssetDimensions, AssetDomain, AssetEntryKey,
+    AssetLabelDisposition, AssetLabelFirstKey, AssetLabelFirstRecord, AssetMarkerKey,
+    AssetMediaType, AssetMetadataRecord, AssetMutationError, AssetReferenceEntryRecord,
+    AssetReferenceOrdinal, AssetReferencePageError, AssetReferenceSetBuildProof,
+    AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetReferenceSetStagingAuthority,
+    AssetSidecarState,
+    codec::{
+        AssetMetadataCodec, AssetReferenceEntryCodec, AssetReferenceLabelFirstCodec,
+        AssetReferenceManifestCodec, AssetReferenceMarkerCodec,
+    },
+    digest,
+};
 
-/// Create metadata and its first durable owner reference.
-pub struct CreateAssetWithReference {
+mod owner_heads;
+
+pub use owner_heads::{
+    AssetOwnerHeadAssertion, AssetOwnerHeadUpdate, UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
+};
+
+/// Publishes immutable metadata after its exact sidecar has become durable.
+pub struct PublishAssetMetadata {
     asset_id: AssetId,
     media_type: AssetMediaType,
     dimensions: Option<AssetDimensions>,
     creation_revision: DomainRevision,
-    owner: AssetReferenceOwner,
-    created_at: UnixMillis,
 }
 
-impl CreateAssetWithReference {
-    pub fn new(
+impl PublishAssetMetadata {
+    #[must_use]
+    pub const fn new(
         asset_id: AssetId,
         media_type: AssetMediaType,
         dimensions: Option<AssetDimensions>,
         creation_revision: DomainRevision,
-        owner: AssetReferenceOwner,
-        created_at: UnixMillis,
-    ) -> Result<Self, AssetMutationError> {
-        ensure_asset_bound(asset_id)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             asset_id,
             media_type,
             dimensions,
             creation_revision,
-            owner,
-            created_at,
-        })
+        }
     }
 
     #[must_use]
@@ -59,15 +62,13 @@ impl CreateAssetWithReference {
     }
 }
 
-impl DomainMutation<AssetDomain> for CreateAssetWithReference {
+impl DomainMutation<AssetDomain> for PublishAssetMetadata {
     type Error = AssetMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
         if read_metadata(reader, self.asset_id)?.is_some() {
-            return Err(AssetMutationError::AssetAlreadyExists(self.asset_id));
+            return Err(AssetMutationError::MetadataAlreadyExists(self.asset_id));
         }
-        ensure_owner_absent(reader, self.owner)?;
-        ensure_index_absent(reader, self.asset_id, self.owner)?;
         Ok(())
     }
 
@@ -76,143 +77,317 @@ impl DomainMutation<AssetDomain> for CreateAssetWithReference {
         _reader: &DomainReader<'_, AssetDomain>,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        let metadata = AssetMetadataRecord {
-            asset_id: self.asset_id,
-            media_type: self.media_type.clone(),
-            dimensions: self.dimensions,
-            creation_revision: self.creation_revision,
-            sidecar_state: AssetSidecarState::Committed,
-            reference_count: 1,
-            revision: RecordRevision::INITIAL,
-        };
-        let reference = AssetReferenceRecord {
-            owner: self.owner,
-            asset_id: self.asset_id,
-            created_at: self.created_at,
-        };
-        mutations.put::<AssetMetadataCodec>(&self.asset_id, &metadata)?;
-        mutations.put::<AssetReferenceCodec>(&self.owner, &reference)?;
-        mutations.put::<AssetReferenceIndexCodec>(
-            &AssetReferenceIndexKey {
+        mutations.put::<AssetMetadataCodec>(
+            &self.asset_id,
+            &AssetMetadataRecord {
                 asset_id: self.asset_id,
-                owner: self.owner,
+                media_type: self.media_type.clone(),
+                dimensions: self.dimensions,
+                creation_revision: self.creation_revision,
+                sidecar_state: AssetSidecarState::Committed,
+                revision: RecordRevision::INITIAL,
             },
-            &reference,
         )?;
         Ok(())
     }
 }
 
-/// Add one owner reference to existing matching asset metadata.
-pub struct AddAssetReference {
-    asset_id: AssetId,
-    expected_record_revision: RecordRevision,
-    owner: AssetReferenceOwner,
-    created_at: UnixMillis,
+/// Starts one unpublished owner-neutral reference-set build.
+pub struct BeginAssetReferenceSet {
+    set_id: AssetReferenceSetId,
+    source: SealedContentMarkerSummary,
 }
 
-impl AddAssetReference {
-    pub fn new(
+impl BeginAssetReferenceSet {
+    #[must_use]
+    pub const fn new(set_id: AssetReferenceSetId, source: SealedContentMarkerSummary) -> Self {
+        Self { set_id, source }
+    }
+
+    /// Returns the only public authority that can inspect this unpublished build.
+    #[must_use]
+    pub const fn staging_authority(&self) -> AssetReferenceSetStagingAuthority {
+        AssetReferenceSetStagingAuthority {
+            set_id: self.set_id,
+            source: self.source,
+        }
+    }
+}
+
+impl DomainMutation<AssetDomain> for BeginAssetReferenceSet {
+    type Error = AssetMutationError;
+
+    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
+        if read_manifest(reader, self.set_id)?.is_some() {
+            return Err(AssetMutationError::ReferenceSetAlreadyExists(self.set_id));
+        }
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        _reader: &DomainReader<'_, AssetDomain>,
+        mutations: &mut MutationBuilder<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        mutations.put::<AssetReferenceManifestCodec>(
+            &self.set_id,
+            &AssetReferenceSetManifest {
+                set_id: self.set_id,
+                source: self.source,
+                lifecycle: AssetReferenceSetLifecycle::Building,
+                marker_count: 0,
+                marker_digest: content_marker_digest_seed(),
+                maximum_image_label: None,
+                entry_frontier: 0,
+                asset_chain_digest: digest::seed(self.set_id, self.source),
+                revision: RecordRevision::INITIAL,
+            },
+        )?;
+        Ok(())
+    }
+}
+
+/// One marker reference carried by a fixed-capacity append page.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AssetReferencePageEntry {
+    marker_id: SyndicDraftMarkerId,
+    label: ImageLabelOrdinal,
+    asset_id: AssetId,
+}
+
+impl AssetReferencePageEntry {
+    #[must_use]
+    pub const fn new(
+        marker_id: SyndicDraftMarkerId,
+        label: ImageLabelOrdinal,
         asset_id: AssetId,
-        expected_record_revision: RecordRevision,
-        owner: AssetReferenceOwner,
-        created_at: UnixMillis,
-    ) -> Result<Self, AssetMutationError> {
-        ensure_asset_bound(asset_id)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
+            marker_id,
+            label,
             asset_id,
-            expected_record_revision,
-            owner,
-            created_at,
+        }
+    }
+}
+
+/// Appends one nonempty contiguous page to an exact building manifest.
+pub struct AppendAssetReferencePage {
+    expected: AssetReferenceSetBuildProof,
+    entries: Box<[AssetReferencePageEntry]>,
+}
+
+impl AppendAssetReferencePage {
+    pub fn new(
+        expected: AssetReferenceSetBuildProof,
+        entries: Box<[AssetReferencePageEntry]>,
+    ) -> Result<Self, AssetReferencePageError> {
+        if entries.is_empty() {
+            return Err(AssetReferencePageError::Empty);
+        }
+        if entries.len() > ASSET_REFERENCE_PAGE_MAX_ENTRIES {
+            return Err(AssetReferencePageError::TooMany {
+                actual: entries.len(),
+            });
+        }
+        for (index, entry) in entries.iter().enumerate() {
+            if entries[..index]
+                .iter()
+                .any(|prior| prior.marker_id == entry.marker_id)
+            {
+                return Err(AssetReferencePageError::DuplicateMarker(entry.marker_id));
+            }
+        }
+        Ok(Self { expected, entries })
+    }
+
+    #[must_use]
+    pub fn entries(&self) -> &[AssetReferencePageEntry] {
+        &self.entries
+    }
+}
+
+struct PreparedPage {
+    manifest: AssetReferenceSetManifest,
+    entries: Vec<AssetReferenceEntryRecord>,
+    first_labels: Vec<(AssetLabelFirstKey, AssetLabelFirstRecord)>,
+}
+
+impl DomainMutation<AssetDomain> for AppendAssetReferencePage {
+    type Error = AssetMutationError;
+
+    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
+        self.prepare(reader).map(drop)
+    }
+
+    fn contribute(
+        &self,
+        reader: &DomainReader<'_, AssetDomain>,
+        mutations: &mut MutationBuilder<'_, AssetDomain>,
+    ) -> Result<(), Self::Error> {
+        let prepared = self.prepare(reader)?;
+        for entry in &prepared.entries {
+            let entry_key = AssetEntryKey {
+                set_id: entry.set_id,
+                ordinal: entry.ordinal,
+            };
+            mutations.put::<AssetReferenceEntryCodec>(&entry_key, entry)?;
+            mutations.put::<AssetReferenceMarkerCodec>(
+                &AssetMarkerKey {
+                    set_id: entry.set_id,
+                    marker_id: entry.marker_id,
+                },
+                &entry.ordinal,
+            )?;
+        }
+        for (key, value) in &prepared.first_labels {
+            mutations.put::<AssetReferenceLabelFirstCodec>(key, value)?;
+        }
+        mutations
+            .put::<AssetReferenceManifestCodec>(&prepared.manifest.set_id, &prepared.manifest)?;
+        Ok(())
+    }
+}
+
+impl AppendAssetReferencePage {
+    fn prepare(
+        &self,
+        reader: &DomainReader<'_, AssetDomain>,
+    ) -> Result<PreparedPage, AssetMutationError> {
+        let mut manifest = require_manifest(reader, self.expected.set_id)?;
+        require_build_proof(&manifest, self.expected)?;
+        let mut prepared_entries = Vec::with_capacity(self.entries.len());
+        let mut first_labels = Vec::with_capacity(self.entries.len());
+
+        for requested in &self.entries {
+            require_metadata(reader, requested.asset_id)?;
+            let next = manifest
+                .entry_frontier
+                .checked_add(1)
+                .ok_or(AssetMutationError::CountOverflow)?;
+            let ordinal = AssetReferenceOrdinal::new(next)?;
+            let entry_key = AssetEntryKey {
+                set_id: manifest.set_id,
+                ordinal,
+            };
+            if reader
+                .point::<AssetReferenceEntryCodec>(&entry_key, entry_limit())?
+                .is_some()
+            {
+                return Err(AssetMutationError::EntryAlreadyExists);
+            }
+            let marker_key = AssetMarkerKey {
+                set_id: manifest.set_id,
+                marker_id: requested.marker_id,
+            };
+            if reader
+                .point::<AssetReferenceMarkerCodec>(&marker_key, index_limit())?
+                .is_some()
+            {
+                return Err(AssetMutationError::MarkerAlreadyExists(requested.marker_id));
+            }
+
+            let label_key = AssetLabelFirstKey {
+                set_id: manifest.set_id,
+                label: requested.label,
+            };
+            let first = first_labels
+                .iter()
+                .find_map(|(key, value)| (*key == label_key).then_some(*value))
+                .or(reader.point::<AssetReferenceLabelFirstCodec>(&label_key, index_limit())?);
+            let (first_ordinal, label_disposition) = match first {
+                Some(first) => {
+                    if first.asset_id != requested.asset_id {
+                        return Err(AssetMutationError::LabelAssetMismatch {
+                            label: requested.label,
+                        });
+                    }
+                    (
+                        first.first_ordinal,
+                        AssetLabelDisposition::Repeated {
+                            first_ordinal: first.first_ordinal,
+                        },
+                    )
+                }
+                None => {
+                    first_labels.push((
+                        label_key,
+                        AssetLabelFirstRecord {
+                            first_ordinal: ordinal,
+                            asset_id: requested.asset_id,
+                        },
+                    ));
+                    (ordinal, AssetLabelDisposition::First)
+                }
+            };
+            let chain_digest = digest::advance(
+                manifest.asset_chain_digest,
+                ordinal,
+                requested.marker_id,
+                requested.label,
+                requested.asset_id,
+                first_ordinal,
+            );
+            prepared_entries.push(AssetReferenceEntryRecord {
+                set_id: manifest.set_id,
+                ordinal,
+                marker_id: requested.marker_id,
+                label: requested.label,
+                asset_id: requested.asset_id,
+                label_disposition,
+                chain_digest,
+            });
+            manifest.entry_frontier = next;
+            manifest.marker_count = manifest
+                .marker_count
+                .checked_add(1)
+                .ok_or(AssetMutationError::CountOverflow)?;
+            manifest.marker_digest = advance_content_marker_digest(
+                manifest.marker_digest,
+                requested.marker_id,
+                requested.label,
+            );
+            manifest.maximum_image_label = Some(
+                manifest
+                    .maximum_image_label
+                    .map_or(requested.label, |maximum| maximum.max(requested.label)),
+            );
+            manifest.asset_chain_digest = chain_digest;
+        }
+        manifest.revision = manifest
+            .revision
+            .checked_next()
+            .map_err(|_| AssetMutationError::ManifestRevisionExhausted(manifest.set_id))?;
+        Ok(PreparedPage {
+            manifest,
+            entries: prepared_entries,
+            first_labels,
         })
     }
 }
 
-impl DomainMutation<AssetDomain> for AddAssetReference {
-    type Error = AssetMutationError;
-
-    fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
-        let metadata = required_metadata(reader, self.asset_id)?;
-        ensure_revision(self.expected_record_revision, metadata.revision)?;
-        ensure_owner_absent(reader, self.owner)?;
-        ensure_index_absent(reader, self.asset_id, self.owner)?;
-        metadata
-            .reference_count
-            .checked_add(1)
-            .ok_or(AssetMutationError::ReferenceCountOverflow)?;
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
-        reader: &DomainReader<'_, AssetDomain>,
-        mutations: &mut MutationBuilder<'_, AssetDomain>,
-    ) -> Result<(), Self::Error> {
-        let mut metadata = required_metadata(reader, self.asset_id)?;
-        metadata.reference_count = metadata
-            .reference_count
-            .checked_add(1)
-            .ok_or(AssetMutationError::ReferenceCountOverflow)?;
-        metadata.revision = metadata.revision.checked_next()?;
-        let reference = AssetReferenceRecord {
-            owner: self.owner,
-            asset_id: self.asset_id,
-            created_at: self.created_at,
-        };
-        mutations.put::<AssetMetadataCodec>(&self.asset_id, &metadata)?;
-        mutations.put::<AssetReferenceCodec>(&self.owner, &reference)?;
-        mutations.put::<AssetReferenceIndexCodec>(
-            &AssetReferenceIndexKey {
-                asset_id: self.asset_id,
-                owner: self.owner,
-            },
-            &reference,
-        )?;
-        Ok(())
-    }
+/// Seals an exact staged set without rewriting any entry or index record.
+pub struct SealAssetReferenceSet {
+    expected: AssetReferenceSetBuildProof,
+    source: SealedContentMarkerSummary,
 }
 
-/// Remove one durable owner reference without deleting metadata or sidecar bytes.
-pub struct RemoveAssetReference {
-    owner: AssetReferenceOwner,
-    expected_asset_id: AssetId,
-    expected_record_revision: RecordRevision,
-}
-
-impl RemoveAssetReference {
+impl SealAssetReferenceSet {
     #[must_use]
     pub const fn new(
-        owner: AssetReferenceOwner,
-        expected_asset_id: AssetId,
-        expected_record_revision: RecordRevision,
+        expected: AssetReferenceSetBuildProof,
+        source: SealedContentMarkerSummary,
     ) -> Self {
-        Self {
-            owner,
-            expected_asset_id,
-            expected_record_revision,
-        }
+        Self { expected, source }
     }
 }
 
-impl DomainMutation<AssetDomain> for RemoveAssetReference {
+impl DomainMutation<AssetDomain> for SealAssetReferenceSet {
     type Error = AssetMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, AssetDomain>) -> Result<(), Self::Error> {
-        let reference = required_reference(reader, self.owner)?;
-        if reference.asset_id != self.expected_asset_id {
-            return Err(AssetMutationError::ReferenceAssetMismatch);
-        }
-        let metadata = required_metadata(reader, self.expected_asset_id)?;
-        ensure_revision(self.expected_record_revision, metadata.revision)?;
-        if metadata.reference_count == 0 {
-            return Err(AssetMutationError::ReferenceCountUnderflow);
-        }
-        let index = read_index(reader, self.expected_asset_id, self.owner)?
-            .ok_or(AssetMutationError::ReferenceMissing(self.owner))?;
-        if index != reference {
-            return Err(AssetMutationError::ReferenceAssetMismatch);
-        }
-        Ok(())
+        let manifest = require_manifest(reader, self.expected.set_id)?;
+        require_build_proof(&manifest, self.expected)?;
+        require_complete_marker_summary(&manifest, self.source)
     }
 
     fn contribute(
@@ -220,20 +395,45 @@ impl DomainMutation<AssetDomain> for RemoveAssetReference {
         reader: &DomainReader<'_, AssetDomain>,
         mutations: &mut MutationBuilder<'_, AssetDomain>,
     ) -> Result<(), Self::Error> {
-        let mut metadata = required_metadata(reader, self.expected_asset_id)?;
-        metadata.reference_count = metadata
-            .reference_count
-            .checked_sub(1)
-            .ok_or(AssetMutationError::ReferenceCountUnderflow)?;
-        metadata.revision = metadata.revision.checked_next()?;
-        mutations.put::<AssetMetadataCodec>(&self.expected_asset_id, &metadata)?;
-        mutations.delete::<AssetReferenceCodec>(&self.owner)?;
-        mutations.delete::<AssetReferenceIndexCodec>(&AssetReferenceIndexKey {
-            asset_id: self.expected_asset_id,
-            owner: self.owner,
-        })?;
+        let mut manifest = require_manifest(reader, self.expected.set_id)?;
+        require_build_proof(&manifest, self.expected)?;
+        require_complete_marker_summary(&manifest, self.source)?;
+        manifest.lifecycle = AssetReferenceSetLifecycle::Sealed;
+        manifest.revision = manifest
+            .revision
+            .checked_next()
+            .map_err(|_| AssetMutationError::ManifestRevisionExhausted(manifest.set_id))?;
+        mutations.put::<AssetReferenceManifestCodec>(&manifest.set_id, &manifest)?;
         Ok(())
     }
+}
+
+fn require_build_proof(
+    manifest: &AssetReferenceSetManifest,
+    proof: AssetReferenceSetBuildProof,
+) -> Result<(), AssetMutationError> {
+    if manifest.lifecycle != AssetReferenceSetLifecycle::Building {
+        return Err(AssetMutationError::ReferenceSetNotBuilding(manifest.set_id));
+    }
+    if manifest.build_proof() != proof {
+        return Err(AssetMutationError::BuildProofMismatch(manifest.set_id));
+    }
+    Ok(())
+}
+
+fn require_complete_marker_summary(
+    manifest: &AssetReferenceSetManifest,
+    source: SealedContentMarkerSummary,
+) -> Result<(), AssetMutationError> {
+    if manifest.source != source
+        || manifest.marker_count != source.marker_count()
+        || manifest.entry_frontier != source.marker_count()
+        || manifest.marker_digest != source.marker_digest()
+        || manifest.maximum_image_label != source.maximum_image_label()
+    {
+        return Err(AssetMutationError::MarkerSummaryMismatch(manifest.set_id));
+    }
+    Ok(())
 }
 
 fn read_metadata(
@@ -245,92 +445,41 @@ fn read_metadata(
         .map_err(Into::into)
 }
 
-fn required_metadata(
+fn require_metadata(
     reader: &DomainReader<'_, AssetDomain>,
     asset_id: AssetId,
 ) -> Result<AssetMetadataRecord, AssetMutationError> {
-    read_metadata(reader, asset_id)?.ok_or(AssetMutationError::AssetMissing(asset_id))
+    read_metadata(reader, asset_id)?.ok_or(AssetMutationError::MetadataMissing(asset_id))
 }
 
-fn read_reference(
+fn read_manifest(
     reader: &DomainReader<'_, AssetDomain>,
-    owner: AssetReferenceOwner,
-) -> Result<Option<AssetReferenceRecord>, AssetMutationError> {
+    set_id: AssetReferenceSetId,
+) -> Result<Option<AssetReferenceSetManifest>, AssetMutationError> {
     reader
-        .point::<AssetReferenceCodec>(&owner, reference_limit())
+        .point::<AssetReferenceManifestCodec>(&set_id, manifest_limit())
         .map_err(Into::into)
 }
 
-fn required_reference(
+fn require_manifest(
     reader: &DomainReader<'_, AssetDomain>,
-    owner: AssetReferenceOwner,
-) -> Result<AssetReferenceRecord, AssetMutationError> {
-    read_reference(reader, owner)?.ok_or(AssetMutationError::ReferenceMissing(owner))
-}
-
-fn read_index(
-    reader: &DomainReader<'_, AssetDomain>,
-    asset_id: AssetId,
-    owner: AssetReferenceOwner,
-) -> Result<Option<AssetReferenceRecord>, AssetMutationError> {
-    reader
-        .point::<AssetReferenceIndexCodec>(
-            &AssetReferenceIndexKey { asset_id, owner },
-            reference_limit(),
-        )
-        .map_err(Into::into)
-}
-
-fn ensure_owner_absent(
-    reader: &DomainReader<'_, AssetDomain>,
-    owner: AssetReferenceOwner,
-) -> Result<(), AssetMutationError> {
-    if read_reference(reader, owner)?.is_some() {
-        Err(AssetMutationError::ReferenceAlreadyExists(owner))
-    } else {
-        Ok(())
-    }
-}
-
-fn ensure_index_absent(
-    reader: &DomainReader<'_, AssetDomain>,
-    asset_id: AssetId,
-    owner: AssetReferenceOwner,
-) -> Result<(), AssetMutationError> {
-    if read_index(reader, asset_id, owner)?.is_some() {
-        Err(AssetMutationError::ReferenceAlreadyExists(owner))
-    } else {
-        Ok(())
-    }
-}
-
-fn ensure_revision(
-    expected: RecordRevision,
-    current: RecordRevision,
-) -> Result<(), AssetMutationError> {
-    if expected == current {
-        Ok(())
-    } else {
-        Err(AssetMutationError::RecordRevisionConflict { expected, current })
-    }
-}
-
-fn ensure_asset_bound(asset_id: AssetId) -> Result<(), super::AssetValueError> {
-    let actual = asset_id.length().get();
-    if actual <= MAX_ASSET_BYTES {
-        Ok(())
-    } else {
-        Err(super::AssetValueError::ByteBoundExceeded {
-            maximum: MAX_ASSET_BYTES,
-            actual,
-        })
-    }
+    set_id: AssetReferenceSetId,
+) -> Result<AssetReferenceSetManifest, AssetMutationError> {
+    read_manifest(reader, set_id)?.ok_or(AssetMutationError::ReferenceSetMissing(set_id))
 }
 
 fn metadata_limit() -> PointReadLimit {
-    PointReadLimit::new(ASSET_METADATA_LIMIT + 4).expect("asset metadata limit is nonzero")
+    PointReadLimit::new(ASSET_METADATA_LIMIT + 4).expect("metadata point bound is nonzero")
 }
 
-fn reference_limit() -> PointReadLimit {
-    PointReadLimit::new(ASSET_REFERENCE_LIMIT + 4).expect("asset reference limit is nonzero")
+fn manifest_limit() -> PointReadLimit {
+    PointReadLimit::new(ASSET_MANIFEST_LIMIT + 4).expect("manifest point bound is nonzero")
+}
+
+fn entry_limit() -> PointReadLimit {
+    PointReadLimit::new(ASSET_ENTRY_LIMIT + 4).expect("entry point bound is nonzero")
+}
+
+fn index_limit() -> PointReadLimit {
+    PointReadLimit::new(ASSET_INDEX_LIMIT + 4).expect("index point bound is nonzero")
 }

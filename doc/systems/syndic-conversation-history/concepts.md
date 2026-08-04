@@ -10,9 +10,13 @@ Syndic models conversation history as a directed acyclic graph of turns.
 
 Most turns are one user input and the agent response produced from that input.
 
-Syndic may also record provider-operation turns when the execution provider exposes a turn identity or turn-scoped operational item for work that is not ordinary user input, such as context compaction.
+Syndic may also record provider-operation turns when the execution provider exposes a turn identity
+or turn-scoped operational item for work that is not ordinary user input, such as context
+compaction.
 
-Provider-operation turns participate in the turn DAG as ownership roots, but transcript projections may hide or collapse them when they are not parent transcript narrative.
+Provider-operation turns participate in the turn DAG as parentless ownership roots. They never
+become a thread's committed conversation tail, selected-path member, or ordinary-turn parent.
+Transcript projections may hide or collapse them when they are not parent transcript narrative.
 
 Every turn has either one parent turn or no parent. A turn with no parent is a root turn.
 
@@ -34,29 +38,97 @@ Walking immutable parent links backward from the committed tail to a root produc
 
 Different threads may point to the same committed tail and later diverge by submitting distinct child turns. A turn existing in the DAG never creates a thread by itself.
 
-Generated title, automatic branch-discussion archive state, execution binding, and other application presentation facts are Beryl metadata keyed by Syndic thread id unless a specific Syndic record is named below.
+A named Syndic thread owns its intrinsic properties: immutable execution binding, accepted generated
+title, history-derived title source, automatic branch-discussion archive state, exact token-usage
+observations, lineage, draft, and history lifecycle. Beryl owns application relationships to that
+thread, including window claims and selection, runtime/root availability observations, durable host
+jobs, and rebuildable catalog copies.
 
-A branch-discussion thread additionally owns the stable parent Syndic thread id used for eventual handoff and the id of the first draft or submitted turn that owns its context envelope. The draft or submitted turn's parent identifies the historical branch point; the parent thread id identifies the mutable handoff destination.
+A branch-discussion thread additionally owns the stable parent Syndic thread id used for eventual
+handoff, immutable thread-lineage depth/digest/ancestor-skip facts, and the id of the first draft or
+submitted turn that owns its context envelope. The envelope source identifies the historical branch
+point before first submission; afterward the context-owning turn has that source as its immutable
+parent. The parent thread id identifies the mutable handoff destination.
+
+Thread lineage is a logical chain exposed through revision-bound top-to-bottom cursor pages. Its
+total parent count does not require Beryl to retain the complete chain or one measurement per
+ancestor.
+
+Each thread also has a compact permanent image-label frontier. A child thread inherits the exact
+frontier at creation, while immutable origin spans stay with the thread that first admitted their
+range and name the matching sealed asset set. Inherited lookup follows lineage with bounded
+resident state and resolves the label through that set's point index; no branch copies a historical
+label map.
 
 # Current Drafts
 
 Every Syndic thread owns exactly one current draft.
 
-A current draft is durable mutable pre-submission state with a stable id and revision. Its small metadata record references a sealed content manifest whose bounded ordered chunks retain exact composer-authored atoms, plus immutable parentage and an optional immutable typed context envelope. An image atom retains its stable marker identity and final label ordinal while the image-asset system resolves that marker to durable bytes.
+A current draft is durable mutable pre-submission state with a stable id and revision. Its small
+metadata record references a sealed content manifest whose bounded ordered chunks retain exact
+composer-authored atoms plus one closed ordinary, branch-context, or replacement submission
+intent. An image atom retains its stable marker identity and final label ordinal while the
+image-asset system resolves that marker to durable bytes.
 
-Ordinary drafts have no branch context. A branch-discussion first draft has the selected source turn as its immutable parent and owns exact selected-text provenance without becoming canonical transcript narrative or starting an execution provider. Beryl may derive one presentation-only synthetic context group at that branch boundary.
+Ordinary drafts have no parent and no branch context; they are only the user's unsent composer
+state. A branch-discussion first draft's context intent owns exact selected-text provenance whose
+envelope names the selected source turn without turning that source into a generic draft parent. A
+replacement intent instead names its exact historical target and path proof. These cases cannot
+coexist. Beryl may derive one presentation-only synthetic context group at that branch boundary.
 
 `DiscussionContextRange` is a half-open range in absolute canonical logical UTF-8 byte coordinates within the source item, not a projection-local range. It must lie within one finalized source projection, and admission and reopen resolve its exact bytes through bounded logical-range reads over the canonical content indexes.
 
-Draft autosave may change only the sealed content reference and mutable draft timestamps. Parentage, thread ownership, and context/provenance fields never change after draft creation. Chunk construction is staged and unreachable until one atomic manifest-and-draft publication, so interrupted autosave never exposes a partial payload.
+Draft autosave may change only the sealed content reference and mutable draft timestamps. Thread
+ownership and the submission intent remain unchanged by autosave; branch context is immutable,
+while replacement start or cancellation uses its own explicit revisioned operation. Chunk
+construction is staged and unreachable until one atomic manifest-and-draft publication, so
+interrupted autosave never exposes a partial payload.
 
-An idle-thread submission resolves every marker to its exact durable asset identity, transitions the same draft identity into a submitted turn, creates the typed canonical user-input item, advances the thread's committed tail, and creates its replacement current draft atomically.
+A branch-context or replacement intent requires an idle input gate with no live accepted work.
+Consequently, an idle gate with queued next-turn work can be promoted without reading or changing
+the ordinary current draft.
+
+An idle-thread submission resolves every marker to its exact durable asset identity, selects the
+then-current committed tail as the ordinary turn's parent under the exact thread, draft, and gate
+revisions, transitions the same draft identity into a submitted turn, creates the typed canonical
+user-input item, advances the thread's committed tail, and creates its replacement current draft
+atomically. First branch-context and replacement submissions derive parentage from their explicit
+typed provenance instead.
 
 That transition preserves the exact 128-bit identity payload while changing its typed identity from draft to submitted turn. It does not allocate an unrelated turn identity.
 
-Input accepted while another turn is active or context compaction is running is frozen from the current draft into one durable ordered accepted-input record with exact resolved marker facts, then replaced by a new current draft. Steering, pending, and next-turn queue states retain the same accepted-input identity and marker ownership; queueing does not manufacture another queued-input identity or a competing active turn.
+Input accepted while another turn is active or context compaction is running is frozen from the
+current draft into one immutable durable ordered accepted-input record with exact resolved marker
+facts, one route-generation identity, and the complete source thread/draft/gate revision plus
+source/replacement draft admission proof, then replaced by a new current draft. That permanent
+receipt remains exact after the draft or route advances. A bounded mutable route leaf plus the
+selected generation head resolves steering, pending, next-turn, and terminal delivery state while
+retaining the same accepted-input identity and marker ownership; queueing does not manufacture
+another queued-input identity or a competing active turn.
 
-Accepted-input order is permanent thread history. Separately, one revisioned per-thread input gate owns the accepted-order high-water mark and bounded live steering and next-turn accounting. Only nonterminal delivery work appears in live-route indexes; terminal accepted inputs remain in history without consuming live capacity.
+Terminal publication does not make the input gate idle before derived history settles. It enters a
+durable finalizing-history state for the exact terminal turn. Input accepted during that state joins
+the ordered next-turn route, and promotion remains blocked until bounded item and transcript
+convergence reaches a durable fixed point and an exact completion command releases the gate.
+
+Accepted-input order is permanent thread history. Separately, one revisioned per-thread input gate
+owns the accepted-order high-water mark, exact route-generation head, and checked `u64` live
+steering, next-turn, and logical-byte accounting. Route generations own disjoint contiguous order
+intervals and expose revision-bound leaf pages. Compact ready-source records let the active-steering
+scheduler walk exact targeted ready or retryable work, while distinct compact next-source records
+let the next-turn scheduler walk effective queued work one generation at a time. Their cursors
+advance across scanned non-candidates without retaining the backlog. Terminal accepted inputs
+remain in history. Logical backlog size does not determine resident scheduler memory.
+
+`Retryable` means that the preceding delivery provably did not dispatch and a later attempt remains
+legal. It is not itself evidence that the cause is transient or that elapsed time should trigger
+another attempt; process lifecycle and exact readiness evidence own that decision.
+
+When that gate becomes idle, one atomic promotion selects the earliest effective next-turn input,
+creates one fresh pending ordinary turn and canonical user-input item, and advances the selected
+tail. The accepted input remains permanent history with a terminal witness naming that exact
+successor. Its content is shared, its compact asset owner moves to the submitted item, and the
+current draft remains byte-for-byte and revision-for-revision unchanged.
 
 A delivery-unknown accepted input is terminal accepted-input history: Beryl knows one provider
 request may have been dispatched but cannot prove whether the provider accepted it. It leaves every
@@ -65,7 +137,84 @@ automatically.
 Its provenance also proves that the exact historical CAS thread was retired through a stale binding;
 delivery-unknown may not coexist with usable authority for that projection.
 
-An input admitted for steering retains the exact binding revision, execution snapshot, Syndic turn, CAS thread, and known-or-explicitly-unknown CAS turn observed at the gate revision. Stop, compaction, CAS-turn publication, or steering rejection may reclassify that same accepted-input identity through a revision-checked mutation, never by inferring a target or appending another history entry.
+One accepted-input route generation retains the exact binding revision, execution snapshot, Syndic
+turn, CAS thread, and known-or-explicitly-unknown CAS turn observed at the gate revision. Resolved
+input views obtain that proof through the generation plus their leaf; it is not copied into every
+accepted-input record. CAS-turn publication, projection loss, stop, compaction, and steering
+rejection reclassify a generation or one leaf through revision-checked compact mutations, never by
+inferring a target, rewriting every member, or appending another history entry.
+
+# Stop Operations
+
+A stop operation is the durable intent to interrupt one exact active provider operation. It is not
+the backend request itself and does not mean the target is terminal.
+
+The current stop-operation record names the Syndic thread and turn, ordinary-turn or provider-
+operation kind, binding revision, execution snapshot, runtime and managed-process generation,
+loaded-thread generation, CAS thread and turn, operation identity, current revision, and a nonempty
+fixed cause set whose members each retain their immutable first-publication revision. Causes present
+at admission name revision one; an exact later owner adds its cause at the immediate successor
+revision rather than creating another stop. The stopping gate carries the operation nonce that
+selects this live record; it excludes steering and next-turn promotion, while the record is the
+authority from which the live coordinator may claim one backend request attempt. Consuming that
+authority retains every cause and claim witness and leaves an inert durable receipt with the exact
+successor witness so the same-thread nonce cannot be reused. An interrupting-approval cause cannot
+be safely reopened after local nondispatch.
+
+A stop attempt is the one caller-generated identity durably claimed before any interrupt request
+byte may be issued. `Admitted` proves no Beryl stop request has yet been authorized.
+`DispatchClaimed(source_revision, attempt)` means that exact attempt consumed the named live record
+revision and owns the sole dispatch capability; after process loss it is possible-dispatch
+provenance, not retry authority. Every post-admission record revision is occupied exactly once by a
+new cause, this sole claim, or consumption, so cause joins and the claim remain exactly
+reconcilable across later compatible descendants.
+
+Ordinary stop admission changes already ready or retryable accepted input into effective next-turn
+work. Provider-operation stop admission leaves compaction-routed next-turn work unchanged. Later
+accepted input is next-turn work under the exact blocked-operation kind. Only a locally proven
+unissued stop may reopen the still-exact target: ordinary execution gets a fresh empty steering
+generation, while compaction restores its exact compacting gate and record with no steering
+generation. A provider rejection without a current-target verdict instead retires the uncertain
+projection. Neither path retroactively steers queued inputs.
+
+# Context Compaction Operations
+
+A context compaction operation is durable same-thread provider-operation authority, not an
+ordinary turn adaptation. Admission allocates distinct 128-bit operation and request-attempt
+nonces. The operation nonce payload deterministically supplies the parentless provider-operation
+turn id, while the app derives a separate snapshot id from the complete admission authority. One
+mutation creates that turn, snapshots the exact valid CAS binding and loaded execution authority,
+and changes the input gate to compacting atomically. The operation turn, record, and gate are one
+authority pair even before CAS publishes its own turn id.
+
+The provider-operation turn does not advance the committed conversation tail, selected path,
+current draft, represented Syndic prefix, or native CAS model-turn count. The existing valid
+binding remains the represented-lineage authority while the compaction record exclusively owns
+remote operation admission. A successful compaction may change CAS's internal context while that
+same binding continues to represent the same Syndic prefix.
+
+The compaction record retains the exact admission `BerylHomeId`, Syndic thread and provider-
+operation turn, operation and attempt identities, binding revision, provider-operation execution
+snapshot, runtime and managed-process generation, loaded-thread generation, CAS thread, optional
+one-way-published CAS turn, request disposition, ordered thread-status frontier, observed context-
+compaction marker, terminal evidence, and consumed disposition. The compacting gate selects that
+record. Missing, disagreeing, or reused halves are corruption rather than recovery hints.
+
+For a successful context-compaction provider-operation turn, the record's exact terminal witness is
+canonical terminal source authority. The turn remains free of ordinary source events; validation
+requires the record's turn, terminal status, and recorded turn-state revision to agree exactly with
+the complete turn state and rejects any second or conflicting terminal authority.
+
+Input accepted while the gate is compacting is frozen through the ordinary permanent accepted-
+input authority and routed directly to next-turn work. It never becomes steering for the
+provider-operation turn. Generic ordinary terminal mutation cannot turn a compaction operation
+into a pending conversation turn.
+
+A lifecycle continuation admitted after successful compaction is a conversation turn with exact
+`BerylLifecycleContinuation` origin. It is neither a provider-operation turn nor user-authored
+accepted input. Its fixed canonical user-role input advances the selected conversation path while
+the operator's current draft remains unchanged. Its turn and item identity domain uses the durable
+compaction record's admission home identity; settlement has no independent home-identity choice.
 
 # Turn Items
 
@@ -276,7 +425,13 @@ The canonical graph must be sufficient to reconstruct the context for a new agen
 
 That does not mean every UI projection must load the full graph or every heavy item byte.
 
-Syndic can maintain separate projections for fast UI reads, search, activity, and media browsing. Ephemeral or unfinished derived projections may be rebuilt or invalidated from the canonical turn graph and reference metadata; a current item projection under a proven-terminal turn is finalized durable history and cannot be rewritten in place. A named thread's transcript-view index remains rebuildable as its selected path changes, but it only reorders or selects those frozen historical projections.
+Syndic can maintain separate projections for fast UI reads, search, activity, and media browsing.
+The activity projection is a revision-bound paged index over exact lifecycle sources and bounded
+derived facts, not a second payload store or parent transcript narrative. Ephemeral or unfinished
+derived projections may be rebuilt or invalidated from the canonical turn graph and reference
+metadata; a current item projection under a proven-terminal turn is finalized durable history and
+cannot be rewritten in place. A named thread's transcript-view index remains rebuildable as its
+selected path changes, but it only reorders or selects those frozen historical projections.
 
 Markdown block projections are one such derived projection.
 

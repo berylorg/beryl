@@ -1,36 +1,115 @@
 use beryl_model::CasItemId;
 
 use super::{
-    ProviderItemFrameV1, ProviderItemKind, ProviderItemObservationV1, ProviderItemValidationError,
-    ProviderLifecycleTimestampMsV1,
+    ProviderFrameOrdinalV1, ProviderItemFrameV1, ProviderItemKind, ProviderItemObservationV1,
+    ProviderItemValidationError, ProviderLifecycleTimestampMsV1,
 };
 use crate::provider_item::{
     ProviderFrameHistorySupportV1, ProviderFrameObservationSummaryV1,
     ProviderFrameStructuralValidationV1,
 };
 
-/// Constant-resident lifecycle validator for one item stream.
-#[derive(Clone, Debug, Default)]
-pub struct ProviderItemStreamValidatorV1 {
-    item_id: Option<CasItemId>,
-    kind: Option<ProviderItemKind>,
-    next_ordinal: u64,
+/// Exact bounded lifecycle state after at least one accepted provider-item frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderItemStreamStateV1 {
+    item_id: CasItemId,
+    kind: ProviderItemKind,
+    next_ordinal: ProviderFrameOrdinalV1,
     started_at: Option<ProviderLifecycleTimestampMsV1>,
     completed: bool,
     history_support: ProviderFrameHistorySupportV1,
 }
 
+impl ProviderItemStreamStateV1 {
+    /// Constructs validated resumable lifecycle authority.
+    pub fn new(
+        item_id: CasItemId,
+        kind: ProviderItemKind,
+        next_ordinal: u64,
+        started_at: Option<ProviderLifecycleTimestampMsV1>,
+        completed: bool,
+        history_support: ProviderFrameHistorySupportV1,
+    ) -> Result<Self, ProviderItemValidationError> {
+        if next_ordinal < 2 {
+            return Err(ProviderItemValidationError::InvalidStreamStateOrdinal {
+                actual: next_ordinal,
+            });
+        }
+        let next_ordinal = ProviderFrameOrdinalV1::new(next_ordinal)
+            .expect("provider stream state next ordinal was checked nonzero");
+        let lifecycle_is_valid = if kind.permits_completion_only() {
+            started_at.is_none() && completed && next_ordinal.get() == 2
+        } else if completed {
+            started_at.is_some() && next_ordinal.get() >= 3
+        } else {
+            started_at.is_some()
+        };
+        if !lifecycle_is_valid {
+            return Err(ProviderItemValidationError::InvalidStreamStateLifecycle { kind });
+        }
+        Ok(Self {
+            item_id,
+            kind,
+            next_ordinal,
+            started_at,
+            completed,
+            history_support,
+        })
+    }
+
+    #[must_use]
+    pub const fn item_id(&self) -> &CasItemId {
+        &self.item_id
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> ProviderItemKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub const fn next_ordinal(&self) -> ProviderFrameOrdinalV1 {
+        self.next_ordinal
+    }
+
+    #[must_use]
+    pub const fn started_at(&self) -> Option<ProviderLifecycleTimestampMsV1> {
+        self.started_at
+    }
+
+    #[must_use]
+    pub const fn is_complete(&self) -> bool {
+        self.completed
+    }
+
+    #[must_use]
+    pub const fn history_support(&self) -> ProviderFrameHistorySupportV1 {
+        self.history_support
+    }
+}
+
+/// Constant-resident lifecycle validator for one item stream.
+#[derive(Clone, Debug, Default)]
+pub struct ProviderItemStreamValidatorV1 {
+    state: Option<ProviderItemStreamStateV1>,
+}
+
 impl ProviderItemStreamValidatorV1 {
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            item_id: None,
-            kind: None,
-            next_ordinal: 1,
-            started_at: None,
-            completed: false,
-            history_support: ProviderFrameHistorySupportV1::Supported,
-        }
+        Self { state: None }
+    }
+
+    /// Resumes validation from previously checked bounded lifecycle authority.
+    #[must_use]
+    pub const fn from_state(state: ProviderItemStreamStateV1) -> Self {
+        Self { state: Some(state) }
+    }
+
+    /// Returns resumable authority after at least one frame has been accepted.
+    #[must_use]
+    pub const fn state(&self) -> Option<&ProviderItemStreamStateV1> {
+        self.state.as_ref()
     }
 
     pub fn observe(
@@ -78,88 +157,128 @@ impl ProviderItemStreamValidatorV1 {
         observation: ProviderFrameObservationSummaryV1,
         history_support: ProviderFrameHistorySupportV1,
     ) -> Result<(), ProviderItemValidationError> {
-        if ordinal != self.next_ordinal {
+        let expected_ordinal = self
+            .state
+            .as_ref()
+            .map_or(1, |state| state.next_ordinal.get());
+        if ordinal != expected_ordinal {
             return Err(ProviderItemValidationError::FrameOrdinalConflict {
-                expected: self.next_ordinal,
+                expected: expected_ordinal,
                 actual: ordinal,
             });
         }
-        if self.completed {
-            return Err(ProviderItemValidationError::EventAfterCompletion);
-        }
-        if let Some(expected) = &self.item_id {
-            if expected != item_id {
+        if let Some(state) = &self.state {
+            if state.completed {
+                return Err(ProviderItemValidationError::EventAfterCompletion);
+            }
+            if &state.item_id != item_id {
                 return Err(ProviderItemValidationError::ItemIdentityMismatch);
             }
-        } else {
-            self.item_id = Some(item_id.clone());
-        }
-        if let Some(expected) = self.kind {
-            if expected != kind {
+            if state.kind != kind {
                 return Err(ProviderItemValidationError::ItemKindMismatch {
-                    expected,
+                    expected: state.kind,
                     actual: kind,
                 });
             }
-        } else {
-            self.kind = Some(kind);
         }
-        match observation {
-            ProviderFrameObservationSummaryV1::Started(observed_at) => {
-                if kind.permits_completion_only() {
-                    return Err(ProviderItemValidationError::CompletionOnlyItemStarted);
-                }
-                if self.started_at.is_some() {
-                    return Err(ProviderItemValidationError::DuplicateItemStart);
-                }
-                self.started_at = Some(observed_at);
-            }
-            ProviderFrameObservationSummaryV1::Delta => {
-                if self.started_at.is_none() {
-                    return Err(ProviderItemValidationError::MissingItemStart);
-                }
-            }
-            ProviderFrameObservationSummaryV1::Completed(observed_at) => {
-                if let Some(started_at) = self.started_at {
-                    if observed_at < started_at {
-                        return Err(ProviderItemValidationError::CompletionBeforeStart {
-                            started: started_at.get(),
-                            completed: observed_at.get(),
-                        });
-                    }
-                } else if !kind.permits_completion_only() {
-                    return Err(ProviderItemValidationError::MissingItemStart);
-                }
-                self.completed = true;
-            }
-        }
-        self.next_ordinal = self
-            .next_ordinal
+        let current_started_at = self.state.as_ref().and_then(|state| state.started_at);
+        let (started_at, completed) = validated_lifecycle(kind, current_started_at, observation)?;
+        let next_ordinal = ordinal
             .checked_add(1)
             .ok_or(ProviderItemValidationError::FrameOrdinalExhausted)?;
-        self.history_support = self.history_support.merge(history_support);
+        let next_ordinal = ProviderFrameOrdinalV1::new(next_ordinal)?;
+        let prior_history_support = self
+            .state
+            .as_ref()
+            .map_or(ProviderFrameHistorySupportV1::Supported, |state| {
+                state.history_support
+            });
+        let cumulative_history_support = prior_history_support.merge(history_support);
+        if let Some(state) = &mut self.state {
+            state.next_ordinal = next_ordinal;
+            state.started_at = started_at;
+            state.completed = completed;
+            state.history_support = cumulative_history_support;
+        } else {
+            self.state = Some(ProviderItemStreamStateV1 {
+                item_id: item_id.clone(),
+                kind,
+                next_ordinal,
+                started_at,
+                completed,
+                history_support: cumulative_history_support,
+            });
+        }
         Ok(())
     }
 
     #[must_use]
     pub const fn is_complete(&self) -> bool {
-        self.completed
+        match &self.state {
+            Some(state) => state.is_complete(),
+            None => false,
+        }
     }
 
     #[must_use]
     pub const fn kind(&self) -> Option<ProviderItemKind> {
-        self.kind
+        match &self.state {
+            Some(state) => Some(state.kind()),
+            None => None,
+        }
     }
 
     /// Returns the monotonic history-support result across every accepted frame.
     #[must_use]
     pub const fn history_support(&self) -> ProviderFrameHistorySupportV1 {
-        self.history_support
+        match &self.state {
+            Some(state) => state.history_support(),
+            None => ProviderFrameHistorySupportV1::Supported,
+        }
     }
 
     /// Reports structural lifecycle completion only when no accepted frame blocked history.
     #[must_use]
     pub const fn is_history_complete(&self) -> bool {
-        self.completed && self.history_support.is_supported()
+        self.is_complete() && self.history_support().is_supported()
+    }
+}
+
+fn validated_lifecycle(
+    kind: ProviderItemKind,
+    started_at: Option<ProviderLifecycleTimestampMsV1>,
+    observation: ProviderFrameObservationSummaryV1,
+) -> Result<(Option<ProviderLifecycleTimestampMsV1>, bool), ProviderItemValidationError> {
+    match observation {
+        ProviderFrameObservationSummaryV1::Started(observed_at) => {
+            if kind.permits_completion_only() {
+                return Err(ProviderItemValidationError::CompletionOnlyItemStarted);
+            }
+            if started_at.is_some() {
+                return Err(ProviderItemValidationError::DuplicateItemStart);
+            }
+            Ok((Some(observed_at), false))
+        }
+        ProviderFrameObservationSummaryV1::Delta => {
+            if started_at.is_none() {
+                return Err(ProviderItemValidationError::MissingItemStart);
+            }
+            Ok((started_at, false))
+        }
+        ProviderFrameObservationSummaryV1::Completed(observed_at) => {
+            if let Some(started_at) = started_at {
+                if observed_at < started_at {
+                    return Err(ProviderItemValidationError::CompletionBeforeStart {
+                        started: started_at.get(),
+                        completed: observed_at.get(),
+                    });
+                }
+                Ok((Some(started_at), true))
+            } else if kind.permits_completion_only() {
+                Ok((None, true))
+            } else {
+                Err(ProviderItemValidationError::MissingItemStart)
+            }
+        }
     }
 }

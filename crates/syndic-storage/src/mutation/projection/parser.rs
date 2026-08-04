@@ -1,6 +1,6 @@
 use crate::{
-    ComposerAtomOrdinal, ContentPieceOrdinal, InputMarkerOrdinal, MarkdownBlockKind,
-    MarkdownOpenBlock, MarkdownParserCheckpoint, ProjectionSourceRange, ResourceStructure,
+    ComposerAtomOrdinal, InputMarkerOrdinal, MarkdownBlockKind, MarkdownOpenBlock,
+    MarkdownParserCheckpoint, ProjectionSourceRange, ProjectionTextSourceCursor, ResourceStructure,
     SyndicMutationError,
 };
 
@@ -57,7 +57,7 @@ pub(crate) struct ParserStep {
 struct ParserState {
     consumed: u64,
     closed: u64,
-    next_piece: ContentPieceOrdinal,
+    source_cursor: ProjectionTextSourceCursor,
     line_start: u64,
     line_carry: String,
     line_continuation: bool,
@@ -71,7 +71,7 @@ pub(crate) fn advance(
     let mut state = ParserState {
         consumed: checkpoint.consumed_source_bytes(),
         closed: checkpoint.closed_source_bytes(),
-        next_piece: checkpoint.next_piece_ordinal(),
+        source_cursor: checkpoint.source_cursor(),
         line_start: checkpoint.line_start(),
         line_carry: checkpoint.line_carry().to_owned(),
         line_continuation: checkpoint.line_continuation(),
@@ -79,12 +79,16 @@ pub(crate) fn advance(
     };
     let mut outputs = Vec::new();
     let finished = match piece {
-        LoadedPiece::Text { span, source } => {
+        LoadedPiece::Text {
+            logical_end,
+            source,
+            next_cursor,
+        } => {
             let consumed = consume_text(&mut state, &source, &mut outputs)?;
             if consumed == source.len() {
-                state.next_piece = state.next_piece.checked_next()?;
+                state.source_cursor = next_cursor;
             }
-            if state.consumed > span.logical_end() {
+            if state.consumed > logical_end {
                 return Err(SyndicMutationError::ProjectionBuildConflict);
             }
             false
@@ -93,16 +97,16 @@ pub(crate) fn advance(
             let boundary = state.consumed;
             finish_boundary(&mut state, boundary, &mut outputs)?;
             emit_marker(&mut state, marker, &mut outputs)?;
-            state.next_piece = state.next_piece.checked_next()?;
+            let Some(next_piece) = state.source_cursor.composer_piece() else {
+                return Err(SyndicMutationError::ProjectionBuildConflict);
+            };
+            state.source_cursor = ProjectionTextSourceCursor::Composer(next_piece.checked_next()?);
             false
         }
         LoadedPiece::End => {
             let boundary = state.consumed;
             finish_boundary(&mut state, boundary, &mut outputs)?;
-            if state.consumed == 0
-                && state.next_piece == ContentPieceOrdinal::FIRST
-                && outputs.is_empty()
-            {
+            if state.consumed == 0 && state.source_cursor.is_initial() && outputs.is_empty() {
                 outputs.push(ParserOutput::Empty);
             }
             true
@@ -112,7 +116,7 @@ pub(crate) fn advance(
         checkpoint: MarkdownParserCheckpoint::new(
             state.consumed,
             state.closed,
-            state.next_piece,
+            state.source_cursor,
             state.line_start,
             state.line_carry.into_boxed_str(),
             state.line_continuation,

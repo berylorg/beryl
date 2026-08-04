@@ -9,13 +9,64 @@ use std::{
 };
 
 use beryl_home_store::{
-    CommandError, HomeCommand, HomeHealthState, HomeOpenOptions, HomeRecoveryError,
-    HomeSchemaVersion, HomeStore, PointReadLimit, ReadError,
+    CommandError, DomainMutation, DomainReader, DomainValidator, HomeCommand, HomeHealthState,
+    HomeOpenOptions, HomeRecoveryError, HomeSchemaVersion, HomeStore, MutationBuilder,
+    PointReadLimit, ReadError,
     test_faults::{FaultController, FaultPoint},
 };
 use tempfile::tempdir;
 
-use support::{AlphaDomain, BytesRecord, PutBytes};
+use support::{AlphaDomain, BetaDomain, BytesRecord, FixtureMutationError, PutBytes};
+
+struct RequireBeta;
+
+impl DomainValidator<BetaDomain> for RequireBeta {
+    type Error = FixtureMutationError;
+
+    fn validate(&self, reader: &DomainReader<'_, BetaDomain>) -> Result<(), Self::Error> {
+        let value = reader
+            .point::<BytesRecord<BetaDomain>>(&7, PointReadLimit::new(1_028).unwrap())
+            .map_err(|_| FixtureMutationError::Rejected("validator read failed"))?;
+        if value.as_deref() != Some(b"guarded") {
+            return Err(FixtureMutationError::Rejected("validator value changed"));
+        }
+        Ok(())
+    }
+}
+
+struct PanicValidator;
+
+impl DomainValidator<BetaDomain> for PanicValidator {
+    type Error = FixtureMutationError;
+
+    fn validate(&self, _reader: &DomainReader<'_, BetaDomain>) -> Result<(), Self::Error> {
+        panic!("synthetic validation-only participant panic")
+    }
+}
+
+struct PutMany {
+    count: u64,
+}
+
+impl DomainMutation<AlphaDomain> for PutMany {
+    type Error = FixtureMutationError;
+
+    fn validate(&self, _reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn contribute(
+        &self,
+        _reader: &DomainReader<'_, AlphaDomain>,
+        mutations: &mut MutationBuilder<'_, AlphaDomain>,
+    ) -> Result<(), Self::Error> {
+        let value = vec![0];
+        for key in 0..self.count {
+            mutations.put::<BytesRecord<AlphaDomain>>(&key, &value)?;
+        }
+        Ok(())
+    }
+}
 
 fn open(path: &std::path::Path, faults: FaultController) -> HomeStore {
     HomeStore::open_with_faults(
@@ -86,6 +137,108 @@ fn assert_recovered_state(
         ExpectedRecoveredState::New => assert!(new),
         ExpectedRecoveredState::Either => assert!(old || new),
     }
+}
+
+#[test]
+fn fixed_batch_limit_counts_application_and_package_owned_revision_records() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults);
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+
+    let exact_application_records = 16_384 - 2;
+    let mut exact = HomeCommand::new(store.home_revision().unwrap());
+    exact
+        .add(alpha.contribution(
+            store.domain_revision(alpha).unwrap(),
+            PutMany {
+                count: exact_application_records,
+            },
+        ))
+        .unwrap();
+    let receipt = store.execute(exact).unwrap();
+    assert_eq!(receipt.home_revision().get(), 2);
+    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+
+    let mut one_over = HomeCommand::new(store.home_revision().unwrap());
+    one_over
+        .add(alpha.contribution(
+            store.domain_revision(alpha).unwrap(),
+            PutMany {
+                count: exact_application_records + 1,
+            },
+        ))
+        .unwrap();
+    assert!(matches!(
+        store.execute(one_over),
+        Err(CommandError::Commit { .. })
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Healthy);
+    assert_eq!(store.home_revision().unwrap().get(), 2);
+    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
+}
+
+#[test]
+fn owned_fjall_journal_write_failure_never_publishes_durable_success() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults);
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let generation = store.health().generation().unwrap();
+
+    let fault = fjall::test_faults::fail_next_journal_write();
+    let error = store
+        .execute(put_command(&store, alpha, 42, b"must not publish"))
+        .unwrap_err();
+    drop(fault);
+    assert!(matches!(error, CommandError::Commit { .. }));
+    assert_eq!(store.health().state(), HomeHealthState::Verifying);
+
+    assert!(store.verify_health().is_err());
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+    let recovery = store.recover_same_home().unwrap();
+    assert_eq!(recovery.generation().get(), generation.get() + 1);
+    let alpha = store.domain_handle::<AlphaDomain>().unwrap();
+    assert_eq!(store.home_revision().unwrap().get(), 1);
+    assert_eq!(store.domain_revision(alpha).unwrap().get(), 1);
+    assert_eq!(read_value(&store, alpha, 42), None);
+}
+
+#[test]
+fn validator_panic_fails_health_and_recovers_without_any_command_effect() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults);
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let beta = store.register_domain::<BetaDomain>().unwrap();
+    let generation_before = store.health().generation().unwrap();
+    let home_before = store.home_revision().unwrap();
+    let alpha_before = store.domain_revision(alpha).unwrap();
+    let beta_before = store.domain_revision(beta).unwrap();
+    let mut command = HomeCommand::new(home_before);
+    command
+        .add(alpha.contribution(
+            alpha_before,
+            PutBytes::<AlphaDomain>::new(40, b"must not commit".to_vec()),
+        ))
+        .unwrap()
+        .add_validation(beta.validation(beta_before, PanicValidator))
+        .unwrap();
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        let _ = store.execute(command);
+    }));
+    assert!(panicked.is_err());
+    assert_eq!(store.health().state(), HomeHealthState::Failed);
+
+    let recovery = store.recover_same_home().unwrap();
+    assert_eq!(recovery.generation().get(), generation_before.get() + 1);
+    let alpha = store.domain_handle::<AlphaDomain>().unwrap();
+    let beta = store.domain_handle::<BetaDomain>().unwrap();
+    assert_eq!(store.home_revision().unwrap(), home_before);
+    assert_eq!(store.domain_revision(alpha).unwrap(), alpha_before);
+    assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
+    assert_eq!(read_value(&store, alpha, 40), None);
 }
 
 #[test]
@@ -180,6 +333,54 @@ fn surfaced_post_sync_all_failure_preserves_the_durable_new_state() {
     assert_eq!(
         read_value(&store, alpha, 22).as_deref(),
         Some(b"already durable".as_slice())
+    );
+}
+
+#[test]
+fn mixed_validator_commit_fault_advances_only_the_mutating_domain() {
+    let directory = tempdir().unwrap();
+    let faults = FaultController::new();
+    let mut store = open(directory.path(), faults.clone());
+    let alpha = store.register_domain::<AlphaDomain>().unwrap();
+    let beta = store.register_domain::<BetaDomain>().unwrap();
+
+    let mut seed = HomeCommand::new(store.home_revision().unwrap());
+    seed.add(beta.contribution(
+        store.domain_revision(beta).unwrap(),
+        PutBytes::<BetaDomain>::new(7, b"guarded".to_vec()),
+    ))
+    .unwrap();
+    store.execute(seed).unwrap();
+    let home_before = store.home_revision().unwrap();
+    let alpha_before = store.domain_revision(alpha).unwrap();
+    let beta_before = store.domain_revision(beta).unwrap();
+
+    let mut command = HomeCommand::new(home_before);
+    command
+        .add(alpha.contribution(
+            alpha_before,
+            PutBytes::<AlphaDomain>::new(24, b"mixed durable".to_vec()),
+        ))
+        .unwrap()
+        .add_validation(beta.validation(beta_before, RequireBeta))
+        .unwrap();
+    faults.fail_next_with_kind(FaultPoint::AfterPersist, io::ErrorKind::StorageFull);
+    assert!(matches!(
+        store.execute(command),
+        Err(CommandError::Persistence { .. })
+    ));
+    assert_eq!(store.health().state(), HomeHealthState::Verifying);
+
+    store.verify_health().unwrap();
+    assert_eq!(store.home_revision().unwrap().get(), home_before.get() + 1);
+    assert_eq!(
+        store.domain_revision(alpha).unwrap().get(),
+        alpha_before.get() + 1
+    );
+    assert_eq!(store.domain_revision(beta).unwrap(), beta_before);
+    assert_eq!(
+        read_value(&store, alpha, 24).as_deref(),
+        Some(b"mixed durable".as_slice())
     );
 }
 

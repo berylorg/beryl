@@ -47,9 +47,13 @@ outside the CAS 0.144.1 supported producer contract, make no complete-history cl
 nonconforming provider behavior, and normalize standalone generated media separately. Preserve the
 completed provider item and terminal lifecycle; until the later asset checkpoint admits its bytes
 into Beryl-owned authority, a separate pending-resource disposition keeps canonical finalization and
-history completeness behind rather than masquerading a runtime path as durable media. The later
-completion review's distinct activity-only field-loss correction is recorded in
-`doc/failures/cas-phase13-activity-only-public-item-loss.md`.
+history completeness behind rather than masquerading a runtime path as durable media.
+
+Operational and activity variants must preserve every admitted public field, list boundary,
+index, optional value, structured value, and media provenance rather than collapsing them to a
+fieldless marker or concatenated text. Completion-only fields remain typed; append-only
+`AgentMessage` and `Plan` narratives require bounded exact agreement at completion and cannot be
+replaced by a completion snapshot.
 
 # Affected Authority
 

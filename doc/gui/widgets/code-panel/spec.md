@@ -47,13 +47,20 @@ The widget's own copy action copies bare plain text.
 
 Callers may define richer copy behavior outside the widget, such as Markdown-preserving transcript copy, without changing the widget's plain-text copy contract.
 
-Optional header controls may include generic actions such as Expand, Collapse, Soft Wrap, and Copy. Disabled header commands satisfy `expected-action-availability`.
+Optional header controls may include generic actions such as Expand, Collapse, Soft Wrap, Copy, and
+`Save…`. Disabled header commands satisfy `expected-action-availability`.
 
 In no-wrap mode, horizontal wheel or direct horizontal scrolling moves the text viewport. In smart-wrap mode, text wraps inside the available inline size.
 
 A nested scrollable code panel does not take vertical pointer-wheel ownership merely because the pointer hovers over it. Clicking the nested code panel selects it for vertical pointer-wheel ownership. While selected, vertical wheel input over that code panel scrolls only the panel and does not co-scroll the outer viewport. Pressing `Escape` does not deselect the nested code panel for pointer-wheel ownership.
 
-Selection and full-source Copy operate on stable source ranges, including ranges outside the current realization window. Scrolling, resizing, wrap-mode changes, and syntax-result publication reconcile the realized range without changing source identity or losing a valid selection.
+Selection and full-source Copy operate on stable source ranges, including ranges outside the current
+realization window. Copy reconstructs a contiguous platform representation only after the exact
+logical range fits its admitted clipboard limit. Otherwise Copy reports unavailable without loading
+the source or changing selection, and owner-supplied `Save…` streams the stable source range to a
+selected file through bounded pages. Scrolling, resizing, wrap-mode changes, and syntax-result
+publication reconcile the realized range without changing source identity or losing a valid
+selection.
 
 # Layout
 

@@ -14,12 +14,15 @@ use thiserror::Error;
 use crate::{
     AdmittedSidecar, DomainCallbackError, DomainHandle, DomainReader, ReadError, RecordCodec,
     StorageDomain,
-    domain::{DomainOwnerId, RegisteredDomain, StoreInstanceId, callback::ErasedCallbackError},
+    domain::{RegisteredDomain, StoreInstanceId},
     read::{encode_stored_key, encode_value},
 };
 
+mod participant;
 mod result;
 
+pub(crate) use participant::{DomainMutationPlan, DomainParticipant};
+use participant::{mutation_plan, validation_plan};
 pub use result::{
     CommandError, CommitReceipt, CommitReceiptError, ContributorCallbackStage, RevisionConflict,
 };
@@ -70,6 +73,23 @@ pub trait DomainMutation<D: StorageDomain>: Send + 'static {
         reader: &DomainReader<'_, D>,
         mutations: &mut MutationBuilder<'_, D>,
     ) -> Result<(), Self::Error>;
+}
+
+/// One domain-owned validation-only guard for a heterogeneous home command.
+///
+/// A validator can inspect only its typed domain through the same serialized
+/// writer snapshot and expected-revision fence as mutation participants. It
+/// cannot assemble records, retain sidecars, or advance revisions, and it is
+/// accepted only alongside at least one real mutation participant.
+pub trait DomainValidator<D: StorageDomain>: Send + 'static {
+    /// Domain-owned validation failure.
+    type Error: DomainCallbackError;
+
+    /// Validates current authoritative state before any mutation batch is assembled.
+    ///
+    /// This method must be deterministic, bounded, and free of external I/O or
+    /// side effects. Same-store writer reentry is rejected.
+    fn validate(&self, reader: &DomainReader<'_, D>) -> Result<(), Self::Error>;
 }
 
 /// Failure while translating a typed domain plan into pending mutations.
@@ -192,60 +212,15 @@ impl<'a, D: StorageDomain> MutationBuilder<'a, D> {
     }
 }
 
-pub(crate) trait ErasedContribution: Send {
-    fn validate(
-        &self,
-        snapshot: &fjall::Snapshot,
-        domain: &RegisteredDomain,
-    ) -> Result<(), ErasedCallbackError>;
-    fn assemble(
-        &self,
-        snapshot: &fjall::Snapshot,
-        domain: &RegisteredDomain,
-    ) -> Result<Vec<PendingMutation>, ErasedCallbackError>;
-}
-
-struct TypedContribution<D: StorageDomain, M: DomainMutation<D>> {
-    mutation: M,
-    _typed: PhantomData<fn(D) -> D>,
-}
-
-impl<D: StorageDomain, M: DomainMutation<D>> ErasedContribution for TypedContribution<D, M> {
-    fn validate(
-        &self,
-        snapshot: &fjall::Snapshot,
-        domain: &RegisteredDomain,
-    ) -> Result<(), ErasedCallbackError> {
-        self.mutation
-            .validate(&DomainReader::new(snapshot, domain))
-            .map_err(ErasedCallbackError::from_typed)
-    }
-
-    fn assemble(
-        &self,
-        snapshot: &fjall::Snapshot,
-        domain: &RegisteredDomain,
-    ) -> Result<Vec<PendingMutation>, ErasedCallbackError> {
-        let reader = DomainReader::new(snapshot, domain);
-        let mut builder = MutationBuilder::<D>::new(domain);
-        self.mutation
-            .contribute(&reader, &mut builder)
-            .map_err(ErasedCallbackError::from_typed)?;
-        Ok(builder.into_pending())
-    }
-}
-
-pub(crate) struct DomainMutationPlan {
-    pub(crate) store: StoreInstanceId,
-    pub(crate) slot: usize,
-    pub(crate) owner: DomainOwnerId,
-    pub(crate) domain: &'static str,
-    pub(crate) mutation: Box<dyn ErasedContribution>,
-}
-
 /// Opaque, typed domain contribution accepted by a home command.
 pub struct MutationContribution {
     pub(crate) plan: DomainMutationPlan,
+    pub(crate) expected_revision: DomainRevision,
+}
+
+/// Opaque, typed validation-only domain participant accepted by a home command.
+pub struct ValidationContribution {
+    pub(crate) plan: participant::DomainValidationPlan,
     pub(crate) expected_revision: DomainRevision,
 }
 
@@ -259,6 +234,8 @@ pub struct MutationContribution {
 pub struct CurrentDomainCommand {
     pub(crate) plan: DomainMutationPlan,
     pub(crate) cancellation: CommandCancellation,
+    #[cfg(feature = "test-faults")]
+    pub(crate) fault_scope: crate::fault::FaultScope,
 }
 
 impl std::fmt::Debug for CurrentDomainCommand {
@@ -289,6 +266,16 @@ impl std::fmt::Debug for MutationContribution {
     }
 }
 
+impl std::fmt::Debug for ValidationContribution {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ValidationContribution")
+            .field("domain", &self.plan.domain)
+            .field("expected_revision", &self.expected_revision)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<D: StorageDomain> DomainHandle<D> {
     /// Seals one domain-owned plan with the revision it expects to mutate.
     pub fn contribution<M: DomainMutation<D>>(
@@ -297,16 +284,19 @@ impl<D: StorageDomain> DomainHandle<D> {
         mutation: M,
     ) -> MutationContribution {
         MutationContribution {
-            plan: DomainMutationPlan {
-                store: self.store,
-                slot: self.slot,
-                owner: self.owner,
-                domain: D::NAME,
-                mutation: Box::new(TypedContribution::<D, M> {
-                    mutation,
-                    _typed: PhantomData,
-                }),
-            },
+            plan: mutation_plan::<D, M>(self.store, self.slot, self.owner, mutation),
+            expected_revision,
+        }
+    }
+
+    /// Seals one validation-only participant with the domain revision it expects to guard.
+    pub fn validation<V: DomainValidator<D>>(
+        self,
+        expected_revision: DomainRevision,
+        validator: V,
+    ) -> ValidationContribution {
+        ValidationContribution {
+            plan: validation_plan::<D, V>(self.store, self.slot, self.owner, validator),
             expected_revision,
         }
     }
@@ -315,17 +305,10 @@ impl<D: StorageDomain> DomainHandle<D> {
     /// admission.
     pub fn current_command<M: DomainMutation<D>>(self, mutation: M) -> CurrentDomainCommand {
         CurrentDomainCommand {
-            plan: DomainMutationPlan {
-                store: self.store,
-                slot: self.slot,
-                owner: self.owner,
-                domain: D::NAME,
-                mutation: Box::new(TypedContribution::<D, M> {
-                    mutation,
-                    _typed: PhantomData,
-                }),
-            },
+            plan: mutation_plan::<D, M>(self.store, self.slot, self.owner, mutation),
             cancellation: CommandCancellation::new(),
+            #[cfg(feature = "test-faults")]
+            fault_scope: crate::fault::FaultScope::of::<M>(),
         }
     }
 }
@@ -333,8 +316,8 @@ impl<D: StorageDomain> DomainHandle<D> {
 /// Failure while constructing a heterogeneous home command.
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum CommandBuildError {
-    /// One command may advance a logical domain at most once.
-    #[error("command contains duplicate contribution for domain `{domain}`")]
+    /// One command may participate in a logical domain at most once across both roles.
+    #[error("command contains duplicate participation for domain `{domain}`")]
     DuplicateDomain {
         /// Stable duplicate domain name.
         domain: &'static str,
@@ -348,7 +331,7 @@ pub enum CommandBuildError {
 pub struct HomeCommand {
     pub(crate) expected_home_revision: HomeRevision,
     pub(crate) cancellation: CommandCancellation,
-    pub(crate) contributions: Vec<MutationContribution>,
+    pub(crate) participants: Vec<DomainParticipant>,
     pub(crate) sidecars: Vec<AdmittedSidecar>,
 }
 
@@ -359,7 +342,7 @@ impl HomeCommand {
         Self {
             expected_home_revision,
             cancellation: CommandCancellation::new(),
-            contributions: Vec::new(),
+            participants: Vec::new(),
             sidecars: Vec::new(),
         }
     }
@@ -376,16 +359,35 @@ impl HomeCommand {
         &mut self,
         contribution: MutationContribution,
     ) -> Result<&mut Self, CommandBuildError> {
-        if self.contributions.iter().any(|existing| {
-            existing.plan.store == contribution.plan.store
-                && existing.plan.slot == contribution.plan.slot
-        }) {
+        if self.contains_domain(contribution.plan.store, contribution.plan.slot) {
             return Err(CommandBuildError::DuplicateDomain {
                 domain: contribution.plan.domain,
             });
         }
-        self.contributions.push(contribution);
+        self.participants
+            .push(DomainParticipant::Mutation(contribution));
         Ok(self)
+    }
+
+    /// Adds one sealed typed validation-only domain participant.
+    pub fn add_validation(
+        &mut self,
+        validation: ValidationContribution,
+    ) -> Result<&mut Self, CommandBuildError> {
+        if self.contains_domain(validation.plan.store, validation.plan.slot) {
+            return Err(CommandBuildError::DuplicateDomain {
+                domain: validation.plan.domain,
+            });
+        }
+        self.participants
+            .push(DomainParticipant::Validation(validation));
+        Ok(self)
+    }
+
+    fn contains_domain(&self, store: StoreInstanceId, slot: usize) -> bool {
+        self.participants
+            .iter()
+            .any(|participant| participant.store() == store && participant.slot() == slot)
     }
 
     /// Retains one fully published sidecar through this command's metadata commit.

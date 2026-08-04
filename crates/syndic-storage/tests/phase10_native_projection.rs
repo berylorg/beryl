@@ -5,6 +5,8 @@
 
 #[path = "phase9_recovery_projection/support.rs"]
 mod builder_support;
+#[path = "phase10_native_projection/inclusive_fork.rs"]
+mod inclusive_fork;
 #[path = "support/mod.rs"]
 mod support;
 
@@ -142,6 +144,89 @@ fn exact_current_projection_wins_without_remote_lineage_work() {
     };
     assert_eq!(source.thread_id(), builder.thread());
     assert_eq!(source.binding().cas_thread_id(), &cas_thread);
+
+    let current = storage
+        .current_draft(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    let payload =
+        ComposerPayload::new(vec![ComposerAtom::text("queued while projected").unwrap()]).unwrap();
+    let content = PreparedContent::composer(&payload).unwrap();
+    stage_prepared_content(&store, storage, &content);
+    let DraftPayloadUpdateDecision::Update(update) = DraftPayloadUpdate::prepare(
+        &current,
+        &content,
+        SyndicTimestamp::from_unix_millis(31_001),
+    )
+    .unwrap() else {
+        panic!("queued projected draft must become nonempty")
+    };
+    execute(
+        &store,
+        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
+    );
+    let current = storage
+        .current_draft(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    execute(
+        &store,
+        storage.admit_accepted_input(
+            storage.revision(&store).unwrap(),
+            AcceptedInputAdmission::new(
+                builder.thread(),
+                current.thread().revision(),
+                current.draft().id(),
+                current.draft().revision(),
+                current.draft().content(),
+                gate.revision(),
+                SyndicDraftId::from_bytes([161; 16]),
+                None,
+                SyndicTimestamp::from_unix_millis(31_002),
+            ),
+        ),
+    );
+    let current_thread = storage
+        .thread(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    let current_path = SelectedPathProof::new(
+        current_thread.committed_tail(),
+        current_thread.revision(),
+        current_thread.selected_path_digest(),
+    );
+    assert!(current_path.is_compatible_descendant_of(selected));
+
+    let NativeProjectionPlan::Current { basis, source } = plan(
+        &store,
+        storage,
+        builder.thread(),
+        selected,
+        exact_cas::execution_binding(),
+    ) else {
+        panic!("admission-only revision drift must reuse the current CAS projection")
+    };
+    assert_eq!(basis.selected_path(), current_path);
+    assert_eq!(source.binding().cas_thread_id(), &cas_thread);
+    assert_eq!(
+        source.binding().represented_prefix().tail(),
+        basis.represented_prefix().tail()
+    );
+    assert_eq!(
+        source.binding().represented_prefix().digest(),
+        basis.represented_prefix().digest()
+    );
+    assert!(
+        source
+            .binding()
+            .represented_prefix()
+            .source_thread_revision()
+            < basis.represented_prefix().source_thread_revision()
+    );
 }
 
 #[test]
@@ -242,6 +327,95 @@ fn exact_terminal_parent_selects_native_resume() {
 }
 
 #[test]
+fn queued_admission_revision_descendant_preserves_native_resume() {
+    let home = TestHome::new("phase62-native-compatible-descendant");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut builder = Builder::new(&store, storage, 62);
+    let first = builder.submit_text("represented parent");
+    builder.complete_with_assistant(first, AssistantMessagePhase::FinalAnswer, "answer");
+    builder.submit_text("pending turn");
+    let requested_path = builder.selected_path();
+
+    let current = storage
+        .current_draft(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    let payload =
+        ComposerPayload::new(vec![ComposerAtom::text("queued descendant").unwrap()]).unwrap();
+    let content = PreparedContent::composer(&payload).unwrap();
+    stage_prepared_content(&store, storage, &content);
+    let DraftPayloadUpdateDecision::Update(update) = DraftPayloadUpdate::prepare(
+        &current,
+        &content,
+        SyndicTimestamp::from_unix_millis(62_001),
+    )
+    .unwrap() else {
+        panic!("queued descendant draft must become nonempty")
+    };
+    execute(
+        &store,
+        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
+    );
+    let current = storage
+        .current_draft(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    execute(
+        &store,
+        storage.admit_accepted_input(
+            storage.revision(&store).unwrap(),
+            AcceptedInputAdmission::new(
+                builder.thread(),
+                current.thread().revision(),
+                current.draft().id(),
+                current.draft().revision(),
+                current.draft().content(),
+                gate.revision(),
+                SyndicDraftId::from_bytes([162; 16]),
+                None,
+                SyndicTimestamp::from_unix_millis(62_002),
+            ),
+        ),
+    );
+
+    let current_thread = storage
+        .thread(&store, builder.thread(), point_limit())
+        .unwrap()
+        .unwrap();
+    let current_path = SelectedPathProof::new(
+        current_thread.committed_tail(),
+        current_thread.revision(),
+        current_thread.selected_path_digest(),
+    );
+    assert!(current_path.is_compatible_descendant_of(requested_path));
+    assert_ne!(
+        current_path.thread_revision(),
+        requested_path.thread_revision()
+    );
+
+    let NativeProjectionPlan::Resume { basis, source } = plan(
+        &store,
+        storage,
+        builder.thread(),
+        requested_path,
+        exact_cas::execution_binding(),
+    ) else {
+        panic!("compatible admission-only revision drift must preserve native resume")
+    };
+    assert_eq!(basis.selected_path(), current_path);
+    assert_eq!(source.thread_id(), builder.thread());
+    assert_eq!(
+        source.binding().native_turn_count(),
+        CasNativeTurnCount::new(1)
+    );
+}
+
+#[test]
 fn exact_native_source_with_another_execution_is_explicitly_unavailable() {
     let home = TestHome::new("phase10-native-execution-mismatch");
     let mut store = open(home.path());
@@ -310,23 +484,30 @@ fn context_bearing_pending_turn_requires_the_later_context_projection() {
         .input_gate(&store, thread, point_limit())
         .unwrap()
         .unwrap();
+    let submission = IdleSubmission::new(
+        thread,
+        draft.thread().revision(),
+        draft.draft().id(),
+        draft.draft().revision(),
+        draft.draft().content(),
+        gate.revision(),
+        SyndicDraftId::from_bytes([250; 16]),
+        SyndicItemId::from_bytes([251; 16]),
+        None,
+        SyndicTimestamp::from_unix_millis(7),
+    );
+    let submitted_turn = submission.submitted_turn_id();
     execute(
         &store,
-        storage.submit_idle_draft(
-            storage.revision(&store).unwrap(),
-            IdleSubmission::new(
-                thread,
-                draft.thread().revision(),
-                draft.draft().id(),
-                draft.draft().revision(),
-                draft.draft().content(),
-                gate.record().revision(),
-                SyndicDraftId::from_bytes([250; 16]),
-                SyndicItemId::from_bytes([251; 16]),
-                AdmissionMarkers::default(),
-                SyndicTimestamp::from_unix_millis(7),
-            ),
-        ),
+        storage.submit_idle_draft(storage.revision(&store).unwrap(), submission),
+    );
+    let submitted = storage
+        .turn(&store, submitted_turn, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        submitted.parent(),
+        ConversationParent::Turn(support::populated::source_turn())
     );
     let selected = storage
         .thread(&store, thread, point_limit())
@@ -337,9 +518,9 @@ fn context_bearing_pending_turn_requires_the_later_context_projection() {
         &NativeProjectionRequest::new(
             thread,
             SelectedPathProof::new(
-                selected.record().committed_tail(),
-                selected.record().revision(),
-                selected.record().selected_path_digest(),
+                selected.committed_tail(),
+                selected.revision(),
+                selected.selected_path_digest(),
             ),
             exact_cas::execution_binding(),
             exact_cas::tool_profile(),
@@ -414,10 +595,10 @@ fn create_child_pending_at_tail(
                 draft.draft().id(),
                 draft.draft().revision(),
                 draft.draft().content(),
-                gate.record().revision(),
+                gate.revision(),
                 SyndicDraftId::from_bytes([222; 16]),
                 SyndicItemId::from_bytes([223; 16]),
-                AdmissionMarkers::default(),
+                None,
                 SyndicTimestamp::from_unix_millis(created_at.unix_millis() + 2),
             ),
         ),
@@ -429,9 +610,9 @@ fn create_child_pending_at_tail(
     (
         child,
         SelectedPathProof::new(
-            thread.record().committed_tail(),
-            thread.record().revision(),
-            thread.record().selected_path_digest(),
+            thread.committed_tail(),
+            thread.revision(),
+            thread.selected_path_digest(),
         ),
     )
 }
@@ -444,7 +625,7 @@ fn cross_execution_ancestor_is_unavailable_without_target_retirement_authority()
     let mut source_builder = Builder::new(&store, storage, 37);
     let first = source_builder.submit_text("shared first");
     source_builder.complete_without_assistant(first, TurnTerminalOutcome::Complete);
-    finish_current_transcript(&store, storage, source_builder.thread());
+    inclusive_fork::finish_current_transcript(&store, storage, source_builder.thread());
     let (child, child_selected) =
         create_child_pending_at_tail(&store, storage, source_builder.thread());
 
@@ -463,88 +644,4 @@ fn cross_execution_ancestor_is_unavailable_without_target_retirement_authority()
         panic!("a mismatched ancestor must not grant target retirement authority")
     };
     assert_eq!(reason, NativeProjectionUnavailable::SourceExecutionMismatch);
-}
-
-fn finish_current_transcript(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId) {
-    let thread_record = storage
-        .thread(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let head = storage
-        .transcript_view_head(store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(head.record().lifecycle(), ProjectionLifecycle::Stale);
-    let generation = head.record().generation();
-    execute(
-        store,
-        storage.start_transcript_build(
-            storage.revision(store).unwrap(),
-            StartTranscriptBuild::new(
-                thread,
-                thread_record.record().revision(),
-                head.record().revision(),
-            ),
-        ),
-    );
-    for _ in 0..1_024 {
-        let build = storage
-            .transcript_build(store, thread, generation, point_limit())
-            .unwrap()
-            .unwrap();
-        if build.record().phase() == TranscriptBuildPhase::Complete {
-            return;
-        }
-        execute(
-            store,
-            storage.advance_transcript_build(
-                storage.revision(store).unwrap(),
-                AdvanceTranscriptBuild::new(thread, generation, build.record().revision()),
-            ),
-        );
-    }
-    panic!("bounded transcript fixture did not finish");
-}
-
-#[test]
-fn divergent_nonempty_prefix_selects_inclusive_fork_not_source_mutation() {
-    let home = TestHome::new("phase10-native-inclusive-fork");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let mut source_builder = Builder::new(&store, storage, 34);
-    let first = source_builder.submit_text("shared first");
-    source_builder.complete_without_assistant(first, TurnTerminalOutcome::Complete);
-    finish_current_transcript(&store, storage, source_builder.thread());
-    let (child, child_selected) =
-        create_child_pending_at_tail(&store, storage, source_builder.thread());
-
-    let second = source_builder.submit_text("source advances");
-    source_builder.complete_without_assistant(second, TurnTerminalOutcome::Complete);
-
-    let NativeProjectionPlan::Fork {
-        basis,
-        source,
-        through_turn,
-        native_turn_count,
-    } = plan(
-        &store,
-        storage,
-        child,
-        child_selected,
-        exact_cas::execution_binding(),
-    )
-    else {
-        panic!("a nonempty earlier prefix must select an inclusive native fork")
-    };
-    assert_eq!(basis.represented_prefix().tail(), Some(first.turn));
-    assert_eq!(source.thread_id(), source_builder.thread());
-    assert_eq!(
-        source.binding().native_turn_count(),
-        CasNativeTurnCount::new(2)
-    );
-    assert_eq!(native_turn_count, CasNativeTurnCount::new(1));
-    assert_eq!(
-        through_turn,
-        Some(CasTurnId::new(format!("test-turn-{}", first.turn)).unwrap())
-    );
 }

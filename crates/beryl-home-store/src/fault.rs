@@ -1,5 +1,6 @@
 #[cfg(feature = "test-faults")]
 use std::{
+    any::{TypeId, type_name},
     collections::{HashMap, VecDeque},
     io,
     sync::{Arc, Condvar, Mutex},
@@ -8,6 +9,9 @@ use std::{
 
 #[cfg(feature = "test-faults")]
 mod corruption;
+
+#[cfg(feature = "test-faults")]
+mod maintenance;
 
 #[cfg(feature = "test-faults")]
 pub use corruption::{PersistedCorruptionError, PersistedCorruptionStage};
@@ -30,6 +34,33 @@ pub enum FaultPoint {
     BeforeSidecarRename,
     AfterSidecarRename,
     BeforeSidecarVerification,
+}
+
+/// Exact transient typed-command scope for deterministic fault tests.
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct FaultScope {
+    type_id: TypeId,
+    type_name: &'static str,
+}
+
+#[cfg(feature = "test-faults")]
+impl FaultScope {
+    /// Identifies one concrete typed mutation without relying on a string label.
+    #[must_use]
+    pub fn of<T: 'static>() -> Self {
+        Self {
+            type_id: TypeId::of::<T>(),
+            type_name: type_name::<T>(),
+        }
+    }
+}
+
+#[cfg(feature = "test-faults")]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct FaultActionKey {
+    point: FaultPoint,
+    scope: Option<FaultScope>,
 }
 
 #[cfg(feature = "test-faults")]
@@ -100,7 +131,7 @@ impl FaultBlock {
 #[cfg(feature = "test-faults")]
 #[derive(Clone, Default)]
 pub struct FaultController {
-    actions: Arc<Mutex<HashMap<FaultPoint, VecDeque<FaultAction>>>>,
+    actions: Arc<Mutex<HashMap<FaultActionKey, VecDeque<FaultAction>>>>,
 }
 
 #[cfg(feature = "test-faults")]
@@ -118,7 +149,12 @@ impl FaultController {
 
     /// Makes the next visit return a synthetic I/O failure with an exact kind.
     pub fn fail_next_with_kind(&self, point: FaultPoint, kind: io::ErrorKind) {
-        self.push(point, FaultAction::Error(kind));
+        self.push(point, None, FaultAction::Error(kind));
+    }
+
+    /// Makes the next visit by one exact typed current-domain mutation fail.
+    pub fn fail_next_in_scope(&self, point: FaultPoint, scope: FaultScope) {
+        self.push(point, Some(scope), FaultAction::Error(io::ErrorKind::Other));
     }
 
     /// Makes the next `count` visits return synthetic I/O failures.
@@ -129,52 +165,97 @@ impl FaultController {
     /// Makes the next `count` visits return failures with the exact I/O kind.
     pub fn fail_times_with_kind(&self, point: FaultPoint, kind: io::ErrorKind, count: usize) {
         for _ in 0..count {
-            self.push(point, FaultAction::Error(kind));
+            self.push(point, None, FaultAction::Error(kind));
         }
     }
 
     /// Makes the next visit panic on the thread executing the store operation.
     pub fn panic_next(&self, point: FaultPoint) {
-        self.push(point, FaultAction::Panic);
+        self.push(point, None, FaultAction::Panic);
     }
 
     /// Makes the next visit terminate its subprocess immediately.
     pub fn abort_next(&self, point: FaultPoint) {
-        self.push(point, FaultAction::Abort);
+        self.push(point, None, FaultAction::Abort);
     }
 
     /// Blocks the next visit until the returned handle releases it.
     #[must_use]
     pub fn block_next(&self, point: FaultPoint) -> FaultBlock {
         let state = Arc::new(BlockState::default());
-        self.push(point, FaultAction::Block(state.clone()));
+        self.push(point, None, FaultAction::Block(state.clone()));
         FaultBlock { state }
     }
 
-    fn push(&self, point: FaultPoint, action: FaultAction) {
+    /// Blocks the next visit by one exact typed current-domain mutation.
+    #[must_use]
+    pub fn block_next_in_scope(&self, point: FaultPoint, scope: FaultScope) -> FaultBlock {
+        let state = Arc::new(BlockState::default());
+        self.push(point, Some(scope), FaultAction::Block(state.clone()));
+        FaultBlock { state }
+    }
+
+    fn push(&self, point: FaultPoint, scope: Option<FaultScope>, action: FaultAction) {
         self.actions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .entry(point)
+            .entry(FaultActionKey { point, scope })
             .or_default()
             .push_back(action);
     }
 
     pub(crate) fn check(&self, point: FaultPoint) -> io::Result<()> {
+        self.check_action(point, None)
+    }
+
+    pub(crate) fn check_current(&self, point: FaultPoint, scope: FaultScope) -> io::Result<()> {
+        let action = {
+            let mut actions = self
+                .actions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            actions
+                .get_mut(&FaultActionKey {
+                    point,
+                    scope: Some(scope),
+                })
+                .and_then(VecDeque::pop_front)
+                .or_else(|| {
+                    actions
+                        .get_mut(&FaultActionKey { point, scope: None })
+                        .and_then(VecDeque::pop_front)
+                })
+        };
+        Self::apply(point, Some(scope), action)
+    }
+
+    fn check_action(&self, point: FaultPoint, scope: Option<FaultScope>) -> io::Result<()> {
         let action = self
             .actions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get_mut(&point)
+            .get_mut(&FaultActionKey { point, scope })
             .and_then(VecDeque::pop_front);
+        Self::apply(point, scope, action)
+    }
+
+    fn apply(
+        point: FaultPoint,
+        scope: Option<FaultScope>,
+        action: Option<FaultAction>,
+    ) -> io::Result<()> {
+        let location = scope.map_or_else(
+            || format!("{point:?}"),
+            |scope| format!("{point:?} for {}", scope.type_name),
+        );
         match action {
             None => Ok(()),
             Some(FaultAction::Error(kind)) => Err(io::Error::new(
                 kind,
-                format!("synthetic Beryl-home fault at {point:?}"),
+                format!("synthetic Beryl-home fault at {location}"),
             )),
             Some(FaultAction::Panic) => {
-                panic!("synthetic Beryl-home panic at {point:?}")
+                panic!("synthetic Beryl-home panic at {location}")
             }
             Some(FaultAction::Abort) => std::process::abort(),
             Some(FaultAction::Block(state)) => {

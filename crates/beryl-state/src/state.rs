@@ -5,7 +5,6 @@ use beryl_model::BerylHomeId;
 
 use crate::{
     AssetState, CatalogState, DurableJobState, RuntimeRootState, SessionState, SettingsState,
-    ThreadMetadataState,
 };
 
 /// One explicitly bounded page of typed state records.
@@ -13,20 +12,30 @@ use crate::{
 pub struct StatePage<T> {
     pub(crate) records: Vec<T>,
     pub(crate) stored_bytes: usize,
+    pub(crate) decoded_bytes: usize,
     pub(crate) has_more: bool,
 }
 
 impl<T> StatePage<T> {
+    /// Returns the decoded records in cursor order.
     #[must_use]
     pub fn records(&self) -> &[T] {
         &self.records
     }
 
+    /// Returns the cumulative encoded key and stored-value bytes for this page.
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
     }
 
+    /// Returns the cumulative practical decoded-byte estimate for this page.
+    #[must_use]
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
+    }
+
+    /// Returns whether another matching record exists beyond this page.
     #[must_use]
     pub const fn has_more(&self) -> bool {
         self.has_more
@@ -83,7 +92,6 @@ impl BerylStateBootstrap {
 pub struct BerylState {
     session: SessionState,
     runtime_roots: RuntimeRootState,
-    thread_metadata: ThreadMetadataState,
     settings: SettingsState,
     durable_jobs: DurableJobState,
     catalog: CatalogState,
@@ -103,12 +111,6 @@ impl BerylState {
         let runtime_roots = RuntimeRootState::register(store).map_err(|source| {
             BerylStateRegistrationError::Domain {
                 domain: "beryl-runtime-root",
-                source,
-            }
-        })?;
-        let thread_metadata = ThreadMetadataState::register(store).map_err(|source| {
-            BerylStateRegistrationError::Domain {
-                domain: "beryl-thread-metadata",
                 source,
             }
         })?;
@@ -138,7 +140,6 @@ impl BerylState {
         Ok(Self {
             session,
             runtime_roots,
-            thread_metadata,
             settings,
             durable_jobs,
             catalog,
@@ -156,12 +157,6 @@ impl BerylState {
         let runtime_roots = RuntimeRootState::reacquire(store).map_err(|source| {
             BerylStateReacquireError::Domain {
                 domain: "beryl-runtime-root",
-                source,
-            }
-        })?;
-        let thread_metadata = ThreadMetadataState::reacquire(store).map_err(|source| {
-            BerylStateReacquireError::Domain {
-                domain: "beryl-thread-metadata",
                 source,
             }
         })?;
@@ -189,7 +184,6 @@ impl BerylState {
         Ok(Self {
             session,
             runtime_roots,
-            thread_metadata,
             settings,
             durable_jobs,
             catalog,
@@ -205,11 +199,6 @@ impl BerylState {
     #[must_use]
     pub const fn runtime_roots(&self) -> RuntimeRootState {
         self.runtime_roots
-    }
-
-    #[must_use]
-    pub const fn thread_metadata(&self) -> ThreadMetadataState {
-        self.thread_metadata
     }
 
     #[must_use]

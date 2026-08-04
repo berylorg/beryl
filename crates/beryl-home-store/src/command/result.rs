@@ -38,7 +38,9 @@ pub enum RevisionConflict {
     },
 }
 
-/// Successful durable command revisions.
+/// Successful durable mutation-command revisions.
+///
+/// Validation-only participants do not appear in the affected-domain set.
 #[derive(Clone, Eq, PartialEq)]
 pub struct CommitReceipt {
     pub(crate) store: StoreInstanceId,
@@ -85,11 +87,18 @@ impl CommitReceipt {
 }
 
 /// Why a successful command receipt cannot authorize a current publication.
-#[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Error)]
 pub enum CommitReceiptError {
     /// The process-wide health gate is not accepting state-dependent work.
     #[error(transparent)]
     HealthGate(#[from] HealthGateError),
+    /// Fjall reported retained maintenance failure before the receipt result could publish.
+    #[error("receipt revision lookup could not confirm storage health: {source}")]
+    StorageHealth {
+        /// Stable classified engine source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
     /// A panic poisoned the in-process home generation lock.
     #[error("the Beryl-home generation lock is poisoned")]
     GenerationPoisoned,
@@ -144,8 +153,12 @@ impl HomeStore {
             return Err(CommitReceiptError::ForeignDomain { domain: D::NAME });
         }
         let revision = receipt.domain_revision(handle);
+        admission.confirm_database(&generation.database, |source| {
+            CommitReceiptError::StorageHealth {
+                source: Box::new(source),
+            }
+        })?;
         drop(generation_guard);
-        admission.confirm()?;
         Ok(revision)
     }
 }
@@ -174,6 +187,9 @@ pub enum CommandError {
     /// A command must mutate at least one registered domain.
     #[error("home command contains no domain contributions")]
     EmptyCommand,
+    /// Validation-only participants cannot produce a durable command result by themselves.
+    #[error("home command contains validation participants but no mutation participant")]
+    ValidationOnlyCommand,
     /// A contribution carries a handle from another store generation.
     #[error("domain contribution `{domain}` does not belong to this home generation")]
     ForeignDomain {

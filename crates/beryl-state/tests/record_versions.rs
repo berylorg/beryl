@@ -8,10 +8,10 @@ use beryl_home_store::{
     HomeStore, KeyspaceSchemaVersion, ReadError, RecordCodec, RecordFamily, RecordVersion,
     StorageDomain,
 };
-use beryl_model::{RuntimeId, SyndicThreadId};
+use beryl_model::RuntimeId;
 use tempfile::tempdir;
 
-use support::{binding, create_host_runtime, create_metadata, open};
+use support::{create_host_runtime, open};
 
 struct RuntimeV2Probe;
 struct RuntimeRecordV2;
@@ -20,8 +20,6 @@ struct RootRecordBytes;
 struct RootIdIndexBytes;
 struct RootPathIndexBytes;
 struct HomeRootIndexBytes;
-struct MetadataV2Probe;
-struct MetadataRecordV2;
 
 const RUNTIME_FAMILIES: &[RecordFamily<RuntimeV2Probe>] = &[
     RecordFamily::new::<RuntimeRecordV2>(KeyspaceSchemaVersion::new(1)),
@@ -31,11 +29,6 @@ const RUNTIME_FAMILIES: &[RecordFamily<RuntimeV2Probe>] = &[
     RecordFamily::new::<RootPathIndexBytes>(KeyspaceSchemaVersion::new(1)),
     RecordFamily::new::<HomeRootIndexBytes>(KeyspaceSchemaVersion::new(1)),
 ];
-const METADATA_FAMILIES: &[RecordFamily<MetadataV2Probe>] =
-    &[RecordFamily::new::<MetadataRecordV2>(
-        KeyspaceSchemaVersion::new(1),
-    )];
-
 impl StorageDomain for RuntimeV2Probe {
     const NAME: &'static str = "beryl-runtime-root";
     const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
@@ -48,27 +41,6 @@ impl StorageDomain for RuntimeV2Probe {
                 &CursorRange::closed(
                     RuntimeId::from_bytes([0; 16]),
                     RuntimeId::from_bytes([u8::MAX; 16]),
-                ),
-                CursorDirection::Forward,
-                CursorReadLimits::new(1, 1_000_000).unwrap(),
-            )
-            .map(|_| ())
-            .map_err(ProbeError)
-    }
-}
-
-impl StorageDomain for MetadataV2Probe {
-    const NAME: &'static str = "beryl-thread-metadata";
-    const SCHEMA_VERSION: DomainSchemaVersion = DomainSchemaVersion::new(1);
-    const FAMILIES: &'static [RecordFamily<Self>] = METADATA_FAMILIES;
-    type ValidationError = ProbeError;
-
-    fn validate(reader: &DomainReader<'_, Self>) -> Result<(), Self::ValidationError> {
-        reader
-            .cursor::<MetadataRecordV2>(
-                &CursorRange::closed(
-                    SyndicThreadId::from_bytes([0; 16]),
-                    SyndicThreadId::from_bytes([u8::MAX; 16]),
                 ),
                 CursorDirection::Forward,
                 CursorReadLimits::new(1, 1_000_000).unwrap(),
@@ -158,15 +130,6 @@ passthrough_codec!(RootRecordBytes, "roots", 32, 132 * 1024);
 passthrough_codec!(RootIdIndexBytes, "root-id-index", 16, 16);
 passthrough_codec!(RootPathIndexBytes, "root-path-index", u16::MAX as usize, 16);
 passthrough_codec!(HomeRootIndexBytes, "runtime-home-root-index", 16, 16);
-v2_codec!(
-    MetadataRecordV2,
-    MetadataV2Probe,
-    SyndicThreadId,
-    "records",
-    |key: &SyndicThreadId| key.as_bytes().to_vec(),
-    |encoded: &[u8]| decode_id(encoded).map(SyndicThreadId::from_bytes)
-);
-
 #[derive(Debug)]
 struct ProbeError(ReadError);
 
@@ -204,7 +167,7 @@ fn decode_id(encoded: &[u8]) -> Result<[u8; 16], ProbeCodecError> {
 }
 
 #[test]
-fn both_product_domains_reject_an_unsupported_record_version_on_reopen() {
+fn runtime_domain_rejects_an_unsupported_record_version_on_reopen() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
     create_host_runtime(
@@ -214,13 +177,6 @@ fn both_product_domains_reject_an_unsupported_record_version_on_reopen() {
         2,
         r"C:\Codex\codex.exe",
         r"C:\Users\operator",
-    );
-    create_metadata(
-        &store,
-        state,
-        3,
-        binding(1, 2, r"C:\Users\operator"),
-        beryl_state::ThreadMetadataKind::Ordinary,
     );
     store.close().unwrap();
 
@@ -232,18 +188,6 @@ fn both_product_domains_reject_an_unsupported_record_version_on_reopen() {
     assert_version_error(
         runtime_probe
             .register_domain::<RuntimeV2Probe>()
-            .unwrap_err(),
-    );
-    runtime_probe.close().unwrap();
-
-    let mut metadata_probe = HomeStore::open(HomeOpenOptions::new(
-        directory.path(),
-        HomeSchemaVersion::CURRENT,
-    ))
-    .unwrap();
-    assert_version_error(
-        metadata_probe
-            .register_domain::<MetadataV2Probe>()
             .unwrap_err(),
     );
 }

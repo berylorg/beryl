@@ -133,21 +133,40 @@ fn validate_current_abandoned_gate(
         &active.turn_id(),
         "abandoned active turn state is missing",
     )?;
+    let thread = require::<ThreadsFamily>(
+        reader,
+        &binding.thread_id(),
+        "abandoned active thread is missing",
+    )?;
     let gate = require::<InputGatesFamily>(
         reader,
         &binding.thread_id(),
         "abandoned active input gate is missing",
     )?;
-    if gate.live_steering_count() != 0 {
-        return invariant("abandoned active gate retains live steering");
-    }
     if state.lifecycle().blocks_same_thread_start() {
-        if gate.state() != &crate::InputGateState::PendingTurn(active.turn_id()) {
+        if thread.committed_tail() != Some(active.turn_id())
+            || gate.state() != &crate::InputGateState::PendingTurn(active.turn_id())
+            || gate.live_steering_count() != 0
+        {
             return invariant("abandoned blocking turn is not pending recovery delivery");
         }
     } else if state.lifecycle().is_proven_terminal() {
-        if gate.state() != &crate::InputGateState::Idle {
-            return invariant("terminal abandoned turn does not reopen an idle gate");
+        if thread.committed_tail() != Some(active.turn_id()) {
+            return Ok(());
+        }
+        if gate.live_steering_count() != 0 {
+            return invariant("terminal abandoned gate retains live steering");
+        }
+        match gate.state() {
+            crate::InputGateState::FinalizingHistory(turn) if *turn == active.turn_id() => {}
+            crate::InputGateState::Idle
+                if crate::terminal_history::is_complete(reader, &thread, &state, None)? => {}
+            crate::InputGateState::Idle => {
+                return invariant("idle abandoned terminal history is not complete");
+            }
+            _ => {
+                return invariant("terminal abandoned turn has no valid history gate");
+            }
         }
     } else {
         return invariant("abandoned active turn lifecycle is unsupported");

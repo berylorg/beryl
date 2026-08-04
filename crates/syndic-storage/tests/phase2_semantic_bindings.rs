@@ -70,6 +70,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
             let turn = SyndicTurnId::from_bytes([3; 16]);
             batch([FixtureRecord::HistorySummary(HistorySummaryRecord::new(
                 id(1),
+                ProjectionRevision::new(2).unwrap(),
                 ThreadRevision::new(1).unwrap(),
                 Some(turn),
                 root_turn_chain_digest(turn),
@@ -86,6 +87,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
             let turn = SyndicTurnId::from_bytes([3; 16]);
             batch([FixtureRecord::HistorySummary(HistorySummaryRecord::new(
                 id(1),
+                ProjectionRevision::new(2).unwrap(),
                 ThreadRevision::new(1).unwrap(),
                 Some(turn),
                 root_turn_chain_digest(turn),
@@ -103,7 +105,7 @@ fn transcript_binding_reservation_and_active_snapshot_corruption_fail_closed() {
     );
     exercise_case(
         "active-missing-snapshot",
-        "steering input gate execution snapshot is missing",
+        "active binding snapshot is missing",
         || batch(populated_records()),
         || {
             let mut batch = FixtureBatch::new();

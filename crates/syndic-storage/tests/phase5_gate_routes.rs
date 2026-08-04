@@ -1,45 +1,37 @@
-use beryl_model::{
-    BindingRevision, CasThreadId, CasTurnId, SyndicExecutionSnapshotId, SyndicTurnId,
-};
-use syndic_storage::{
-    AcceptedInputDisposition, InputGateState, NextTurnReason, PendingSteeringTargetProof,
-    SteeringTargetProof,
-};
+use beryl_model::SyndicTurnId;
+use syndic_storage::{CompactionOperationNonce, InputGateState, StopOperationNonce};
+
+fn turn(value: u8) -> SyndicTurnId {
+    SyndicTurnId::from_bytes([value; 16])
+}
 
 #[test]
-fn every_non_idle_gate_state_has_one_exact_admission_route() {
-    let active_turn = SyndicTurnId::from_bytes([1; 16]);
-    let pending = PendingSteeringTargetProof::new(
-        BindingRevision::new(2).unwrap(),
-        SyndicExecutionSnapshotId::from_bytes([3; 16]),
-        active_turn,
-        CasThreadId::new("gate-thread").unwrap(),
-    );
-    let target = SteeringTargetProof::new(pending.clone(), CasTurnId::new("gate-turn").unwrap());
-
-    assert_eq!(InputGateState::Idle.admitted_disposition(), None);
+fn input_gate_retains_only_coarse_turn_mode() {
+    let active = turn(1);
+    assert_eq!(InputGateState::Idle.blocking_turn_id(), None);
     assert_eq!(
-        InputGateState::PendingTurn(active_turn).admitted_disposition(),
-        Some(AcceptedInputDisposition::NextTurn(
-            NextTurnReason::PendingTurn,
-        )),
+        InputGateState::PendingTurn(active).blocking_turn_id(),
+        Some(active)
     );
     assert_eq!(
-        InputGateState::AwaitingSteering(pending.clone()).admitted_disposition(),
-        Some(AcceptedInputDisposition::AwaitingSteering(pending)),
+        InputGateState::AwaitingSteering(active).blocking_turn_id(),
+        Some(active)
     );
     assert_eq!(
-        InputGateState::Steerable(target.clone()).admitted_disposition(),
-        Some(AcceptedInputDisposition::SteerActiveTurn(target.clone())),
+        InputGateState::Steerable(active).blocking_turn_id(),
+        Some(active)
     );
     assert_eq!(
-        InputGateState::Compacting(active_turn).admitted_disposition(),
-        Some(AcceptedInputDisposition::NextTurn(
-            NextTurnReason::Compaction,
-        )),
+        InputGateState::Compacting {
+            turn_id: active,
+            operation_nonce: CompactionOperationNonce::from_bytes([8; 16]),
+        }
+        .blocking_turn_id(),
+        Some(active)
     );
     assert_eq!(
-        InputGateState::Stopping(target).admitted_disposition(),
-        Some(AcceptedInputDisposition::NextTurn(NextTurnReason::Stop)),
+        InputGateState::stopping(active, StopOperationNonce::from_bytes([9; 16]))
+            .blocking_turn_id(),
+        Some(active)
     );
 }

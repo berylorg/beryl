@@ -3,8 +3,8 @@ use std::{error::Error, fmt};
 use beryl_home_store::{
     CursorDirection, CursorRange, CursorReadLimits, DomainCallbackError, DomainCallbackSource,
     DomainHandle, DomainRegistrationError, DomainSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationBuildError, MutationContribution, ReadError, ReadLimitError, RecordFamily,
-    StorageDomain,
+    MutationBuildError, MutationContribution, PointReadLimit, ReadError, ReadLimitError,
+    RecordFamily, StorageDomain,
 };
 use beryl_model::{DomainRevision, SyndicThreadId};
 
@@ -14,6 +14,8 @@ mod codec;
 mod error;
 #[path = "catalog/mutation.rs"]
 mod mutation;
+#[path = "catalog/normalization.rs"]
+mod normalization;
 #[path = "catalog/row.rs"]
 mod row;
 #[cfg(test)]
@@ -28,18 +30,20 @@ mod value;
 use codec::{CatalogRecencyCodec, CatalogRowCodec};
 pub use error::CatalogValueError;
 pub use mutation::{MarkCatalogRowStale, PublishCatalogRow};
+pub use normalization::{
+    CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES, CatalogNormalizationProfile,
+    CatalogNormalizedQuery,
+};
 pub use row::{CatalogFacts, CatalogRecencyCursor, CatalogRow};
 pub use value::{
     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
-    CatalogExecutionSummary, CatalogFreshness, CatalogLineageSummary, CatalogRevision,
-    CatalogRowExpectation, CatalogSearchFields, CatalogSourceRevisions, CatalogTitleCandidate,
-    CatalogTitleFacts, CatalogTitleSource,
+    CatalogExecutionSummary, CatalogFreshness, CatalogLineageSummary, CatalogResolvedTitle,
+    CatalogRevision, CatalogRowExpectation, CatalogSearchFields, CatalogSourceRevisions,
+    CatalogTitleSource,
 };
 
 const CATALOG_RECORD_LIMIT: usize = 256 * 1024;
-
-/// Maximum stored bytes for one row-family point record, including key and version envelope.
-pub const CATALOG_MAX_STORED_ROW_BYTES: usize = 16 + 4 + CATALOG_RECORD_LIMIT;
+const CATALOG_POINT_READ_MAX_BYTES: usize = 4 + CATALOG_RECORD_LIMIT;
 
 /// Maximum stored bytes for one recency-index record, including key and version envelope.
 pub const CATALOG_MAX_STORED_RECENCY_BYTES: usize = 24 + 4 + CATALOG_RECORD_LIMIT;
@@ -64,74 +68,71 @@ impl StorageDomain for CatalogDomain {
     }
 }
 
-/// Nonzero total stored-byte bound for one catalog point read.
+/// Nonzero stored-value and decoded-value bound for one catalog point read.
+///
+/// The request key is independently bounded by the catalog row codec.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CatalogPointReadLimit {
-    max_stored_bytes: usize,
+    max_bytes: usize,
 }
 
 impl CatalogPointReadLimit {
-    pub fn new(max_stored_bytes: usize) -> Result<Self, ReadLimitError> {
-        CursorReadLimits::new(1, max_stored_bytes)?;
-        Ok(Self { max_stored_bytes })
+    /// Constructs a nonzero point-value bound.
+    pub fn new(max_bytes: usize) -> Result<Self, ReadLimitError> {
+        PointReadLimit::new(max_bytes)?;
+        Ok(Self { max_bytes })
     }
 
+    /// Returns the maximum bound needed by any valid catalog row value.
     #[must_use]
     pub const fn schema_maximum() -> Self {
         Self {
-            max_stored_bytes: CATALOG_MAX_STORED_ROW_BYTES,
+            max_bytes: CATALOG_POINT_READ_MAX_BYTES,
         }
     }
 
+    /// Returns the maximum stored-value and decoded-value estimate.
     #[must_use]
-    pub const fn max_stored_bytes(self) -> usize {
-        self.max_stored_bytes
+    pub const fn max_bytes(self) -> usize {
+        self.max_bytes
     }
 }
 
-/// One point-read row together with its exact stored key-and-value byte cost.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CatalogStoredRow {
-    row: CatalogRow,
-    stored_bytes: usize,
-}
-
-impl CatalogStoredRow {
-    #[must_use]
-    pub const fn row(&self) -> &CatalogRow {
-        &self.row
-    }
-
-    #[must_use]
-    pub const fn stored_bytes(&self) -> usize {
-        self.stored_bytes
-    }
-}
-
-/// One bounded recent-first page with exact stored key-and-value byte accounting.
+/// One bounded recent-first page with practical stored and decoded byte accounting.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CatalogPage {
     rows: Vec<CatalogRow>,
     stored_bytes: usize,
+    decoded_bytes: usize,
     has_more: bool,
 }
 
 impl CatalogPage {
+    /// Returns the decoded rows in recent-first order.
     #[must_use]
     pub fn rows(&self) -> &[CatalogRow] {
         &self.rows
     }
 
+    /// Returns the cumulative encoded key and stored-value bytes for this page.
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
     }
 
+    /// Returns the cumulative practical decoded-byte estimate for this page.
+    #[must_use]
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
+    }
+
+    /// Returns whether another matching row exists beyond this page.
     #[must_use]
     pub const fn has_more(&self) -> bool {
         self.has_more
     }
 
+    /// Returns the cursor to exclude when requesting the next page.
     #[must_use]
     pub fn next_after(&self) -> Option<CatalogRecencyCursor> {
         self.rows.last().map(CatalogRow::recency_cursor)
@@ -172,35 +173,27 @@ impl CatalogState {
         store.receipt_domain_revision(receipt, self.handle)
     }
 
+    /// Reads one ordinary decoded row after its point-value limit passes.
     pub fn row(
         &self,
         store: &HomeStore,
         thread_id: SyndicThreadId,
         limit: CatalogPointReadLimit,
-    ) -> Result<Option<CatalogStoredRow>, CatalogReadError> {
-        let page = store.read_cursor::<CatalogDomain, CatalogRowCodec>(
+    ) -> Result<Option<CatalogRow>, CatalogReadError> {
+        let row = store.read_point::<CatalogDomain, CatalogRowCodec>(
             self.handle,
-            &CursorRange::closed(thread_id, thread_id),
-            CursorDirection::Forward,
-            CursorReadLimits::new(1, limit.max_stored_bytes())
-                .expect("catalog point limit is nonzero"),
+            &thread_id,
+            PointReadLimit::new(limit.max_bytes()).expect("catalog point limit is nonzero"),
         )?;
-        if page.has_more() || page.records().len() > 1 {
-            return Err(CatalogReadError::Invariant(
-                "catalog point range returned more than one row",
-            ));
-        }
-        let stored_bytes = page.stored_bytes();
-        let Some(record) = page.into_records().into_iter().next() else {
+        let Some(row) = row else {
             return Ok(None);
         };
-        let (key, row) = record.into_parts();
-        if key != row.thread_id() {
+        if thread_id != row.thread_id() {
             return Err(CatalogReadError::Invariant(
                 "catalog point key does not match its row identity",
             ));
         }
-        Ok(Some(CatalogStoredRow { row, stored_bytes }))
+        Ok(Some(row))
     }
 
     pub fn recency_page(
@@ -229,6 +222,7 @@ impl CatalogState {
             }
         }
         let stored_bytes = page.stored_bytes();
+        let decoded_bytes = page.decoded_bytes();
         let has_more = page.has_more();
         Ok(CatalogPage {
             rows: page
@@ -237,6 +231,7 @@ impl CatalogState {
                 .map(|record| record.into_parts().1)
                 .collect(),
             stored_bytes,
+            decoded_bytes,
             has_more,
         })
     }

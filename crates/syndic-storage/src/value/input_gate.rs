@@ -78,16 +78,9 @@ pub enum NextTurnReason {
     Compaction,
     Stop,
     SteeringRejected,
-    WorkerCapacity,
     ProjectionLost,
-}
-
-/// Current delivery target retained by one accepted input.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum AcceptedInputDisposition {
-    AwaitingSteering(PendingSteeringTargetProof),
-    SteerActiveTurn(SteeringTargetProof),
-    NextTurn(NextTurnReason),
+    TerminalHistory,
+    UnknownTerminal,
 }
 
 /// Exact per-thread mode against which input admission is revision-checked.
@@ -95,42 +88,77 @@ pub enum AcceptedInputDisposition {
 pub enum InputGateState {
     Idle,
     PendingTurn(SyndicTurnId),
-    AwaitingSteering(PendingSteeringTargetProof),
-    Steerable(SteeringTargetProof),
-    Compacting(SyndicTurnId),
-    Stopping(SteeringTargetProof),
+    AwaitingSteering(SyndicTurnId),
+    Steerable(SyndicTurnId),
+    AwaitingTerminal(SyndicTurnId),
+    Compacting {
+        turn_id: SyndicTurnId,
+        operation_nonce: crate::CompactionOperationNonce,
+    },
+    Stopping {
+        turn_id: SyndicTurnId,
+        operation_nonce: crate::StopOperationNonce,
+    },
+    FinalizingHistory(SyndicTurnId),
 }
 
 impl InputGateState {
+    /// Constructs a compacting gate selecting one exact retained operation.
     #[must_use]
-    pub const fn blocking_turn_id(&self) -> Option<SyndicTurnId> {
-        match self {
-            Self::Idle => None,
-            Self::PendingTurn(turn) | Self::Compacting(turn) => Some(*turn),
-            Self::AwaitingSteering(target) => Some(target.active_turn_id()),
-            Self::Steerable(target) | Self::Stopping(target) => {
-                Some(target.pending().active_turn_id())
-            }
+    pub const fn compacting(
+        turn_id: SyndicTurnId,
+        operation_nonce: crate::CompactionOperationNonce,
+    ) -> Self {
+        Self::Compacting {
+            turn_id,
+            operation_nonce,
+        }
+    }
+
+    /// Constructs a stopping gate selecting one exact retained stop operation.
+    #[must_use]
+    pub const fn stopping(
+        turn_id: SyndicTurnId,
+        operation_nonce: crate::StopOperationNonce,
+    ) -> Self {
+        Self::Stopping {
+            turn_id,
+            operation_nonce,
         }
     }
 
     #[must_use]
-    pub fn admitted_disposition(&self) -> Option<AcceptedInputDisposition> {
+    pub const fn blocking_turn_id(&self) -> Option<SyndicTurnId> {
         match self {
             Self::Idle => None,
-            Self::PendingTurn(_) => Some(AcceptedInputDisposition::NextTurn(
-                NextTurnReason::PendingTurn,
-            )),
-            Self::AwaitingSteering(target) => {
-                Some(AcceptedInputDisposition::AwaitingSteering(target.clone()))
-            }
-            Self::Steerable(target) => {
-                Some(AcceptedInputDisposition::SteerActiveTurn(target.clone()))
-            }
-            Self::Compacting(_) => Some(AcceptedInputDisposition::NextTurn(
-                NextTurnReason::Compaction,
-            )),
-            Self::Stopping(_) => Some(AcceptedInputDisposition::NextTurn(NextTurnReason::Stop)),
+            Self::PendingTurn(turn)
+            | Self::AwaitingSteering(turn)
+            | Self::Steerable(turn)
+            | Self::AwaitingTerminal(turn)
+            | Self::FinalizingHistory(turn) => Some(*turn),
+            Self::Compacting { turn_id, .. } => Some(*turn_id),
+            Self::Stopping { turn_id, .. } => Some(*turn_id),
+        }
+    }
+
+    #[must_use]
+    pub const fn compaction_operation_nonce(&self) -> Option<crate::CompactionOperationNonce> {
+        match self {
+            Self::Compacting {
+                operation_nonce, ..
+            } => Some(*operation_nonce),
+            _ => None,
+        }
+    }
+
+    /// Returns the caller-owned operation nonce selected by a stopping gate.
+    #[must_use]
+    pub const fn stop_operation_nonce(&self) -> Option<crate::StopOperationNonce> {
+        match self {
+            Self::Stopping {
+                operation_nonce, ..
+            } => Some(*operation_nonce),
+            _ => None,
         }
     }
 }

@@ -70,7 +70,6 @@ fn pending_non_root_rejects_non_parent_and_off_path_prefixes() {
         .turn(&store, parent, point_limit())
         .unwrap()
         .unwrap()
-        .record()
         .clone();
     let parent_prefix = CasRepresentedPrefixProof::new(
         Some(parent),
@@ -234,6 +233,23 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         .execution_snapshot(&store, active.snapshot_id(), point_limit())
         .unwrap()
         .unwrap();
+    let gate = storage
+        .input_gate(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let published = storage
+        .active_cas_turn(&store, active.snapshot_id(), point_limit())
+        .unwrap()
+        .unwrap();
+    let target = AcceptedRouteLostTarget::AwaitingTerminal(SteeringTargetProof::new(
+        PendingSteeringTargetProof::new(
+            binding.binding().revision(),
+            active.snapshot_id(),
+            active.turn_id(),
+            active.usable().cas_thread_id().clone(),
+        ),
+        published.cas_turn_id().clone(),
+    ));
     let stale = StaleCasBinding::new(
         active.usable().execution().clone(),
         active.usable().cas_thread_id().clone(),
@@ -241,7 +257,7 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
         Some(active.usable().represented_prefix()),
         Some(active.usable().lineage()),
         Some(active.usable().native_turn_count()),
-        Some(snapshot.record().loaded_generation()),
+        Some(snapshot.loaded_generation()),
         "unknown active projection abandoned",
         timestamp(6),
     )
@@ -253,7 +269,8 @@ fn live_or_terminal_unknown_tail_rejects_an_ordinary_full_prefix_binding() {
             AbandonActiveBinding::new(
                 thread,
                 binding.binding().revision(),
-                current_gate_revision(&store, storage, thread),
+                gate.selected_route().unwrap().generation(),
+                target,
                 selected,
                 stale,
             ),

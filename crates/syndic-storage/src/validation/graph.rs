@@ -2,13 +2,17 @@ use beryl_home_store::DomainReader;
 use beryl_model::{DiscussionContextOwnerId, SyndicTurnId};
 
 use crate::{
-    CanonicalItemKind, ConversationParent, DraftByThreadRecord, ProjectionLifecycle,
-    ReplacementEditIntent, ThreadParentIndexRecord, TurnChildIndexRecord, child_turn_chain_digest,
-    codec::*, domain::SyndicDomain, empty_selected_path_digest, error::SyndicValidationError,
-    root_turn_chain_digest,
+    CanonicalItemKind, ConversationParent, DraftByThreadRecord, DraftSubmissionIntent,
+    ProjectionLifecycle, ReplacementEditIntent, ThreadParentIndexRecord, TurnChildIndexRecord,
+    child_turn_chain_digest, codec::*, domain::SyndicDomain, empty_selected_path_digest,
+    error::SyndicValidationError, root_thread_lineage_digest, root_turn_chain_digest,
 };
 
 use super::scan::{point, require, scan};
+
+mod child;
+
+use child::{validate_child_indexes, validate_replacement_intent};
 
 pub(super) fn validate(
     reader: &DomainReader<'_, SyndicDomain>,
@@ -57,10 +61,35 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
             None => return invariant("empty thread has a noncanonical selected-path digest"),
         }
         match (thread.parent_thread_id(), thread.context_owner_id()) {
-            (None, None) => {}
+            (None, None) => {
+                if thread.lineage_depth() != crate::ThreadLineageDepth::FIRST
+                    || thread.lineage_ancestor_skip().is_some()
+                    || thread.lineage_digest() != root_thread_lineage_digest(thread.id())
+                    || thread.image_label_frontiers().inherited()
+                        != crate::ImageLabelFrontier::EMPTY
+                {
+                    return invariant("top-level thread lineage or inherited-label facts disagree");
+                }
+            }
             (Some(parent), Some(owner)) => {
-                if parent == thread.id() || point::<ThreadsFamily>(reader, &parent)?.is_none() {
-                    return invariant("thread parent is missing or self-owned");
+                let parent_record =
+                    require::<ThreadsFamily>(reader, &parent, "thread parent is missing")?;
+                if parent == thread.id() {
+                    return invariant("thread parent is self-owned");
+                }
+                let parent_labels = parent_record.image_label_frontiers();
+                let (depth, digest, skip) = crate::thread_lineage::child_shape(
+                    thread.id(),
+                    parent_record,
+                    |id| require::<ThreadsFamily>(reader, &id, "thread ancestor is missing"),
+                    SyndicValidationError::Invariant,
+                )?;
+                if thread.lineage_depth() != depth
+                    || thread.lineage_digest() != digest
+                    || thread.lineage_ancestor_skip() != Some(skip)
+                    || thread.image_label_frontiers().inherited() > parent_labels.current()
+                {
+                    return invariant("child thread lineage or inherited-label facts disagree");
                 }
                 let envelope = require::<ContextEnvelopesFamily>(
                     reader,
@@ -86,7 +115,6 @@ fn validate_threads(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndi
             }
             _ => return invariant("thread parent and context owner must appear together"),
         }
-        validate_parent_chain(reader, thread.id())?;
         Ok(())
     })
 }
@@ -112,27 +140,39 @@ fn validate_drafts(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Syndic
         if draft.updated_at() < draft.created_at() {
             return invariant("draft update timestamp precedes creation");
         }
-        match draft.context_owner_id() {
-            Some(DiscussionContextOwnerId::Draft(id))
-                if id == draft.id() && thread.context_owner_id() == draft.context_owner_id() => {}
-            Some(_) => return invariant("draft context owner disagrees with draft or thread"),
-            None => {}
-        }
-        if let Some(intent) = draft.replacement_edit_intent() {
-            let target = require::<TurnsFamily>(
-                reader,
-                &intent.target_turn_id(),
-                "draft replacement target is missing",
-            )?;
-            if target.kind() != crate::TurnKind::OrdinaryUser {
-                return invariant("replacement edit target is not an ordinary user turn");
+        match draft.submission_intent() {
+            DraftSubmissionIntent::Ordinary => {
+                if matches!(
+                    thread.context_owner_id(),
+                    Some(DiscussionContextOwnerId::Draft(_))
+                ) {
+                    return invariant("ordinary draft owns thread context");
+                }
             }
-            validate_replacement_intent(reader, &thread, intent)?;
+            DraftSubmissionIntent::DiscussionContext(DiscussionContextOwnerId::Draft(id))
+                if id == draft.id()
+                    && thread.context_owner_id() == Some(DiscussionContextOwnerId::Draft(id)) => {}
+            DraftSubmissionIntent::DiscussionContext(_) => {
+                return invariant("draft context owner disagrees with draft or thread");
+            }
+            DraftSubmissionIntent::Replacement(intent) => {
+                let target = require::<TurnsFamily>(
+                    reader,
+                    &intent.target_turn_id(),
+                    "draft replacement target is missing",
+                )?;
+                if target.kind() != crate::TurnKind::OrdinaryUser {
+                    return invariant("replacement edit target is not an ordinary user turn");
+                }
+                validate_replacement_intent(reader, &thread, intent)?;
+            }
         }
-        if draft.context_owner_id().is_none()
-            && draft.parent() != ConversationParent::from_turn(thread.committed_tail())
-        {
-            return invariant("ordinary current draft parent disagrees with committed tail");
+        if !matches!(draft.submission_intent(), DraftSubmissionIntent::Ordinary) {
+            let gate =
+                require::<InputGatesFamily>(reader, &thread.id(), "special draft gate is missing")?;
+            if !matches!(gate.state(), crate::InputGateState::Idle) || gate.live_count() != 0 {
+                return invariant("special draft has live or non-idle input authority");
+            }
         }
         Ok(())
     })
@@ -197,7 +237,7 @@ pub(super) fn validate_context_envelopes(
         if DiscussionContextOwnerId::from(*key) != record.owner() || record.revision().get() != 1 {
             return invariant("context-envelope key, owner, or immutable revision disagrees");
         }
-        let (child_thread, owner_parent) = match record.owner() {
+        let (child_thread, submitted_parent) = match record.owner() {
             DiscussionContextOwnerId::Draft(id) => {
                 let draft =
                     require::<DraftsFamily>(reader, &id, "draft-owned context has no draft")?;
@@ -206,12 +246,13 @@ pub(super) fn validate_context_envelopes(
                     &draft.thread_id(),
                     "context owner thread is missing",
                 )?;
-                if draft.context_owner_id() != Some(record.owner())
+                if draft.submission_intent()
+                    != DraftSubmissionIntent::DiscussionContext(record.owner())
                     || thread.context_owner_id() != Some(record.owner())
                 {
                     return invariant("draft-owned context reverse agreement failed");
                 }
-                (thread, draft.parent())
+                (thread, None)
             }
             DiscussionContextOwnerId::SubmittedTurn(id) => {
                 let turn = require::<TurnsFamily>(reader, &id, "turn-owned context has no turn")?;
@@ -223,14 +264,16 @@ pub(super) fn validate_context_envelopes(
                 if thread.context_owner_id() != Some(record.owner()) {
                     return invariant("turn-owned context reverse agreement failed");
                 }
-                (thread, turn.parent())
+                (thread, Some(turn.parent()))
             }
         };
         let source = record.envelope().descriptor().source();
         if child_thread.parent_thread_id() != Some(source.thread_id()) {
             return invariant("context child thread and source thread disagree");
         }
-        if owner_parent != ConversationParent::Turn(source.turn_id()) {
+        if submitted_parent
+            .is_some_and(|parent| parent != ConversationParent::Turn(source.turn_id()))
+        {
             return invariant("context owner parent and source turn disagree");
         }
         require::<ThreadsFamily>(
@@ -302,12 +345,11 @@ pub(super) fn validate_context_envelopes(
         if range.start() < projection_range.start() || range.end() > projection_range.end() {
             return invariant("context range lies outside its source projection");
         }
-        let bytes = super::content::read_logical_range(
+        let bytes = super::read_projection_text_range(
             reader,
-            item.payload()
-                .content()
+            item.projection_source()
                 .ok_or(SyndicValidationError::Invariant(
-                    "context source assistant item omitted canonical content",
+                    "context source assistant item omitted projection text",
                 ))?,
             range.start(),
             range.end(),
@@ -413,122 +455,61 @@ fn validate_turn_states(
                 &turn.origin_thread_id(),
                 "blocking turn origin thread is missing",
             )?;
-            if thread.committed_tail() != Some(turn.id()) {
+            let provider_operation = turn.kind()
+                == crate::TurnKind::ProviderOperation(
+                    crate::ProviderOperationKind::ContextCompaction,
+                )
+                && turn.parent() == crate::ConversationParent::Root;
+            if provider_operation {
+                let gate = require::<InputGatesFamily>(
+                    reader,
+                    &thread.id(),
+                    "blocking provider turn input gate is missing",
+                )?;
+                let operation_id = crate::CompactionOperationId::new(
+                    thread.id(),
+                    crate::CompactionOperationNonce::from_bytes(*turn.id().as_bytes()),
+                );
+                let operation = require::<CompactionOperationsFamily>(
+                    reader,
+                    &operation_id,
+                    "blocking provider turn compaction operation is missing",
+                )?;
+                let selected = match gate.state() {
+                    crate::InputGateState::Compacting {
+                        turn_id,
+                        operation_nonce,
+                    } => {
+                        *turn_id == turn.id()
+                            && *operation_nonce == operation_id.nonce()
+                            && operation.state().is_live()
+                    }
+                    crate::InputGateState::Stopping {
+                        turn_id,
+                        operation_nonce,
+                    } => {
+                        let stop = require::<StopOperationsFamily>(
+                            reader,
+                            &crate::StopOperationId::new(thread.id(), *operation_nonce),
+                            "blocking provider turn stop operation is missing",
+                        )?;
+                        *turn_id == turn.id()
+                            && stop.state().is_live()
+                            && stop.target().turn_id() == turn.id()
+                            && operation.state()
+                                == &crate::CompactionOperationState::Stopping(*operation_nonce)
+                    }
+                    _ => false,
+                };
+                if !selected {
+                    return invariant("blocking provider turn authority disagrees");
+                }
+            } else if thread.committed_tail() != Some(turn.id()) {
                 return invariant("blocking turn is not its origin thread's committed tail");
             }
         }
         Ok(())
     })
-}
-
-fn validate_child_indexes(
-    reader: &DomainReader<'_, SyndicDomain>,
-) -> Result<(), SyndicValidationError> {
-    scan::<TurnChildrenFamily>(reader, |key, index| {
-        if key.parent != index.parent_id() || key.child != index.child_id() {
-            return invariant("turn-child index key disagrees");
-        }
-        let parent =
-            require::<TurnsFamily>(reader, &key.parent, "turn-child index parent is missing")?;
-        let child =
-            require::<TurnsFamily>(reader, &key.child, "turn-child index child is missing")?;
-        if child.parent() != ConversationParent::Turn(parent.id())
-            || child.depth() != index.child_depth()
-            || child.chain_digest() != index.child_digest()
-        {
-            return invariant("turn-child index is contradictory");
-        }
-        Ok(())
-    })
-}
-
-fn validate_replacement_intent(
-    reader: &DomainReader<'_, SyndicDomain>,
-    thread: &crate::ThreadRecord,
-    intent: ReplacementEditIntent,
-) -> Result<(), SyndicValidationError> {
-    let proof = intent.selected_path();
-    if proof.tail() != thread.committed_tail()
-        || proof.thread_revision() != thread.revision()
-        || proof.digest() != thread.selected_path_digest()
-    {
-        return invariant("replacement edit selected-path proof disagrees with current thread");
-    }
-    let Some(tail) = proof.tail() else {
-        return invariant("replacement edit target requires a selected path");
-    };
-    let head = require::<TranscriptHeadsFamily>(
-        reader,
-        &thread.id(),
-        "replacement edit transcript head is missing",
-    )?;
-    if head.lifecycle() != ProjectionLifecycle::Current
-        || head.generation() != intent.transcript_entry().generation()
-        || head.committed_tail() != Some(tail)
-        || head.selected_path_digest() != proof.digest()
-    {
-        return invariant("replacement edit transcript proof is not current");
-    }
-    let entry_key = ThreadTranscriptKey {
-        thread: thread.id(),
-        generation: intent.transcript_entry().generation(),
-        position: intent.transcript_entry().position(),
-    };
-    let entry = require::<TranscriptEntriesFamily>(
-        reader,
-        &entry_key,
-        "replacement edit transcript entry is missing",
-    )?;
-    let item = require::<CanonicalItemsFamily>(
-        reader,
-        &entry.item_id(),
-        "replacement edit transcript item is missing",
-    )?;
-    if entry.thread_id() != thread.id()
-        || entry.generation() != intent.transcript_entry().generation()
-        || entry.position() != intent.transcript_entry().position()
-        || item.id() != entry.item_id()
-        || item.revision() != entry.item_revision()
-        || item.turn_id() != intent.target_turn_id()
-        || item.kind() != CanonicalItemKind::UserInput
-    {
-        return invariant("replacement edit transcript entry or user item disagrees");
-    }
-    Ok(())
-}
-
-fn validate_parent_chain(
-    reader: &DomainReader<'_, SyndicDomain>,
-    start: beryl_model::SyndicThreadId,
-) -> Result<(), SyndicValidationError> {
-    let mut slow = parent_thread(reader, start)?;
-    let mut fast = match parent_thread(reader, start)? {
-        Some(parent) => parent_thread(reader, parent)?,
-        None => None,
-    };
-    loop {
-        match (slow, fast) {
-            (Some(left), Some(right)) if left == right => {
-                return invariant("thread parent relation contains a cycle");
-            }
-            (Some(left), Some(right)) => {
-                slow = parent_thread(reader, left)?;
-                fast = match parent_thread(reader, right)? {
-                    Some(parent) => parent_thread(reader, parent)?,
-                    None => None,
-                };
-            }
-            _ => return Ok(()),
-        }
-    }
-}
-
-fn parent_thread(
-    reader: &DomainReader<'_, SyndicDomain>,
-    id: beryl_model::SyndicThreadId,
-) -> Result<Option<beryl_model::SyndicThreadId>, SyndicValidationError> {
-    require::<ThreadsFamily>(reader, &id, "thread parent-chain member is missing")
-        .map(|thread| thread.parent_thread_id())
 }
 
 fn invariant<T>(message: &'static str) -> Result<T, SyndicValidationError> {

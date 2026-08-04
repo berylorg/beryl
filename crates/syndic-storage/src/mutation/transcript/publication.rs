@@ -57,21 +57,16 @@ pub(super) fn publish_entries(
     {
         return Err(SyndicMutationError::TranscriptBuildConflict);
     }
-    if !matches!(
-        item.kind(),
-        crate::CanonicalItemKind::UserInput | crate::CanonicalItemKind::AssistantMessage(_)
-    ) {
+    if item.projection_source().is_none() {
         let phase = phase_after_item(&build, depth, item_ordinal, path.finalized_item_count())?;
         let entry_count = build.entry_count();
         let digest = build.entry_digest();
         return finish_publication(reader, build, Vec::new(), phase, entry_count, digest);
     }
-    let content = item
-        .payload()
-        .content()
+    let source = item
+        .projection_source()
         .ok_or(SyndicMutationError::TranscriptBuildConflict)?;
-    let manifest = required::<ContentManifestsFamily>(reader, &content.id())?;
-    if !manifest.lifecycle().is_immutable() || manifest.current_reference() != Some(content) {
+    if !crate::mutation::projection::validate_projection_source(reader, &item, source)? {
         return Err(SyndicMutationError::TranscriptBuildConflict);
     }
     let item_head = point::<ItemProjectionHeadsFamily>(reader, &item.id())?
@@ -89,7 +84,7 @@ pub(super) fn publish_entries(
         },
     )?;
     if set.source_item_revision() != item.revision()
-        || set.source_content() != content
+        || set.source() != source
         || projection_ordinal.get() > set.projection_count()
     {
         return Err(SyndicMutationError::TranscriptBuildConflict);
@@ -287,14 +282,22 @@ fn finish_publication(
     ));
     let summary = if complete {
         let current_summary = required::<HistorySummariesFamily>(reader, &build.thread_id())?;
-        Some(crate::HistorySummaryRecord::new(
-            build.thread_id(),
-            build.source_thread_revision(),
-            build.committed_tail(),
-            build.selected_path_digest(),
-            build.history_complete(),
-            current_summary.last_activity_at(),
-        ))
+        let changed = current_summary.committed_tail() != build.committed_tail()
+            || current_summary.selected_path_digest() != build.selected_path_digest()
+            || current_summary.complete() != build.history_complete();
+        if changed {
+            Some(crate::HistorySummaryRecord::new(
+                build.thread_id(),
+                current_summary.revision().checked_next()?,
+                current_summary.thread_revision(),
+                build.committed_tail(),
+                build.selected_path_digest(),
+                build.history_complete(),
+                current_summary.last_activity_at(),
+            ))
+        } else {
+            None
+        }
     } else {
         None
     };

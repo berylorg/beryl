@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use beryl_model::{CasThreadId, CasTurnId};
-use serde::{Deserialize, Serialize};
+use beryl_model::CasThreadId;
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::{ThreadSessionMetadata, ThreadStatus};
@@ -210,6 +210,17 @@ impl FreshIdleThread {
     }
 }
 
+#[cfg(feature = "lifecycle-test-support")]
+pub(crate) fn fresh_idle_thread_for_lifecycle_test(thread_id: CasThreadId) -> FreshIdleThread {
+    FreshIdleThread {
+        loaded: LoadedThreadSession {
+            thread_id,
+            status: ThreadStatus::Idle,
+            metadata: ThreadSessionMetadata::default(),
+        },
+    }
+}
+
 impl FreshThreadNotIdle {
     #[must_use]
     pub const fn thread_id(&self) -> &CasThreadId {
@@ -222,61 +233,15 @@ impl FreshThreadNotIdle {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadLineageResponse {
-    thread: ThreadLineageWire,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    model_provider: Option<String>,
-    #[serde(default)]
-    reasoning_effort: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ThreadLineageWire {
-    id: CasThreadId,
+/// Compact bounded lineage result retained by the incremental response decoder.
+#[doc(hidden)]
+#[derive(Debug, PartialEq, Eq)]
+pub struct ThreadLineageResponse {
+    thread_id: CasThreadId,
     status: ThreadStatus,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadResumeParams<'a> {
-    thread_id: &'a CasThreadId,
-    cwd: &'a Path,
-    exclude_turns: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model_provider: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    developer_instructions: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    approval_policy: Option<ThreadApprovalPolicy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sandbox: Option<ThreadSandboxMode>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadForkParams<'a> {
-    thread_id: &'a CasThreadId,
-    cwd: &'a Path,
-    exclude_turns: bool,
-    ephemeral: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    last_turn_id: Option<&'a CasTurnId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model_provider: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    developer_instructions: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    approval_policy: Option<ThreadApprovalPolicy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sandbox: Option<ThreadSandboxMode>,
+    model: Option<String>,
+    model_provider: Option<String>,
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -287,14 +252,63 @@ pub(crate) struct ThreadRollbackParams<'a> {
 }
 
 impl ThreadLineageResponse {
+    pub(crate) fn try_new(
+        thread_id: &str,
+        status: ThreadStatus,
+        model: &str,
+        model_provider: &str,
+        reasoning_effort: Option<&str>,
+    ) -> Option<Self> {
+        Some(Self {
+            thread_id: CasThreadId::new(thread_id).ok()?,
+            status,
+            model: Some(bounded_identity(model)?),
+            model_provider: Some(bounded_identity(model_provider)?),
+            reasoning_effort: match reasoning_effort {
+                Some(reasoning_effort) => Some(bounded_identity(reasoning_effort)?),
+                None => None,
+            },
+        })
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn thread_id(&self) -> &CasThreadId {
+        &self.thread_id
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn status(&self) -> &ThreadStatus {
+        &self.status
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn model(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn model_provider(&self) -> Option<&str> {
+        self.model_provider.as_deref()
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn reasoning_effort(&self) -> Option<&str> {
+        self.reasoning_effort.as_deref()
+    }
+
     pub(crate) fn into_loaded(self) -> LoadedThreadSession {
         LoadedThreadSession {
-            thread_id: self.thread.id,
-            status: self.thread.status,
+            thread_id: self.thread_id,
+            status: self.status,
             metadata: ThreadSessionMetadata {
-                model: self.model.and_then(nonempty),
-                model_provider: self.model_provider.and_then(nonempty),
-                reasoning_effort: self.reasoning_effort.and_then(nonempty),
+                model: self.model,
+                model_provider: self.model_provider,
+                reasoning_effort: self.reasoning_effort,
             },
         }
     }
@@ -302,54 +316,6 @@ impl ThreadLineageResponse {
     pub(crate) fn into_fresh(self) -> FreshLoadedThreadSession {
         FreshLoadedThreadSession {
             loaded: self.into_loaded(),
-        }
-    }
-}
-
-impl<'a> ThreadResumeParams<'a> {
-    pub(crate) fn new(thread_id: &'a CasThreadId, options: &'a ThreadLoadOptions) -> Self {
-        Self {
-            thread_id,
-            cwd: options.cwd(),
-            exclude_turns: true,
-            model: options.model(),
-            model_provider: options.model_provider(),
-            developer_instructions: options.developer_instructions(),
-            approval_policy: options.approval_policy(),
-            sandbox: options.sandbox(),
-        }
-    }
-}
-
-impl<'a> ThreadForkParams<'a> {
-    pub(crate) fn full(thread_id: &'a CasThreadId, options: &'a ThreadLoadOptions) -> Self {
-        Self::new(thread_id, options, None)
-    }
-
-    pub(crate) fn through_turn(
-        thread_id: &'a CasThreadId,
-        last_turn_id: &'a CasTurnId,
-        options: &'a ThreadLoadOptions,
-    ) -> Self {
-        Self::new(thread_id, options, Some(last_turn_id))
-    }
-
-    fn new(
-        thread_id: &'a CasThreadId,
-        options: &'a ThreadLoadOptions,
-        last_turn_id: Option<&'a CasTurnId>,
-    ) -> Self {
-        Self {
-            thread_id,
-            cwd: options.cwd(),
-            exclude_turns: true,
-            ephemeral: false,
-            last_turn_id,
-            model: options.model(),
-            model_provider: options.model_provider(),
-            developer_instructions: options.developer_instructions(),
-            approval_policy: options.approval_policy(),
-            sandbox: options.sandbox(),
         }
     }
 }
@@ -365,4 +331,10 @@ impl<'a> ThreadRollbackParams<'a> {
 
 fn nonempty(value: String) -> Option<String> {
     (!value.trim().is_empty()).then_some(value)
+}
+
+fn bounded_identity(value: &str) -> Option<String> {
+    crate::ProtocolIdentity::try_new(value)
+        .ok()
+        .map(|identity| identity.as_str().to_owned())
 }

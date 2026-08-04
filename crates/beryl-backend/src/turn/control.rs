@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use beryl_model::{CasThreadId, CasTurnId};
 use serde::{Deserialize, Serialize};
 
@@ -7,8 +5,6 @@ use crate::{
     DynamicToolSpec,
     thread_lineage::{ThreadApprovalPolicy, ThreadSandboxMode},
 };
-
-use super::UserInput;
 
 /// Exact accepted CAS turn identity without response-item materialization.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,28 +14,17 @@ pub struct StartedTurn {
     status: TurnStatus,
 }
 
-/// Exact active CAS turn identity returned after steering.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SteeredTurn {
-    thread_id: CasThreadId,
-    turn_id: CasTurnId,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct TurnStartResponseWire {
+/// Compact bounded `turn/start` result retained by the incremental response decoder.
+#[doc(hidden)]
+#[derive(Debug, PartialEq, Eq)]
+pub struct TurnStartResponseWire {
     turn: TurnControlWire,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 struct TurnControlWire {
     id: CasTurnId,
     status: TurnStatus,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TurnSteerResponseWire {
-    turn_id: CasTurnId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +34,44 @@ pub enum TurnStatus {
     Interrupted,
     Failed,
     InProgress,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalNonSteerableTurnKind {
+    Review,
+    Compact,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum CodexErrorInfo {
+    ContextWindowExceeded,
+    SessionBudgetExceeded,
+    UsageLimitExceeded,
+    ServerOverloaded,
+    CyberPolicy,
+    HttpConnectionFailed {
+        http_status_code: Option<u16>,
+    },
+    ResponseStreamConnectionFailed {
+        http_status_code: Option<u16>,
+    },
+    InternalServerError,
+    Unauthorized,
+    BadRequest,
+    ThreadRollbackFailed,
+    SandboxError,
+    ResponseStreamDisconnected {
+        http_status_code: Option<u16>,
+    },
+    ResponseTooManyFailedAttempts {
+        http_status_code: Option<u16>,
+    },
+    ActiveTurnNotSteerable {
+        turn_kind: TerminalNonSteerableTurnKind,
+    },
+    Other,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -76,69 +99,6 @@ pub struct TurnDeveloperInstructionsContext {
     reasoning_effort: Option<String>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ThreadStartParams {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cwd: Option<String>,
-    pub ephemeral: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub developer_instructions: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub dynamic_tools: Vec<DynamicToolSpec>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_provider: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub approval_policy: Option<ThreadApprovalPolicy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sandbox: Option<ThreadSandboxMode>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TurnStartParams<'a> {
-    pub thread_id: &'a CasThreadId,
-    pub input: Vec<UserInput>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub collaboration_mode: Option<TurnStartCollaborationMode>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TurnStartCollaborationMode {
-    mode: TurnStartCollaborationModeKind,
-    settings: TurnStartCollaborationModeSettings,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "lowercase")]
-enum TurnStartCollaborationModeKind {
-    Default,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-struct TurnStartCollaborationModeSettings {
-    model: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<String>,
-    developer_instructions: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TurnSteerParams<'a> {
-    pub thread_id: &'a CasThreadId,
-    pub expected_turn_id: &'a CasTurnId,
-    pub input: Vec<UserInput>,
-}
-
 impl StartedTurn {
     #[must_use]
     pub const fn thread_id(&self) -> &CasThreadId {
@@ -156,33 +116,33 @@ impl StartedTurn {
     }
 }
 
-impl SteeredTurn {
-    #[must_use]
-    pub const fn thread_id(&self) -> &CasThreadId {
-        &self.thread_id
+impl TurnStartResponseWire {
+    pub(crate) fn try_new(turn_id: &str, status: TurnStatus) -> Option<Self> {
+        Some(Self {
+            turn: TurnControlWire {
+                id: CasTurnId::new(turn_id).ok()?,
+                status,
+            },
+        })
     }
 
+    #[doc(hidden)]
     #[must_use]
     pub const fn turn_id(&self) -> &CasTurnId {
-        &self.turn_id
+        &self.turn.id
     }
-}
 
-impl TurnStartResponseWire {
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn status(&self) -> &TurnStatus {
+        &self.turn.status
+    }
+
     pub(crate) fn into_started(self, thread_id: CasThreadId) -> StartedTurn {
         StartedTurn {
             thread_id,
             turn_id: self.turn.id,
             status: self.turn.status,
-        }
-    }
-}
-
-impl TurnSteerResponseWire {
-    pub(crate) fn into_steered(self, thread_id: CasThreadId) -> SteeredTurn {
-        SteeredTurn {
-            thread_id,
-            turn_id: self.turn_id,
         }
     }
 }
@@ -372,74 +332,6 @@ impl TurnDeveloperInstructionsContext {
     #[must_use]
     pub fn reasoning_effort(&self) -> Option<&str> {
         self.reasoning_effort.as_deref()
-    }
-}
-
-impl ThreadStartParams {
-    pub(crate) fn for_root(path: &Path, options: ThreadStartOptions) -> Self {
-        Self {
-            cwd: Some(path.display().to_string()),
-            ephemeral: options.ephemeral,
-            developer_instructions: options.developer_instructions,
-            dynamic_tools: options.dynamic_tools,
-            model: options.model,
-            model_provider: options.model_provider,
-            approval_policy: options.approval_policy,
-            sandbox: options.sandbox,
-        }
-    }
-}
-
-impl<'a> TurnStartParams<'a> {
-    pub(crate) fn text(
-        thread_id: &'a CasThreadId,
-        text: impl Into<String>,
-        options: TurnStartOptions,
-    ) -> Self {
-        Self::input(thread_id, vec![UserInput::text(text)], options)
-    }
-
-    pub(crate) fn input(
-        thread_id: &'a CasThreadId,
-        input: Vec<UserInput>,
-        options: TurnStartOptions,
-    ) -> Self {
-        Self {
-            thread_id,
-            input,
-            model: options.model,
-            effort: options.reasoning_effort,
-            collaboration_mode: options
-                .developer_instructions_context
-                .map(TurnStartCollaborationMode::developer_instructions_context),
-        }
-    }
-}
-
-impl TurnStartCollaborationMode {
-    fn developer_instructions_context(context: TurnDeveloperInstructionsContext) -> Self {
-        Self {
-            mode: TurnStartCollaborationModeKind::Default,
-            settings: TurnStartCollaborationModeSettings {
-                model: context.model,
-                reasoning_effort: context.reasoning_effort,
-                developer_instructions: context.developer_instructions,
-            },
-        }
-    }
-}
-
-impl<'a> TurnSteerParams<'a> {
-    pub(crate) fn input(
-        thread_id: &'a CasThreadId,
-        expected_turn_id: &'a CasTurnId,
-        input: Vec<UserInput>,
-    ) -> Self {
-        Self {
-            thread_id,
-            expected_turn_id,
-            input,
-        }
     }
 }
 

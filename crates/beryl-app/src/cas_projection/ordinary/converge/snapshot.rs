@@ -1,11 +1,11 @@
 use beryl_home_store::{CursorReadLimits, HomeStore};
 use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    CanonicalItemPayload, CanonicalItemRecord, ContentManifestRecord, ItemProjectionBuildRecord,
+    CanonicalItemRecord, ContentLifecycle, ContentManifestRecord, ItemProjectionBuildRecord,
     ItemProjectionGeneration, ItemProjectionHeadRecord, ItemProjectionSetRecord,
-    ProjectionLifecycle, ResourceMetadataRecord, SyndicPointReadLimit, SyndicStorage,
-    TranscriptBuildRecord, TranscriptViewHeadRecord, TurnItemIndexRecord, TurnItemOrdinal,
-    TurnRecord, TurnStateRecord,
+    ProjectionLifecycle, ProjectionTextSource, ResourceMetadataRecord, SyndicPointReadLimit,
+    SyndicStorage, TranscriptBuildRecord, TranscriptViewHeadRecord, TurnItemIndexRecord,
+    TurnItemOrdinal, TurnRecord, TurnStateRecord,
 };
 
 use super::super::OrdinaryTurnExecutionError;
@@ -20,7 +20,8 @@ pub(super) struct TerminalTurnSnapshot {
 pub(super) struct CanonicalSnapshot {
     pub(super) index: TurnItemIndexRecord,
     pub(super) item: CanonicalItemRecord,
-    pub(super) manifest: Option<ContentManifestRecord>,
+    pub(super) provider_manifest: Option<ContentManifestRecord>,
+    pub(super) projection_manifest: Option<ContentManifestRecord>,
     pub(super) resource: Option<ResourceMetadataRecord>,
 }
 
@@ -54,19 +55,16 @@ pub(super) fn terminal_turn(
     let state = state.ok_or(OrdinaryTurnExecutionError::Invariant(
         "ordinary history convergence turn state is missing",
     ))?;
-    if thread.record().id() != thread_id
-        || turn.record().id() != turn_id
-        || turn.record().origin_thread_id() != thread_id
-        || state.record().turn_id() != turn_id
+    if thread.id() != thread_id
+        || turn.id() != turn_id
+        || turn.origin_thread_id() != thread_id
+        || state.turn_id() != turn_id
     {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "ordinary history convergence ownership disagrees",
         ));
     }
-    Ok(TerminalTurnSnapshot {
-        turn: turn.record().clone(),
-        state: state.record().clone(),
-    })
+    Ok(TerminalTurnSnapshot { turn, state })
 }
 
 pub(super) fn turn_frontier(
@@ -76,48 +74,108 @@ pub(super) fn turn_frontier(
     turn_id: SyndicTurnId,
     limit: SyndicPointReadLimit,
 ) -> Result<TurnFrontierSnapshot, OrdinaryTurnExecutionError> {
-    let cursor_limits = CursorReadLimits::new(1, limit.max_stored_bytes())
-        .expect("a Syndic point-read limit is nonzero");
+    let cursor_limits =
+        CursorReadLimits::new(1, limit.max_bytes()).expect("a Syndic point-read limit is nonzero");
     let state = storage.turn_state(store, turn_id, limit)?;
-    let index = match state.as_ref().map(|stored| stored.record()) {
-        Some(state) if state.finalized_item_count() < state.item_count() => {
-            let after = ordinal_after(state.finalized_item_count());
-            storage
-                .turn_items(store, turn_id, after, cursor_limits)?
-                .records()
-                .first()
-                .cloned()
-        }
-        Some(_) | None => None,
-    };
+    let index = next_item_index(store, storage, turn_id, state.as_ref(), cursor_limits)?;
     let item = match index.as_ref() {
         Some(index) => storage.canonical_item(store, index.item_id(), limit)?,
         None => None,
     };
-    let manifest = match item
+    let provider_manifest = match item
         .as_ref()
-        .and_then(|item| item.record().payload().content())
+        .and_then(CanonicalItemRecord::provider_content)
     {
         Some(content) => storage.content_manifest(store, content.id(), limit)?,
         None => None,
     };
-    let resource = match item.as_ref().map(|item| item.record().payload()) {
-        Some(CanonicalItemPayload::GeneratedMedia(resource_id)) => {
-            storage.resource(store, *resource_id, limit)?
-        }
-        Some(_) | None => None,
-    };
-    let confirmed_resource = match resource.as_ref() {
-        Some(resource) => storage.resource(store, resource.record().id(), limit)?,
+    let projection_manifest = match item
+        .as_ref()
+        .and_then(CanonicalItemRecord::projection_source)
+    {
+        Some(source) => storage.content_manifest(store, source.content_id(), limit)?,
         None => None,
     };
-    if storage.turn_state(store, turn_id, limit)? != state
-        || confirmed_resource.as_ref().map(|record| record.record())
-            != resource.as_ref().map(|record| record.record())
+    let resource = match item
+        .as_ref()
+        .and_then(|item| item.presentation().resource_id())
+    {
+        Some(resource_id) => storage.resource(store, resource_id, limit)?,
+        None => None,
+    };
+    let confirmed_item = match index.as_ref() {
+        Some(index) => storage.canonical_item(store, index.item_id(), limit)?,
+        None => None,
+    };
+    let confirmed_provider_manifest = reread_manifest(store, storage, &provider_manifest, limit)?;
+    let confirmed_projection_manifest =
+        reread_manifest(store, storage, &projection_manifest, limit)?;
+    let confirmed_resource = reread_resource(store, storage, &resource, limit)?;
+    let confirmed_index = next_item_index(store, storage, turn_id, state.as_ref(), cursor_limits)?;
+    if confirmed_item != item
+        || confirmed_provider_manifest != provider_manifest
+        || confirmed_projection_manifest != projection_manifest
+        || confirmed_resource != resource
+        || confirmed_index != index
+        || storage.turn_state(store, turn_id, limit)? != state
     {
         return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
     }
-    assemble_frontier(turn_id, state, index, item, manifest, resource)
+    assemble_frontier(
+        turn_id,
+        state,
+        index,
+        item,
+        provider_manifest,
+        projection_manifest,
+        resource,
+    )
+}
+
+fn next_item_index(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    turn_id: SyndicTurnId,
+    state: Option<&TurnStateRecord>,
+    limits: CursorReadLimits,
+) -> Result<Option<TurnItemIndexRecord>, OrdinaryTurnExecutionError> {
+    match state {
+        Some(state) if state.finalized_item_count() < state.item_count() => Ok(storage
+            .turn_items(
+                store,
+                turn_id,
+                ordinal_after(state.finalized_item_count()),
+                limits,
+            )?
+            .records()
+            .first()
+            .cloned()),
+        Some(_) | None => Ok(None),
+    }
+}
+
+fn reread_manifest(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    manifest: &Option<ContentManifestRecord>,
+    limit: SyndicPointReadLimit,
+) -> Result<Option<ContentManifestRecord>, OrdinaryTurnExecutionError> {
+    match manifest {
+        Some(manifest) => Ok(storage.content_manifest(store, manifest.id(), limit)?),
+        None => Ok(None),
+    }
+}
+
+fn reread_resource(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    resource: &Option<ResourceMetadataRecord>,
+    limit: SyndicPointReadLimit,
+) -> Result<Option<ResourceMetadataRecord>, OrdinaryTurnExecutionError> {
+    match resource {
+        Some(resource) => Ok(storage.resource(store, resource.id(), limit)?),
+        None => Ok(None),
+    }
 }
 
 fn ordinal_after(finalized: u64) -> Option<TurnItemOrdinal> {
@@ -128,16 +186,16 @@ fn ordinal_after(finalized: u64) -> Option<TurnItemOrdinal> {
 
 fn assemble_frontier(
     turn_id: SyndicTurnId,
-    state: Option<syndic_storage::SyndicStoredRecord<TurnStateRecord>>,
+    state: Option<TurnStateRecord>,
     index: Option<TurnItemIndexRecord>,
-    item: Option<syndic_storage::SyndicStoredRecord<CanonicalItemRecord>>,
-    manifest: Option<syndic_storage::SyndicStoredRecord<ContentManifestRecord>>,
-    resource: Option<syndic_storage::SyndicStoredRecord<ResourceMetadataRecord>>,
+    item: Option<CanonicalItemRecord>,
+    provider_manifest: Option<ContentManifestRecord>,
+    projection_manifest: Option<ContentManifestRecord>,
+    resource: Option<ResourceMetadataRecord>,
 ) -> Result<TurnFrontierSnapshot, OrdinaryTurnExecutionError> {
     let state = state.ok_or(OrdinaryTurnExecutionError::Invariant(
         "ordinary history convergence turn state disappeared",
     ))?;
-    let state = state.record().clone();
     if state.turn_id() != turn_id || state.finalized_item_count() > state.item_count() {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "ordinary history convergence turn frontier is invalid",
@@ -159,44 +217,12 @@ fn assemble_frontier(
     let item = item.ok_or(OrdinaryTurnExecutionError::Invariant(
         "ordinary history convergence canonical item is missing",
     ))?;
-    let item = item.record().clone();
-    let manifest = match (item.payload().content(), manifest) {
-        (Some(content), Some(manifest))
-            if manifest.record().id() == content.id()
-                && manifest.record().current_reference() == Some(content) =>
-        {
-            Some(manifest.record().clone())
-        }
-        (None, None) => None,
-        (Some(_), None) => {
-            return Err(OrdinaryTurnExecutionError::Invariant(
-                "ordinary history convergence content manifest is missing",
-            ));
-        }
-        (None, Some(_)) | (Some(_), Some(_)) => {
-            return Err(OrdinaryTurnExecutionError::Invariant(
-                "ordinary history convergence canonical item content disagrees",
-            ));
-        }
-    };
-    let resource = match (item.payload(), resource) {
-        (CanonicalItemPayload::GeneratedMedia(expected), Some(resource))
-            if resource.record().id() == *expected && resource.record().item_id() == item.id() =>
-        {
-            Some(resource.record().clone())
-        }
-        (CanonicalItemPayload::GeneratedMedia(_), None) => {
-            return Err(OrdinaryTurnExecutionError::Invariant(
-                "ordinary history convergence generated resource is missing",
-            ));
-        }
-        (CanonicalItemPayload::GeneratedMedia(_), Some(_)) | (_, Some(_)) => {
-            return Err(OrdinaryTurnExecutionError::Invariant(
-                "ordinary history convergence generated resource disagrees",
-            ));
-        }
-        (_, None) => None,
-    };
+    validate_item_backings(
+        &item,
+        provider_manifest.as_ref(),
+        projection_manifest.as_ref(),
+        resource.as_ref(),
+    )?;
     if index.turn_id() != turn_id
         || index.ordinal() != expected
         || item.id() != index.item_id()
@@ -213,16 +239,67 @@ fn assemble_frontier(
         next: Some(CanonicalSnapshot {
             index,
             item,
-            manifest,
+            provider_manifest,
+            projection_manifest,
             resource,
         }),
     })
 }
 
+fn validate_item_backings(
+    item: &CanonicalItemRecord,
+    provider_manifest: Option<&ContentManifestRecord>,
+    projection_manifest: Option<&ContentManifestRecord>,
+    resource: Option<&ResourceMetadataRecord>,
+) -> Result<(), OrdinaryTurnExecutionError> {
+    match (item.provider_content(), provider_manifest) {
+        (Some(content), Some(manifest))
+            if manifest.id() == content.id()
+                && manifest.owner() == Some(item.id())
+                && matches!(
+                    manifest.lifecycle(),
+                    ContentLifecycle::Live | ContentLifecycle::Finalized
+                )
+                && manifest.current_reference() == Some(content) => {}
+        (None, None) => {}
+        _ => {
+            return Err(OrdinaryTurnExecutionError::Invariant(
+                "ordinary history convergence provider manifest disagrees",
+            ));
+        }
+    }
+    match (item.projection_source(), projection_manifest) {
+        (Some(ProjectionTextSource::Composer(content)), Some(manifest))
+            if manifest.id() == content.id()
+                && manifest.lifecycle() == ContentLifecycle::Sealed
+                && manifest.sealed_reference() == Some(content) => {}
+        (Some(ProjectionTextSource::ProviderNarrative(narrative)), Some(manifest))
+            if manifest.id() == narrative.content_id() && provider_manifest == Some(manifest) => {}
+        (None, None) => {}
+        _ => {
+            return Err(OrdinaryTurnExecutionError::Invariant(
+                "ordinary history convergence projection manifest disagrees",
+            ));
+        }
+    }
+    match (item.presentation().resource_id(), resource) {
+        (Some(resource_id), Some(resource))
+            if resource.id() == resource_id && resource.item_id() == item.id() => {}
+        (None, None) => {}
+        _ => {
+            return Err(OrdinaryTurnExecutionError::Invariant(
+                "ordinary history convergence generated resource disagrees",
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ProjectionSnapshot {
     pub(super) item: CanonicalItemRecord,
-    pub(super) manifest: ContentManifestRecord,
+    pub(super) provider_manifest: Option<ContentManifestRecord>,
+    pub(super) projection_manifest: ContentManifestRecord,
     pub(super) head: Option<ItemProjectionHeadRecord>,
     pub(super) generation: ItemProjectionGeneration,
     pub(super) build: Option<ItemProjectionBuildRecord>,
@@ -237,15 +314,22 @@ pub(super) fn item_projection(
     limit: SyndicPointReadLimit,
 ) -> Result<ProjectionSnapshot, OrdinaryTurnExecutionError> {
     let item = storage.canonical_item(store, item_id, limit)?;
-    let manifest = match item
+    let provider_manifest = match item
         .as_ref()
-        .and_then(|item| item.record().payload().content())
+        .and_then(CanonicalItemRecord::provider_content)
     {
         Some(content) => storage.content_manifest(store, content.id(), limit)?,
         None => None,
     };
+    let projection_manifest = match item
+        .as_ref()
+        .and_then(CanonicalItemRecord::projection_source)
+    {
+        Some(source) => storage.content_manifest(store, source.content_id(), limit)?,
+        None => None,
+    };
     let head = storage.item_projection_head(store, item_id, limit)?;
-    let generation = projection_generation(head.as_ref().map(|head| head.record()));
+    let generation = projection_generation(head.as_ref());
     let (build, set) = match generation {
         Some(generation) => (
             storage.item_projection_build(store, item_id, generation, limit)?,
@@ -253,8 +337,6 @@ pub(super) fn item_projection(
         ),
         None => (None, None),
     };
-    let confirmed_item = storage.canonical_item(store, item_id, limit)?;
-    let confirmed_head = storage.item_projection_head(store, item_id, limit)?;
     let (confirmed_build, confirmed_set) = match generation {
         Some(generation) => (
             storage.item_projection_build(store, item_id, generation, limit)?,
@@ -262,14 +344,30 @@ pub(super) fn item_projection(
         ),
         None => (None, None),
     };
-    if confirmed_item != item
-        || confirmed_head != head
-        || confirmed_build != build
+    let confirmed_provider_manifest = reread_manifest(store, storage, &provider_manifest, limit)?;
+    let confirmed_projection_manifest =
+        reread_manifest(store, storage, &projection_manifest, limit)?;
+    let confirmed_head = storage.item_projection_head(store, item_id, limit)?;
+    let confirmed_item = storage.canonical_item(store, item_id, limit)?;
+    if confirmed_build != build
         || confirmed_set != set
+        || confirmed_provider_manifest != provider_manifest
+        || confirmed_projection_manifest != projection_manifest
+        || confirmed_head != head
+        || confirmed_item != item
     {
         return Err(OrdinaryTurnExecutionError::ConcurrentChange { thread_id });
     }
-    assemble_projection(item_id, item, manifest, head, generation, build, set)
+    assemble_projection(
+        item_id,
+        item,
+        provider_manifest,
+        projection_manifest,
+        head,
+        generation,
+        build,
+        set,
+    )
 }
 
 fn projection_generation(
@@ -285,36 +383,36 @@ fn projection_generation(
 #[allow(clippy::too_many_arguments)]
 fn assemble_projection(
     item_id: SyndicItemId,
-    item: Option<syndic_storage::SyndicStoredRecord<CanonicalItemRecord>>,
-    manifest: Option<syndic_storage::SyndicStoredRecord<ContentManifestRecord>>,
-    head: Option<syndic_storage::SyndicStoredRecord<ItemProjectionHeadRecord>>,
+    item: Option<CanonicalItemRecord>,
+    provider_manifest: Option<ContentManifestRecord>,
+    projection_manifest: Option<ContentManifestRecord>,
+    head: Option<ItemProjectionHeadRecord>,
     generation: Option<ItemProjectionGeneration>,
-    build: Option<syndic_storage::SyndicStoredRecord<ItemProjectionBuildRecord>>,
-    set: Option<syndic_storage::SyndicStoredRecord<ItemProjectionSetRecord>>,
+    build: Option<ItemProjectionBuildRecord>,
+    set: Option<ItemProjectionSetRecord>,
 ) -> Result<ProjectionSnapshot, OrdinaryTurnExecutionError> {
     let item = item.ok_or(OrdinaryTurnExecutionError::Invariant(
         "item projection source is missing",
     ))?;
-    let manifest = manifest.ok_or(OrdinaryTurnExecutionError::Invariant(
+    let projection_manifest = projection_manifest.ok_or(OrdinaryTurnExecutionError::Invariant(
         "item projection content manifest is missing",
     ))?;
     let generation = generation.ok_or(OrdinaryTurnExecutionError::Invariant(
         "item-projection generation is exhausted",
     ))?;
-    let item = item.record().clone();
-    let manifest = manifest.record().clone();
-    let content = item
-        .payload()
-        .content()
+    validate_item_backings(
+        &item,
+        provider_manifest.as_ref(),
+        Some(&projection_manifest),
+        None,
+    )?;
+    let source = item
+        .projection_source()
         .ok_or(OrdinaryTurnExecutionError::Invariant(
             "item projection source has no text content",
         ))?;
-    let head = head.map(|head| *head.record());
-    let build = build.map(|build| build.record().clone());
-    let set = set.map(|set| set.record().clone());
     if item.id() != item_id
-        || manifest.id() != content.id()
-        || manifest.current_reference() != Some(content)
+        || projection_manifest.id() != source.content_id()
         || head.as_ref().is_some_and(|head| head.item_id() != item_id)
         || build
             .as_ref()
@@ -329,7 +427,8 @@ fn assemble_projection(
     }
     Ok(ProjectionSnapshot {
         item,
-        manifest,
+        provider_manifest,
+        projection_manifest,
         head,
         generation,
         build,
@@ -353,17 +452,13 @@ pub(super) fn transcript(
     let thread = storage.thread(store, thread_id, limit)?;
     let head = storage.transcript_view_head(store, thread_id, limit)?;
     let build = match head.as_ref() {
-        Some(head) => {
-            storage.transcript_build(store, thread_id, head.record().generation(), limit)?
-        }
+        Some(head) => storage.transcript_build(store, thread_id, head.generation(), limit)?,
         None => None,
     };
     let confirmed_thread = storage.thread(store, thread_id, limit)?;
     let confirmed_head = storage.transcript_view_head(store, thread_id, limit)?;
     let confirmed_build = match head.as_ref() {
-        Some(head) => {
-            storage.transcript_build(store, thread_id, head.record().generation(), limit)?
-        }
+        Some(head) => storage.transcript_build(store, thread_id, head.generation(), limit)?,
         None => None,
     };
     if confirmed_thread != thread || confirmed_head != head || confirmed_build != build {
@@ -375,9 +470,6 @@ pub(super) fn transcript(
     let head = head.ok_or(OrdinaryTurnExecutionError::Invariant(
         "selected transcript head is missing",
     ))?;
-    let thread = thread.record().clone();
-    let head = head.record().clone();
-    let build = build.map(|build| *build.record());
     if thread.id() != thread_id
         || head.thread_id() != thread_id
         || build.as_ref().is_some_and(|build| {

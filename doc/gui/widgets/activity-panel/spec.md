@@ -23,7 +23,12 @@ Widgets:
 
 The activity panel contains a root panel, a top-edge resize handle, a clipped row viewport, a realized row layer, and an external vertical scrollbar.
 
-Each fixed-height row has an owner-supplied stable activity id, status marker, agent key, agent value, activity key, and activity value. The widget owns row geometry, truncation, stable reconciliation, and viewport realization. The owning feature supplies keys, values, ordering, lifecycle state, retention, and domain meaning.
+Each resident fixed-height row has an owner-supplied stable activity id, status marker, agent key,
+agent value, activity key, and activity value. The widget owns row geometry, truncation, stable
+reconciliation, page requests, and viewport realization. The owning feature supplies one
+revision-bound query identity, total row count, bounded resident row pages, keys, values, ordering,
+lifecycle state, retention, and domain meaning. The widget never receives the complete activity
+collection.
 
 Rows are presentation-only. They do not contain command regions, disclosure controls, output previews, or nested operational detail.
 
@@ -33,7 +38,9 @@ The panel reads as compact lower conversation chrome separated from the transcri
 
 Rows remain single-line and visually stable as their status or value changes. Status markers distinguish owner-supplied running, successful, and failed states. The agent and activity keys use quieter emphasis than their values.
 
-Long agent labels and activity values truncate inside their own regions. A tooltip may expose the complete owner-supplied accessible value while its stable row remains realized.
+Long agent labels and activity values truncate inside their own regions. A tooltip may expose the
+owner-supplied bounded accessible projection while its stable row remains realized; it never asks
+the owner to materialize complete source content.
 
 # States
 
@@ -51,15 +58,28 @@ The resize handle has the accessible name `Resize activity panel`. When it has k
 
 The row viewport owns vertical wheel, touchpad, scrollbar, and keyboard scrolling only while it can consume movement. Boundary propagation follows `scroll-ownership`.
 
-Rows use fixed-height virtualization. The widget realizes visible rows plus at most four overscan rows before and four after the visible range. Total retained activity count does not determine render-tree size.
+Rows use fixed-height paged virtualization. The widget derives logical extent from total row count
+and realizes resident visible rows plus at most four overscan rows before and four after the visible
+range. A missing visible or overscan page produces one deduplicated bounded page request and no
+fabricated row. Total retained activity count determines neither render-tree size nor resident page
+count.
 
-Stable activity identity, not visible index, owns row reconciliation and tooltip anchoring. When sorting or lifecycle updates change row order, an attached-to-top viewport remains at the top; a manually scrolled viewport preserves the first visible stable row and its viewport offset when that row still exists.
+Stable activity identity, not visible index, owns row reconciliation and tooltip anchoring. Query
+revision owns page reconciliation. When sorting or lifecycle updates change row order, an
+attached-to-top viewport remains at the top; a manually scrolled viewport preserves the first
+visible stable row and its viewport offset when that identity remains present in a resident or
+newly requested page.
 
 If virtualization removes a tooltip-owning row, the tooltip closes intentionally. The widget never retains an offscreen row solely to preserve hover or tooltip geometry.
 
 Row updates do not change fixed row height or total scroll geometry. Rows are not keyboard-focusable and do not acquire selection state.
 
-Content-free diagnostics expose widget instance id, allocated height, resize state, total row count, realized row count, visible opaque diagnostic row-key range, overscan count, fixed row height, scroll offset, top-attachment state, reconciliation count, and tooltip-anchor presence. Diagnostic row keys are nonreversible process-local correlations. Diagnostics never include labels, activity values, commands, paths, raw backend ids, or tooltip text.
+Content-free diagnostics expose widget instance id, allocated height, resize state, opaque
+nonreversible query-revision key, total row count, resident and pending page counts, realized row
+count, visible opaque diagnostic row-key range, overscan count, fixed row height, scroll offset,
+top-attachment state, reconciliation count, and tooltip-anchor presence. Diagnostic row keys are
+nonreversible process-local correlations. Diagnostics never include labels, activity values,
+commands, paths, raw backend ids, or tooltip text.
 
 # Layout
 

@@ -6,7 +6,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [features]
-test-faults = []
+test-faults = ["fjall/test-faults"]
 
 [dependencies]
 beryl-model.workspace = true

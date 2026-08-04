@@ -13,7 +13,7 @@ use advance::AdvanceMutation;
 pub(super) use invalidate::{invalidate_transcript_projection, supersede_active_transcript_build};
 use start::StartMutation;
 
-/// Starts the stale generation selected by one exact thread transcript head.
+/// Starts the stale generation selected by one exact head and non-future thread-revision proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StartTranscriptBuild {
     thread_id: SyndicThreadId,

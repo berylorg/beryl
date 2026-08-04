@@ -5,7 +5,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     MarkdownBlockId, MarkdownBlockKind, ProjectionFormatVersion, ProjectionPayload,
-    ProjectionSourceRange, ResourceKind, ResourceOrdinal, TranscriptGeneration, TranscriptPosition,
+    ProjectionSourceRange, ProjectionTextSource, ResourceKind, ResourceOrdinal,
+    TranscriptGeneration, TranscriptPosition,
 };
 
 const BLOCK_ID_V1: &[u8] = b"beryl/syndic/markdown-block/v1\0";
@@ -96,9 +97,6 @@ fn hash_projection_payload(hash: &mut Sha256, payload: &ProjectionPayload) {
             hash.update(source_offset.to_be_bytes());
             hash.update(marker.marker_id().as_bytes());
             hash.update(marker.label().get().to_be_bytes());
-            hash.update([marker.asset_id().version() as u8]);
-            hash.update(marker.asset_id().digest());
-            hash.update(marker.asset_id().length().get().to_be_bytes());
         }
     }
 }
@@ -108,7 +106,7 @@ pub(crate) fn resource_identity(
     item: SyndicItemId,
     ordinal: ResourceOrdinal,
     kind: ResourceKind,
-    content_id: beryl_model::SyndicContentId,
+    source: ProjectionTextSource,
     range: ProjectionSourceRange,
 ) -> (SyndicResourceId, ProjectionRevision) {
     let mut hash = Sha256::new();
@@ -117,7 +115,7 @@ pub(crate) fn resource_identity(
     hash.update(item.as_bytes());
     hash.update(ordinal.get().to_be_bytes());
     hash.update([resource_kind_tag(kind)]);
-    hash.update(content_id.as_bytes());
+    hash_projection_source_identity(&mut hash, source);
     hash_range(&mut hash, range);
     let digest: [u8; 32] = hash.finalize().into();
     let mut id = [0_u8; 16];
@@ -126,6 +124,20 @@ pub(crate) fn resource_identity(
         SyndicResourceId::from_bytes(id),
         ProjectionRevision::new(1).expect("immutable resource revision is nonzero"),
     )
+}
+
+fn hash_projection_source_identity(hash: &mut Sha256, source: ProjectionTextSource) {
+    match source {
+        ProjectionTextSource::Composer(content) => {
+            hash.update([0]);
+            hash.update(content.id().as_bytes());
+        }
+        ProjectionTextSource::ProviderNarrative(narrative) => {
+            hash.update([1]);
+            hash.update(narrative.content_id().as_bytes());
+            hash.update(narrative.generation().get().to_be_bytes());
+        }
+    }
 }
 
 pub(crate) fn item_set_digest_seed() -> [u8; 32] {

@@ -6,14 +6,12 @@ use std::{
     time::Duration,
 };
 
-use beryl_backend::{TurnStartOptions, TurnStreamEvent};
+use beryl_backend::TurnStartOptions;
 
 #[path = "thread_title/backend.rs"]
 mod backend;
 #[path = "thread_title/cleanup.rs"]
 mod cleanup;
-#[path = "thread_title/generated.rs"]
-mod generated;
 #[allow(dead_code)]
 #[path = "thread_title/task.rs"]
 mod task;
@@ -244,29 +242,4 @@ fn clamp_chars(text: &str, max_chars: usize) -> String {
         result = result.trim_end().to_string();
     }
     result
-}
-
-fn event_thread_id(event: &TurnStreamEvent) -> Option<&str> {
-    match event {
-        TurnStreamEvent::ThreadStarted { thread } => Some(thread.id.as_str()),
-        TurnStreamEvent::AgentLabelUpdated { thread_id, .. }
-        | TurnStreamEvent::ThreadStatusChanged { thread_id, .. }
-        | TurnStreamEvent::ThreadClosed { thread_id }
-        | TurnStreamEvent::TurnStarted { thread_id, .. }
-        | TurnStreamEvent::TurnCompleted { thread_id, .. }
-        | TurnStreamEvent::ItemStarted { thread_id, .. }
-        | TurnStreamEvent::ItemCompleted { thread_id, .. }
-        | TurnStreamEvent::AgentMessageDelta { thread_id, .. }
-        | TurnStreamEvent::ReasoningSummaryPartAdded { thread_id, .. }
-        | TurnStreamEvent::ReasoningSummaryTextDelta { thread_id, .. }
-        | TurnStreamEvent::ReasoningTextDelta { thread_id, .. }
-        | TurnStreamEvent::CommandExecutionOutputDelta { thread_id, .. }
-        | TurnStreamEvent::FileChangeOutputDelta { thread_id, .. }
-        | TurnStreamEvent::TokenUsageUpdated { thread_id, .. }
-        | TurnStreamEvent::ThreadNameUpdated { thread_id, .. } => Some(thread_id.as_str()),
-        TurnStreamEvent::ApprovalRequested(request) => request.thread_id(),
-        TurnStreamEvent::DynamicToolCallRequested(request) => Some(request.thread_id()),
-        TurnStreamEvent::AccountRateLimitsUpdated { .. }
-        | TurnStreamEvent::ProtocolError { .. } => None,
-    }
 }

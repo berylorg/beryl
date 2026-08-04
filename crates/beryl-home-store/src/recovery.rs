@@ -1,6 +1,6 @@
 use std::{error::Error, io};
 
-use fjall::{PersistMode, Readable};
+use fjall::PersistMode;
 use thiserror::Error;
 
 use crate::{
@@ -8,10 +8,12 @@ use crate::{
     HomeHealthState, HomeOpenError, HomeStore,
     domain::reopen::{reacquire_registry, validate_reopen_registry},
     fault::FaultPoint,
-    health::HealthMaintenanceError,
+    health::{ClassifiedFjallError, HealthMaintenanceError},
     layout::{DatabaseDisposition, HomeLayout, LayoutAdmissionError, inspect_database},
-    metadata::HEADER_KEY,
-    read::{read_domain_metadata, read_home_revision},
+    metadata::{
+        DomainMetadata, HEADER_KEY, HOME_REVISION_BYTES, HOME_REVISION_KEY,
+        MAX_DOMAIN_METADATA_BYTES, MAX_HOME_HEADER_BYTES, decode_home_revision,
+    },
     store::{StoreGeneration, next_store_instance, open_existing_database},
 };
 
@@ -37,6 +39,13 @@ pub enum HealthVerificationError {
     #[error("home verification persistence barrier failed: {source}")]
     Persistence {
         /// Engine or deterministic fault source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+    /// Fjall reported a retained maintenance terminal before verification publication.
+    #[error("home verification could not confirm storage health: {source}")]
+    StorageHealth {
+        /// Stable classified engine source.
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
@@ -100,6 +109,13 @@ pub enum HomeRecoveryError {
     #[error("reopened home persistence barrier failed: {source}")]
     Persistence {
         /// Engine or deterministic fault source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+    /// Fjall reported a retained maintenance terminal before recovered publication.
+    #[error("reopened home could not confirm storage health: {source}")]
+    StorageHealth {
+        /// Stable classified engine source.
         #[source]
         source: Box<dyn Error + Send + Sync>,
     },
@@ -190,11 +206,17 @@ impl HomeStore {
             .database
             .persist(PersistMode::SyncAll)
             .map_err(|source| HealthVerificationError::Persistence {
-                source: Box::new(source),
+                source: Box::new(ClassifiedFjallError::direct(source)),
             })?;
         validate_generation_control(generation, self)
             .map_err(|source| HealthVerificationError::Validation { source })?;
         validate_reopen_registry(generation, &crate::SidecarVerifier::new(self))?;
+        generation
+            .database
+            .health()
+            .map_err(|source| HealthVerificationError::StorageHealth {
+                source: Box::new(ClassifiedFjallError::direct(source)),
+            })?;
         self.health
             .snapshot()
             .generation()
@@ -237,7 +259,7 @@ impl HomeStore {
             })?;
         require_existing_layout(self.database_path())?;
         let layout = HomeLayout::at(self.canonical_path());
-        let opened = open_existing_database(self.configured_path(), &layout)?;
+        let opened = open_existing_database(self.configured_path(), &layout, self.storage_profile)?;
         if opened.header.home_id != self.home_id() || opened.header.schema != self.schema() {
             return Err(HomeRecoveryError::HomeMismatch);
         }
@@ -255,12 +277,18 @@ impl HomeStore {
             .database
             .persist(PersistMode::SyncAll)
             .map_err(|source| HomeRecoveryError::Persistence {
-                source: Box::new(source),
+                source: Box::new(ClassifiedFjallError::direct(source)),
             })?;
         self.faults
             .check(FaultPoint::AfterReopen)
             .map_err(|source| HomeRecoveryError::Persistence {
                 source: Box::new(source),
+            })?;
+        generation
+            .database
+            .health()
+            .map_err(|source| HomeRecoveryError::StorageHealth {
+                source: Box::new(ClassifiedFjallError::direct(source)),
             })?;
         *generation_slot = Some(generation);
         // Recovery may unpoison only this unit writer lock, and only after the
@@ -274,29 +302,70 @@ fn validate_generation_control(
     generation: &StoreGeneration,
     store: &HomeStore,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let snapshot = generation.database.snapshot();
-    let encoded_header = snapshot
-        .get(generation.header_keyspace(), HEADER_KEY)?
+    let snapshot = generation.database.snapshot().map_err(boxed_fjall)?;
+    let header = {
+        let encoded = bounded_control_point(
+            &snapshot,
+            generation.header_keyspace(),
+            HEADER_KEY,
+            MAX_HOME_HEADER_BYTES,
+            "home header",
+        )?
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "home header is missing"))?;
-    let header = crate::HomeHeader::decode(&encoded_header)?;
+        crate::HomeHeader::decode(encoded.value())?
+    };
     if header.home_id != store.home_id() || header.schema != store.schema() {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::InvalidData,
             "home header identity or schema changed",
         )));
     }
-    read_home_revision(&snapshot, generation.header_keyspace())?;
+    {
+        let revision = bounded_control_point(
+            &snapshot,
+            generation.header_keyspace(),
+            HOME_REVISION_KEY,
+            HOME_REVISION_BYTES,
+            "home revision",
+        )?
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "home revision record is missing",
+            )
+        })?;
+        decode_home_revision(revision.value())?;
+    }
 
     for domain in generation.registry.iter() {
         for family in &domain.families {
-            if !generation.database.keyspace_exists(&family.physical_name) {
+            if !generation
+                .database
+                .keyspace_exists(&family.physical_name)
+                .map_err(boxed_fjall)?
+            {
                 return Err(Box::new(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("required keyspace `{}` is missing", family.physical_name),
                 )));
             }
         }
-        let metadata = read_domain_metadata(&snapshot, generation.domains_keyspace(), domain.name)?;
+        let metadata = {
+            let encoded = bounded_control_point(
+                &snapshot,
+                generation.domains_keyspace(),
+                domain.name.as_bytes(),
+                MAX_DOMAIN_METADATA_BYTES,
+                "domain registry",
+            )?
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("domain `{}` registration is missing", domain.name),
+                )
+            })?;
+            DomainMetadata::decode(encoded.value())?
+        };
         if metadata != domain.metadata(metadata.revision) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -305,6 +374,31 @@ fn validate_generation_control(
         }
     }
     Ok(())
+}
+
+fn bounded_control_point<'origin>(
+    snapshot: &'origin fjall::Snapshot,
+    keyspace: &'origin fjall::Keyspace,
+    key: &[u8],
+    maximum: usize,
+    kind: &'static str,
+) -> Result<Option<fjall::KvPair<'origin>>, Box<dyn Error + Send + Sync>> {
+    let Some(point) = snapshot.point(keyspace, key).map_err(boxed_fjall)? else {
+        return Ok(None);
+    };
+    let actual = usize::try_from(point.stored_value_len())
+        .expect("u32 stored-value length fits usize on supported targets");
+    if actual > maximum {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{kind} record has {actual} stored bytes, exceeding {maximum}"),
+        )));
+    }
+    point.acquire().map(Some).map_err(boxed_fjall)
+}
+
+fn boxed_fjall(source: fjall::Error) -> Box<dyn Error + Send + Sync> {
+    Box::new(ClassifiedFjallError::direct(source))
 }
 
 fn require_existing_layout(path: &std::path::Path) -> Result<(), HomeRecoveryError> {

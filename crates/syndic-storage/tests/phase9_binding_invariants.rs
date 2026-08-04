@@ -4,6 +4,8 @@ mod support;
 
 #[path = "phase9_binding_invariants/native_turn_count.rs"]
 mod native_turn_count;
+#[path = "phase9_binding_invariants/recovered_handoff.rs"]
+mod recovered_handoff;
 #[path = "phase9_binding_invariants/recovered_lineage.rs"]
 mod recovered_lineage;
 #[path = "phase9_binding_invariants/reopen_binding_records.rs"]
@@ -12,6 +14,8 @@ mod reopen_binding_records;
 mod reopen_correlations;
 #[path = "phase9_binding_invariants/retirement.rs"]
 mod retirement;
+#[path = "phase9_binding_invariants/route_allocator.rs"]
+mod route_allocator;
 #[path = "phase9_binding_invariants/selected_prefix.rs"]
 mod selected_prefix;
 
@@ -19,11 +23,10 @@ use beryl_home_store::{
     CommandError, CursorReadLimits, DomainRegistrationError, HomeCommand, HomeStore,
 };
 use beryl_model::{
-    BindingRevision, CasItemId, CasLoadedSessionGeneration, CasLoadedThreadGeneration,
-    CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding,
-    InputGateRevision, PathFlavor, RecoveryItemSequenceDigest, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath, SyndicDraftId, SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId,
-    SyndicTurnId,
+    BindingRevision, CasLoadedSessionGeneration, CasLoadedThreadGeneration, CasNativeTurnCount,
+    CasProcessGeneration, CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, PathFlavor,
+    RecoveryItemSequenceDigest, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
+    SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::*;
@@ -82,7 +85,7 @@ fn create_thread(
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
-            CreateThread::ordinary(thread, draft, timestamp(1)),
+            CreateThread::ordinary(thread, draft, execution_binding(), timestamp(1)),
         ),
     )
     .unwrap();
@@ -135,10 +138,10 @@ fn submit_current(
         current.draft().id(),
         current.draft().revision(),
         current.draft().content(),
-        gate.record().revision(),
+        gate.revision(),
         replacement,
         item,
-        AdmissionMarkers::default(),
+        None,
         submitted_at,
     );
     let turn = submission.submitted_turn_id();
@@ -181,9 +184,9 @@ fn admit_event(
     let event = LiveSourceEvent::new(
         thread,
         turn,
-        state.record().revision(),
-        gate.record().revision(),
-        SourceEventSequence::new(state.record().source_event_count() + 1).unwrap(),
+        state.revision(),
+        gate.revision(),
+        SourceEventSequence::new(state.source_event_count() + 1).unwrap(),
         source,
         payload,
         observed_at,
@@ -209,10 +212,10 @@ fn activate_exact_turn(
         .binding()
         .selected_path();
     let turn_record = storage.turn(store, turn, point_limit()).unwrap().unwrap();
-    let (parent, parent_digest) = match turn_record.record().parent().turn() {
+    let (parent, parent_digest) = match turn_record.parent().turn() {
         Some(parent) => {
             let parent = storage.turn(store, parent, point_limit()).unwrap().unwrap();
-            (Some(parent.record().id()), parent.record().chain_digest())
+            (Some(parent.id()), parent.chain_digest())
         }
         None => (None, empty_selected_path_digest()),
     };
@@ -228,7 +231,7 @@ fn activate_exact_turn(
                 .binding(store, thread, revision, point_limit())
                 .unwrap()
         });
-    let (cas_thread, lineage) = match prior.as_ref().map(|stored| stored.record().state()) {
+    let (cas_thread, lineage) = match prior.as_ref().map(|stored| stored.state()) {
         Some(BindingState::Valid(usable))
             if usable.represented_prefix().tail() == represented.tail()
                 && usable.represented_prefix().digest() == represented.digest() =>
@@ -319,6 +322,7 @@ fn complete_turn(
         SourceEventPayload::TurnEnded(TurnEndStatus::complete()),
         timestamp(5),
     );
+    converge_and_release_terminal_history(store, storage, thread, turn);
 }
 
 fn correlate_submitted_user_item(
@@ -338,39 +342,13 @@ fn correlate_submitted_user_item(
         .unwrap()
         .records()[0]
         .clone();
-    let item = storage
-        .canonical_item(store, index.item_id(), point_limit())
-        .unwrap()
-        .unwrap();
-    let descriptor = SourceItemDescriptor::new(
+    support::exact_cas::correlate_user_item(
+        store,
+        storage,
+        thread,
+        turn,
         index.item_id(),
-        CasItemId::new(format!("binding-user-{}", index.item_id())).unwrap(),
-        ProviderItemKind::UserMessage,
-        item.record().disposition(),
-    )
-    .unwrap();
-    admit_event(
-        store,
-        storage,
-        thread,
-        turn,
-        Some(source.clone()),
-        SourceEventPayload::ItemStarted {
-            item: descriptor.clone(),
-            assistant_phase: None,
-        },
-        timestamp(4),
-    );
-    admit_event(
-        store,
-        storage,
-        thread,
-        turn,
-        Some(source.clone()),
-        SourceEventPayload::ItemCompleted {
-            item: descriptor,
-            assistant_phase: None,
-        },
+        source,
         timestamp(4),
     );
 }
@@ -438,7 +416,6 @@ fn current_gate_revision(
         .input_gate(store, thread, point_limit())
         .unwrap()
         .unwrap()
-        .record()
         .revision()
 }
 
@@ -474,11 +451,17 @@ fn valid_request_with_count(
     native_turn_count: CasNativeTurnCount,
     lineage: CasLineageProof,
 ) -> PublishValidBinding {
+    let execution = storage
+        .thread_execution(store, thread, point_limit())
+        .unwrap()
+        .expect("binding fixture thread must retain canonical execution")
+        .execution()
+        .clone();
     PublishValidBinding::new(
         thread,
         current_binding_revision(store, storage, thread),
         selected,
-        execution_binding(),
+        execution,
         cas_thread,
         represented,
         native_turn_count,

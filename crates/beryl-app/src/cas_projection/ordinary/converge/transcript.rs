@@ -75,7 +75,7 @@ fn active_build(current: &snapshot::TranscriptSnapshot, build: &TranscriptBuildR
     build.thread_id() == current.thread.id()
         && build.generation() == current.head.generation()
         && build.revision() == current.head.revision()
-        && build.source_thread_revision() == current.thread.revision()
+        && build.source_thread_revision() <= current.thread.revision()
         && build.committed_tail() == current.thread.committed_tail()
         && build.selected_path_digest() == current.thread.selected_path_digest()
         && matches!(

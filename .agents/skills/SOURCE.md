@@ -2,6 +2,7 @@
 
 From `https://github.com/berylorg/aipm`:
 
+- agent-environment-health
 - architectural-rework
 - cargo-projects
 - exploration-memory

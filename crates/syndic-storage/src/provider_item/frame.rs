@@ -52,16 +52,11 @@ impl ProviderLifecycleTimestampMsV1 {
 }
 
 /// Whether one retained provider observation can support complete captured history.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum ProviderFrameHistorySupportV1 {
+    #[default]
     Supported,
     Unsupported(UnsupportedHistoryReason),
-}
-
-impl Default for ProviderFrameHistorySupportV1 {
-    fn default() -> Self {
-        Self::Supported
-    }
 }
 
 impl ProviderFrameHistorySupportV1 {

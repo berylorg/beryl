@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use beryl_model::{DomainRevision, HomeRevision};
-use fjall::{Readable, Snapshot};
+use fjall::Snapshot;
 use thiserror::Error;
 
 use crate::{
@@ -10,15 +10,17 @@ use crate::{
     codec::RECORD_VERSION_BYTES,
     domain::{RegisteredDomain, RegisteredFamily},
     fault::FaultPoint,
-    health::FailureSeverity,
-    metadata::{DomainMetadata, decode_home_revision},
+    health::{ClassifiedFjallError, FailureSeverity},
+    metadata::{
+        DomainMetadata, HOME_REVISION_BYTES, MAX_DOMAIN_METADATA_BYTES, decode_home_revision,
+    },
     store::{HomeStore, StoreGeneration},
 };
 
 mod execute;
 
 pub(crate) use execute::{
-    encode_stored_key, encode_value, validate_record_envelope, validate_stored_key_size,
+    encode_stored_key, encode_value, validate_physical_family, validate_record_envelope,
 };
 use execute::{read_cursor, read_point};
 
@@ -275,10 +277,11 @@ impl HomeStore {
     /// Reads the exact current home revision from one short-lived snapshot.
     pub fn home_revision(&self) -> Result<HomeRevision, ReadError> {
         self.execute_read(|generation| {
-            read_home_revision(
-                &generation.database.snapshot(),
-                generation.header_keyspace(),
-            )
+            let snapshot = generation
+                .database
+                .snapshot()
+                .map_err(|source| fjall_storage(ReadStage::HomeRevision, source))?;
+            read_home_revision(&snapshot, generation.header_keyspace())
         })
     }
 
@@ -291,12 +294,12 @@ impl HomeStore {
             let domain = generation
                 .resolve_domain(handle)
                 .ok_or(ReadError::ForeignDomain { domain: D::NAME })?;
-            read_domain_metadata(
-                &generation.database.snapshot(),
-                generation.domains_keyspace(),
-                domain.name,
-            )
-            .map(|metadata| metadata.revision)
+            let snapshot = generation
+                .database
+                .snapshot()
+                .map_err(|source| fjall_storage(ReadStage::DomainRevision, source))?;
+            read_domain_metadata(&snapshot, generation.domains_keyspace(), domain.name)
+                .map(|metadata| metadata.revision)
         })
     }
 
@@ -311,7 +314,11 @@ impl HomeStore {
             let domain = generation
                 .resolve_domain(handle)
                 .ok_or(ReadError::ForeignDomain { domain: D::NAME })?;
-            read_point::<D, R>(&generation.database.snapshot(), domain, key, limit)
+            let snapshot = generation
+                .database
+                .snapshot()
+                .map_err(|source| fjall_storage(ReadStage::PointSize, source))?;
+            read_point::<D, R>(&snapshot, domain, key, limit)
         })
     }
 
@@ -327,13 +334,11 @@ impl HomeStore {
             let domain = generation
                 .resolve_domain(handle)
                 .ok_or(ReadError::ForeignDomain { domain: D::NAME })?;
-            read_cursor::<D, R>(
-                &generation.database.snapshot(),
-                domain,
-                range,
-                direction,
-                limits,
-            )
+            let snapshot = generation
+                .database
+                .snapshot()
+                .map_err(|source| fjall_storage(ReadStage::CursorKey, source))?;
+            read_cursor::<D, R>(&snapshot, domain, range, direction, limits)
         })
     }
 
@@ -367,7 +372,9 @@ impl HomeStore {
             admission.fail(FailureSeverity::Verify);
             return Err(storage(ReadStage::Confirmation, source));
         }
-        admission.confirm()?;
+        admission.confirm_database(&generation.database, |source| {
+            storage(ReadStage::Confirmation, source)
+        })?;
         result
     }
 }
@@ -376,11 +383,20 @@ pub(crate) fn read_home_revision(
     snapshot: &Snapshot,
     keyspace: &fjall::Keyspace,
 ) -> Result<HomeRevision, ReadError> {
-    let encoded = snapshot
-        .get(keyspace, crate::metadata::HOME_REVISION_KEY)
-        .map_err(|source| storage(ReadStage::HomeRevision, source))?
+    let point = snapshot
+        .point(keyspace, crate::metadata::HOME_REVISION_KEY)
+        .map_err(|source| fjall_storage(ReadStage::HomeRevision, source))?
         .ok_or_else(|| invalid_revision("home", "home revision record is missing"))?;
-    decode_home_revision(&encoded).map_err(|source| ReadError::InvalidRevisionMetadata {
+    if usize::try_from(point.stored_value_len()).ok() != Some(HOME_REVISION_BYTES) {
+        return Err(invalid_revision(
+            "home",
+            "home revision record has an invalid stored length",
+        ));
+    }
+    let pair = point
+        .acquire()
+        .map_err(|source| fjall_storage(ReadStage::HomeRevision, source))?;
+    decode_home_revision(pair.value()).map_err(|source| ReadError::InvalidRevisionMetadata {
         kind: "home",
         source: Box::new(source),
     })
@@ -391,11 +407,22 @@ pub(crate) fn read_domain_metadata(
     keyspace: &fjall::Keyspace,
     domain: &'static str,
 ) -> Result<DomainMetadata, ReadError> {
-    let encoded = snapshot
-        .get(keyspace, domain.as_bytes())
-        .map_err(|source| storage(ReadStage::DomainRevision, source))?
+    let point = snapshot
+        .point(keyspace, domain.as_bytes())
+        .map_err(|source| fjall_storage(ReadStage::DomainRevision, source))?
         .ok_or_else(|| invalid_revision("domain", "domain registration record is missing"))?;
-    DomainMetadata::decode(&encoded).map_err(|source| ReadError::InvalidRevisionMetadata {
+    let stored_value_len = usize::try_from(point.stored_value_len())
+        .expect("u32 always fits usize on supported targets");
+    if stored_value_len > MAX_DOMAIN_METADATA_BYTES {
+        return Err(invalid_revision(
+            "domain",
+            "domain registration record exceeds its stored byte bound",
+        ));
+    }
+    let pair = point
+        .acquire()
+        .map_err(|source| fjall_storage(ReadStage::DomainRevision, source))?;
+    DomainMetadata::decode(pair.value()).map_err(|source| ReadError::InvalidRevisionMetadata {
         kind: "domain",
         source: Box::new(source),
     })
@@ -406,6 +433,10 @@ fn storage(stage: ReadStage, source: impl Error + Send + Sync + 'static) -> Read
         stage,
         source: Box::new(source),
     }
+}
+
+fn fjall_storage(stage: ReadStage, source: fjall::Error) -> ReadError {
+    storage(stage, ClassifiedFjallError::direct(source))
 }
 
 fn invalid_revision(kind: &'static str, message: &'static str) -> ReadError {
@@ -428,7 +459,10 @@ fn read_failure_severity(error: &ReadError) -> Option<FailureSeverity> {
         | ReadError::InvalidKeySize { .. }
         | ReadError::ReversedRange { .. }
         | ReadError::BoundExceeded { .. } => None,
-        ReadError::Storage { .. } => Some(FailureSeverity::Verify),
+        ReadError::Storage { source, .. } => match source.downcast_ref::<ClassifiedFjallError>() {
+            Some(source) => source.severity(),
+            None => Some(FailureSeverity::Verify),
+        },
         ReadError::GenerationPoisoned
         | ReadError::InvalidStoredKeySize { .. }
         | ReadError::InvalidStoredValueSize { .. }

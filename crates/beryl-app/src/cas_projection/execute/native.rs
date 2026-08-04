@@ -95,7 +95,7 @@ impl CasProjectionCoordinator {
                 });
             }
         };
-        let lease = match session.connection().register_new(
+        let lease = match session.register_loaded(
             cas_thread_id.clone(),
             request.thread_id(),
             request.timeout(),
@@ -116,7 +116,7 @@ impl CasProjectionCoordinator {
                         source.binding().tool_profile(),
                         source.binding().lineage(),
                         source.binding().native_turn_count(),
-                        source.binding().lineage().recovered_loaded_generation(),
+                        source.binding().lineage().recovered_injection_generation(),
                     ),
                     "resumed CAS thread could not enter the loaded registry",
                     ProjectionExecutionError::Coordinator(error),
@@ -192,7 +192,7 @@ impl CasProjectionCoordinator {
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let lineage = CasLineageProof::native(NativeCasLineage::Fork, basis.represented_prefix())?;
         let source_lease = if let Some(required) =
-            source.binding().lineage().recovered_loaded_generation()
+            source.binding().lineage().recovered_injection_generation()
         {
             let observed = session.acquire_loaded(
                 source.binding().cas_thread_id(),
@@ -200,7 +200,11 @@ impl CasProjectionCoordinator {
                 request.timeout(),
             )?;
             match observed {
-                ExistingLease::Exact(lease) if lease.generation() == required => Some(lease),
+                ExistingLease::Exact(lease)
+                    if lease.generation().process() == required.process() =>
+                {
+                    Some(lease)
+                }
                 ExistingLease::Exact(lease) => {
                     drop(lease);
                     return self.retire_recovered_fork_source_then_replan(
@@ -211,7 +215,7 @@ impl CasProjectionCoordinator {
                         cancellation,
                         basis,
                         source,
-                        "recovered fork source loaded generation no longer matches",
+                        "recovered fork source managed process no longer matches",
                     );
                 }
                 ExistingLease::AnotherConnection => {
@@ -220,6 +224,11 @@ impl CasProjectionCoordinator {
                             thread_id: source.binding().cas_thread_id().clone(),
                         },
                     );
+                }
+                ExistingLease::Quarantined => {
+                    return Err(ProjectionExecutionError::ReacquisitionInProgress {
+                        thread_id: source.binding().cas_thread_id().clone(),
+                    });
                 }
                 ExistingLease::AnotherOwner { existing_owner } => {
                     return Err(crate::cas_projection::ProjectionCoordinatorError::CasThreadOwnerCollision {
@@ -336,8 +345,12 @@ impl CasProjectionCoordinator {
             source.thread_id(),
             request.timeout(),
         );
-        let release_error = match retirement {
-            Ok(ThreadRetirement::Absent | ThreadRetirement::Retired) => None,
+        let (release_error, retired_loaded_generation) = match retirement {
+            Ok(ThreadRetirement::Absent) => (None, None),
+            Ok(ThreadRetirement::Retired {
+                generation,
+                release_error,
+            }) => (release_error, Some(generation)),
             Ok(ThreadRetirement::AnotherConnection) => {
                 return Err(
                     ProjectionExecutionError::LoadedProjectionConnectionMismatch {
@@ -355,7 +368,7 @@ impl CasProjectionCoordinator {
                 }
                 .into());
             }
-            Err(error) => Some(error),
+            Err(error) => (Some(error), None),
         };
         let stale = StaleCasBinding::new(
             source.binding().execution().clone(),
@@ -364,7 +377,7 @@ impl CasProjectionCoordinator {
             Some(source.binding().represented_prefix()),
             Some(source.binding().lineage()),
             Some(source.binding().native_turn_count()),
-            source.binding().lineage().recovered_loaded_generation(),
+            retired_loaded_generation,
             reason,
             request.observed_at(),
         )?;

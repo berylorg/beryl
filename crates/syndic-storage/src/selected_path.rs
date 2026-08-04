@@ -7,14 +7,17 @@ use crate::{
 
 pub(crate) const MAX_ANCESTOR_STEPS: usize = 2_080;
 
+pub(crate) fn deterministic_skip_depth(depth: u64) -> Option<u64> {
+    if depth == 1 {
+        None
+    } else {
+        Some(std::cmp::max(depth & (depth - 1), 1))
+    }
+}
+
 /// Depth of the deterministic skip ancestor stored by one non-root turn.
 pub(crate) fn ancestor_skip_depth(depth: TurnDepth) -> Option<TurnDepth> {
-    let depth = depth.get();
-    if depth == 1 {
-        return None;
-    }
-    let cleared = depth & (depth - 1);
-    TurnDepth::new(cleared.max(1)).ok()
+    deterministic_skip_depth(depth.get()).and_then(|depth| TurnDepth::new(depth).ok())
 }
 
 /// Lifts one immutable turn to an exact ancestor depth with bounded point work.
@@ -114,6 +117,7 @@ impl SelectedPathFold {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn include(
         self,
         submitted_at: SyndicTimestamp,
@@ -122,6 +126,7 @@ impl SelectedPathFold {
         finalized_item_count: u64,
         open_item_count: u64,
         history_blocking_item_count: u64,
+        provider_observation_issue: Option<crate::ProviderObservationIssueReason>,
         incomplete_reason: Option<TurnIncompleteReason>,
         updated_at: SyndicTimestamp,
     ) -> Self {
@@ -134,6 +139,7 @@ impl SelectedPathFold {
                     finalized_item_count,
                     open_item_count,
                     history_blocking_item_count,
+                    provider_observation_issue,
                     incomplete_reason,
                 ),
             last_activity_at: Some(
@@ -162,10 +168,12 @@ pub(crate) const fn turn_history_is_complete(
     finalized_item_count: u64,
     open_item_count: u64,
     history_blocking_item_count: u64,
+    provider_observation_issue: Option<crate::ProviderObservationIssueReason>,
     incomplete_reason: Option<TurnIncompleteReason>,
 ) -> bool {
     lifecycle.is_proven_terminal()
         && incomplete_reason.is_none()
+        && provider_observation_issue.is_none()
         && finalized_item_count == item_count
         && open_item_count == 0
         && history_blocking_item_count == 0

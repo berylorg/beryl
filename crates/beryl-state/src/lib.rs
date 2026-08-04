@@ -1,43 +1,106 @@
 //! Typed durable schemas and commands for Beryl-owned application state.
 //!
-//! `beryl-state` registers exact Beryl-owned runtime/root, thread-presentation,
-//! session/window/claim, settings, durable-job, catalog, and asset-reference domains through
+//! `beryl-state` registers exact Beryl-owned runtime/root, session/window/claim, settings,
+//! durable-job, catalog, and asset-reference domains through
 //! [`beryl_home_store`] without receiving a database, keyspace, batch, or
 //! encoded record. Callers admit external facts before building short
 //! revision-checked contributions. Successful command receipts are projected
 //! through each opaque domain state, which rejects obsolete home generations
 //! without exposing the underlying storage-domain handle.
 //!
-//! # Asset Reference Batches
+//! # Catalog Projection
 //!
-//! Marker-bearing owners retain the stable marker identity across bounded atomic
-//! additions and moves. A move description can be cloned for exact post-admission
-//! reconciliation.
+//! Catalog rows are rebuildable Beryl projections. Callers obtain exact runtime/root facts through
+//! [`RuntimeRootState::catalog_source`], current present-or-absent claim facts through
+//! [`SessionState::thread_claim_catalog_source`], and one resolved public Syndic summary. The
+//! matching source validators and [`PublishCatalogRow`] contribution belong in the same
+//! [`beryl_home_store::HomeCommand`]. Beryl preserves visible strings byte-for-byte while deriving
+//! fixed-profile search fields; [`CatalogNormalizedQuery`] applies that same profile at query
+//! admission.
 //!
 //! ```
-//! use std::num::NonZeroU64;
 //! use beryl_model::{
-//!     AssetId, SyndicAcceptedInputId, SyndicDraftMarkerId, SyndicItemId,
+//!     AdmittedHostPath, Availability, PathFlavor, ProjectionRevision, RootId, RuntimeId,
+//!     SyndicThreadId,
 //! };
-//! use beryl_state::{AssetReferenceMove, AssetReferenceOwner, MoveAssetReferences};
+//! use beryl_state::{
+//!     CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimSummary,
+//!     CatalogExecutionSummary, CatalogFacts, CatalogLineageSummary, CatalogNormalizedQuery,
+//!     CatalogResolvedTitle, CatalogRowExpectation, CatalogSourceRevisions, PublishCatalogRow,
+//!     RecordRevision, UnixMillis,
+//! };
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let marker_id = SyndicDraftMarkerId::from_bytes([3; 16]);
-//! let source = AssetReferenceOwner::AcceptedInputMarker {
-//!     input_id: SyndicAcceptedInputId::from_bytes([1; 16]),
-//!     marker_id,
+//! let visible_title = "Stra\u{00df}e";
+//! let title = CatalogResolvedTitle::history_derived(visible_title)?;
+//! let execution = CatalogExecutionSummary::new(
+//!     RuntimeId::from_bytes([1; 16]),
+//!     RootId::from_bytes([2; 16]),
+//!     "Host",
+//!     AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\Codex\codex.exe")?,
+//!     AdmittedHostPath::from_admitted(PathFlavor::Windows, r"C:\Work\beryl")?,
+//!     CatalogAvailabilitySummary::new(Availability::Available, Availability::Available),
+//! )?;
+//! let facts = CatalogFacts::new(
+//!     title,
+//!     execution,
+//!     CatalogArchiveSummary::Ordinary,
+//!     UnixMillis::new(10),
+//!     true,
+//!     CatalogClaimSummary::Unclaimed,
+//!     CatalogLineageSummary::TopLevel,
+//! )?;
+//! assert_eq!(facts.title().text(), Some(visible_title));
+//! assert_eq!(facts.search().title(), "strasse");
+//! assert_eq!(
+//!     CatalogNormalizedQuery::new("STRASSE")?.as_str(),
+//!     facts.search().title(),
+//! );
+//!
+//! let admitted_sources = CatalogSourceRevisions::new(
+//!     ProjectionRevision::new(7)?,
+//!     RecordRevision::new(4)?,
+//!     RecordRevision::new(9)?,
+//!     None,
+//! );
+//! let publication = PublishCatalogRow::new(
+//!     SyndicThreadId::from_bytes([3; 16]),
+//!     CatalogRowExpectation::Missing,
+//!     admitted_sources,
+//!     facts,
+//! )?;
+//! let _ = publication;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Asset Reference Sets
+//!
+//! Marker-bearing content is staged through fixed-capacity append pages and
+//! sealed before a compact durable owner head may select it. The begin command
+//! emits opaque staging authority; a sealed manifest is readable only with its
+//! complete sealed proof.
+//!
+//! ```
+//! use beryl_model::{
+//!     AssetReferenceSetId, SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId,
+//!     content_marker_digest_seed,
 //! };
-//! let destination = AssetReferenceOwner::SubmittedTurnItemMarker {
-//!     item_id: SyndicItemId::from_bytes([2; 16]),
-//!     marker_id,
-//! };
-//! let asset_id = AssetId::sha256_v1([4; 32], NonZeroU64::new(12).unwrap());
-//! let moves = MoveAssetReferences::new(vec![AssetReferenceMove::new(
-//!     source,
-//!     destination,
-//!     asset_id,
-//! )?])?;
-//! assert_eq!(moves.moves().len(), 1);
+//! use beryl_state::BeginAssetReferenceSet;
+//!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let set_id = AssetReferenceSetId::from_bytes([1; 16]);
+//! let source = SealedContentMarkerSummary::new(
+//!     SyndicContentId::from_bytes([2; 16]),
+//!     SyndicContentDigest::from_bytes([3; 32]),
+//!     content_marker_digest_seed(),
+//!     0,
+//!     None,
+//! )?;
+//! let build = BeginAssetReferenceSet::new(set_id, source);
+//! let staging = build.staging_authority();
+//! assert_eq!(set_id.as_bytes(), &[1; 16]);
+//! let _ = (build, staging);
 //! # Ok(())
 //! # }
 //! ```
@@ -108,25 +171,30 @@ mod runtime_root;
 mod session;
 mod settings;
 mod state;
-mod thread_metadata;
 mod value;
 
 pub use asset::{
-    AddAssetReference, AddAssetReferences, AssetAdmissionError, AssetDimensions, AssetMediaType,
-    AssetMetadataRecord, AssetMutationError, AssetReferenceAddition, AssetReferenceAdditionStatus,
-    AssetReferenceBatchError, AssetReferenceMove, AssetReferenceMoveStatus, AssetReferenceOwner,
-    AssetReferenceRecord, AssetReferenceStatusError, AssetSidecarState, AssetState,
-    AssetValueError, CreateAssetWithReference, FirstAssetContribution, MAX_ASSET_REFERENCE_BATCH,
-    MoveAssetReferences, RemoveAssetReference,
+    ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES,
+    ASSET_REFERENCE_PAGE_MAX_STORED_BYTES, AppendAssetReferencePage, AssetAdmissionError,
+    AssetDimensions, AssetLabelDisposition, AssetMediaType, AssetMetadataContribution,
+    AssetMetadataRecord, AssetMutationError, AssetOwner, AssetOwnerHeadAssertion,
+    AssetOwnerHeadExpectation, AssetOwnerHeadRecord, AssetOwnerHeadUpdate,
+    AssetOwnerHeadUpdateError, AssetOwnerHeadValidationError, AssetReadError,
+    AssetReferenceEntryRecord, AssetReferenceOrdinal, AssetReferencePageEntry,
+    AssetReferencePageError, AssetReferenceSetBuildProof, AssetReferenceSetLifecycle,
+    AssetReferenceSetManifest, AssetReferenceSetStagingAuthority, AssetSidecarState, AssetState,
+    AssetValueError, BeginAssetReferenceSet, PublishAssetMetadata, SealAssetReferenceSet,
+    UpdateAssetOwnerHeads, ValidateAssetOwnerHeads,
 };
 pub use catalog::{
-    CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_MAX_STORED_ROW_BYTES, CatalogArchiveSummary,
-    CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary, CatalogExecutionSummary,
-    CatalogFacts, CatalogFreshness, CatalogLineageSummary, CatalogMutationError, CatalogPage,
-    CatalogPointReadLimit, CatalogReadError, CatalogRecencyCursor, CatalogRevision, CatalogRow,
-    CatalogRowExpectation, CatalogSearchFields, CatalogSourceRevisions, CatalogState,
-    CatalogStoredRow, CatalogTitleCandidate, CatalogTitleFacts, CatalogTitleSource,
-    CatalogValueError, MarkCatalogRowStale, PublishCatalogRow,
+    CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
+    CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
+    CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
+    CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery, CatalogPage,
+    CatalogPointReadLimit, CatalogReadError, CatalogRecencyCursor, CatalogResolvedTitle,
+    CatalogRevision, CatalogRow, CatalogRowExpectation, CatalogSearchFields,
+    CatalogSourceRevisions, CatalogState, CatalogTitleSource, CatalogValueError,
+    MarkCatalogRowStale, PublishCatalogRow,
 };
 pub use durable_job::{
     AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
@@ -142,16 +210,17 @@ pub use durable_job::{
 };
 pub use runtime_root::{
     AddConfiguredRoot, CreateRuntimeWithHomeRoot, RootActivityUpdate, RootRecord, RootRegistration,
-    RuntimeRecord, RuntimeRegistration, RuntimeRootMutationError, RuntimeRootState,
-    SetRootAvailability, SetRuntimeAvailability,
+    RuntimeRecord, RuntimeRegistration, RuntimeRootCatalogSource, RuntimeRootCatalogSourceError,
+    RuntimeRootMutationError, RuntimeRootState, SetRootAvailability, SetRuntimeAvailability,
 };
 pub use session::{
     ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow, InitializeThreadlessWindow,
     MAX_RESTORABLE_WINDOWS, MarkOrderlyExit, MinimalSessionBootstrap, RememberedTarget,
     RemoveSessionWindow, ReplaceWindowClaim, SESSION_HEADER_V1_BYTES, SESSION_WINDOW_V1_BYTES,
     SessionExitIntent, SessionHeader, SessionMutationError, SessionReadError, SessionState,
-    SessionWindowRecord, SessionWindowReference, ThreadClaimRecord, ThreadClaimState,
-    UpdateWindowPlacement, WindowClaimSelection,
+    SessionWindowRecord, SessionWindowReference, ThreadClaimCatalogSource,
+    ThreadClaimCatalogSourceError, ThreadClaimRecord, ThreadClaimState, UpdateWindowPlacement,
+    WindowClaimSelection,
 };
 pub use settings::{
     ApplySettings, ApplySettingsError, ExpectedSettingRevision, SettingKey, SettingRecord,
@@ -162,12 +231,4 @@ pub use state::{
     BerylState, BerylStateBootstrap, BerylStateReacquireError, BerylStateRegistrationError,
     StatePage,
 };
-pub use thread_metadata::{
-    ArchiveBranchDiscussion, CreateThreadMetadata, SetGeneratedTitle, ThreadMetadataKind,
-    ThreadMetadataMutationError, ThreadMetadataRecord, ThreadMetadataState, UpdateThreadActivity,
-    UpdateTokenUsage,
-};
-pub use value::{
-    AvailabilitySnapshot, GeneratedTitle, RecordRevision, ThreadActivitySummary,
-    ThreadArchiveState, TokenUsageBreakdown, TokenUsageSnapshot, UnixMillis, ValueError,
-};
+pub use value::{AvailabilitySnapshot, RecordRevision, UnixMillis, ValueError};

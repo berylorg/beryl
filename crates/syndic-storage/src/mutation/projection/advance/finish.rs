@@ -22,9 +22,8 @@ impl AdvanceBuildRecords {
         resource_count: u64,
         output_digest: [u8; 32],
     ) -> Result<(), SyndicMutationError> {
-        let content = item
-            .payload()
-            .content()
+        let source = item
+            .projection_source()
             .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
         if finished {
             if checkpoint.consumed_source_bytes() != self.build.source_bytes()
@@ -56,7 +55,7 @@ impl AdvanceBuildRecords {
                 self.build.generation(),
                 self.build.format(),
                 item.revision(),
-                content,
+                source,
                 self.build.source_bytes(),
                 stable_projection_count,
                 stable_resource_count,
@@ -98,7 +97,7 @@ impl AdvanceBuildRecords {
                 self.build.revision().checked_next()?,
                 self.build.format(),
                 self.build.source_item_revision(),
-                self.build.source_content(),
+                self.build.source(),
                 self.build.source_bytes(),
                 projection_count,
                 resource_count,

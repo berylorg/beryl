@@ -1,5 +1,7 @@
 use std::num::NonZeroU64;
 
+use beryl_model::ImageLabelOrdinal;
+
 use super::SyndicValueError;
 
 macro_rules! one_based_value {
@@ -43,9 +45,29 @@ one_based_value!(
     "accepted-input ordinal"
 );
 one_based_value!(
-    /// Final nonzero per-thread label allocated to one durable image marker.
-    ImageLabelOrdinal,
-    "image-label ordinal"
+    /// Immutable identity of one accepted-input route generation.
+    AcceptedRouteGeneration,
+    "accepted-route generation"
+);
+one_based_value!(
+    /// Mutable revision of one accepted-input route generation.
+    AcceptedRouteRevision,
+    "accepted-route revision"
+);
+one_based_value!(
+    /// Immutable depth of one named thread in the thread-lineage chain.
+    ThreadLineageDepth,
+    "thread-lineage depth"
+);
+one_based_value!(
+    /// Revision binding one durable activity-query head and its cursors.
+    ActivityQueryRevision,
+    "activity-query revision"
+);
+one_based_value!(
+    /// Stable process work period selected by one activity-query head.
+    ActivityWorkPeriod,
+    "activity work period"
 );
 one_based_value!(
     /// Exact order of one resolved image marker in an admitted input.
@@ -73,6 +95,16 @@ one_based_value!(
     "item-projection generation"
 );
 one_based_value!(
+    /// Mutable revision of one bounded provider-item frame build.
+    ProviderItemBuildRevision,
+    "provider-item build revision"
+);
+one_based_value!(
+    /// Immutable identity of one selected provider-narrative generation.
+    ProviderNarrativeGeneration,
+    "provider-narrative generation"
+);
+one_based_value!(
     /// Immutable depth of one submitted turn, with roots at one.
     TurnDepth,
     "turn depth"
@@ -81,6 +113,26 @@ one_based_value!(
     /// Mutable lifecycle/frontier revision of one submitted turn.
     TurnStateRevision,
     "turn-state revision"
+);
+one_based_value!(
+    /// Mutable revision of one thread's generated-title and archive attributes.
+    ThreadAttributesRevision,
+    "thread-attributes revision"
+);
+one_based_value!(
+    /// Mutable revision of one thread's latest exact token-usage observation.
+    ThreadUsageRevision,
+    "thread-usage revision"
+);
+one_based_value!(
+    /// Exact generation of the CAS connection that admitted a compact control.
+    SyndicConnectionGeneration,
+    "connection generation"
+);
+one_based_value!(
+    /// Monotonic source order assigned to one compact provider control.
+    ProviderControlOrdinal,
+    "provider-control ordinal"
 );
 one_based_value!(
     /// Immutable revision of one discussion-context envelope.
@@ -117,6 +169,30 @@ one_based_value!(
     ResourceOrdinal,
     "resource ordinal"
 );
+
+/// Compact inclusive frontier of permanently reserved per-thread image labels.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ImageLabelFrontier(u64);
+
+impl ImageLabelFrontier {
+    /// No label has been reserved.
+    pub const EMPTY: Self = Self(0);
+
+    #[must_use]
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    #[must_use]
+    pub const fn contains(self, label: ImageLabelOrdinal) -> bool {
+        label.get() <= self.0
+    }
+}
 
 /// Caller-supplied milliseconds since the Unix epoch.
 ///

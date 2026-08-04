@@ -97,7 +97,6 @@ fn provider_operation_depth_does_not_seed_fork_or_resume_native_counts() {
             .turn(&store, turn, point_limit())
             .unwrap()
             .unwrap()
-            .record()
             .depth(),
         TurnDepth::FIRST
     );

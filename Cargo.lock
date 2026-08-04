@@ -554,22 +554,18 @@ dependencies = [
 name = "beryl-app"
 version = "0.1.0"
 dependencies = [
- "base64",
  "beryl-backend",
  "beryl-home-store",
  "beryl-model",
  "beryl-state",
+ "beryl-stream",
+ "getrandom 0.4.2",
  "gpui",
  "gpui-scrollbar",
  "gpui-settings-window",
  "gpui-text-input",
  "gpui_sum_tree",
- "image",
  "jsonc-parser",
- "markdown",
- "once_cell",
- "raw-window-handle",
- "regex",
  "rodio",
  "serde",
  "serde_json",
@@ -581,7 +577,6 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "tracing",
  "tungstenite",
- "unicode-segmentation",
  "windows 0.61.3",
 ]
 
@@ -589,12 +584,14 @@ dependencies = [
 name = "beryl-backend"
 version = "0.1.0"
 dependencies = [
- "base64",
  "beryl-model",
+ "beryl-stream",
+ "bounded-json",
  "getrandom 0.4.2",
  "hex",
  "serde",
  "serde_json",
+ "sha2",
  "shlex",
  "soketto",
  "tempfile",
@@ -628,6 +625,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -636,7 +634,16 @@ version = "0.1.0"
 dependencies = [
  "beryl-home-store",
  "beryl-model",
+ "sha2",
  "tempfile",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "beryl-stream"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -804,6 +811,10 @@ dependencies = [
  "futures-lite 2.6.1",
  "piper",
 ]
+
+[[package]]
+name = "bounded-json"
+version = "0.1.0"
 
 [[package]]
 name = "bstr"
@@ -1928,13 +1939,12 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 [[package]]
 name = "fjall"
 version = "3.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fcdc69609906151dff9b534e30eaf8515082055d36f628e382bd0b5d6a1d362"
 dependencies = [
  "byteorder-lite",
  "byteview",
  "dashmap",
  "flume 0.12.0",
+ "fs-id",
  "log",
  "lsm-tree",
  "lz4_flex",
@@ -2094,6 +2104,17 @@ dependencies = [
  "cc",
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "fs-id"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1648c1b89e98d042d61b5c1ed0fbcd9dbd7815163864d20f8e7976a9b3af938"
+dependencies = [
+ "libc",
+ "wasi",
+ "winapi",
 ]
 
 [[package]]
@@ -3200,8 +3221,6 @@ dependencies = [
 [[package]]
 name = "lsm-tree"
 version = "3.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39ca67401338b98d58447387dd5230552d2241bc388206e491d137b18dfea9d6"
 dependencies = [
  "byteorder-lite",
  "byteview",
@@ -3274,8 +3293,6 @@ dependencies = [
 [[package]]
 name = "lz4_flex"
 version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ef0d4ed8669f8f8826eb00dc878084aa8f253506c4fd5e8f58f5bce72ddb97e"
 dependencies = [
  "twox-hash",
 ]
@@ -3302,15 +3319,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62bb907fe88d54d8d9ce32a3cceab4218ed2f6b7d35617cafe9adf84e43919cb"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "markdown"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5cab8f2cadc416a82d2e783a1946388b31654d391d1c7d92cc1f03e295b1deb"
-dependencies = [
- "unicode-id",
 ]
 
 [[package]]
@@ -5441,6 +5449,8 @@ version = "0.1.0"
 dependencies = [
  "beryl-home-store",
  "beryl-model",
+ "beryl-state",
+ "beryl-stream",
  "sha2",
  "thiserror 2.0.18",
 ]
@@ -6043,12 +6053,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce61d488bcdc9bc8b5d1772c404828b17fc481c0a582b5581e95fb233aef503e"
 
 [[package]]
-name = "unicode-id"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70ba288e709927c043cbe476718d37be306be53fb1fafecd0dbe36d072be2580"
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6059,6 +6063,15 @@ name = "unicode-linebreak"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "unicode-properties"

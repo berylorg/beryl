@@ -28,15 +28,24 @@ That violates the authoritative rule that Beryl must never report a failed stora
 
 # Course Correction
 
-Fjall 3.1.6 was subsequently proved source-identical at the affected path. The Operator reported the defect upstream as [fjall-rs/fjall#304](https://github.com/fjall-rs/fjall/issues/304) and, on 2026-07-13, explicitly approved using the exact official 3.1.6 release while awaiting the response.
+Fjall 3.1.6 was subsequently proved source-identical at the affected path. The Operator reported the
+defect upstream as [fjall-rs/fjall#304](https://github.com/fjall-rs/fjall/issues/304). The interim
+decision to use that release while preserving the known gap is now superseded by Beryl's owned
+Fjall fork.
 
-Proceed through the ordinary Fjall batch-plus-`SyncAll` API and fail closed for every surfaced error. Keep the suppressed journal-write result as an explicit known dependency gap in `crates/beryl-home-store/doc/design.md`; do not mask it with an adapter, maximum-batch assumption, retry, dual write, or belief that write failures are permanently sticky. Do not claim that downstream fault verification proves this path safe.
+The owned fork propagates every journal-write failure before in-memory batch publication, requires
+an explicit durability mode when constructing a checked-capacity batch, and exposes stable commit
+state for every failure. Beryl's accepted sequence is a `PersistMode::Buffer` batch followed by an
+explicit `Database::persist(PersistMode::SyncAll)` barrier before reporting durable success.
+Deterministic non-production faults cover the formerly suppressed journal-write path.
 
-Adopting a corrected upstream release or an owned fork remains a later explicit decision.
+Beryl must cut production callers directly to that final API. No adapter, retry, dual write, or
+continued use of the inherited `OwnedWriteBatch` surface is an accepted correction.
 
 # Affected Authority
 
-- `doc/plan.md` Phase 1 records the accepted exception and is complete.
-- `doc/rework/beryl-home/REWORK.md` Checkpoint 2 records the resolved dependency gate and continuing known gap.
-- `crates/beryl-home-store/doc/design.md` owns the package-level known issue.
-- Any replacement Fjall artifact must still be re-investigated for batch error propagation, features, fail-closed forced recovery, snapshots, error variants, lock behavior, and fault-test support before adoption.
+- `../fjall-fork/doc/design.md` owns the corrected batch and durability contract.
+- `../fjall-fork/doc/rework/bounded-storage-api/REWORK.md` tracks final fork acceptance.
+- `doc/plan.md` Phase 42 accepts that fork boundary before the later Beryl caller cutover.
+- `crates/beryl-home-store/doc/design.md` owns Beryl's batch, persistence, health, and fault-test
+  requirements.

@@ -1,8 +1,8 @@
 use beryl_home_store::HomeStore;
 
 use crate::{
-    CanonicalItemPayload, CanonicalItemRecord, CasItemIndexRecord, CasItemSource, ContentLifecycle,
-    ContentManifestRecord, ResourceMetadataRecord, SyndicReadError, codec::*,
+    CanonicalItemPresentation, CanonicalItemRecord, CasItemIndexRecord, CasItemSource,
+    ContentLifecycle, ContentManifestRecord, ResourceMetadataRecord, SyndicReadError, codec::*,
     domain::SyndicStorage,
 };
 
@@ -15,7 +15,6 @@ pub struct SyndicCaptureItem {
     item: CanonicalItemRecord,
     content: Option<ContentManifestRecord>,
     resource: Option<ResourceMetadataRecord>,
-    stored_bytes: usize,
 }
 
 impl SyndicCaptureItem {
@@ -37,11 +36,6 @@ impl SyndicCaptureItem {
     #[must_use]
     pub const fn resource(&self) -> Option<&ResourceMetadataRecord> {
         self.resource.as_ref()
-    }
-
-    #[must_use]
-    pub const fn stored_bytes(&self) -> usize {
-        self.stored_bytes
     }
 }
 
@@ -67,11 +61,11 @@ impl SyndicStorage {
                 Some(_) => Err(concurrent()),
             };
         };
-        let index = first.record().clone();
+        let index = first.clone();
         let item = self.canonical_item(store, index.item_id(), limit)?.ok_or(
             SyndicReadError::Invariant("live-capture CAS item selects a missing canonical item"),
         )?;
-        let content = match item.record().payload().content() {
+        let content = match item.provider_content() {
             Some(content) => Some(self.content_manifest(store, content.id(), limit)?.ok_or(
                 SyndicReadError::Invariant(
                     "live-capture canonical item selects a missing content manifest",
@@ -79,8 +73,8 @@ impl SyndicStorage {
             )?),
             None => None,
         };
-        let resource = match item.record().payload() {
-            CanonicalItemPayload::GeneratedMedia(resource_id) => Some(
+        let resource = match item.presentation() {
+            CanonicalItemPresentation::GeneratedMedia { resource_id } => Some(
                 self.resource(store, *resource_id, limit)?
                     .ok_or(SyndicReadError::Invariant(
                         "live-capture generated item selects a missing resource",
@@ -91,64 +85,25 @@ impl SyndicStorage {
         let second = self
             .point::<CasItemIndexFamily>(store, key, limit)?
             .ok_or_else(concurrent)?;
-        if second.record() != &index {
+        if second != index {
             return Err(concurrent());
         }
         let resource_second = match &resource {
             Some(resource) => Some(
-                self.resource(store, resource.record().id(), limit)?
+                self.resource(store, resource.id(), limit)?
                     .ok_or_else(concurrent)?,
             ),
             None => None,
         };
-        if resource_second
-            .as_ref()
-            .map(super::SyndicStoredRecord::record)
-            != resource.as_ref().map(super::SyndicStoredRecord::record)
-        {
+        if resource_second.as_ref() != resource.as_ref() {
             return Err(concurrent());
         }
-        validate(
-            source,
-            &index,
-            item.record(),
-            content.as_ref().map(super::SyndicStoredRecord::record),
-            resource.as_ref().map(super::SyndicStoredRecord::record),
-        )?;
-        let stored_bytes = first
-            .stored_bytes()
-            .checked_add(item.stored_bytes())
-            .and_then(|bytes| {
-                bytes.checked_add(
-                    content
-                        .as_ref()
-                        .map_or(0, super::SyndicStoredRecord::stored_bytes),
-                )
-            })
-            .and_then(|bytes| {
-                bytes.checked_add(
-                    resource
-                        .as_ref()
-                        .map_or(0, super::SyndicStoredRecord::stored_bytes),
-                )
-            })
-            .and_then(|bytes| bytes.checked_add(second.stored_bytes()))
-            .and_then(|bytes| {
-                bytes.checked_add(
-                    resource_second
-                        .as_ref()
-                        .map_or(0, super::SyndicStoredRecord::stored_bytes),
-                )
-            })
-            .ok_or(SyndicReadError::Invariant(
-                "live-capture item stored-byte accounting overflowed",
-            ))?;
+        validate(source, &index, &item, content.as_ref(), resource.as_ref())?;
         Ok(Some(SyndicCaptureItem {
             cas_index: index,
-            item: item.record().clone(),
-            content: content.map(|record| record.record().clone()),
-            resource: resource.map(|record| record.record().clone()),
-            stored_bytes,
+            item,
+            content,
+            resource,
         }))
     }
 }
@@ -171,7 +126,7 @@ fn validate(
             "live-capture CAS item, canonical item, and content disagree",
         ));
     }
-    match (item.payload().content(), content) {
+    match (item.provider_content(), content) {
         (Some(expected), Some(content))
             if content.id() == expected.id()
                 && content.owner() == Some(item.id())
@@ -187,10 +142,10 @@ fn validate(
             ));
         }
     }
-    match (item.payload(), resource) {
-        (CanonicalItemPayload::GeneratedMedia(expected), Some(resource))
-            if resource.id() == *expected && resource.item_id() == item.id() => {}
-        (CanonicalItemPayload::GeneratedMedia(_), _) | (_, Some(_)) => {
+    match (item.presentation(), resource) {
+        (CanonicalItemPresentation::GeneratedMedia { resource_id }, Some(resource))
+            if resource.id() == *resource_id && resource.item_id() == item.id() => {}
+        (CanonicalItemPresentation::GeneratedMedia { .. }, _) | (_, Some(_)) => {
             return Err(SyndicReadError::Invariant(
                 "live-capture canonical item and resource disagree",
             ));

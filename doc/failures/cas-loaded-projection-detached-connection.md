@@ -21,7 +21,10 @@ injected replacement is admitted.
 
 Native persistent lineage may later resume after lease loss because CAS owns its rollout. Recovered
 injected lineage cannot use resume as proof that its synthetic prefix survived. A second connection
-to the same runtime and process is not a substitute for the original recovered lease.
+to the same runtime and process is not independently a substitute for the original recovered lease.
+The later narrative-mismatch design permits only an explicit overlapping handoff in which the old
+lease remains as a non-execution subscription anchor until the fresh connection has joined that
+exact in-memory thread.
 
 Affected implementation is `crates/beryl-app/src/cas_projection`, with durable recovered-retirement
 support in `syndic-storage`. Controlling authority is Phase 10 of `doc/plan.md` and the loaded

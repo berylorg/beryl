@@ -6,9 +6,18 @@ This is a normative supplemental GUI composition file for `design.md`. It owns t
 
 Mount-into: settings-window.page-content
 
-The Themes settings page is hosted inside the external `settings-window`. It appears as the Themes sidebar section and uses ordinary settings-window page layout and external `settings-row` widgets.
+The Themes settings page is hosted inside the external `settings-window`. It appears as the Themes
+sidebar section and uses the page-local split-list variant for installed themes plus ordinary
+external `settings-row` widgets for the selected theme's bounded detail and actions.
 
-Installed theme rows show theme name, stable id or copy-id action, active or modified state when applicable, and valid actions such as Activate, Rename, Delete, or Edit.
+The feature supplies one repository query generation, logical installed-theme count, bounded
+resident split-list pages, and stable theme identities. The page-local split list must accept a
+revision-bound paged item source and never retain the complete installed-theme collection; this is
+a required extension of the current external `settings-window` contract, not a Beryl-owned second
+settings shell.
+
+Installed theme rows show theme name, stable id or copy-id action, active or modified state when
+applicable, and valid actions such as Activate, Rename, Delete, or Edit.
 
 The active theme row exposes Save and Save As when the active theme has staged changes. Edit opens the theme editor subpage in the right pane.
 

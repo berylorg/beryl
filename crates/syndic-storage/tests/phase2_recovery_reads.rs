@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "phase2_recovery_reads/ordered.rs"]
+mod ordered;
 mod support;
 
 use beryl_home_store::{
@@ -9,8 +11,8 @@ use beryl_home_store::{
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
-    AcceptedInputRevision, BindingRevision, DiscussionContextOwnerId, InputGateRevision,
-    SyndicTurnId, ThreadRevision,
+    AcceptedInputRevision, BindingRevision, DiscussionContextOwnerId, DraftRevision,
+    InputGateRevision, SyndicDraftId, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
     FixtureBatch, FixtureRecord, PhysicalCorruption, PhysicalFamily,
@@ -18,10 +20,13 @@ use syndic_storage::test_faults::{
     inject_representative_physical_corruption, reset_current_binding_read_metrics,
 };
 use syndic_storage::{
-    AcceptedInputDisposition, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
-    AcceptedNextTurnIndexRecord, AcceptedOrderIndexRecord, BindingLifecycle, HistorySummaryRecord,
-    InputGateRecord, InputGateState, ItemProjectionGeneration, NextTurnReason, SourceEventSequence,
-    SyndicPointReadLimit, SyndicReadError, SyndicStorage, TranscriptGeneration,
+    AcceptedInputAdmissionProof, AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedInputRecord,
+    AcceptedNextSourceRecord, AcceptedOrderIndexRecord, AcceptedRouteEffectiveState,
+    AcceptedRouteGeneration, AcceptedRouteGenerationRecord, AcceptedRouteLeafRecord,
+    AcceptedRouteLeafState, AcceptedRouteRevision, AcceptedRouteTarget, BindingLifecycle,
+    DraftByThreadRecord, HistorySummaryRecord, InputGateRecord, InputGateState,
+    ItemProjectionGeneration, NextTurnReason, SelectedPathProof, SourceEventSequence,
+    SyndicPointReadLimit, SyndicReadError, SyndicStorage, ThreadRecord, TranscriptGeneration,
 };
 
 use support::populated::*;
@@ -29,7 +34,7 @@ use support::*;
 
 #[test]
 fn version_key_and_codec_corruption_fail_registration_verification_and_recovery() {
-    assert_eq!(PhysicalFamily::ALL.len(), 44);
+    assert_eq!(PhysicalFamily::ALL.len(), 61);
     for family in PhysicalFamily::ALL {
         for corruption in [
             PhysicalCorruption::UnsupportedRecordVersion,
@@ -118,33 +123,118 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let mut records = empty_thread_records(id(1), draft_id(2));
+    let final_thread_revision = ThreadRevision::new(3).unwrap();
+    for record in &mut records {
+        match record {
+            FixtureRecord::Thread(thread) => {
+                *thread = ThreadRecord::new(
+                    thread.id(),
+                    SelectedPathProof::new(
+                        thread.committed_tail(),
+                        final_thread_revision,
+                        thread.selected_path_digest(),
+                    ),
+                    thread.current_draft_id(),
+                    thread.lineage(),
+                    thread.image_label_frontiers(),
+                    thread.context_owner_id(),
+                );
+            }
+            FixtureRecord::DraftByThread(index) => {
+                *index = DraftByThreadRecord::new(
+                    index.thread_id(),
+                    index.draft_id(),
+                    index.draft_revision(),
+                    final_thread_revision,
+                );
+            }
+            FixtureRecord::HistorySummary(summary) => {
+                *summary = HistorySummaryRecord::new(
+                    summary.thread_id(),
+                    summary.revision().checked_next().unwrap(),
+                    final_thread_revision,
+                    summary.committed_tail(),
+                    summary.selected_path_digest(),
+                    summary.complete(),
+                    summary.last_activity_at(),
+                );
+            }
+            _ => {}
+        }
+    }
     for number in 1..=2_u64 {
         let input_id = beryl_model::SyndicAcceptedInputId::from_bytes(
             [u8::try_from(20 + number).unwrap(); 16],
         );
         let ordinal = AcceptedInputOrdinal::new(number).unwrap();
         let revision = AcceptedInputRevision::new(1).unwrap();
-        records.push(FixtureRecord::AcceptedInput(AcceptedInputRecord::new(
-            input_id,
-            id(1),
-            revision,
-            ordinal,
-            InputGateRevision::new(number + 1).unwrap(),
-            AcceptedInputDisposition::NextTurn(NextTurnReason::PendingTurn),
-            AcceptedInputLifecycle::Admitted,
-            empty_composer_content(),
-            0,
-            timestamp(number),
-        )));
+        let generation = AcceptedRouteGeneration::new(number).unwrap();
+        records.push(FixtureRecord::AcceptedInput(
+            AcceptedInputRecord::new(
+                input_id,
+                id(1),
+                ordinal,
+                AcceptedInputAdmissionProof::new(
+                    ThreadRevision::new(number).unwrap(),
+                    SyndicDraftId::from_bytes(*input_id.as_bytes()),
+                    DraftRevision::new(1).unwrap(),
+                    InputGateRevision::new(number).unwrap(),
+                    if number == 1 {
+                        SyndicDraftId::from_bytes([22; 16])
+                    } else {
+                        draft_id(2)
+                    },
+                )
+                .unwrap(),
+                generation,
+                empty_composer_content(),
+                None,
+                timestamp(1),
+            )
+            .unwrap(),
+        ));
         records.push(FixtureRecord::AcceptedOrder(AcceptedOrderIndexRecord::new(
             id(1),
             ordinal,
             input_id,
-            revision,
+            generation,
         )));
-        records.push(FixtureRecord::AcceptedNextTurn(
-            AcceptedNextTurnIndexRecord::new(id(1), ordinal, input_id, revision),
-        ));
+        records.extend([
+            FixtureRecord::AcceptedRouteGeneration(
+                AcceptedRouteGenerationRecord::new(
+                    id(1),
+                    generation,
+                    AcceptedRouteRevision::FIRST,
+                    AcceptedRouteTarget::NextTurn(NextTurnReason::PendingTurn),
+                    Some(ordinal),
+                    Some(ordinal),
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                )
+                .unwrap(),
+            ),
+            FixtureRecord::AcceptedRouteLeaf(AcceptedRouteLeafRecord::new(
+                input_id,
+                id(1),
+                generation,
+                ordinal,
+                revision,
+                AcceptedRouteLeafState::NextTurn(NextTurnReason::PendingTurn),
+                AcceptedInputLifecycle::Admitted,
+            )),
+            FixtureRecord::AcceptedNextSource(AcceptedNextSourceRecord::new(
+                id(1),
+                generation,
+                AcceptedRouteRevision::FIRST,
+                ordinal,
+                ordinal,
+            )),
+        ]);
     }
     records.retain(|record| !matches!(record, FixtureRecord::InputGate(_)));
     records.push(FixtureRecord::InputGate(
@@ -153,6 +243,8 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
             InputGateRevision::new(3).unwrap(),
             InputGateState::Idle,
             2,
+            Some(AcceptedRouteGeneration::new(2).unwrap()),
+            None,
             0,
             2,
             0,
@@ -169,29 +261,7 @@ fn primary_and_ordered_reads_enforce_caller_item_and_byte_bounds() {
         .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
         .unwrap()
         .unwrap();
-    assert_eq!(thread.record().id(), id(1));
-    assert!(thread.stored_bytes() > 1);
-    let thread_bytes = thread.stored_bytes();
-    assert_eq!(
-        storage
-            .thread(
-                &store,
-                id(1),
-                SyndicPointReadLimit::new(thread_bytes).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .stored_bytes(),
-        thread_bytes
-    );
-    assert!(matches!(
-        storage.thread(
-            &store,
-            id(1),
-            SyndicPointReadLimit::new(thread_bytes - 1).unwrap(),
-        ),
-        Err(SyndicReadError::Read(ReadError::BoundExceeded { .. }))
-    ));
+    assert_eq!(thread.id(), id(1));
 
     let page = storage
         .accepted_order(
@@ -246,12 +316,7 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
     let limit = SyndicPointReadLimit::new(65_536).unwrap();
 
     assert_eq!(
-        storage
-            .thread(&store, id(30), limit)
-            .unwrap()
-            .unwrap()
-            .record()
-            .id(),
+        storage.thread(&store, id(30), limit).unwrap().unwrap().id(),
         id(30)
     );
     assert_eq!(
@@ -259,7 +324,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .draft(&store, draft_id(31), limit)
             .unwrap()
             .unwrap()
-            .record()
             .thread_id(),
         id(30)
     );
@@ -269,7 +333,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .context_envelope(&store, owner, limit)
             .unwrap()
             .unwrap()
-            .record()
             .owner(),
         owner
     );
@@ -278,7 +341,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .turn(&store, source_turn(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .id(),
         source_turn()
     );
@@ -287,7 +349,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .turn_state(&store, source_turn(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .turn_id(),
         source_turn()
     );
@@ -296,7 +357,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .accepted_input(&store, next_input(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .id(),
         next_input()
     );
@@ -305,7 +365,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .canonical_item(&store, source_item(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .id(),
         source_item()
     );
@@ -314,7 +373,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .transcript_view_head(&store, id(30), limit)
             .unwrap()
             .unwrap()
-            .record()
             .entry_count(),
         1
     );
@@ -323,7 +381,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .projection(&store, source_projection(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .id(),
         source_projection()
     );
@@ -332,7 +389,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .resource(&store, source_resource(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .id(),
         source_resource()
     );
@@ -341,7 +397,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .history_summary(&store, id(30), limit)
             .unwrap()
             .unwrap()
-            .record()
             .complete()
     );
     let binding_revision = BindingRevision::new(3).unwrap();
@@ -349,13 +404,12 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
         .binding(&store, id(40), binding_revision, limit)
         .unwrap()
         .unwrap();
-    assert_eq!(binding.record().revision(), binding_revision);
+    assert_eq!(binding.revision(), binding_revision);
     assert_eq!(
         storage
             .execution_snapshot(&store, active_snapshot(), limit)
             .unwrap()
             .unwrap()
-            .record()
             .active_turn_id(),
         active_turn()
     );
@@ -364,7 +418,6 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
             .source_event(&store, active_turn(), SourceEventSequence::FIRST, limit)
             .unwrap()
             .unwrap()
-            .record()
             .sequence(),
         SourceEventSequence::FIRST
     );
@@ -376,149 +429,10 @@ fn populated_point_and_current_binding_reads_expose_exact_public_records() {
         .unwrap();
     assert_eq!(current.head().revision(), binding_revision);
     assert_eq!(current.head().lifecycle(), BindingLifecycle::Active);
-    assert_eq!(current.binding(), binding.record());
-    assert!(current.stored_bytes() > binding.stored_bytes());
+    assert_eq!(current.binding(), &binding);
     let components = current_binding_read_metrics();
-    assert_eq!(components.binding_bytes(), binding.stored_bytes());
-    assert_eq!(
-        components.first_head_bytes(),
-        components.second_head_bytes()
-    );
-    assert_eq!(
-        current.stored_bytes(),
-        components
-            .first_head_bytes()
-            .checked_add(components.binding_bytes())
-            .and_then(|bytes| bytes.checked_add(components.second_head_bytes()))
-            .unwrap()
-    );
-    store.close().unwrap();
-}
-
-#[test]
-fn populated_ordered_pages_preserve_cursor_continuation_and_index_getters() {
-    let home = TestHome::new("populated-ordered-reads");
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, storage, batch(populated_records()));
-    let one = CursorReadLimits::new(1, 65_536).unwrap();
-
-    let accepted = storage.accepted_order(&store, id(40), None, one).unwrap();
-    assert_eq!(accepted.records()[0].input_id(), steering_input());
-    assert!(accepted.has_more());
-    assert!(accepted.stored_bytes() > 0);
-    let accepted_tail = storage
-        .accepted_order(&store, id(40), Some(accepted.records()[0].ordinal()), one)
-        .unwrap();
-    assert_eq!(accepted_tail.records()[0].input_id(), next_input());
-    assert!(!accepted_tail.has_more());
-
-    let next = storage
-        .accepted_next_turn(&store, id(40), None, one)
-        .unwrap();
-    assert_eq!(next.records()[0].input_id(), next_input());
-    let events = storage
-        .source_events(&store, active_turn(), None, one)
-        .unwrap();
-    assert_eq!(events.records()[0].sequence(), SourceEventSequence::FIRST);
-    let items = storage
-        .turn_items(&store, source_turn(), None, one)
-        .unwrap();
-    assert_eq!(items.records()[0].item_id(), source_item());
-    let transcript = storage
-        .transcript_entries(&store, id(30), TranscriptGeneration::FIRST, None, one)
-        .unwrap();
-    assert_eq!(transcript.records()[0].projection_id(), source_projection());
-    let projections = storage
-        .item_projections(
-            &store,
-            source_item(),
-            ItemProjectionGeneration::FIRST,
-            None,
-            one,
-        )
-        .unwrap();
-    assert_eq!(
-        projections.records()[0].projection_id(),
-        source_projection()
-    );
-    let resources = storage
-        .projection_resources(&store, source_resource_projection(), None, one)
-        .unwrap();
-    assert_eq!(resources.records()[0].resource_id(), source_resource());
-
-    let binding_one = BindingRevision::new(1).unwrap();
-    let history = storage.binding_history(&store, id(40), None, one).unwrap();
-    assert_eq!(history.records()[0].revision(), binding_one);
-    assert!(history.has_more());
-    let history_tail = storage
-        .binding_history(&store, id(40), Some(binding_one), one)
-        .unwrap();
-    assert_eq!(history_tail.records()[0].revision().get(), 2);
-    assert!(history_tail.has_more());
-    let history_end = storage
-        .binding_history(&store, id(40), Some(BindingRevision::new(2).unwrap()), one)
-        .unwrap();
-    assert_eq!(history_end.records()[0].revision().get(), 3);
-    assert!(!history_end.has_more());
-
-    let children = storage
-        .turn_children(&store, SyndicTurnId::from_bytes([29; 16]), None, one)
-        .unwrap();
-    assert_eq!(children.records()[0].child_id(), source_turn());
-    store.close().unwrap();
-}
-
-#[test]
-fn successful_recovery_requires_old_handle_reacquisition() {
-    let home = TestHome::new("reacquire");
-    let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
-        HomeOpenOptions::new(home.path(), HomeSchemaVersion::CURRENT),
-        faults.clone(),
-    )
-    .unwrap();
-    let old = SyndicStorage::register(&mut store).unwrap();
-    commit(&store, old, batch(empty_thread_records(id(1), draft_id(2))));
-
-    let replacement = HistorySummaryRecord::new(
-        id(1),
-        ThreadRevision::new(1).unwrap(),
-        None,
-        syndic_storage::empty_selected_path_digest(),
-        true,
-        timestamp(1),
-    );
-    let mut fixture = FixtureBatch::new();
-    fixture
-        .put(FixtureRecord::HistorySummary(replacement))
-        .unwrap();
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(old.fixture_contribution(old.revision(&store).unwrap(), fixture))
-        .unwrap();
-    faults.fail_next(FaultPoint::BeforeCommit);
-    assert!(store.execute(command).is_err());
-    assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-    faults.fail_next(FaultPoint::BeforeVerification);
-    assert!(store.verify_health().is_err());
-    assert_eq!(store.health().state(), HomeHealthState::Failed);
-    store.recover_same_home().unwrap();
-    assert_eq!(store.health().state(), HomeHealthState::Healthy);
-
-    assert!(matches!(
-        old.thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap()),
-        Err(SyndicReadError::Read(ReadError::ForeignDomain {
-            domain: "syndic"
-        }))
-    ));
-    let current = SyndicStorage::reacquire(&store).unwrap();
-    assert!(
-        current
-            .thread(&store, id(1), SyndicPointReadLimit::new(1_024).unwrap())
-            .unwrap()
-            .is_some()
-    );
+    assert_eq!(components.first_head_reads(), 1);
+    assert_eq!(components.binding_reads(), 1);
+    assert_eq!(components.second_head_reads(), 1);
     store.close().unwrap();
 }

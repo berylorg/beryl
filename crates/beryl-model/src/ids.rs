@@ -238,6 +238,11 @@ stable_identity!(
     "syndic_execution_"
 );
 stable_identity!(
+    /// Caller-owned durable identity for one unpublished provider observation.
+    ProviderObservationId,
+    "provider_observation_"
+);
+stable_identity!(
     /// Stable identity for one admitted cross-domain command.
     CommandId,
     "command_"

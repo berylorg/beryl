@@ -1,155 +1,152 @@
-use std::sync::mpsc::{self, TrySendError};
-
 use super::{
-    EventRouter, LiveEventTargetCloseReason, LiveEventTargetError,
-    LiveEventTargetRegistrationError, QueuedLiveEvent, RouteOutcome, RoutedLiveEvent, RouterState,
-    TargetEntry, TargetRegistration, TargetTurn,
-    classify::{EventScope, classify},
-    target::{close_target, invalidation, reserve_bytes, retire_router_state},
+    EventRouter, LiveEventTargetCloseReason, LongLivedAuthoritySettlement, RouterState,
+    TargetRegistration,
+    target::{close_target, fence_thread_lane, retire_router_state},
 };
 use crate::cas_projection::ProjectionCoordinatorError;
-use beryl_backend::TurnStreamEvent;
-use beryl_model::{
-    CasLoadedSessionGeneration, CasProcessGeneration, CasThreadId, CasTurnId, DynamicToolCallId,
-    RuntimeId, SyndicThreadId,
-};
+use beryl_model::{CasProcessGeneration, CasThreadId, RuntimeId};
+
+pub(in crate::cas_projection::connection) enum TargetProjectionDropSettlement {
+    Ordinary {
+        projection: crate::cas_projection::LoadedCasProjection,
+        connection_retired: bool,
+    },
+    PersistentFailure,
+    Unavailable(crate::cas_projection::LoadedCasProjection),
+}
 
 impl EventRouter {
+    /// Settles one exact long-lived router owner on the ordinary side of the master cut.
+    ///
+    /// Router authority is acquired before the gate mutex. The transition must remain a bounded
+    /// in-memory mutation and must not wait, perform I/O, or reacquire router authority.
+    pub(super) fn settle_long_lived_authority<T>(
+        &self,
+        settle: impl FnOnce(&mut RouterState) -> T,
+    ) -> LongLivedAuthoritySettlement<T> {
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(_) => return LongLivedAuthoritySettlement::Unavailable,
+        };
+        let state = std::cell::RefCell::new(&mut *state);
+        let settle = std::cell::RefCell::new(Some(settle));
+        let settle_ordinary = || {
+            let settle = settle
+                .borrow_mut()
+                .take()
+                .expect("one gate branch settles long-lived router authority");
+            LongLivedAuthoritySettlement::Settled(settle(&mut **state.borrow_mut()))
+        };
+        self.commands
+            .settle_authority(
+                settle_ordinary,
+                |_| LongLivedAuthoritySettlement::PreservedForPersistentFailure,
+                settle_ordinary,
+            )
+            .unwrap_or(LongLivedAuthoritySettlement::Unavailable)
+    }
+
+    #[cfg(test)]
+    pub(in crate::cas_projection) fn authorize_command_for_test(
+        &self,
+    ) -> Result<
+        crate::cas_projection::LiveCommandPermit,
+        crate::cas_projection::LiveCommandAdmissionError,
+    > {
+        self.commands.authorize()
+    }
+
+    #[cfg(test)]
     pub(in crate::cas_projection) fn new(
         runtime_id: RuntimeId,
         process_generation: CasProcessGeneration,
         connection_generation: u64,
     ) -> Result<Self, ProjectionCoordinatorError> {
-        let process = super::process::acquire_process_projection(runtime_id, process_generation)?;
-        process.register_connection(connection_generation)?;
+        let gate = crate::cas_projection::persistent_failure::MasterCommandGate::new(
+            crate::cas_projection::ProjectionServiceGeneration::allocate()
+                .map_err(|_| ProjectionCoordinatorError::ProjectionServiceGenerationExhausted)?,
+            None,
+        );
+        Self::new_with_scheduler(
+            runtime_id,
+            process_generation,
+            connection_generation,
+            crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal::new(),
+            gate.authorizer(),
+            None,
+        )
+    }
+
+    pub(in crate::cas_projection) fn new_with_scheduler(
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        connection_generation: u64,
+        scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
+        commands: crate::cas_projection::LiveCommandAuthorizer,
+        projection_retainer: Option<
+            crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+        >,
+    ) -> Result<Self, ProjectionCoordinatorError> {
+        let process = super::process::StableConnectionProcessFact::register(
+            runtime_id,
+            process_generation,
+            connection_generation,
+        )?;
+        Self::new_with_process(
+            runtime_id,
+            process_generation,
+            connection_generation,
+            scheduler_signal,
+            commands,
+            projection_retainer,
+            process.observe(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::cas_projection::connection) fn new_with_process(
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        connection_generation: u64,
+        scheduler_signal: crate::cas_projection::accepted_input_scheduler::AcceptedInputSchedulerSignal,
+        commands: crate::cas_projection::LiveCommandAuthorizer,
+        projection_retainer: Option<
+            crate::cas_projection::persistent_failure::PersistentFailureProjectionRetainer,
+        >,
+        process: super::process::ProcessEventObservation,
+    ) -> Result<Self, ProjectionCoordinatorError> {
         Ok(Self {
             runtime_id,
             process_generation,
             connection_generation,
             process,
+            commands,
+            projection_retainer,
             state: std::sync::Mutex::new(RouterState {
                 revision: 0,
                 next_registration: 0,
+                next_steering_attempt: 0,
+                active_steering_attempt: None,
+                active_steering_attempt_waiter: false,
+                next_stop_election: 0,
+                active_stop_election: None,
+                persistent_failure: None,
                 retired: None,
                 targets: std::collections::HashMap::new(),
                 retired_thread_lanes: std::collections::HashSet::new(),
-                routed_event_count: 0,
-                unmatched_event_count: 0,
-                rejected_event_count: 0,
-                overflow_count: 0,
+                routed_operation_count: 0,
+                unmatched_operation_count: 0,
+                rejected_operation_count: 0,
+                queue_pressure_count: 0,
                 quiet_poll_count: 0,
             }),
+            publication_changed: std::sync::Condvar::new(),
+            scheduler_signal,
+            #[cfg(test)]
+            stop_election_wait_observer: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            terminal_publication_wait_observer: std::sync::Mutex::new(None),
         })
-    }
-
-    pub(in crate::cas_projection) fn register(
-        &self,
-        key: super::LoadedThreadKey,
-        owner: SyndicThreadId,
-        loaded_generation: CasLoadedSessionGeneration,
-        turn_id: Option<CasTurnId>,
-    ) -> Result<TargetRegistration, LiveEventTargetRegistrationError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| LiveEventTargetRegistrationError::RouterPoisoned)?;
-        if state.retired.is_some() {
-            return Err(LiveEventTargetRegistrationError::ConnectionRetired);
-        }
-        if state.targets.contains_key(&key.cas_thread_id) {
-            return Err(LiveEventTargetRegistrationError::TargetAlreadyRegistered {
-                thread_id: key.cas_thread_id.clone(),
-            });
-        }
-        if state.retired_thread_lanes.contains(&key.cas_thread_id) {
-            return Err(LiveEventTargetRegistrationError::TargetGenerationRetired {
-                thread_id: key.cas_thread_id.clone(),
-            });
-        }
-        state.next_registration = state
-            .next_registration
-            .checked_add(1)
-            .ok_or(LiveEventTargetRegistrationError::GenerationExhausted)?;
-        let registration = state.next_registration;
-        let (sender, receiver) = mpsc::sync_channel(super::LIVE_EVENT_TARGET_QUEUE_COUNT_LIMIT);
-        let queued_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let queued_bytes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let terminal = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let start_dispatched = turn_id.is_some();
-        state.targets.insert(
-            key.cas_thread_id.clone(),
-            TargetEntry {
-                registration,
-                key: key.clone(),
-                owner,
-                loaded_generation,
-                turn_state: if turn_id.is_some() {
-                    TargetTurn::Exact
-                } else {
-                    TargetTurn::AwaitingStart
-                },
-                turn_id,
-                start_dispatched,
-                dynamic_tool_requests: std::collections::HashMap::new(),
-                sender,
-                queued_count: std::sync::Arc::clone(&queued_count),
-                queued_bytes: std::sync::Arc::clone(&queued_bytes),
-                terminal: std::sync::Arc::clone(&terminal),
-            },
-        );
-        advance_revision(&mut state);
-        Ok(TargetRegistration {
-            registration,
-            key,
-            owner,
-            loaded_generation,
-            receiver,
-            queued_count,
-            queued_bytes,
-            terminal,
-        })
-    }
-
-    pub(in crate::cas_projection) fn confirm_turn(
-        &self,
-        registration: &TargetRegistration,
-        turn_id: CasTurnId,
-    ) -> Result<(), LiveEventTargetError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| LiveEventTargetError::RouterPoisoned)?;
-        let Some(target) = state.targets.get_mut(&registration.key.cas_thread_id) else {
-            return Err(LiveEventTargetError::TargetClosed);
-        };
-        if target.registration != registration.registration {
-            return Err(LiveEventTargetError::TargetClosed);
-        }
-        match target.turn_id.as_ref() {
-            Some(observed) if observed != &turn_id => {
-                let actual = observed.clone();
-                let connection_retired = close_target(
-                    &mut state,
-                    &registration.key.cas_thread_id,
-                    LiveEventTargetCloseReason::ConflictingTurnIdentity,
-                );
-                if connection_retired {
-                    Err(LiveEventTargetError::ConnectionRetired)
-                } else {
-                    Err(LiveEventTargetError::ConflictingTurnIdentity {
-                        expected: turn_id,
-                        actual,
-                    })
-                }
-            }
-            Some(_) => Ok(()),
-            None => {
-                target.turn_state = TargetTurn::Exact;
-                target.turn_id = Some(turn_id);
-                advance_revision(&mut state);
-                Ok(())
-            }
-        }
     }
 
     pub(in crate::cas_projection) fn unregister(
@@ -157,307 +154,273 @@ impl EventRouter {
         registration: &TargetRegistration,
         reason: LiveEventTargetCloseReason,
     ) -> bool {
+        match self.commands.authorize() {
+            Ok(command) => self.unregister_admitted(&command, registration, reason),
+            Err(_) if self.commands.is_persistent_failure_cut() => false,
+            Err(_) => self.unregister_after_ordinary_close(registration, reason),
+        }
+    }
+
+    pub(in crate::cas_projection::connection) fn settle_abandoned_target_projection(
+        &self,
+        registration: &TargetRegistration,
+        projection: crate::cas_projection::LoadedCasProjection,
+    ) -> TargetProjectionDropSettlement {
+        enum GateSettlement {
+            Ordinary {
+                projection: crate::cas_projection::LoadedCasProjection,
+                connection_retired: bool,
+            },
+            PersistentFailure,
+            RetainAfterCut(crate::cas_projection::LoadedCasProjection),
+        }
+
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(_) => return TargetProjectionDropSettlement::Unavailable(projection),
+        };
+        let state_cell = std::cell::RefCell::new(&mut *state);
+        let projection_cell = std::cell::RefCell::new(Some(projection));
+        let settle_ordinary = || {
+            let connection_retired = unregister_locked(
+                *state_cell.borrow_mut(),
+                registration,
+                LiveEventTargetCloseReason::ReceiverAbandoned,
+            );
+            GateSettlement::Ordinary {
+                projection: projection_cell
+                    .borrow_mut()
+                    .take()
+                    .expect("target drop settles its exact loaded projection once"),
+                connection_retired,
+            }
+        };
+        let settle_closed = || {
+            let connection_retired = unregister_locked(
+                *state_cell.borrow_mut(),
+                registration,
+                LiveEventTargetCloseReason::ReceiverAbandoned,
+            );
+            GateSettlement::Ordinary {
+                projection: projection_cell
+                    .borrow_mut()
+                    .take()
+                    .expect("closed target drop settles its exact loaded projection once"),
+                connection_retired,
+            }
+        };
+        let settlement = self.commands.settle_authority(
+            settle_ordinary,
+            |_| {
+                let mut state = state_cell.borrow_mut();
+                let thread_id = &registration.key.cas_thread_id;
+                let matching = state.targets.get(thread_id).is_some_and(|target| {
+                    target.registration == registration.registration
+                        && target.owner == registration.owner
+                        && target.loaded_generation == registration.loaded_generation
+                });
+                let already_frozen = state.persistent_failure.is_some();
+                if matching && !already_frozen {
+                    let target = state
+                        .targets
+                        .get_mut(thread_id)
+                        .expect("validated failure target remains under the router lock");
+                    if target.persistent_failure_projection.is_none() {
+                        target.persistent_failure_projection = projection_cell.borrow_mut().take();
+                        return GateSettlement::PersistentFailure;
+                    }
+                }
+                GateSettlement::RetainAfterCut(
+                    projection_cell
+                        .borrow_mut()
+                        .take()
+                        .expect("failure target projection remains available for retention"),
+                )
+            },
+            settle_closed,
+        );
+        drop(state_cell);
+        drop(state);
+        self.publication_changed.notify_all();
+
+        let settlement = match settlement {
+            Ok(settlement) => settlement,
+            Err(_) => {
+                return TargetProjectionDropSettlement::Unavailable(
+                    projection_cell
+                        .borrow_mut()
+                        .take()
+                        .expect("unsettled target drop retains its projection"),
+                );
+            }
+        };
+        match settlement {
+            GateSettlement::Ordinary {
+                projection,
+                connection_retired,
+            } => TargetProjectionDropSettlement::Ordinary {
+                projection,
+                connection_retired,
+            },
+            GateSettlement::PersistentFailure => TargetProjectionDropSettlement::PersistentFailure,
+            GateSettlement::RetainAfterCut(projection) => {
+                if let Some(retainer) = self.projection_retainer.clone() {
+                    retainer.retain_target(projection);
+                    TargetProjectionDropSettlement::PersistentFailure
+                } else {
+                    TargetProjectionDropSettlement::Unavailable(projection)
+                }
+            }
+        }
+    }
+
+    pub(super) fn unregister_admitted(
+        &self,
+        command: &crate::cas_projection::LiveCommandPermit,
+        registration: &TargetRegistration,
+        reason: LiveEventTargetCloseReason,
+    ) -> bool {
         let Ok(mut state) = self.state.lock() else {
             return true;
         };
-        if state
-            .targets
-            .get(&registration.key.cas_thread_id)
-            .is_some_and(|target| target.registration == registration.registration)
-        {
-            return close_target(&mut state, &registration.key.cas_thread_id, reason);
-        }
-        false
+        let retired = command
+            .commit_if_current(|| unregister_locked(&mut state, registration, reason))
+            .unwrap_or(false);
+        drop(state);
+        self.publication_changed.notify_all();
+        retired
+    }
+
+    fn unregister_after_ordinary_close(
+        &self,
+        registration: &TargetRegistration,
+        reason: LiveEventTargetCloseReason,
+    ) -> bool {
+        let Ok(mut state) = self.state.lock() else {
+            return true;
+        };
+        let retired = unregister_locked(&mut state, registration, reason);
+        drop(state);
+        self.publication_changed.notify_all();
+        retired
     }
 
     pub(in crate::cas_projection) fn retire(&self, reason: LiveEventTargetCloseReason) {
+        let command = match self.commands.authorize() {
+            Ok(command) => Some(command),
+            Err(_) if self.commands.is_persistent_failure_cut() => return,
+            Err(_) => None,
+        };
         let mut state = match self.state.lock() {
             Ok(state) => state,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let effective_reason = state.retired.unwrap_or(reason);
-        retire_router_state(&mut state, effective_reason);
+        let mut retire = || retire_locked(&mut state, reason);
+        let effective_reason = match command.as_ref() {
+            Some(command) => command.commit_if_current(retire).ok().flatten(),
+            None => retire(),
+        };
         drop(state);
-        self.process
-            .retire_connection(self.connection_generation, effective_reason);
+        if effective_reason.is_some() {
+            self.publication_changed.notify_all();
+        }
     }
 
-    pub(in crate::cas_projection) fn record_quiet_poll(&self) {
+    pub(in crate::cas_projection) fn record_quiet_poll(
+        &self,
+        command: &crate::cas_projection::LiveCommandPermit,
+    ) {
         if let Ok(mut state) = self.state.lock() {
-            state.quiet_poll_count = state.quiet_poll_count.saturating_add(1);
-            advance_revision(&mut state);
+            let _ = command.commit_if_current(|| {
+                if state.retired.is_none() && state.persistent_failure.is_none() {
+                    state.quiet_poll_count = state.quiet_poll_count.saturating_add(1);
+                    advance_revision(&mut state);
+                }
+            });
         }
+    }
+
+    /// Records one connection-scoped remote thread closure before loaded authority is revoked.
+    ///
+    /// This lane mutation deliberately does not use the service command gate: a close already read
+    /// by the stable connection remains authoritative on either side of persistent-failure
+    /// election. The caller must release this router lock before acquiring connection authority.
+    pub(in crate::cas_projection) fn record_thread_closed(
+        &self,
+        thread_id: &CasThreadId,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        let mut state =
+            self.state
+                .lock()
+                .map_err(|_| ProjectionCoordinatorError::RegistryPoisoned {
+                    registry: crate::cas_projection::ProjectionRegistryKind::LiveEventRouter,
+                })?;
+        let connection_retired = if state.retired.is_some() {
+            true
+        } else if state.targets.contains_key(thread_id) {
+            close_target(
+                &mut state,
+                thread_id,
+                LiveEventTargetCloseReason::ThreadClosed,
+            )
+        } else {
+            let connection_retired = fence_thread_lane(&mut state, thread_id);
+            if !connection_retired {
+                advance_revision(&mut state);
+            }
+            connection_retired
+        };
+        drop(state);
+        self.publication_changed.notify_all();
+        Ok(connection_retired)
+    }
+
+    pub(in crate::cas_projection) fn permits_reacquisition_thread(
+        &self,
+        thread_id: &CasThreadId,
+    ) -> Result<bool, ProjectionCoordinatorError> {
+        let state =
+            self.state
+                .lock()
+                .map_err(|_| ProjectionCoordinatorError::RegistryPoisoned {
+                    registry: crate::cas_projection::ProjectionRegistryKind::LiveEventRouter,
+                })?;
+        Ok(state.retired.is_none()
+            && state.persistent_failure.is_none()
+            && !state.targets.contains_key(thread_id)
+            && !state.retired_thread_lanes.contains(thread_id))
     }
 }
 
-impl EventRouter {
-    pub(in crate::cas_projection) fn route(
-        &self,
-        event: TurnStreamEvent,
-        approximate_retained_bytes: usize,
-    ) -> RouteOutcome {
-        let scope = match classify(&event) {
-            Ok(scope) => scope,
-            Err(()) => {
-                if let Ok(mut state) = self.state.lock() {
-                    state.rejected_event_count = state.rejected_event_count.saturating_add(1);
-                    advance_revision(&mut state);
-                }
-                return RouteOutcome::RetireConnection(
-                    LiveEventTargetCloseReason::InvalidEventIdentity,
-                );
-            }
-        };
-        if matches!(scope, EventScope::ProtocolError) {
-            return RouteOutcome::RetireConnection(LiveEventTargetCloseReason::ProtocolError);
-        }
-        let mut state = match self.state.lock() {
-            Ok(state) => state,
-            Err(_) => {
-                return RouteOutcome::RetireConnection(LiveEventTargetCloseReason::StreamFailure);
-            }
-        };
-        if state.retired.is_some() {
-            state.rejected_event_count = state.rejected_event_count.saturating_add(1);
-            advance_revision(&mut state);
-            return RouteOutcome::Continue;
-        }
-        match scope {
-            EventScope::Account(rate_limits) => {
-                match self
-                    .process
-                    .publish_account(self.connection_generation, rate_limits)
-                {
-                    Ok(true) => RouteOutcome::Continue,
-                    Ok(false) | Err(_) => {
-                        RouteOutcome::RetireConnection(LiveEventTargetCloseReason::StreamFailure)
-                    }
-                }
-            }
-            EventScope::Thread {
-                thread_id,
-                closes_target,
-            } => self.route_target_locked(
-                &mut state,
-                event,
-                approximate_retained_bytes,
-                thread_id,
-                None,
-                false,
-                false,
-                closes_target,
-            ),
-            EventScope::Turn {
-                thread_id,
-                turn_id,
-                starts_turn,
-                completes_turn,
-            } => self.route_target_locked(
-                &mut state,
-                event,
-                approximate_retained_bytes,
-                thread_id,
-                Some(turn_id),
-                starts_turn,
-                completes_turn,
-                false,
-            ),
-            EventScope::ProtocolError => unreachable!("protocol errors return before routing"),
-        }
+fn unregister_locked(
+    state: &mut RouterState,
+    registration: &TargetRegistration,
+    reason: LiveEventTargetCloseReason,
+) -> bool {
+    if state.persistent_failure.is_some() {
+        return false;
     }
+    if state
+        .targets
+        .get(&registration.key.cas_thread_id)
+        .is_some_and(|target| target.registration == registration.registration)
+    {
+        close_target(state, &registration.key.cas_thread_id, reason)
+    } else {
+        false
+    }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    fn route_target_locked(
-        &self,
-        state: &mut RouterState,
-        event: TurnStreamEvent,
-        approximate_retained_bytes: usize,
-        thread_id: CasThreadId,
-        turn_id: Option<CasTurnId>,
-        starts_turn: bool,
-        completes_turn: bool,
-        closes_target: bool,
-    ) -> RouteOutcome {
-        let Some(target) = state.targets.get_mut(&thread_id) else {
-            state.unmatched_event_count = state.unmatched_event_count.saturating_add(1);
-            advance_revision(state);
-            return RouteOutcome::Continue;
-        };
-        if target.turn_state == TargetTurn::Terminal {
-            let invalidation =
-                invalidation(target, LiveEventTargetCloseReason::EventAfterTurnCompletion);
-            if close_target(
-                state,
-                &thread_id,
-                LiveEventTargetCloseReason::EventAfterTurnCompletion,
-            ) {
-                return RouteOutcome::RetireConnection(
-                    LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                );
-            }
-            return RouteOutcome::InvalidateTarget(invalidation);
-        }
-        if let Some(actual_turn) = turn_id.as_ref() {
-            match (&target.turn_state, target.turn_id.as_ref()) {
-                (TargetTurn::AwaitingStart, None) if starts_turn => {
-                    target.turn_state = TargetTurn::Exact;
-                    target.turn_id = Some(actual_turn.clone());
-                }
-                (TargetTurn::AwaitingStart, None) => {
-                    let invalidation =
-                        invalidation(target, LiveEventTargetCloseReason::EventBeforeTurnStart);
-                    if close_target(
-                        state,
-                        &thread_id,
-                        LiveEventTargetCloseReason::EventBeforeTurnStart,
-                    ) {
-                        return RouteOutcome::RetireConnection(
-                            LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                        );
-                    }
-                    return RouteOutcome::InvalidateTarget(invalidation);
-                }
-                (TargetTurn::Exact | TargetTurn::Terminal, Some(expected))
-                    if expected == actual_turn => {}
-                (_, Some(_)) => {
-                    let invalidation =
-                        invalidation(target, LiveEventTargetCloseReason::ConflictingTurnIdentity);
-                    if close_target(
-                        state,
-                        &thread_id,
-                        LiveEventTargetCloseReason::ConflictingTurnIdentity,
-                    ) {
-                        return RouteOutcome::RetireConnection(
-                            LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                        );
-                    }
-                    return RouteOutcome::InvalidateTarget(invalidation);
-                }
-                _ => {
-                    return RouteOutcome::RetireConnection(
-                        LiveEventTargetCloseReason::StreamFailure,
-                    );
-                }
-            }
-        }
-        let dynamic_tool_request = match &event {
-            TurnStreamEvent::DynamicToolCallRequested(request) => Some(request.clone()),
-            _ => None,
-        };
-        let retained_bytes = approximate_retained_bytes.max(1);
-        if !reserve_bytes(&target.queued_bytes, retained_bytes) {
-            let invalidation = invalidation(target, LiveEventTargetCloseReason::QueueOverflow);
-            state.overflow_count = state.overflow_count.saturating_add(1);
-            if close_target(state, &thread_id, LiveEventTargetCloseReason::QueueOverflow) {
-                return RouteOutcome::RetireConnection(
-                    LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                );
-            }
-            return RouteOutcome::InvalidateTarget(invalidation);
-        }
-        target
-            .queued_count
-            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-        let routed = RoutedLiveEvent {
-            thread_id: thread_id.clone(),
-            turn_id,
-            event: Box::new(event),
-            approximate_retained_bytes: retained_bytes,
-        };
-        match target.sender.try_send(QueuedLiveEvent {
-            event: routed,
-            retained_bytes,
-        }) {
-            Ok(()) => {
-                if let Some(request) = dynamic_tool_request {
-                    let call_id = DynamicToolCallId::new(request.call_id())
-                        .expect("classified dynamic-tool call identity remains valid");
-                    if target.dynamic_tool_requests.len()
-                        >= super::LIVE_EVENT_TARGET_QUEUE_COUNT_LIMIT
-                        || target
-                            .dynamic_tool_requests
-                            .insert(call_id, request)
-                            .is_some()
-                    {
-                        let invalidation = invalidation(
-                            target,
-                            LiveEventTargetCloseReason::ConflictingDynamicToolIdentity,
-                        );
-                        if close_target(
-                            state,
-                            &thread_id,
-                            LiveEventTargetCloseReason::ConflictingDynamicToolIdentity,
-                        ) {
-                            return RouteOutcome::RetireConnection(
-                                LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                            );
-                        }
-                        return RouteOutcome::InvalidateTarget(invalidation);
-                    }
-                }
-                if completes_turn {
-                    target.turn_state = TargetTurn::Terminal;
-                }
-                state.routed_event_count = state.routed_event_count.saturating_add(1);
-                advance_revision(state);
-                if closes_target {
-                    let target = state
-                        .targets
-                        .get(&thread_id)
-                        .expect("routed target remains registered");
-                    let invalidation =
-                        invalidation(target, LiveEventTargetCloseReason::ThreadClosed);
-                    if close_target(state, &thread_id, LiveEventTargetCloseReason::ThreadClosed) {
-                        RouteOutcome::RetireConnection(
-                            LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                        )
-                    } else {
-                        RouteOutcome::InvalidateTarget(invalidation)
-                    }
-                } else {
-                    RouteOutcome::Continue
-                }
-            }
-            Err(TrySendError::Full(_)) => {
-                target
-                    .queued_count
-                    .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
-                target
-                    .queued_bytes
-                    .fetch_sub(retained_bytes, std::sync::atomic::Ordering::AcqRel);
-                let invalidation = invalidation(target, LiveEventTargetCloseReason::QueueOverflow);
-                state.overflow_count = state.overflow_count.saturating_add(1);
-                if close_target(state, &thread_id, LiveEventTargetCloseReason::QueueOverflow) {
-                    RouteOutcome::RetireConnection(
-                        LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                    )
-                } else {
-                    RouteOutcome::InvalidateTarget(invalidation)
-                }
-            }
-            Err(TrySendError::Disconnected(_)) => {
-                target
-                    .queued_count
-                    .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
-                target
-                    .queued_bytes
-                    .fetch_sub(retained_bytes, std::sync::atomic::Ordering::AcqRel);
-                let invalidation =
-                    invalidation(target, LiveEventTargetCloseReason::ReceiverAbandoned);
-                if close_target(
-                    state,
-                    &thread_id,
-                    LiveEventTargetCloseReason::ReceiverAbandoned,
-                ) {
-                    RouteOutcome::RetireConnection(
-                        LiveEventTargetCloseReason::RetiredThreadLaneCapacity,
-                    )
-                } else {
-                    RouteOutcome::InvalidateTarget(invalidation)
-                }
-            }
-        }
+fn retire_locked(
+    state: &mut RouterState,
+    reason: LiveEventTargetCloseReason,
+) -> Option<LiveEventTargetCloseReason> {
+    if state.persistent_failure.is_some() {
+        return None;
     }
+    let effective_reason = state.retired.unwrap_or(reason);
+    retire_router_state(state, effective_reason);
+    Some(effective_reason)
 }
 
 pub(super) fn advance_revision(state: &mut RouterState) {

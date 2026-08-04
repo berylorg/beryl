@@ -2,7 +2,7 @@ use beryl_home_store::DomainReader;
 
 use crate::validation::scan::{point, require, scan};
 use crate::{
-    CanonicalItemKind, CanonicalItemPayload, CasItemIndexRecord, GeneratedMediaResourceDisposition,
+    CanonicalItemPresentation, CasItemIndexRecord, GeneratedMediaResourceDisposition,
     ProviderItemLifecycle, ResourceBacking, TurnItemIndexRecord, codec::*, domain::SyndicDomain,
     error::SyndicValidationError,
 };
@@ -126,21 +126,21 @@ pub(super) fn validate_turn_items(
             &index.turn_id(),
             "turn-item owner state is missing",
         )?;
-        let content = item.payload().content();
-        if let Some(content) = content {
+        if let Some(content) = item.provider_content() {
             let manifest = require::<ContentManifestsFamily>(
                 reader,
                 &content.id(),
-                "turn-item content manifest is missing",
+                "turn-item provider manifest is missing",
             )?;
             if index.ordinal().get() <= state.finalized_item_count()
-                && !manifest.lifecycle().is_immutable()
+                && (manifest.lifecycle() != crate::ContentLifecycle::Finalized
+                    || manifest.current_reference() != Some(content))
             {
-                return invariant("finalized turn-item frontier contains live content");
+                return invariant("finalized turn-item frontier contains live provider content");
             }
         }
         if index.ordinal().get() <= state.finalized_item_count()
-            && let CanonicalItemPayload::GeneratedMedia(resource_id) = item.payload()
+            && let CanonicalItemPresentation::GeneratedMedia { resource_id } = item.presentation()
         {
             let resource = require::<ResourcesFamily>(
                 reader,
@@ -155,14 +155,13 @@ pub(super) fn validate_turn_items(
             }
         }
         if index.ordinal().get() <= state.finalized_item_count()
-            && matches!(
-                item.kind(),
-                CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-            )
+            && item.projection_source().is_some()
         {
-            let content = content.ok_or(SyndicValidationError::Invariant(
-                "finalized visible item omitted canonical content",
-            ))?;
+            let source = item
+                .projection_source()
+                .ok_or(SyndicValidationError::Invariant(
+                    "finalized visible item omitted projection text",
+                ))?;
             let head = require::<ItemProjectionHeadsFamily>(
                 reader,
                 &item.id(),
@@ -179,7 +178,7 @@ pub(super) fn validate_turn_items(
             if head.lifecycle() != crate::ProjectionLifecycle::Current
                 || head.source_item_revision() != item.revision()
                 || set.source_item_revision() != item.revision()
-                || set.source_content() != content
+                || set.source() != source
                 || set.projection_count() == 0
             {
                 return invariant("finalized visible turn item projection is not current");
@@ -192,7 +191,7 @@ pub(super) fn validate_turn_items(
                     "turn open-item aggregate exhausted",
                 ))?;
         }
-        if item.disposition().is_history_blocking() {
+        if item.is_history_blocking() {
             history_blockers =
                 history_blockers
                     .checked_add(1)

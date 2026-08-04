@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
-use beryl_model::{SyndicDraftId, SyndicThreadId};
+use beryl_model::{
+    ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
+    SyndicThreadId,
+};
 use beryl_state::{
     ApplySettings, BerylState, ExpectedSettingRevision, SettingKey, SettingRecord, SettingUpdate,
     SettingValue,
@@ -38,6 +41,7 @@ impl Fixture {
         let creation = CreateThread::ordinary(
             thread_id,
             SyndicDraftId::from_bytes([identity_byte.saturating_add(1); 16]),
+            execution_binding(identity_byte),
             SyndicTimestamp::from_unix_millis(0),
         );
         let mut command = HomeCommand::new(store.home_revision().expect("home revision"));
@@ -121,6 +125,19 @@ impl Fixture {
             .expect("read setting")
             .expect("published setting")
     }
+}
+
+fn execution_binding(seed: u8) -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([seed; 16]),
+        RootId::from_bytes([seed.saturating_add(2); 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::host(),
+            PathFlavor::Windows,
+            r"C:\work\beryl-draft-persistence",
+        )
+        .unwrap(),
+    )
 }
 
 pub(super) fn payload(text: &str) -> ComposerPayload {

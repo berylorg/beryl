@@ -6,16 +6,13 @@ use beryl_home_store::{HomeCommand, SidecarNamespace};
 use beryl_model::{AssetId, SyndicThreadId, WindowId};
 use beryl_state::{
     AdmitBranchHandoffJob, ApplySettings, AssetMediaType, CatalogRowExpectation,
-    CreateAssetWithReference, CreateThreadMetadata, ExpectedSettingRevision,
-    InitializeThreadlessWindow, PublishCatalogRow, SettingKey, SettingUpdate, SettingValue,
-    ThreadMetadataKind, UnixMillis,
+    ExpectedSettingRevision, InitializeThreadlessWindow, PublishAssetMetadata, PublishCatalogRow,
+    SettingKey, SettingUpdate, SettingValue,
 };
 use tempfile::tempdir;
 
-use support::phase9::{
-    admission, asset_owner, catalog_facts, catalog_sources, placement, sidecar_limit,
-};
-use support::{binding, execute, host_runtime, open};
+use support::phase9::{admission, catalog_facts, catalog_sources, placement, sidecar_limit};
+use support::{execute, host_runtime, open};
 
 #[test]
 fn beryl_domains_project_only_their_affected_receipt_revision() {
@@ -43,13 +40,6 @@ fn beryl_domains_project_only_their_affected_receipt_revision() {
             .committed_revision(&store, &receipt)
             .unwrap(),
         Some(expected)
-    );
-    assert_eq!(
-        state
-            .thread_metadata()
-            .committed_revision(&store, &receipt)
-            .unwrap(),
-        None
     );
     assert_eq!(
         state
@@ -95,12 +85,6 @@ fn one_receipt_projects_every_affected_beryl_domain_revision() {
         .unwrap()
         .checked_next()
         .unwrap();
-    let expected_metadata = state
-        .thread_metadata()
-        .revision(&store)
-        .unwrap()
-        .checked_next()
-        .unwrap();
     let expected_session = state
         .session()
         .revision(&store)
@@ -141,18 +125,15 @@ fn one_receipt_projects_every_affected_beryl_domain_revision() {
     );
     let first_asset = state
         .assets()
-        .create_with_reference(
+        .publish_metadata(
             asset_revision,
             sidecar,
-            CreateAssetWithReference::new(
+            PublishAssetMetadata::new(
                 asset_id,
                 AssetMediaType::new("image/png").unwrap(),
                 None,
                 expected_assets,
-                asset_owner(30),
-                UnixMillis::new(100),
-            )
-            .unwrap(),
+            ),
         )
         .unwrap();
 
@@ -162,16 +143,6 @@ fn one_receipt_projects_every_affected_beryl_domain_revision() {
         .add(state.runtime_roots().create_runtime_with_home_root(
             state.runtime_roots().revision(&store).unwrap(),
             host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Work\beryl"),
-        ))
-        .unwrap();
-    command
-        .add(state.thread_metadata().create(
-            state.thread_metadata().revision(&store).unwrap(),
-            CreateThreadMetadata::new(
-                thread_id,
-                binding(1, 2, r"C:\Work\beryl"),
-                ThreadMetadataKind::Ordinary,
-            ),
         ))
         .unwrap();
     command
@@ -222,13 +193,6 @@ fn one_receipt_projects_every_affected_beryl_domain_revision() {
             .committed_revision(&store, &receipt)
             .unwrap(),
         Some(expected_runtime)
-    );
-    assert_eq!(
-        state
-            .thread_metadata()
-            .committed_revision(&store, &receipt)
-            .unwrap(),
-        Some(expected_metadata)
     );
     assert_eq!(
         state

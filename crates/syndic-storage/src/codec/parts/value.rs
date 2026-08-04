@@ -1,543 +1,14 @@
-use std::num::NonZeroU64;
-
 use super::*;
 
-pub(crate) fn enc_content_encoding(e: &mut Encoder, value: crate::ContentEncoding) {
-    e.u8(match value {
-        crate::ContentEncoding::ComposerV1 => 0,
-        crate::ContentEncoding::Utf8V1 => 1,
-        crate::ContentEncoding::ProviderItemV1 => 2,
-    });
-}
+mod content;
+mod projection;
+mod provider;
+mod turn;
 
-pub(crate) fn dec_content_encoding(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ContentEncoding, CodecError> {
-    match d.u8()? {
-        0 => Ok(crate::ContentEncoding::ComposerV1),
-        1 => Ok(crate::ContentEncoding::Utf8V1),
-        2 => Ok(crate::ContentEncoding::ProviderItemV1),
-        tag => Err(CodecError::InvalidTag {
-            kind: "content encoding",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_content_lifecycle(e: &mut Encoder, value: crate::ContentLifecycle) {
-    e.u8(match value {
-        crate::ContentLifecycle::Building => 0,
-        crate::ContentLifecycle::Sealed => 1,
-        crate::ContentLifecycle::Live => 2,
-        crate::ContentLifecycle::Finalized => 3,
-    });
-}
-
-pub(crate) fn dec_content_lifecycle(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ContentLifecycle, CodecError> {
-    match d.u8()? {
-        0 => Ok(crate::ContentLifecycle::Building),
-        1 => Ok(crate::ContentLifecycle::Sealed),
-        2 => Ok(crate::ContentLifecycle::Live),
-        3 => Ok(crate::ContentLifecycle::Finalized),
-        tag => Err(CodecError::InvalidTag {
-            kind: "content lifecycle",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_content_summary(e: &mut Encoder, value: crate::ContentSummary) {
-    e.u64(value.chunk_count());
-    e.u64(value.piece_count());
-    e.u64(value.encoded_bytes());
-    e.u64(value.logical_utf8_bytes());
-    e.u64(value.atom_count());
-    e.u64(value.image_marker_count());
-    e.fixed32(&value.marker_digest());
-    e.fixed32(value.digest().as_bytes());
-}
-
-pub(crate) fn dec_content_summary(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ContentSummary, CodecError> {
-    Ok(crate::ContentSummary::new(
-        d.u64()?,
-        d.u64()?,
-        d.u64()?,
-        d.u64()?,
-        d.u64()?,
-        d.u64()?,
-        d.fixed32()?,
-        SyndicContentDigest::from_bytes(d.fixed32()?),
-    ))
-}
-
-pub(crate) fn enc_content_ref(e: &mut Encoder, value: crate::ContentReference) {
-    enc_content(e, value.id());
-    enc_content_rev(e, value.revision());
-    enc_content_encoding(e, value.encoding());
-    enc_content_summary(e, value.summary());
-}
-
-pub(crate) fn dec_content_ref(d: &mut Decoder<'_>) -> Result<crate::ContentReference, CodecError> {
-    Ok(crate::ContentReference::new(
-        dec_content(d)?,
-        dec_content_rev(d)?,
-        dec_content_encoding(d)?,
-        dec_content_summary(d)?,
-    ))
-}
-
-pub(crate) fn enc_asset_id(e: &mut Encoder, asset_id: AssetId) {
-    e.u8(match asset_id.version() {
-        AssetIdentityVersion::Sha256V1 => 1,
-    });
-    e.fixed32(&asset_id.digest());
-    e.u64(asset_id.length().get());
-}
-
-pub(crate) fn dec_asset_id(d: &mut Decoder<'_>) -> Result<AssetId, CodecError> {
-    match d.u8()? {
-        1 => {
-            let digest = d.fixed32()?;
-            let length =
-                NonZeroU64::new(d.u64()?).ok_or(CodecError::InvalidLength("asset byte length"))?;
-            Ok(AssetId::sha256_v1(digest, length))
-        }
-        tag => Err(CodecError::InvalidTag {
-            kind: "asset identity version",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_input_marker_owner(e: &mut Encoder, owner: crate::InputMarkerOwner) {
-    match owner {
-        crate::InputMarkerOwner::AcceptedInput(id) => {
-            e.u8(0);
-            enc_accepted(e, id);
-        }
-        crate::InputMarkerOwner::CanonicalItem(id) => {
-            e.u8(1);
-            enc_item(e, id);
-        }
-    }
-}
-
-pub(crate) fn dec_input_marker_owner(
-    d: &mut Decoder<'_>,
-) -> Result<crate::InputMarkerOwner, CodecError> {
-    match d.u8()? {
-        0 => dec_accepted(d).map(crate::InputMarkerOwner::AcceptedInput),
-        1 => dec_item(d).map(crate::InputMarkerOwner::CanonicalItem),
-        tag => Err(CodecError::InvalidTag {
-            kind: "input-marker owner",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_turn_kind(e: &mut Encoder, value: crate::TurnKind) {
-    match value {
-        crate::TurnKind::OrdinaryUser => e.u8(0),
-        crate::TurnKind::ProviderOperation(crate::ProviderOperationKind::ContextCompaction) => {
-            e.u8(1)
-        }
-    }
-}
-
-pub(crate) fn dec_turn_kind(d: &mut Decoder<'_>) -> Result<crate::TurnKind, CodecError> {
-    match d.u8()? {
-        0 => Ok(crate::TurnKind::OrdinaryUser),
-        1 => Ok(crate::TurnKind::ProviderOperation(
-            crate::ProviderOperationKind::ContextCompaction,
-        )),
-        tag => Err(CodecError::InvalidTag {
-            kind: "turn kind",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_turn_lifecycle(e: &mut Encoder, value: crate::TurnLifecycle) {
-    e.u8(match value {
-        crate::TurnLifecycle::Pending => 0,
-        crate::TurnLifecycle::Active => 1,
-        crate::TurnLifecycle::Complete => 2,
-        crate::TurnLifecycle::Interrupted => 3,
-        crate::TurnLifecycle::Failed => 4,
-        crate::TurnLifecycle::Incomplete => 5,
-        crate::TurnLifecycle::UnknownTerminal => 6,
-    });
-}
-
-pub(crate) fn dec_turn_lifecycle(d: &mut Decoder<'_>) -> Result<crate::TurnLifecycle, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::TurnLifecycle::Pending,
-        1 => crate::TurnLifecycle::Active,
-        2 => crate::TurnLifecycle::Complete,
-        3 => crate::TurnLifecycle::Interrupted,
-        4 => crate::TurnLifecycle::Failed,
-        5 => crate::TurnLifecycle::Incomplete,
-        6 => crate::TurnLifecycle::UnknownTerminal,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "turn lifecycle",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_turn_terminal_outcome(e: &mut Encoder, value: crate::TurnTerminalOutcome) {
-    e.u8(match value {
-        crate::TurnTerminalOutcome::Complete => 0,
-        crate::TurnTerminalOutcome::Interrupted => 1,
-        crate::TurnTerminalOutcome::Failed => 2,
-        crate::TurnTerminalOutcome::Incomplete => 3,
-        crate::TurnTerminalOutcome::UnknownTerminal => 4,
-    });
-}
-
-pub(crate) fn dec_turn_terminal_outcome(
-    d: &mut Decoder<'_>,
-) -> Result<crate::TurnTerminalOutcome, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::TurnTerminalOutcome::Complete,
-        1 => crate::TurnTerminalOutcome::Interrupted,
-        2 => crate::TurnTerminalOutcome::Failed,
-        3 => crate::TurnTerminalOutcome::Incomplete,
-        4 => crate::TurnTerminalOutcome::UnknownTerminal,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "turn terminal outcome",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_provider_item_kind(e: &mut Encoder, value: crate::ProviderItemKind) {
-    use crate::ProviderItemKind::*;
-    e.u8(match value {
-        UserMessage => 0,
-        HookPrompt => 1,
-        AgentMessage => 2,
-        Plan => 3,
-        Reasoning => 4,
-        CommandExecution => 5,
-        FileChange => 6,
-        McpToolCall => 7,
-        DynamicToolCall => 8,
-        CollabAgentToolCall => 9,
-        SubAgentActivity => 10,
-        WebSearch => 11,
-        ImageView => 12,
-        Sleep => 13,
-        StandaloneImageGeneration => 14,
-        EnteredReviewMode => 15,
-        ExitedReviewMode => 16,
-        ContextCompaction => 17,
-    });
-}
-
-pub(crate) fn dec_provider_item_kind(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ProviderItemKind, CodecError> {
-    use crate::ProviderItemKind::*;
-    Ok(match d.u8()? {
-        0 => UserMessage,
-        1 => HookPrompt,
-        2 => AgentMessage,
-        3 => Plan,
-        4 => Reasoning,
-        5 => CommandExecution,
-        6 => FileChange,
-        7 => McpToolCall,
-        8 => DynamicToolCall,
-        9 => CollabAgentToolCall,
-        10 => SubAgentActivity,
-        11 => WebSearch,
-        12 => ImageView,
-        13 => Sleep,
-        14 => StandaloneImageGeneration,
-        15 => EnteredReviewMode,
-        16 => ExitedReviewMode,
-        17 => ContextCompaction,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "provider item kind",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_assistant_phase(e: &mut Encoder, value: crate::AssistantMessagePhase) {
-    e.u8(match value {
-        crate::AssistantMessagePhase::Commentary => 0,
-        crate::AssistantMessagePhase::FinalAnswer => 1,
-        crate::AssistantMessagePhase::Unknown => 2,
-    });
-}
-
-pub(crate) fn dec_assistant_phase(
-    d: &mut Decoder<'_>,
-) -> Result<crate::AssistantMessagePhase, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::AssistantMessagePhase::Commentary,
-        1 => crate::AssistantMessagePhase::FinalAnswer,
-        2 => crate::AssistantMessagePhase::Unknown,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "assistant phase",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_provider_item_lifecycle(e: &mut Encoder, value: crate::ProviderItemLifecycle) {
-    e.u8(match value {
-        crate::ProviderItemLifecycle::AwaitingCorrelation => 0,
-        crate::ProviderItemLifecycle::Started => 1,
-        crate::ProviderItemLifecycle::Completed => 2,
-    });
-}
-
-pub(crate) fn dec_provider_item_lifecycle(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ProviderItemLifecycle, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::ProviderItemLifecycle::AwaitingCorrelation,
-        1 => crate::ProviderItemLifecycle::Started,
-        2 => crate::ProviderItemLifecycle::Completed,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "provider item lifecycle",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_unsupported_history_reason(
-    e: &mut Encoder,
-    value: crate::UnsupportedHistoryReason,
-) {
-    e.u8(match value {
-        crate::UnsupportedHistoryReason::UnknownPublicItem => 0,
-        crate::UnsupportedHistoryReason::MalformedRequiredField => 1,
-        crate::UnsupportedHistoryReason::UnsupportedRequiredPayload => 2,
-        crate::UnsupportedHistoryReason::HostedImageGeneration => 3,
-        crate::UnsupportedHistoryReason::ImpossibleLifecycle => 4,
-    });
-}
-
-pub(crate) fn dec_unsupported_history_reason(
-    d: &mut Decoder<'_>,
-) -> Result<crate::UnsupportedHistoryReason, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::UnsupportedHistoryReason::UnknownPublicItem,
-        1 => crate::UnsupportedHistoryReason::MalformedRequiredField,
-        2 => crate::UnsupportedHistoryReason::UnsupportedRequiredPayload,
-        3 => crate::UnsupportedHistoryReason::HostedImageGeneration,
-        4 => crate::UnsupportedHistoryReason::ImpossibleLifecycle,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "unsupported history reason",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_provider_item_disposition(
-    e: &mut Encoder,
-    value: crate::ProviderItemDisposition,
-) {
-    match value {
-        crate::ProviderItemDisposition::CorrelatedUserInput {
-            content,
-            marker_count,
-        } => {
-            e.u8(0);
-            enc_content_ref(e, content);
-            e.u64(marker_count);
-        }
-        crate::ProviderItemDisposition::CanonicalText => e.u8(1),
-        crate::ProviderItemDisposition::ActivityOnly => e.u8(2),
-        crate::ProviderItemDisposition::GeneratedMedia { resource_id } => {
-            e.u8(3);
-            enc_resource(e, resource_id);
-        }
-        crate::ProviderItemDisposition::Unsupported(reason) => {
-            e.u8(4);
-            enc_unsupported_history_reason(e, reason);
-        }
-    }
-}
-
-pub(crate) fn dec_provider_item_disposition(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ProviderItemDisposition, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::ProviderItemDisposition::CorrelatedUserInput {
-            content: dec_content_ref(d)?,
-            marker_count: d.u64()?,
-        },
-        1 => crate::ProviderItemDisposition::CanonicalText,
-        2 => crate::ProviderItemDisposition::ActivityOnly,
-        3 => crate::ProviderItemDisposition::GeneratedMedia {
-            resource_id: dec_resource(d)?,
-        },
-        4 => crate::ProviderItemDisposition::Unsupported(dec_unsupported_history_reason(d)?),
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "provider item disposition",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_turn_incomplete_reason(e: &mut Encoder, value: crate::TurnIncompleteReason) {
-    match value {
-        crate::TurnIncompleteReason::StreamLost => e.u8(0),
-        crate::TurnIncompleteReason::AuthorityLost => e.u8(1),
-        crate::TurnIncompleteReason::WorkerStopped => e.u8(2),
-        crate::TurnIncompleteReason::CompletionMismatch => e.u8(3),
-        crate::TurnIncompleteReason::ItemAuditFailed => e.u8(4),
-        crate::TurnIncompleteReason::UnsupportedHistory(reason) => {
-            e.u8(5);
-            enc_unsupported_history_reason(e, reason);
-        }
-    }
-}
-
-pub(crate) fn dec_turn_incomplete_reason(
-    d: &mut Decoder<'_>,
-) -> Result<crate::TurnIncompleteReason, CodecError> {
-    Ok(match d.u8()? {
-        0 => crate::TurnIncompleteReason::StreamLost,
-        1 => crate::TurnIncompleteReason::AuthorityLost,
-        2 => crate::TurnIncompleteReason::WorkerStopped,
-        3 => crate::TurnIncompleteReason::CompletionMismatch,
-        4 => crate::TurnIncompleteReason::ItemAuditFailed,
-        5 => crate::TurnIncompleteReason::UnsupportedHistory(dec_unsupported_history_reason(d)?),
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "turn incomplete reason",
-                tag,
-            });
-        }
-    })
-}
-
-pub(crate) fn enc_turn_end_status(e: &mut Encoder, value: crate::TurnEndStatus) {
-    enc_turn_terminal_outcome(e, value.outcome());
-    enc_opt(e, value.incomplete_reason(), enc_turn_incomplete_reason);
-}
-
-pub(crate) fn dec_turn_end_status(d: &mut Decoder<'_>) -> Result<crate::TurnEndStatus, CodecError> {
-    crate::TurnEndStatus::new(
-        dec_turn_terminal_outcome(d)?,
-        dec_opt(d, "turn incomplete reason", dec_turn_incomplete_reason)?,
-    )
-    .map_err(|source| invalid("turn end status", source))
-}
-
-pub(crate) fn enc_projection_lifecycle(e: &mut Encoder, value: crate::ProjectionLifecycle) {
-    e.u8(match value {
-        crate::ProjectionLifecycle::Current => 0,
-        crate::ProjectionLifecycle::Stale => 1,
-    });
-}
-
-pub(crate) fn dec_projection_lifecycle(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ProjectionLifecycle, CodecError> {
-    match d.u8()? {
-        0 => Ok(crate::ProjectionLifecycle::Current),
-        1 => Ok(crate::ProjectionLifecycle::Stale),
-        tag => Err(CodecError::InvalidTag {
-            kind: "projection lifecycle",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_projection_format(e: &mut Encoder, value: crate::ProjectionFormatVersion) {
-    e.u8(match value {
-        crate::ProjectionFormatVersion::V1 => 1,
-    });
-}
-
-pub(crate) fn dec_projection_format(
-    d: &mut Decoder<'_>,
-) -> Result<crate::ProjectionFormatVersion, CodecError> {
-    match d.u8()? {
-        1 => Ok(crate::ProjectionFormatVersion::V1),
-        tag => Err(CodecError::InvalidTag {
-            kind: "projection format",
-            tag,
-        }),
-    }
-}
-
-pub(crate) fn enc_projection_source_range(e: &mut Encoder, value: crate::ProjectionSourceRange) {
-    e.u64(value.start());
-    e.u64(value.end());
-}
-
-pub(crate) fn dec_projection_source_range(
-    d: &mut Decoder<'_>,
-    kind: &'static str,
-) -> Result<crate::ProjectionSourceRange, CodecError> {
-    crate::ProjectionSourceRange::new(d.u64()?, d.u64()?).map_err(|source| invalid(kind, source))
-}
-
-pub(crate) fn enc_markdown_block_kind(e: &mut Encoder, value: crate::MarkdownBlockKind) {
-    match value {
-        crate::MarkdownBlockKind::Paragraph => e.u8(0),
-        crate::MarkdownBlockKind::Heading(level) => {
-            e.u8(1);
-            e.u8(level);
-        }
-        crate::MarkdownBlockKind::BlockQuote => e.u8(2),
-        crate::MarkdownBlockKind::List => e.u8(3),
-        crate::MarkdownBlockKind::ThematicBreak => e.u8(4),
-        crate::MarkdownBlockKind::FencedCode => e.u8(5),
-        crate::MarkdownBlockKind::Table => e.u8(6),
-        crate::MarkdownBlockKind::Fallback => e.u8(7),
-    }
-}
-
-pub(crate) fn dec_markdown_block_kind(
-    d: &mut Decoder<'_>,
-) -> Result<crate::MarkdownBlockKind, CodecError> {
-    let value = match d.u8()? {
-        0 => crate::MarkdownBlockKind::Paragraph,
-        1 => crate::MarkdownBlockKind::Heading(d.u8()?),
-        2 => crate::MarkdownBlockKind::BlockQuote,
-        3 => crate::MarkdownBlockKind::List,
-        4 => crate::MarkdownBlockKind::ThematicBreak,
-        5 => crate::MarkdownBlockKind::FencedCode,
-        6 => crate::MarkdownBlockKind::Table,
-        7 => crate::MarkdownBlockKind::Fallback,
-        tag => {
-            return Err(CodecError::InvalidTag {
-                kind: "Markdown block kind",
-                tag,
-            });
-        }
-    };
-    value
-        .validate()
-        .map_err(|source| invalid("Markdown block kind", source))
-}
+pub(crate) use content::*;
+pub(crate) use projection::*;
+pub(crate) use provider::*;
+pub(crate) use turn::*;
 
 pub(crate) fn enc_pending_steering(e: &mut Encoder, value: &crate::PendingSteeringTargetProof) {
     enc_binding_rev(e, value.binding_revision());
@@ -577,8 +48,9 @@ pub(crate) fn enc_next_turn_reason(e: &mut Encoder, value: crate::NextTurnReason
         crate::NextTurnReason::Compaction => 1,
         crate::NextTurnReason::Stop => 2,
         crate::NextTurnReason::SteeringRejected => 3,
-        crate::NextTurnReason::WorkerCapacity => 4,
         crate::NextTurnReason::ProjectionLost => 5,
+        crate::NextTurnReason::TerminalHistory => 6,
+        crate::NextTurnReason::UnknownTerminal => 7,
     });
 }
 
@@ -590,8 +62,10 @@ pub(crate) fn dec_next_turn_reason(
         1 => Ok(crate::NextTurnReason::Compaction),
         2 => Ok(crate::NextTurnReason::Stop),
         3 => Ok(crate::NextTurnReason::SteeringRejected),
-        4 => Ok(crate::NextTurnReason::WorkerCapacity),
+        // Tag 4 was the invalid worker-capacity reclassification and stays retired.
         5 => Ok(crate::NextTurnReason::ProjectionLost),
+        6 => Ok(crate::NextTurnReason::TerminalHistory),
+        7 => Ok(crate::NextTurnReason::UnknownTerminal),
         tag => Err(CodecError::InvalidTag {
             kind: "next-turn reason",
             tag,
@@ -599,35 +73,26 @@ pub(crate) fn dec_next_turn_reason(
     }
 }
 
-pub(crate) fn enc_accepted_disposition(e: &mut Encoder, value: &crate::AcceptedInputDisposition) {
-    match value {
-        crate::AcceptedInputDisposition::AwaitingSteering(target) => {
-            e.u8(0);
-            enc_pending_steering(e, target);
-        }
-        crate::AcceptedInputDisposition::SteerActiveTurn(target) => {
-            e.u8(1);
-            enc_steering_target(e, target);
-        }
-        crate::AcceptedInputDisposition::NextTurn(reason) => {
-            e.u8(2);
-            enc_next_turn_reason(e, *reason);
-        }
-    }
+pub(crate) fn enc_route_generation(e: &mut Encoder, value: crate::AcceptedRouteGeneration) {
+    e.u64(value.get());
 }
 
-pub(crate) fn dec_accepted_disposition(
+pub(crate) fn dec_route_generation(
     d: &mut Decoder<'_>,
-) -> Result<crate::AcceptedInputDisposition, CodecError> {
-    match d.u8()? {
-        0 => dec_pending_steering(d).map(crate::AcceptedInputDisposition::AwaitingSteering),
-        1 => dec_steering_target(d).map(crate::AcceptedInputDisposition::SteerActiveTurn),
-        2 => dec_next_turn_reason(d).map(crate::AcceptedInputDisposition::NextTurn),
-        tag => Err(CodecError::InvalidTag {
-            kind: "accepted-input disposition",
-            tag,
-        }),
-    }
+) -> Result<crate::AcceptedRouteGeneration, CodecError> {
+    crate::AcceptedRouteGeneration::new(d.u64()?)
+        .map_err(|source| invalid("accepted-route generation", source))
+}
+
+pub(crate) fn enc_route_revision(e: &mut Encoder, value: crate::AcceptedRouteRevision) {
+    e.u64(value.get());
+}
+
+pub(crate) fn dec_route_revision(
+    d: &mut Decoder<'_>,
+) -> Result<crate::AcceptedRouteRevision, CodecError> {
+    crate::AcceptedRouteRevision::new(d.u64()?)
+        .map_err(|source| invalid("accepted-route revision", source))
 }
 
 pub(crate) fn enc_input_gate_state(e: &mut Encoder, value: &crate::InputGateState) {
@@ -639,19 +104,35 @@ pub(crate) fn enc_input_gate_state(e: &mut Encoder, value: &crate::InputGateStat
         }
         crate::InputGateState::AwaitingSteering(target) => {
             e.u8(2);
-            enc_pending_steering(e, target);
+            enc_turn(e, *target);
         }
         crate::InputGateState::Steerable(target) => {
             e.u8(3);
-            enc_steering_target(e, target);
+            enc_turn(e, *target);
         }
-        crate::InputGateState::Compacting(turn) => {
+        crate::InputGateState::Compacting {
+            turn_id,
+            operation_nonce,
+        } => {
             e.u8(4);
+            enc_turn(e, *turn_id);
+            e.fixed16(operation_nonce.as_bytes());
+        }
+        crate::InputGateState::Stopping {
+            turn_id,
+            operation_nonce,
+        } => {
+            e.u8(5);
+            enc_turn(e, *turn_id);
+            e.fixed16(operation_nonce.as_bytes());
+        }
+        crate::InputGateState::FinalizingHistory(turn) => {
+            e.u8(6);
             enc_turn(e, *turn);
         }
-        crate::InputGateState::Stopping(target) => {
-            e.u8(5);
-            enc_steering_target(e, target);
+        crate::InputGateState::AwaitingTerminal(turn) => {
+            e.u8(7);
+            enc_turn(e, *turn);
         }
     }
 }
@@ -662,10 +143,18 @@ pub(crate) fn dec_input_gate_state(
     match d.u8()? {
         0 => Ok(crate::InputGateState::Idle),
         1 => dec_turn(d).map(crate::InputGateState::PendingTurn),
-        2 => dec_pending_steering(d).map(crate::InputGateState::AwaitingSteering),
-        3 => dec_steering_target(d).map(crate::InputGateState::Steerable),
-        4 => dec_turn(d).map(crate::InputGateState::Compacting),
-        5 => dec_steering_target(d).map(crate::InputGateState::Stopping),
+        2 => dec_turn(d).map(crate::InputGateState::AwaitingSteering),
+        3 => dec_turn(d).map(crate::InputGateState::Steerable),
+        4 => Ok(crate::InputGateState::compacting(
+            dec_turn(d)?,
+            crate::CompactionOperationNonce::from_bytes(d.fixed16()?),
+        )),
+        5 => Ok(crate::InputGateState::stopping(
+            dec_turn(d)?,
+            crate::StopOperationNonce::from_bytes(d.fixed16()?),
+        )),
+        6 => dec_turn(d).map(crate::InputGateState::FinalizingHistory),
+        7 => dec_turn(d).map(crate::InputGateState::AwaitingTerminal),
         tag => Err(CodecError::InvalidTag {
             kind: "input-gate state",
             tag,
@@ -681,6 +170,7 @@ pub(crate) fn enc_accepted_lifecycle(e: &mut Encoder, value: crate::AcceptedInpu
         crate::AcceptedInputLifecycle::Retryable => 3,
         crate::AcceptedInputLifecycle::Failed => 4,
         crate::AcceptedInputLifecycle::DeliveryUnknown => 5,
+        crate::AcceptedInputLifecycle::Promoted => 6,
     });
 }
 
@@ -694,6 +184,7 @@ pub(crate) fn dec_accepted_lifecycle(
         3 => crate::AcceptedInputLifecycle::Retryable,
         4 => crate::AcceptedInputLifecycle::Failed,
         5 => crate::AcceptedInputLifecycle::DeliveryUnknown,
+        6 => crate::AcceptedInputLifecycle::Promoted,
         tag => {
             return Err(CodecError::InvalidTag {
                 kind: "accepted-input lifecycle",
@@ -725,55 +216,6 @@ pub(crate) fn dec_cas_item_source(d: &mut Decoder<'_>) -> Result<crate::CasItemS
         dec_cas_turn_source(d)?,
         dec_cas_item(d)?,
     ))
-}
-
-pub(crate) fn enc_canonical_payload(e: &mut Encoder, value: &crate::CanonicalItemPayload) {
-    match value {
-        crate::CanonicalItemPayload::UserInput {
-            content,
-            marker_count,
-        } => {
-            e.u8(0);
-            enc_content_ref(e, *content);
-            e.u64(*marker_count);
-        }
-        crate::CanonicalItemPayload::Text(content) => {
-            e.u8(1);
-            enc_content_ref(e, *content);
-        }
-        crate::CanonicalItemPayload::Activity => e.u8(2),
-        crate::CanonicalItemPayload::GeneratedMedia(resource) => {
-            e.u8(3);
-            enc_resource(e, *resource);
-        }
-        crate::CanonicalItemPayload::Unsupported(reason) => {
-            e.u8(4);
-            enc_unsupported_history_reason(e, *reason);
-        }
-    }
-}
-
-pub(crate) fn dec_canonical_payload(
-    d: &mut Decoder<'_>,
-) -> Result<crate::CanonicalItemPayload, CodecError> {
-    match d.u8()? {
-        0 => Ok(crate::CanonicalItemPayload::user_input(
-            dec_content_ref(d)?,
-            d.u64()?,
-        )),
-        1 => Ok(crate::CanonicalItemPayload::text(dec_content_ref(d)?)),
-        2 => Ok(crate::CanonicalItemPayload::activity()),
-        3 => Ok(crate::CanonicalItemPayload::generated_media(dec_resource(
-            d,
-        )?)),
-        4 => Ok(crate::CanonicalItemPayload::unsupported(
-            dec_unsupported_history_reason(d)?,
-        )),
-        tag => Err(CodecError::InvalidTag {
-            kind: "canonical item payload",
-            tag,
-        }),
-    }
 }
 
 pub(crate) fn enc_resource_kind(e: &mut Encoder, value: crate::ResourceKind) {

@@ -47,6 +47,18 @@ pub(super) fn validate_history(
             &binding.thread_id(),
             "binding owner thread is missing",
         )?;
+        let canonical = require::<ThreadExecutionsFamily>(
+            reader,
+            &binding.thread_id(),
+            "binding owner execution is missing",
+        )?;
+        if binding
+            .state()
+            .execution()
+            .is_some_and(|execution| execution != canonical.execution())
+        {
+            return invariant("binding execution disagrees with canonical thread execution");
+        }
         validate_selected_path(reader, binding.selected_path())?;
         if let Some(cas_thread) = binding.state().cas_thread_id() {
             require_reservation(
@@ -113,21 +125,37 @@ fn validate_binding_transition(
         let BindingState::Valid(prior) = previous.state() else {
             return invariant("active binding does not succeed a valid binding");
         };
-        if previous.selected_path() != current.selected_path() || active.usable() != prior {
-            return invariant("active binding does not preserve exact prior valid authority");
+        let Some(expected) =
+            prior.advance_represented_source_revision(current.selected_path().thread_revision())
+        else {
+            return invariant("active binding represented-prefix revision regresses");
+        };
+        if !current
+            .selected_path()
+            .is_compatible_descendant_of(previous.selected_path())
+            || active.usable() != &expected
+        {
+            return invariant("active binding does not preserve compatible prior valid authority");
         }
         return Ok(());
     }
     let BindingState::Active(active) = previous.state() else {
-        if previous.selected_path() != current.selected_path()
+        if !current
+            .selected_path()
+            .is_compatible_descendant_of(previous.selected_path())
             && !matches!(current.state(), BindingState::Unbound { .. })
         {
-            return invariant("changed selected path does not publish an unbound binding");
+            return invariant(
+                "incompatible selected-path change does not publish an unbound binding",
+            );
         }
         return Ok(());
     };
-    if previous.selected_path() != current.selected_path() {
-        return invariant("active binding successor changes selected path");
+    if !current
+        .selected_path()
+        .is_compatible_descendant_of(previous.selected_path())
+    {
+        return invariant("active binding successor changes selected path incompatibly");
     }
     match current.state() {
         BindingState::Valid(usable) => {

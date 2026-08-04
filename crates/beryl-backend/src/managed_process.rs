@@ -41,8 +41,16 @@ impl SupervisedBackendProcess {
                 .child
                 .as_ref()
                 .expect("new supervised process must own child during setup");
-            process.host_process_tree =
-                HostProcessTree::create_for_child(child, &process.launch_label())?;
+            match HostProcessTree::create_for_child(child, &process.launch_label()) {
+                Ok(tree) => process.host_process_tree = tree,
+                Err(error) => {
+                    if let Some(mut child) = process.child.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                    return Err(error);
+                }
+            }
         }
 
         Ok(process)

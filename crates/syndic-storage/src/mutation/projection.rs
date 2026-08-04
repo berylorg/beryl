@@ -11,6 +11,7 @@ use beryl_model::{DomainRevision, ProjectionRevision, SyndicItemId};
 use crate::{ItemProjectionGeneration, SyndicStorage};
 
 pub(super) use lifecycle::invalidate_item_projection;
+pub(in crate::mutation) use lifecycle::validate_projection_source;
 pub(crate) use materialize::materialize_output;
 
 /// Starts one caller-named bounded projection generation for an exact canonical item revision.

@@ -15,8 +15,11 @@ cutover.
 ## Verdict
 
 No. A successfully materialized canonical `TurnItem` normally reaches app-server v2 through
-`item/completed`, and that final notification is the authoritative public item snapshot. That is a
-strong capture boundary, but it is not an exhaustive two-event history feed in this pinned source:
+`item/completed`, and that notification carries the final public item fields. It is a strong capture
+boundary, but it is not an exhaustive two-event history feed in this pinned source. For
+transcript-visible `AgentMessage` and `Plan` narrative, it is also not a legitimate revision
+channel: the pinned implementation intends completion narrative to equal the public start-and-delta
+sequence after the same hidden-markup normalization.
 
 - Multi-agent-v2 `SubAgentActivity` is deliberately emitted only as `item/completed`.
 - A hosted Responses API `ImageGenerationCall`, if injected, is persisted into raw CAS model
@@ -30,6 +33,20 @@ strong capture boundary, but it is not an exhaustive two-event history feed in t
   `ThreadItem` lifecycle.
 - Live `turn/completed` cannot repair a missed or absent item notification: the pinned app server
   sends `items = []` with `itemsView = "notLoaded"`.
+
+## Narrative Equality Boundary
+
+Pinned CAS routes initial assistant text and later deltas through `AssistantTextStreamParser`, which
+strips memory citations and, in plan mode, separates proposed-plan blocks. It flushes the parser
+before processing item completion. Final public item construction applies the corresponding batch
+normalization to the completed raw response. When contributors defer early public streaming, CAS
+emits the already finalized start and completion forms together.
+
+The supported healthy path therefore has one normalized public narrative: start plus ordered deltas
+equals completion. Whole public item objects may still differ legitimately in lifecycle and other
+final fields. A narrative mismatch instead indicates missed or reordered observation, an app-server
+parser/finalizer defect or behavior drift, or nonconforming provider behavior. Beryl must retain it
+as typed history incompleteness rather than choosing one representation as a correction.
 
 The current public documentation says to use `item/*` as the source of truth and says all items emit
 both shared lifecycle events. That is useful current intent, not proof of 0.144.1 behavior; the two
@@ -67,13 +84,15 @@ The ordinary lifecycle shapes are:
   agent/reasoning delta events, and complete from the finalized response item
   (`codex-rs/core/src/session/turn.rs:2144-2222` and
   `codex-rs/core/src/stream_events_utils.rs:318-387`). Proposed plan items use start, `PlanDelta`, and
-  an authoritative completed item (`codex-rs/core/src/session/turn.rs:1443-1496`).
+  a completed item whose normalized narrative is intended to agree with the streamed plan
+  (`codex-rs/core/src/session/turn.rs:1443-1496`).
 - Operational work: command execution, file change, MCP, dynamic-tool, collab-agent, hosted web
   search, image view, sleep, review-mode markers, and context compaction have explicit canonical
   emit sites. The item-specific delta mappings are agent text, plan text, reasoning summary/raw text,
   command output, and file patch updates in
-  `codex-rs/app-server-protocol/src/protocol/event_mapping.rs:359-460`. Final items, not concatenated
-  deltas, remain authoritative.
+  `codex-rs/app-server-protocol/src/protocol/event_mapping.rs:359-460`. Completion owns final
+  lifecycle and non-narrative fields; streamed `AgentMessage` and `Plan` narrative remains one
+  append sequence whose completed form must agree.
 - Standalone extension web search and image generation call `emit_turn_item_started` and
   `emit_turn_item_completed` through `CoreTurnItemEmitter`
   (`codex-rs/core/src/tools/handlers/extension_tools.rs:66-110`).
@@ -125,8 +144,9 @@ example, final agent-item construction strips hidden citation markup and propose
 emitting the public item, while the raw response is persisted separately
 (`codex-rs/core/src/stream_events_utils.rs:448-472`). Raw function/custom-tool calls and their output
 items are persisted for later model requests but are represented publicly, if at all, by synthesized
-operational `ThreadItem` forms. `item/completed` is authoritative for the public item; it is not a
-byte-identical rollout or replay record.
+operational `ThreadItem` forms. `item/completed` carries final public item fields but is not a
+byte-identical rollout or replay record, and its assistant/plan narrative is not a supported rewrite
+of the live public sequence.
 
 Finally, live terminal notification construction explicitly sets an empty item vector and
 `TurnItemsView::NotLoaded` in
@@ -157,9 +177,11 @@ Phase 13 should not be declared exhaustive in this state. Its completion gate sh
 - A closed disposition for every provider-produced pinned `ThreadItem`: preserve it in an exact
   supported typed/resource form, or keep history incomplete with a typed unsupported-history reason.
   Silently ignoring the item and publishing complete is not sufficient.
-- Treating `item/completed` as the final public item authority and accepting completion-only
-  `SubAgentActivity`; no generic requirement that every completion has a prior start can be sound for
-  this release.
+- Treating `item/completed` as final lifecycle and non-narrative field authority, while requiring
+  exact bounded equality between its normalized `AgentMessage` or `Plan` narrative and the prior
+  live append sequence. Disagreement is typed history incompleteness, not replacement. Accept
+  completion-only `SubAgentActivity`; no generic requirement that every completion has a prior start
+  can be sound for this release.
 - Removing terminal-item backfill assumptions. `turn/completed` should finalize outcome and audit
   already admitted durable items, not prove that the observed item set was exhaustive.
 - Exclude hosted Responses image generation from the CAS 0.144.1 supported producer contract and
@@ -193,6 +215,8 @@ also preserves Phase 13's count-independent live-state requirement (`doc/plan.md
   `codex-rs/core/src/stream_events_utils.rs`, `codex-rs/core/src/event_mapping.rs`,
   `codex-rs/core/src/tools/events.rs`, `codex-rs/core/src/tools/handlers/extension_tools.rs`, and
   `codex-rs/core/src/tools/handlers/multi_agents_v2.rs`.
+- Pinned streaming-normalization source:
+  `codex-rs/utils/stream-parser/src/assistant_text.rs`, including citation/plan boundary tests.
 - Pinned app-server handling sources:
   `codex-rs/app-server/src/bespoke_event_handling.rs` and
   `codex-rs/app-server/src/request_processors/thread_lifecycle.rs`.

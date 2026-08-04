@@ -18,6 +18,8 @@ use codec::{
 };
 pub use error::RuntimeRootMutationError;
 use error::RuntimeRootValidationError;
+mod catalog_source;
+pub use catalog_source::{RuntimeRootCatalogSource, RuntimeRootCatalogSourceError};
 pub use mutation::{
     AddConfiguredRoot, CreateRuntimeWithHomeRoot, RootActivityUpdate, SetRootAvailability,
     SetRuntimeAvailability,
@@ -396,6 +398,7 @@ impl RuntimeRootState {
             limits,
         )?;
         let stored_bytes = page.stored_bytes();
+        let decoded_bytes = page.decoded_bytes();
         let has_more = page.has_more();
         Ok(StatePage {
             records: page
@@ -404,6 +407,7 @@ impl RuntimeRootState {
                 .map(|record| record.into_parts().1)
                 .collect(),
             stored_bytes,
+            decoded_bytes,
             has_more,
         })
     }
@@ -432,6 +436,7 @@ impl RuntimeRootState {
             limits,
         )?;
         let stored_bytes = page.stored_bytes();
+        let decoded_bytes = page.decoded_bytes();
         let has_more = page.has_more();
         Ok(StatePage {
             records: page
@@ -440,6 +445,7 @@ impl RuntimeRootState {
                 .map(|record| record.into_parts().1)
                 .collect(),
             stored_bytes,
+            decoded_bytes,
             has_more,
         })
     }

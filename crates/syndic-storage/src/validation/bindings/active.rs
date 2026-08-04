@@ -53,10 +53,10 @@ pub(super) fn validate_active(
     {
         return invariant("active binding and execution snapshot disagree");
     }
-    if let Some(required) = active.usable().lineage().recovered_loaded_generation()
-        && snapshot.loaded_generation() != required
+    if let Some(injection_generation) = active.usable().lineage().recovered_injection_generation()
+        && snapshot.loaded_generation().process() != injection_generation.process()
     {
-        return invariant("recovered execution snapshot loaded generation disagrees");
+        return invariant("recovered execution snapshot process generation disagrees");
     }
     if let Some(completed_at) = active.usable().lineage().recovered_completed_at()
         && snapshot.started_at() < completed_at
@@ -219,23 +219,134 @@ pub(super) fn validate_current_active_gate(
     if gate.revision() < active.activation_gate_revision() {
         return invariant("current active gate predates binding activation");
     }
-    let pending = match gate.state() {
-        crate::InputGateState::AwaitingSteering(target) => target,
-        crate::InputGateState::Steerable(target) | crate::InputGateState::Stopping(target) => {
-            target.pending()
-        }
+    let turn = match gate.state() {
+        crate::InputGateState::AwaitingSteering(turn)
+        | crate::InputGateState::Steerable(turn)
+        | crate::InputGateState::AwaitingTerminal(turn) => *turn,
+        crate::InputGateState::Stopping { turn_id, .. } => *turn_id,
         crate::InputGateState::Idle
         | crate::InputGateState::PendingTurn(_)
-        | crate::InputGateState::Compacting(_) => {
+        | crate::InputGateState::Compacting { .. }
+        | crate::InputGateState::FinalizingHistory(_) => {
             return invariant("current active binding has no active gate correlation");
         }
     };
-    if pending.binding_revision() != binding.revision()
-        || pending.snapshot_id() != active.snapshot_id()
-        || pending.active_turn_id() != active.turn_id()
-        || pending.cas_thread_id() != active.usable().cas_thread_id()
-    {
+    let proof = gate
+        .selected_route()
+        .ok_or(SyndicValidationError::Invariant(
+            "current active binding gate has no selected route",
+        ))?;
+    let route = require::<AcceptedRouteGenerationsFamily>(
+        reader,
+        &ThreadRouteKey {
+            thread: binding.thread_id(),
+            generation: proof.generation(),
+        },
+        "current active binding route generation is missing",
+    )?;
+    if turn != active.turn_id() || route.revision() != proof.revision() {
         return invariant("current active binding and input gate correlation disagree");
+    }
+    match gate.state() {
+        crate::InputGateState::Stopping {
+            operation_nonce, ..
+        } => {
+            validate_stopping_gate_target(reader, binding, active, proof, *operation_nonce, &route)?
+        }
+        crate::InputGateState::AwaitingSteering(_) | crate::InputGateState::Steerable(_) => {
+            let pending = match route.target() {
+                crate::AcceptedRouteTarget::AwaitingSteering(target) => target,
+                crate::AcceptedRouteTarget::Steering(target) => target.pending(),
+                crate::AcceptedRouteTarget::AwaitingTerminal(_)
+                | crate::AcceptedRouteTarget::NextTurn(_)
+                | crate::AcceptedRouteTarget::ProjectionLost(_) => {
+                    return invariant("current active binding route has no active target proof");
+                }
+            };
+            if pending.binding_revision() != binding.revision()
+                || pending.snapshot_id() != active.snapshot_id()
+                || pending.active_turn_id() != active.turn_id()
+                || pending.cas_thread_id() != active.usable().cas_thread_id()
+            {
+                return invariant("current active binding and input gate correlation disagree");
+            }
+        }
+        crate::InputGateState::AwaitingTerminal(_) => {
+            let crate::AcceptedRouteTarget::AwaitingTerminal(target) = route.target() else {
+                return invariant("current awaiting-terminal gate has no retained active target");
+            };
+            let state = require::<TurnStatesFamily>(
+                reader,
+                &active.turn_id(),
+                "current awaiting-terminal turn state is missing",
+            )?;
+            let cas_turn = require::<ActiveCasTurnsFamily>(
+                reader,
+                &active.snapshot_id(),
+                "current awaiting-terminal CAS turn is missing",
+            )?;
+            if state.lifecycle() != crate::TurnLifecycle::UnknownTerminal
+                || gate.live_steering_count() != 0
+                || route.ready_retryable_count() != 0
+                || route.delivering_count() != 0
+                || route.delivering_logical_utf8_bytes() != 0
+                || target.pending().binding_revision() != binding.revision()
+                || target.pending().snapshot_id() != active.snapshot_id()
+                || target.pending().active_turn_id() != active.turn_id()
+                || target.pending().cas_thread_id() != active.usable().cas_thread_id()
+                || cas_turn.snapshot_id() != active.snapshot_id()
+                || cas_turn.thread_id() != binding.thread_id()
+                || cas_turn.turn_id() != active.turn_id()
+                || cas_turn.binding_revision() != binding.revision()
+                || cas_turn.cas_thread_id() != active.usable().cas_thread_id()
+                || cas_turn.cas_turn_id() != target.cas_turn_id()
+            {
+                return invariant("current awaiting-terminal authority disagrees");
+            }
+        }
+        _ => unreachable!("active gate states were closed above"),
+    }
+    Ok(())
+}
+
+fn validate_stopping_gate_target(
+    reader: &DomainReader<'_, SyndicDomain>,
+    binding: &crate::BindingRecord,
+    active: &ActiveCasBinding,
+    route: crate::AcceptedRouteHeadProof,
+    nonce: crate::StopOperationNonce,
+    generation: &crate::AcceptedRouteGenerationRecord,
+) -> Result<(), SyndicValidationError> {
+    let operation_id = crate::StopOperationId::new(binding.thread_id(), nonce);
+    let stop = require::<StopOperationsFamily>(
+        reader,
+        &operation_id,
+        "current stopping gate has no stop-operation authority",
+    )?;
+    let target = stop.target();
+    let snapshot = require::<ExecutionSnapshotsFamily>(
+        reader,
+        &active.snapshot_id(),
+        "current stopping target snapshot is missing",
+    )?;
+    let cas_turn = require::<ActiveCasTurnsFamily>(
+        reader,
+        &active.snapshot_id(),
+        "current stopping target CAS turn is missing",
+    )?;
+    if !stop.state().is_live()
+        || stop.admission().successor_stopped_route() != route
+        || generation.target() != &crate::AcceptedRouteTarget::NextTurn(crate::NextTurnReason::Stop)
+        || target.thread_id() != binding.thread_id()
+        || target.turn_id() != active.turn_id()
+        || target.binding_revision() != binding.revision()
+        || target.snapshot_id() != active.snapshot_id()
+        || target.runtime_id() != active.usable().execution().runtime_id()
+        || target.loaded_generation() != snapshot.loaded_generation()
+        || target.cas_thread_id() != active.usable().cas_thread_id()
+        || target.cas_turn_id() != cas_turn.cas_turn_id()
+    {
+        return invariant("current stopping gate has no exact active target proof");
     }
     Ok(())
 }
@@ -275,8 +386,40 @@ pub(super) fn validate_snapshots(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
     scan::<ExecutionSnapshotsFamily>(reader, |key, snapshot| {
+        let canonical = require::<ThreadExecutionsFamily>(
+            reader,
+            &snapshot.thread_id(),
+            "execution snapshot owner execution is missing",
+        )?;
+        if snapshot.execution() != canonical.execution() {
+            return invariant("execution snapshot disagrees with canonical thread execution");
+        }
         if *key != snapshot.id() {
             return invariant("execution snapshot key and identity disagree");
+        }
+        if matches!(
+            snapshot.kind(),
+            crate::ExecutionSnapshotKind::ProviderOperation(
+                crate::ProviderOperationKind::ContextCompaction,
+            )
+        ) {
+            let operation_id = crate::CompactionOperationId::new(
+                snapshot.thread_id(),
+                crate::CompactionOperationNonce::from_bytes(*snapshot.active_turn_id().as_bytes()),
+            );
+            let operation = require::<CompactionOperationsFamily>(
+                reader,
+                &operation_id,
+                "provider snapshot compaction operation is missing",
+            )?;
+            return if operation.target().snapshot_id() == snapshot.id()
+                && operation.target().turn_id() == snapshot.active_turn_id()
+                && operation.target().binding_revision() == snapshot.binding_revision()
+            {
+                Ok(())
+            } else {
+                invariant("provider snapshot and compaction operation disagree")
+            };
         }
         let binding = require::<BindingsFamily>(
             reader,
@@ -345,6 +488,44 @@ pub(super) fn validate_active_cas_turn(
         || record.published_at() < snapshot.started_at()
     {
         return invariant("active CAS-turn and immutable snapshot disagree");
+    }
+    if matches!(
+        snapshot.kind(),
+        crate::ExecutionSnapshotKind::ProviderOperation(
+            crate::ProviderOperationKind::ContextCompaction,
+        )
+    ) {
+        let binding = require::<BindingsFamily>(
+            reader,
+            &BindingKey {
+                thread: record.thread_id(),
+                revision: record.binding_revision(),
+            },
+            "provider CAS-turn binding is missing",
+        )?;
+        let BindingState::Valid(usable) = binding.state() else {
+            return invariant("provider CAS-turn binding is not valid");
+        };
+        if usable.cas_thread_id() != record.cas_thread_id() {
+            return invariant("provider CAS-turn and valid binding disagree");
+        }
+        let key = CasTurnKey::Record(record.cas_thread_id().clone(), record.cas_turn_id().clone());
+        let expected = CasTurnIndexRecord::new(
+            record.cas_thread_id().clone(),
+            record.cas_turn_id().clone(),
+            record.thread_id(),
+            record.turn_id(),
+            record.binding_revision(),
+            record.snapshot_id(),
+            snapshot.represented_base_native_turn_count(),
+        );
+        return if require::<CasTurnIndexFamily>(reader, &key, "provider CAS-turn index is missing")?
+            == expected
+        {
+            Ok(())
+        } else {
+            invariant("provider CAS-turn primary and index disagree")
+        };
     }
     let binding = require::<BindingsFamily>(
         reader,

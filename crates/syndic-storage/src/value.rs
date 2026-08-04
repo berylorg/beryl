@@ -1,3 +1,4 @@
+mod compaction;
 mod content;
 mod context;
 mod input_gate;
@@ -5,7 +6,11 @@ mod lifecycle;
 mod ordering;
 mod parent;
 mod proof;
+mod stop;
 
+pub use beryl_model::ImageLabelOrdinal;
+
+pub use compaction::*;
 pub use content::{ContentChunkOrdinal, ContentEncoding, ContentLifecycle};
 pub use context::{
     DISCUSSION_CONTEXT_MAX_BYTES, DiscussionContextDescriptor, DiscussionContextEnvelope,
@@ -13,25 +18,33 @@ pub use context::{
     DiscussionContextVersion,
 };
 pub use input_gate::{
-    AcceptedInputDisposition, InputGateState, NextTurnReason, PendingSteeringTargetProof,
-    SteeringTargetProof,
+    InputGateState, NextTurnReason, PendingSteeringTargetProof, SteeringTargetProof,
 };
 pub use lifecycle::{
     AcceptedInputLifecycle, AssistantMessagePhase, BindingLifecycle, ProjectionLifecycle,
-    ProviderItemKind, ProviderItemLifecycle, ProviderOperationKind, TurnEndStatus,
-    TurnIncompleteReason, TurnKind, TurnLifecycle, TurnTerminalOutcome, UnsupportedHistoryReason,
+    ProviderItemKind, ProviderItemLifecycle, ProviderObservationIssueReason, ProviderOperationKind,
+    TurnEndStatus, TurnIncompleteReason, TurnKind, TurnLifecycle, TurnTerminalOutcome,
+    UnsupportedHistoryReason,
 };
 pub use ordering::{
-    AcceptedInputOrdinal, ComposerAtomOrdinal, ContentPieceOrdinal, ContextEnvelopeRevision,
-    ImageLabelOrdinal, InputMarkerOrdinal, ItemProjectionGeneration, ItemSourceEventOrdinal,
-    ProjectionOrdinal, ResourceOrdinal, SourceEventSequence, SyndicTimestamp, TranscriptGeneration,
-    TranscriptPosition, TurnDepth, TurnItemOrdinal, TurnStateRevision,
+    AcceptedInputOrdinal, AcceptedRouteGeneration, AcceptedRouteRevision, ActivityQueryRevision,
+    ActivityWorkPeriod, ComposerAtomOrdinal, ContentPieceOrdinal, ContextEnvelopeRevision,
+    ImageLabelFrontier, InputMarkerOrdinal, ItemProjectionGeneration, ItemSourceEventOrdinal,
+    ProjectionOrdinal, ProviderControlOrdinal, ProviderItemBuildRevision,
+    ProviderNarrativeGeneration, ResourceOrdinal, SourceEventSequence, SyndicConnectionGeneration,
+    SyndicTimestamp, ThreadAttributesRevision, ThreadLineageDepth, ThreadUsageRevision,
+    TranscriptGeneration, TranscriptPosition, TurnDepth, TurnItemOrdinal, TurnStateRevision,
 };
 pub use parent::ConversationParent;
 pub use proof::{
     CasLineageMode, CasLineageProof, CasRepresentedPrefixProof, CurrentTranscriptEntryProof,
     NativeCasLineage, RecoveredInjectionProof, RecoveryItemCount, RecoveryProjectionVersion,
     RecoveryUtf8ByteCount, SelectedPathProof,
+};
+pub use stop::{
+    StopAbandonmentReason, StopAttemptNonce, StopCause, StopCauseFirstRevisions,
+    StopCauseFirstRevisionsError, StopCauseSet, StopCauseSetError, StopDispatchClaimWitness,
+    StopOperationId, StopOperationNonce, StopOperationRevision,
 };
 
 /// Why a pure Syndic value was rejected before persistence or provider work.
@@ -47,9 +60,28 @@ pub enum SyndicValueError {
         maximum: usize,
         actual: usize,
     },
+    /// Text exceeded its exact Unicode scalar-value budget.
+    #[error("{kind} must not exceed {maximum} Unicode scalar values, got {actual}")]
+    TooManyScalars {
+        kind: &'static str,
+        maximum: usize,
+        actual: usize,
+    },
     /// Exact captured text contained a NUL byte.
     #[error("{kind} contains a NUL byte at offset {index}")]
     NulByte { kind: &'static str, index: usize },
+    /// Exact captured text had whitespace outside its logical content.
+    #[error("{kind} must not have surrounding whitespace")]
+    SurroundingWhitespace { kind: &'static str },
+    /// Exact captured text contained a Unicode control character.
+    #[error("{kind} contains a control character at UTF-8 offset {index}")]
+    ControlCharacter { kind: &'static str, index: usize },
+    /// Exact captured text contained no alphanumeric character.
+    #[error("{kind} must contain at least one alphanumeric character")]
+    MissingAlphanumeric { kind: &'static str },
+    /// A required positive counter was supplied as zero.
+    #[error("{kind} must be positive when present")]
+    ZeroPositiveValue { kind: &'static str },
     /// An end-exclusive source range was empty or reversed.
     #[error("source range must be non-empty and ordered, got {start}..{end}")]
     InvalidRange { start: u64, end: u64 },

@@ -10,17 +10,16 @@ use beryl_home_store::{
 use beryl_model::{AssetId, RuntimeId, SyndicThreadId, WindowId};
 use beryl_state::{
     AdmitBranchHandoffJob, ApplySettings, AssetMediaType, BerylState, CatalogPointReadLimit,
-    CatalogRowExpectation, CreateAssetWithReference, CreateThreadMetadata, ExpectedSettingRevision,
-    InitializeThreadlessWindow, PublishCatalogRow, ReplaceWindowClaim, SettingKey, SettingUpdate,
-    SettingValue, ThreadMetadataKind, UnixMillis,
+    CatalogRowExpectation, ExpectedSettingRevision, InitializeThreadlessWindow,
+    PublishAssetMetadata, PublishCatalogRow, ReplaceWindowClaim, SettingKey, SettingUpdate,
+    SettingValue,
 };
 use tempfile::tempdir;
 
 use support::phase9::{
-    admission, asset_owner, catalog_facts, catalog_sources, open_with_faults, placement,
-    sidecar_limit, target,
+    admission, catalog_facts, catalog_sources, open_with_faults, placement, sidecar_limit, target,
 };
-use support::{binding, execute, host_runtime};
+use support::{execute, host_runtime};
 
 fn create_setting(key: SettingKey, value: SettingValue) -> SettingUpdate {
     SettingUpdate::new(key, ExpectedSettingRevision::Absent, value)
@@ -53,30 +52,18 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     .unwrap();
 
     let thread_id = SyndicThreadId::from_bytes([7; 16]);
-    let mut cross_domain = HomeCommand::new(store.home_revision().unwrap());
-    cross_domain
-        .add(state.thread_metadata().create(
-            state.thread_metadata().revision(&store).unwrap(),
-            CreateThreadMetadata::new(
-                thread_id,
-                binding(1, 2, r"C:\Work\beryl"),
-                ThreadMetadataKind::Ordinary,
-            ),
-        ))
-        .unwrap();
-    cross_domain
-        .add(
-            state.settings().apply(
-                state.settings().revision(&store).unwrap(),
-                ApplySettings::new(vec![create_setting(
-                    SettingKey::ActiveThemeId,
-                    SettingValue::active_theme_id("checkpoint-two").unwrap(),
-                )])
-                .unwrap(),
-            ),
-        )
-        .unwrap();
-    store.execute(cross_domain).unwrap();
+    execute(
+        &store,
+        state.settings().apply(
+            state.settings().revision(&store).unwrap(),
+            ApplySettings::new(vec![create_setting(
+                SettingKey::ActiveThemeId,
+                SettingValue::active_theme_id("checkpoint-two").unwrap(),
+            )])
+            .unwrap(),
+        ),
+    )
+    .unwrap();
 
     let initial_session = state.session().minimal_bootstrap(&store).unwrap().unwrap();
     execute(
@@ -135,18 +122,15 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     let asset_revision = state.assets().revision(&store).unwrap();
     let first_asset = state
         .assets()
-        .create_with_reference(
+        .publish_metadata(
             asset_revision,
             sidecar,
-            CreateAssetWithReference::new(
+            PublishAssetMetadata::new(
                 asset_id,
                 AssetMediaType::new("image/png").unwrap(),
                 None,
                 asset_revision.checked_next().unwrap(),
-                asset_owner(30),
-                UnixMillis::new(100),
-            )
-            .unwrap(),
+            ),
         )
         .unwrap();
     let mut asset_command = HomeCommand::new(store.home_revision().unwrap());
@@ -158,11 +142,6 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
         .runtime(&store, RuntimeId::from_bytes([1; 16]))
         .unwrap()
         .unwrap();
-    let expected_metadata = state
-        .thread_metadata()
-        .metadata(&store, thread_id)
-        .unwrap()
-        .unwrap();
     let expected_job = state.durable_jobs().job(&store, job_id).unwrap().unwrap();
     let expected_catalog = state
         .catalog()
@@ -170,7 +149,6 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
         .unwrap()
         .unwrap();
     let expected_asset = state.assets().metadata(&store, asset_id).unwrap().unwrap();
-    assert_eq!(expected_asset.reference_count(), 1);
 
     store.close().unwrap();
 
@@ -296,18 +274,15 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
     let current_asset_revision = current_state.assets().revision(&store).unwrap();
     let stale_first_asset = current_state
         .assets()
-        .create_with_reference(
+        .publish_metadata(
             current_asset_revision,
             stale_sidecar,
-            CreateAssetWithReference::new(
+            PublishAssetMetadata::new(
                 stale_asset_id,
                 AssetMediaType::new("image/png").unwrap(),
                 None,
                 current_asset_revision.checked_next().unwrap(),
-                asset_owner(31),
-                UnixMillis::new(101),
-            )
-            .unwrap(),
+            ),
         )
         .unwrap();
     let mut stale_token_command = HomeCommand::new(store.home_revision().unwrap());
@@ -365,13 +340,6 @@ fn all_domains_reopen_fail_recover_and_reject_prior_generation_authority() {
             .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
             .unwrap(),
         Some(expected_runtime)
-    );
-    assert_eq!(
-        state
-            .thread_metadata()
-            .metadata(&reopened, thread_id)
-            .unwrap(),
-        Some(expected_metadata)
     );
     assert_eq!(
         state.durable_jobs().job(&reopened, job_id).unwrap(),

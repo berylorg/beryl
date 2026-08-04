@@ -8,9 +8,8 @@ use beryl_home_store::{
 };
 use beryl_model::{DraftRevision, InputGateRevision, SyndicItemId, ThreadRevision};
 use syndic_storage::{
-    AdmissionMarkers, ComposerAtom, ComposerPayload, CreateThread, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, IdleSubmission, InputAdmissionStatus, PreparedContent,
-    SyndicPointReadLimit, SyndicStorage,
+    ComposerAtom, ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
+    IdleSubmission, InputAdmissionStatus, PreparedContent, SyndicPointReadLimit, SyndicStorage,
 };
 
 use support::{TestHome, draft_id, id, stage_prepared_content, timestamp};
@@ -40,7 +39,12 @@ fn seed_submission(store: &HomeStore, storage: SyndicStorage) -> IdleSubmission 
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
-            CreateThread::ordinary(thread, draft, timestamp(1)),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                support::exact_cas::execution_binding(),
+                timestamp(1),
+            ),
         ),
     );
     let payload = ComposerPayload::new(vec![ComposerAtom::text("durable input").unwrap()]).unwrap();
@@ -73,7 +77,7 @@ fn seed_submission(store: &HomeStore, storage: SyndicStorage) -> IdleSubmission 
         InputGateRevision::new(1).unwrap(),
         draft_id(3),
         SyndicItemId::from_bytes([4; 16]),
-        AdmissionMarkers::default(),
+        None,
         timestamp(3),
     )
 }

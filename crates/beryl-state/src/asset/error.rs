@@ -3,16 +3,17 @@ use std::{error::Error, fmt};
 use beryl_home_store::{
     DomainCallbackError, DomainCallbackSource, MutationBuildError, ReadError, SidecarError,
 };
-use beryl_model::{AssetId, DomainRevision};
+use beryl_model::{
+    AssetId, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal, SyndicDraftMarkerId,
+};
 
-use crate::{RecordRevision, ValueError};
-
-use super::AssetReferenceOwner;
+use super::{ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES, ASSET_REFERENCE_PAGE_MAX_ENTRIES, AssetOwner};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssetValueError {
     InvalidMediaType,
-    ByteBoundExceeded { maximum: u64, actual: u64 },
+    ZeroReferenceOrdinal,
+    ReferenceOrdinalExhausted,
 }
 
 impl fmt::Display for AssetValueError {
@@ -21,8 +22,11 @@ impl fmt::Display for AssetValueError {
             Self::InvalidMediaType => {
                 formatter.write_str("asset media type is invalid or oversized")
             }
-            Self::ByteBoundExceeded { maximum, actual } => {
-                write!(formatter, "asset has {actual} bytes, exceeding {maximum}")
+            Self::ZeroReferenceOrdinal => {
+                formatter.write_str("asset reference ordinal must be nonzero")
+            }
+            Self::ReferenceOrdinalExhausted => {
+                formatter.write_str("asset reference ordinal is exhausted")
             }
         }
     }
@@ -30,91 +34,146 @@ impl fmt::Display for AssetValueError {
 
 impl Error for AssetValueError {}
 
-/// Why a bounded exact asset-reference batch description was rejected.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AssetReferenceBatchError {
-    Empty,
-    TooMany {
-        maximum: usize,
-        actual: usize,
-    },
-    DuplicateSource(AssetReferenceOwner),
-    DuplicateDestination(AssetReferenceOwner),
-    SourceDestinationOverlap(AssetReferenceOwner),
-    ConflictingRecordRevision {
-        asset_id: AssetId,
-        first: RecordRevision,
-        second: RecordRevision,
-    },
-    RecordRevisionExhausted {
-        asset_id: AssetId,
-    },
-    Value(AssetValueError),
+/// Why an authority-bound staged or sealed asset-reference read could not be completed.
+#[derive(Debug)]
+pub enum AssetReadError {
+    Read(ReadError),
+    ReferenceSetMissing(AssetReferenceSetId),
+    ReferenceSetNotBuilding(AssetReferenceSetId),
+    ReferenceSetNotSealed(AssetReferenceSetId),
+    StagingAuthorityMismatch(AssetReferenceSetId),
+    SealedProofMismatch(AssetReferenceSetId),
 }
 
-impl fmt::Display for AssetReferenceBatchError {
+impl fmt::Display for AssetReadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => formatter.write_str("asset-reference batch must not be empty"),
-            Self::TooMany { maximum, actual } => write!(
-                formatter,
-                "asset-reference batch has {actual} entries, exceeding {maximum}"
-            ),
-            Self::DuplicateSource(owner) => {
-                write!(formatter, "asset-reference batch repeats source {owner:?}")
+            Self::Read(source) => source.fmt(formatter),
+            Self::ReferenceSetMissing(set) => {
+                write!(formatter, "asset reference set {set:?} is missing")
             }
-            Self::DuplicateDestination(owner) => {
+            Self::ReferenceSetNotBuilding(set) => {
                 write!(
                     formatter,
-                    "asset-reference batch repeats destination {owner:?}"
+                    "asset reference set {set:?} is not an unpublished build"
                 )
             }
-            Self::SourceDestinationOverlap(owner) => write!(
+            Self::ReferenceSetNotSealed(set) => {
+                write!(formatter, "asset reference set {set:?} is not sealed")
+            }
+            Self::StagingAuthorityMismatch(set) => write!(
                 formatter,
-                "asset-reference batch uses {owner:?} as both source and destination"
+                "asset reference set {set:?} does not match the staging authority"
             ),
-            Self::ConflictingRecordRevision {
-                asset_id,
-                first,
-                second,
-            } => write!(
+            Self::SealedProofMismatch(set) => write!(
                 formatter,
-                "asset-reference batch has conflicting revisions {} and {} for {asset_id:?}",
-                first.get(),
-                second.get()
+                "asset reference set {set:?} does not match the complete sealed proof"
             ),
-            Self::RecordRevisionExhausted { asset_id } => write!(
-                formatter,
-                "asset-reference batch cannot advance exhausted metadata for {asset_id:?}"
-            ),
-            Self::Value(source) => source.fmt(formatter),
         }
     }
 }
 
-impl Error for AssetReferenceBatchError {
+impl Error for AssetReadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Value(source) => Some(source),
-            _ => None,
+            Self::Read(source) => Some(source),
+            Self::ReferenceSetMissing(_)
+            | Self::ReferenceSetNotBuilding(_)
+            | Self::ReferenceSetNotSealed(_)
+            | Self::StagingAuthorityMismatch(_)
+            | Self::SealedProofMismatch(_) => None,
         }
     }
 }
 
-impl From<AssetValueError> for AssetReferenceBatchError {
-    fn from(source: AssetValueError) -> Self {
-        Self::Value(source)
+impl From<ReadError> for AssetReadError {
+    fn from(source: ReadError) -> Self {
+        Self::Read(source)
     }
 }
+
+/// Why one fixed-capacity contiguous reference page was rejected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AssetReferencePageError {
+    Empty,
+    TooMany { actual: usize },
+    DuplicateMarker(SyndicDraftMarkerId),
+}
+
+impl fmt::Display for AssetReferencePageError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("asset reference page must not be empty"),
+            Self::TooMany { actual } => write!(
+                formatter,
+                "asset reference page has {actual} entries, exceeding the physical command bound {ASSET_REFERENCE_PAGE_MAX_ENTRIES}"
+            ),
+            Self::DuplicateMarker(marker) => {
+                write!(formatter, "asset reference page repeats marker {marker:?}")
+            }
+        }
+    }
+}
+
+impl Error for AssetReferencePageError {}
+
+/// Why one compact owner-head update command was rejected before persistence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AssetOwnerHeadUpdateError {
+    Empty,
+    NoEffect,
+    TooMany { actual: usize },
+    DuplicateOwner(AssetOwner),
+}
+
+impl fmt::Display for AssetOwnerHeadUpdateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("asset owner-head update must not be empty"),
+            Self::NoEffect => formatter
+                .write_str("asset owner-head update must contain at least one head mutation"),
+            Self::TooMany { actual } => write!(
+                formatter,
+                "asset owner-head update has {actual} entries, exceeding the physical command bound {ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES}"
+            ),
+            Self::DuplicateOwner(owner) => {
+                write!(formatter, "asset owner-head update repeats {owner:?}")
+            }
+        }
+    }
+}
+
+impl Error for AssetOwnerHeadUpdateError {}
+
+/// Why one bounded validation-only owner-head participant was rejected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AssetOwnerHeadValidationError {
+    Empty,
+    TooMany { actual: usize },
+    DuplicateOwner(AssetOwner),
+}
+
+impl fmt::Display for AssetOwnerHeadValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("asset owner-head validation must not be empty"),
+            Self::TooMany { actual } => write!(
+                formatter,
+                "asset owner-head validation has {actual} entries, exceeding the physical command bound {ASSET_OWNER_HEAD_UPDATE_MAX_ENTRIES}"
+            ),
+            Self::DuplicateOwner(owner) => {
+                write!(formatter, "asset owner-head validation repeats {owner:?}")
+            }
+        }
+    }
+}
+
+impl Error for AssetOwnerHeadValidationError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssetAdmissionError {
     WrongNamespace,
     IdentityMismatch,
-    ByteBoundExceeded {
-        maximum: u64,
-        actual: u64,
-    },
     CreationRevisionMismatch {
         expected: DomainRevision,
         actual: DomainRevision,
@@ -130,9 +189,6 @@ impl fmt::Display for AssetAdmissionError {
             }
             Self::IdentityMismatch => formatter
                 .write_str("admitted sidecar digest or length disagrees with the asset identity"),
-            Self::ByteBoundExceeded { maximum, actual } => {
-                write!(formatter, "asset has {actual} bytes, exceeding {maximum}")
-            }
             Self::CreationRevisionMismatch { expected, actual } => write!(
                 formatter,
                 "asset creation revision must be {expected}, got {actual}"
@@ -149,19 +205,21 @@ pub enum AssetMutationError {
     Read(ReadError),
     Build(MutationBuildError),
     Value(AssetValueError),
-    StateValue(ValueError),
-    AssetAlreadyExists(AssetId),
-    AssetMissing(AssetId),
-    ReferenceAlreadyExists(AssetReferenceOwner),
-    ReferenceMissing(AssetReferenceOwner),
-    ReferenceAssetMismatch,
-    MetadataFactsMismatch,
-    RecordRevisionConflict {
-        expected: RecordRevision,
-        current: RecordRevision,
-    },
-    ReferenceCountOverflow,
-    ReferenceCountUnderflow,
+    MetadataAlreadyExists(AssetId),
+    MetadataMissing(AssetId),
+    ReferenceSetAlreadyExists(AssetReferenceSetId),
+    ReferenceSetMissing(AssetReferenceSetId),
+    ReferenceSetNotBuilding(AssetReferenceSetId),
+    ReferenceSetNotSealed(AssetReferenceSetId),
+    BuildProofMismatch(AssetReferenceSetId),
+    MarkerSummaryMismatch(AssetReferenceSetId),
+    CountOverflow,
+    ManifestRevisionExhausted(AssetReferenceSetId),
+    EntryAlreadyExists,
+    MarkerAlreadyExists(SyndicDraftMarkerId),
+    LabelAssetMismatch { label: ImageLabelOrdinal },
+    OwnerHeadMismatch(AssetOwner),
+    OwnerRevisionExhausted(AssetOwner),
 }
 
 impl fmt::Display for AssetMutationError {
@@ -170,36 +228,62 @@ impl fmt::Display for AssetMutationError {
             Self::Read(source) => source.fmt(formatter),
             Self::Build(source) => source.fmt(formatter),
             Self::Value(source) => source.fmt(formatter),
-            Self::StateValue(source) => source.fmt(formatter),
-            Self::AssetAlreadyExists(asset) => {
+            Self::MetadataAlreadyExists(asset) => {
                 write!(formatter, "asset metadata already exists for {asset:?}")
             }
-            Self::AssetMissing(asset) => {
+            Self::MetadataMissing(asset) => {
                 write!(formatter, "asset metadata is missing for {asset:?}")
             }
-            Self::ReferenceAlreadyExists(owner) => {
-                write!(formatter, "asset reference already exists for {owner:?}")
+            Self::ReferenceSetAlreadyExists(set) => {
+                write!(formatter, "asset reference set {set:?} already exists")
             }
-            Self::ReferenceMissing(owner) => {
-                write!(formatter, "asset reference is missing for {owner:?}")
+            Self::ReferenceSetMissing(set) => {
+                write!(formatter, "asset reference set {set:?} is missing")
             }
-            Self::ReferenceAssetMismatch => {
-                formatter.write_str("asset reference points to a different asset")
+            Self::ReferenceSetNotBuilding(set) => {
+                write!(formatter, "asset reference set {set:?} is not building")
             }
-            Self::MetadataFactsMismatch => {
-                formatter.write_str("asset media facts disagree with existing metadata")
+            Self::ReferenceSetNotSealed(set) => {
+                write!(formatter, "asset reference set {set:?} is not sealed")
             }
-            Self::RecordRevisionConflict { expected, current } => write!(
+            Self::BuildProofMismatch(set) => {
+                write!(
+                    formatter,
+                    "asset reference set {set:?} build proof is stale or collided"
+                )
+            }
+            Self::MarkerSummaryMismatch(set) => write!(
                 formatter,
-                "asset metadata revision conflict: expected {}, current {}",
-                expected.get(),
-                current.get()
+                "asset reference set {set:?} does not exactly match its sealed content-marker summary"
             ),
-            Self::ReferenceCountOverflow => {
-                formatter.write_str("asset reference count is exhausted")
+            Self::CountOverflow => formatter.write_str("asset reference-set count is exhausted"),
+            Self::ManifestRevisionExhausted(set) => {
+                write!(
+                    formatter,
+                    "asset reference set {set:?} revision is exhausted"
+                )
             }
-            Self::ReferenceCountUnderflow => {
-                formatter.write_str("asset reference count is already zero")
+            Self::EntryAlreadyExists => {
+                formatter.write_str("asset reference entry ordinal already exists")
+            }
+            Self::MarkerAlreadyExists(marker) => {
+                write!(
+                    formatter,
+                    "asset reference set already contains marker {marker:?}"
+                )
+            }
+            Self::LabelAssetMismatch { label } => write!(
+                formatter,
+                "image label {label} already identifies a different asset in this reference set"
+            ),
+            Self::OwnerHeadMismatch(owner) => {
+                write!(
+                    formatter,
+                    "asset owner head proof or revision disagrees for {owner:?}"
+                )
+            }
+            Self::OwnerRevisionExhausted(owner) => {
+                write!(formatter, "asset owner revision is exhausted for {owner:?}")
             }
         }
     }
@@ -234,44 +318,6 @@ impl From<AssetValueError> for AssetMutationError {
     }
 }
 
-impl From<ValueError> for AssetMutationError {
-    fn from(source: ValueError) -> Self {
-        Self::StateValue(source)
-    }
-}
-
-/// Why a bounded reference reconciliation read could not publish one coherent status.
-#[derive(Debug)]
-pub enum AssetReferenceStatusError {
-    Read(ReadError),
-    ConcurrentChange,
-}
-
-impl fmt::Display for AssetReferenceStatusError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Read(source) => source.fmt(formatter),
-            Self::ConcurrentChange => formatter
-                .write_str("asset references changed concurrently during exact reconciliation"),
-        }
-    }
-}
-
-impl Error for AssetReferenceStatusError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Read(source) => Some(source),
-            Self::ConcurrentChange => None,
-        }
-    }
-}
-
-impl From<ReadError> for AssetReferenceStatusError {
-    fn from(source: ReadError) -> Self {
-        Self::Read(source)
-    }
-}
-
 #[derive(Debug)]
 pub enum AssetValidationError {
     Read(ReadError),
@@ -289,7 +335,15 @@ impl fmt::Display for AssetValidationError {
     }
 }
 
-impl Error for AssetValidationError {}
+impl Error for AssetValidationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read(source) => Some(source),
+            Self::Sidecar(source) => Some(source),
+            Self::Invariant(_) => None,
+        }
+    }
+}
 
 impl DomainCallbackError for AssetValidationError {
     fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {

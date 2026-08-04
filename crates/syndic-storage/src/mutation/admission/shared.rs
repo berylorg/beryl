@@ -53,6 +53,7 @@ pub(super) fn load_base(
         thread,
         draft,
         gate,
+        summary,
         empty_content,
     })
 }
@@ -101,29 +102,77 @@ pub(super) fn ensure_new_draft_identity(
     Ok(())
 }
 
-pub(super) fn marker_records(
-    owner: InputMarkerOwner,
-    markers: &AdmissionMarkers,
-) -> Result<Vec<InputMarkerResolutionRecord>, SyndicMutationError> {
-    markers
-        .markers()
-        .iter()
-        .enumerate()
-        .map(|(index, marker)| {
-            let ordinal = InputMarkerOrdinal::new(
-                u64::try_from(index)
-                    .ok()
-                    .and_then(|value| value.checked_add(1))
-                    .ok_or(SyndicRecordError::LengthOverflow {
-                        kind: "admission marker resolutions",
-                    })?,
-            )?;
-            Ok(InputMarkerResolutionRecord::new(owner, ordinal, *marker))
-        })
-        .collect()
+pub(in crate::mutation) fn validate_asset_reference_set(
+    content: crate::ContentReference,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
+) -> Result<(), SyndicMutationError> {
+    let expected = content
+        .sealed_marker_summary()
+        .map_err(|_| SyndicMutationError::AssetReferenceSetConflict)?;
+    let exact = match (content.summary().image_marker_count(), asset_reference_set) {
+        (0, None) => true,
+        (0, Some(_)) | (_, None) => false,
+        (_, Some(proof)) => proof.source() == expected,
+    };
+    if !exact {
+        return Err(SyndicMutationError::AssetReferenceSetConflict);
+    }
+    Ok(())
 }
 
-pub(super) fn turn_shape(
+pub(super) fn advance_image_label_authority(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread: &ThreadRecord,
+    owner: crate::ImageLabelOriginOwner,
+    content: crate::ContentReference,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
+) -> Result<
+    (
+        crate::ThreadImageLabelFrontiers,
+        Option<crate::ImageLabelOriginSpanRecord>,
+    ),
+    SyndicMutationError,
+> {
+    validate_asset_reference_set(content, asset_reference_set)?;
+    let frontiers = thread.image_label_frontiers();
+    let Some(proof) = asset_reference_set else {
+        return Ok((frontiers, None));
+    };
+    let end = proof
+        .source()
+        .maximum_image_label()
+        .ok_or(SyndicMutationError::AssetReferenceSetConflict)?;
+    if frontiers.current().contains(end) {
+        return Ok((frontiers, None));
+    }
+    let start = crate::ImageLabelOrdinal::new(
+        frontiers
+            .current()
+            .get()
+            .checked_add(1)
+            .ok_or(SyndicMutationError::AssetReferenceSetConflict)?,
+    )
+    .map_err(|_| SyndicMutationError::AssetReferenceSetConflict)?;
+    let span = crate::ImageLabelOriginSpanRecord::new(thread.id(), start, end, owner, proof)?;
+    if point::<ImageLabelOriginSpansFamily>(
+        reader,
+        &ImageLabelOriginSpanKey {
+            thread: thread.id(),
+            end_label: end,
+        },
+    )?
+    .is_some()
+    {
+        return Err(SyndicMutationError::AssetReferenceSetConflict);
+    }
+    let advanced = crate::ThreadImageLabelFrontiers::new(
+        frontiers.inherited(),
+        crate::ImageLabelFrontier::from_raw(end.get()),
+    )?;
+    Ok((advanced, Some(span)))
+}
+
+pub(in crate::mutation) fn turn_shape(
     reader: &DomainReader<'_, SyndicDomain>,
     turn_id: SyndicTurnId,
     parent: ConversationParent,
@@ -202,7 +251,9 @@ pub(in crate::mutation) fn validate_replacement_intent(
     Ok((target, item))
 }
 
-pub(super) fn thread_parent_index(thread: &ThreadRecord) -> Option<ThreadParentIndexRecord> {
+pub(in crate::mutation) fn thread_parent_index(
+    thread: &ThreadRecord,
+) -> Option<ThreadParentIndexRecord> {
     match (thread.parent_thread_id(), thread.context_owner_id()) {
         (Some(parent), Some(owner)) => Some(ThreadParentIndexRecord::new(
             parent,
@@ -218,9 +269,16 @@ pub(super) fn context_move(
     reader: &DomainReader<'_, SyndicDomain>,
     draft: &DraftRecord,
     turn_id: SyndicTurnId,
-) -> Result<(Option<ContextMove>, Option<DiscussionContextOwnerId>), SyndicMutationError> {
-    let Some(owner) = draft.context_owner_id() else {
-        return Ok((None, None));
+) -> Result<
+    (
+        Option<ContextMove>,
+        Option<DiscussionContextOwnerId>,
+        Option<ConversationParent>,
+    ),
+    SyndicMutationError,
+> {
+    let crate::DraftSubmissionIntent::DiscussionContext(owner) = draft.submission_intent() else {
+        return Ok((None, None, None));
     };
     if owner != DiscussionContextOwnerId::Draft(draft.id()) {
         return Err(SyndicMutationError::CurrentDraftConflict);
@@ -240,5 +298,8 @@ pub(super) fn context_move(
             ),
         }),
         Some(submitted),
+        Some(ConversationParent::Turn(
+            record.envelope().descriptor().source().turn_id(),
+        )),
     ))
 }

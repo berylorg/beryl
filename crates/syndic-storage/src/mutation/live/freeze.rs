@@ -3,8 +3,8 @@ use beryl_model::ProjectionRevision;
 use super::*;
 use crate::mutation::required;
 use crate::{
-    CanonicalItemKind, CanonicalItemPayload, CanonicalItemRecord, CasItemIndexRecord,
-    ContentLifecycle, ContentManifestRecord, HistorySummaryRecord, ItemProjectionHeadRecord,
+    CanonicalItemRecord, CasItemIndexRecord, ContentLifecycle, ContentManifestRecord,
+    HistorySummaryRecord, ItemProjectionHeadRecord, SealedProviderFrameReference,
     TranscriptViewHeadRecord, TurnItemIndexRecord, TurnStateRecord,
 };
 
@@ -70,17 +70,13 @@ impl FreezeNextTurnItemMutation {
             return Err(SyndicMutationError::CanonicalFinalizationConflict);
         }
         let content = item
-            .payload()
-            .content()
+            .provider_content()
             .ok_or(SyndicMutationError::CanonicalFinalizationConflict)?;
         let manifest = required::<ContentManifestsFamily>(reader, &content.id())?;
         if manifest.lifecycle() != ContentLifecycle::Live {
             return Err(SyndicMutationError::CanonicalFinalizationConflict);
         }
-        let visible = matches!(
-            item.kind(),
-            CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-        );
+        let visible = item.projection_source().is_some();
         let selected = crate::mutation::turn_is_on_selected_path(reader, &thread, &turn)?;
         let (projection_build, item_head) = if visible {
             crate::mutation::projection::invalidate_item_projection(reader, &item)?
@@ -88,7 +84,7 @@ impl FreezeNextTurnItemMutation {
             (None, None)
         };
         let changed = freeze_item(manifest, item)?;
-        let state = TurnStateRecord::with_capture_frontiers(
+        let state = TurnStateRecord::with_capture_frontiers_and_issue(
             current.turn_id(),
             current.revision().checked_next()?,
             current.lifecycle(),
@@ -97,6 +93,7 @@ impl FreezeNextTurnItemMutation {
             current.finalized_item_count(),
             current.open_item_count(),
             current.history_blocking_item_count(),
+            current.provider_observation_issue(),
             current.end_status(),
             request.updated_at,
         )?;
@@ -105,16 +102,21 @@ impl FreezeNextTurnItemMutation {
         } else {
             (None, None)
         };
-        let summary = selected.then(|| {
-            HistorySummaryRecord::new(
-                summary.thread_id(),
-                summary.thread_revision(),
-                summary.committed_tail(),
-                summary.selected_path_digest(),
-                false,
-                summary.last_activity_at().max(request.updated_at),
-            )
-        });
+        let next_activity = summary.last_activity_at().max(request.updated_at);
+        let summary =
+            if selected && (summary.complete() || next_activity != summary.last_activity_at()) {
+                Some(HistorySummaryRecord::new(
+                    summary.thread_id(),
+                    summary.revision().checked_next()?,
+                    summary.thread_revision(),
+                    summary.committed_tail(),
+                    summary.selected_path_digest(),
+                    false,
+                    next_activity,
+                ))
+            } else {
+                None
+            };
         Ok(FreezeRecords {
             state,
             summary,
@@ -188,9 +190,20 @@ fn freeze_item(
     current_manifest: ContentManifestRecord,
     current_item: CanonicalItemRecord,
 ) -> Result<FrozenItem, SyndicMutationError> {
-    let current_content = current_item
-        .payload()
-        .content()
+    let current_provider = current_item
+        .provider()
+        .cloned()
+        .ok_or(SyndicMutationError::CanonicalFinalizationConflict)?;
+    let current_content = current_provider.content();
+    if !current_provider.stream_state().is_complete() {
+        return Err(SyndicMutationError::CanonicalFinalizationConflict);
+    }
+    let source_event = current_item
+        .source_event()
+        .ok_or(SyndicMutationError::CanonicalFinalizationConflict)?;
+    let cas_source = current_item
+        .cas_source()
+        .cloned()
         .ok_or(SyndicMutationError::CanonicalFinalizationConflict)?;
     if current_manifest.owner() != Some(current_item.id())
         || current_manifest.current_reference() != Some(current_content)
@@ -211,31 +224,27 @@ fn freeze_item(
     let content = manifest
         .current_reference()
         .ok_or(SyndicMutationError::ContentManifestConflict)?;
-    let payload = match current_item.payload() {
-        CanonicalItemPayload::UserInput { marker_count, .. } => {
-            CanonicalItemPayload::user_input(content, *marker_count)
-        }
-        CanonicalItemPayload::Text(_) => CanonicalItemPayload::text(content),
-        CanonicalItemPayload::Activity
-        | CanonicalItemPayload::GeneratedMedia(_)
-        | CanonicalItemPayload::Unsupported(_) => {
-            return Err(SyndicMutationError::CanonicalFinalizationConflict);
-        }
-    };
+    let provider = SealedProviderFrameReference::new(
+        content,
+        current_provider.frame().clone(),
+        current_provider.observation(),
+        current_provider.stream_state().clone(),
+        current_provider.narrative(),
+    )
+    .map_err(|_| SyndicMutationError::CanonicalFinalizationConflict)?;
     let revision: ProjectionRevision = current_item.revision().checked_next()?;
-    let item = CanonicalItemRecord::with_source_state(
+    let item = CanonicalItemRecord::with_provider_state(
         current_item.id(),
         current_item.turn_id(),
         current_item.ordinal(),
         revision,
-        current_item.source_event(),
+        source_event,
         current_item.source_event_count(),
-        current_item.cas_source().cloned(),
-        current_item.provider_kind(),
-        current_item.provider_lifecycle(),
-        current_item.disposition(),
+        cas_source,
         current_item.assistant_phase(),
-        payload,
+        provider,
+        current_item.narrative_completion(),
+        current_item.presentation().clone(),
     )?;
     let index = TurnItemIndexRecord::new(item.turn_id(), item.ordinal(), item.id(), revision);
     let cas_index = item.cas_source().map(|source| {

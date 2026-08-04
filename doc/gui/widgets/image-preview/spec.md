@@ -18,7 +18,9 @@ Widgets:
 
 The image preview consists of a backdrop, popup frame, image stage, fitted image surface, optional local state message, and close command.
 
-The owner supplies preview identity, decoded image resource or local failure state, accessibility label, and originating anchor. The widget does not locate, decode, validate, persist, replace, or mutate image bytes.
+The owner supplies preview identity, one admitted bounded thumbnail or visible tile set, local
+failure state, accessibility label, and originating anchor. The widget does not locate, decode,
+validate, persist, replace, mutate, or retain the complete original image bytes.
 
 # Look
 

@@ -21,6 +21,8 @@ pub enum HomeOpenStage {
     OpenLockFile,
     /// The non-blocking exclusive ownership lock failed unexpectedly.
     AcquireLock,
+    /// The package-owned practical Fjall storage profile was invalid.
+    ConfigureStoragePolicy,
     /// A new Fjall database could not be created.
     CreateDatabase,
     /// A new home schema header could not be initialized durably.

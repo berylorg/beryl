@@ -1,31 +1,40 @@
 use beryl_home_store::DomainReader;
-use beryl_model::SyndicContentId;
+use beryl_model::{
+    ImageLabelOrdinal, SealedAssetReferenceSetProof, SyndicContentId,
+    advance_content_marker_digest, content_marker_digest_seed,
+};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    CanonicalItemKind, ContentEncoding, ContentLifecycle, InputMarkerOwner, advance_content_chain,
-    codec::*, content::input_marker_digest, content_chain_seed, domain::SyndicDomain,
-    error::SyndicValidationError,
+    ContentEncoding, ContentLifecycle, codec::*, domain::SyndicDomain, error::SyndicValidationError,
 };
 
 use super::scan::{point, require, scan};
 
+mod physical;
 mod range;
 
-pub(super) use range::read_logical_range;
+pub(crate) use range::read_projection_text_range;
+
+pub(crate) fn read_encoded_range(
+    reader: &DomainReader<'_, SyndicDomain>,
+    content: SyndicContentId,
+    committed_bytes: u64,
+    start: u64,
+    end: u64,
+) -> Result<Vec<u8>, SyndicValidationError> {
+    range::read_encoded_range(reader, content, committed_bytes, start, end)
+}
 
 pub(super) fn validate(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
-    validate_manifests(reader)?;
-    validate_chunks(reader)?;
-    validate_byte_spans(reader)?;
+    physical::validate(reader)?;
     validate_text_spans(reader)?;
     validate_content_pieces(reader)?;
     validate_draft_references(reader)?;
     validate_accepted_references(reader)?;
-    validate_canonical_references(reader)?;
-    validate_marker_resolutions(reader)
+    validate_canonical_references(reader)
 }
 
 fn validate_text_spans(
@@ -44,6 +53,14 @@ fn validate_text_spans(
             expected_logical = 0;
             previous_piece_ordinal = 0;
             previous_encoded_end = 0;
+            let manifest = require::<ContentManifestsFamily>(
+                reader,
+                &key.owner,
+                "content text-span owner manifest is missing",
+            )?;
+            if manifest.encoding() == ContentEncoding::ProviderItemV1 {
+                return invariant("provider content has a generic text span");
+            }
         }
         if key.owner != span.content_id()
             || key.logical_start != span.logical_start()
@@ -130,17 +147,28 @@ fn validate_content_pieces(
     let mut expected_ordinal = 1_u64;
     let mut previous_logical = 0_u64;
     let mut marker_since_text = false;
-    let mut markers = Vec::new();
+    let mut marker_count = 0_u64;
+    let mut marker_digest = content_marker_digest_seed();
+    let mut maximum_image_label = None;
     scan::<ContentPiecesFamily>(reader, |key, piece| {
         if owner != Some(key.owner) {
             if let Some(previous) = owner {
-                finish_piece_owner(reader, previous, expected_ordinal - 1, &markers)?;
+                finish_piece_owner(
+                    reader,
+                    previous,
+                    expected_ordinal - 1,
+                    marker_count,
+                    marker_digest,
+                    maximum_image_label,
+                )?;
             }
             owner = Some(key.owner);
             expected_ordinal = 1;
             previous_logical = 0;
             marker_since_text = false;
-            markers.clear();
+            marker_count = 0;
+            marker_digest = content_marker_digest_seed();
+            maximum_image_label = None;
         }
         if key.owner != piece.content_id()
             || key.ordinal != piece.ordinal()
@@ -154,6 +182,9 @@ fn validate_content_pieces(
             &piece.content_id(),
             "content piece owner manifest is missing",
         )?;
+        if manifest.encoding() == ContentEncoding::ProviderItemV1 {
+            return invariant("provider content has a generic content piece");
+        }
         if piece.encoded_end() > manifest.encoded_bytes() {
             return invariant("content piece extends beyond committed content");
         }
@@ -187,9 +218,8 @@ fn validate_content_pieces(
                 if manifest.encoding() != ContentEncoding::ComposerV1
                     || atom_ordinal.get() > manifest.expected().atom_count()
                     || marker_ordinal.get()
-                        != u64::try_from(markers.len())
-                            .ok()
-                            .and_then(|count| count.checked_add(1))
+                        != marker_count
+                            .checked_add(1)
                             .ok_or(SyndicValidationError::Invariant(
                                 "content marker order exhausted",
                             ))?
@@ -212,7 +242,11 @@ fn validate_content_pieces(
                 if encoded != expected || actual_digest != *digest {
                     return invariant("content image-marker bytes or digest disagree");
                 }
-                markers.push((*marker_id, *label));
+                marker_count = marker_ordinal.get();
+                marker_digest = advance_content_marker_digest(marker_digest, *marker_id, *label);
+                maximum_image_label = Some(
+                    maximum_image_label.map_or(*label, |maximum| std::cmp::max(maximum, *label)),
+                );
                 previous_logical = *logical_offset;
                 marker_since_text = true;
             }
@@ -226,7 +260,14 @@ fn validate_content_pieces(
         Ok(())
     })?;
     if let Some(owner) = owner {
-        finish_piece_owner(reader, owner, expected_ordinal - 1, &markers)?;
+        finish_piece_owner(
+            reader,
+            owner,
+            expected_ordinal - 1,
+            marker_count,
+            marker_digest,
+            maximum_image_label,
+        )?;
     }
     scan::<ContentManifestsFamily>(reader, |_, manifest| {
         let first = ContentPieceKey {
@@ -248,7 +289,9 @@ fn finish_piece_owner(
     reader: &DomainReader<'_, SyndicDomain>,
     owner: SyndicContentId,
     piece_count: u64,
-    markers: &[(beryl_model::SyndicDraftMarkerId, crate::ImageLabelOrdinal)],
+    marker_count: u64,
+    marker_digest: [u8; 32],
+    maximum_image_label: Option<ImageLabelOrdinal>,
 ) -> Result<(), SyndicValidationError> {
     let manifest = require::<ContentManifestsFamily>(
         reader,
@@ -256,13 +299,12 @@ fn finish_piece_owner(
         "content piece owner manifest is missing",
     )?;
     if piece_count > manifest.expected().piece_count()
-        || u64::try_from(markers.len()).ok() > Some(manifest.expected().image_marker_count())
+        || marker_count > manifest.expected().image_marker_count()
         || (manifest.lifecycle() != ContentLifecycle::Building
             && (piece_count != manifest.expected().piece_count()
-                || u64::try_from(markers.len()).ok()
-                    != Some(manifest.expected().image_marker_count())
-                || input_marker_digest(markers.iter().copied())
-                    != manifest.expected().marker_digest()))
+                || marker_count != manifest.expected().image_marker_count()
+                || marker_digest != manifest.expected().marker_digest()
+                || maximum_image_label != manifest.expected().maximum_image_label()))
     {
         return invariant("content pieces disagree with their manifest");
     }
@@ -288,232 +330,6 @@ fn finish_text_span_owner(
     Ok(())
 }
 
-fn validate_byte_spans(
-    reader: &DomainReader<'_, SyndicDomain>,
-) -> Result<(), SyndicValidationError> {
-    let mut owner = None;
-    let mut expected_start = 0_u64;
-    let mut expected_ordinal = 1_u64;
-    scan::<ContentByteSpansFamily>(reader, |key, span| {
-        if owner != Some(key.owner) {
-            if let Some(previous) = owner {
-                finish_span_owner(reader, previous, expected_start, expected_ordinal - 1)?;
-            }
-            owner = Some(key.owner);
-            expected_start = 0;
-            expected_ordinal = 1;
-        }
-        if key.owner != span.content_id()
-            || key.start != span.start()
-            || span.start() != expected_start
-            || span.ordinal().get() != expected_ordinal
-        {
-            return invariant("content byte-span key or contiguous frontier disagrees");
-        }
-        let chunk = require::<ContentChunksFamily>(
-            reader,
-            &ContentChunkKey {
-                owner: span.content_id(),
-                ordinal: span.ordinal(),
-            },
-            "content byte span chunk is missing",
-        )?;
-        if span.len() != chunk.bytes().len() as u64 || span.chunk_digest() != *chunk.digest() {
-            return invariant("content byte span disagrees with its chunk");
-        }
-        expected_start = span.end();
-        expected_ordinal =
-            expected_ordinal
-                .checked_add(1)
-                .ok_or(SyndicValidationError::Invariant(
-                    "content byte-span order exhausted",
-                ))?;
-        Ok(())
-    })?;
-    if let Some(owner) = owner {
-        finish_span_owner(reader, owner, expected_start, expected_ordinal - 1)?;
-    }
-    scan::<ContentManifestsFamily>(reader, |_, manifest| {
-        let first = ContentByteSpanKey {
-            owner: manifest.id(),
-            start: 0,
-        };
-        if (manifest.chunk_count() == 0)
-            == point::<ContentByteSpansFamily>(reader, &first)?.is_some()
-        {
-            return invariant("content zero-span frontier disagrees");
-        }
-        Ok(())
-    })
-}
-
-fn finish_span_owner(
-    reader: &DomainReader<'_, SyndicDomain>,
-    owner: SyndicContentId,
-    encoded_bytes: u64,
-    chunk_count: u64,
-) -> Result<(), SyndicValidationError> {
-    let manifest = require::<ContentManifestsFamily>(
-        reader,
-        &owner,
-        "content byte-span owner manifest is missing",
-    )?;
-    if manifest.encoded_bytes() != encoded_bytes || manifest.chunk_count() != chunk_count {
-        return invariant("content byte spans disagree with their manifest frontier");
-    }
-    Ok(())
-}
-
-fn validate_manifests(
-    reader: &DomainReader<'_, SyndicDomain>,
-) -> Result<(), SyndicValidationError> {
-    scan::<ContentManifestsFamily>(reader, |key, manifest| {
-        let expected = manifest.expected();
-        if *key != manifest.id()
-            || manifest.chunk_count() > expected.chunk_count()
-            || manifest.encoded_bytes() > expected.encoded_bytes()
-            || expected.piece_count() == u64::MAX
-            || (expected.piece_count() == 0)
-                != (expected.logical_utf8_bytes() == 0 && expected.image_marker_count() == 0)
-            || expected.image_marker_count() > crate::record::MAX_COMPOSER_IMAGE_MARKERS as u64
-        {
-            return invariant("content manifest identity or frontier is invalid");
-        }
-        match (manifest.owner(), manifest.lifecycle()) {
-            (None, ContentLifecycle::Building | ContentLifecycle::Sealed)
-                if manifest.id() == SyndicContentId::from_digest(*expected.digest().as_bytes()) => {
-            }
-            (Some(owner), ContentLifecycle::Live | ContentLifecycle::Finalized)
-                if manifest.id() == crate::content::live_item_content_id(owner)
-                    && manifest.encoding() == ContentEncoding::Utf8V1
-                    && manifest.chunk_count() == expected.chunk_count()
-                    && manifest.encoded_bytes() == expected.encoded_bytes()
-                    && manifest.chain_digest() == expected.digest()
-                    && expected.piece_count() == expected.chunk_count()
-                    && expected.encoded_bytes() == expected.logical_utf8_bytes()
-                    && expected.atom_count() == 1
-                    && expected.image_marker_count() == 0
-                    && expected.marker_digest()
-                        == crate::content::input_marker_digest(std::iter::empty()) => {}
-            _ => return invariant("content manifest ownership or lifecycle is invalid"),
-        }
-        if manifest.chunk_count() == 0
-            && (manifest.encoded_bytes() != 0
-                || manifest.chain_digest() != content_chain_seed(manifest.encoding()))
-        {
-            return invariant("empty content frontier is invalid");
-        }
-        if manifest.lifecycle().is_immutable()
-            && (manifest.chunk_count() != expected.chunk_count()
-                || manifest.encoded_bytes() != expected.encoded_bytes()
-                || manifest.chain_digest() != expected.digest())
-        {
-            return invariant("sealed content does not equal its final manifest");
-        }
-        Ok(())
-    })
-}
-
-fn validate_chunks(reader: &DomainReader<'_, SyndicDomain>) -> Result<(), SyndicValidationError> {
-    let mut owner = None;
-    let mut expected_ordinal = 1_u64;
-    let mut observed_bytes = 0_u64;
-    let mut chain = None;
-    scan::<ContentChunksFamily>(reader, |key, chunk| {
-        if owner != Some(key.owner) {
-            if let Some(previous) = owner {
-                finish_chunk_owner(
-                    reader,
-                    previous,
-                    expected_ordinal - 1,
-                    observed_bytes,
-                    chain.expect("owner chain exists"),
-                )?;
-            }
-            owner = Some(key.owner);
-            expected_ordinal = 1;
-            observed_bytes = 0;
-            let manifest = require::<ContentManifestsFamily>(
-                reader,
-                &key.owner,
-                "content chunk owner manifest is missing",
-            )?;
-            chain = Some(content_chain_seed(manifest.encoding()));
-        }
-        if key.owner != chunk.content_id()
-            || key.ordinal != chunk.ordinal()
-            || key.ordinal.get() != expected_ordinal
-        {
-            return invariant("content chunk key or contiguous order disagrees");
-        }
-        let manifest = require::<ContentManifestsFamily>(
-            reader,
-            &key.owner,
-            "content chunk owner manifest is missing",
-        )?;
-        if key.ordinal.get() > manifest.chunk_count() {
-            return invariant("content chunk extends beyond its committed frontier");
-        }
-        observed_bytes = observed_bytes
-            .checked_add(chunk.bytes().len() as u64)
-            .ok_or(SyndicValidationError::Invariant(
-                "content byte frontier overflowed",
-            ))?;
-        chain = Some(advance_content_chain(
-            chain.expect("owner chain exists"),
-            chunk,
-        ));
-        expected_ordinal =
-            expected_ordinal
-                .checked_add(1)
-                .ok_or(SyndicValidationError::Invariant(
-                    "content chunk order exhausted",
-                ))?;
-        Ok(())
-    })?;
-    if let Some(owner) = owner {
-        finish_chunk_owner(
-            reader,
-            owner,
-            expected_ordinal - 1,
-            observed_bytes,
-            chain.expect("owner chain exists"),
-        )?;
-    }
-    scan::<ContentManifestsFamily>(reader, |_, manifest| {
-        let first = ContentChunkKey {
-            owner: manifest.id(),
-            ordinal: crate::ContentChunkOrdinal::FIRST,
-        };
-        if (manifest.chunk_count() == 0) == point::<ContentChunksFamily>(reader, &first)?.is_some()
-        {
-            return invariant("content zero-chunk frontier disagrees");
-        }
-        Ok(())
-    })
-}
-
-fn finish_chunk_owner(
-    reader: &DomainReader<'_, SyndicDomain>,
-    owner: SyndicContentId,
-    chunk_count: u64,
-    encoded_bytes: u64,
-    chain: beryl_model::SyndicContentDigest,
-) -> Result<(), SyndicValidationError> {
-    let manifest = require::<ContentManifestsFamily>(
-        reader,
-        &owner,
-        "content chunk owner manifest is missing",
-    )?;
-    if manifest.chunk_count() != chunk_count
-        || manifest.encoded_bytes() != encoded_bytes
-        || manifest.chain_digest() != chain
-    {
-        return invariant("content chunks disagree with their manifest frontier");
-    }
-    Ok(())
-}
-
 fn validate_draft_references(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
@@ -527,14 +343,7 @@ fn validate_accepted_references(
 ) -> Result<(), SyndicValidationError> {
     scan::<AcceptedInputsFamily>(reader, |_, input| {
         require_sealed_reference(reader, input.content(), ContentEncoding::ComposerV1)?;
-        if input.marker_count() != input.content().summary().image_marker_count() {
-            return invariant("accepted-input marker count disagrees with content");
-        }
-        validate_marker_presence(
-            reader,
-            InputMarkerOwner::AcceptedInput(input.id()),
-            input.marker_count(),
-        )
+        validate_asset_reference_set(input.content(), input.asset_reference_set())
     })
 }
 
@@ -542,66 +351,47 @@ fn validate_canonical_references(
     reader: &DomainReader<'_, SyndicDomain>,
 ) -> Result<(), SyndicValidationError> {
     scan::<CanonicalItemsFamily>(reader, |_, item| {
-        match (item.kind(), item.payload().content()) {
-            (CanonicalItemKind::UserInput, Some(content)) => {
-                require_sealed_reference(reader, content, ContentEncoding::ComposerV1)?;
-            }
-            (
-                CanonicalItemKind::AssistantMessage(_)
-                | CanonicalItemKind::ProviderText(_)
-                | CanonicalItemKind::Operational(_),
-                Some(_),
-            ) => require_canonical_text_reference(reader, item)?,
-            (
-                CanonicalItemKind::Activity(_)
-                | CanonicalItemKind::GeneratedMedia
-                | CanonicalItemKind::Unsupported(_),
-                None,
-            ) => {}
-            _ => return invariant("canonical-item kind and content authority disagree"),
+        if let Some(provider) = item.provider() {
+            require_canonical_provider_reference(reader, item, provider)?;
+        } else if item.presentation_content().is_none() {
+            return invariant("canonical item omitted all content authority");
         }
-        let marker_count = item.payload().marker_count();
-        let content_markers = item
-            .payload()
-            .content()
-            .map_or(0, |content| content.summary().image_marker_count());
-        if marker_count != content_markers {
-            return invariant("canonical-item marker count disagrees with content");
+        if let Some(content) = item.presentation_content() {
+            require_sealed_reference(reader, content, ContentEncoding::ComposerV1)?;
         }
-        validate_marker_presence(
-            reader,
-            InputMarkerOwner::CanonicalItem(item.id()),
-            marker_count,
-        )
+        if let Some(content) = item.presentation_content() {
+            validate_asset_reference_set(content, item.presentation().asset_reference_set())?;
+        } else if item.presentation().asset_reference_set().is_some() {
+            return invariant("provider-only canonical item carries a composer asset proof");
+        }
+        Ok(())
     })
 }
 
-fn require_canonical_text_reference(
+fn require_canonical_provider_reference(
     reader: &DomainReader<'_, SyndicDomain>,
     item: &crate::CanonicalItemRecord,
+    provider: &crate::SealedProviderFrameReference,
 ) -> Result<(), SyndicValidationError> {
-    let reference = item
-        .payload()
-        .content()
-        .ok_or(SyndicValidationError::Invariant(
-            "canonical text item omitted content authority",
-        ))?;
+    let reference = provider.content();
     let manifest = require::<ContentManifestsFamily>(
         reader,
         &reference.id(),
-        "canonical text content target is missing",
+        "canonical provider content target is missing",
     )?;
-    let valid = reference.encoding() == ContentEncoding::Utf8V1
+    let lifecycle_is_valid = match manifest.lifecycle() {
+        ContentLifecycle::Live => true,
+        ContentLifecycle::Finalized => provider.stream_state().is_complete(),
+        ContentLifecycle::Building | ContentLifecycle::Sealed => false,
+    };
+    let valid = reference.encoding() == ContentEncoding::ProviderItemV1
+        && manifest.encoding() == ContentEncoding::ProviderItemV1
+        && manifest.owner() == Some(item.id())
+        && lifecycle_is_valid
         && manifest.current_reference() == Some(reference)
-        && match manifest.lifecycle() {
-            ContentLifecycle::Sealed => manifest.owner().is_none(),
-            ContentLifecycle::Live | ContentLifecycle::Finalized => {
-                manifest.owner() == Some(item.id())
-            }
-            ContentLifecycle::Building => false,
-        };
+        && item.provider_content() == Some(reference);
     if !valid {
-        return invariant("canonical text does not select one exact published manifest");
+        return invariant("canonical provider does not select one exact published manifest");
     }
     Ok(())
 }
@@ -625,88 +415,21 @@ fn require_sealed_reference(
     Ok(())
 }
 
-fn validate_marker_presence(
-    reader: &DomainReader<'_, SyndicDomain>,
-    owner: InputMarkerOwner,
-    count: u64,
+fn validate_asset_reference_set(
+    content: crate::ContentReference,
+    proof: Option<SealedAssetReferenceSetProof>,
 ) -> Result<(), SyndicValidationError> {
-    let first = InputMarkerKey {
-        owner,
-        ordinal: crate::InputMarkerOrdinal::FIRST,
-    };
-    if (count == 0) == point::<InputMarkerResolutionsFamily>(reader, &first)?.is_some() {
-        return invariant("input marker zero frontier disagrees");
-    }
-    Ok(())
-}
-
-fn validate_marker_resolutions(
-    reader: &DomainReader<'_, SyndicDomain>,
-) -> Result<(), SyndicValidationError> {
-    let mut owner = None;
-    let mut expected = 1_u64;
-    let mut markers = Vec::new();
-    scan::<InputMarkerResolutionsFamily>(reader, |key, resolution| {
-        if owner != Some(key.owner) {
-            if let Some(previous) = owner {
-                validate_marker_owner(reader, previous, expected - 1, &markers)?;
-            }
-            owner = Some(key.owner);
-            expected = 1;
-            markers.clear();
+    let expected = content
+        .sealed_marker_summary()
+        .map_err(|_| SyndicValidationError::Invariant("content marker summary is invalid"))?;
+    match (content.summary().image_marker_count(), proof) {
+        (0, None) => Ok(()),
+        (0, Some(_)) | (_, None) => {
+            invariant("content and optional asset-reference proof disagree")
         }
-        if key.owner != resolution.owner()
-            || key.ordinal != resolution.ordinal()
-            || key.ordinal.get() != expected
-        {
-            return invariant("input marker key or contiguous order disagrees");
-        }
-        let marker = resolution.marker();
-        markers.push((marker.marker_id(), marker.label()));
-        expected = expected
-            .checked_add(1)
-            .ok_or(SyndicValidationError::Invariant(
-                "input marker order exhausted",
-            ))?;
-        Ok(())
-    })?;
-    if let Some(owner) = owner {
-        validate_marker_owner(reader, owner, expected - 1, &markers)?;
+        (_, Some(proof)) if proof.source() == expected => Ok(()),
+        (_, Some(_)) => invariant("asset-reference proof source disagrees with content"),
     }
-    Ok(())
-}
-
-fn validate_marker_owner(
-    reader: &DomainReader<'_, SyndicDomain>,
-    owner: InputMarkerOwner,
-    observed: u64,
-    markers: &[(beryl_model::SyndicDraftMarkerId, crate::ImageLabelOrdinal)],
-) -> Result<(), SyndicValidationError> {
-    let content = match owner {
-        InputMarkerOwner::AcceptedInput(id) => require::<AcceptedInputsFamily>(
-            reader,
-            &id,
-            "input marker owner accepted input is missing",
-        )?
-        .content(),
-        InputMarkerOwner::CanonicalItem(id) => require::<CanonicalItemsFamily>(
-            reader,
-            &id,
-            "input marker owner canonical item is missing",
-        )?
-        .payload()
-        .content()
-        .ok_or(SyndicValidationError::Invariant(
-            "canonical input marker owner omitted content authority",
-        ))?,
-    };
-    if content.summary().image_marker_count() != observed {
-        return invariant("input marker frontier disagrees with its owner");
-    }
-    if input_marker_digest(markers.iter().copied()) != content.summary().marker_digest() {
-        return invariant("input marker identities disagree with owner content");
-    }
-    Ok(())
 }
 
 fn invariant<T>(message: &'static str) -> Result<T, SyndicValidationError> {

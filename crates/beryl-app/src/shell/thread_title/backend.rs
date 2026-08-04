@@ -1,8 +1,8 @@
 use std::{fmt, time::Duration};
 
 use beryl_backend::{
-    ManagedBackendSession, ThreadSessionResponse, ThreadStartOptions, ThreadUnsubscribeResponse,
-    TurnStartOptions, TurnStartResponse, TurnStreamEvent,
+    FreshLoadedThreadSession, ManagedBackendSession, ThreadStartOptions, ThreadUnsubscribeResponse,
+    TurnStartOptions, TurnStartResponse,
 };
 
 pub(crate) trait ThreadTitleBackend {
@@ -13,7 +13,7 @@ pub(crate) trait ThreadTitleBackend {
         cwd: &std::path::Path,
         options: ThreadStartOptions,
         timeout: Duration,
-    ) -> Result<ThreadSessionResponse, Self::Error>;
+    ) -> Result<FreshLoadedThreadSession, Self::Error>;
 
     fn start_turn_with_options(
         &mut self,
@@ -22,11 +22,6 @@ pub(crate) trait ThreadTitleBackend {
         options: TurnStartOptions,
         timeout: Duration,
     ) -> Result<TurnStartResponse, Self::Error>;
-
-    fn next_turn_stream_event(
-        &mut self,
-        idle_timeout: Duration,
-    ) -> Result<Option<TurnStreamEvent>, Self::Error>;
 
     fn unsubscribe_thread(
         &mut self,
@@ -43,7 +38,7 @@ impl ThreadTitleBackend for ManagedBackendSession {
         cwd: &std::path::Path,
         options: ThreadStartOptions,
         timeout: Duration,
-    ) -> Result<ThreadSessionResponse, Self::Error> {
+    ) -> Result<FreshLoadedThreadSession, Self::Error> {
         ManagedBackendSession::start_thread_with_options(self, cwd, options, timeout)
     }
 
@@ -55,13 +50,6 @@ impl ThreadTitleBackend for ManagedBackendSession {
         timeout: Duration,
     ) -> Result<TurnStartResponse, Self::Error> {
         ManagedBackendSession::start_turn_with_options(self, thread_id, text, options, timeout)
-    }
-
-    fn next_turn_stream_event(
-        &mut self,
-        idle_timeout: Duration,
-    ) -> Result<Option<TurnStreamEvent>, Self::Error> {
-        ManagedBackendSession::next_turn_stream_event(self, idle_timeout)
     }
 
     fn unsubscribe_thread(

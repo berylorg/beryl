@@ -7,7 +7,8 @@ mod native_turn_count;
 
 use beryl_home_store::{HomeCommand, HomeStore};
 use beryl_model::{
-    BindingRevision, DraftRevision, InputGateRevision, ProjectionRevision, SyndicDraftId,
+    BindingRevision, DraftRevision, ExecutionBinding, InputGateRevision, PathFlavor,
+    ProjectionRevision, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
     SyndicItemId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{
@@ -45,6 +46,19 @@ fn root_item() -> SyndicItemId {
     SyndicItemId::from_bytes([83; 16])
 }
 
+fn execution_binding() -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([87; 16]),
+        RootId::from_bytes([88; 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::host(),
+            PathFlavor::Windows,
+            "C:\\phase10-root-fresh",
+        )
+        .unwrap(),
+    )
+}
+
 fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
     let thread = thread();
     let draft = draft();
@@ -77,24 +91,45 @@ fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
     let transcript_digest =
         fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &transcript_entry);
     let (empty, empty_records) = composer_content_records(&ComposerPayload::default());
+    let thread_record = ThreadRecord::new(
+        thread,
+        SelectedPathProof::new(Some(turn), thread_revision, digest),
+        draft,
+        ThreadLineageProof::new(
+            None,
+            None,
+            syndic_storage::ThreadLineageDepth::FIRST,
+            syndic_storage::root_thread_lineage_digest(thread),
+        ),
+        syndic_storage::ThreadImageLabelFrontiers::empty(),
+        None,
+    );
+    let execution = ThreadExecutionRecord::new(thread, execution_binding());
+    let attributes = ThreadAttributesRecord::ordinary(thread);
+    let usage = ThreadUsageRecord::empty(thread);
+    let history = HistorySummaryRecord::new(
+        thread,
+        projection_revision,
+        thread_revision,
+        Some(turn),
+        digest,
+        false,
+        timestamp(2),
+    );
+    let catalog =
+        ThreadCatalogSummaryRecord::initial(&thread_record, &execution, &attributes, &history);
 
     let mut records = vec![
-        FixtureRecord::Thread(ThreadRecord::new(
-            thread,
-            thread_revision,
-            Some(turn),
-            draft,
-            None,
-            None,
-            digest,
-        )),
+        FixtureRecord::Thread(thread_record),
+        FixtureRecord::ThreadExecution(execution),
+        FixtureRecord::ThreadAttributes(attributes),
+        FixtureRecord::ThreadUsage(usage),
+        FixtureRecord::ThreadCatalogSummary(catalog),
         FixtureRecord::Draft(DraftRecord::new(
             draft,
             thread,
             draft_revision,
-            ConversationParent::Turn(turn),
-            None,
-            None,
+            DraftSubmissionIntent::Ordinary,
             empty,
             timestamp(2),
             timestamp(2),
@@ -106,6 +141,7 @@ fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
             thread_revision,
         )),
         FixtureRecord::InputGate(InputGateRecord::idle(thread)),
+        FixtureRecord::ActivityQueryHead(ActivityQueryHeadRecord::empty(thread)),
         FixtureRecord::Turn(TurnRecord::new(
             turn,
             thread,
@@ -158,7 +194,7 @@ fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
             TurnItemOrdinal::FIRST,
             projection_revision,
             content,
-            0,
+            None,
         )),
         FixtureRecord::TurnItem(TurnItemIndexRecord::new(
             turn,
@@ -182,7 +218,7 @@ fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
             ItemProjectionGeneration::FIRST,
             ProjectionFormatVersion::V1,
             projection_revision,
-            content,
+            ProjectionTextSource::composer(content),
             13,
             1,
             0,
@@ -193,7 +229,7 @@ fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
             MarkdownParserCheckpoint::new(
                 13,
                 13,
-                ContentPieceOrdinal::new(2).unwrap(),
+                ProjectionTextSourceCursor::Composer(ContentPieceOrdinal::new(2).unwrap()),
                 13,
                 Box::<str>::default(),
                 false,
@@ -244,14 +280,7 @@ fn root_fixture() -> syndic_storage::test_faults::FixtureBatch {
             timestamp(2),
         )),
         FixtureRecord::TranscriptViewEntry(transcript_entry),
-        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-            thread,
-            thread_revision,
-            Some(turn),
-            digest,
-            false,
-            timestamp(2),
-        )),
+        FixtureRecord::HistorySummary(history),
         FixtureRecord::Binding(BindingRecord::new(
             thread,
             binding_revision,
@@ -296,7 +325,7 @@ fn accepted_replacement_of_a_root_turn_creates_another_root() {
                     TranscriptGeneration::FIRST,
                     TranscriptPosition::FIRST,
                 ),
-                AdmissionMarkers::default(),
+                None,
                 timestamp(3),
             ),
         ),
@@ -321,7 +350,7 @@ fn accepted_replacement_of_a_root_turn_creates_another_root() {
                 InputGateRevision::new(1).unwrap(),
                 next_draft,
                 SyndicItemId::from_bytes([86; 16]),
-                AdmissionMarkers::default(),
+                None,
                 timestamp(4),
             ),
         ),
@@ -332,12 +361,12 @@ fn accepted_replacement_of_a_root_turn_creates_another_root() {
         .turn(&store, replacement_turn, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(replacement.record().parent(), ConversationParent::Root);
+    assert_eq!(replacement.parent(), ConversationParent::Root);
     let original = storage
         .turn(&store, root_turn(), point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(original.record().parent(), ConversationParent::Root);
+    assert_eq!(original.parent(), ConversationParent::Root);
     let current = storage
         .current_draft(&store, thread(), point_limit())
         .unwrap()
@@ -345,15 +374,14 @@ fn accepted_replacement_of_a_root_turn_creates_another_root() {
     assert_eq!(current.thread().committed_tail(), Some(replacement_turn));
     assert_eq!(current.draft().id(), next_draft);
     assert_eq!(
-        current.draft().parent(),
-        ConversationParent::Turn(replacement_turn),
+        current.draft().submission_intent(),
+        DraftSubmissionIntent::Ordinary
     );
     assert_eq!(
         storage
             .input_gate(&store, thread(), point_limit())
             .unwrap()
             .unwrap()
-            .record()
             .state(),
         &InputGateState::PendingTurn(replacement_turn),
     );

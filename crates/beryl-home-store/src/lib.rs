@@ -8,9 +8,16 @@
 //! requires that same opened-object identity rather than accepting a copied
 //! database with a matching durable header.
 //! Logical owners register exact owner- and codec-bound record families and use
-//! typed, explicitly bounded point/cursor reads. Cross-domain mutation plans
-//! perform only bounded participant checks on one serialized writer snapshot,
-//! commit in one physical batch, and acknowledge only after `SyncAll`.
+//! typed, explicitly bounded point/cursor reads. One point limit bounds its
+//! stored value and decoded result while the request key remains independently
+//! schema-bounded; one cursor limit
+//! independently bounds the page's stored and practical decoded totals.
+//! Codecs may refine the default encoded-length decoded-size estimates.
+//! Cross-domain commands perform only bounded participant checks on one
+//! serialized writer snapshot. Explicit
+//! validation-only participants may guard another domain without changing its
+//! revision; at least one mutation remains required, and only mutations enter
+//! the physical batch and receipt. Success is acknowledged only after `SyncAll`.
 //! Registration, explicit verification, and recovery separately stream every
 //! physical record envelope through its exact codec with bounded memory.
 //! Each successful receipt carries its exact healthy home generation. Typed
@@ -31,9 +38,9 @@
 //! ```no_run
 //! use std::convert::Infallible;
 //! use beryl_home_store::{
-//!     DomainReader, DomainSchemaVersion, HomeOpenOptions, HomeSchemaVersion,
-//!     HomeStore, KeyspaceSchemaVersion, RecordCodec, RecordFamily,
-//!     RecordVersion, StorageDomain,
+//!     DomainReader, DomainSchemaVersion, DomainValidator, HomeOpenOptions,
+//!     HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion, PointReadLimit, RecordCodec,
+//!     RecordFamily, RecordVersion, StorageDomain,
 //! };
 //!
 //! struct ExampleDomain;
@@ -79,6 +86,18 @@
 //!     }
 //! }
 //!
+//! struct ExampleGuard;
+//! impl DomainValidator<ExampleDomain> for ExampleGuard {
+//!     type Error = Infallible;
+//!
+//!     fn validate(
+//!         &self,
+//!         _reader: &DomainReader<'_, ExampleDomain>,
+//!     ) -> Result<(), Self::Error> {
+//!         Ok(())
+//!     }
+//! }
+//!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let mut store = HomeStore::open(HomeOpenOptions::new(
@@ -87,6 +106,15 @@
 //! ))?;
 //! let domain = store.register_domain::<ExampleDomain>()?;
 //! assert_eq!(store.domain_revision(domain)?.get(), 1);
+//! assert!(store
+//!     .read_point::<ExampleDomain, ExampleCodec>(
+//!         domain,
+//!         &1,
+//!         PointReadLimit::new(6)?,
+//!     )?
+//!     .is_none());
+//! let _guard = domain.validation(store.domain_revision(domain)?, ExampleGuard);
+//! // Add the guard to a HomeCommand alongside a mutation for another domain.
 //! store.close()?;
 //! # Ok(())
 //! # }
@@ -111,13 +139,14 @@ mod writer;
 
 pub use codec::{
     CursorDirection, CursorPage, CursorRange, CursorReadLimits, CursorRecord, DomainSchemaVersion,
-    KeyspaceSchemaVersion, PointReadLimit, ReadLimitError, RecordCodec, RecordFamily,
-    RecordVersion,
+    KeyspaceSchemaVersion, PointReadLimit, RECORD_VERSION_BYTES, ReadLimitError, RecordCodec,
+    RecordFamily, RecordVersion,
 };
 pub use command::{
     CommandBuildError, CommandCancellation, CommandError, CommitReceipt, CommitReceiptError,
-    ContributorCallbackStage, CurrentDomainCommand, DomainMutation, HomeCommand,
+    ContributorCallbackStage, CurrentDomainCommand, DomainMutation, DomainValidator, HomeCommand,
     MutationBuildError, MutationBuilder, MutationContribution, RevisionConflict,
+    ValidationContribution,
 };
 pub use domain::{
     DomainCallbackError, DomainCallbackSource, DomainDefinitionError, DomainHandle,
@@ -144,7 +173,8 @@ pub use store::{HomeOpenOptions, HomeStore};
 #[cfg(feature = "test-faults")]
 pub mod test_faults {
     pub use crate::fault::{
-        FaultBlock, FaultController, FaultPoint, PersistedCorruptionError, PersistedCorruptionStage,
+        FaultBlock, FaultController, FaultPoint, FaultScope, PersistedCorruptionError,
+        PersistedCorruptionStage,
     };
 }
 

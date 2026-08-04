@@ -227,7 +227,7 @@ fn current_set(
         "transcript publishing item set is missing",
     )?;
     if set.source_item_revision() != item.revision()
-        || item.payload().content() != Some(set.source_content())
+        || item.projection_source() != Some(set.source())
         || set.projection_count() == 0
     {
         return Err(invariant("transcript publishing item set is not current"));

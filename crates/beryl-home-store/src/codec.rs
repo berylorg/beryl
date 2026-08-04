@@ -2,7 +2,8 @@ use std::{any::TypeId, error::Error, fmt, marker::PhantomData, num::NonZeroU32, 
 
 use crate::{ReadError, StorageDomain};
 
-pub(crate) const RECORD_VERSION_BYTES: usize = size_of::<u32>();
+/// Bytes occupied by the physical record-version envelope before an encoded value.
+pub const RECORD_VERSION_BYTES: usize = size_of::<u32>();
 
 macro_rules! schema_version {
     ($(#[$meta:meta])* $name:ident) => {
@@ -164,6 +165,23 @@ pub trait RecordCodec<D: StorageDomain>: Send + Sync + 'static {
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error>;
     /// Decodes one payload after the store validates the exact record version.
     fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error>;
+
+    /// Estimates the practical decoded bytes retained by one typed key.
+    ///
+    /// The default uses the encoded key length. Codecs whose decoded key has a
+    /// materially different retained size may override this hook.
+    fn decoded_key_bytes(encoded: &[u8], _decoded: &Self::Key) -> usize {
+        encoded.len()
+    }
+
+    /// Estimates the practical decoded bytes retained by one typed value.
+    ///
+    /// The default uses the encoded payload length, excluding the store-owned
+    /// record-version prefix. Codecs whose decoded value has a materially
+    /// different retained size may override this hook.
+    fn decoded_value_bytes(encoded: &[u8], _decoded: &Self::Value) -> usize {
+        encoded.len()
+    }
 }
 
 /// Why a caller-supplied read bound is invalid.
@@ -186,7 +204,7 @@ impl fmt::Display for ReadLimitError {
 
 impl Error for ReadLimitError {}
 
-/// Explicit stored-byte bound for one point read.
+/// Explicit stored-value and decoded-result byte bound for one point read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PointReadLimit {
     max_bytes: usize,
@@ -201,14 +219,14 @@ impl PointReadLimit {
         Ok(Self { max_bytes })
     }
 
-    /// Returns the maximum stored bytes this read may materialize.
+    /// Returns the maximum stored value and decoded value estimate.
     #[must_use]
     pub const fn max_bytes(self) -> usize {
         self.max_bytes
     }
 }
 
-/// Explicit item and stored-byte bounds for one cursor read.
+/// Explicit item, stored-total, and decoded-total bounds for one cursor read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CursorReadLimits {
     max_items: usize,
@@ -312,6 +330,7 @@ impl<K, V> CursorRecord<K, V> {
 pub struct CursorPage<K, V> {
     records: Vec<CursorRecord<K, V>>,
     stored_bytes: usize,
+    decoded_bytes: usize,
     has_more: bool,
     _not_raw: PhantomData<fn()>,
 }
@@ -320,11 +339,13 @@ impl<K, V> CursorPage<K, V> {
     pub(crate) fn new(
         records: Vec<CursorRecord<K, V>>,
         stored_bytes: usize,
+        decoded_bytes: usize,
         has_more: bool,
     ) -> Self {
         Self {
             records,
             stored_bytes,
+            decoded_bytes,
             has_more,
             _not_raw: PhantomData,
         }
@@ -340,6 +361,12 @@ impl<K, V> CursorPage<K, V> {
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
+    }
+
+    /// Returns the cumulative practical decoded-byte estimate for this page.
+    #[must_use]
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
     }
 
     /// Returns whether another matching record exists beyond this page.
@@ -376,7 +403,7 @@ impl CursorReadLimits {
         self.max_items
     }
 
-    /// Returns the maximum cumulative stored key and value bytes.
+    /// Returns both the maximum cumulative stored key/value bytes and decoded-byte estimate.
     #[must_use]
     pub const fn max_bytes(self) -> usize {
         self.max_bytes

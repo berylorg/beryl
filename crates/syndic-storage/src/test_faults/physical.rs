@@ -3,153 +3,9 @@ use beryl_model::*;
 
 use crate::{SyndicStorage, codec::*, domain::SyndicDomain};
 
-/// One exact Syndic V1 family selected for a bounded physical corruption fixture.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PhysicalFamily {
-    Threads,
-    Drafts,
-    ContentManifests,
-    ContentChunks,
-    ContentByteSpans,
-    ContentTextSpans,
-    ContentPieces,
-    InputMarkerResolutions,
-    ContextEnvelopes,
-    Turns,
-    TurnStates,
-    InputGates,
-    AcceptedInputs,
-    SourceEvents,
-    CanonicalItems,
-    ItemProjectionHeads,
-    ItemProjectionSets,
-    ItemProjectionBuilds,
-    TranscriptViewHeads,
-    TranscriptBuilds,
-    Projections,
-    Resources,
-    HistorySummaries,
-    Bindings,
-    ExecutionSnapshots,
-    ActiveCasTurns,
-    DraftByThread,
-    ThreadParent,
-    TurnChildren,
-    AcceptedOrder,
-    AcceptedSteering,
-    AcceptedNextTurn,
-    TurnItems,
-    ItemSourceEvents,
-    CasItem,
-    TranscriptPathTurns,
-    TranscriptViewEntries,
-    StableItemProjections,
-    ItemProjections,
-    ProjectionResources,
-    BindingHeads,
-    CasThread,
-    CasThreadBinding,
-    CasTurn,
-}
+mod family;
 
-impl PhysicalFamily {
-    pub const ALL: [Self; 44] = [
-        Self::Threads,
-        Self::Drafts,
-        Self::ContentManifests,
-        Self::ContentChunks,
-        Self::ContentByteSpans,
-        Self::ContentTextSpans,
-        Self::ContentPieces,
-        Self::InputMarkerResolutions,
-        Self::ContextEnvelopes,
-        Self::Turns,
-        Self::TurnStates,
-        Self::InputGates,
-        Self::AcceptedInputs,
-        Self::SourceEvents,
-        Self::CanonicalItems,
-        Self::ItemProjectionHeads,
-        Self::ItemProjectionSets,
-        Self::ItemProjectionBuilds,
-        Self::TranscriptViewHeads,
-        Self::TranscriptBuilds,
-        Self::Projections,
-        Self::Resources,
-        Self::HistorySummaries,
-        Self::Bindings,
-        Self::ExecutionSnapshots,
-        Self::ActiveCasTurns,
-        Self::DraftByThread,
-        Self::ThreadParent,
-        Self::TurnChildren,
-        Self::AcceptedOrder,
-        Self::AcceptedSteering,
-        Self::AcceptedNextTurn,
-        Self::TurnItems,
-        Self::ItemSourceEvents,
-        Self::CasItem,
-        Self::TranscriptPathTurns,
-        Self::TranscriptViewEntries,
-        Self::StableItemProjections,
-        Self::ItemProjections,
-        Self::ProjectionResources,
-        Self::BindingHeads,
-        Self::CasThread,
-        Self::CasThreadBinding,
-        Self::CasTurn,
-    ];
-
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Threads => "threads",
-            Self::Drafts => "drafts",
-            Self::ContentManifests => "content-manifests",
-            Self::ContentChunks => "content-chunks",
-            Self::ContentByteSpans => "content-byte-spans",
-            Self::ContentTextSpans => "content-text-spans",
-            Self::ContentPieces => "content-pieces",
-            Self::InputMarkerResolutions => "input-marker-resolutions",
-            Self::ContextEnvelopes => "context-envelopes",
-            Self::Turns => "turns",
-            Self::TurnStates => "turn-states",
-            Self::InputGates => "input-gates",
-            Self::AcceptedInputs => "accepted-inputs",
-            Self::SourceEvents => "source-events",
-            Self::CanonicalItems => "canonical-items",
-            Self::ItemProjectionHeads => "item-projection-heads",
-            Self::ItemProjectionSets => "item-projection-sets",
-            Self::ItemProjectionBuilds => "item-projection-builds",
-            Self::TranscriptViewHeads => "transcript-view-heads",
-            Self::TranscriptBuilds => "transcript-builds",
-            Self::Projections => "projections",
-            Self::Resources => "resources",
-            Self::HistorySummaries => "history-summaries",
-            Self::Bindings => "bindings",
-            Self::ExecutionSnapshots => "execution-snapshots",
-            Self::ActiveCasTurns => "active-cas-turns",
-            Self::DraftByThread => "draft-by-thread",
-            Self::ThreadParent => "thread-parent-index",
-            Self::TurnChildren => "turn-children",
-            Self::AcceptedOrder => "accepted-order",
-            Self::AcceptedSteering => "accepted-steering",
-            Self::AcceptedNextTurn => "accepted-next-turn",
-            Self::TurnItems => "turn-items",
-            Self::ItemSourceEvents => "item-source-events",
-            Self::CasItem => "cas-item-index",
-            Self::TranscriptPathTurns => "transcript-path-turns",
-            Self::TranscriptViewEntries => "transcript-view-entries",
-            Self::StableItemProjections => "stable-item-projections",
-            Self::ItemProjections => "item-projections",
-            Self::ProjectionResources => "projection-resources",
-            Self::BindingHeads => "binding-heads",
-            Self::CasThread => "cas-thread-index",
-            Self::CasThreadBinding => "cas-thread-bindings",
-            Self::CasTurn => "cas-turn-index",
-        }
-    }
-}
+pub use family::PhysicalFamily;
 
 /// Exact bounded codec rejection shape applied to one selected family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -167,6 +23,13 @@ pub enum RepresentativePhysicalCorruption {
     NoncanonicalOption,
 }
 
+/// Codec field whose retired worker-capacity tag must remain invalid.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RetiredWorkerCapacityCodecField {
+    NextTurnReason,
+    AcceptedRouteLeafTransition,
+}
+
 /// Installs one bounded exact-codec-rejected physical envelope through the home-store seam.
 pub fn inject_physical_corruption(
     store: &HomeStore,
@@ -182,13 +45,17 @@ pub fn inject_physical_corruption(
     let turn_two = SyndicTurnId::from_bytes([5; 16]);
     let accepted = SyndicAcceptedInputId::from_bytes([6; 16]);
     let item = SyndicItemId::from_bytes([7; 16]);
+    let observation = ProviderObservationId::from_bytes([12; 16]);
     let projection = SyndicProjectionId::from_bytes([8; 16]);
     let resource = SyndicResourceId::from_bytes([9; 16]);
     let snapshot = SyndicExecutionSnapshotId::from_bytes([10; 16]);
     let binding_revision = BindingRevision::new(1).expect("one is nonzero");
     let accepted_ordinal = crate::AcceptedInputOrdinal::FIRST;
     let content_ordinal = crate::ContentChunkOrdinal::FIRST;
-    let marker_ordinal = crate::InputMarkerOrdinal::FIRST;
+    let narrative_generation = crate::ProviderNarrativeGeneration::FIRST;
+    let image_label = crate::ImageLabelOrdinal::FIRST;
+    let activity_order =
+        crate::ActivityQueryOrder::new(true, crate::SyndicTimestamp::from_unix_millis(1), item);
     let source_sequence = crate::SourceEventSequence::FIRST;
     let item_ordinal = crate::TurnItemOrdinal::FIRST;
     let item_event_ordinal = crate::ItemSourceEventOrdinal::FIRST;
@@ -203,6 +70,18 @@ pub fn inject_physical_corruption(
 
     match family {
         PhysicalFamily::Threads => inject::<ThreadsFamily>(store, storage, thread, corruption),
+        PhysicalFamily::ThreadExecutions => {
+            inject::<ThreadExecutionsFamily>(store, storage, thread, corruption)
+        }
+        PhysicalFamily::ThreadAttributes => {
+            inject::<ThreadAttributesFamily>(store, storage, thread, corruption)
+        }
+        PhysicalFamily::ThreadUsage => {
+            inject::<ThreadUsageFamily>(store, storage, thread, corruption)
+        }
+        PhysicalFamily::ThreadCatalogSummaries => {
+            inject::<ThreadCatalogSummariesFamily>(store, storage, thread, corruption)
+        }
         PhysicalFamily::Drafts => inject::<DraftsFamily>(store, storage, draft, corruption),
         PhysicalFamily::ContentManifests => {
             inject::<ContentManifestsFamily>(store, storage, content, corruption)
@@ -243,13 +122,22 @@ pub fn inject_physical_corruption(
             },
             corruption,
         ),
-        PhysicalFamily::InputMarkerResolutions => inject::<InputMarkerResolutionsFamily>(
+        PhysicalFamily::ProviderNarrativeSpans => inject::<ProviderNarrativeSpansFamily>(
             store,
             storage,
-            InputMarkerKey {
-                owner: crate::InputMarkerOwner::AcceptedInput(accepted),
-                ordinal: marker_ordinal,
-            },
+            ProviderNarrativeSpanKey::new(content, narrative_generation, 0),
+            corruption,
+        ),
+        PhysicalFamily::ProviderItemBuilds => {
+            inject::<ProviderItemBuildsFamily>(store, storage, item, corruption)
+        }
+        PhysicalFamily::ProviderObservationBuilds => {
+            inject::<ProviderObservationBuildsFamily>(store, storage, observation, corruption)
+        }
+        PhysicalFamily::ProviderObservationChunks => inject::<ProviderObservationChunksFamily>(
+            store,
+            storage,
+            ProviderObservationChunkKey::new(observation, 1),
             corruption,
         ),
         PhysicalFamily::ContextEnvelopes => inject::<ContextEnvelopesFamily>(
@@ -266,6 +154,38 @@ pub fn inject_physical_corruption(
         PhysicalFamily::AcceptedInputs => {
             inject::<AcceptedInputsFamily>(store, storage, accepted, corruption)
         }
+        PhysicalFamily::StopOperations => inject::<StopOperationsFamily>(
+            store,
+            storage,
+            crate::StopOperationId::new(thread, crate::StopOperationNonce::from_bytes([13; 16])),
+            corruption,
+        ),
+        PhysicalFamily::CompactionOperations => inject::<CompactionOperationsFamily>(
+            store,
+            storage,
+            crate::CompactionOperationId::new(
+                thread,
+                crate::CompactionOperationNonce::from_bytes([14; 16]),
+            ),
+            corruption,
+        ),
+        PhysicalFamily::CompactionSettlementReceipts => {
+            inject::<CompactionSettlementReceiptsFamily>(
+                store,
+                storage,
+                crate::CompactionOperationId::new(
+                    thread,
+                    crate::CompactionOperationNonce::from_bytes([15; 16]),
+                ),
+                corruption,
+            )
+        }
+        PhysicalFamily::AcceptedRouteGenerationHeads => {
+            inject::<AcceptedRouteGenerationHeadsFamily>(store, storage, thread, corruption)
+        }
+        PhysicalFamily::AcceptedRouteLeaves => {
+            inject::<AcceptedRouteLeavesFamily>(store, storage, accepted, corruption)
+        }
         PhysicalFamily::SourceEvents => inject::<SourceEventsFamily>(
             store,
             storage,
@@ -277,6 +197,9 @@ pub fn inject_physical_corruption(
         ),
         PhysicalFamily::CanonicalItems => {
             inject::<CanonicalItemsFamily>(store, storage, item, corruption)
+        }
+        PhysicalFamily::ActivityQueryHeads => {
+            inject::<ActivityQueryHeadsFamily>(store, storage, thread, corruption)
         }
         PhysicalFamily::ItemProjectionHeads => {
             inject::<ItemProjectionHeadsFamily>(store, storage, item, corruption)
@@ -347,6 +270,15 @@ pub fn inject_physical_corruption(
             },
             corruption,
         ),
+        PhysicalFamily::ImageLabelOriginSpans => inject::<ImageLabelOriginSpansFamily>(
+            store,
+            storage,
+            ImageLabelOriginSpanKey {
+                thread,
+                end_label: image_label,
+            },
+            corruption,
+        ),
         PhysicalFamily::TurnChildren => inject::<TurnChildrenFamily>(
             store,
             storage,
@@ -365,22 +297,30 @@ pub fn inject_physical_corruption(
             },
             corruption,
         ),
-        PhysicalFamily::AcceptedSteering => inject::<AcceptedSteeringFamily>(
+        PhysicalFamily::AcceptedRouteGenerations => inject::<AcceptedRouteGenerationsFamily>(
             store,
             storage,
-            SteeringKey {
+            ThreadRouteKey {
                 thread,
-                turn,
-                ordinal: accepted_ordinal,
+                generation: crate::AcceptedRouteGeneration::FIRST,
             },
             corruption,
         ),
-        PhysicalFamily::AcceptedNextTurn => inject::<AcceptedNextFamily>(
+        PhysicalFamily::AcceptedReadySources => inject::<AcceptedReadySourcesFamily>(
             store,
             storage,
-            ThreadAcceptedKey {
-                owner: thread,
-                ordinal: accepted_ordinal,
+            ThreadRouteKey {
+                thread,
+                generation: crate::AcceptedRouteGeneration::FIRST,
+            },
+            corruption,
+        ),
+        PhysicalFamily::AcceptedNextSources => inject::<AcceptedNextSourcesFamily>(
+            store,
+            storage,
+            ThreadRouteKey {
+                thread,
+                generation: crate::AcceptedRouteGeneration::FIRST,
             },
             corruption,
         ),
@@ -390,6 +330,27 @@ pub fn inject_physical_corruption(
             TurnItemKey {
                 owner: turn,
                 ordinal: item_ordinal,
+            },
+            corruption,
+        ),
+        PhysicalFamily::ActivityQueryEntries => inject::<ActivityQueryEntriesFamily>(
+            store,
+            storage,
+            ActivityQueryEntryKey {
+                thread,
+                work_period: crate::ActivityWorkPeriod::FIRST,
+                order: activity_order,
+            },
+            corruption,
+        ),
+        PhysicalFamily::ActivityQuerySources => inject::<ActivityQuerySourcesFamily>(
+            store,
+            storage,
+            ActivityQuerySourceKey {
+                thread,
+                work_period: crate::ActivityWorkPeriod::FIRST,
+                source_thread: thread,
+                source_turn: turn,
             },
             corruption,
         ),
@@ -522,15 +483,142 @@ pub fn inject_representative_physical_corruption(
     }
 }
 
+/// Installs one retired accepted-input V2 envelope to prove there is no compatibility decoder.
+pub fn inject_retired_accepted_input_v2(
+    store: &HomeStore,
+    storage: SyndicStorage,
+) -> Result<(), beryl_home_store::test_faults::PersistedCorruptionError> {
+    let source = SyndicDraftId::from_bytes([0xB4; 16]);
+    let replacement = SyndicDraftId::from_bytes([0xB5; 16]);
+    let input = source.accepted_input_id();
+    let content = crate::PreparedContent::composer(&crate::ComposerPayload::default())
+        .expect("empty composer fixture is valid")
+        .reference(ContentRevision::new(1).expect("one is nonzero"));
+    let value = crate::AcceptedInputRecord::new(
+        input,
+        SyndicThreadId::from_bytes([0xB6; 16]),
+        crate::AcceptedInputOrdinal::FIRST,
+        crate::AcceptedInputAdmissionProof::new(
+            ThreadRevision::new(1).expect("one is nonzero"),
+            source,
+            DraftRevision::new(1).expect("one is nonzero"),
+            InputGateRevision::new(1).expect("one is nonzero"),
+            replacement,
+        )
+        .expect("retired fixture proof is valid"),
+        crate::AcceptedRouteGeneration::FIRST,
+        content,
+        None,
+        crate::SyndicTimestamp::from_unix_millis(1),
+    )
+    .expect("retired fixture input is valid");
+    let current = versioned_value::<AcceptedInputsFamily>(&value);
+    let payload = &current[4..];
+    let mut retired = Vec::with_capacity(4 + payload.len() - 48);
+    retired.extend_from_slice(&2_u32.to_be_bytes());
+    retired.extend_from_slice(&payload[..40]);
+    retired.extend_from_slice(&payload[72..80]);
+    retired.extend_from_slice(&payload[96..]);
+    inject_encoded::<AcceptedInputsFamily>(store, storage, input, retired)
+}
+
+/// Returns the exact invalid-tag diagnostic produced for one retired worker-capacity codec field.
+#[must_use]
+pub fn retired_worker_capacity_codec_rejection(
+    field: RetiredWorkerCapacityCodecField,
+) -> Option<(&'static str, u8)> {
+    let result = match field {
+        RetiredWorkerCapacityCodecField::NextTurnReason => {
+            let encoded = retired_next_turn_reason_payload();
+            <AcceptedRouteGenerationsFamily as Family>::decode_value(&encoded).map(|_| ())
+        }
+        RetiredWorkerCapacityCodecField::AcceptedRouteLeafTransition => {
+            let encoded = retired_leaf_transition_payload();
+            <AcceptedRouteLeavesFamily as Family>::decode_value(&encoded).map(|_| ())
+        }
+    };
+    match result {
+        Err(CodecError::InvalidTag { kind, tag }) => Some((kind, tag)),
+        Ok(()) | Err(_) => None,
+    }
+}
+
+fn retired_next_turn_reason_payload() -> Vec<u8> {
+    let thread = SyndicThreadId::from_bytes([0xB1; 16]);
+    let generation = crate::AcceptedRouteGeneration::FIRST;
+    let value = crate::AcceptedRouteGenerationRecord::new(
+        thread,
+        generation,
+        crate::AcceptedRouteRevision::FIRST,
+        crate::AcceptedRouteTarget::NextTurn(crate::NextTurnReason::ProjectionLost),
+        None,
+        None,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    .expect("empty retired-tag route generation is valid");
+    let mut encoded = <AcceptedRouteGenerationsFamily as Family>::encode_value(&value)
+        .expect("retired-tag route generation must encode");
+    const REASON_TAG_OFFSET: usize = 16 + 8 + 8 + 1;
+    assert_eq!(encoded[REASON_TAG_OFFSET], 5);
+    encoded[REASON_TAG_OFFSET] = 4;
+    encoded
+}
+
+fn retired_leaf_transition_payload() -> Vec<u8> {
+    let generation = crate::AcceptedRouteGeneration::FIRST;
+    let input_revision = AcceptedInputRevision::new(1).expect("one is nonzero");
+    let value = crate::AcceptedRouteLeafRecord::new(
+        SyndicAcceptedInputId::from_bytes([0xB2; 16]),
+        SyndicThreadId::from_bytes([0xB3; 16]),
+        generation,
+        crate::AcceptedInputOrdinal::FIRST,
+        input_revision,
+        crate::AcceptedRouteLeafState::NextTurn(crate::NextTurnReason::ProjectionLost),
+        crate::AcceptedInputLifecycle::Retryable,
+    )
+    .with_transition_proof(crate::AcceptedRouteLeafTransitionProof::new(
+        InputGateRevision::new(1).expect("one is nonzero"),
+        crate::AcceptedRouteHeadProof::new(generation, crate::AcceptedRouteRevision::FIRST),
+        input_revision,
+        crate::AcceptedRouteLeafTransitionKind::ProjectionLostExactRejection,
+    ));
+    let mut encoded = <AcceptedRouteLeavesFamily as Family>::encode_value(&value)
+        .expect("retired-tag route leaf must encode");
+    let transition_tag_offset = encoded
+        .len()
+        .checked_sub(2)
+        .expect("transition kind precedes promotion-presence byte");
+    let transition_tag = encoded
+        .get_mut(transition_tag_offset)
+        .expect("route leaf transition tag is present");
+    assert_eq!(*transition_tag, 5);
+    *transition_tag = 4;
+    encoded
+}
+
 fn representative_thread(thread: SyndicThreadId, draft: SyndicDraftId) -> crate::ThreadRecord {
     crate::ThreadRecord::new(
         thread,
-        ThreadRevision::new(1).expect("one is nonzero"),
-        None,
+        crate::SelectedPathProof::new(
+            None,
+            ThreadRevision::new(1).expect("one is nonzero"),
+            crate::empty_selected_path_digest(),
+        ),
         draft,
+        crate::ThreadLineageProof::new(
+            None,
+            None,
+            crate::ThreadLineageDepth::FIRST,
+            crate::root_thread_lineage_digest(thread),
+        ),
+        crate::ThreadImageLabelFrontiers::empty(),
         None,
-        None,
-        crate::empty_selected_path_digest(),
     )
 }
 
@@ -538,7 +626,7 @@ fn versioned_value<F: Family>(value: &F::Value) -> Vec<u8> {
     let payload = <ExactCodec<F> as RecordCodec<SyndicDomain>>::encode_value(value)
         .expect("representative physical fixture value must encode");
     let mut encoded = Vec::with_capacity(4 + payload.len());
-    encoded.extend_from_slice(&1_u32.to_be_bytes());
+    encoded.extend_from_slice(&F::RECORD_VERSION.get().to_be_bytes());
     encoded.extend_from_slice(&payload);
     encoded
 }
@@ -573,9 +661,13 @@ fn inject<F: Family>(
         }
     };
     let encoded_value = match corruption {
-        PhysicalCorruption::UnsupportedRecordVersion => 2_u32.to_be_bytes(),
+        PhysicalCorruption::UnsupportedRecordVersion => F::RECORD_VERSION
+            .get()
+            .checked_add(1)
+            .expect("test record version must leave room for an unsupported successor")
+            .to_be_bytes(),
         PhysicalCorruption::MalformedStoredKey | PhysicalCorruption::MalformedCodecPayload => {
-            1_u32.to_be_bytes()
+            F::RECORD_VERSION.get().to_be_bytes()
         }
     };
     store.inject_persisted_corrupt_record::<SyndicDomain, ExactCodec<F>>(

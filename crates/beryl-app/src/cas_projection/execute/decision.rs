@@ -230,8 +230,12 @@ impl CasProjectionCoordinator {
             source.thread_id(),
             decision.request().timeout(),
         );
-        let release_error = match retirement {
-            Ok(ThreadRetirement::Absent | ThreadRetirement::Retired) => None,
+        let (release_error, retired_loaded_generation) = match retirement {
+            Ok(ThreadRetirement::Absent) => (None, None),
+            Ok(ThreadRetirement::Retired {
+                generation,
+                release_error,
+            }) => (release_error, Some(generation)),
             Ok(ThreadRetirement::AnotherConnection) => {
                 return Err(
                     ProjectionExecutionError::LoadedProjectionConnectionMismatch {
@@ -249,7 +253,7 @@ impl CasProjectionCoordinator {
                 }
                 .into());
             }
-            Err(error) => Some(error),
+            Err(error) => (Some(error), None),
         };
         let retired_revision = self.publish_abandoned_target(
             home,
@@ -263,7 +267,7 @@ impl CasProjectionCoordinator {
                 source.binding().tool_profile(),
                 source.binding().lineage(),
                 source.binding().native_turn_count(),
-                source.binding().lineage().recovered_loaded_generation(),
+                retired_loaded_generation,
             ),
             "operator selected fresh recovery from Syndic history",
         )?;

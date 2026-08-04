@@ -1,8 +1,8 @@
 use super::*;
 use crate::mutation::required;
 use crate::{
-    CanonicalItemKind, CanonicalItemPayload, GeneratedMediaResourceDisposition,
-    HistorySummaryRecord, ResourceBacking, TurnStateRecord,
+    CanonicalItemPresentation, GeneratedMediaResourceDisposition, HistorySummaryRecord,
+    ResourceBacking, TurnStateRecord,
 };
 
 pub(super) struct FinalizationRecords {
@@ -56,14 +56,23 @@ impl FinalizeNextTurnItemMutation {
         {
             return Err(SyndicMutationError::CanonicalFinalizationConflict);
         }
-        if let Some(content) = item.payload().content() {
+        if let Some(content) = item.provider_content() {
             let manifest = required::<ContentManifestsFamily>(reader, &content.id())?;
-            if !manifest.lifecycle().is_immutable() || manifest.current_reference() != Some(content)
+            if manifest.lifecycle() != crate::ContentLifecycle::Finalized
+                || manifest.current_reference() != Some(content)
             {
                 return Err(SyndicMutationError::CanonicalFinalizationConflict);
             }
         }
-        if let CanonicalItemPayload::GeneratedMedia(resource_id) = item.payload() {
+        if let Some(content) = item.presentation_content() {
+            let manifest = required::<ContentManifestsFamily>(reader, &content.id())?;
+            if manifest.lifecycle() != crate::ContentLifecycle::Sealed
+                || manifest.sealed_reference() != Some(content)
+            {
+                return Err(SyndicMutationError::CanonicalFinalizationConflict);
+            }
+        }
+        if let CanonicalItemPresentation::GeneratedMedia { resource_id } = item.presentation() {
             let resource = required::<ResourcesFamily>(reader, resource_id)?;
             if resource.item_id() != item.id()
                 || !matches!(
@@ -74,14 +83,11 @@ impl FinalizeNextTurnItemMutation {
                 return Err(SyndicMutationError::CanonicalFinalizationConflict);
             }
         }
-        if matches!(
-            item.kind(),
-            CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-        ) {
+        if item.projection_source().is_some() {
             require_current_projection(reader, &item)?;
         }
         let selected = crate::mutation::turn_is_on_selected_path(reader, &thread, &turn)?;
-        let state = TurnStateRecord::with_capture_frontiers(
+        let state = TurnStateRecord::with_capture_frontiers_and_issue(
             current.turn_id(),
             current.revision().checked_next()?,
             current.lifecycle(),
@@ -90,19 +96,25 @@ impl FinalizeNextTurnItemMutation {
             request.expected_item_ordinal.get(),
             current.open_item_count(),
             current.history_blocking_item_count(),
+            current.provider_observation_issue(),
             current.end_status(),
             request.updated_at,
         )?;
-        let summary = selected.then(|| {
-            HistorySummaryRecord::new(
-                summary.thread_id(),
-                summary.thread_revision(),
-                summary.committed_tail(),
-                summary.selected_path_digest(),
-                false,
-                summary.last_activity_at().max(request.updated_at),
-            )
-        });
+        let next_activity = summary.last_activity_at().max(request.updated_at);
+        let summary =
+            if selected && (summary.complete() || next_activity != summary.last_activity_at()) {
+                Some(HistorySummaryRecord::new(
+                    summary.thread_id(),
+                    summary.revision().checked_next()?,
+                    summary.thread_revision(),
+                    summary.committed_tail(),
+                    summary.selected_path_digest(),
+                    false,
+                    next_activity,
+                ))
+            } else {
+                None
+            };
         let (transcript_head, transcript_build) = if selected {
             crate::mutation::transcript::invalidate_transcript_projection(reader, &thread)?
         } else {
@@ -146,9 +158,8 @@ fn require_current_projection(
     reader: &DomainReader<'_, SyndicDomain>,
     item: &crate::CanonicalItemRecord,
 ) -> Result<(), SyndicMutationError> {
-    let content = item
-        .payload()
-        .content()
+    let source = item
+        .projection_source()
         .ok_or(SyndicMutationError::CanonicalFinalizationConflict)?;
     let head = required::<ItemProjectionHeadsFamily>(reader, &item.id())?;
     if head.lifecycle() != crate::ProjectionLifecycle::Current
@@ -164,7 +175,7 @@ fn require_current_projection(
         },
     )?;
     if set.source_item_revision() != item.revision()
-        || set.source_content() != content
+        || set.source() != source
         || set.projection_count() == 0
     {
         return Err(SyndicMutationError::CanonicalFinalizationConflict);

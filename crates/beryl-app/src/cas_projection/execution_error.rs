@@ -1,8 +1,6 @@
-use beryl_backend::{
-    ManagedBackendError, ThreadInjectionBatchError, ThreadInjectionMessageTextError, ThreadStatus,
-};
+use beryl_backend::{ManagedBackendError, ThreadInjectionPreflightError, ThreadStatus};
 use beryl_home_store::{CommandBuildError, CommandError, ReadError};
-use beryl_model::{CasThreadId, RuntimeId};
+use beryl_model::{CasProcessGeneration, CasThreadId, RuntimeId};
 use syndic_storage::{
     NativeProjectionError, RecoveryProjectionError, SyndicReadError, SyndicRecordError,
     SyndicValueError,
@@ -52,6 +50,34 @@ pub enum ProjectionExecutionError {
         requested: RuntimeId,
         admitted: RuntimeId,
     },
+    /// Replacement connection belongs to another managed CAS process generation.
+    #[error("same-native reacquisition requires managed process {expected:?}, not {admitted:?}")]
+    ProcessGenerationMismatch {
+        expected: CasProcessGeneration,
+        admitted: CasProcessGeneration,
+    },
+    /// Replacement connection is the old connection or already owns another projection.
+    #[error("same-native reacquisition for {thread_id} requires a fresh CAS connection")]
+    ReacquisitionConnectionNotFresh { thread_id: CasThreadId },
+    /// Old subscription anchor disappeared before transfer completed.
+    #[error("same-native reacquisition anchor for {thread_id} was lost")]
+    ReacquisitionAnchorLost { thread_id: CasThreadId },
+    /// Replacement-side resume reservation disappeared before transfer completed.
+    #[error("same-native reacquisition reservation for {thread_id} was lost")]
+    ReacquisitionReservationLost { thread_id: CasThreadId },
+    /// Another operation already owns the quarantined thread handoff.
+    #[error("same-native reacquisition is already in progress for {thread_id}")]
+    ReacquisitionInProgress { thread_id: CasThreadId },
+    /// Durable binding no longer equals the terminal basis captured by the anchor.
+    #[error("same-native reacquisition binding changed for {thread_id}")]
+    ReacquisitionBindingChanged {
+        thread_id: beryl_model::SyndicThreadId,
+    },
+    /// Anchor belongs to a different Beryl-home identity or generation.
+    #[error("same-native reacquisition belongs to another home for {thread_id}")]
+    ReacquisitionHomeMismatch {
+        thread_id: beryl_model::SyndicThreadId,
+    },
     #[error("loaded CAS thread {thread_id} is owned by another exact client connection")]
     LoadedProjectionConnectionMismatch { thread_id: CasThreadId },
     #[error("a loaded-projection lease could not be released cleanly")]
@@ -88,15 +114,15 @@ pub enum ProjectionExecutionError {
     #[error(transparent)]
     RecoveryProjection(#[from] RecoveryProjectionError),
     #[error(transparent)]
+    SyndicRead(#[from] SyndicReadError),
+    #[error(transparent)]
     Backend(Box<ManagedBackendError>),
     #[error(transparent)]
     SyndicRecord(#[from] SyndicRecordError),
     #[error(transparent)]
     SyndicValue(#[from] SyndicValueError),
     #[error(transparent)]
-    InjectionMessage(#[from] ThreadInjectionMessageTextError),
-    #[error(transparent)]
-    InjectionBatch(#[from] ThreadInjectionBatchError),
+    InjectionPreflight(#[from] ThreadInjectionPreflightError),
     #[error("loaded CAS projection thread {thread_id} was not idle: {status:?}")]
     ProjectionThreadNotIdle {
         thread_id: CasThreadId,
@@ -108,6 +134,12 @@ pub enum ProjectionExecutionError {
         code: i64,
         message: Box<str>,
         data_was_present: bool,
+    },
+    #[error("recovery injection was proven not dispatched for {thread_id}")]
+    InjectionNotDispatched {
+        thread_id: CasThreadId,
+        #[source]
+        source: Box<ManagedBackendError>,
     },
     #[error("recovery injection transport was lost for {thread_id}")]
     InjectionTransportLost {

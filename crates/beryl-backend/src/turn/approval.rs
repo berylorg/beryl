@@ -2,55 +2,164 @@ use std::{
     fmt,
     sync::{
         Arc,
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicU8, AtomicU64, Ordering},
     },
 };
 
-use serde_json::Value;
+use beryl_model::{CasItemId, CasThreadId, CasTurnId};
+use serde::{Serialize, Serializer};
+use thiserror::Error;
 
-use crate::JsonRpcError;
+pub(crate) const COMMAND_EXECUTION_REQUEST_APPROVAL_METHOD: &str =
+    "item/commandExecution/requestApproval";
+pub(crate) const FILE_CHANGE_REQUEST_APPROVAL_METHOD: &str = "item/fileChange/requestApproval";
+pub(crate) const PERMISSIONS_REQUEST_APPROVAL_METHOD: &str = "item/permissions/requestApproval";
 
-const COMMAND_EXECUTION_REQUEST_APPROVAL_METHOD: &str = "item/commandExecution/requestApproval";
-const FILE_CHANGE_REQUEST_APPROVAL_METHOD: &str = "item/fileChange/requestApproval";
-const PERMISSIONS_REQUEST_APPROVAL_METHOD: &str = "item/permissions/requestApproval";
+/// Maximum decoded UTF-8 length of a string JSON-RPC approval request identity.
+pub const APPROVAL_REQUEST_ID_MAX_BYTES: usize = 256;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ActiveTurnNotSteerable {
-    pub turn_kind: NonSteerableTurnKind,
-}
+const UNBOUND_RESPONSE_AUTHORITY: u64 = 0;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NonSteerableTurnKind {
-    Review,
-    Compact,
-    Other(String),
-}
-
+/// Closed approval method selected before any unneeded request payload is retained.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApprovalRequestKind {
+    /// Approval for one proposed command execution.
     CommandExecution,
+    /// Approval for one proposed file change.
     FileChange,
+    /// Approval for one proposed permission expansion.
     Permissions,
 }
 
+/// One bounded JSON-RPC identity for an approval server request.
+#[derive(Eq, PartialEq)]
+pub enum ApprovalRequestId {
+    Integer(i64),
+    String(Box<str>),
+}
+
+impl fmt::Debug for ApprovalRequestId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Integer(_) => formatter.write_str("Integer([redacted])"),
+            Self::String(value) => formatter
+                .debug_struct("String")
+                .field("bytes", &value.len())
+                .finish_non_exhaustive(),
+        }
+    }
+}
+
+impl ApprovalRequestId {
+    #[must_use]
+    pub const fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Integer(value) => Some(*value),
+            Self::String(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::Integer(value) if *value >= 0 => Some(*value as u64),
+            Self::Integer(_) | Self::String(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value),
+            Self::Integer(_) => None,
+        }
+    }
+}
+
+impl Serialize for ApprovalRequestId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Integer(value) => serializer.serialize_i64(*value),
+            Self::String(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+/// Content-free structural failures from incremental approval normalization.
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub enum ApprovalRequestSchemaError {
+    #[error("approval request envelope does not match the pinned JSON-RPC shape")]
+    EnvelopeShape,
+    #[error("approval request repeated a required envelope discriminant")]
+    DuplicateDiscriminant,
+    #[error("approval request repeated a route field")]
+    DuplicateRoute,
+    #[error("approval request is missing its JSON-RPC request identity")]
+    MissingRequestIdentity,
+    #[error("approval request is missing its params object")]
+    MissingParams,
+    #[error("approval request field has the wrong JSON type")]
+    WrongType,
+    #[error("approval JSON-RPC request identity is invalid")]
+    InvalidRequestIdentity,
+    #[error("approval route identity is invalid")]
+    InvalidRouteIdentity,
+    #[error("approval bounded identity exceeds its fixed capacity")]
+    IdentityTooLong,
+    #[error("approval discarded payload exceeds the pinned structural depth")]
+    StructuredDepthExceeded,
+    #[error("approval response authority was already bound to a session")]
+    ResponseAuthorityAlreadyBound,
+}
+
 #[repr(u8)]
+/// Whether the exact originating session still owns an approval denial write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApprovalResponseDisposition {
+    /// No denial response has been written successfully.
     ResponseRequired,
+    /// The session wrote an automatic denial after ordered admission.
     AutoDenied,
+    /// The idle-event caller wrote the denial through the originating session.
     Denied,
 }
 
 #[derive(Debug)]
-struct ApprovalResponseState(AtomicU8);
+struct ApprovalResponseState {
+    authority_generation: AtomicU64,
+    disposition: AtomicU8,
+}
 
 impl ApprovalResponseState {
-    fn new(disposition: ApprovalResponseDisposition) -> Self {
-        Self(AtomicU8::new(disposition as u8))
+    const fn new() -> Self {
+        Self {
+            authority_generation: AtomicU64::new(UNBOUND_RESPONSE_AUTHORITY),
+            disposition: AtomicU8::new(ApprovalResponseDisposition::ResponseRequired as u8),
+        }
+    }
+
+    fn bind(&self, generation: u64) -> Result<(), ApprovalRequestSchemaError> {
+        debug_assert_ne!(generation, UNBOUND_RESPONSE_AUTHORITY);
+        self.authority_generation
+            .compare_exchange(
+                UNBOUND_RESPONSE_AUTHORITY,
+                generation,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map(|_| ())
+            .map_err(|_| ApprovalRequestSchemaError::ResponseAuthorityAlreadyBound)
+    }
+
+    fn authority_generation(&self) -> u64 {
+        self.authority_generation.load(Ordering::Acquire)
     }
 
     fn load(&self) -> ApprovalResponseDisposition {
-        match self.0.load(Ordering::Acquire) {
+        match self.disposition.load(Ordering::Acquire) {
             0 => ApprovalResponseDisposition::ResponseRequired,
             1 => ApprovalResponseDisposition::AutoDenied,
             2 => ApprovalResponseDisposition::Denied,
@@ -59,7 +168,7 @@ impl ApprovalResponseState {
     }
 
     fn store(&self, disposition: ApprovalResponseDisposition) {
-        self.0.store(disposition as u8, Ordering::Release);
+        self.disposition.store(disposition as u8, Ordering::Release);
     }
 }
 
@@ -71,20 +180,37 @@ impl PartialEq for ApprovalResponseState {
 
 impl Eq for ApprovalResponseState {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ApprovalRequest {
-    request_id: Value,
-    method: String,
+struct ApprovalShared {
+    request_id: ApprovalRequestId,
     kind: ApprovalRequestKind,
-    params: Value,
-    thread_id: Option<String>,
-    turn_id: Option<String>,
-    item_id: Option<String>,
-    command: Option<String>,
-    cwd: Option<String>,
-    reason: Option<String>,
-    response_authority_generation: Option<u64>,
-    response_state: Arc<ApprovalResponseState>,
+    thread_id: Option<CasThreadId>,
+    turn_id: Option<CasTurnId>,
+    item_id: Option<CasItemId>,
+    response_state: ApprovalResponseState,
+}
+
+/// One non-cloneable compact approval event with read-only response-state observation.
+pub struct ApprovalRequest {
+    shared: Arc<ApprovalShared>,
+}
+
+pub(crate) struct ApprovalResponder {
+    shared: Arc<ApprovalShared>,
+}
+
+impl fmt::Debug for ApprovalResponder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ApprovalResponder")
+            .field("kind", &self.kind())
+            .field("response_disposition", &self.response_disposition())
+            .finish_non_exhaustive()
+    }
+}
+
+pub(crate) struct DecodedApproval {
+    request: ApprovalRequest,
+    responder: ApprovalResponder,
 }
 
 impl ApprovalRequestKind {
@@ -101,192 +227,156 @@ impl ApprovalRequestKind {
     pub const fn denial_response_interrupts_turn(self) -> bool {
         matches!(self, Self::CommandExecution | Self::FileChange)
     }
+
+    #[must_use]
+    pub const fn separate_interruption_required(self) -> bool {
+        !self.denial_response_interrupts_turn()
+    }
 }
 
-impl fmt::Display for NonSteerableTurnKind {
+impl fmt::Display for ApprovalRequestKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Review => formatter.write_str("review"),
-            Self::Compact => formatter.write_str("compact"),
-            Self::Other(kind) => formatter.write_str(kind),
-        }
-    }
-}
-
-impl NonSteerableTurnKind {
-    fn from_wire(value: &str) -> Self {
-        match value {
-            "review" => Self::Review,
-            "compact" => Self::Compact,
-            other => Self::Other(other.to_string()),
-        }
-    }
-}
-
-#[must_use]
-pub fn active_turn_not_steerable_error(error: &JsonRpcError) -> Option<ActiveTurnNotSteerable> {
-    let data = error.data.as_ref()?;
-    active_turn_not_steerable_from_value(data)
-        .or_else(|| {
-            data.get("codexErrorInfo")
-                .and_then(active_turn_not_steerable_from_value)
+        formatter.write_str(match self {
+            Self::CommandExecution => "command-execution",
+            Self::FileChange => "file-change",
+            Self::Permissions => "permission-expansion",
         })
-        .or_else(|| {
-            data.get("error")
-                .and_then(|error| error.get("codexErrorInfo"))
-                .and_then(active_turn_not_steerable_from_value)
-        })
-}
-
-fn active_turn_not_steerable_from_value(value: &Value) -> Option<ActiveTurnNotSteerable> {
-    if value.as_str() == Some("activeTurnNotSteerable") {
-        return Some(ActiveTurnNotSteerable {
-            turn_kind: NonSteerableTurnKind::Other("unknown".to_string()),
-        });
     }
-
-    let info = value.get("activeTurnNotSteerable")?;
-    let turn_kind = info
-        .get("turnKind")
-        .and_then(Value::as_str)
-        .map(NonSteerableTurnKind::from_wire)
-        .unwrap_or_else(|| NonSteerableTurnKind::Other("unknown".to_string()));
-    Some(ActiveTurnNotSteerable { turn_kind })
 }
 
 impl ApprovalRequest {
-    #[must_use]
-    pub fn request_id(&self) -> &Value {
-        &self.request_id
+    pub(crate) fn decoded(
+        request_id: ApprovalRequestId,
+        kind: ApprovalRequestKind,
+        thread_id: Option<CasThreadId>,
+        turn_id: Option<CasTurnId>,
+        item_id: Option<CasItemId>,
+    ) -> DecodedApproval {
+        let shared = Arc::new(ApprovalShared {
+            request_id,
+            kind,
+            thread_id,
+            turn_id,
+            item_id,
+            response_state: ApprovalResponseState::new(),
+        });
+        DecodedApproval {
+            request: Self {
+                shared: Arc::clone(&shared),
+            },
+            responder: ApprovalResponder { shared },
+        }
     }
 
     #[must_use]
-    pub fn method(&self) -> &str {
-        &self.method
+    /// Returns the bounded identity used only for the sole JSON-RPC response.
+    pub fn request_id(&self) -> &ApprovalRequestId {
+        &self.shared.request_id
     }
 
     #[must_use]
-    pub const fn kind(&self) -> ApprovalRequestKind {
-        self.kind
+    /// Returns the closed approval method kind.
+    pub fn kind(&self) -> ApprovalRequestKind {
+        self.shared.kind
     }
 
     /// Returns whether this request still needs a JSON-RPC response.
     #[must_use]
     pub fn response_disposition(&self) -> ApprovalResponseDisposition {
-        self.response_state.load()
+        self.shared.response_state.load()
+    }
+
+    pub(crate) fn response_authority_generation(&self) -> u64 {
+        self.shared.response_state.authority_generation()
+    }
+
+    pub(crate) fn mark_response_disposition(&self, disposition: ApprovalResponseDisposition) {
+        self.shared.response_state.store(disposition);
+    }
+
+    #[must_use]
+    /// Returns the optional exact thread route retained from the request.
+    pub fn thread_id(&self) -> Option<&CasThreadId> {
+        self.shared.thread_id.as_ref()
+    }
+
+    #[must_use]
+    /// Returns the optional exact turn route retained from the request.
+    pub fn turn_id(&self) -> Option<&CasTurnId> {
+        self.shared.turn_id.as_ref()
+    }
+
+    #[must_use]
+    /// Returns the optional exact item route retained from the request.
+    pub fn item_id(&self) -> Option<&CasItemId> {
+        self.shared.item_id.as_ref()
+    }
+}
+
+impl PartialEq for ApprovalRequest {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.shared, &other.shared)
+    }
+}
+
+impl Eq for ApprovalRequest {}
+
+impl fmt::Debug for ApprovalRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ApprovalRequest")
+            .field("kind", &self.kind())
+            .field("thread_route_present", &self.thread_id().is_some())
+            .field("turn_route_present", &self.turn_id().is_some())
+            .field("item_route_present", &self.item_id().is_some())
+            .field("response_disposition", &self.response_disposition())
+            .finish()
+    }
+}
+
+impl ApprovalResponder {
+    pub(crate) fn matches(&self, request: &ApprovalRequest) -> bool {
+        Arc::ptr_eq(&self.shared, &request.shared)
     }
 
     pub(crate) fn bind_response_authority(
-        &mut self,
+        &self,
         generation: u64,
-        disposition: ApprovalResponseDisposition,
-    ) {
-        self.response_authority_generation = Some(generation);
-        self.response_state.store(disposition);
+    ) -> Result<(), ApprovalRequestSchemaError> {
+        self.shared.response_state.bind(generation)
     }
 
-    pub(crate) fn response_authority_generation(&self) -> Option<u64> {
-        self.response_authority_generation
+    pub(crate) fn request_id(&self) -> &ApprovalRequestId {
+        &self.shared.request_id
     }
 
-    pub(crate) fn set_response_disposition(&self, disposition: ApprovalResponseDisposition) {
-        self.response_state.store(disposition);
+    pub(crate) fn kind(&self) -> ApprovalRequestKind {
+        self.shared.kind
     }
 
-    #[must_use]
-    pub fn params(&self) -> &Value {
-        &self.params
+    pub(crate) fn thread_id(&self) -> Option<&CasThreadId> {
+        self.shared.thread_id.as_ref()
     }
 
-    #[must_use]
-    pub fn thread_id(&self) -> Option<&str> {
-        self.thread_id.as_deref()
+    pub(crate) fn turn_id(&self) -> Option<&CasTurnId> {
+        self.shared.turn_id.as_ref()
     }
 
-    #[must_use]
-    pub fn turn_id(&self) -> Option<&str> {
-        self.turn_id.as_deref()
+    pub(crate) fn response_authority_generation(&self) -> u64 {
+        self.shared.response_state.authority_generation()
     }
 
-    #[must_use]
-    pub fn item_id(&self) -> Option<&str> {
-        self.item_id.as_deref()
+    pub(crate) fn response_disposition(&self) -> ApprovalResponseDisposition {
+        self.shared.response_state.load()
     }
 
-    #[must_use]
-    pub fn command(&self) -> Option<&str> {
-        self.command.as_deref()
-    }
-
-    #[must_use]
-    pub fn cwd(&self) -> Option<&str> {
-        self.cwd.as_deref()
-    }
-
-    #[must_use]
-    pub fn reason(&self) -> Option<&str> {
-        self.reason.as_deref()
-    }
-
-    #[must_use]
-    pub fn pretty_params(&self) -> String {
-        serde_json::to_string_pretty(&self.params).unwrap_or_else(|_| self.params.to_string())
-    }
-
-    #[must_use]
-    pub fn summary(&self) -> String {
-        let command = self.command.as_deref().unwrap_or("<none>");
-        let cwd = self.cwd.as_deref().unwrap_or("<none>");
-        let reason = self.reason.as_deref().unwrap_or("<none>");
-        format!(
-            "method={}, requestId={}, threadId={}, turnId={}, itemId={}, cwd={}, command={}, reason={}",
-            self.method,
-            self.request_id,
-            self.thread_id.as_deref().unwrap_or("<unknown>"),
-            self.turn_id.as_deref().unwrap_or("<unknown>"),
-            self.item_id.as_deref().unwrap_or("<unknown>"),
-            cwd,
-            command,
-            reason
-        )
+    pub(crate) fn mark_response_disposition(&self, disposition: ApprovalResponseDisposition) {
+        self.shared.response_state.store(disposition);
     }
 }
 
-#[must_use]
-pub fn parse_approval_request(
-    request_id: Value,
-    method: &str,
-    params: Option<Value>,
-) -> Option<ApprovalRequest> {
-    let kind = match method {
-        COMMAND_EXECUTION_REQUEST_APPROVAL_METHOD => ApprovalRequestKind::CommandExecution,
-        FILE_CHANGE_REQUEST_APPROVAL_METHOD => ApprovalRequestKind::FileChange,
-        PERMISSIONS_REQUEST_APPROVAL_METHOD => ApprovalRequestKind::Permissions,
-        _ => return None,
-    };
-    let params = params.unwrap_or(Value::Null);
-    Some(ApprovalRequest {
-        request_id,
-        method: method.to_string(),
-        kind,
-        thread_id: string_field(&params, "threadId"),
-        turn_id: string_field(&params, "turnId"),
-        item_id: string_field(&params, "itemId"),
-        command: string_field(&params, "command"),
-        cwd: string_field(&params, "cwd"),
-        reason: string_field(&params, "reason"),
-        response_authority_generation: None,
-        response_state: Arc::new(ApprovalResponseState::new(
-            ApprovalResponseDisposition::ResponseRequired,
-        )),
-        params,
-    })
-}
-
-fn string_field(value: &Value, field: &str) -> Option<String> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+impl DecodedApproval {
+    pub(crate) fn into_parts(self) -> (ApprovalRequest, ApprovalResponder) {
+        (self.request, self.responder)
+    }
 }

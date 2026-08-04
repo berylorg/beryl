@@ -4,11 +4,116 @@ use beryl_model::SyndicTurnId;
 use crate::mutation::binding::{advance_reservation, membership};
 use crate::mutation::{point, required};
 use crate::{
-    BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, CasRepresentedPrefixProof,
-    CasThreadBindingIndexRecord, CasThreadIndexRecord, CasTurnSource, InputGateRecord,
-    InputGateState, SyndicMutationError, TurnLifecycle, UsableCasBinding, codec::*,
-    domain::SyndicDomain,
+    AcceptedRouteTarget, BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState,
+    CasRepresentedPrefixProof, CasThreadBindingIndexRecord, CasThreadIndexRecord, CasTurnSource,
+    InputGateRecord, InputGateState, StopDispositionSource, StopMatchingTerminalWitness,
+    StopOperationId, StopOperationRecord, StopOperationState, SyndicMutationError, TurnRecord,
+    TurnStateRevision, UsableCasBinding, codec::*, domain::SyndicDomain,
 };
+
+mod gate;
+
+pub(super) use gate::{LiveGateEffect, activation_gate_effect, terminal_gate_effect};
+
+pub(super) fn terminal_stop_operation(
+    reader: &DomainReader<'_, SyndicDomain>,
+    turn: &TurnRecord,
+    source: Option<&CasTurnSource>,
+    current_gate: &InputGateRecord,
+    successor_gate_revision: beryl_model::InputGateRevision,
+    successor_turn_state_revision: TurnStateRevision,
+) -> Result<Option<StopOperationRecord>, SyndicMutationError> {
+    let InputGateState::Stopping {
+        turn_id,
+        operation_nonce,
+    } = current_gate.state()
+    else {
+        return Ok(None);
+    };
+    if *turn_id != turn.id() {
+        return Err(SyndicMutationError::InputGateStateConflict);
+    }
+
+    let id = StopOperationId::new(current_gate.thread_id(), *operation_nonce);
+    let current = required::<StopOperationsFamily>(reader, &id)?;
+    let target = current.target();
+    let source = source.ok_or(SyndicMutationError::SourceIdentityConflict)?;
+    let route_proof = current_gate
+        .selected_route()
+        .ok_or(SyndicMutationError::ActiveSteeringRouteConflict)?;
+    let route = required::<AcceptedRouteGenerationsFamily>(
+        reader,
+        &ThreadRouteKey {
+            thread: current_gate.thread_id(),
+            generation: route_proof.generation(),
+        },
+    )?;
+    let head = required::<BindingHeadsFamily>(reader, &current_gate.thread_id())?;
+    let binding = required::<BindingsFamily>(
+        reader,
+        &BindingKey {
+            thread: current_gate.thread_id(),
+            revision: head.revision(),
+        },
+    )?;
+    let BindingState::Active(active) = binding.state() else {
+        return Err(SyndicMutationError::BindingStateConflict);
+    };
+    let snapshot = required::<ExecutionSnapshotsFamily>(reader, &active.snapshot_id())?;
+    let active_turn = required::<ActiveCasTurnsFamily>(reader, &active.snapshot_id())?;
+
+    if current.id() != id
+        || !current.state().is_live()
+        || target.thread_id() != current_gate.thread_id()
+        || target.turn_id() != turn.id()
+        || target.turn_kind() != turn.kind()
+        || target.binding_revision() != binding.revision()
+        || target.snapshot_id() != active.snapshot_id()
+        || target.runtime_id() != snapshot.execution().runtime_id()
+        || target.loaded_generation() != snapshot.loaded_generation()
+        || target.cas_thread_id() != source.thread_id()
+        || target.cas_turn_id() != source.turn_id()
+        || snapshot.thread_id() != current_gate.thread_id()
+        || snapshot.binding_revision() != binding.revision()
+        || snapshot.active_turn_id() != turn.id()
+        || snapshot.cas_thread_id() != source.thread_id()
+        || active_turn.snapshot_id() != snapshot.id()
+        || active_turn.thread_id() != current_gate.thread_id()
+        || active_turn.turn_id() != turn.id()
+        || active_turn.binding_revision() != binding.revision()
+        || active_turn.cas_thread_id() != source.thread_id()
+        || active_turn.cas_turn_id() != source.turn_id()
+        || current.admission().successor_stopped_route() != route_proof
+        || route.thread_id() != current_gate.thread_id()
+        || route.generation() != route_proof.generation()
+        || route.revision() != route_proof.revision()
+        || !matches!(
+            route.target(),
+            AcceptedRouteTarget::NextTurn(crate::NextTurnReason::Stop)
+        )
+        || route.ready_retryable_count() != 0
+        || route.delivering_count() != 0
+    {
+        return Err(SyndicMutationError::InputGateStateConflict);
+    }
+
+    let witness = StopMatchingTerminalWitness::new(
+        StopDispositionSource::new(current_gate.revision(), current.revision()),
+        successor_gate_revision,
+        successor_turn_state_revision,
+    );
+    StopOperationRecord::new(
+        current.id(),
+        current.target().clone(),
+        current.admission(),
+        current.revision().checked_next()?,
+        current.cause_first_revisions(),
+        current.dispatch_claim(),
+        StopOperationState::MatchingTerminal(witness),
+    )
+    .map(Some)
+    .map_err(|_| SyndicMutationError::InputGateStateConflict)
+}
 
 pub(super) fn terminal_valid_binding(
     reader: &DomainReader<'_, SyndicDomain>,
@@ -112,52 +217,4 @@ pub(super) fn terminal_valid_binding(
         revision,
     )?;
     Ok(Some((binding, head, reservation, membership)))
-}
-
-pub(super) fn terminal_gate(
-    current: &InputGateRecord,
-    turn: SyndicTurnId,
-    lifecycle: TurnLifecycle,
-) -> Result<InputGateRecord, SyndicMutationError> {
-    if current.live_steering_count() != 0 || !gate_targets_turn(current.state(), turn) {
-        return Err(SyndicMutationError::InputGateStateConflict);
-    }
-    let state = if lifecycle.is_proven_terminal() {
-        InputGateState::Idle
-    } else {
-        match current.state() {
-            InputGateState::AwaitingSteering(target) => {
-                InputGateState::AwaitingSteering(target.clone())
-            }
-            InputGateState::Steerable(target) | InputGateState::Stopping(target) => {
-                InputGateState::Stopping(target.clone())
-            }
-            InputGateState::PendingTurn(_) | InputGateState::Compacting(_) => {
-                InputGateState::PendingTurn(turn)
-            }
-            InputGateState::Idle => return Err(SyndicMutationError::InputGateStateConflict),
-        }
-    };
-    Ok(InputGateRecord::new(
-        current.thread_id(),
-        current.revision().checked_next()?,
-        state,
-        current.accepted_high_water(),
-        current.live_steering_count(),
-        current.live_next_turn_count(),
-        current.live_logical_utf8_bytes(),
-    )?)
-}
-
-fn gate_targets_turn(state: &InputGateState, turn: SyndicTurnId) -> bool {
-    match state {
-        InputGateState::PendingTurn(current) | InputGateState::Compacting(current) => {
-            *current == turn
-        }
-        InputGateState::AwaitingSteering(target) => target.active_turn_id() == turn,
-        InputGateState::Steerable(target) | InputGateState::Stopping(target) => {
-            target.pending().active_turn_id() == turn
-        }
-        InputGateState::Idle => false,
-    }
 }

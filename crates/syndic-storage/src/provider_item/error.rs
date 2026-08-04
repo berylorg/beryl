@@ -27,6 +27,10 @@ pub enum ProviderItemValidationError {
     FrameOrdinalExhausted,
     #[error("provider item stream expected frame ordinal {expected}, got {actual}")]
     FrameOrdinalConflict { expected: u64, actual: u64 },
+    #[error("provider item stream state has invalid next ordinal {actual}")]
+    InvalidStreamStateOrdinal { actual: u64 },
+    #[error("provider item stream state lifecycle is incoherent for kind {kind:?}")]
+    InvalidStreamStateLifecycle { kind: crate::ProviderItemKind },
     #[error("provider item stream changed item identity")]
     ItemIdentityMismatch,
     #[error("provider item stream changed kind from {expected:?} to {actual:?}")]

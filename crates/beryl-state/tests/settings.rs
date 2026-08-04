@@ -128,6 +128,7 @@ fn every_closed_scalar_shape_persists_and_reopens() {
     assert_eq!(page.records().len(), 5);
     assert!(!page.has_more());
     assert!(page.stored_bytes() > 0);
+    assert!(page.decoded_bytes() > 0);
 }
 
 #[test]

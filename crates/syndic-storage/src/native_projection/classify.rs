@@ -22,7 +22,7 @@ impl SyndicStorage {
         limit: SyndicPointReadLimit,
     ) -> Result<NativeProjectionPlan, NativeProjectionError> {
         if let Some(usable) = usable_binding(current.state())
-            && usable.represented_prefix() == basis.represented_prefix()
+            && prefix_position_matches(usable.represented_prefix(), basis.represented_prefix())
         {
             let source = NativeProjectionSource {
                 thread_id: request.thread_id,
@@ -161,17 +161,17 @@ impl SyndicStorage {
                 .ok_or(NativeProjectionError::Invariant(
                     "native target prefix tail is missing",
                 ))?;
-        if outer.record().chain_digest() != source.represented_prefix().digest() {
+        if outer.chain_digest() != source.represented_prefix().digest() {
             return Err(NativeProjectionError::Invariant(
                 "source binding represented-prefix digest disagrees",
             ));
         }
         crate::selected_path::includes_turn(
-            outer.record().clone(),
-            target.record(),
+            outer.clone(),
+            &target,
             |id| {
                 self.turn(store, id, limit)?
-                    .map(|stored| stored.record().clone())
+                    .map(|stored| stored.clone())
                     .ok_or(NativeProjectionError::Invariant(
                         "native source ancestry turn is missing",
                     ))
@@ -208,33 +208,31 @@ impl SyndicStorage {
         let state = self.turn_state(store, target_turn_id, limit)?.ok_or(
             NativeProjectionError::Invariant("native target turn state is missing"),
         )?;
-        if !state.record().lifecycle().is_proven_terminal()
-            || state.record().source_event_count() == 0
-        {
+        if !state.lifecycle().is_proven_terminal() || state.source_event_count() == 0 {
             return Ok(None);
         }
-        let sequence = SourceEventSequence::new(state.record().source_event_count())
+        let sequence = SourceEventSequence::new(state.source_event_count())
             .map_err(|_| NativeProjectionError::Invariant("terminal event sequence is invalid"))?;
         let event = self
             .source_event(store, target_turn_id, sequence, limit)?
             .ok_or(NativeProjectionError::Invariant(
                 "native target terminal event is missing",
             ))?;
-        if event.record().turn_id() != target_turn_id || event.record().sequence() != sequence {
+        if event.turn_id() != target_turn_id || event.sequence() != sequence {
             return Err(NativeProjectionError::Invariant(
                 "native target terminal event identity disagrees",
             ));
         }
         if !matches!(
-            event.record().payload(),
+            event.payload(),
             SourceEventPayload::TurnEnded(status)
-                if state.record().end_status() == Some(*status)
+                if state.end_status() == Some(*status)
         ) {
             return Err(NativeProjectionError::Invariant(
                 "native target terminal event outcome disagrees",
             ));
         }
-        let Some(source) = event.record().source() else {
+        let Some(source) = event.source() else {
             return Ok(None);
         };
         let turn_index = self
@@ -247,9 +245,9 @@ impl SyndicStorage {
             .ok_or(NativeProjectionError::Invariant(
                 "native target CAS-turn correlation is missing",
             ))?;
-        if turn_index.record().cas_thread_id() != source.thread_id()
-            || turn_index.record().cas_turn_id() != source.turn_id()
-            || turn_index.record().turn_id() != target_turn_id
+        if turn_index.cas_thread_id() != source.thread_id()
+            || turn_index.cas_turn_id() != source.turn_id()
+            || turn_index.turn_id() != target_turn_id
         {
             return Err(NativeProjectionError::Invariant(
                 "native target CAS-turn correlation disagrees",
@@ -260,7 +258,7 @@ impl SyndicStorage {
                 .ok_or(NativeProjectionError::Invariant(
                     "native target turn is missing",
                 ))?;
-        if target.record().chain_digest() != target_prefix.digest() {
+        if target.chain_digest() != target_prefix.digest() {
             return Err(NativeProjectionError::Invariant(
                 "native target prefix digest disagrees",
             ));
@@ -271,50 +269,50 @@ impl SyndicStorage {
             .ok_or(NativeProjectionError::Invariant(
                 "native source CAS-thread reservation is missing",
             ))?;
-        if reservation.record().cas_thread_id() != source.thread_id()
-            || reservation.record().thread_id() != turn_index.record().thread_id()
+        if reservation.cas_thread_id() != source.thread_id()
+            || reservation.thread_id() != turn_index.thread_id()
         {
             return Err(NativeProjectionError::Invariant(
                 "native source CAS-thread reservation disagrees",
             ));
         }
-        if reservation.record().retired_binding_revision().is_some() {
+        if reservation.retired_binding_revision().is_some() {
             return Ok(None);
         }
         let binding = self
             .binding(
                 store,
-                reservation.record().thread_id(),
-                reservation.record().latest_binding_revision(),
+                reservation.thread_id(),
+                reservation.latest_binding_revision(),
                 limit,
             )?
             .ok_or(NativeProjectionError::Invariant(
                 "native source latest binding is missing",
             ))?;
-        if binding.record().thread_id() != reservation.record().thread_id()
-            || binding.record().revision() != reservation.record().latest_binding_revision()
+        if binding.thread_id() != reservation.thread_id()
+            || binding.revision() != reservation.latest_binding_revision()
         {
             return Err(NativeProjectionError::Invariant(
                 "native source latest binding identity disagrees",
             ));
         }
-        let Some(usable) = usable_binding(binding.record().state()) else {
+        let Some(usable) = usable_binding(binding.state()) else {
             return Ok(None);
         };
         if usable.cas_thread_id() != source.thread_id()
-            || usable.native_turn_count() < turn_index.record().post_turn_native_count()
+            || usable.native_turn_count() < turn_index.post_turn_native_count()
         {
             return Err(NativeProjectionError::Invariant(
                 "native source binding and CAS-turn position disagree",
             ));
         }
         Ok(Some(CorrelatedNativeSource {
-            thread_id: binding.record().thread_id(),
-            binding_revision: binding.record().revision(),
-            selected_path: binding.record().selected_path(),
+            thread_id: binding.thread_id(),
+            binding_revision: binding.revision(),
+            selected_path: binding.selected_path(),
             binding: usable.clone(),
             cas_turn_id: source.turn_id().clone(),
-            target_native_turn_count: turn_index.record().post_turn_native_count(),
+            target_native_turn_count: turn_index.post_turn_native_count(),
         }))
     }
 }

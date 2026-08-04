@@ -1,6 +1,6 @@
 use soketto::base::OpCode;
 
-use super::{FrameWriteFailure, HeaderRead, WebSocketClientTransport};
+use super::{HeaderRead, WebSocketClientTransport};
 use crate::session::ManagedWebSocketError;
 
 pub(super) struct MessagePayload<'a> {
@@ -117,14 +117,15 @@ impl WebSocketClientTransport {
                     "server-to-client WebSocket frame was masked",
                 ));
             }
+            #[cfg(feature = "lifecycle-test-support")]
+            self.diagnostics.record_inbound_frame(header.payload_len());
 
             if header.opcode().is_control() {
                 payload.note_control_frame();
                 let control = self.read_control_payload(&header)?;
                 match header.opcode() {
                     OpCode::Ping => {
-                        self.write_frame_payload(OpCode::Pong, &control)
-                            .map_err(FrameWriteFailure::into_error)?;
+                        self.write_frame_payload(OpCode::Pong, &control)?;
                         return Ok(PayloadRead::Pong);
                     }
                     OpCode::Pong => return Ok(PayloadRead::Pong),

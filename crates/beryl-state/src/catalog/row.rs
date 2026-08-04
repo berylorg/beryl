@@ -4,17 +4,18 @@ use crate::UnixMillis;
 
 use super::{
     CatalogArchiveSummary, CatalogClaimSummary, CatalogExecutionSummary, CatalogFreshness,
-    CatalogLineageSummary, CatalogRevision, CatalogSearchFields, CatalogSourceRevisions,
-    CatalogTitleFacts, CatalogTitleSource, CatalogValueError,
+    CatalogLineageSummary, CatalogResolvedTitle, CatalogRevision, CatalogSearchFields,
+    CatalogSourceRevisions, CatalogTitleSource, CatalogValueError,
 };
 
 /// Complete bounded facts copied into a compact catalog projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CatalogFacts {
-    titles: CatalogTitleFacts,
+    title: CatalogResolvedTitle,
     execution: CatalogExecutionSummary,
     archive: CatalogArchiveSummary,
     last_activity_at: UnixMillis,
+    complete: bool,
     claim: CatalogClaimSummary,
     lineage: CatalogLineageSummary,
     search: CatalogSearchFields,
@@ -22,21 +23,45 @@ pub struct CatalogFacts {
 
 impl CatalogFacts {
     #[allow(clippy::too_many_arguments)]
-    #[must_use]
-    pub const fn new(
-        titles: CatalogTitleFacts,
+    pub fn new(
+        title: CatalogResolvedTitle,
         execution: CatalogExecutionSummary,
         archive: CatalogArchiveSummary,
         last_activity_at: UnixMillis,
+        complete: bool,
+        claim: CatalogClaimSummary,
+        lineage: CatalogLineageSummary,
+    ) -> Result<Self, CatalogValueError> {
+        let search = CatalogSearchFields::from_visible(&title, &execution)?;
+        Ok(Self::from_parts(
+            title,
+            execution,
+            archive,
+            last_activity_at,
+            complete,
+            claim,
+            lineage,
+            search,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) const fn from_parts(
+        title: CatalogResolvedTitle,
+        execution: CatalogExecutionSummary,
+        archive: CatalogArchiveSummary,
+        last_activity_at: UnixMillis,
+        complete: bool,
         claim: CatalogClaimSummary,
         lineage: CatalogLineageSummary,
         search: CatalogSearchFields,
     ) -> Self {
         Self {
-            titles,
+            title,
             execution,
             archive,
             last_activity_at,
+            complete,
             claim,
             lineage,
             search,
@@ -44,8 +69,8 @@ impl CatalogFacts {
     }
 
     #[must_use]
-    pub const fn titles(&self) -> &CatalogTitleFacts {
-        &self.titles
+    pub const fn title(&self) -> &CatalogResolvedTitle {
+        &self.title
     }
 
     #[must_use]
@@ -61,6 +86,11 @@ impl CatalogFacts {
     #[must_use]
     pub const fn last_activity_at(&self) -> UnixMillis {
         self.last_activity_at
+    }
+
+    #[must_use]
+    pub const fn complete(&self) -> bool {
+        self.complete
     }
 
     #[must_use]
@@ -83,16 +113,6 @@ impl CatalogFacts {
         thread_id: SyndicThreadId,
         sources: CatalogSourceRevisions,
     ) -> Result<(), CatalogValueError> {
-        for (kind, candidate) in [
-            ("generated title", self.titles.generated()),
-            ("Syndic title", self.titles.syndic()),
-        ] {
-            if candidate
-                .is_some_and(|candidate| candidate.source_thread_revision() > sources.thread())
-            {
-                return Err(CatalogValueError::TitleSourceNewerThanRow { kind });
-            }
-        }
         if self.claim.window_id().is_some() != sources.claim().is_some() {
             return Err(CatalogValueError::ClaimSourceMismatch);
         }
@@ -105,21 +125,14 @@ fn validate_lineage(
     thread_id: SyndicThreadId,
 ) -> Result<(), CatalogValueError> {
     let CatalogLineageSummary::Descendant {
-        top_level_thread_id,
-        parent_thread_id,
-        depth,
+        parent_thread_id, ..
     } = lineage
     else {
         return Ok(());
     };
-    if top_level_thread_id == thread_id || parent_thread_id == thread_id {
+    if parent_thread_id == thread_id {
         return Err(CatalogValueError::InvalidLineage(
-            "a lineage cannot name its own thread as an ancestor",
-        ));
-    }
-    if (depth.get() == 1) != (top_level_thread_id == parent_thread_id) {
-        return Err(CatalogValueError::InvalidLineage(
-            "lineage depth one must name the top-level thread as its parent",
+            "a lineage cannot name its own thread as its parent",
         ));
     }
     Ok(())
@@ -204,13 +217,13 @@ impl CatalogRow {
     }
 
     #[must_use]
-    pub fn display_title(&self) -> &str {
-        self.facts.titles().display_title()
+    pub fn title(&self) -> &CatalogResolvedTitle {
+        self.facts.title()
     }
 
     #[must_use]
-    pub const fn display_title_source(&self) -> CatalogTitleSource {
-        self.facts.titles().display_source()
+    pub const fn title_source(&self) -> CatalogTitleSource {
+        self.facts.title().source()
     }
 
     #[must_use]

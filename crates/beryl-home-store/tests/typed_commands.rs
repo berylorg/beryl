@@ -1,17 +1,10 @@
 mod support;
 
-#[cfg(feature = "test-faults")]
-use std::thread;
 use std::{path::PathBuf, process::Command, sync::Arc};
 
 use beryl_home_store::{
     CommandCancellation, CommandError, CommitReceiptError, DomainHandle, DomainMutation,
     DomainReader, HomeCommand, HomeStore, MutationBuilder, PointReadLimit, RevisionConflict,
-};
-#[cfg(feature = "test-faults")]
-use beryl_home_store::{
-    HomeOpenOptions, HomeSchemaVersion,
-    test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::DomainRevision;
 use tempfile::tempdir;
@@ -270,70 +263,6 @@ fn cancellation_before_admission_aborts_but_cancellation_after_admission_does_no
     assert_eq!(read(&store, alpha, 4), Some(b"admitted".to_vec()));
 }
 
-#[cfg(feature = "test-faults")]
-#[test]
-fn current_domain_command_captures_physical_revisions_after_writer_admission() {
-    let directory = tempdir().unwrap();
-    let faults = FaultController::new();
-    let mut store = HomeStore::open_with_faults(
-        HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
-        faults.clone(),
-    )
-    .unwrap();
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let store = Arc::new(store);
-    let first_cut = faults.block_next(FaultPoint::BeforeCommit);
-
-    thread::scope(|scope| {
-        let first_store = Arc::clone(&store);
-        let first = scope.spawn(move || {
-            commit_one(&first_store, alpha, 1, b"first".to_vec());
-        });
-        assert!(first_cut.wait_until_reached(std::time::Duration::from_secs(10)));
-
-        let second_store = Arc::clone(&store);
-        let second = scope.spawn(move || {
-            second_store.execute_current(
-                alpha.current_command(PutBytes::<AlphaDomain>::new(2, b"second".to_vec())),
-            )
-        });
-        thread::sleep(std::time::Duration::from_millis(50));
-        assert!(!second.is_finished());
-        first_cut.release();
-        first.join().unwrap();
-        second.join().unwrap().unwrap();
-    });
-
-    assert_eq!(store.home_revision().unwrap().get(), 3);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 3);
-    assert_eq!(read(&store, alpha, 1), Some(b"first".to_vec()));
-    assert_eq!(read(&store, alpha, 2), Some(b"second".to_vec()));
-}
-
-#[test]
-fn current_domain_command_preserves_exact_logical_validation() {
-    let directory = tempdir().unwrap();
-    let mut store = open_home(directory.path());
-    let alpha = store.register_domain::<AlphaDomain>().unwrap();
-    let command = alpha.current_command(PutIfMissing {
-        key: 4,
-        value: b"stale".to_vec(),
-    });
-    commit_one(&store, alpha, 4, b"current".to_vec());
-
-    let error = store.execute_current(command).unwrap_err();
-    assert!(matches!(
-        error,
-        CommandError::ContributorValidation {
-            domain: "alpha",
-            ..
-        }
-    ));
-    assert_eq!(store.home_revision().unwrap().get(), 2);
-    assert_eq!(store.domain_revision(alpha).unwrap().get(), 2);
-    assert_eq!(read(&store, alpha, 4), Some(b"current".to_vec()));
-}
-
 #[test]
 fn same_thread_writer_reentrancy_is_rejected_without_deadlock() {
     let directory = tempdir().unwrap();
@@ -436,36 +365,6 @@ fn phase4_abort_after_durable_success_helper() {
 struct CancelDuringValidation {
     cancellation: CommandCancellation,
     key: u64,
-}
-
-struct PutIfMissing {
-    key: u64,
-    value: Vec<u8>,
-}
-
-impl DomainMutation<AlphaDomain> for PutIfMissing {
-    type Error = FixtureMutationError;
-
-    fn validate(&self, reader: &DomainReader<'_, AlphaDomain>) -> Result<(), Self::Error> {
-        let current = reader
-            .point::<BytesRecord<AlphaDomain>>(&self.key, PointReadLimit::new(1_028).unwrap())
-            .map_err(|_| FixtureMutationError::Rejected("logical validation read failed"))?;
-        if current.is_some() {
-            return Err(FixtureMutationError::Rejected(
-                "logical record is no longer absent",
-            ));
-        }
-        Ok(())
-    }
-
-    fn contribute(
-        &self,
-        _reader: &DomainReader<'_, AlphaDomain>,
-        mutations: &mut MutationBuilder<'_, AlphaDomain>,
-    ) -> Result<(), Self::Error> {
-        mutations.put::<BytesRecord<AlphaDomain>>(&self.key, &self.value)?;
-        Ok(())
-    }
 }
 
 impl DomainMutation<AlphaDomain> for CancelDuringValidation {

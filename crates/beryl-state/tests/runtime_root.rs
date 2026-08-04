@@ -401,6 +401,7 @@ fn registry_lists_obey_explicit_item_and_byte_bounds() {
     assert_eq!(page.records().len(), 1);
     assert!(page.has_more());
     assert!(page.stored_bytes() > 0);
+    assert!(page.decoded_bytes() > 0);
 
     let error = state
         .runtime_roots()

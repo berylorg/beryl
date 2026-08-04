@@ -2,27 +2,20 @@ use std::time::Duration;
 
 use beryl_backend::NonIdempotentRequestOutcome;
 use beryl_home_store::HomeStore;
-use beryl_model::{BindingRevision, SyndicExecutionSnapshotId};
-use syndic_storage::{
-    PublishActiveCasTurn, StaleCasBinding, SyndicPointReadLimit, SyndicStorage,
-    TurnIncompleteReason,
-};
+use beryl_model::BindingRevision;
+use syndic_storage::{SyndicPointReadLimit, SyndicStorage, TurnIncompleteReason};
 
-use super::cleanup::{abandon_and_close_incomplete, abandon_without_cas_turn};
-use crate::cas_projection::connection::TargetTurnStartOutcome;
-use crate::cas_projection::ordinary::{
-    OrdinaryDynamicToolContext, OrdinaryDynamicToolHandler, OrdinaryTurnCaptureLoss,
-    OrdinaryTurnExecutionError, OrdinaryTurnExecutionOutcome, capture::LiveCapture,
-    converge::converge_terminal_history, preflight::PendingOrdinaryExecution,
+use crate::cas_projection::connection::{
+    LiveEventTargetLossOutcome, TargetTurnStartActivationFailure, TargetTurnStartOutcome,
 };
-use crate::cas_projection::{LiveEventPoll, LiveEventTarget, publication};
+use crate::cas_projection::ordinary::{
+    OrdinaryDynamicToolContext, OrdinaryDynamicToolHandlers, OrdinaryTurnCaptureLoss,
+    OrdinaryTurnExecutionError, OrdinaryTurnExecutionOutcome, converge::converge_terminal_history,
+    preflight::PendingOrdinaryExecution,
+};
+use crate::cas_projection::{LiveEventPoll, LiveEventTarget};
 
 const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(100);
-
-pub(super) enum StartIdentityEvidence {
-    Response,
-    RoutedStartEvent,
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn begin_capture(
@@ -32,55 +25,42 @@ pub(super) fn begin_capture(
     start: TargetTurnStartOutcome,
     pending: PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,
-    active_gate_revision: beryl_model::InputGateRevision,
-    snapshot_id: SyndicExecutionSnapshotId,
     cas_turn_id: beryl_model::CasTurnId,
-    identity_evidence: StartIdentityEvidence,
-    stale: StaleCasBinding,
-    tools: &mut impl OrdinaryDynamicToolHandler,
+    tools: &mut OrdinaryDynamicToolHandlers<'_>,
     limit: SyndicPointReadLimit,
+    context_compaction_timeout: Duration,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
-    let confirmation = match identity_evidence {
-        StartIdentityEvidence::Response => Some(target.confirm_turn(cas_turn_id.clone())),
-        StartIdentityEvidence::RoutedStartEvent => None,
-    };
-    let active_turn = PublishActiveCasTurn::new(
-        pending.thread_id,
-        active_binding_revision,
-        active_gate_revision,
-        snapshot_id,
-        target.cas_thread_id().clone(),
-        cas_turn_id.clone(),
-        stale.observed_at(),
-    );
-    let published_gate_revision =
-        match publication::publish_active_turn(store, storage, &active_turn, limit) {
-            Ok(revision) => revision,
-            Err(primary) => {
-                abandon_without_cas_turn(
-                    store,
-                    storage,
-                    &pending,
-                    active_binding_revision,
-                    active_gate_revision,
-                    stale,
-                    TurnIncompleteReason::AuthorityLost,
-                    limit,
-                )?;
-                drop(target);
-                return Err(primary.into());
-            }
+    if let Some(failure) = start.response_activation_failure().cloned() {
+        let (cause, reason) = match failure {
+            TargetTurnStartActivationFailure::Target(reason) => (
+                if reason == crate::cas_projection::LiveEventTargetCloseReason::TurnActivationPublicationFailed {
+                    TurnIncompleteReason::AuthorityLost
+                } else {
+                    TurnIncompleteReason::CompletionMismatch
+                },
+                OrdinaryTurnCaptureLoss::TargetClosed(reason),
+            ),
+            TargetTurnStartActivationFailure::Router => (
+                TurnIncompleteReason::AuthorityLost,
+                OrdinaryTurnCaptureLoss::TargetClosed(
+                    crate::cas_projection::LiveEventTargetCloseReason::WorkerStopped,
+                ),
+            ),
         };
-    let mut capture = LiveCapture::new(
-        OrdinaryDynamicToolContext::new(pending.thread_id, pending.turn_id),
-        target.cas_thread_id().clone(),
-        cas_turn_id,
-        pending.item_id,
-        pending.input,
-        pending.state_revision,
-        published_gate_revision,
-        pending.minimum_observed_at,
-    );
+        if let Some(outcome) = converge_target_loss(
+            store,
+            storage,
+            target,
+            &pending,
+            active_binding_revision,
+            cause,
+            limit,
+        )? {
+            return Ok(outcome);
+        }
+        return Ok(OrdinaryTurnExecutionOutcome::Incomplete { reason });
+    }
+    let context = OrdinaryDynamicToolContext::new(pending.thread_id, pending.turn_id);
     let completion_unknown = match start.into_parts().0 {
         NonIdempotentRequestOutcome::CompletionUnknown { error } => Some(error),
         NonIdempotentRequestOutcome::ExactResponse { .. } => None,
@@ -91,147 +71,51 @@ pub(super) fn begin_capture(
             ));
         }
     };
-    if let Some(Err(error)) = confirmation {
-        abandon_and_close_incomplete(
-            store,
-            storage,
-            &mut capture,
-            &pending,
-            active_binding_revision,
-            stale,
-            TurnIncompleteReason::CompletionMismatch,
-            limit,
-        )?;
-        drop(target);
-        return Ok(OrdinaryTurnExecutionOutcome::Incomplete {
-            reason: completion_unknown.map_or(
-                OrdinaryTurnCaptureLoss::TargetConfirmationFailed(error),
-                OrdinaryTurnCaptureLoss::StartCompletionUnknown,
-            ),
-        });
-    }
-    if let Err(primary) = capture.activate(store, storage, limit) {
-        abandon_and_close_incomplete(
-            store,
-            storage,
-            &mut capture,
-            &pending,
-            active_binding_revision,
-            stale,
-            TurnIncompleteReason::AuthorityLost,
-            limit,
-        )?;
-        drop(target);
-        return Err(primary);
-    }
     run_capture(
         store,
         storage,
         target,
-        capture,
+        context,
+        cas_turn_id,
         pending,
         active_binding_revision,
-        stale,
         completion_unknown,
         tools,
         limit,
+        context_compaction_timeout,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn wait_for_start_evidence(
+pub(super) fn converge_completion_unknown_start(
     store: &HomeStore,
     storage: SyndicStorage,
     target: LiveEventTarget,
     start: TargetTurnStartOutcome,
     pending: PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,
-    active_gate_revision: beryl_model::InputGateRevision,
-    snapshot_id: SyndicExecutionSnapshotId,
-    stale: StaleCasBinding,
-    tools: &mut impl OrdinaryDynamicToolHandler,
     limit: SyndicPointReadLimit,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
-    loop {
-        match target.poll(LIVE_POLL_INTERVAL) {
-            LiveEventPoll::Event(event) => {
-                if !matches!(
-                    event.event(),
-                    beryl_backend::TurnStreamEvent::TurnStarted { .. }
-                ) {
-                    abandon_without_cas_turn(
-                        store,
-                        storage,
-                        &pending,
-                        active_binding_revision,
-                        active_gate_revision,
-                        stale,
-                        TurnIncompleteReason::CompletionMismatch,
-                        limit,
-                    )?;
-                    drop(target);
-                    return Err(OrdinaryTurnExecutionError::Invariant(
-                        "a possibly started target delivered work before turn/started",
-                    ));
-                }
-                let Some(cas_turn_id) = event.turn_id().cloned() else {
-                    abandon_without_cas_turn(
-                        store,
-                        storage,
-                        &pending,
-                        active_binding_revision,
-                        active_gate_revision,
-                        stale,
-                        TurnIncompleteReason::CompletionMismatch,
-                        limit,
-                    )?;
-                    drop(target);
-                    return Err(OrdinaryTurnExecutionError::Invariant(
-                        "turn/started lacks its routed CAS turn identity",
-                    ));
-                };
-                return begin_capture(
-                    store,
-                    storage,
-                    target,
-                    start,
-                    pending,
-                    active_binding_revision,
-                    active_gate_revision,
-                    snapshot_id,
-                    cas_turn_id,
-                    StartIdentityEvidence::RoutedStartEvent,
-                    stale,
-                    tools,
-                    limit,
-                );
-            }
-            LiveEventPoll::Quiet => {}
-            LiveEventPoll::Closed(reason) => {
-                let (outcome, _) = start.into_parts();
-                let NonIdempotentRequestOutcome::CompletionUnknown { error } = outcome else {
-                    return Err(OrdinaryTurnExecutionError::Invariant(
-                        "start-evidence wait lost its completion-unknown outcome",
-                    ));
-                };
-                abandon_without_cas_turn(
-                    store,
-                    storage,
-                    &pending,
-                    active_binding_revision,
-                    active_gate_revision,
-                    stale,
-                    TurnIncompleteReason::StreamLost,
-                    limit,
-                )?;
-                drop(target);
-                let _ = reason;
-                return Ok(OrdinaryTurnExecutionOutcome::Incomplete {
-                    reason: OrdinaryTurnCaptureLoss::StartCompletionUnknown(error),
-                });
-            }
-        }
+    let (outcome, _) = start.into_parts();
+    let NonIdempotentRequestOutcome::CompletionUnknown { error } = outcome else {
+        return Err(OrdinaryTurnExecutionError::Invariant(
+            "completion-unknown convergence received a known start outcome",
+        ));
+    };
+    if let Some(outcome) = converge_target_loss(
+        store,
+        storage,
+        target,
+        &pending,
+        active_binding_revision,
+        TurnIncompleteReason::StreamLost,
+        limit,
+    )? {
+        return Ok(outcome);
     }
+    Ok(OrdinaryTurnExecutionOutcome::Incomplete {
+        reason: OrdinaryTurnCaptureLoss::StartCompletionUnknown(error),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -239,99 +123,94 @@ fn run_capture(
     store: &HomeStore,
     storage: SyndicStorage,
     target: LiveEventTarget,
-    mut capture: LiveCapture,
+    context: OrdinaryDynamicToolContext,
+    cas_turn_id: beryl_model::CasTurnId,
     pending: PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,
-    stale: StaleCasBinding,
     completion_unknown: Option<Box<beryl_backend::ManagedBackendError>>,
-    tools: &mut impl OrdinaryDynamicToolHandler,
+    tools: &mut OrdinaryDynamicToolHandlers<'_>,
     limit: SyndicPointReadLimit,
+    context_compaction_timeout: Duration,
 ) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
     loop {
         match target.poll(LIVE_POLL_INTERVAL) {
-            LiveEventPoll::Event(event) => {
-                if event.thread_id() != target.cas_thread_id()
-                    || event
-                        .turn_id()
-                        .is_some_and(|turn| turn != capture.cas_turn_id())
+            LiveEventPoll::Approval(approval) => {
+                if approval.thread_id() != target.cas_thread_id()
+                    || approval.turn_id() != &cas_turn_id
                 {
-                    abandon_and_close_incomplete(
+                    if let Some(outcome) = converge_target_loss(
                         store,
                         storage,
-                        &mut capture,
+                        target,
                         &pending,
                         active_binding_revision,
-                        stale,
                         TurnIncompleteReason::CompletionMismatch,
                         limit,
-                    )?;
-                    drop(target);
+                    )? {
+                        return Ok(outcome);
+                    }
                     return Err(OrdinaryTurnExecutionError::Invariant(
-                        "routed event escaped its exact live target",
+                        "routed approval escaped its exact live target",
                     ));
                 }
-                match capture.handle_event(
+            }
+            LiveEventPoll::DynamicTool(call) => {
+                if call.thread_id() != target.cas_thread_id() || call.turn_id() != &cas_turn_id {
+                    if let Some(outcome) = converge_target_loss(
+                        store,
+                        storage,
+                        target,
+                        &pending,
+                        active_binding_revision,
+                        TurnIncompleteReason::CompletionMismatch,
+                        limit,
+                    )? {
+                        return Ok(outcome);
+                    }
+                    return Err(OrdinaryTurnExecutionError::Invariant(
+                        "routed dynamic tool escaped its exact live target",
+                    ));
+                }
+                if let Err(primary) = handle_dynamic_tool(&target, context, call, tools) {
+                    if let Some(outcome) = converge_target_loss(
+                        store,
+                        storage,
+                        target,
+                        &pending,
+                        active_binding_revision,
+                        TurnIncompleteReason::WorkerStopped,
+                        limit,
+                    )? {
+                        return Ok(outcome);
+                    }
+                    return Err(primary);
+                }
+            }
+            LiveEventPoll::ProvenTerminal(outcome) => {
+                return finish_proven_terminal(
                     store,
                     storage,
-                    &target,
-                    event.into_event(),
-                    tools,
+                    target,
+                    &pending,
+                    active_binding_revision,
+                    outcome,
                     limit,
-                ) {
-                    Ok(Some(status)) => {
-                        let terminal_observed_at = capture.minimum_observed_at();
-                        let valid_revision =
-                            active_binding_revision.checked_next().map_err(|_| {
-                                OrdinaryTurnExecutionError::Invariant(
-                                    "terminal binding revision exhausted",
-                                )
-                            })?;
-                        let projection = target
-                            .into_proven_terminal_projection()?
-                            .with_binding_revision(valid_revision);
-                        converge_terminal_history(
-                            store,
-                            storage,
-                            pending.thread_id,
-                            pending.turn_id,
-                            terminal_observed_at,
-                            limit,
-                        )?;
-                        return Ok(OrdinaryTurnExecutionOutcome::Terminal {
-                            projection: Box::new(projection),
-                            status,
-                        });
-                    }
-                    Ok(None) => {}
-                    Err(primary) => {
-                        abandon_and_close_incomplete(
-                            store,
-                            storage,
-                            &mut capture,
-                            &pending,
-                            active_binding_revision,
-                            stale,
-                            TurnIncompleteReason::WorkerStopped,
-                            limit,
-                        )?;
-                        drop(target);
-                        return Err(primary);
-                    }
-                }
+                    context_compaction_timeout,
+                );
             }
             LiveEventPoll::Quiet => {}
             LiveEventPoll::Closed(reason) => {
-                abandon_and_close_incomplete(
+                if let Some(outcome) = converge_target_loss(
                     store,
                     storage,
-                    &mut capture,
+                    target,
                     &pending,
                     active_binding_revision,
-                    stale,
                     TurnIncompleteReason::StreamLost,
                     limit,
-                )?;
-                drop(target);
+                )? {
+                    return Ok(outcome);
+                }
                 return Ok(OrdinaryTurnExecutionOutcome::Incomplete {
                     reason: completion_unknown.map_or(
                         OrdinaryTurnCaptureLoss::TargetClosed(reason),
@@ -339,6 +218,158 @@ fn run_capture(
                     ),
                 });
             }
+        }
+    }
+}
+
+fn handle_dynamic_tool(
+    target: &LiveEventTarget,
+    context: OrdinaryDynamicToolContext,
+    call: crate::cas_projection::connection::RoutedDynamicToolCall,
+    tools: &mut OrdinaryDynamicToolHandlers<'_>,
+) -> Result<(), OrdinaryTurnExecutionError> {
+    let (response_owner, request) = call.into_parts();
+    let response = match request {
+        crate::conversation_tools::RoutedDynamicToolRequest::LifecycleYield(request) => {
+            tools.respond_lifecycle_yield(context, request)
+        }
+        crate::conversation_tools::RoutedDynamicToolRequest::BranchDiscussionResolution(
+            request,
+        ) => tools.respond_branch_discussion_resolution(context, request),
+        crate::conversation_tools::RoutedDynamicToolRequest::Rejected(rejection) => {
+            rejection.response()
+        }
+    };
+    target.respond_dynamic_tool_call(response_owner, response)?;
+    Ok(())
+}
+
+pub(super) fn converge_target_loss(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    target: LiveEventTarget,
+    pending: &PendingOrdinaryExecution,
+    active_binding_revision: BindingRevision,
+    cause: TurnIncompleteReason,
+    limit: SyndicPointReadLimit,
+) -> Result<Option<OrdinaryTurnExecutionOutcome>, OrdinaryTurnExecutionError> {
+    let accepted_next_ready = target.accepted_next_ready_notifier();
+    let stop_coordinator = target.stop_coordinator()?;
+    match target.converge_source_loss(cause)? {
+        LiveEventTargetLossOutcome::Incomplete => {
+            converge_terminal_history(
+                store,
+                storage,
+                pending.thread_id,
+                pending.turn_id,
+                pending.minimum_observed_at,
+                limit,
+                Some(&stop_coordinator),
+            )?;
+            accepted_next_ready.notify();
+            Ok(None)
+        }
+        LiveEventTargetLossOutcome::ProvenTerminal { target, outcome } => finish_proven_terminal(
+            store,
+            storage,
+            target,
+            pending,
+            active_binding_revision,
+            outcome,
+            limit,
+            Duration::from_secs(180),
+        )
+        .map(Some),
+    }
+}
+
+fn finish_proven_terminal(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    mut target: LiveEventTarget,
+    pending: &PendingOrdinaryExecution,
+    active_binding_revision: BindingRevision,
+    outcome: crate::cas_projection::connection::ProvenTerminalOutcome,
+    limit: SyndicPointReadLimit,
+    context_compaction_timeout: Duration,
+) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
+    let binding = storage
+        .current_binding(store, pending.thread_id, limit)?
+        .ok_or(OrdinaryTurnExecutionError::Invariant(
+            "terminal publication did not leave a current valid binding",
+        ))?;
+    let expected_revision = active_binding_revision.checked_next().map_err(|_| {
+        OrdinaryTurnExecutionError::Invariant("terminal binding revision exhausted")
+    })?;
+    if binding.binding().revision() != expected_revision
+        || !matches!(
+            binding.binding().state(),
+            syndic_storage::BindingState::Valid(_)
+        )
+    {
+        return Err(OrdinaryTurnExecutionError::Invariant(
+            "terminal outcome disagreed with the durable valid binding",
+        ));
+    }
+    let must_reacquire_same_native = outcome.same_native_reacquisition_required();
+    let accepted_next_ready = target.accepted_next_ready_notifier();
+    let stop_coordinator = target.stop_coordinator()?;
+    let context_compaction = target.context_compaction_coordinator()?;
+    let projection = target
+        .into_proven_terminal_projection()?
+        .with_binding_revision(binding.binding().revision());
+    converge_terminal_history(
+        store,
+        storage,
+        pending.thread_id,
+        pending.turn_id,
+        outcome.observed_at(),
+        limit,
+        Some(&stop_coordinator),
+    )?;
+    accepted_next_ready.notify();
+    if must_reacquire_same_native {
+        if stop_coordinator
+            .has_terminal_phase_continue(pending.thread_id, pending.turn_id)
+            .unwrap_or(false)
+        {
+            let _ =
+                stop_coordinator.take_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
+        }
+        let anchor = projection.into_same_native_reacquisition_anchor()?;
+        return Ok(OrdinaryTurnExecutionOutcome::ReacquisitionRequired {
+            anchor: Box::new(anchor),
+            status: outcome.status(),
+        });
+    }
+    match context_compaction.begin_lifecycle_continuation(
+        projection,
+        pending.turn_id,
+        context_compaction_timeout,
+    ) {
+        Ok(crate::cas_projection::context_compaction::LifecycleCompactionAdmission::Launched) => {
+            return Ok(
+                OrdinaryTurnExecutionOutcome::LifecycleContinuationScheduled {
+                    status: outcome.status(),
+                },
+            );
+        }
+        Ok(
+            crate::cas_projection::context_compaction::LifecycleCompactionAdmission::NotLaunched(
+                projection,
+            ),
+        ) => {
+            return Ok(OrdinaryTurnExecutionOutcome::Terminal {
+                projection: Box::new(projection),
+                status: outcome.status(),
+            });
+        }
+        Err(_) => {
+            let _ =
+                stop_coordinator.take_terminal_lifecycle_yield(pending.thread_id, pending.turn_id);
+            return Err(OrdinaryTurnExecutionError::Invariant(
+                "automatic context compaction failed after exact terminal history",
+            ));
         }
     }
 }

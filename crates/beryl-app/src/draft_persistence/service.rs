@@ -51,7 +51,6 @@ impl DraftPersistenceService {
             seed.home_generation(),
             draft.thread_id(),
             draft.id(),
-            current.thread().revision(),
         );
         Self {
             binding,
@@ -278,6 +277,7 @@ impl DraftPersistenceService {
             .as_ref()
             .ok_or(DraftPersistenceError::NotSuspended)?;
         self.validate_reconciliation_seed(&seed, suspended)?;
+        let retry_conflict = suspended.cause == DraftSuspensionCause::RevisionConflict;
         let request_timer_generation = suspended.request.token_ref().timer_generation();
         let binding_generation = self.binding.generation().next()?;
         let next_timer_generation = (request_timer_generation == self.timer_generation)
@@ -297,7 +297,7 @@ impl DraftPersistenceService {
             self.timer_anchor = seed.published_at();
         }
         self.suspended = None;
-        if self.flush_pending && self.is_dirty() {
+        if self.is_dirty() && (self.flush_pending || retry_conflict) {
             return self.start_request().map(DraftReconciliationAction::Chained);
         }
         if std::mem::take(&mut self.flush_pending) {
@@ -319,11 +319,11 @@ impl DraftPersistenceService {
         }
         let current = seed.current();
         let draft = current.draft();
-        if draft.thread_id() != self.binding.thread_id() || draft.id() != self.binding.draft_id() {
+        if current.thread().id() != self.binding.thread_id()
+            || draft.thread_id() != self.binding.thread_id()
+            || draft.id() != self.binding.draft_id()
+        {
             return Err(DraftPersistenceError::ForeignDraft);
-        }
-        if current.thread().revision() != self.binding.thread_revision() {
-            return Err(DraftPersistenceError::ChangedImmutableDraft);
         }
         if !self.immutable_shape.matches(draft) {
             return Err(DraftPersistenceError::ChangedImmutableDraft);

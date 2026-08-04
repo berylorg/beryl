@@ -30,6 +30,10 @@ Let users understand which backend-dependent actions are unavailable, which runt
 - Backend-unavailable runtimes disable backend-required operations for their bound threads until successful retry or runtime configuration recovery.
 - Backend-unavailable state must not erase runtime/root records, change thread bindings, change selected threads, make Syndic history unavailable, or require application exit.
 - Backend-unavailable user-facing states identify the affected runtime.
+- Backend-supplied error text is shown only through the bounded explicitly truncated diagnostic
+  projection defined by the backend and notification contracts. Error code and closed typed
+  recovery verdicts remain distinct; displayed text never authorizes retry, source retirement, or
+  a lineage decision.
 
 ## Shell Behavior During Backend Failure
 
@@ -57,6 +61,10 @@ Let users understand which backend-dependent actions are unavailable, which runt
   with its submitted user input, every durably captured assistant prefix, and an explicit incomplete
   outcome. Beryl does not keep that thread indefinitely locked as though late events could still
   arrive from the dead session.
+- If an item completion disagrees with the assistant or plan text already received live, the
+  affected turn remains visible with its live text and an explicit incomplete-history outcome.
+  Beryl does not replace that text, label the conversation corrupt, switch threads, or create a new
+  backend thread automatically.
 - If CAS may have accepted `turn/start` or one steering fragment before the confirming response was
   lost, Beryl also retains an explicit delivery-unknown fact for that input. This fact does not
   authorize delivery, non-delivery, or automatic replay.
@@ -64,13 +72,28 @@ Let users understand which backend-dependent actions are unavailable, which runt
   projection from eligible durable Syndic history. Once that projection is ready, the composer is
   available for new input; recovery itself starts no replacement model turn and does not silently
   resend the interrupted input.
+- If a distinct follow-up was already durably admitted while the interrupted turn was stopping,
+  Beryl may establish that fresh projection from the predecessor's exact eligible authority-lost
+  context and then start only the admitted follow-up. The interrupted turn remains visibly
+  incomplete, is never resent, and any uncertain assistant or provider state keeps continuation
+  unavailable instead of being presented as history.
+- After a narrative mismatch reaches terminal state, Beryl automatically reacquires the same
+  persistent backend thread through exact resume on a fresh proven session before allowing another
+  submission. This includes a thread whose original history was established by one successful
+  recovery injection; its injected prefix is not sent again. Draft typing and persistence remain
+  available during that work. Reacquisition starts no model turn and leaves the incomplete
+  transcript entry unchanged.
 - Any later user-requested retry or continuation is a new durable submission. The incomplete turn
   and its prior external effects remain unchanged.
 - If a background backend connection for title generation, inventory refresh, or lazy maintenance fails while the managed process remains usable, Beryl reports or logs only that operation's failure and keeps the active conversation usable.
 - Backend launch, probe, or compatibility failure before a usable connection exists is reported as backend-unavailable for that runtime target, not as application startup failure.
 - Runtime launch, required CAS projection, or foreground connection failure never replaces, hides, or closes an affected main conversation window.
 - Each main conversation window whose selected thread is affected presents its own persistent, non-dismissible backend-unavailable error notice. The notice identifies the affected runtime and exposes a Retry command.
-- Retry targets the same configured runtime, root, backend ownership mode, and exact Syndic thread binding. It may relaunch that managed backend, resume exact native CAS lineage, or establish a fresh projection through one-time recovery injection, but it must not switch the user to another runtime/root binding or silently choose a different Syndic thread.
+- Retry targets the same configured runtime, root, backend ownership mode, and exact Syndic thread
+  binding. It may relaunch that managed backend, resume exact native or successfully published
+  recovered CAS lineage, or establish a fresh projection through one-time recovery injection when
+  that separate path is eligible, but it must not switch the user to another runtime/root binding
+  or silently choose a different Syndic thread.
 - Source-preserving or unclassified native resume/fork failures first receive bounded automatic
   retries against the same exact binding. Fresh recovery injection is selected automatically only
   when Beryl has authoritative proof that the native source is unusable.
@@ -101,6 +124,13 @@ Let users understand which backend-dependent actions are unavailable, which runt
   recovery continues only that exact pending delivery and never creates a duplicate admission.
 - The recovery command is unavailable when exact history cannot be represented within the approved
   recovery contract. Its disabled explanation names the blocking history or capability condition.
+- In particular, `Recover from Syndic history` is unavailable when the selected path crosses a
+  completion/live narrative mismatch. While Beryl still holds the quarantined same-process
+  subscription anchor, `Retry` attempts the exact fresh-connection handoff to that same in-memory
+  backend thread. Failure or closure of only the fresh replacement keeps the old anchor and leaves
+  `Retry` available through another fresh connection. If the anchor or process is lost, exact
+  continuation is unavailable. Beryl never cold-resumes recovered lineage or injects a shorter
+  prefix and presents it as exact continuation.
 - An active or unknown-terminal CAS turn is not eligible for this recovery choice. Beryl first
   converges that turn through its interrupted, incomplete, failed, or unknown-terminal lifecycle;
   it never abandons and replays potentially activated input from this prompt.

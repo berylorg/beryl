@@ -1,7 +1,5 @@
-use fjall::Readable;
-
 use super::{DomainValidationError, RegisteredDomain, callback::ErasedCallbackError};
-use crate::{DomainCallbackSource, ReadError, ReadStage, SidecarVerifier};
+use crate::{DomainCallbackSource, ReadError, SidecarVerifier};
 
 impl RegisteredDomain {
     pub(crate) fn validate(&self, snapshot: &fjall::Snapshot) -> Result<(), ErasedCallbackError> {
@@ -23,62 +21,7 @@ impl RegisteredDomain {
         snapshot: &fjall::Snapshot,
     ) -> Result<(), ErasedCallbackError> {
         for family in &self.families {
-            for guard in snapshot.iter(&family.keyspace) {
-                let key = guard.key().map_err(|source| {
-                    access(ReadError::Storage {
-                        stage: ReadStage::PhysicalKey,
-                        source: Box::new(source),
-                    })
-                })?;
-                crate::read::validate_stored_key_size(
-                    self.name,
-                    family.logical_name,
-                    family.max_key_bytes,
-                    &key,
-                )
-                .map_err(access)?;
-
-                let value_size = snapshot
-                    .size_of(&family.keyspace, &key)
-                    .map_err(|source| {
-                        access(ReadError::Storage {
-                            stage: ReadStage::PhysicalValueSize,
-                            source: Box::new(source),
-                        })
-                    })?
-                    .ok_or_else(|| {
-                        access(ReadError::MalformedRecord {
-                            domain: self.name,
-                            family: family.logical_name,
-                        })
-                    })?;
-                let value_size = usize::try_from(value_size)
-                    .expect("u32 always fits usize on supported targets");
-                if value_size > family.max_stored_value_bytes {
-                    return Err(access(ReadError::InvalidStoredValueSize {
-                        domain: self.name,
-                        family: family.logical_name,
-                        maximum: family.max_stored_value_bytes,
-                        actual: value_size,
-                    }));
-                }
-
-                let value = snapshot
-                    .get(&family.keyspace, &key)
-                    .map_err(|source| {
-                        access(ReadError::Storage {
-                            stage: ReadStage::PhysicalValue,
-                            source: Box::new(source),
-                        })
-                    })?
-                    .ok_or_else(|| {
-                        access(ReadError::MalformedRecord {
-                            domain: self.name,
-                            family: family.logical_name,
-                        })
-                    })?;
-                (family.validate_envelope)(&key, &value).map_err(access)?;
-            }
+            crate::read::validate_physical_family(snapshot, self.name, family).map_err(access)?;
         }
         Ok(())
     }

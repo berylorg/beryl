@@ -39,7 +39,10 @@ The thread-root picker consists of:
 
 The flyout frame, header, search field, runtime/root section, and optional footer retain stable identity while the primary collection changes. Replacing the primary collection does not replace or resize the flyout frame.
 
-The widget owns collection presentation and interaction mechanics. The owning feature supplies collection identity, row identity, labels, icons, status text, commands, selection semantics, search results, and commit effects.
+The widget owns collection presentation and interaction mechanics. The owning feature supplies a
+revision-bound collection identity, total row count, bounded resident row pages, stable row
+identities, labels, icons, status text, commands, selection semantics, query outcomes, and commit
+effects. The widget never receives or retains a complete caller-unbounded collection.
 
 # Look
 
@@ -81,9 +84,17 @@ The primary collection may use immediate activation or pending selection. In imm
 
 The footer command remains disabled with an explanation when no valid selection exists. While commit is pending, it remains visible and disabled, and duplicate pointer, keyboard, or programmatic acceptance cannot start another commit.
 
-Search text filters only the current owner-supplied collection. Changing the collection or scope uses a stable collection key so the widget can preserve or intentionally reset search, focus, selection, and scroll state according to the owning feature's declared configuration.
+Search text requests an owner-supplied revision-bound query for the current collection and never
+filters by scanning all rows inside the widget. Changing the collection, query, or scope uses a
+stable collection key and query revision so the widget can preserve or intentionally reset search,
+focus, selection, and scroll state according to the owning feature's declared configuration.
 
 Primary and runtime collections use fixed-height virtualization. Each viewport stores total row count separately and realizes only visible rows plus at most four overscan rows before and four after the visible range.
+
+Navigation into a nonresident range requests the bounded page containing the intended stable row and
+preserves the last coherent focus and scroll state while that page is pending. Home, End, Page Up,
+Page Down, selected-row reveal, and scrollbar movement do not cause eager construction of
+intervening rows.
 
 Every row has an owner-supplied stable identity independent of visible index. Focus, selection, current state, command dispatch, and selected-row reveal follow that identity across filtering, viewport entry, and viewport exit.
 
@@ -93,7 +104,10 @@ A tooltip stays anchored while its owning row remains realized. When virtualizat
 
 Row hover, focus, selection, current, pending, and unavailable changes never alter fixed row height or total scroll geometry.
 
-Content-free diagnostics expose widget instance id, collection key, total row count, realized row count, visible range, overscan count, fixed row-height variant, scroll offset, focused stable row id, selected stable row id, and tooltip anchor presence. Diagnostics never include titles, paths, search text, labels, or tooltip content.
+Content-free diagnostics expose widget instance id, collection key, query revision, total row count,
+resident page count, pending page count, realized row count, visible range, overscan count,
+fixed row-height variant, scroll offset, focused stable row id, selected stable row id, and tooltip
+anchor presence. Diagnostics never include titles, paths, search text, labels, or tooltip content.
 
 # Layout
 

@@ -11,23 +11,22 @@ pub(super) fn read_point<D: StorageDomain, R: RecordCodec<D>>(
     validate_codec::<D, R>()?;
     let family = resolve_family::<D, R>(domain)?;
     let encoded_key = encode_stored_key::<D, R>(key)?;
-    let Some(size) = snapshot
-        .size_of(&family.keyspace, &encoded_key)
-        .map_err(|source| storage(ReadStage::PointSize, source))?
+    let Some(point) = snapshot
+        .point(&family.keyspace, &encoded_key)
+        .map_err(|source| fjall_storage(ReadStage::PointSize, source))?
     else {
         return Ok(None);
     };
-    let size = usize::try_from(size).expect("u32 always fits usize on supported targets");
+    let size = usize::try_from(point.stored_value_len())
+        .expect("u32 always fits usize on supported targets");
     ensure_stored_value_size::<D, R>(size)?;
     ensure_caller_byte_bound::<D, R>(size, limit.max_bytes())?;
-    let encoded = snapshot
-        .get(&family.keyspace, &encoded_key)
-        .map_err(|source| storage(ReadStage::PointValue, source))?
-        .ok_or(ReadError::MalformedRecord {
-            domain: D::NAME,
-            family: R::FAMILY,
-        })?;
-    decode_value::<D, R>(&encoded).map(Some)
+    let pair = point
+        .acquire()
+        .map_err(|source| fjall_storage(ReadStage::PointValue, source))?;
+    let (value, decoded_bytes) = decode_value_with_size::<D, R>(pair.value())?;
+    ensure_caller_byte_bound::<D, R>(decoded_bytes, limit.max_bytes())?;
+    Ok(Some(value))
 }
 
 pub(super) fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(
@@ -49,17 +48,25 @@ pub(super) fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(
         });
     }
 
-    let mut cursor = snapshot.range(&family.keyspace, (start, end));
-    let mut records = Vec::with_capacity(limits.max_items());
+    let range = fjall::OwnedRange::new(start, end).map_err(|_| ReadError::ReversedRange {
+        domain: D::NAME,
+        family: R::FAMILY,
+    })?;
+    let mut cursor = snapshot
+        .cursor(&family.keyspace, range)
+        .map_err(|source| fjall_storage(ReadStage::CursorKey, source))?;
+    let mut records = Vec::new();
     let mut stored_bytes = 0usize;
+    let mut decoded_bytes = 0usize;
     let mut has_more = false;
 
     loop {
-        let guard = match direction {
+        let current = match direction {
             CursorDirection::Forward => cursor.next(),
             CursorDirection::Reverse => cursor.next_back(),
-        };
-        let Some(guard) = guard else {
+        }
+        .map_err(|source| fjall_storage(ReadStage::CursorKey, source))?;
+        let Some(current) = current else {
             break;
         };
         if records.len() == limits.max_items() {
@@ -67,19 +74,10 @@ pub(super) fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(
             break;
         }
 
-        let encoded_key = guard
-            .key()
-            .map_err(|source| storage(ReadStage::CursorKey, source))?;
-        ensure_stored_key_size::<D, R>(&encoded_key)?;
-        let value_size = snapshot
-            .size_of(&family.keyspace, &encoded_key)
-            .map_err(|source| storage(ReadStage::CursorValueSize, source))?
-            .ok_or(ReadError::MalformedRecord {
-                domain: D::NAME,
-                family: R::FAMILY,
-            })?;
-        let value_size =
-            usize::try_from(value_size).expect("u32 always fits usize on supported targets");
+        let encoded_key = current.key();
+        ensure_stored_key_size::<D, R>(encoded_key)?;
+        let value_size = usize::try_from(current.stored_value_len())
+            .expect("u32 always fits usize on supported targets");
         ensure_stored_value_size::<D, R>(value_size)?;
         ensure_caller_byte_bound::<D, R>(value_size, limits.max_bytes())?;
         let record_bytes =
@@ -114,20 +112,91 @@ pub(super) fn read_cursor<D: StorageDomain, R: RecordCodec<D>>(
             break;
         }
 
-        let encoded_value = snapshot
-            .get(&family.keyspace, &encoded_key)
-            .map_err(|source| storage(ReadStage::CursorValue, source))?
-            .ok_or(ReadError::MalformedRecord {
-                domain: D::NAME,
-                family: R::FAMILY,
-            })?;
-        let key = decode_stored_key::<D, R>(&encoded_key)?;
-        let value = decode_value::<D, R>(&encoded_value)?;
+        let pair = current
+            .acquire()
+            .map_err(|source| fjall_storage(ReadStage::CursorValue, source))?;
+        let (key, decoded_key_bytes) = decode_stored_key_with_size::<D, R>(pair.key())?;
+        let (value, decoded_value_bytes) = decode_value_with_size::<D, R>(pair.value())?;
+        let record_decoded_bytes =
+            decoded_key_bytes
+                .checked_add(decoded_value_bytes)
+                .ok_or(ReadError::BoundExceeded {
+                    domain: D::NAME,
+                    family: R::FAMILY,
+                    maximum: limits.max_bytes(),
+                    actual: usize::MAX,
+                })?;
+        let next_decoded_total =
+            decoded_bytes
+                .checked_add(record_decoded_bytes)
+                .ok_or(ReadError::BoundExceeded {
+                    domain: D::NAME,
+                    family: R::FAMILY,
+                    maximum: limits.max_bytes(),
+                    actual: usize::MAX,
+                })?;
+        if next_decoded_total > limits.max_bytes() {
+            if records.is_empty() {
+                return Err(ReadError::BoundExceeded {
+                    domain: D::NAME,
+                    family: R::FAMILY,
+                    maximum: limits.max_bytes(),
+                    actual: next_decoded_total,
+                });
+            }
+            has_more = true;
+            break;
+        }
         records.push(CursorRecord::new(key, value));
         stored_bytes = next_total;
+        decoded_bytes = next_decoded_total;
     }
 
-    Ok(CursorPage::new(records, stored_bytes, has_more))
+    Ok(CursorPage::new(
+        records,
+        stored_bytes,
+        decoded_bytes,
+        has_more,
+    ))
+}
+
+pub(crate) fn validate_physical_family(
+    snapshot: &Snapshot,
+    domain: &'static str,
+    family: &RegisteredFamily,
+) -> Result<(), ReadError> {
+    let mut cursor = snapshot
+        .exhaustive(&family.keyspace)
+        .map_err(|source| fjall_storage(ReadStage::PhysicalKey, source))?;
+    while let Some(current) = cursor
+        .next()
+        .map_err(|source| fjall_storage(ReadStage::PhysicalKey, source))?
+    {
+        let encoded_key = current.key();
+        validate_stored_key_size(
+            domain,
+            family.logical_name,
+            family.max_key_bytes,
+            encoded_key,
+        )?;
+
+        let value_size = usize::try_from(current.stored_value_len())
+            .expect("u32 always fits usize on supported targets");
+        if value_size > family.max_stored_value_bytes {
+            return Err(ReadError::InvalidStoredValueSize {
+                domain,
+                family: family.logical_name,
+                maximum: family.max_stored_value_bytes,
+                actual: value_size,
+            });
+        }
+
+        let pair = current
+            .acquire()
+            .map_err(|source| fjall_storage(ReadStage::PhysicalValue, source))?;
+        (family.validate_envelope)(pair.key(), pair.value())?;
+    }
+    Ok(())
 }
 
 fn encode_cursor_key<D: StorageDomain, R: RecordCodec<D>>(
@@ -155,9 +224,9 @@ pub(crate) fn encode_stored_key<D: StorageDomain, R: RecordCodec<D>>(
     encode_cursor_key::<D, R>(key)
 }
 
-fn decode_stored_key<D: StorageDomain, R: RecordCodec<D>>(
+fn decode_stored_key_with_size<D: StorageDomain, R: RecordCodec<D>>(
     encoded: &[u8],
-) -> Result<R::Key, ReadError> {
+) -> Result<(R::Key, usize), ReadError> {
     let key = R::decode_key(encoded).map_err(|source| ReadError::Codec {
         domain: D::NAME,
         family: R::FAMILY,
@@ -170,7 +239,14 @@ fn decode_stored_key<D: StorageDomain, R: RecordCodec<D>>(
         operation: CodecOperation::DecodeKey,
         source: Box::new(source),
     })?;
-    Ok(key)
+    let decoded_bytes = R::decoded_key_bytes(encoded, &key);
+    Ok((key, decoded_bytes))
+}
+
+fn decode_stored_key<D: StorageDomain, R: RecordCodec<D>>(
+    encoded: &[u8],
+) -> Result<R::Key, ReadError> {
+    decode_stored_key_with_size::<D, R>(encoded).map(|(key, _)| key)
 }
 
 pub(crate) fn validate_record_envelope<D: StorageDomain, R: RecordCodec<D>>(
@@ -212,6 +288,12 @@ pub(crate) fn encode_value<D: StorageDomain, R: RecordCodec<D>>(
 fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
     encoded: &[u8],
 ) -> Result<R::Value, ReadError> {
+    decode_value_with_size::<D, R>(encoded).map(|(value, _)| value)
+}
+
+fn decode_value_with_size<D: StorageDomain, R: RecordCodec<D>>(
+    encoded: &[u8],
+) -> Result<(R::Value, usize), ReadError> {
     let version_bytes: [u8; 4] = encoded
         .get(..RECORD_VERSION_BYTES)
         .ok_or(ReadError::MalformedRecord {
@@ -238,25 +320,31 @@ fn decode_value<D: StorageDomain, R: RecordCodec<D>>(
             actual: encoded.len(),
         });
     }
-    R::decode_value(payload).map_err(|source| ReadError::Codec {
+    let value = R::decode_value(payload).map_err(|source| ReadError::Codec {
         domain: D::NAME,
         family: R::FAMILY,
         operation: CodecOperation::DecodeValue,
         source: Box::new(source),
-    })
+    })?;
+    let decoded_bytes = R::decoded_value_bytes(payload, &value);
+    Ok((value, decoded_bytes))
 }
 
 fn encode_bound<D: StorageDomain, R: RecordCodec<D>>(
     bound: &Bound<R::Key>,
-) -> Result<Bound<Vec<u8>>, ReadError> {
+) -> Result<Bound<Box<[u8]>>, ReadError> {
     match bound {
-        Bound::Included(key) => encode_cursor_key::<D, R>(key).map(Bound::Included),
-        Bound::Excluded(key) => encode_cursor_key::<D, R>(key).map(Bound::Excluded),
+        Bound::Included(key) => encode_cursor_key::<D, R>(key)
+            .map(Vec::into_boxed_slice)
+            .map(Bound::Included),
+        Bound::Excluded(key) => encode_cursor_key::<D, R>(key)
+            .map(Vec::into_boxed_slice)
+            .map(Bound::Excluded),
         Bound::Unbounded => unreachable!("CursorRange never contains an unbounded endpoint"),
     }
 }
 
-fn bound_bytes(bound: &Bound<Vec<u8>>) -> &[u8] {
+fn bound_bytes(bound: &Bound<Box<[u8]>>) -> &[u8] {
     match bound {
         Bound::Included(bytes) | Bound::Excluded(bytes) => bytes,
         Bound::Unbounded => unreachable!("encoded cursor endpoints are bounded"),

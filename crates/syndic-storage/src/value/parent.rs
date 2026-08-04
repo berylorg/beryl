@@ -1,11 +1,11 @@
 use beryl_model::SyndicTurnId;
 
-/// Immutable parent descriptor shared by a current draft and its submitted turn.
+/// Immutable parent descriptor for one submitted turn.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ConversationParent {
-    /// The draft or submitted turn begins a root conversation path.
+    /// The submitted turn begins a root conversation path.
     Root,
-    /// The draft or submitted turn continues one exact historical turn.
+    /// The submitted turn continues one exact historical turn.
     Turn(SyndicTurnId),
 }
 

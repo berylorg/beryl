@@ -11,19 +11,27 @@ pub enum CatalogValueError {
         maximum: usize,
         actual: usize,
     },
+    TooManyScalars {
+        kind: &'static str,
+        maximum: usize,
+        actual: usize,
+    },
     SurroundingWhitespace {
+        kind: &'static str,
+    },
+    TrailingWhitespace {
         kind: &'static str,
     },
     ControlCharacter {
         kind: &'static str,
         index: usize,
     },
+    MissingAlphanumeric {
+        kind: &'static str,
+    },
     ZeroCatalogRevision,
     CatalogRevisionExhausted,
     InvalidLineage(&'static str),
-    TitleSourceNewerThanRow {
-        kind: &'static str,
-    },
     ClaimSourceMismatch,
 }
 
@@ -39,20 +47,31 @@ impl fmt::Display for CatalogValueError {
                 formatter,
                 "{kind} must not exceed {maximum} UTF-8 bytes, got {actual}"
             ),
+            Self::TooManyScalars {
+                kind,
+                maximum,
+                actual,
+            } => write!(
+                formatter,
+                "{kind} must not exceed {maximum} Unicode scalar values, got {actual}"
+            ),
             Self::SurroundingWhitespace { kind } => {
                 write!(formatter, "{kind} must not have surrounding whitespace")
             }
+            Self::TrailingWhitespace { kind } => {
+                write!(formatter, "{kind} must not have trailing whitespace")
+            }
             Self::ControlCharacter { kind, index } => {
                 write!(formatter, "{kind} contains a control character at byte {index}")
+            }
+            Self::MissingAlphanumeric { kind } => {
+                write!(formatter, "{kind} must contain an alphanumeric character")
             }
             Self::ZeroCatalogRevision => formatter.write_str("catalog revision must be nonzero"),
             Self::CatalogRevisionExhausted => {
                 formatter.write_str("catalog revision is exhausted")
             }
             Self::InvalidLineage(message) => formatter.write_str(message),
-            Self::TitleSourceNewerThanRow { kind } => {
-                write!(formatter, "{kind} source revision is newer than its catalog source")
-            }
             Self::ClaimSourceMismatch => formatter.write_str(
                 "claim summary and claim source revision must either both be present or both be absent",
             ),

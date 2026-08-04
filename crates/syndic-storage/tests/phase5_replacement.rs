@@ -2,12 +2,17 @@
 
 mod support;
 
-use std::num::NonZeroU64;
+#[path = "phase5_replacement/fixtures.rs"]
+mod fixtures;
+
+#[path = "phase5_replacement/catalog_title.rs"]
+mod catalog_title;
 
 use beryl_home_store::{HomeCommand, HomeStore};
 use beryl_model::{
-    AssetId, DraftRevision, InputGateRevision, ProjectionRevision, SyndicDraftMarkerId,
-    SyndicItemId, SyndicProjectionId, ThreadRevision,
+    AssetReferenceSetDigest, AssetReferenceSetId, DraftRevision, InputGateRevision,
+    ProjectionRevision, SealedAssetReferenceSetProof, SyndicDraftMarkerId, SyndicItemId,
+    SyndicProjectionId, ThreadRevision,
 };
 use sha2::{Digest, Sha256};
 use syndic_storage::test_faults::{
@@ -17,6 +22,7 @@ use syndic_storage::test_faults::{
 };
 use syndic_storage::*;
 
+use fixtures::*;
 use support::populated::{
     correlate_source_user_item, populated_records, source_item, source_projection, source_turn,
 };
@@ -40,74 +46,30 @@ fn target_item() -> SyndicItemId {
     SyndicItemId::from_bytes([27; 16])
 }
 
-fn target_marker() -> ResolvedImageMarker {
-    ResolvedImageMarker::new(
+fn target_marker() -> ComposerImageMarker {
+    ComposerImageMarker::new(
         SyndicDraftMarkerId::from_bytes([25; 16]),
         ImageLabelOrdinal::FIRST,
-        AssetId::sha256_v1([24; 32], NonZeroU64::new(24).unwrap()),
     )
 }
 
-fn target_markers() -> AdmissionMarkers {
-    AdmissionMarkers::new(vec![target_marker()]).unwrap()
-}
-
-fn target_marker_projection(
-    item: SyndicItemId,
-    turn: beryl_model::SyndicTurnId,
-) -> ProjectionRecord {
+fn target_content_reference() -> ContentReference {
     let marker = target_marker();
-    let atom_ordinal = ComposerAtomOrdinal::new(2).unwrap();
-    let marker_ordinal = InputMarkerOrdinal::FIRST;
-    let source_offset = 8_u64;
-    let ordinal = ProjectionOrdinal::new(2).unwrap();
-    let payload =
-        ProjectionPayload::image_marker(atom_ordinal, marker_ordinal, source_offset, marker);
-    let mut hash = Sha256::new();
-    hash.update(b"beryl/syndic/projection/v1\0");
-    hash.update([1]);
-    hash.update(item.as_bytes());
-    hash.update(source_offset.to_be_bytes());
-    hash.update(ordinal.get().to_be_bytes());
-    hash.update([3]);
-    hash.update(atom_ordinal.get().to_be_bytes());
-    hash.update(marker_ordinal.get().to_be_bytes());
-    hash.update(source_offset.to_be_bytes());
-    hash.update(marker.marker_id().as_bytes());
-    hash.update(marker.label().get().to_be_bytes());
-    hash.update([marker.asset_id().version() as u8]);
-    hash.update(marker.asset_id().digest());
-    hash.update(marker.asset_id().length().get().to_be_bytes());
-    let digest: [u8; 32] = hash.finalize().into();
-    let mut id = [0_u8; 16];
-    id.copy_from_slice(&digest[..16]);
-    ProjectionRecord::new(
-        SyndicProjectionId::from_bytes(id),
-        ProjectionRevision::new(1).unwrap(),
-        item,
-        turn,
-        ordinal,
-        payload,
-    )
-}
-
-fn selected_source() -> SelectedPathProof {
-    let source = source_turn();
-    let digest = child_turn_chain_digest(source, root_turn(), root_turn_chain_digest(root_turn()));
-    SelectedPathProof::new(Some(source), ThreadRevision::new(1).unwrap(), digest)
-}
-
-fn target_entry() -> CurrentTranscriptEntryProof {
-    CurrentTranscriptEntryProof::new(
-        TranscriptGeneration::FIRST,
-        TranscriptPosition::new(2).unwrap(),
-    )
+    let payload = ComposerPayload::new(vec![
+        ComposerAtom::text("original").unwrap(),
+        ComposerAtom::image_marker(marker.marker_id(), marker.label()),
+    ])
+    .unwrap();
+    PreparedContent::composer(&payload)
+        .unwrap()
+        .reference(beryl_model::ContentRevision::new(1).unwrap())
 }
 
 fn replacement_seed() -> FixtureBatch {
     let turn = source_turn();
     let item = target_item();
     let revision = ProjectionRevision::new(1).unwrap();
+    let item_revision = ProjectionRevision::new(4).unwrap();
     let marker = target_marker();
     let payload = ComposerPayload::new(vec![
         ComposerAtom::text("original").unwrap(),
@@ -115,6 +77,7 @@ fn replacement_seed() -> FixtureBatch {
     ])
     .unwrap();
     let (content, content_records) = composer_content_records(&payload);
+    let asset_reference_set = target_asset_reference_set(content);
     let paragraph = fixture_inline_paragraph_projection(item, turn, "original");
     let marker_projection = target_marker_projection(item, turn);
     let projection_digest = fixture_advance_item_projection_digest(
@@ -131,7 +94,7 @@ fn replacement_seed() -> FixtureBatch {
         TranscriptGeneration::FIRST,
         TranscriptPosition::FIRST,
         source_item(),
-        revision,
+        item_revision,
         ItemProjectionGeneration::FIRST,
         source_projection(),
         revision,
@@ -141,7 +104,7 @@ fn replacement_seed() -> FixtureBatch {
         TranscriptGeneration::FIRST,
         TranscriptPosition::new(2).unwrap(),
         item,
-        revision,
+        item_revision,
         ItemProjectionGeneration::FIRST,
         paragraph.id(),
         paragraph.revision(),
@@ -151,7 +114,7 @@ fn replacement_seed() -> FixtureBatch {
         TranscriptGeneration::FIRST,
         TranscriptPosition::new(3).unwrap(),
         item,
-        revision,
+        item_revision,
         ItemProjectionGeneration::FIRST,
         marker_projection.id(),
         marker_projection.revision(),
@@ -164,6 +127,22 @@ fn replacement_seed() -> FixtureBatch {
         &marker_entry,
     );
     let mut records = populated_records();
+    let source_thread = records
+        .iter_mut()
+        .find(|record| matches!(record, FixtureRecord::Thread(thread) if thread.id() == id(30)))
+        .unwrap();
+    let FixtureRecord::Thread(thread) = source_thread else {
+        unreachable!()
+    };
+    *thread = ThreadRecord::new(
+        thread.id(),
+        thread.selected_path(),
+        thread.current_draft_id(),
+        thread.lineage(),
+        ThreadImageLabelFrontiers::new(ImageLabelFrontier::EMPTY, ImageLabelFrontier::from_raw(1))
+            .unwrap(),
+        thread.context_owner_id(),
+    );
     records.retain(|record| {
         !matches!(record, FixtureRecord::TurnState(state) if state.turn_id() == turn)
             && !matches!(record, FixtureRecord::TranscriptViewHead(head) if head.thread_id() == id(30))
@@ -191,7 +170,7 @@ fn replacement_seed() -> FixtureBatch {
             TurnItemOrdinal::new(2).unwrap(),
             revision,
             content,
-            1,
+            Some(asset_reference_set),
         )),
         FixtureRecord::TurnItem(TurnItemIndexRecord::new(
             turn,
@@ -217,8 +196,8 @@ fn replacement_seed() -> FixtureBatch {
             item,
             ItemProjectionGeneration::FIRST,
             ProjectionFormatVersion::V1,
-            revision,
-            content,
+            item_revision,
+            ProjectionTextSource::composer(content),
             8,
             2,
             0,
@@ -229,7 +208,7 @@ fn replacement_seed() -> FixtureBatch {
             MarkdownParserCheckpoint::new(
                 8,
                 8,
-                ContentPieceOrdinal::new(3).unwrap(),
+                ProjectionTextSourceCursor::Composer(ContentPieceOrdinal::new(3).unwrap()),
                 8,
                 Box::<str>::default(),
                 false,
@@ -240,7 +219,7 @@ fn replacement_seed() -> FixtureBatch {
         FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
             item,
             revision,
-            revision,
+            item_revision,
             ItemProjectionGeneration::FIRST,
             ProjectionLifecycle::Current,
         )),
@@ -281,13 +260,25 @@ fn replacement_seed() -> FixtureBatch {
         )),
         FixtureRecord::TranscriptViewEntry(paragraph_entry),
         FixtureRecord::TranscriptViewEntry(marker_entry),
-        FixtureRecord::InputMarkerResolution(InputMarkerResolutionRecord::new(
-            InputMarkerOwner::CanonicalItem(item),
-            InputMarkerOrdinal::FIRST,
-            marker,
-        )),
+        FixtureRecord::ImageLabelOriginSpan(
+            ImageLabelOriginSpanRecord::new(
+                id(30),
+                ImageLabelOrdinal::FIRST,
+                ImageLabelOrdinal::FIRST,
+                ImageLabelOriginOwner::CanonicalItem(item),
+                asset_reference_set,
+            )
+            .unwrap(),
+        ),
     ]);
-    correlate_source_user_item(&mut records, item, revision, content, 1, timestamp(4));
+    correlate_source_user_item(
+        &mut records,
+        item,
+        revision,
+        content,
+        Some(asset_reference_set),
+        timestamp(4),
+    );
     batch(records)
 }
 
@@ -306,7 +297,7 @@ fn start_edit(storage: SyndicStorage, store: &HomeStore) {
                 target_item(),
                 selected_source(),
                 target_entry(),
-                target_markers(),
+                Some(target_asset_reference_set(target_content_reference())),
                 timestamp(5),
             ),
         ),
@@ -314,7 +305,7 @@ fn start_edit(storage: SyndicStorage, store: &HomeStore) {
 }
 
 #[test]
-fn replacement_start_and_cancel_preserve_parent_payload_and_committed_binding() {
+fn replacement_start_and_cancel_preserve_payload_and_committed_binding() {
     let home = TestHome::new("phase5-replacement-cancel");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
@@ -332,11 +323,9 @@ fn replacement_start_and_cancel_preserve_parent_payload_and_committed_binding() 
         .unwrap()
         .unwrap();
     assert_eq!(editing.draft().revision().get(), 2);
-    assert_eq!(
-        editing.draft().parent(),
-        ConversationParent::Turn(source_turn())
-    );
-    let intent = editing.draft().replacement_edit_intent().unwrap();
+    let DraftSubmissionIntent::Replacement(intent) = editing.draft().submission_intent() else {
+        panic!("replacement intent was not published");
+    };
     assert_eq!(intent.target_turn_id(), source_turn());
     assert_eq!(intent.selected_path(), selected_source());
     assert_eq!(intent.transcript_entry(), target_entry());
@@ -370,8 +359,10 @@ fn replacement_start_and_cancel_preserve_parent_payload_and_committed_binding() 
         .unwrap()
         .unwrap();
     assert_eq!(cancelled.draft().revision().get(), 3);
-    assert!(cancelled.draft().replacement_edit_intent().is_none());
-    assert_eq!(cancelled.draft().parent(), editing.draft().parent());
+    assert_eq!(
+        cancelled.draft().submission_intent(),
+        DraftSubmissionIntent::Ordinary
+    );
     assert_eq!(cancelled.draft().content(), editing.draft().content());
 
     store.close().unwrap();
@@ -410,7 +401,7 @@ fn accepted_replacement_creates_a_sibling_and_keeps_the_old_path_immutable() {
                 InputGateRevision::new(1).unwrap(),
                 next_draft,
                 SyndicItemId::from_bytes([71; 16]),
-                target_markers(),
+                Some(target_asset_reference_set(target_content_reference())),
                 timestamp(6),
             ),
         ),
@@ -421,18 +412,12 @@ fn accepted_replacement_creates_a_sibling_and_keeps_the_old_path_immutable() {
         .turn(&store, replacement_turn, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(
-        replacement.record().parent(),
-        ConversationParent::Turn(root_turn())
-    );
+    assert_eq!(replacement.parent(), ConversationParent::Turn(root_turn()));
     let original = storage
         .turn(&store, source_turn(), point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(
-        original.record().parent(),
-        ConversationParent::Turn(root_turn())
-    );
+    assert_eq!(original.parent(), ConversationParent::Turn(root_turn()));
     let current = storage
         .current_draft(&store, id(30), point_limit())
         .unwrap()
@@ -440,17 +425,14 @@ fn accepted_replacement_creates_a_sibling_and_keeps_the_old_path_immutable() {
     assert_eq!(current.thread().committed_tail(), Some(replacement_turn));
     assert_eq!(current.draft().id(), next_draft);
     assert_eq!(
-        current.draft().parent(),
-        ConversationParent::Turn(replacement_turn)
+        current.draft().submission_intent(),
+        DraftSubmissionIntent::Ordinary
     );
     let gate = storage
         .input_gate(&store, id(30), point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(
-        gate.record().state(),
-        &InputGateState::PendingTurn(replacement_turn)
-    );
+    assert_eq!(gate.state(), &InputGateState::PendingTurn(replacement_turn));
 
     store.close().unwrap();
 }
@@ -476,7 +458,7 @@ fn stale_selected_path_rejects_replacement_edit_without_changing_the_draft() {
         target_item(),
         stale,
         target_entry(),
-        target_markers(),
+        Some(target_asset_reference_set(target_content_reference())),
         timestamp(5),
     );
     let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -490,7 +472,10 @@ fn stale_selected_path_rejects_replacement_edit_without_changing_the_draft() {
         .unwrap()
         .unwrap();
     assert_eq!(current.draft().revision().get(), 1);
-    assert!(current.draft().replacement_edit_intent().is_none());
+    assert_eq!(
+        current.draft().submission_intent(),
+        DraftSubmissionIntent::Ordinary
+    );
     assert_eq!(
         read_composer_payload(&store, storage, &current),
         ComposerPayload::default()

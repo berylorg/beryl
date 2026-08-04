@@ -30,67 +30,33 @@ pub(super) fn decode_source_event(bytes: &[u8]) -> Result<SourceEventRecord, Cod
 fn encode_source_event_payload(e: &mut Encoder, payload: &SourceEventPayload) {
     match payload {
         SourceEventPayload::TurnActivated => e.u8(0),
-        SourceEventPayload::ItemStarted {
-            item,
-            assistant_phase,
-        } => {
+        SourceEventPayload::ItemFrame { item_id, frame } => {
             e.u8(1);
-            encode_item_descriptor(e, item);
-            enc_opt(e, *assistant_phase, enc_assistant_phase);
-        }
-        SourceEventPayload::ItemDelta {
-            item_id,
-            cas_item_id,
-            expected_kind,
-            text,
-        } => {
-            e.u8(2);
             enc_item(e, *item_id);
-            enc_external(e, cas_item_id.as_str());
-            enc_provider_item_kind(e, *expected_kind);
-            e.text(text.as_str());
-        }
-        SourceEventPayload::ItemCompleted {
-            item,
-            assistant_phase,
-        } => {
-            e.u8(3);
-            encode_item_descriptor(e, item);
-            enc_opt(e, *assistant_phase, enc_assistant_phase);
+            enc_sealed_provider_frame_reference(e, frame);
         }
         SourceEventPayload::TurnEnded(status) => {
-            e.u8(4);
+            e.u8(2);
             enc_turn_end_status(e, *status);
         }
+        SourceEventPayload::ProviderObservationIssue(issue) => {
+            e.u8(3);
+            encode_provider_observation_issue(e, issue);
+        }
     }
-}
-
-fn encode_item_descriptor(e: &mut Encoder, item: &SourceItemDescriptor) {
-    enc_item(e, item.item_id());
-    enc_external(e, item.cas_item_id().as_str());
-    enc_provider_item_kind(e, item.kind());
-    enc_provider_item_disposition(e, item.disposition());
 }
 
 fn decode_source_event_payload(d: &mut Decoder<'_>) -> Result<SourceEventPayload, CodecError> {
     match d.u8()? {
         0 => Ok(SourceEventPayload::TurnActivated),
-        1 => Ok(SourceEventPayload::ItemStarted {
-            item: decode_item_descriptor(d)?,
-            assistant_phase: dec_opt(d, "source assistant phase", dec_assistant_phase)?,
-        }),
-        2 => Ok(SourceEventPayload::ItemDelta {
+        1 => Ok(SourceEventPayload::ItemFrame {
             item_id: dec_item(d)?,
-            cas_item_id: dec_cas_item(d)?,
-            expected_kind: dec_provider_item_kind(d)?,
-            text: SourceEventText::new(d.text("source-event text")?)
-                .map_err(|source| invalid("source-event text", source))?,
+            frame: Box::new(dec_sealed_provider_frame_reference(d)?),
         }),
-        3 => Ok(SourceEventPayload::ItemCompleted {
-            item: decode_item_descriptor(d)?,
-            assistant_phase: dec_opt(d, "source assistant phase", dec_assistant_phase)?,
-        }),
-        4 => Ok(SourceEventPayload::TurnEnded(dec_turn_end_status(d)?)),
+        2 => Ok(SourceEventPayload::TurnEnded(dec_turn_end_status(d)?)),
+        3 => Ok(SourceEventPayload::ProviderObservationIssue(Box::new(
+            decode_provider_observation_issue(d)?,
+        ))),
         tag => Err(CodecError::InvalidTag {
             kind: "source-event payload",
             tag,
@@ -98,12 +64,40 @@ fn decode_source_event_payload(d: &mut Decoder<'_>) -> Result<SourceEventPayload
     }
 }
 
-fn decode_item_descriptor(d: &mut Decoder<'_>) -> Result<SourceItemDescriptor, CodecError> {
-    SourceItemDescriptor::new(
-        dec_item(d)?,
+fn encode_provider_observation_issue(e: &mut Encoder, issue: &ProviderObservationIssue) {
+    let reference = issue.observation();
+    enc_provider_observation_id(e, reference.identity());
+    enc_provider_observation_begin(e, reference.begin());
+    e.u64(reference.revision());
+    e.u64(reference.chunk_count());
+    e.u64(reference.canonical_bytes());
+    e.fixed32(reference.digest().as_bytes());
+    enc_cas_turn_source(e, issue.source());
+    enc_external(e, issue.item_id().as_str());
+    enc_provider_item_kind(e, issue.item_kind());
+    enc_provider_frame_observation_summary(e, issue.lifecycle());
+    enc_provider_observation_issue_reason(e, issue.reason());
+}
+
+fn decode_provider_observation_issue(
+    d: &mut Decoder<'_>,
+) -> Result<ProviderObservationIssue, CodecError> {
+    let observation = SealedProviderObservationReference::from_stored_parts(
+        dec_provider_observation_id(d)?,
+        dec_provider_observation_begin(d)?,
+        d.u64()?,
+        d.u64()?,
+        d.u64()?,
+        ProviderObservationDigest::from_bytes(d.fixed32()?),
+    )
+    .map_err(|source| invalid("sealed provider-observation reference", source))?;
+    ProviderObservationIssue::from_stored_parts(
+        observation,
+        dec_cas_turn_source(d)?,
         dec_cas_item(d)?,
         dec_provider_item_kind(d)?,
-        dec_provider_item_disposition(d)?,
+        dec_provider_frame_observation_summary(d)?,
+        dec_provider_observation_issue_reason(d)?,
     )
-    .map_err(|source| invalid("source item descriptor", source))
+    .map_err(|source| invalid("provider-observation issue", source))
 }

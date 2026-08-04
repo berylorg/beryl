@@ -10,7 +10,10 @@ use crate::{
 pub enum RecoveryProjectionScope {
     /// Assemble the complete current selected path before input admission.
     CurrentSelectedPath,
-    /// Assemble the current pending selected turn's complete parent path after restart.
+    /// Assemble the eligible parent context of the current pending selected turn after restart.
+    ///
+    /// The immediate parent may be exact authority-lost tail context even though it remains
+    /// durably incomplete. Earlier ancestors must still be recovery-complete.
     PendingSelectedTurnParent,
 }
 
@@ -43,7 +46,7 @@ impl RecoveryProjectionRequest {
         }
     }
 
-    /// Creates a restart request for the complete parent of a pending selected turn.
+    /// Creates a restart request for the eligible parent context of a pending selected turn.
     ///
     /// `None` deliberately represents missing metadata, while `Some(0)` deliberately retains an
     /// invalid zero value so preparation can reject the two cases independently. A root pending
@@ -83,72 +86,21 @@ impl RecoveryProjectionRequest {
     }
 }
 
-/// Closed role of one lossless recovery item.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RecoveryItemRole {
-    User,
-    Assistant,
-}
-
-/// Closed Responses API text shape of one lossless recovery item.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RecoveryItemTextKind {
-    InputText,
-    OutputText,
-}
-
-/// One immutable ordered recovery item with no independently pairable role and text shape.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RecoveryItem {
-    UserInputText(Box<str>),
-    AssistantOutputText(Box<str>),
-}
-
-impl RecoveryItem {
-    pub(super) fn user(text: Box<str>) -> Self {
-        Self::UserInputText(text)
-    }
-
-    pub(super) fn assistant(text: Box<str>) -> Self {
-        Self::AssistantOutputText(text)
-    }
-
-    #[must_use]
-    pub const fn role(&self) -> RecoveryItemRole {
-        match self {
-            Self::UserInputText(_) => RecoveryItemRole::User,
-            Self::AssistantOutputText(_) => RecoveryItemRole::Assistant,
-        }
-    }
-
-    #[must_use]
-    pub const fn text_kind(&self) -> RecoveryItemTextKind {
-        match self {
-            Self::UserInputText(_) => RecoveryItemTextKind::InputText,
-            Self::AssistantOutputText(_) => RecoveryItemTextKind::OutputText,
-        }
-    }
-
-    #[must_use]
-    pub fn text(&self) -> &str {
-        match self {
-            Self::UserInputText(text) | Self::AssistantOutputText(text) => text,
-        }
-    }
-}
-
-/// Complete bounded recovery prefix assembled under one stable Syndic domain revision.
+/// Compact proof of one replayable recovery-context prefix under a stable Syndic domain revision.
 ///
 /// Its source revision is read provenance only, not expected-revision authority for a later proof
 /// publication. That publication must use the current domain revision together with its exact
 /// current thread, selected-path, and binding expected revisions.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// A pending-parent proof may include one exact authority-lost immediate tail without making that
+/// turn recovery-complete. The selected-path and represented-prefix relationship preserves which
+/// eligibility contract produced the proof.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RecoveryProjection {
     pub(super) version: RecoveryProjectionVersion,
     pub(super) thread_id: SyndicThreadId,
     pub(super) selected_path: SelectedPathProof,
     pub(super) represented_prefix: CasRepresentedPrefixProof,
-    pub(super) items: Box<[RecoveryItem]>,
     pub(super) item_count: RecoveryItemCount,
     pub(super) utf8_bytes: RecoveryUtf8ByteCount,
     pub(super) sequence_digest: RecoveryItemSequenceDigest,
@@ -216,11 +168,6 @@ impl RecoveryProjection {
     #[must_use]
     pub const fn represented_prefix(&self) -> CasRepresentedPrefixProof {
         self.represented_prefix
-    }
-
-    #[must_use]
-    pub fn items(&self) -> &[RecoveryItem] {
-        &self.items
     }
 
     #[must_use]

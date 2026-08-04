@@ -2,6 +2,9 @@
 
 mod support;
 
+#[path = "phase2_family_matrix/cases_tail.rs"]
+mod cases_tail;
+
 use beryl_home_store::{DomainRegistrationError, DomainValidationError, HomeRecoveryError};
 use beryl_model::{BindingRevision, DiscussionContextOwnerId, SyndicTurnId};
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord, PhysicalFamily};
@@ -10,8 +13,8 @@ use syndic_storage::*;
 use support::{
     TestHome, batch, commit, draft_id, id, open,
     populated::{
-        active_item, active_snapshot, active_turn, build_item, cas_item, cas_thread, cas_turn,
-        next_input, populated_records, source_item, source_projection, source_resource,
+        active_item, active_snapshot, active_turn, activity_item, build_item, cas_item, cas_thread,
+        cas_turn, next_input, populated_records, source_item, source_projection, source_resource,
         source_resource_projection, source_turn, steering_input, suffix_item,
     },
 };
@@ -100,10 +103,23 @@ fn exercise_accepted_deletion(family: PhysicalFamily, delete: FixtureDelete) {
 }
 
 #[test]
-fn populated_fixture_covers_every_family_and_reopens_cleanly() {
+fn populated_fixture_covers_every_resting_family_and_reopens_cleanly() {
     let records = populated_records();
-    assert_eq!(PhysicalFamily::ALL.len(), 44);
-    for family in PhysicalFamily::ALL {
+    assert_eq!(PhysicalFamily::ALL.len(), 61);
+    // Provider staging, stop-operation, and compaction families are covered by their dedicated
+    // phase fixtures rather than this legacy populated aggregate. Strict physical corruption
+    // still covers every registered codec.
+    for family in PhysicalFamily::ALL.into_iter().filter(|family| {
+        !matches!(
+            family,
+            PhysicalFamily::ProviderItemBuilds
+                | PhysicalFamily::ProviderObservationBuilds
+                | PhysicalFamily::ProviderObservationChunks
+                | PhysicalFamily::StopOperations
+                | PhysicalFamily::CompactionOperations
+                | PhysicalFamily::CompactionSettlementReceipts
+        )
+    }) {
         assert!(
             records.iter().any(|record| record.family() == family),
             "fixture omitted {}",
@@ -145,12 +161,11 @@ fn reverse_index_getters_expose_every_stored_correlation() {
                 );
                 seen[1] = true;
             }
-            FixtureRecord::AcceptedSteering(record) => {
+            FixtureRecord::AcceptedRouteLeaf(record) if record.input_id() == steering_input() => {
                 assert_eq!(record.thread_id(), id(40));
-                assert_eq!(record.turn_id(), active_turn());
                 assert_eq!(record.ordinal(), AcceptedInputOrdinal::FIRST);
                 assert_eq!(record.input_id(), steering_input());
-                assert_eq!(record.input_revision().get(), 1);
+                assert_eq!(record.revision().get(), 1);
                 seen[2] = true;
             }
             FixtureRecord::CasItem(record) if record.item_id() == active_item() => {
@@ -158,7 +173,7 @@ fn reverse_index_getters_expose_every_stored_correlation() {
                 assert_eq!(record.cas_turn_id(), &cas_turn());
                 assert_eq!(record.cas_item_id(), &cas_item());
                 assert_eq!(record.item_id(), active_item());
-                assert_eq!(record.item_revision().get(), 1);
+                assert_eq!(record.item_revision().get(), 3);
                 seen[3] = true;
             }
             FixtureRecord::BindingHead(record) if record.thread_id() == id(40) => {
@@ -201,13 +216,33 @@ fn reverse_index_getters_expose_every_stored_correlation() {
 #[test]
 fn every_family_has_an_exact_deletion_case_with_explicit_semantic_outcome() {
     let cases = deletion_cases();
+    // Provider staging, stop-operation, and compaction families have dedicated semantic coverage
+    // and no row in this legacy populated aggregate. Strict physical corruption still covers them.
     let rejection_families: Vec<_> = PhysicalFamily::ALL
         .into_iter()
-        .filter(|family| *family != PhysicalFamily::ItemProjectionBuilds)
+        .filter(|family| {
+            !matches!(
+                family,
+                PhysicalFamily::ProviderItemBuilds
+                    | PhysicalFamily::ProviderObservationBuilds
+                    | PhysicalFamily::ProviderObservationChunks
+                    | PhysicalFamily::ItemProjectionBuilds
+                    | PhysicalFamily::StopOperations
+                    | PhysicalFamily::CompactionOperations
+                    | PhysicalFamily::CompactionSettlementReceipts
+            )
+        })
         .collect();
     assert_eq!(cases.len(), rejection_families.len());
-    for (case, family) in cases.into_iter().zip(rejection_families) {
-        assert_eq!(case.family, family);
+    for family in rejection_families {
+        assert_eq!(
+            cases.iter().filter(|case| case.family == family).count(),
+            1,
+            "{} needs exactly one deletion case",
+            family.name()
+        );
+    }
+    for case in cases {
         exercise_deletion(case);
     }
 
@@ -228,6 +263,26 @@ fn deletion_cases() -> Vec<DeletionCase> {
             family: PhysicalFamily::Threads,
             delete: FixtureDelete::Thread(id(40)),
             expected: "draft owner thread is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::ThreadExecutions,
+            delete: FixtureDelete::ThreadExecution(id(40)),
+            expected: "thread execution record is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::ThreadAttributes,
+            delete: FixtureDelete::ThreadAttributes(id(40)),
+            expected: "thread attributes record is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::ThreadUsage,
+            delete: FixtureDelete::ThreadUsage(id(40)),
+            expected: "thread usage record is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::ThreadCatalogSummaries,
+            delete: FixtureDelete::ThreadCatalogSummary(id(40)),
+            expected: "thread catalog summary is missing",
         },
         DeletionCase {
             family: PhysicalFamily::Drafts,
@@ -274,12 +329,13 @@ fn deletion_cases() -> Vec<DeletionCase> {
             expected: "content text span piece is missing",
         },
         DeletionCase {
-            family: PhysicalFamily::InputMarkerResolutions,
-            delete: FixtureDelete::InputMarkerResolution {
-                owner: InputMarkerOwner::AcceptedInput(steering_input()),
-                ordinal: InputMarkerOrdinal::FIRST,
+            family: PhysicalFamily::ProviderNarrativeSpans,
+            delete: FixtureDelete::ProviderNarrativeSpan {
+                content: beryl_model::SyndicContentId::from_bytes(*source_item().as_bytes()),
+                generation: ProviderNarrativeGeneration::FIRST,
+                logical_start: 0,
             },
-            expected: "input marker zero frontier disagrees",
+            expected: "published provider narrative span is missing",
         },
         DeletionCase {
             family: PhysicalFamily::ContextEnvelopes,
@@ -299,12 +355,12 @@ fn deletion_cases() -> Vec<DeletionCase> {
         DeletionCase {
             family: PhysicalFamily::InputGates,
             delete: FixtureDelete::InputGate(id(40)),
-            expected: "thread input gate is missing",
+            expected: "accepted input references a missing input gate",
         },
         DeletionCase {
             family: PhysicalFamily::AcceptedInputs,
             delete: FixtureDelete::AcceptedInput(next_input()),
-            expected: "accepted-order target is missing",
+            expected: "accepted-input replacement descendant is not exclusive",
         },
         DeletionCase {
             family: PhysicalFamily::SourceEvents,
@@ -318,6 +374,11 @@ fn deletion_cases() -> Vec<DeletionCase> {
             family: PhysicalFamily::CanonicalItems,
             delete: FixtureDelete::CanonicalItem(source_item()),
             expected: "turn-item target is missing",
+        },
+        DeletionCase {
+            family: PhysicalFamily::ActivityQueryHeads,
+            delete: FixtureDelete::ActivityQueryHead(id(40)),
+            expected: "thread activity-query head is missing",
         },
         DeletionCase {
             family: PhysicalFamily::ItemProjectionHeads,
@@ -373,12 +434,12 @@ fn deletion_cases() -> Vec<DeletionCase> {
         DeletionCase {
             family: PhysicalFamily::ExecutionSnapshots,
             delete: FixtureDelete::ExecutionSnapshot(active_snapshot()),
-            expected: "steering input gate execution snapshot is missing",
+            expected: "active binding snapshot is missing",
         },
         DeletionCase {
             family: PhysicalFamily::ActiveCasTurns,
             delete: FixtureDelete::ActiveCasTurn(active_snapshot()),
-            expected: "steerable gate active CAS turn is missing",
+            expected: "current active binding has uncorrelated source history",
         },
         DeletionCase {
             family: PhysicalFamily::DraftByThread,
@@ -394,6 +455,14 @@ fn deletion_cases() -> Vec<DeletionCase> {
             expected: "thread parent index is missing",
         },
         DeletionCase {
+            family: PhysicalFamily::ImageLabelOriginSpans,
+            delete: FixtureDelete::ImageLabelOriginSpan {
+                thread: id(40),
+                end_label: ImageLabelOrdinal::FIRST,
+            },
+            expected: "thread final image-label origin span is missing",
+        },
+        DeletionCase {
             family: PhysicalFamily::TurnChildren,
             delete: FixtureDelete::TurnChild {
                 parent: SyndicTurnId::from_bytes([29; 16]),
@@ -407,121 +476,43 @@ fn deletion_cases() -> Vec<DeletionCase> {
                 thread: id(40),
                 ordinal: AcceptedInputOrdinal::new(2).unwrap(),
             },
-            expected: "accepted-input order index is missing",
+            expected: "accepted input is missing immutable order membership",
         },
         DeletionCase {
-            family: PhysicalFamily::AcceptedSteering,
-            delete: FixtureDelete::AcceptedSteering {
-                thread: id(40),
-                turn: active_turn(),
-                ordinal: AcceptedInputOrdinal::FIRST,
-            },
-            expected: "accepted steering index is missing",
+            family: PhysicalFamily::AcceptedRouteLeaves,
+            delete: FixtureDelete::AcceptedRouteLeaf(steering_input()),
+            expected: "accepted input is missing its route leaf",
         },
         DeletionCase {
-            family: PhysicalFamily::AcceptedNextTurn,
-            delete: FixtureDelete::AcceptedNextTurn {
+            family: PhysicalFamily::AcceptedRouteGenerations,
+            delete: FixtureDelete::AcceptedRouteGeneration {
                 thread: id(40),
-                ordinal: AcceptedInputOrdinal::new(2).unwrap(),
+                generation: AcceptedRouteGeneration::FIRST,
             },
-            expected: "accepted next-turn index is missing",
+            expected: "accepted input references a missing route generation",
+        },
+        DeletionCase {
+            family: PhysicalFamily::AcceptedRouteGenerationHeads,
+            delete: FixtureDelete::AcceptedRouteGenerationHead(id(40)),
+            expected: "accepted-route generation owner is missing its route head",
+        },
+        DeletionCase {
+            family: PhysicalFamily::AcceptedReadySources,
+            delete: FixtureDelete::AcceptedReadySource {
+                thread: id(40),
+                generation: AcceptedRouteGeneration::FIRST,
+            },
+            expected: "accepted-route generation and ready-source authority disagree",
+        },
+        DeletionCase {
+            family: PhysicalFamily::AcceptedNextSources,
+            delete: FixtureDelete::AcceptedNextSource {
+                thread: id(40),
+                generation: AcceptedRouteGeneration::FIRST,
+            },
+            expected: "accepted-route generation and next-source presence disagree",
         },
     ]);
-    cases.extend([
-        DeletionCase {
-            family: PhysicalFamily::TurnItems,
-            delete: FixtureDelete::TurnItem {
-                turn: source_turn(),
-                ordinal: TurnItemOrdinal::FIRST,
-            },
-            expected: "turn-item index is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::ItemSourceEvents,
-            delete: FixtureDelete::ItemSourceEvent {
-                item: active_item(),
-                ordinal: ItemSourceEventOrdinal::FIRST,
-            },
-            expected: "canonical item source-event index presence disagrees",
-        },
-        DeletionCase {
-            family: PhysicalFamily::CasItem,
-            delete: FixtureDelete::CasItem {
-                thread: cas_thread(),
-                turn: cas_turn(),
-                item: cas_item(),
-            },
-            expected: "CAS item reverse index is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::TranscriptPathTurns,
-            delete: FixtureDelete::TranscriptPathTurn {
-                thread: id(30),
-                generation: TranscriptGeneration::FIRST,
-                depth: TurnDepth::FIRST,
-            },
-            expected: "transcript build first collected path record is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::TranscriptViewEntries,
-            delete: FixtureDelete::TranscriptViewEntry {
-                thread: id(30),
-                generation: TranscriptGeneration::FIRST,
-                position: TranscriptPosition::FIRST,
-            },
-            expected: "transcript head zero frontier disagrees",
-        },
-        DeletionCase {
-            family: PhysicalFamily::StableItemProjections,
-            delete: FixtureDelete::StableItemProjection {
-                item: source_item(),
-                ordinal: ProjectionOrdinal::FIRST,
-            },
-            expected: "replayed stable projection membership is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::ItemProjections,
-            delete: FixtureDelete::ItemProjection {
-                item: suffix_item(),
-                generation: ItemProjectionGeneration::FIRST,
-                ordinal: ProjectionOrdinal::FIRST,
-            },
-            expected: "replayed projection suffix membership is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::ProjectionResources,
-            delete: FixtureDelete::ProjectionResource {
-                projection: source_resource_projection(),
-                ordinal: ResourceOrdinal::FIRST,
-            },
-            expected: "projection-resource index is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::BindingHeads,
-            delete: FixtureDelete::BindingHead(id(30)),
-            expected: "thread binding head is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::CasThread,
-            delete: FixtureDelete::CasThread(cas_thread()),
-            expected: "CAS thread reservation is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::CasThreadBinding,
-            delete: FixtureDelete::CasThreadBinding {
-                thread: cas_thread(),
-                revision: BindingRevision::new(3).unwrap(),
-            },
-            expected: "CAS thread binding membership is missing",
-        },
-        DeletionCase {
-            family: PhysicalFamily::CasTurn,
-            delete: FixtureDelete::CasTurn {
-                thread: cas_thread(),
-                turn: cas_turn(),
-            },
-            expected: "source event CAS-turn index is missing",
-        },
-    ]);
+    cases.extend(cases_tail::deletion_cases());
     cases
 }

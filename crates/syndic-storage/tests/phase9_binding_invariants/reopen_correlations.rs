@@ -296,7 +296,7 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
 
     exercise_case(
         "phase9-active-predecessor-authority",
-        "active binding does not preserve exact prior valid authority",
+        "active binding does not preserve compatible prior valid authority",
         || batch(populated_records()),
         || {
             let active = populated_active_binding();
@@ -304,22 +304,12 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
                 unreachable!();
             };
             let prior = BindingRevision::new(active.revision().get() - 1).unwrap();
-            let different_execution = ExecutionBinding::new(
-                RuntimeId::from_bytes([94; 16]),
-                RootId::from_bytes([95; 16]),
-                RuntimeNativePath::from_admitted(
-                    RuntimeMode::host(),
-                    PathFlavor::Windows,
-                    "C:\\corrupt-active-predecessor",
-                )
-                .unwrap(),
-            );
             let corrupt = UsableCasBinding::new(
-                different_execution,
+                current.usable().execution().clone(),
                 current.usable().cas_thread_id().clone(),
                 current.usable().represented_prefix(),
                 current.usable().native_turn_count(),
-                current.usable().tool_profile(),
+                beryl_model::CasConversationToolProfile::v1([0x4e; 32]),
                 current.usable().lineage(),
             );
             batch([FixtureRecord::Binding(BindingRecord::new(
@@ -370,6 +360,29 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
             let state = populated_active_turn_state();
             let path = populated_active_transcript_path();
             let active = populated_active_cas_turn();
+            let activity_records = populated_records();
+            let activity_head = activity_records
+                .iter()
+                .find_map(|record| match record {
+                    FixtureRecord::ActivityQueryHead(head)
+                        if head.thread_id() == active.thread_id() =>
+                    {
+                        Some(head.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let activity_source = activity_records
+                .iter()
+                .find_map(|record| match record {
+                    FixtureRecord::ActivityQuerySource(source)
+                        if source.thread_id() == active.thread_id() =>
+                    {
+                        Some(source.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap();
             let wrong_thread = CasThreadId::new("wrong-history-thread").unwrap();
             let wrong_turn = CasTurnId::new("wrong-history-turn").unwrap();
             batch([
@@ -392,6 +405,36 @@ fn reopen_rejects_malformed_binding_snapshot_and_cas_turn_correlations() {
                     state.open_item_count(),
                     state.history_blocking_item_count(),
                     state.updated_at(),
+                )),
+                FixtureRecord::ActivityQueryHead(
+                    ActivityQueryHeadRecord::new(
+                        active.thread_id(),
+                        ActivityWorkPeriod::FIRST,
+                        Some(ActivityQuerySource::new(
+                            active.thread_id(),
+                            state.turn_id(),
+                        )),
+                        true,
+                        state.source_event_count() + 1,
+                        activity_head.revision(),
+                        activity_head.source_count(),
+                        activity_head.logical_row_count(),
+                        activity_head.running_row_count(),
+                        activity_head.completed_row_count(),
+                        activity_head.completed_stored_bytes(),
+                        activity_head.completed_retention_cutoff(),
+                        activity_head.lifecycle(),
+                    )
+                    .unwrap(),
+                ),
+                FixtureRecord::ActivityQuerySource(ActivityQuerySourceRecord::new(
+                    active.thread_id(),
+                    ActivityWorkPeriod::FIRST,
+                    ActivityQuerySource::new(active.thread_id(), state.turn_id()),
+                    activity_source.activity_start(),
+                    state.source_event_count() + 1,
+                    true,
+                    activity_source.child_handoff(),
                 )),
                 FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
                     path.thread_id(),

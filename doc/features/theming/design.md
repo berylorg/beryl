@@ -35,6 +35,16 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 - Compact TOML theme documents store style roles as `[[role]]` records with `id`, optional `static_parent`, and supported property entries whose values are either source keywords or concrete inline values.
 - Installed themes are stored in a portable theme repository under the Beryl home directory so users can share themes without sharing unrelated preferences.
 - The repository stores a TOML manifest for installed-theme order plus one compact TOML theme document per installed theme.
+- Installed-theme count is caller-unbounded. The repository exposes one immutable generation and
+  bounded manifest cursor pages; it never parses the manifest into a complete in-memory theme list.
+- Manifest validation and mutation stream the owner file through fixed pages. Rename, delete,
+  reorder, install, and Save As write one typed staged replacement and atomically publish it without
+  constructing a whole replacement `String` or row collection. Exhaustive duplicate/reference
+  validation may rescan the manifest but retains fixed state.
+- Compact theme validation consumes a range-backed source with bounded TOML parser state. The
+  hardcoded finite role/property schema bounds the accepted resolved theme; unsupported fields are
+  skipped incrementally, and an oversized supported scalar or structurally invalid document is
+  rejected without retaining its complete source.
 - The active theme id is a scalar Beryl setting stored in the Beryl-home Fjall settings domain; it is not duplicated in the file-based theme repository manifest.
 - Persisted themes use the current TOML theme schema only.
 - Unsupported entries in installed theme files are ignored on load and omitted on later saves.
@@ -44,7 +54,8 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 ## Themes Settings Page
 
 - The Themes settings page is hosted inside the generic settings window defined by `doc/features/settings/design.md`.
-- The Themes page lists only durable installed themes plus the active theme.
+- The Themes page lists only durable installed themes plus the active theme through a
+  revision-bound paged repository query.
 - It does not list unsaved AI-generated theme candidates from Codex threads.
 - Installed theme rows show name, stable id or copy-id action, active/modified state when applicable, and valid actions such as Activate, Rename, Delete, or Edit.
 - Installed non-active themes switch by direct Activate. There is no separate installed-theme Preview action.
@@ -70,10 +81,15 @@ Give users durable, validated control over Beryl's appearance theme system, incl
 ## Theme Dynamic Tools
 
 - Beryl may expose bounded app-server dynamic tools for inspecting theme schema, reading theme authoring guidance, validating theme documents, previewing themes, installing themes, updating installed themes, Save As, and activating themes.
-- Theme tools operate only on Beryl-owned theme repository and active-theme state. They must not expose or mutate backend-owned Codex authentication, session storage, configuration, skills, MCP state, Syndic conversation history, Beryl-home runtime/root/thread metadata, durable image assets, or unrelated settings.
+- Theme tools operate only on Beryl-owned theme repository and active-theme state. They must not
+  expose or mutate backend-owned Codex authentication, session storage, configuration, skills, MCP
+  state, Syndic thread properties or history, Beryl-home runtime/root state, durable image assets,
+  or unrelated settings.
 - `read_theme_schema` is the bounded structural source for role ids, supported property ids, source keywords, and built-in role metadata.
 - `read_theme_authoring_guide` is explanatory guidance over the same model and must not become a second independent schema.
-- `validate_theme_document` parses and resolves compact TOML through the same validation model as preview, install, update, and Save As.
+- `validate_theme_document` streams and resolves compact TOML through the same range-backed
+  validation model as preview, install, update, and Save As; its tool request bridge never owns one
+  arbitrarily large theme-document string.
 - Theme validation is non-mutating and must not change active preview state, installed themes, settings drafts, transcript content, GPUI widgets, or repository files.
 - Dynamic-tool preview is transient runtime state, not transcript content, an installed theme, or a durable setting.
 - Dynamic-tool install writes a durable installed theme but does not synthesize transcript theme offers.

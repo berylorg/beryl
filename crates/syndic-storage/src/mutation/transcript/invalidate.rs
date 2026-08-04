@@ -57,7 +57,7 @@ pub(in crate::mutation) fn supersede_active_transcript_build(
     let Some(build) = latest_active_build(reader, thread.id())? else {
         return Ok(None);
     };
-    if build.source_thread_revision() != thread.revision()
+    if build.source_thread_revision() > thread.revision()
         || build.committed_tail() != thread.committed_tail()
         || build.selected_path_digest() != thread.selected_path_digest()
     {

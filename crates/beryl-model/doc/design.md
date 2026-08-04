@@ -30,17 +30,27 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - `RuntimeMode` preserves the Host or exact WSL-distribution environment derived from that executable path.
 - Pure runtime values may carry canonical host-visible and runtime-native executable paths without probing them or deriving environment identity inside this crate.
 - `RootId` is an opaque configured-root identity owned by one runtime.
-- `ExecutionBinding` contains exact runtime identity and canonical runtime-native root path used by one Syndic thread.
+- `ExecutionBinding` contains exact runtime identity, configured root identity, and canonical runtime-
+  native root path used by one Syndic thread. `syndic-storage` owns its immutable persisted record;
+  this crate owns only the shared pure value.
 - Availability is represented as explicit observed state with bounded reason categories. Pure types never probe a path, WSL distribution, executable, or CAS process.
 
-## Thread Presentation Values
+## Thread And Presentation Values
 
 - Stable Syndic thread, turn, draft, draft-marker, content, item, accepted-input, retry-record, transcript-projection, resource, and execution-snapshot identities may cross package boundaries without making this crate the owner of their stored record schemas.
 - `SyndicContentId` is the stable 128-bit lookup identity derived from an exact chunk-chain digest. `SyndicContentDigest` retains the complete 256-bit comparison authority so a truncated-identity collision is rejected rather than aliased.
-- Idle submission preserves one exact 128-bit identity payload while changing its typed identity from draft to submitted turn. Queueing preserves the accepted-input identity and therefore has no separate queued-input identity type.
-- Shared values may identify a Syndic thread, its execution binding, generated Beryl title metadata, automatic branch-discussion archive state, activity timestamp, parent-thread lineage summary, current window claim, and catalog availability.
-- Beryl presentation metadata never contains CAS thread names or CAS catalog rows as authority.
-- Thread title precedence is represented through explicit generated, Syndic-summary, and untitled sources rather than an inferred string.
+- Idle submission preserves one exact 128-bit identity payload while changing its typed identity
+  from draft to submitted turn. Queueing preserves the accepted-input identity and therefore has
+  no separate queued-input identity type. Later promotion retains that accepted identity as
+  history but uses caller-supplied fresh turn and canonical-item identities; its terminal Syndic
+  witness links the distinct predecessor and successor identities.
+- Shared values may identify a Syndic thread, its execution binding, generated title, automatic
+  branch-discussion archive state, exact usage observation, activity timestamp, parent-thread
+  lineage summary, current Beryl window claim, and catalog availability without making this crate
+  the persisted owner.
+- CAS thread names and CAS catalog rows never become thread-title or Beryl catalog authority.
+- Syndic thread-summary values represent the resolved generated, history-derived, or absent title
+  source explicitly. Beryl catalog values copy that resolved source and never own title precedence.
 
 ## Revision And Command Values
 
@@ -58,9 +68,22 @@ Provide shared pure-data identities and values used across Beryl packages withou
 - Dynamic tool-call provenance may store exact app-server thread id, turn id, tool name, and tool-call id as opaque external identities.
 - Provenance values must not contain authentication material, capability tokens, hidden developer instructions, or unbounded payload text.
 - Exact CAS item ids, managed-process generations, loaded-thread generations, and distinct discussion-context, selected-path, and recovery-sequence digest domains may cross the backend, Syndic, and orchestration boundaries without owning provider calls or stored proof records.
+- The recovery-sequence digest domain exposes one pure incremental accumulator shared by Syndic
+  preflight and backend replay. It covers declared item and UTF-8 totals plus each exact one-based
+  ordinal, closed user/input-text or assistant/output-text role, declared item length, and streamed
+  bytes while retaining only SHA-256 state and compact counters; it owns no recovery policy,
+  storage cursor, transport source, or durable proof record.
 
 ## Asset Identity
 
 - `AssetId` is a pure, versioned content identity composed of SHA-256 digest bytes and exact nonzero byte length.
+- `ImageLabelOrdinal` is the shared nonzero `u64` value for one final per-thread image label. It
+  provides canonical bijective-letter presentation without owning label allocation, thread
+  frontiers, origin evidence, marker references, or durable encoding.
+- `SealedContentMarkerSummary` binds exact Syndic content identity and full digest to its
+  marker-only digest/count and optional maximum label. `AssetReferenceSetId`,
+  `AssetReferenceSetDigest`, and `SealedAssetReferenceSetProof` are shared pure cross-domain
+  evidence that add one set identity, entry frontier, and asset-chain digest to that summary. These
+  values own no staging lifecycle, owner mutation, storage revision, path, or byte-access authority.
 - Product features treat asset identity as opaque; storage and sidecar boundaries may inspect its version, digest, and length to prove exact byte identity.
 - The type owns no filesystem path, media metadata, reference record, sidecar operation, or garbage-collection policy.

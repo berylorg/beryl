@@ -9,6 +9,7 @@ impl Family for ContentByteSpansFamily {
     type Key = ContentByteSpanKey;
     type Value = ContentByteSpanRecord;
     const NAME: &'static str = "content-byte-spans";
+    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(1);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = 80;
 
@@ -52,6 +53,7 @@ impl Family for ContentTextSpansFamily {
     type Key = ContentTextSpanKey;
     type Value = ContentTextSpanRecord;
     const NAME: &'static str = "content-text-spans";
+    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(1);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = 128;
 
@@ -105,6 +107,7 @@ impl Family for ContentPiecesFamily {
     type Key = ContentPieceKey;
     type Value = ContentPieceRecord;
     const NAME: &'static str = "content-pieces";
+    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(1);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = 128;
 

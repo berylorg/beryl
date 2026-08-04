@@ -8,17 +8,19 @@ use beryl_home_store::{
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
-    BindingRevision, DraftRevision, SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision,
+    BindingRevision, DraftRevision, ProjectionRevision, SyndicDraftId, SyndicItemId,
+    SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 use syndic_storage::test_faults::{FixtureBatch, FixtureRecord};
 use syndic_storage::{
     BindingHeadRecord, BindingRecord, BindingState, ComposerAtom, ComposerPayload,
     ConversationParent, CreateThread, CreateThreadError, DraftByThreadRecord, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, HistorySummaryRecord, PreparedContent, SelectedPathProof,
-    SourceEventPayload, SourceEventRecord, SourceEventSequence, SyndicMutationError,
-    SyndicPointReadLimit, SyndicStorage, ThreadCreationStatus, ThreadRecord, TranscriptGeneration,
-    TurnDepth, TurnEndStatus, TurnKind, TurnLifecycle, TurnRecord, TurnStateRevision,
-    TurnTerminalOutcome, empty_selected_path_digest, root_turn_chain_digest,
+    DraftPayloadUpdateDecision, DraftSubmissionIntent, HistorySummaryRecord, IdleSubmission,
+    PreparedContent, SelectedPathProof, SourceEventPayload, SourceEventRecord, SourceEventSequence,
+    SyndicMutationError, SyndicPointReadLimit, SyndicStorage, ThreadCreationStatus,
+    ThreadLineageProof, ThreadRecord, TranscriptGeneration, TurnDepth, TurnEndStatus, TurnKind,
+    TurnLifecycle, TurnRecord, TurnStateRevision, TurnTerminalOutcome, empty_selected_path_digest,
+    root_turn_chain_digest,
 };
 
 use support::*;
@@ -130,17 +132,17 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
         .unwrap()
         .unwrap();
     assert_eq!(current.thread().committed_tail(), Some(turn));
-    assert_eq!(current.draft().parent(), ConversationParent::Turn(turn));
+    assert_eq!(
+        current.draft().submission_intent(),
+        DraftSubmissionIntent::Ordinary
+    );
     assert_eq!(current.draft().created_at(), timestamp(5));
     let head = storage
         .transcript_view_head(&store, id(4), limit())
         .unwrap()
         .unwrap();
-    assert_eq!(head.record().entry_count(), 0);
-    assert_eq!(
-        head.record().lifecycle(),
-        syndic_storage::ProjectionLifecycle::Stale
-    );
+    assert_eq!(head.entry_count(), 0);
+    assert_eq!(head.lifecycle(), syndic_storage::ProjectionLifecycle::Stale);
     let page = storage
         .transcript_entries(
             &store,
@@ -155,8 +157,8 @@ fn from_tail_creates_zero_entry_stale_projection_and_reopens_exactly() {
         .history_summary(&store, id(4), limit())
         .unwrap()
         .unwrap();
-    assert!(!summary.record().complete());
-    assert_eq!(summary.record().last_activity_at(), timestamp(5));
+    assert!(!summary.complete());
+    assert_eq!(summary.last_activity_at(), timestamp(5));
     assert_eq!(
         storage
             .thread_creation_status(&store, &creation, limit())
@@ -196,24 +198,91 @@ fn shared_tail_creation_conflicts_then_retries_without_copying_history() {
     let conflict = execute(&store, storage, shared_revision, second.clone()).unwrap_err();
     assert!(matches!(conflict, CommandError::Conflict { .. }));
     execute(&store, storage, storage.revision(&store).unwrap(), second).unwrap();
-    assert_eq!(
-        storage
-            .current_draft(&store, id(13), limit())
+    for thread in [id(13), id(15)] {
+        let current = storage
+            .current_draft(&store, thread, limit())
             .unwrap()
-            .unwrap()
-            .draft()
-            .parent(),
-        ConversationParent::Turn(turn)
+            .unwrap();
+        assert_eq!(current.thread().committed_tail(), Some(turn));
+        assert_eq!(
+            current.draft().submission_intent(),
+            DraftSubmissionIntent::Ordinary
+        );
+    }
+    store.validate_registered_domains().unwrap();
+    store.close().unwrap();
+}
+
+#[test]
+fn from_tail_ordinary_submission_parents_to_the_current_tail() {
+    let home = TestHome::new("phase3-from-tail-submission");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let source_thread = id(17);
+    let source_draft = draft_id(18);
+    let source_turn = SyndicTurnId::from_bytes([19; 16]);
+    source_history(&store, storage, source_thread, source_draft, source_turn);
+    let tail = storage
+        .thread_tail(&store, source_thread, limit())
+        .unwrap()
+        .unwrap();
+    let child_thread = id(20);
+    let child_draft = draft_id(21);
+    execute(
+        &store,
+        storage,
+        storage.revision(&store).unwrap(),
+        CreateThread::from_tail(child_thread, child_draft, timestamp(5), tail).unwrap(),
+    )
+    .unwrap();
+
+    let content = PreparedContent::composer(&payload("submitted from shared tail")).unwrap();
+    stage_prepared_content(&store, storage, &content);
+    let current = storage
+        .current_draft(&store, child_thread, limit())
+        .unwrap()
+        .unwrap();
+    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(6)).unwrap() {
+        DraftPayloadUpdateDecision::Update(update) => update,
+        DraftPayloadUpdateDecision::NoChange => unreachable!(),
+    };
+    let mut save = HomeCommand::new(store.home_revision().unwrap());
+    save.add(storage.update_draft_payload(storage.revision(&store).unwrap(), update))
+        .unwrap();
+    store.execute(save).unwrap();
+
+    let current = storage
+        .current_draft(&store, child_thread, limit())
+        .unwrap()
+        .unwrap();
+    let gate = storage
+        .input_gate(&store, child_thread, limit())
+        .unwrap()
+        .unwrap();
+    let submission = IdleSubmission::new(
+        child_thread,
+        current.thread().revision(),
+        current.draft().id(),
+        current.draft().revision(),
+        current.draft().content(),
+        gate.revision(),
+        draft_id(22),
+        SyndicItemId::from_bytes([23; 16]),
+        None,
+        timestamp(7),
     );
-    assert_eq!(
-        storage
-            .current_draft(&store, id(15), limit())
-            .unwrap()
-            .unwrap()
-            .draft()
-            .parent(),
-        ConversationParent::Turn(turn)
-    );
+    let submitted_turn = submission.submitted_turn_id();
+    let mut submit = HomeCommand::new(store.home_revision().unwrap());
+    submit
+        .add(storage.submit_idle_draft(storage.revision(&store).unwrap(), submission))
+        .unwrap();
+    store.execute(submit).unwrap();
+
+    let submitted = storage
+        .turn(&store, submitted_turn, limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(submitted.parent(), ConversationParent::Turn(source_turn));
     store.validate_registered_domains().unwrap();
     store.close().unwrap();
 }
@@ -256,13 +325,18 @@ fn source_activity_change_invalidates_a_captured_creation_proof() {
 }
 
 #[test]
-fn draft_update_rejects_a_changed_thread_revision() {
+fn draft_update_survives_a_same_draft_thread_revision_advance() {
     let home = TestHome::new("phase3-thread-revision");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread_id = id(30);
     let draft_id = draft_id(31);
-    let creation = CreateThread::ordinary(thread_id, draft_id, timestamp(1));
+    let creation = CreateThread::ordinary(
+        thread_id,
+        draft_id,
+        exact_cas::execution_binding(),
+        timestamp(1),
+    );
     execute(&store, storage, storage.revision(&store).unwrap(), creation).unwrap();
     let current = storage
         .current_draft(&store, thread_id, limit())
@@ -270,20 +344,26 @@ fn draft_update_rejects_a_changed_thread_revision() {
         .unwrap();
     let content = PreparedContent::composer(&payload("stale")).unwrap();
     stage_prepared_content(&store, storage, &content);
-    let stale = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
+    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
         DraftPayloadUpdateDecision::Update(update) => update,
         DraftPayloadUpdateDecision::NoChange => unreachable!(),
     };
     advance_empty_thread_revision(&store, storage, thread_id, draft_id);
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
-        .add(storage.update_draft_payload(storage.revision(&store).unwrap(), stale))
+        .add(storage.update_draft_payload(storage.revision(&store).unwrap(), update.clone()))
         .unwrap();
-    let error = store.execute(command).unwrap_err();
-    assert!(matches!(
-        typed_error(&error),
-        SyndicMutationError::ThreadRevisionConflict { .. }
-    ));
+    store.execute(command).unwrap();
+
+    let committed = storage
+        .current_draft(&store, thread_id, limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        committed.thread().revision(),
+        ThreadRevision::new(2).unwrap()
+    );
+    assert!(update.matches_committed(&committed));
     store.validate_registered_domains().unwrap();
     store.close().unwrap();
 }
@@ -303,12 +383,16 @@ fn advance_empty_thread_revision(
     fixture
         .put(FixtureRecord::Thread(ThreadRecord::new(
             thread_id,
-            thread_revision,
-            None,
+            selected,
             draft_id,
+            ThreadLineageProof::new(
+                None,
+                None,
+                syndic_storage::ThreadLineageDepth::FIRST,
+                syndic_storage::root_thread_lineage_digest(thread_id),
+            ),
+            syndic_storage::ThreadImageLabelFrontiers::empty(),
             None,
-            None,
-            digest,
         )))
         .unwrap();
     fixture
@@ -322,6 +406,7 @@ fn advance_empty_thread_revision(
     fixture
         .put(FixtureRecord::HistorySummary(HistorySummaryRecord::new(
             thread_id,
+            ProjectionRevision::new(2).unwrap(),
             thread_revision,
             None,
             digest,
@@ -359,7 +444,12 @@ fn surfaced_post_persist_failure_reconciles_the_whole_new_draft() {
     .unwrap();
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread_id = id(40);
-    let creation = CreateThread::ordinary(thread_id, draft_id(41), timestamp(1));
+    let creation = CreateThread::ordinary(
+        thread_id,
+        draft_id(41),
+        exact_cas::execution_binding(),
+        timestamp(1),
+    );
     execute(&store, storage, storage.revision(&store).unwrap(), creation).unwrap();
     let current = storage
         .current_draft(&store, thread_id, limit())

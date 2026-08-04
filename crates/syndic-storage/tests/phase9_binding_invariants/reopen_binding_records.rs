@@ -20,6 +20,8 @@ fn pending_root_seed() -> FixtureBatch {
                 InputGateRevision::new(1).unwrap(),
                 InputGateState::PendingTurn(turn),
                 0,
+                None,
+                None,
                 0,
                 0,
                 0,
@@ -28,6 +30,7 @@ fn pending_root_seed() -> FixtureBatch {
         ),
         FixtureRecord::HistorySummary(HistorySummaryRecord::new(
             thread,
+            beryl_model::ProjectionRevision::new(2).unwrap(),
             revision,
             Some(turn),
             digest,

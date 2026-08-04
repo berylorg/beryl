@@ -20,7 +20,13 @@ impl IdleSubmissionMutation {
         if !matches!(base.gate.state(), InputGateState::Idle) || base.gate.live_count() != 0 {
             return Err(SyndicMutationError::InputGateStateConflict);
         }
-        submission.markers.validate_content(base.draft.content())?;
+        let (image_label_frontiers, origin_span) = advance_image_label_authority(
+            reader,
+            &base.thread,
+            crate::ImageLabelOriginOwner::CanonicalItem(submission.user_item_id),
+            base.draft.content(),
+            submission.asset_reference_set,
+        )?;
         let turn_id = submission.submitted_turn_id();
         if point::<TurnsFamily>(reader, &turn_id)?.is_some()
             || point::<AcceptedInputsFamily>(reader, &submission.draft_id.accepted_input_id())?
@@ -30,33 +36,39 @@ impl IdleSubmissionMutation {
             return Err(SyndicMutationError::AdmissionIdentityCollision);
         }
 
-        let parent = match base.draft.replacement_edit_intent() {
-            Some(intent) => validate_replacement_intent(reader, &base.thread, intent)?
-                .0
-                .parent(),
-            None => base.draft.parent(),
+        let (context_move, moved_context_owner, context_parent) =
+            context_move(reader, &base.draft, turn_id)?;
+        let parent = match base.draft.submission_intent() {
+            DraftSubmissionIntent::Ordinary => {
+                ConversationParent::from_turn(base.thread.committed_tail())
+            }
+            DraftSubmissionIntent::DiscussionContext(_) => {
+                context_parent.ok_or(SyndicMutationError::CurrentDraftConflict)?
+            }
+            DraftSubmissionIntent::Replacement(intent) => {
+                validate_replacement_intent(reader, &base.thread, intent)?
+                    .0
+                    .parent()
+            }
         };
         let (depth, digest, ancestor_skip) = turn_shape(reader, turn_id, parent)?;
-        let (context_move, moved_context_owner) = context_move(reader, &base.draft, turn_id)?;
         let context_owner = moved_context_owner.or(base.thread.context_owner_id());
         let thread_revision = base.thread.revision().checked_next()?;
+        let selected = SelectedPathProof::new(Some(turn_id), thread_revision, digest);
         let thread = ThreadRecord::new(
             base.thread.id(),
-            thread_revision,
-            Some(turn_id),
+            selected,
             submission.next_draft_id,
-            base.thread.parent_thread_id(),
+            base.thread.lineage(),
+            image_label_frontiers,
             context_owner,
-            digest,
         );
         let draft_revision = DraftRevision::new(1)?;
         let draft = DraftRecord::new(
             submission.next_draft_id,
             thread.id(),
             draft_revision,
-            ConversationParent::Turn(turn_id),
-            None,
-            None,
+            DraftSubmissionIntent::Ordinary,
             base.empty_content,
             submission.admitted_at,
             submission.admitted_at,
@@ -89,18 +101,13 @@ impl IdleSubmissionMutation {
             .turn()
             .map(|parent_id| TurnChildIndexRecord::new(parent_id, turn_id, depth, digest));
         let item_revision = ProjectionRevision::new(1)?;
-        let marker_count = u64::try_from(submission.markers.markers().len()).map_err(|_| {
-            SyndicRecordError::LengthOverflow {
-                kind: "admission marker resolutions",
-            }
-        })?;
         let item = CanonicalItemRecord::local_user_input(
             submission.user_item_id,
             turn_id,
             TurnItemOrdinal::FIRST,
             item_revision,
             base.draft.content(),
-            marker_count,
+            submission.asset_reference_set,
         );
         let item_index = TurnItemIndexRecord::new(
             turn_id,
@@ -108,11 +115,6 @@ impl IdleSubmissionMutation {
             submission.user_item_id,
             item_revision,
         );
-        let marker_records = marker_records(
-            InputMarkerOwner::CanonicalItem(submission.user_item_id),
-            &submission.markers,
-        )?;
-
         let current_head = required::<TranscriptHeadsFamily>(reader, &thread.id())?;
         let transcript_build =
             crate::mutation::transcript::supersede_active_transcript_build(reader, &base.thread)?;
@@ -127,6 +129,7 @@ impl IdleSubmissionMutation {
         );
         let summary = HistorySummaryRecord::new(
             thread.id(),
+            base.summary.revision().checked_next()?,
             thread_revision,
             Some(turn_id),
             digest,
@@ -138,10 +141,47 @@ impl IdleSubmissionMutation {
             base.gate.revision().checked_next()?,
             InputGateState::PendingTurn(turn_id),
             base.gate.accepted_high_water(),
+            base.gate.route_generation_high_water(),
+            None,
             base.gate.live_steering_count(),
             base.gate.live_next_turn_count(),
             base.gate.live_logical_utf8_bytes(),
         )?;
+        let current_activity = required::<ActivityQueryHeadsFamily>(reader, &thread.id())?;
+        if current_activity.source_active()
+            || current_activity.logical_row_count() != current_activity.completed_row_count()
+        {
+            return Err(SyndicMutationError::ActivityQueryConflict);
+        }
+        let work_period = if current_activity.source().is_none() {
+            current_activity.work_period()
+        } else {
+            current_activity.work_period().checked_next()?
+        };
+        let activity_head = crate::ActivityQueryHeadRecord::new(
+            thread.id(),
+            work_period,
+            Some(crate::ActivityQuerySource::new(thread.id(), turn_id)),
+            true,
+            0,
+            current_activity.revision().checked_next()?,
+            1,
+            0,
+            0,
+            0,
+            0,
+            None,
+            ProjectionLifecycle::Current,
+        )?;
+        let activity_source = crate::ActivityQuerySourceRecord::new(
+            thread.id(),
+            work_period,
+            crate::ActivityQuerySource::new(thread.id(), turn_id),
+            None,
+            0,
+            true,
+            None,
+        );
 
         let binding_head = required::<BindingHeadsFamily>(reader, &thread.id())?;
         let binding_revision = binding_head.revision().checked_next()?;
@@ -156,7 +196,6 @@ impl IdleSubmissionMutation {
         {
             return Err(SyndicMutationError::AdmissionIdentityCollision);
         }
-        let selected = SelectedPathProof::new(Some(turn_id), thread_revision, digest);
         let binding = BindingRecord::new(
             thread.id(),
             binding_revision,
@@ -181,11 +220,13 @@ impl IdleSubmissionMutation {
             child_index,
             item,
             item_index,
-            marker_records,
+            origin_span,
             transcript_head,
             transcript_build,
             summary,
             gate,
+            activity_head,
+            activity_source,
             binding,
             binding_head,
             context_move,
@@ -222,13 +263,13 @@ impl IdleSubmissionRecords {
             },
             &self.item_index,
         )?;
-        for marker in &self.marker_records {
-            mutations.put::<InputMarkerResolutionsCodec>(
-                &InputMarkerKey {
-                    owner: marker.owner(),
-                    ordinal: marker.ordinal(),
+        if let Some(span) = &self.origin_span {
+            mutations.put::<ImageLabelOriginSpansCodec>(
+                &ImageLabelOriginSpanKey {
+                    thread: span.thread_id(),
+                    end_label: span.end_label(),
                 },
-                marker,
+                span,
             )?;
         }
         mutations.put::<TranscriptHeadsCodec>(&self.thread.id(), &self.transcript_head)?;
@@ -243,6 +284,17 @@ impl IdleSubmissionRecords {
         }
         mutations.put::<HistorySummariesCodec>(&self.thread.id(), &self.summary)?;
         mutations.put::<InputGatesCodec>(&self.thread.id(), &self.gate)?;
+        mutations
+            .put::<ActivityQueryHeadsCodec>(&self.activity_head.thread_id(), &self.activity_head)?;
+        mutations.put::<ActivityQuerySourcesCodec>(
+            &ActivityQuerySourceKey {
+                thread: self.activity_source.thread_id(),
+                work_period: self.activity_source.work_period(),
+                source_thread: self.activity_source.source().thread_id(),
+                source_turn: self.activity_source.source().turn_id(),
+            },
+            &self.activity_source,
+        )?;
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: self.thread.id(),

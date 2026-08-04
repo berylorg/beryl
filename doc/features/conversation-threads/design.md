@@ -35,7 +35,11 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 - Once at least one runtime exists, every visible main conversation window has one selected Syndic thread.
 - A fresh Beryl home with zero configured runtimes is the sole state in which the initial main conversation window may be threadless.
 - Two windows never share a default new thread. Each window claims or creates its own eligible thread.
-- Closing a main conversation window with an active turn interrupts that turn before releasing the window's thread claim.
+- Closing a main conversation window with an active turn admits or joins that exact durable stop,
+  waits for terminal-history or authority-loss convergence, and only then releases the window's
+  thread claim. Only a locally proven pre-byte nondispatch while the target remains exact leaves the
+  window open. A provider rejection without a current-target verdict converges through authority
+  loss, and possible dispatch does not issue another interruption.
 - Activating an existing thread adopts that thread's bound runtime and root. Activation never silently changes the thread's binding.
 
 ## New Thread Split Button
@@ -87,26 +91,31 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 ## Thread Catalog
 
-- The Thread Switcher reads from one Beryl-home-wide catalog of Syndic threads joined with Beryl-owned presentation metadata.
+- The Thread Switcher reads from one Beryl-home-wide rebuildable catalog projection of
+  Syndic-owned thread summaries joined with Beryl-owned runtime availability and window claims.
 - The catalog contains all thread metadata required for row labels, runtime and root scope, recency ordering, availability, current-window state, search, and filtering.
 - Thread turns, transcript items, and rendered transcript bodies are not catalog rows or catalog-loading prerequisites.
 - The catalog is exhaustive. `Recent-first` is its ordering policy, not a truncated recent-items mode.
 - Threads whose conversation history contains only an empty current draft remain visible in the catalog.
-- Catalog row labels use Beryl-owned title metadata and Syndic-derived title facts rather than CAS thread names.
+- Catalog row labels use the one resolved Syndic title fact rather than CAS thread names or a
+  Beryl-owned title candidate.
 - Equal-recency ordering remains deterministic and stable while a flyout is open.
 - Opening a flyout never starts CAS enumeration or transcript-history loading.
-- A catalog snapshot presented by an open flyout remains stable for that flyout interaction. Background refresh may update the next opened projection but does not reorder rows under the pointer or keyboard focus.
+- A revision-bound catalog query presented by an open flyout remains stable for that flyout interaction. Background refresh may update the next opened query but does not reorder already presented rows under the pointer or keyboard focus.
 
 ## Catalog Readiness And Bounded Presentation
 
-- The Thread Switcher stays dim and inert until one complete compact metadata snapshot is ready.
+- The Thread Switcher stays dim and inert until the first coherent page of its revision-bound default query is ready. It never waits for the complete catalog to become resident.
 - It becomes interactive without waiting for the selected transcript or CAS readiness.
-- Thread, root, and runtime collections use fixed-height virtualized rows whenever their complete collection can exceed its bounded viewport. Total catalog or runtime-registry size does not determine live render-tree size.
+- Thread, root, and runtime collections use revision-bound query identities, bounded resident pages,
+  and fixed-height virtualized rows whenever their logical collection can exceed its viewport. Total
+  catalog or runtime-registry size determines neither live render-tree size nor GUI snapshot
+  residency.
 - Virtualization preserves stable row identity, selected and focused state, keyboard traversal, selected-row reveal, scroll position, exact row activation, and intentional tooltip dismissal when an anchor row leaves the rendered range.
-- Search and scope changes operate over the complete compact catalog while keeping rendered rows bounded.
+- Search and scope changes start a new revision-bound query over the complete durable catalog while keeping resident and rendered result pages bounded. The flyout shows its established pending treatment until the first coherent result page is ready and loads later pages as navigation demands them.
 - Thread and runtime search matches the exact configured executable path in addition to the existing title, environment-label, and root-path fields.
 - Search does not change recent-first ordering among matching rows.
-- An empty search result is an in-flyout empty state. It does not close the flyout, discard the query, or replace the main conversation shell.
+- A completed empty search result is an in-flyout empty state. It does not close the flyout, discard the query, or replace the main conversation shell.
 
 ## Thread Switcher
 
@@ -142,12 +151,49 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 ## Thread Titles
 
-- Display-title precedence is generated Beryl title, Syndic history-derived title summary, then an untitled fallback.
+- A title is an intrinsic Syndic thread property. Display-title precedence is the accepted generated
+  title, the Syndic history-derived title, then the localized untitled fallback. Beryl projections
+  copy only the resolved title and source revision; they do not recompute precedence or own either
+  candidate.
 - CAS thread names and metadata are never display-title authority.
 - An ordinary thread becomes eligible for automatic title generation after its first real user-authored input is durably captured in Syndic and it has no accepted generated title.
 - Automatic title generation runs as bounded background maintenance through a fresh ephemeral CAS thread with fixed Beryl instructions and medium reasoning. It does not use the selected thread's foreground stream, inject global developer instructions, or expose its maintenance thread in the catalog or transcript.
-- Successful output is validated, committed as generated Beryl metadata, and published through the next catalog revision. Failure leaves the current lower-precedence title source intact and may retry only through bounded maintenance scheduling.
+- Successful output is validated, committed once to the Syndic thread-attributes record with its
+  exact eligibility witness, and published through a later coherent catalog revision. Failure
+  leaves the current lower-precedence title source intact and may retry only through bounded
+  maintenance scheduling.
+- An accepted generated title is one nonempty logical line, contains at least one alphanumeric
+  character, has no Unicode control character or surrounding whitespace, and is at most 512 UTF-8
+  bytes. Validation rejects rather than truncates model output.
 - Background title cleanup and failure never gate foreground submission, selected-thread activation, or transcript reading.
+
+## History-Derived Title
+
+- The source is the earliest real user-authored input on the thread's current selected path. For a
+  branch-discussion thread, inherited parent history and the synthetic discussion-context item are
+  excluded; the source is the earliest branch-local real user input. A draft, assistant output,
+  provider-operation turn, lifecycle continuation, image marker, or CAS metadata is never a source.
+- Syndic streams logical UTF-8 from that input through its bounded canonical content reader. It
+  examines at most the first 4,096 logical UTF-8 bytes, considers logical lines in order, collapses
+  each Unicode-whitespace run to one ASCII space, discards other Unicode control characters, and
+  selects the first nonempty normalized line containing an alphanumeric character.
+- The derived title preserves the selected line's spelling and case and ends at the earlier of 80
+  Unicode scalar values or 512 UTF-8 bytes on a valid boundary, with trailing whitespace removed.
+  It adds no ellipsis or other invented text. If no eligible line exists inside the scan bound,
+  the history-derived candidate is absent.
+- Replacement editing or another selected-path change invalidates and rebuilds the derived
+  candidate when its exact source witness changes. A generated title, once accepted, remains the
+  higher-precedence title and is not replaced by rebuilding the fallback.
+
+## Catalog Search Text
+
+- Search is locale-independent and uses the Unicode `NFKC_Casefold` mapping defined by Unicode
+  Default Caseless Matching for both indexed fields and query input. It matches title, runtime
+  environment label, configured executable path, and full root path without changing their visible
+  authoritative spelling.
+- A nonempty normalized query matches a contiguous normalized substring of any searchable field.
+  An empty normalized query preserves the current scope and recent-first ordering. Visible text is
+  always the original authoritative text, never the normalized search key.
 
 ## Current Management Boundary
 
@@ -174,7 +220,9 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 ## Thread Navigation History
 
 - Backward and forward toolbar commands navigate exact threads previously activated in that main conversation window.
-- Each main window owns its own in-memory backward and forward history.
+- Each admitted main window owns fixed-capacity backward and forward rings of compact Syndic thread
+  identities. Overflow evicts the oldest eligible identity, and closing the window releases both
+  rings; navigation never retains titles, transcripts, drafts, or runtime/root records.
 - Successful user-initiated activation from the Thread Switcher, lineage breadcrumbs, transcript thread links, and backward or forward navigation updates history.
 - Failed, cancelled, already-selected, restore-time, background-only, or pristine-thread acquisition does not add a navigation-history entry.
 - Activating a new thread after navigating backward clears the forward history.
@@ -185,6 +233,8 @@ Keep thread selection responsive across a large Beryl home while preserving exac
 
 - A selected thread with parent-thread lineage shows a lineage strip directly below the toolbar.
 - The strip orders parent-thread breadcrumbs from the top-level ancestor toward the current thread.
+- The complete lineage remains a logical revision-bound Syndic query. The GUI keeps only bounded
+  resident ancestor pages and obtains nonresident pages as navigation or scrolling reaches them.
 - Activating an available parent breadcrumb requests activation of that exact thread through the ordinary activation path.
 - A missing, unavailable, or open-elsewhere parent remains represented but does not silently redirect to another thread.
 - A top-level thread has no lineage strip and does not reserve empty space for one.

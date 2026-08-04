@@ -180,6 +180,7 @@ impl DurableJobState {
             limits,
         )?;
         let stored_bytes = page.stored_bytes();
+        let decoded_bytes = page.decoded_bytes();
         let has_more = page.has_more();
         Ok(StatePage {
             records: page
@@ -188,6 +189,7 @@ impl DurableJobState {
                 .map(|entry| entry.into_parts().1)
                 .collect(),
             stored_bytes,
+            decoded_bytes,
             has_more,
         })
     }

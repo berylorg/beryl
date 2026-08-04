@@ -128,7 +128,7 @@ impl RecordTerminalHandoffFailure {
     }
 }
 
-/// Mark an exact active parent CAS turn successful for atomic archive composition.
+/// Mark an exact active parent CAS turn successful for composition with Syndic archive authority.
 pub struct SucceedBranchHandoff {
     job_id: JobId,
     expected_job_revision: JobRevision,

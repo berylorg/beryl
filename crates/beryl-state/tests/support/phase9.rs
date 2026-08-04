@@ -11,16 +11,15 @@ use beryl_home_store::{
 };
 use beryl_model::{
     AdmittedHostPath, Availability, CasThreadId, CasTurnId, ClaimRevision, DynamicToolCallId,
-    PathFlavor, ResolutionIntentId, RootId, RuntimeId, SyndicDraftId, SyndicThreadId, SyndicTurnId,
-    ThreadRevision, WindowBounds, WindowDisplayState, WindowId, WindowPlacement,
+    PathFlavor, ProjectionRevision, ResolutionIntentId, RootId, RuntimeId, SyndicDraftId,
+    SyndicThreadId, SyndicTurnId, WindowBounds, WindowDisplayState, WindowId, WindowPlacement,
 };
 use beryl_state::{
-    AssetReferenceOwner, BranchHandoffJobAdmission, CatalogArchiveSummary,
-    CatalogAvailabilitySummary, CatalogClaimSummary, CatalogExecutionSummary, CatalogFacts,
-    CatalogLineageSummary, CatalogSearchFields, CatalogSourceRevisions, CatalogTitleCandidate,
-    CatalogTitleFacts, DiscussionContextDigest, DiscussionContextOwnerId, RecordRevision,
-    RememberedTarget, ResolutionAttemptOrdinal, ResolutionRequestIdentity, ResolutionText,
-    UnixMillis,
+    AssetOwner, BranchHandoffJobAdmission, CatalogArchiveSummary, CatalogAvailabilitySummary,
+    CatalogClaimSummary, CatalogExecutionSummary, CatalogFacts, CatalogLineageSummary,
+    CatalogResolvedTitle, CatalogSourceRevisions, DiscussionContextDigest,
+    DiscussionContextOwnerId, RecordRevision, RememberedTarget, ResolutionAttemptOrdinal,
+    ResolutionRequestIdentity, ResolutionText, UnixMillis,
 };
 
 pub fn open_with_faults(
@@ -115,8 +114,7 @@ pub fn admission(seed: u8) -> BranchHandoffJobAdmission {
 
 pub fn catalog_sources(revision: u64) -> CatalogSourceRevisions {
     CatalogSourceRevisions::new(
-        ThreadRevision::new(revision).unwrap(),
-        RecordRevision::new(revision).unwrap(),
+        ProjectionRevision::new(revision).unwrap(),
         RecordRevision::new(revision).unwrap(),
         RecordRevision::new(revision).unwrap(),
         None::<ClaimRevision>,
@@ -125,10 +123,7 @@ pub fn catalog_sources(revision: u64) -> CatalogSourceRevisions {
 
 pub fn catalog_facts(seed: u8, revision: u64, activity: u64) -> CatalogFacts {
     let title = format!("Thread {seed} revision {revision}");
-    let titles = CatalogTitleFacts::new(
-        None,
-        Some(CatalogTitleCandidate::new(&title, ThreadRevision::new(revision).unwrap()).unwrap()),
-    );
+    let resolved_title = CatalogResolvedTitle::history_derived(&title).unwrap();
     let execution = CatalogExecutionSummary::new(
         RuntimeId::from_bytes([1; 16]),
         RootId::from_bytes([2; 16]),
@@ -139,31 +134,23 @@ pub fn catalog_facts(seed: u8, revision: u64, activity: u64) -> CatalogFacts {
     )
     .unwrap();
     CatalogFacts::new(
-        titles,
+        resolved_title,
         execution,
         CatalogArchiveSummary::Ordinary,
         UnixMillis::new(activity),
+        true,
         CatalogClaimSummary::Unclaimed,
         CatalogLineageSummary::TopLevel,
-        CatalogSearchFields::from_admitted_normalized(
-            title.to_lowercase(),
-            "host",
-            r"c:\codex\codex.exe",
-            r"c:\work\beryl",
-        )
-        .unwrap(),
     )
+    .unwrap()
 }
 
 pub fn sidecar_limit() -> SidecarByteLimit {
     SidecarByteLimit::new(NonZeroU64::new(1024 * 1024).unwrap())
 }
 
-pub fn asset_owner(seed: u8) -> AssetReferenceOwner {
-    AssetReferenceOwner::AcceptedInputMarker {
-        input_id: beryl_model::SyndicAcceptedInputId::from_bytes([seed; 16]),
-        marker_id: beryl_model::SyndicDraftMarkerId::from_bytes([seed.wrapping_add(128); 16]),
-    }
+pub fn asset_owner(seed: u8) -> AssetOwner {
+    AssetOwner::AcceptedInput(beryl_model::SyndicAcceptedInputId::from_bytes([seed; 16]))
 }
 
 pub fn thread(seed: u8) -> SyndicThreadId {

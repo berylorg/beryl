@@ -28,4 +28,7 @@ Set `model` and `reasoning_effort` explicitly for every routed subagent.
 
 Use `fork_turns="none"` by default so the task packet is the complete context. Use a bounded positive `fork_turns` value only when recent conversational context is genuinely required.
 
-Use a positive integer string such as `"3"` for that bounded value. Do not use a full-history fork with a model or reasoning override.
+Use a positive integer string such as `"3"` for that bounded value. `fork_turns` selects child
+context, not the desired child model or reasoning profile. A full-history child may use an explicit
+profile when the active spawn tool accepts that argument combination; a narrower live tool contract
+is a surface constraint, not a project architecture rule.

@@ -1,3 +1,9 @@
+# Status
+
+Completed historical rework. It is not a second active implementation authority. Current CAS,
+Syndic, bounded provider-ingress, shell, and renderer integration work is owned by
+`doc/rework/beryl-home/REWORK.md` and root `doc/plan.md`.
+
 # Target Docs
 
 - `doc/design.md`
@@ -9,7 +15,6 @@
 - `doc/features/conversation-threads/design.md`
 - `doc/features/composer/design.md`
 - `doc/features/backend-runtime-recovery/design.md`
-- `doc/features/threaded-decisions/design.md`
 - `crates/syndic-storage/doc/design.md`
 - `crates/beryl-backend/doc/design.md`
 - `crates/beryl-app/doc/design.md`

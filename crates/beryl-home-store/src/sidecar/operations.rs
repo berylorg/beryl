@@ -46,7 +46,9 @@ impl HomeStore {
         );
         match result {
             Ok(sidecar) => {
-                admission.confirm()?;
+                admission.confirm_database(&generation_state.database, |source| {
+                    storage(SidecarStage::ConfirmHealth, source)
+                })?;
                 Ok(sidecar)
             }
             Err(error) => {
@@ -71,15 +73,20 @@ impl HomeStore {
                 return Err(SidecarError::GenerationPoisoned);
             }
         };
-        if generation.is_none() {
-            admission.fail(FailureSeverity::Structural);
-            return Err(SidecarError::GenerationPoisoned);
-        }
+        let database = match generation.as_ref() {
+            Some(generation) => generation.database.clone(),
+            None => {
+                admission.fail(FailureSeverity::Structural);
+                return Err(SidecarError::GenerationPoisoned);
+            }
+        };
         drop(generation);
         let result = self.verify_sidecar_inner(address, admission.generation());
         match result {
             Ok(sidecar) => {
-                admission.confirm()?;
+                admission.confirm_database(&database, |source| {
+                    storage(SidecarStage::ConfirmHealth, source)
+                })?;
                 Ok(sidecar)
             }
             Err(error) => {

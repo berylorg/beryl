@@ -1,4 +1,4 @@
-use beryl_model::{ContentRevision, SyndicContentDigest, SyndicContentId};
+use beryl_model::{ContentRevision, ImageLabelOrdinal, SyndicContentDigest, SyndicContentId};
 
 use super::super::Decoder;
 use crate::{ContentEncoding, ContentReference, ContentSummary, provider_item::*};
@@ -77,18 +77,31 @@ impl Decoder<'_> {
                 });
             }
         };
+        let chunk_count = self.u64()?;
+        let piece_count = self.u64()?;
+        let encoded_bytes = self.u64()?;
+        let logical_utf8_bytes = self.u64()?;
+        let atom_count = self.u64()?;
+        let marker_count = self.u64()?;
+        let marker_digest = self.take(32)?.try_into().expect("exact marker digest");
+        let maximum_image_label = self.option("maximum image label", |decoder| {
+            ImageLabelOrdinal::new(decoder.u64()?)
+                .map_err(|_| ProviderFrameDecodeError::InvalidContentReference)
+        })?;
         let summary = ContentSummary::new(
-            self.u64()?,
-            self.u64()?,
-            self.u64()?,
-            self.u64()?,
-            self.u64()?,
-            self.u64()?,
-            self.take(32)?.try_into().expect("exact marker digest"),
+            chunk_count,
+            piece_count,
+            encoded_bytes,
+            logical_utf8_bytes,
+            atom_count,
+            marker_count,
+            marker_digest,
+            maximum_image_label,
             SyndicContentDigest::from_bytes(
                 self.take(32)?.try_into().expect("exact content digest"),
             ),
-        );
+        )
+        .map_err(|_| ProviderFrameDecodeError::InvalidContentReference)?;
         Ok(ContentReference::new(id, revision, encoding, summary))
     }
 }

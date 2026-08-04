@@ -11,7 +11,7 @@ const NATIVE_SOURCE_ATTEMPT_LIMIT: u8 = 3;
 const NATIVE_SOURCE_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_millis(50), Duration::from_millis(150)];
 
-pub(super) enum NativeCallFailure {
+pub(in crate::cas_projection) enum NativeCallFailure {
     Terminal(ProjectionExecutionError),
     RetryExhausted {
         failed_attempts: u8,
@@ -19,7 +19,7 @@ pub(super) enum NativeCallFailure {
     },
 }
 
-pub(super) fn call_native_with_retry<T, F>(
+pub(in crate::cas_projection) fn call_native_with_retry<T, F>(
     session: &AdmittedProjectionSession,
     cancellation: &ProjectionCancellationToken,
     operation: F,

@@ -1,9 +1,8 @@
 use beryl_model::{
-    AssetId, ProjectionRevision, SyndicContentId, SyndicItemId, SyndicProjectionId,
-    SyndicResourceId,
+    AssetId, ProjectionRevision, SyndicItemId, SyndicProjectionId, SyndicResourceId,
 };
 
-use crate::{ResourceOrdinal, SyndicRecordError};
+use crate::{ProjectionTextSource, ResourceOrdinal, SyndicRecordError};
 
 use super::super::{MAX_MEDIA_TYPE_BYTES, validate_text};
 use super::ProjectionSourceRange;
@@ -22,8 +21,8 @@ pub enum ResourceKind {
 /// V1 textual resource backing without duplicated heavy bytes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResourceBacking {
-    CanonicalTextRange {
-        content_id: SyndicContentId,
+    TextRange {
+        source: ProjectionTextSource,
         range: ProjectionSourceRange,
     },
     GeneratedMedia(GeneratedMediaResourceDisposition),
@@ -49,9 +48,9 @@ pub enum GeneratedMediaUnavailableReason {
 
 impl ResourceBacking {
     #[must_use]
-    pub const fn content_id(self) -> Option<SyndicContentId> {
+    pub const fn text_source(self) -> Option<ProjectionTextSource> {
         match self {
-            Self::CanonicalTextRange { content_id, .. } => Some(content_id),
+            Self::TextRange { source, .. } => Some(source),
             Self::GeneratedMedia(_) => None,
         }
     }
@@ -59,7 +58,7 @@ impl ResourceBacking {
     #[must_use]
     pub const fn range(self) -> Option<ProjectionSourceRange> {
         match self {
-            Self::CanonicalTextRange { range, .. } => Some(range),
+            Self::TextRange { range, .. } => Some(range),
             Self::GeneratedMedia(_) => None,
         }
     }

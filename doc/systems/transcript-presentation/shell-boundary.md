@@ -73,7 +73,9 @@ Diagnostics may expose Syndic provenance and transcript-view positions. They mus
 - Synthetic context remains presentation-only, occupies its immutable branch-boundary position, does not increment turn counts, and cannot become a quote, branch, edit, or ordinary turn-menu target.
 - Activation publishes content and initial viewport state atomically when a coherent seed is available.
 - A previous coherent transcript may remain visible until the new coherent seed is ready.
-- Every normalized transcript-visible text delta becomes eligible for the next GUI frame without synthetic character pacing. Deltas already pending at one frame boundary may publish together.
+- Every arrived bounded fragment of a normalized transcript-visible text delta becomes eligible for
+  the next GUI frame without synthetic character pacing. Fragments already pending at one frame
+  boundary may publish together without losing parent-delta identity or order.
 - A transient live suffix remains bounded and non-authoritative. Exact Syndic prefix agreement transfers that range to durable presentation without duplication, blanking, or identity substitution; mismatch fails closed.
 - Manual scrolling remains exact pixel displacement and never snaps to turns, rows, chunks, or transcript boundaries.
 - Resident Syndic data may be released only when current anchor, visible content, active selection contract, and UI pins stay valid.

@@ -57,7 +57,12 @@ fn creation_faults_reconcile_to_whole_old_or_whole_new_state() {
         let faults = FaultController::new();
         let mut store = open_with_faults(home.path(), faults.clone());
         let storage = SyndicStorage::register(&mut store).unwrap();
-        let creation = CreateThread::ordinary(id(1), draft_id(2), timestamp(1));
+        let creation = CreateThread::ordinary(
+            id(1),
+            draft_id(2),
+            support::exact_cas::execution_binding(),
+            timestamp(1),
+        );
         let command = create_command(&store, storage, creation.clone());
 
         faults.fail_next(point);
@@ -82,7 +87,12 @@ fn current_draft_read_rejects_a_revision_published_between_its_index_reads() {
     let mut store = open_with_faults(home.path(), faults.clone());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let thread_id = id(10);
-    let creation = CreateThread::ordinary(thread_id, draft_id(11), timestamp(1));
+    let creation = CreateThread::ordinary(
+        thread_id,
+        draft_id(11),
+        support::exact_cas::execution_binding(),
+        timestamp(1),
+    );
     store
         .execute(create_command(&store, storage, creation))
         .unwrap();

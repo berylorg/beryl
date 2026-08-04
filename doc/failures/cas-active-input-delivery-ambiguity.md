@@ -31,8 +31,31 @@ transition. Once the owning process or exact loaded execution session is proven 
 capture closes as incomplete so the thread does not remain indefinitely locked. Fresh projection
 recovery restores readiness but starts no replacement model turn.
 
+For steering, delivery-unknown publication and active-binding abandonment are one atomic
+transition. The same commit retires CAS projection authority, publishes stale provenance, advances
+the input gate, terminalizes every delivering fragment, and reroutes only work proven
+undispatched. A standalone delivery-unknown mutation would leave a crash cut in which an invalid
+projection remained steerable.
+
 ## Resolution
 
 The Operator accepted this correction on 2026-07-15. The CAS-live Syndic system, Syndic history
 system, backend-recovery feature, affected package boundaries, and root plan use the corrected
 contract.
+
+## Test Topology Constraint
+
+Phase 52 initially exercised delayed-steering failure against a router target registered directly
+as already active. That fixture could prove target retirement, but it could not prove production
+loss convergence: router loss authority is retained and reacquired from the original
+`PendingTurnActivation`, including after that target becomes durably active. An active-only
+registration has no such proof and is removed on close, so manually calling broker convergence
+would test a topology that production ordinary execution never creates.
+
+The corrected unit fixture registers the pending activation and advances that same target through
+dispatch authorization and durable source publication. The real-WebSocket regression in
+`crates/beryl-app/tests/phase37_normal_terminal/steering_loss.rs` additionally drives checked
+correlation failure through target close, `LiveEventTarget::poll`, and the ordinary capture loop,
+then proves the atomic stale-binding and `DeliveryUnknown` transition followed by incomplete turn
+convergence. Future loss tests must preserve the production origin proof and must not replace the
+capture-loop transition with a direct broker convergence call as their only evidence.

@@ -1,23 +1,22 @@
 mod support;
 
-use beryl_home_store::{CursorReadLimits, HomeCommand};
+use beryl_home_store::CursorReadLimits;
 use beryl_model::{
     CasThreadId, CasTurnId, DynamicToolCallId, JobId, ResolutionIntentId, SyndicAcceptedInputId,
     SyndicDraftId, SyndicThreadId, SyndicTurnId,
 };
 use beryl_state::{
-    AdmitBranchHandoffJob, ArchiveBranchDiscussion, BranchHandoffCheckpoint,
-    BranchHandoffJobAdmission, BranchHandoffJobLifecycle, BranchHandoffJobState,
-    CompleteResolvingTurn, DiscussionContextDigest, DiscussionContextOwnerId,
-    DurableJobMutationError, HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity,
-    ParentHandoffIdentity, ParentQueueOrdinal, RecordParentCasAcceptance,
-    RecordRetryableHandoffFailure, RecordTerminalHandoffFailure, ResolutionAttemptOrdinal,
-    ResolutionRequestIdentity, ResolutionText, RetryBranchHandoff, StartParentHandoff,
-    SucceedBranchHandoff, ThreadArchiveState, ThreadMetadataKind, UnixMillis,
+    AdmitBranchHandoffJob, BranchHandoffCheckpoint, BranchHandoffJobAdmission,
+    BranchHandoffJobLifecycle, BranchHandoffJobState, CompleteResolvingTurn,
+    DiscussionContextDigest, DiscussionContextOwnerId, DurableJobMutationError,
+    HandoffFailureEvidence, HandoffFailureKind, ParentCasIdentity, ParentHandoffIdentity,
+    ParentQueueOrdinal, RecordParentCasAcceptance, RecordRetryableHandoffFailure,
+    RecordTerminalHandoffFailure, ResolutionAttemptOrdinal, ResolutionRequestIdentity,
+    ResolutionText, RetryBranchHandoff, StartParentHandoff, SucceedBranchHandoff,
 };
 use tempfile::tempdir;
 
-use support::{binding, contributor_source, create_metadata, execute, open};
+use support::{contributor_source, execute, open};
 
 fn admission(
     intent_byte: u8,
@@ -96,6 +95,8 @@ fn admission_is_idempotent_queryable_and_live_after_reopen() {
         .list_live(&store, None, CursorReadLimits::new(8, 1024 * 1024).unwrap())
         .unwrap();
     assert_eq!(live.records(), std::slice::from_ref(&persisted));
+    assert!(live.stored_bytes() > 0);
+    assert!(live.decoded_bytes() > 0);
 
     let mut duplicate = admission(2, 2, 10, "two");
     duplicate = BranchHandoffJobAdmission::new(
@@ -315,18 +316,12 @@ fn retry_resumes_the_same_parent_turn_and_terminal_failure_releases_live_index()
 }
 
 #[test]
-fn success_composes_atomically_with_archive_and_cannot_regress() {
+fn success_retains_relationships_and_cannot_regress() {
     let directory = tempdir().unwrap();
     let (store, state) = open(directory.path());
-    let discussion_id = SyndicThreadId::from_bytes([12; 16]);
-    create_metadata(
-        &store,
-        state,
-        12,
-        binding(1, 2, r"C:\Project"),
-        ThreadMetadataKind::BranchDiscussion,
-    );
     let first = admission(5, 1, 12, "success");
+    let discussion_id = first.discussion_thread_id();
+    let parent_thread_id = first.parent_thread_id();
     let job_id = first.job_id();
     admit(&store, state, first);
     execute(
@@ -368,45 +363,19 @@ fn success_composes_atomically_with_archive_and_cannot_regress() {
     )
     .unwrap();
 
-    let metadata = state
-        .thread_metadata()
-        .metadata(&store, discussion_id)
-        .unwrap()
-        .unwrap();
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command
-        .add(state.durable_jobs().succeed_branch_handoff(
+    execute(
+        &store,
+        state.durable_jobs().succeed_branch_handoff(
             state.durable_jobs().revision(&store).unwrap(),
             SucceedBranchHandoff::new(job_id, job(&store, state, job_id).revision()),
-        ))
-        .unwrap();
-    command
-        .add(state.thread_metadata().archive_branch_discussion(
-            state.thread_metadata().revision(&store).unwrap(),
-            ArchiveBranchDiscussion::new(
-                discussion_id,
-                metadata.revision(),
-                job_id,
-                UnixMillis::new(100),
-            ),
-        ))
-        .unwrap();
-    store.execute(command).unwrap();
+        ),
+    )
+    .unwrap();
 
     let succeeded = job(&store, state, job_id);
     assert_eq!(succeeded.lifecycle(), BranchHandoffJobLifecycle::Succeeded);
-    assert_eq!(
-        state
-            .thread_metadata()
-            .metadata(&store, discussion_id)
-            .unwrap()
-            .unwrap()
-            .archive_state(),
-        ThreadArchiveState::BranchDiscussionArchived {
-            handoff_job_id: job_id,
-            archived_at: UnixMillis::new(100),
-        }
-    );
+    assert_eq!(succeeded.discussion_thread_id(), discussion_id);
+    assert_eq!(succeeded.parent_thread_id(), parent_thread_id);
     assert!(
         state
             .durable_jobs()

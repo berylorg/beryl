@@ -19,16 +19,20 @@ Report user-visible errors, recovery states, and completion attention signals wi
 - Main conversation notices are bounded transient messages shown near the top-right of the main conversation window below the toolbar and any visible thread-lineage strip.
 - Notices report localized errors and recovery information that should not replace the active conversation shell.
 - The notice queue is bounded FIFO and renders at most one active notice at a time.
+- The queue has a fixed count capacity and each notice has a fixed byte ceiling. A notice derived
+  from an arbitrarily large backend or storage error retains only a bounded, explicitly truncated
+  display projection or compact summary; it never clones the complete source payload.
 - Dismissing the visible notice advances to the next queued notice when present.
 - If the queue reaches its cap, Beryl may coalesce overflow into a summary notice rather than preserving every individual notice.
 - Repeated reports for the same selected foreground turn failure are deduplicated so Beryl enqueues at most one notice for that failed turn.
-- Notice text is selectable and ordinary copy commands copy selected notice text.
+- Notice text is selectable and ordinary copy commands copy only the bounded notice text.
 - The visible close action dismisses only the current notice and must not mutate transcript, thread, backend, settings, or persistence state.
 - Notice title, detail, background, border, and warning/error/info variants resolve from active theme notice roles.
 
 ## Turn Error Notices
 
-- When a selected user-visible parent turn fails with backend error detail or local turn-delivery failure, Beryl enqueues a `Turn error` notice with available detail.
+- When a selected user-visible parent turn fails with backend error detail or local turn-delivery
+  failure, Beryl enqueues a `Turn error` notice with the bounded available-detail projection.
 - Turn-error notices may replace or outlive other localized notices through the shared queue, but Beryl must not stack notice popups or merge unrelated errors into one body.
 - Interrupted turns without actual error payload update turn status but do not enqueue a turn-error notice by themselves.
 

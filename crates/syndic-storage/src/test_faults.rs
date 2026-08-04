@@ -1,29 +1,149 @@
 //! Bounded typed fixture contributions available only with `test-faults`.
 
-use std::{error::Error, fmt};
-
-use beryl_home_store::{
-    DomainCallbackError, DomainCallbackSource, DomainMutation, DomainReader, MutationBuildError,
-    MutationBuilder, MutationContribution,
+use crate::{
+    codec::{ActivityQueryEntryKey, activity_entry_stored_bytes},
+    *,
 };
-use beryl_model::DomainRevision;
 
-use crate::{codec::*, domain::SyndicDomain, *};
-
+mod content_text;
+mod fixture_command;
+mod fixture_delete;
+mod fixture_put;
 pub(crate) mod metrics;
 mod physical;
+mod provider;
+mod provider_observation;
+mod schema_history;
 
+pub use crate::content::composer_v1::{
+    ComposerV1AtomWriter, ComposerV1FoldError, ComposerV1RecordSink,
+};
+pub use crate::content::{
+    ComposerV1FoldOutcome, ComposerV1Plan, fold_composer_v1, plan_composer_v1,
+};
+pub(crate) use content_text::ContentTextReadResidencyLease;
+pub use content_text::{
+    ContentTextReadResidency, ContentTextReadResidencySnapshot, ContentTextReadResidencyTracker,
+};
+pub use fixture_command::{FixtureBatch, FixtureBuildError, FixtureMutationError};
 pub use metrics::{
-    CurrentBindingReadMetrics, RecoveryFrontierMetrics, ValidationPageMetrics,
-    current_binding_read_metrics, recovery_frontier_metrics, reset_current_binding_read_metrics,
-    reset_recovery_frontier_metrics, reset_validation_page_metrics, validation_page_metrics,
+    CurrentBindingReadMetrics, DeliveringSteeringReadMetrics, ReadySteeringReadMetrics,
+    RecoveryResidencyMetrics, ValidationPageMetrics, current_binding_read_metrics,
+    delivering_steering_read_metrics, ready_steering_read_metrics, recovery_residency_metrics,
+    reset_current_binding_read_metrics, reset_delivering_steering_read_metrics,
+    reset_ready_steering_read_metrics, reset_recovery_residency_metrics,
+    reset_validation_page_metrics, validation_page_metrics,
 };
 pub use physical::{
     PhysicalCorruption, PhysicalFamily, RepresentativePhysicalCorruption,
-    inject_physical_corruption, inject_representative_physical_corruption,
+    RetiredWorkerCapacityCodecField, inject_physical_corruption,
+    inject_representative_physical_corruption, inject_retired_accepted_input_v2,
+    retired_worker_capacity_codec_rejection,
+};
+pub use provider::{
+    PersistedProviderNarrativeCorruption, PersistedProviderNarrativeCorruptionError,
+    ProviderFixtureCodecError, ProviderFixtureCorruption, ProviderFixtureFamily,
+    ProviderFixtureRecord, decode_corrupted_provider_fixture, roundtrip_provider_fixture,
+};
+pub use provider_observation::{ProviderObservationCorruption, ProviderObservationCorruptionError};
+pub use schema_history::{
+    AwaitingTerminalCodecTags, AwaitingTerminalPredecessorFamily, awaiting_terminal_codec_tags,
+    inject_awaiting_terminal_predecessor,
 };
 
-const MAX_FIXTURE_OPERATIONS: usize = 131_072;
+/// Computes the exact canonical receipt commitment for deliberate corruption fixtures.
+#[must_use]
+pub fn compaction_settlement_receipt_commitment(
+    receipt: &CompactionSettlementReceiptRecord,
+) -> CompactionSettlementReceiptCommitment {
+    crate::codec::compaction_settlement_receipt_commitment(receipt)
+        .expect("a constructed fixture receipt has a canonical encoding")
+}
+
+/// One deliberate fixed-provenance corruption applied to an encoded stop-operation value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StopProvenanceCodecCorruption {
+    MissingAdmissionCause,
+    DuplicateLaterCause,
+    GappedLaterCause,
+    FutureCause,
+    ZeroClaimSource,
+    FutureClaimPublication,
+}
+
+/// Roundtrips one record through the direct V1 stop-operation codec.
+#[must_use]
+pub fn roundtrip_stop_operation_v1(record: &StopOperationRecord) -> Option<StopOperationRecord> {
+    use crate::codec::Family;
+
+    let encoded = codec::StopOperationsFamily::encode_value(record).ok()?;
+    codec::StopOperationsFamily::decode_value(&encoded).ok()
+}
+
+/// Proves one deliberately corrupted fixed-provenance encoding is rejected.
+#[must_use]
+pub fn stop_provenance_codec_rejection(
+    record: &StopOperationRecord,
+    corruption: StopProvenanceCodecCorruption,
+) -> bool {
+    use codec::StopProvenanceCodecCorruption as Internal;
+
+    let corruption = match corruption {
+        StopProvenanceCodecCorruption::MissingAdmissionCause => Internal::MissingAdmissionCause,
+        StopProvenanceCodecCorruption::DuplicateLaterCause => Internal::DuplicateLaterCause,
+        StopProvenanceCodecCorruption::GappedLaterCause => Internal::GappedLaterCause,
+        StopProvenanceCodecCorruption::FutureCause => Internal::FutureCause,
+        StopProvenanceCodecCorruption::ZeroClaimSource => Internal::ZeroClaimSource,
+        StopProvenanceCodecCorruption::FutureClaimPublication => Internal::FutureClaimPublication,
+    };
+    codec::stop_provenance_codec_rejects(record, corruption)
+}
+
+/// Proves the removed aggregate-only stop-operation encoding is not a V1 predecessor format.
+#[must_use]
+pub fn old_aggregate_stop_encoding_rejection(record: &StopOperationRecord) -> bool {
+    codec::old_aggregate_stop_encoding_is_rejected(record)
+}
+
+/// Proves the V1 stop codec rejects a dispatch-claimed record at the admitted first revision.
+#[must_use]
+pub fn stop_dispatch_claimed_first_codec_rejection(record: &StopOperationRecord) -> bool {
+    if record.state() != StopOperationState::DispatchClaimed
+        || record.revision().get() != StopOperationRevision::FIRST.get() + 1
+    {
+        return false;
+    }
+    matches!(
+        StopOperationRecord::new(
+            record.id(),
+            record.target().clone(),
+            record.admission(),
+            StopOperationRevision::FIRST,
+            record.cause_first_revisions(),
+            record.dispatch_claim(),
+            record.state(),
+        ),
+        Err(StopOperationRecordError::ClaimPublicationFuture { .. })
+    )
+}
+
+/// Identifies the final atomic live-source-event command for scoped physical fault tests.
+#[must_use]
+pub fn live_source_event_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    crate::mutation::live_source_event_fault_scope()
+}
+
+/// Identifies active CAS-turn identity publication for scoped physical fault tests.
+#[must_use]
+pub fn active_cas_turn_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    crate::mutation::active_cas_turn_fault_scope()
+}
+
+/// Identifies one unpublished provider-observation staging command for scoped physical fault tests.
+#[must_use]
+pub fn provider_observation_stage_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    crate::mutation::provider_observation_stage_fault_scope()
+}
 
 /// Returns the exact V1 seed used to fold one item-projection fixture manifest.
 #[must_use]
@@ -56,6 +176,28 @@ pub fn fixture_advance_item_projection_resource_digest(
 #[must_use]
 pub fn fixture_transcript_digest_seed() -> [u8; 32] {
     crate::projection::transcript_entry_digest_seed()
+}
+
+/// Returns exact stored bytes charged to one activity-query fixture entry.
+pub fn fixture_activity_query_entry_stored_bytes(entry: &ActivityQueryEntryRecord) -> u64 {
+    activity_entry_stored_bytes(
+        &ActivityQueryEntryKey {
+            thread: entry.thread_id(),
+            work_period: entry.work_period(),
+            order: entry.order(),
+        },
+        entry,
+    )
+    .expect("valid activity fixture entry encodes")
+}
+
+/// Attaches one exact durable transition witness to a route-leaf fixture.
+#[must_use]
+pub fn fixture_route_leaf_with_transition(
+    leaf: AcceptedRouteLeafRecord,
+    proof: AcceptedRouteLeafTransitionProof,
+) -> AcceptedRouteLeafRecord {
+    leaf.with_transition_proof(proof)
 }
 
 /// Folds one transcript entry into an exact V1 transcript fixture digest.
@@ -91,6 +233,56 @@ pub fn fixture_empty_live_content(
         .current_reference()
         .expect("a live manifest always has a current reference");
     (content, manifest)
+}
+
+/// Builds the exact owner-bearing manifest for one published provider frame fixture.
+///
+/// Finalization preserves every provider-frame fact while advancing only the
+/// content revision and manifest lifecycle, matching the production freeze path.
+#[must_use]
+pub fn fixture_provider_content_manifest(
+    owner: beryl_model::SyndicItemId,
+    target: &SealedProviderFrameReference,
+    finalized: bool,
+) -> (SealedProviderFrameReference, ContentManifestRecord) {
+    let current = target.content();
+    let summary = current.summary();
+    let revision = if finalized {
+        current
+            .revision()
+            .checked_next()
+            .expect("bounded provider fixture content revision must advance")
+    } else {
+        current.revision()
+    };
+    let lifecycle = if finalized {
+        ContentLifecycle::Finalized
+    } else {
+        ContentLifecycle::Live
+    };
+    let manifest = ContentManifestRecord::with_owner(
+        current.id(),
+        Some(owner),
+        revision,
+        current.encoding(),
+        lifecycle,
+        summary.chunk_count(),
+        summary.encoded_bytes(),
+        summary.digest(),
+        summary,
+    );
+    let content = manifest
+        .current_reference()
+        .expect("a published provider fixture manifest has a current reference");
+    let target = SealedProviderFrameReference::new(
+        content,
+        target.frame().clone(),
+        target.observation(),
+        target.stream_state().clone(),
+        target.narrative(),
+    )
+    .expect("finalization-only provider fixture revision remains valid");
+    (target, manifest)
 }
 
 /// Builds the exact deterministic empty projection emitted at EOF for a fixture item.
@@ -139,24 +331,34 @@ pub fn fixture_inline_paragraph_projection(
     ProjectionRecord::new(id, revision, item, turn, ProjectionOrdinal::FIRST, payload)
 }
 
-/// One exact typed V1 family record to insert or replace in a fixture command.
+/// One exact typed current-domain family record to insert or replace in a fixture command.
 #[derive(Clone, Debug)]
 pub enum FixtureRecord {
     Thread(ThreadRecord),
+    ThreadExecution(ThreadExecutionRecord),
+    ThreadAttributes(ThreadAttributesRecord),
+    ThreadUsage(ThreadUsageRecord),
+    ThreadCatalogSummary(ThreadCatalogSummaryRecord),
     Draft(DraftRecord),
     ContentManifest(ContentManifestRecord),
     ContentChunk(ContentChunkRecord),
     ContentByteSpan(ContentByteSpanRecord),
     ContentTextSpan(ContentTextSpanRecord),
     ContentPiece(ContentPieceRecord),
-    InputMarkerResolution(InputMarkerResolutionRecord),
+    ProviderNarrativeSpan(ProviderNarrativeSpanRecord),
     ContextEnvelope(ContextEnvelopeRecord),
     Turn(TurnRecord),
     TurnState(TurnStateRecord),
     InputGate(InputGateRecord),
     AcceptedInput(AcceptedInputRecord),
+    StopOperation(StopOperationRecord),
+    CompactionOperation(CompactionOperationRecord),
+    CompactionSettlementReceipt(CompactionSettlementReceiptRecord),
+    AcceptedRouteGenerationHead(AcceptedRouteGenerationHeadRecord),
+    AcceptedRouteLeaf(AcceptedRouteLeafRecord),
     SourceEvent(SourceEventRecord),
     CanonicalItem(CanonicalItemRecord),
+    ActivityQueryHead(ActivityQueryHeadRecord),
     ItemProjectionHead(ItemProjectionHeadRecord),
     ItemProjectionSet(ItemProjectionSetRecord),
     ItemProjectionBuild(ItemProjectionBuildRecord),
@@ -170,11 +372,15 @@ pub enum FixtureRecord {
     ActiveCasTurn(ActiveCasTurnRecord),
     DraftByThread(DraftByThreadRecord),
     ThreadParent(ThreadParentIndexRecord),
+    ImageLabelOriginSpan(ImageLabelOriginSpanRecord),
     TurnChild(TurnChildIndexRecord),
     AcceptedOrder(AcceptedOrderIndexRecord),
-    AcceptedSteering(AcceptedSteeringIndexRecord),
-    AcceptedNextTurn(AcceptedNextTurnIndexRecord),
+    AcceptedRouteGeneration(AcceptedRouteGenerationRecord),
+    AcceptedReadySource(AcceptedReadySourceRecord),
+    AcceptedNextSource(AcceptedNextSourceRecord),
     TurnItem(TurnItemIndexRecord),
+    ActivityQueryEntry(ActivityQueryEntryRecord),
+    ActivityQuerySource(ActivityQuerySourceRecord),
     ItemSourceEvent(ItemSourceEventIndexRecord),
     CasItem(CasItemIndexRecord),
     TranscriptPathTurn(TranscriptPathTurnRecord),
@@ -188,26 +394,73 @@ pub enum FixtureRecord {
     CasTurn(CasTurnIndexRecord),
 }
 
+/// Builds the intrinsic open-branch attributes half for a coherent branch-creation fixture.
+///
+/// Production callers cannot create this state independently; the future branch-creation mutation
+/// owns its atomic publication with lineage, context, draft, and property records.
+#[doc(hidden)]
+#[must_use]
+pub fn open_branch_thread_attributes(
+    thread_id: beryl_model::SyndicThreadId,
+) -> ThreadAttributesRecord {
+    ThreadAttributesRecord::branch_discussion_open(thread_id)
+}
+
+/// Rebuilds attributes with a deliberate lifecycle revision for reopen-corruption coverage.
+#[doc(hidden)]
+#[must_use]
+pub fn thread_attributes_with_revision(
+    record: &ThreadAttributesRecord,
+    revision: ThreadAttributesRevision,
+) -> ThreadAttributesRecord {
+    ThreadAttributesRecord::from_parts(
+        record.thread_id(),
+        revision,
+        record.generated_title().cloned(),
+        record.archive(),
+    )
+}
+
+/// Rebuilds usage with a deliberate lifecycle revision for reopen-corruption coverage.
+#[doc(hidden)]
+#[must_use]
+pub fn thread_usage_with_revision(
+    record: &ThreadUsageRecord,
+    revision: ThreadUsageRevision,
+) -> ThreadUsageRecord {
+    ThreadUsageRecord::from_parts(record.thread_id(), revision, record.observation().cloned())
+}
+
 impl FixtureRecord {
-    /// Returns the exact physical V1 family encoded by this fixture record.
+    /// Returns the exact physical current-domain family encoded by this fixture record.
     #[must_use]
     pub const fn family(&self) -> PhysicalFamily {
         match self {
             Self::Thread(_) => PhysicalFamily::Threads,
+            Self::ThreadExecution(_) => PhysicalFamily::ThreadExecutions,
+            Self::ThreadAttributes(_) => PhysicalFamily::ThreadAttributes,
+            Self::ThreadUsage(_) => PhysicalFamily::ThreadUsage,
+            Self::ThreadCatalogSummary(_) => PhysicalFamily::ThreadCatalogSummaries,
             Self::Draft(_) => PhysicalFamily::Drafts,
             Self::ContentManifest(_) => PhysicalFamily::ContentManifests,
             Self::ContentChunk(_) => PhysicalFamily::ContentChunks,
             Self::ContentByteSpan(_) => PhysicalFamily::ContentByteSpans,
             Self::ContentTextSpan(_) => PhysicalFamily::ContentTextSpans,
             Self::ContentPiece(_) => PhysicalFamily::ContentPieces,
-            Self::InputMarkerResolution(_) => PhysicalFamily::InputMarkerResolutions,
+            Self::ProviderNarrativeSpan(_) => PhysicalFamily::ProviderNarrativeSpans,
             Self::ContextEnvelope(_) => PhysicalFamily::ContextEnvelopes,
             Self::Turn(_) => PhysicalFamily::Turns,
             Self::TurnState(_) => PhysicalFamily::TurnStates,
             Self::InputGate(_) => PhysicalFamily::InputGates,
             Self::AcceptedInput(_) => PhysicalFamily::AcceptedInputs,
+            Self::StopOperation(_) => PhysicalFamily::StopOperations,
+            Self::CompactionOperation(_) => PhysicalFamily::CompactionOperations,
+            Self::CompactionSettlementReceipt(_) => PhysicalFamily::CompactionSettlementReceipts,
+            Self::AcceptedRouteGenerationHead(_) => PhysicalFamily::AcceptedRouteGenerationHeads,
+            Self::AcceptedRouteLeaf(_) => PhysicalFamily::AcceptedRouteLeaves,
             Self::SourceEvent(_) => PhysicalFamily::SourceEvents,
             Self::CanonicalItem(_) => PhysicalFamily::CanonicalItems,
+            Self::ActivityQueryHead(_) => PhysicalFamily::ActivityQueryHeads,
             Self::ItemProjectionHead(_) => PhysicalFamily::ItemProjectionHeads,
             Self::ItemProjectionSet(_) => PhysicalFamily::ItemProjectionSets,
             Self::ItemProjectionBuild(_) => PhysicalFamily::ItemProjectionBuilds,
@@ -221,11 +474,15 @@ impl FixtureRecord {
             Self::ActiveCasTurn(_) => PhysicalFamily::ActiveCasTurns,
             Self::DraftByThread(_) => PhysicalFamily::DraftByThread,
             Self::ThreadParent(_) => PhysicalFamily::ThreadParent,
+            Self::ImageLabelOriginSpan(_) => PhysicalFamily::ImageLabelOriginSpans,
             Self::TurnChild(_) => PhysicalFamily::TurnChildren,
             Self::AcceptedOrder(_) => PhysicalFamily::AcceptedOrder,
-            Self::AcceptedSteering(_) => PhysicalFamily::AcceptedSteering,
-            Self::AcceptedNextTurn(_) => PhysicalFamily::AcceptedNextTurn,
+            Self::AcceptedRouteGeneration(_) => PhysicalFamily::AcceptedRouteGenerations,
+            Self::AcceptedReadySource(_) => PhysicalFamily::AcceptedReadySources,
+            Self::AcceptedNextSource(_) => PhysicalFamily::AcceptedNextSources,
             Self::TurnItem(_) => PhysicalFamily::TurnItems,
+            Self::ActivityQueryEntry(_) => PhysicalFamily::ActivityQueryEntries,
+            Self::ActivityQuerySource(_) => PhysicalFamily::ActivityQuerySources,
             Self::ItemSourceEvent(_) => PhysicalFamily::ItemSourceEvents,
             Self::CasItem(_) => PhysicalFamily::CasItem,
             Self::TranscriptPathTurn(_) => PhysicalFamily::TranscriptPathTurns,
@@ -241,10 +498,14 @@ impl FixtureRecord {
     }
 }
 
-/// One exact typed V1 family key to remove in a fixture command.
+/// One exact typed current-domain family key to remove in a fixture command.
 #[derive(Clone, Debug)]
 pub enum FixtureDelete {
     Thread(beryl_model::SyndicThreadId),
+    ThreadExecution(beryl_model::SyndicThreadId),
+    ThreadAttributes(beryl_model::SyndicThreadId),
+    ThreadUsage(beryl_model::SyndicThreadId),
+    ThreadCatalogSummary(beryl_model::SyndicThreadId),
     Draft(beryl_model::SyndicDraftId),
     ContentManifest(beryl_model::SyndicContentId),
     ContentChunk {
@@ -263,20 +524,27 @@ pub enum FixtureDelete {
         content: beryl_model::SyndicContentId,
         ordinal: ContentPieceOrdinal,
     },
-    InputMarkerResolution {
-        owner: InputMarkerOwner,
-        ordinal: InputMarkerOrdinal,
+    ProviderNarrativeSpan {
+        content: beryl_model::SyndicContentId,
+        generation: ProviderNarrativeGeneration,
+        logical_start: u64,
     },
     ContextEnvelope(beryl_model::DiscussionContextOwnerId),
     Turn(beryl_model::SyndicTurnId),
     TurnState(beryl_model::SyndicTurnId),
     InputGate(beryl_model::SyndicThreadId),
     AcceptedInput(beryl_model::SyndicAcceptedInputId),
+    StopOperation(StopOperationId),
+    CompactionOperation(CompactionOperationId),
+    CompactionSettlementReceipt(CompactionOperationId),
+    AcceptedRouteGenerationHead(beryl_model::SyndicThreadId),
+    AcceptedRouteLeaf(beryl_model::SyndicAcceptedInputId),
     SourceEvent {
         turn: beryl_model::SyndicTurnId,
         sequence: SourceEventSequence,
     },
     CanonicalItem(beryl_model::SyndicItemId),
+    ActivityQueryHead(beryl_model::SyndicThreadId),
     ItemProjectionHead(beryl_model::SyndicItemId),
     ItemProjectionSet {
         item: beryl_model::SyndicItemId,
@@ -305,6 +573,10 @@ pub enum FixtureDelete {
         parent: beryl_model::SyndicThreadId,
         child: beryl_model::SyndicThreadId,
     },
+    ImageLabelOriginSpan {
+        thread: beryl_model::SyndicThreadId,
+        end_label: ImageLabelOrdinal,
+    },
     TurnChild {
         parent: beryl_model::SyndicTurnId,
         child: beryl_model::SyndicTurnId,
@@ -313,18 +585,32 @@ pub enum FixtureDelete {
         thread: beryl_model::SyndicThreadId,
         ordinal: AcceptedInputOrdinal,
     },
-    AcceptedSteering {
+    AcceptedRouteGeneration {
         thread: beryl_model::SyndicThreadId,
-        turn: beryl_model::SyndicTurnId,
-        ordinal: AcceptedInputOrdinal,
+        generation: AcceptedRouteGeneration,
     },
-    AcceptedNextTurn {
+    AcceptedReadySource {
         thread: beryl_model::SyndicThreadId,
-        ordinal: AcceptedInputOrdinal,
+        generation: AcceptedRouteGeneration,
+    },
+    AcceptedNextSource {
+        thread: beryl_model::SyndicThreadId,
+        generation: AcceptedRouteGeneration,
     },
     TurnItem {
         turn: beryl_model::SyndicTurnId,
         ordinal: TurnItemOrdinal,
+    },
+    ActivityQueryEntry {
+        thread: beryl_model::SyndicThreadId,
+        work_period: ActivityWorkPeriod,
+        order: ActivityQueryOrder,
+    },
+    ActivityQuerySource {
+        thread: beryl_model::SyndicThreadId,
+        work_period: ActivityWorkPeriod,
+        source_thread: beryl_model::SyndicThreadId,
+        source_turn: beryl_model::SyndicTurnId,
     },
     ItemSourceEvent {
         item: beryl_model::SyndicItemId,
@@ -368,518 +654,4 @@ pub enum FixtureDelete {
         thread: beryl_model::CasThreadId,
         turn: beryl_model::CasTurnId,
     },
-}
-
-#[derive(Clone, Debug)]
-enum FixtureOperation {
-    Put(Box<FixtureRecord>),
-    Delete(FixtureDelete),
-}
-
-/// One bounded exact-domain batch used to seed valid or intentionally inconsistent fixtures.
-#[derive(Clone, Debug, Default)]
-pub struct FixtureBatch {
-    operations: Vec<FixtureOperation>,
-}
-
-impl FixtureBatch {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-    pub fn put(&mut self, record: FixtureRecord) -> Result<&mut Self, FixtureBuildError> {
-        self.push(FixtureOperation::Put(Box::new(record)))?;
-        Ok(self)
-    }
-    pub fn delete(&mut self, key: FixtureDelete) -> Result<&mut Self, FixtureBuildError> {
-        self.push(FixtureOperation::Delete(key))?;
-        Ok(self)
-    }
-    fn push(&mut self, operation: FixtureOperation) -> Result<(), FixtureBuildError> {
-        if self.operations.len() == MAX_FIXTURE_OPERATIONS {
-            return Err(FixtureBuildError::TooManyOperations);
-        }
-        self.operations.push(operation);
-        Ok(())
-    }
-}
-
-/// Why a test-only typed fixture batch could not be built.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
-pub enum FixtureBuildError {
-    #[error("Syndic fixture exceeds its fixed operation bound")]
-    TooManyOperations,
-}
-
-#[derive(Debug)]
-pub enum FixtureMutationError {
-    Build(MutationBuildError),
-}
-impl fmt::Display for FixtureMutationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Build(source) => source.fmt(f),
-        }
-    }
-}
-impl Error for FixtureMutationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Build(source) => Some(source),
-        }
-    }
-}
-impl From<MutationBuildError> for FixtureMutationError {
-    fn from(source: MutationBuildError) -> Self {
-        Self::Build(source)
-    }
-}
-impl DomainCallbackError for FixtureMutationError {
-    fn into_callback_source(self) -> Result<DomainCallbackSource, Self> {
-        Err(self)
-    }
-}
-
-impl DomainMutation<SyndicDomain> for FixtureBatch {
-    type Error = FixtureMutationError;
-    fn validate(&self, _: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn contribute(
-        &self,
-        _: &DomainReader<'_, SyndicDomain>,
-        builder: &mut MutationBuilder<'_, SyndicDomain>,
-    ) -> Result<(), Self::Error> {
-        for operation in &self.operations {
-            match operation {
-                FixtureOperation::Put(record) => put_record(builder, record.as_ref())?,
-                FixtureOperation::Delete(key) => delete_record(builder, key)?,
-            }
-        }
-        Ok(())
-    }
-}
-
-impl SyndicStorage {
-    /// Seals one bounded typed fixture batch against an exact expected domain revision.
-    #[must_use]
-    pub fn fixture_contribution(
-        &self,
-        expected_revision: DomainRevision,
-        batch: FixtureBatch,
-    ) -> MutationContribution {
-        self.handle.contribution(expected_revision, batch)
-    }
-
-    /// Reads one immutable CAS-thread binding membership for fault-cut assertions.
-    pub fn fixture_cas_thread_binding_membership(
-        &self,
-        store: &beryl_home_store::HomeStore,
-        cas_thread: beryl_model::CasThreadId,
-        revision: beryl_model::BindingRevision,
-        limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<CasThreadBindingIndexRecord>>, SyndicReadError> {
-        self.point::<CasThreadBindingIndexFamily>(
-            store,
-            CasThreadBindingKey::Record(cas_thread, revision),
-            limit,
-        )
-    }
-}
-
-fn put_record(
-    builder: &mut MutationBuilder<'_, SyndicDomain>,
-    record: &FixtureRecord,
-) -> Result<(), FixtureMutationError> {
-    match record {
-        FixtureRecord::Thread(v) => builder.put::<ThreadsCodec>(&v.id(), v)?,
-        FixtureRecord::Draft(v) => builder.put::<DraftsCodec>(&v.id(), v)?,
-        FixtureRecord::ContentManifest(v) => builder.put::<ContentManifestsCodec>(&v.id(), v)?,
-        FixtureRecord::ContentChunk(v) => builder.put::<ContentChunksCodec>(
-            &ContentChunkKey {
-                owner: v.content_id(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::ContentByteSpan(v) => builder.put::<ContentByteSpansCodec>(
-            &ContentByteSpanKey {
-                owner: v.content_id(),
-                start: v.start(),
-            },
-            v,
-        )?,
-        FixtureRecord::ContentTextSpan(v) => builder.put::<ContentTextSpansCodec>(
-            &ContentTextSpanKey {
-                owner: v.content_id(),
-                logical_start: v.logical_start(),
-            },
-            v,
-        )?,
-        FixtureRecord::ContentPiece(v) => builder.put::<ContentPiecesCodec>(
-            &ContentPieceKey {
-                owner: v.content_id(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::InputMarkerResolution(v) => builder.put::<InputMarkerResolutionsCodec>(
-            &InputMarkerKey {
-                owner: v.owner(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::ContextEnvelope(v) => {
-            builder.put::<ContextEnvelopesCodec>(&ContextOwnerKey::from(v.owner()), v)?
-        }
-        FixtureRecord::Turn(v) => builder.put::<TurnsCodec>(&v.id(), v)?,
-        FixtureRecord::TurnState(v) => builder.put::<TurnStatesCodec>(&v.turn_id(), v)?,
-        FixtureRecord::InputGate(v) => builder.put::<InputGatesCodec>(&v.thread_id(), v)?,
-        FixtureRecord::AcceptedInput(v) => builder.put::<AcceptedInputsCodec>(&v.id(), v)?,
-        FixtureRecord::SourceEvent(v) => builder.put::<SourceEventsCodec>(
-            &TurnEventKey {
-                owner: v.turn_id(),
-                ordinal: v.sequence(),
-            },
-            v,
-        )?,
-        FixtureRecord::CanonicalItem(v) => builder.put::<CanonicalItemsCodec>(&v.id(), v)?,
-        FixtureRecord::ItemProjectionHead(v) => {
-            builder.put::<ItemProjectionHeadsCodec>(&v.item_id(), v)?
-        }
-        FixtureRecord::ItemProjectionSet(v) => builder.put::<ItemProjectionSetsCodec>(
-            &ItemProjectionSetKey {
-                item: v.item_id(),
-                generation: v.generation(),
-            },
-            v,
-        )?,
-        FixtureRecord::ItemProjectionBuild(v) => builder.put::<ItemProjectionBuildsCodec>(
-            &ItemProjectionSetKey {
-                item: v.item_id(),
-                generation: v.generation(),
-            },
-            v,
-        )?,
-        FixtureRecord::TranscriptViewHead(v) => {
-            builder.put::<TranscriptHeadsCodec>(&v.thread_id(), v)?
-        }
-        FixtureRecord::TranscriptBuild(v) => builder.put::<TranscriptBuildsCodec>(
-            &ThreadTranscriptBuildKey {
-                thread: v.thread_id(),
-                generation: v.generation(),
-            },
-            v,
-        )?,
-        FixtureRecord::Projection(v) => builder.put::<ProjectionsCodec>(&v.id(), v)?,
-        FixtureRecord::Resource(v) => builder.put::<ResourcesCodec>(&v.id(), v)?,
-        FixtureRecord::HistorySummary(v) => {
-            builder.put::<HistorySummariesCodec>(&v.thread_id(), v)?
-        }
-        FixtureRecord::Binding(v) => builder.put::<BindingsCodec>(
-            &BindingKey {
-                thread: v.thread_id(),
-                revision: v.revision(),
-            },
-            v,
-        )?,
-        FixtureRecord::ExecutionSnapshot(v) => {
-            builder.put::<ExecutionSnapshotsCodec>(&v.id(), v)?
-        }
-        FixtureRecord::ActiveCasTurn(v) => {
-            builder.put::<ActiveCasTurnsCodec>(&v.snapshot_id(), v)?
-        }
-        FixtureRecord::DraftByThread(v) => builder.put::<DraftByThreadCodec>(&v.thread_id(), v)?,
-        FixtureRecord::ThreadParent(v) => builder.put::<ThreadParentCodec>(
-            &ThreadPairKey {
-                first: v.parent_thread_id(),
-                second: v.child_thread_id(),
-            },
-            v,
-        )?,
-        FixtureRecord::TurnChild(v) => builder.put::<TurnChildrenCodec>(
-            &TurnPairKey {
-                parent: v.parent_id(),
-                child: v.child_id(),
-            },
-            v,
-        )?,
-        FixtureRecord::AcceptedOrder(v) => builder.put::<AcceptedOrderCodec>(
-            &ThreadAcceptedKey {
-                owner: v.thread_id(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::AcceptedSteering(v) => builder.put::<AcceptedSteeringCodec>(
-            &SteeringKey {
-                thread: v.thread_id,
-                turn: v.turn_id,
-                ordinal: v.ordinal,
-            },
-            v,
-        )?,
-        FixtureRecord::AcceptedNextTurn(v) => builder.put::<AcceptedNextCodec>(
-            &ThreadAcceptedKey {
-                owner: v.thread_id,
-                ordinal: v.ordinal,
-            },
-            v,
-        )?,
-        FixtureRecord::TurnItem(v) => builder.put::<TurnItemsCodec>(
-            &TurnItemKey {
-                owner: v.turn_id(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::ItemSourceEvent(v) => builder.put::<ItemSourceEventsCodec>(
-            &ItemEventKey {
-                owner: v.item_id(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::CasItem(v) => builder.put::<CasItemIndexCodec>(
-            &CasItemKey::Record(
-                v.cas_thread_id.clone(),
-                v.cas_turn_id.clone(),
-                v.cas_item_id.clone(),
-            ),
-            v,
-        )?,
-        FixtureRecord::TranscriptPathTurn(v) => builder.put::<TranscriptPathTurnsCodec>(
-            &ThreadTranscriptPathKey {
-                thread: v.thread_id(),
-                generation: v.generation(),
-                depth: v.depth(),
-            },
-            v,
-        )?,
-        FixtureRecord::TranscriptViewEntry(v) => builder.put::<TranscriptEntriesCodec>(
-            &ThreadTranscriptKey {
-                thread: v.thread_id(),
-                generation: v.generation(),
-                position: v.position(),
-            },
-            v,
-        )?,
-        FixtureRecord::StableItemProjection(v) => builder.put::<StableItemProjectionsCodec>(
-            &StableItemProjectionKey {
-                item: v.item_id(),
-                ordinal: v.ordinal(),
-            },
-            v,
-        )?,
-        FixtureRecord::ItemProjection(v) => builder.put::<ItemProjectionsCodec>(
-            &ItemProjectionKey {
-                item: v.item_id,
-                generation: v.generation,
-                ordinal: v.ordinal,
-            },
-            v,
-        )?,
-        FixtureRecord::ProjectionResource(v) => builder.put::<ProjectionResourcesCodec>(
-            &ProjectionResourceKey {
-                owner: v.projection_id,
-                ordinal: v.ordinal,
-            },
-            v,
-        )?,
-        FixtureRecord::BindingHead(v) => builder.put::<BindingHeadsCodec>(&v.thread_id(), v)?,
-        FixtureRecord::CasThread(v) => builder
-            .put::<CasThreadIndexCodec>(&CasThreadKey::Record(v.cas_thread_id().clone()), v)?,
-        FixtureRecord::CasThreadBinding(v) => builder.put::<CasThreadBindingIndexCodec>(
-            &CasThreadBindingKey::Record(v.cas_thread_id().clone(), v.binding_revision()),
-            v,
-        )?,
-        FixtureRecord::CasTurn(v) => builder.put::<CasTurnIndexCodec>(
-            &CasTurnKey::Record(v.cas_thread_id.clone(), v.cas_turn_id.clone()),
-            v,
-        )?,
-    }
-    Ok(())
-}
-
-fn delete_record(
-    builder: &mut MutationBuilder<'_, SyndicDomain>,
-    key: &FixtureDelete,
-) -> Result<(), FixtureMutationError> {
-    match key {
-        FixtureDelete::Thread(v) => builder.delete::<ThreadsCodec>(v)?,
-        FixtureDelete::Draft(v) => builder.delete::<DraftsCodec>(v)?,
-        FixtureDelete::ContentManifest(v) => builder.delete::<ContentManifestsCodec>(v)?,
-        FixtureDelete::ContentChunk { content, ordinal } => {
-            builder.delete::<ContentChunksCodec>(&ContentChunkKey {
-                owner: *content,
-                ordinal: *ordinal,
-            })?
-        }
-        FixtureDelete::ContentByteSpan { content, start } => builder
-            .delete::<ContentByteSpansCodec>(&ContentByteSpanKey {
-                owner: *content,
-                start: *start,
-            })?,
-        FixtureDelete::ContentTextSpan {
-            content,
-            logical_start,
-        } => builder.delete::<ContentTextSpansCodec>(&ContentTextSpanKey {
-            owner: *content,
-            logical_start: *logical_start,
-        })?,
-        FixtureDelete::ContentPiece { content, ordinal } => {
-            builder.delete::<ContentPiecesCodec>(&ContentPieceKey {
-                owner: *content,
-                ordinal: *ordinal,
-            })?
-        }
-        FixtureDelete::InputMarkerResolution { owner, ordinal } => {
-            builder.delete::<InputMarkerResolutionsCodec>(&InputMarkerKey {
-                owner: *owner,
-                ordinal: *ordinal,
-            })?
-        }
-        FixtureDelete::ContextEnvelope(v) => {
-            builder.delete::<ContextEnvelopesCodec>(&ContextOwnerKey::from(*v))?
-        }
-        FixtureDelete::Turn(v) => builder.delete::<TurnsCodec>(v)?,
-        FixtureDelete::TurnState(v) => builder.delete::<TurnStatesCodec>(v)?,
-        FixtureDelete::InputGate(v) => builder.delete::<InputGatesCodec>(v)?,
-        FixtureDelete::AcceptedInput(v) => builder.delete::<AcceptedInputsCodec>(v)?,
-        FixtureDelete::SourceEvent { turn, sequence } => {
-            builder.delete::<SourceEventsCodec>(&TurnEventKey {
-                owner: *turn,
-                ordinal: *sequence,
-            })?
-        }
-        FixtureDelete::CanonicalItem(v) => builder.delete::<CanonicalItemsCodec>(v)?,
-        FixtureDelete::ItemProjectionHead(v) => builder.delete::<ItemProjectionHeadsCodec>(v)?,
-        FixtureDelete::ItemProjectionSet { item, generation } => builder
-            .delete::<ItemProjectionSetsCodec>(&ItemProjectionSetKey {
-                item: *item,
-                generation: *generation,
-            })?,
-        FixtureDelete::ItemProjectionBuild { item, generation } => {
-            builder.delete::<ItemProjectionBuildsCodec>(&ItemProjectionSetKey {
-                item: *item,
-                generation: *generation,
-            })?
-        }
-        FixtureDelete::TranscriptViewHead(v) => builder.delete::<TranscriptHeadsCodec>(v)?,
-        FixtureDelete::TranscriptBuild { thread, generation } => builder
-            .delete::<TranscriptBuildsCodec>(&ThreadTranscriptBuildKey {
-                thread: *thread,
-                generation: *generation,
-            })?,
-        FixtureDelete::Projection(v) => builder.delete::<ProjectionsCodec>(v)?,
-        FixtureDelete::Resource(v) => builder.delete::<ResourcesCodec>(v)?,
-        FixtureDelete::HistorySummary(v) => builder.delete::<HistorySummariesCodec>(v)?,
-        FixtureDelete::Binding { thread, revision } => {
-            builder.delete::<BindingsCodec>(&BindingKey {
-                thread: *thread,
-                revision: *revision,
-            })?
-        }
-        FixtureDelete::ExecutionSnapshot(v) => builder.delete::<ExecutionSnapshotsCodec>(v)?,
-        FixtureDelete::ActiveCasTurn(v) => builder.delete::<ActiveCasTurnsCodec>(v)?,
-        FixtureDelete::DraftByThread(v) => builder.delete::<DraftByThreadCodec>(v)?,
-        FixtureDelete::ThreadParent { parent, child } => {
-            builder.delete::<ThreadParentCodec>(&ThreadPairKey {
-                first: *parent,
-                second: *child,
-            })?
-        }
-        FixtureDelete::TurnChild { parent, child } => {
-            builder.delete::<TurnChildrenCodec>(&TurnPairKey {
-                parent: *parent,
-                child: *child,
-            })?
-        }
-        FixtureDelete::AcceptedOrder { thread, ordinal } => {
-            builder.delete::<AcceptedOrderCodec>(&ThreadAcceptedKey {
-                owner: *thread,
-                ordinal: *ordinal,
-            })?
-        }
-        FixtureDelete::AcceptedSteering {
-            thread,
-            turn,
-            ordinal,
-        } => builder.delete::<AcceptedSteeringCodec>(&SteeringKey {
-            thread: *thread,
-            turn: *turn,
-            ordinal: *ordinal,
-        })?,
-        FixtureDelete::AcceptedNextTurn { thread, ordinal } => builder
-            .delete::<AcceptedNextCodec>(&ThreadAcceptedKey {
-                owner: *thread,
-                ordinal: *ordinal,
-            })?,
-        FixtureDelete::TurnItem { turn, ordinal } => {
-            builder.delete::<TurnItemsCodec>(&TurnItemKey {
-                owner: *turn,
-                ordinal: *ordinal,
-            })?
-        }
-        FixtureDelete::ItemSourceEvent { item, ordinal } => builder
-            .delete::<ItemSourceEventsCodec>(&ItemEventKey {
-                owner: *item,
-                ordinal: *ordinal,
-            })?,
-        FixtureDelete::CasItem { thread, turn, item } => builder.delete::<CasItemIndexCodec>(
-            &CasItemKey::Record(thread.clone(), turn.clone(), item.clone()),
-        )?,
-        FixtureDelete::TranscriptPathTurn {
-            thread,
-            generation,
-            depth,
-        } => builder.delete::<TranscriptPathTurnsCodec>(&ThreadTranscriptPathKey {
-            thread: *thread,
-            generation: *generation,
-            depth: *depth,
-        })?,
-        FixtureDelete::TranscriptViewEntry {
-            thread,
-            generation,
-            position,
-        } => builder.delete::<TranscriptEntriesCodec>(&ThreadTranscriptKey {
-            thread: *thread,
-            generation: *generation,
-            position: *position,
-        })?,
-        FixtureDelete::StableItemProjection { item, ordinal } => {
-            builder.delete::<StableItemProjectionsCodec>(&StableItemProjectionKey {
-                item: *item,
-                ordinal: *ordinal,
-            })?
-        }
-        FixtureDelete::ItemProjection {
-            item,
-            generation,
-            ordinal,
-        } => builder.delete::<ItemProjectionsCodec>(&ItemProjectionKey {
-            item: *item,
-            generation: *generation,
-            ordinal: *ordinal,
-        })?,
-        FixtureDelete::ProjectionResource {
-            projection,
-            ordinal,
-        } => builder.delete::<ProjectionResourcesCodec>(&ProjectionResourceKey {
-            owner: *projection,
-            ordinal: *ordinal,
-        })?,
-        FixtureDelete::BindingHead(v) => builder.delete::<BindingHeadsCodec>(v)?,
-        FixtureDelete::CasThread(v) => {
-            builder.delete::<CasThreadIndexCodec>(&CasThreadKey::Record(v.clone()))?
-        }
-        FixtureDelete::CasThreadBinding { thread, revision } => builder
-            .delete::<CasThreadBindingIndexCodec>(
-            &CasThreadBindingKey::Record(thread.clone(), *revision),
-        )?,
-        FixtureDelete::CasTurn { thread, turn } => builder
-            .delete::<CasTurnIndexCodec>(&CasTurnKey::Record(thread.clone(), turn.clone()))?,
-    }
-    Ok(())
 }

@@ -109,42 +109,6 @@ pub(crate) fn content_byte_spans(
     Ok(spans)
 }
 
-pub(crate) fn utf8_content_text_spans(
-    chunks: &[ContentChunkRecord],
-    mut start: u64,
-) -> Result<Vec<ContentTextSpanRecord>, SyndicRecordError> {
-    let mut spans = Vec::with_capacity(chunks.len());
-    for chunk in chunks {
-        let length =
-            u64::try_from(chunk.bytes().len()).map_err(|_| SyndicRecordError::LengthOverflow {
-                kind: "UTF-8 content text span",
-            })?;
-        let end = start
-            .checked_add(length)
-            .ok_or(SyndicRecordError::LengthOverflow {
-                kind: "UTF-8 content text span",
-            })?;
-        spans.push(ContentTextSpanRecord::new(
-            chunk.content_id(),
-            ContentPieceOrdinal::new(chunk.ordinal().get()).map_err(|_| {
-                SyndicRecordError::LengthOverflow {
-                    kind: "UTF-8 content text spans",
-                }
-            })?,
-            chunk.ordinal(),
-            start,
-            start,
-            end,
-            start,
-            end,
-            false,
-            *chunk.digest(),
-        )?);
-        start = end;
-    }
-    Ok(spans)
-}
-
 /// One bounded logical UTF-8 segment mapped into one physical content chunk.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ContentTextSpanRecord {

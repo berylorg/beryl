@@ -2,7 +2,7 @@ use beryl_home_store::DomainReader;
 
 use crate::validation::scan::{point, require, scan};
 use crate::{
-    CanonicalItemPayload, ProjectionPayload, ProjectionResourceIndexRecord, ResourceBacking,
+    CanonicalItemPresentation, ProjectionPayload, ProjectionResourceIndexRecord, ResourceBacking,
     codec::*, domain::SyndicDomain, error::SyndicValidationError,
 };
 
@@ -24,8 +24,9 @@ pub(super) fn validate_metadata(
             if resource.projection_id().is_some()
                 || resource.ordinal().is_some()
                 || !matches!(
-                    item.payload(),
-                    CanonicalItemPayload::GeneratedMedia(id) if *id == resource.id()
+                    item.presentation(),
+                    CanonicalItemPresentation::GeneratedMedia { resource_id }
+                        if *resource_id == resource.id()
                 )
             {
                 return invariant("generated resource owner or projection boundary disagrees");
@@ -43,6 +44,21 @@ pub(super) fn validate_metadata(
         let digest = resource.digest().ok_or(SyndicValidationError::Invariant(
             "text resource omitted its digest",
         ))?;
+        let stored_source =
+            resource
+                .backing()
+                .text_source()
+                .ok_or(SyndicValidationError::Invariant(
+                    "text resource omitted its text source",
+                ))?;
+        let current_source = item
+            .projection_source()
+            .ok_or(SyndicValidationError::Invariant(
+                "text resource owner is not projectable",
+            ))?;
+        if !stored_source.can_extend(current_source) {
+            return invariant("text resource backing disagrees with its source item");
+        }
         let projection = require::<ProjectionsFamily>(
             reader,
             &projection_id,

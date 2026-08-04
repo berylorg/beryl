@@ -14,6 +14,7 @@ use super::{
     tags,
 };
 use crate::provider_item::*;
+use item::StreamItemSummary;
 
 pub fn validate_streaming_provider_item_frame_v1<R, S>(
     reader: &mut R,
@@ -37,34 +38,25 @@ where
     let ordinal = ProviderFrameOrdinalV1::new(decoder.u64()?)?;
     decoder.frame_ordinal = Some(ordinal);
     let item_id = decoder.cas_item_id()?;
-    let (observation, item_kind, in_progress, history_support) = match decoder.u8()? {
+    let (observation, item) = match decoder.u8()? {
         tags::OBSERVATION_STARTED => {
             let timestamp = ProviderLifecycleTimestampMsV1::new(decoder.u64()?);
-            let (kind, in_progress, history_support) = decoder.item()?;
-            if kind.permits_completion_only() {
+            let item = decoder.item()?;
+            if item.kind.permits_completion_only() {
                 return Err(ProviderItemValidationError::CompletionOnlyItemStarted.into());
             }
-            (
-                ProviderFrameObservationSummaryV1::Started(timestamp),
-                kind,
-                in_progress,
-                history_support,
-            )
+            (ProviderFrameObservationSummaryV1::Started(timestamp), item)
         }
         tags::OBSERVATION_DELTA => (
             ProviderFrameObservationSummaryV1::Delta,
-            decoder.delta()?,
-            false,
-            ProviderFrameHistorySupportV1::Supported,
+            StreamItemSummary::supported(decoder.delta()?),
         ),
         tags::OBSERVATION_COMPLETED => {
             let timestamp = ProviderLifecycleTimestampMsV1::new(decoder.u64()?);
-            let (kind, in_progress, history_support) = decoder.item()?;
+            let item = decoder.item()?;
             (
                 ProviderFrameObservationSummaryV1::Completed(timestamp),
-                kind,
-                in_progress,
-                history_support,
+                item,
             )
         }
         tag => {
@@ -75,7 +67,7 @@ where
             .into());
         }
     };
-    if matches!(observation, ProviderFrameObservationSummaryV1::Completed(_)) && in_progress {
+    if matches!(observation, ProviderFrameObservationSummaryV1::Completed(_)) && item.in_progress {
         return Err(ProviderItemValidationError::CompletionStatusInProgress.into());
     }
     let (digest, logical_utf8_bytes, text_span_count) = decoder.finish()?;
@@ -87,7 +79,7 @@ where
         .ok_or(ProviderItemValidationError::FrameLengthOverflow)?;
     let reference = ProviderFrameReferenceV1::new(
         item_id,
-        item_kind,
+        item.kind,
         ordinal,
         encoded_start,
         encoded_end,
@@ -98,7 +90,9 @@ where
     Ok(ProviderFrameStructuralValidationV1 {
         reference,
         observation,
-        history_support,
+        history_support: item.history_support,
+        message_phase: item.message_phase,
+        submitted_content: item.submitted_content,
     })
 }
 
@@ -247,9 +241,17 @@ impl<R: Read, S: ProviderFrameTextSpanSinkV1> StreamDecoder<'_, R, S> {
         kind: &'static str,
         parse: impl FnOnce(&mut Self) -> Result<(), ProviderFrameStreamError<S::Error>>,
     ) -> Result<(), ProviderFrameStreamError<S::Error>> {
+        self.option_value(kind, parse).map(|_| ())
+    }
+
+    pub(super) fn option_value<T>(
+        &mut self,
+        kind: &'static str,
+        parse: impl FnOnce(&mut Self) -> Result<T, ProviderFrameStreamError<S::Error>>,
+    ) -> Result<Option<T>, ProviderFrameStreamError<S::Error>> {
         match self.u8()? {
-            tags::OPTION_NONE => Ok(()),
-            tags::OPTION_SOME => parse(self),
+            tags::OPTION_NONE => Ok(None),
+            tags::OPTION_SOME => parse(self).map(Some),
             tag => Err(ProviderFrameDecodeError::InvalidTag { kind, tag }.into()),
         }
     }

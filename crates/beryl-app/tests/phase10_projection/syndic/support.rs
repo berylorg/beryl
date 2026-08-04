@@ -42,7 +42,7 @@ pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item: Synd
         store,
         storage.start_item_projection_build(
             storage.revision(store).unwrap(),
-            StartItemProjectionBuild::new(item, canonical.record().revision(), generation),
+            StartItemProjectionBuild::new(item, canonical.revision(), generation),
         ),
     );
     for _ in 0..4_096 {
@@ -61,7 +61,7 @@ pub(super) fn project_item(store: &HomeStore, storage: SyndicStorage, item: Synd
             store,
             storage.advance_item_projection_build(
                 storage.revision(store).unwrap(),
-                AdvanceItemProjectionBuild::new(item, generation, build.record().revision()),
+                AdvanceItemProjectionBuild::new(item, generation, build.revision()),
             ),
         );
     }

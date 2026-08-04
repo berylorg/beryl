@@ -1,16 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
-    path::Path,
 };
 
-use beryl_backend::{
-    AgentMessageItem, CompletedTurnStatus, ProtocolPhase, ThreadItem, ThreadReadMetadata,
-    ThreadSessionMetadata, ThreadSummary, ToolActivityCollabAgentSpawnMetadata, ToolActivityEvent,
-    ToolActivityFileChangeSummary, ToolActivityLifecycle, ToolActivitySource, TurnStreamEvent,
-};
-use once_cell::sync::Lazy;
-use regex::Regex;
+use beryl_backend::ThreadReadMetadata;
 
 #[derive(Clone, Debug)]
 pub(super) struct ToolActivityProjection {
@@ -22,7 +15,6 @@ pub(super) struct ToolActivityProjection {
     root_turn_by_child_thread: HashMap<String, ToolActivityRootTurnKey>,
     visible_row_indexes_by_thread: HashMap<String, Vec<usize>>,
     last_selected_thread_id: Option<String>,
-    next_start_order: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,19 +41,12 @@ pub(super) struct ToolActivitySubagentMetadataTarget {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ToolActivityRecord {
     key: ToolActivityKey,
-    source: ToolActivityRecordSource,
     explicit_agent_label: Option<String>,
     tool_display_value: String,
     status: ToolActivityRowStatus,
     start_order: u64,
     reasoning_summary_parts: Vec<String>,
     receiver_thread_ids: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ToolActivityRecordSource {
-    Backend(ToolActivitySource),
-    SubagentHandoff,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,14 +76,7 @@ struct SubagentRuntimeMetadata {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum AgentLabelPriority {
-    ActivityMetadata,
     ThreadMetadataNickname,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct ReceiverThreadOwnershipChange {
-    changed: bool,
-    requires_row_rebuild: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -135,7 +113,6 @@ impl Default for ToolActivityProjection {
             root_turn_by_child_thread: HashMap::new(),
             visible_row_indexes_by_thread: HashMap::new(),
             last_selected_thread_id: None,
-            next_start_order: 0,
         }
     }
 }
@@ -349,55 +326,8 @@ impl ToolActivityProjection {
         true
     }
 
-    pub(super) fn apply_stream_event(
-        &mut self,
-        event: &TurnStreamEvent,
-        agent_label: Option<String>,
-    ) -> bool {
-        if let Some(activity) = event.activity() {
-            return self.apply_tool_activity(activity, agent_label);
-        }
-
-        match event {
-            TurnStreamEvent::ItemCompleted {
-                thread_id,
-                turn_id,
-                item: ThreadItem::AgentMessage(item),
-            } => self.apply_subagent_handoff_activity(thread_id.as_str(), turn_id.as_str(), item),
-            TurnStreamEvent::ThreadStarted { thread } => self
-                .apply_thread_agent_nickname(thread.id.as_str(), thread.agent_nickname.as_deref()),
-            TurnStreamEvent::AgentLabelUpdated { thread_id, label } => {
-                self.apply_thread_agent_nickname(thread_id.as_str(), Some(label.as_str()))
-            }
-            TurnStreamEvent::TurnCompleted { thread_id, turn } => self.finish_running_for_turn(
-                thread_id.as_str(),
-                turn.id.as_str(),
-                final_status_from_turn_status(turn.status),
-            ),
-            TurnStreamEvent::ThreadClosed { thread_id } => {
-                self.finish_running_for_thread(thread_id, ToolActivityRowStatus::FinishedOk)
-            }
-            TurnStreamEvent::ProtocolError { .. } => {
-                self.finish_all_running(ToolActivityRowStatus::FinishedError)
-            }
-            _ => false,
-        }
-    }
-
-    pub(super) fn apply_subagent_thread_summaries<'a>(
-        &mut self,
-        threads: impl IntoIterator<Item = &'a ThreadSummary>,
-    ) -> bool {
-        let mut changed = false;
-        for thread in threads {
-            if self.is_observed_subagent_thread(&thread.id) {
-                changed |= self.note_thread_summary_agent_nickname(thread);
-            }
-        }
-        if changed {
-            self.rebuild_rows();
-        }
-        changed
+    pub(super) fn apply_protocol_error(&mut self) -> bool {
+        self.finish_all_running(ToolActivityRowStatus::FinishedError)
     }
 
     pub(super) fn apply_thread_read_metadata<'a>(
@@ -406,14 +336,16 @@ impl ToolActivityProjection {
     ) -> bool {
         let mut changed = false;
         for metadata in metadata {
-            if !self.is_observed_subagent_thread(&metadata.thread.id) {
+            let thread_id = metadata.thread_id().as_str();
+            if !self.is_observed_subagent_thread(thread_id) {
                 continue;
             }
-            changed |= self.note_thread_summary_agent_nickname(&metadata.thread);
-            changed |= self.note_subagent_runtime_metadata(
-                metadata.thread.id.as_str(),
-                &metadata.session_metadata,
+            changed |= self.note_agent_label(
+                thread_id,
+                metadata.agent_nickname(),
+                AgentLabelPriority::ThreadMetadataNickname,
             );
+            changed |= self.note_subagent_runtime_metadata_values(thread_id, None, None, true);
         }
         if changed {
             self.rebuild_rows();
@@ -467,131 +399,7 @@ impl ToolActivityProjection {
         changed
     }
 
-    fn apply_tool_activity(
-        &mut self,
-        activity: ToolActivityEvent,
-        agent_label: Option<String>,
-    ) -> bool {
-        let ownership_changed = self.apply_receiver_thread_ownership_updates(&activity);
-        let labels_changed = self.apply_agent_label_updates(&activity);
-        let explicit_agent_label = explicit_agent_label_for_activity(&activity, agent_label);
-        let key = ToolActivityKey::from_activity(&activity);
-        let activity_changed = match activity.lifecycle {
-            ToolActivityLifecycle::Started => {
-                self.start_activity(key, activity, explicit_agent_label)
-            }
-            ToolActivityLifecycle::Updated => {
-                self.update_activity(key, activity, explicit_agent_label)
-            }
-            ToolActivityLifecycle::Completed => {
-                let status = final_status_from_item_status(activity.raw_item_status.as_deref());
-                self.finish_or_insert_completed(key, activity, explicit_agent_label, status)
-            }
-        };
-        if !activity_changed && labels_changed {
-            self.rebuild_rows();
-        } else if ownership_changed.changed && !activity_changed {
-            if ownership_changed.requires_row_rebuild {
-                self.rebuild_rows();
-            } else {
-                self.prune_derived_state();
-                self.rebuild_visible_row_indexes();
-            }
-        }
-        ownership_changed.changed || labels_changed || activity_changed
-    }
-
-    fn start_activity(
-        &mut self,
-        key: ToolActivityKey,
-        activity: ToolActivityEvent,
-        explicit_agent_label: Option<String>,
-    ) -> bool {
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
-            let mut changed = false;
-            let source = ToolActivityRecordSource::from(activity.source);
-            if existing.source != source {
-                existing.source = source;
-                changed = true;
-            }
-            if existing.status != ToolActivityRowStatus::Running {
-                existing.status = ToolActivityRowStatus::Running;
-                changed = true;
-            }
-            changed |= merge_receiver_thread_ids(existing, &activity);
-            changed |= apply_reasoning_summary_detail(existing, &activity);
-            let display_value = activity_display_value_for_record(existing, &activity);
-            if existing.tool_display_value != display_value {
-                existing.tool_display_value = display_value;
-                changed = true;
-            }
-            if explicit_agent_label.is_some()
-                && existing.explicit_agent_label != explicit_agent_label
-            {
-                existing.explicit_agent_label = explicit_agent_label;
-                changed = true;
-            }
-            if changed {
-                self.rebuild_rows();
-            }
-            return changed;
-        }
-
-        let record = self.new_record(
-            key,
-            activity,
-            explicit_agent_label,
-            ToolActivityRowStatus::Running,
-        );
-        self.records.push(record);
-        self.rebuild_rows();
-        true
-    }
-
-    fn update_activity(
-        &mut self,
-        key: ToolActivityKey,
-        activity: ToolActivityEvent,
-        explicit_agent_label: Option<String>,
-    ) -> bool {
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
-            let mut changed = false;
-            let source = ToolActivityRecordSource::from(activity.source);
-            if existing.source != source {
-                existing.source = source;
-                changed = true;
-            }
-            changed |= merge_receiver_thread_ids(existing, &activity);
-            changed |= apply_reasoning_summary_detail(existing, &activity);
-            let display_value = activity_display_value_for_record(existing, &activity);
-            if existing.tool_display_value != display_value {
-                existing.tool_display_value = display_value;
-                changed = true;
-            }
-            if explicit_agent_label.is_some()
-                && existing.explicit_agent_label != explicit_agent_label
-            {
-                existing.explicit_agent_label = explicit_agent_label;
-                changed = true;
-            }
-            if changed {
-                self.rebuild_rows();
-            }
-            return changed;
-        }
-
-        let record = self.new_record(
-            key,
-            activity,
-            explicit_agent_label,
-            ToolActivityRowStatus::Running,
-        );
-        self.records.push(record);
-        self.rebuild_rows();
-        true
-    }
-
-    fn finish_running_for_turn(
+    pub(super) fn finish_running_for_turn(
         &mut self,
         thread_id: &str,
         turn_id: &str,
@@ -625,245 +433,6 @@ impl ToolActivityProjection {
             self.rebuild_rows();
         }
         changed
-    }
-
-    fn finish_or_insert_completed(
-        &mut self,
-        key: ToolActivityKey,
-        activity: ToolActivityEvent,
-        explicit_agent_label: Option<String>,
-        status: ToolActivityRowStatus,
-    ) -> bool {
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
-            let mut changed = false;
-            let source = ToolActivityRecordSource::from(activity.source);
-            if existing.source != source {
-                existing.source = source;
-                changed = true;
-            }
-            if existing.status != status {
-                existing.status = status;
-                changed = true;
-            }
-            changed |= merge_receiver_thread_ids(existing, &activity);
-            changed |= apply_reasoning_summary_detail(existing, &activity);
-            let tool_display_value = activity_display_value_for_record(existing, &activity);
-            if existing.tool_display_value != tool_display_value {
-                existing.tool_display_value = tool_display_value;
-                changed = true;
-            }
-            if explicit_agent_label.is_some()
-                && existing.explicit_agent_label != explicit_agent_label
-            {
-                existing.explicit_agent_label = explicit_agent_label;
-                changed = true;
-            }
-            if changed {
-                self.rebuild_rows();
-            }
-            return changed;
-        }
-
-        let record = self.new_record(key, activity, explicit_agent_label, status);
-        self.records.push(record);
-        self.rebuild_rows();
-        true
-    }
-
-    fn apply_subagent_handoff_activity(
-        &mut self,
-        thread_id: &str,
-        turn_id: &str,
-        item: &AgentMessageItem,
-    ) -> bool {
-        if item.phase != Some(ProtocolPhase::FinalAnswer)
-            || !self.is_observed_subagent_thread(thread_id)
-        {
-            return false;
-        }
-
-        let key = ToolActivityKey {
-            thread_id: thread_id.to_string(),
-            turn_id: turn_id.to_string(),
-            item_id: item.id.as_str().to_owned(),
-        };
-        let tool_display_value = subagent_handoff_display_value(item.text.as_bytes().len());
-
-        if let Some(existing) = self.records.iter_mut().find(|existing| existing.key == key) {
-            let mut changed = false;
-            if existing.source != ToolActivityRecordSource::SubagentHandoff {
-                existing.source = ToolActivityRecordSource::SubagentHandoff;
-                changed = true;
-            }
-            if existing.explicit_agent_label.take().is_some() {
-                changed = true;
-            }
-            if existing.tool_display_value != tool_display_value {
-                existing.tool_display_value = tool_display_value;
-                changed = true;
-            }
-            if existing.status != ToolActivityRowStatus::FinishedOk {
-                existing.status = ToolActivityRowStatus::FinishedOk;
-                changed = true;
-            }
-            if !existing.reasoning_summary_parts.is_empty() {
-                existing.reasoning_summary_parts.clear();
-                changed = true;
-            }
-            if changed {
-                self.rebuild_rows();
-            }
-            return changed;
-        }
-
-        let record = ToolActivityRecord {
-            key,
-            source: ToolActivityRecordSource::SubagentHandoff,
-            explicit_agent_label: None,
-            tool_display_value,
-            status: ToolActivityRowStatus::FinishedOk,
-            start_order: self.next_start_order(),
-            reasoning_summary_parts: Vec::new(),
-            receiver_thread_ids: Vec::new(),
-        };
-        self.records.push(record);
-        self.rebuild_rows();
-        true
-    }
-
-    fn new_record(
-        &mut self,
-        key: ToolActivityKey,
-        activity: ToolActivityEvent,
-        explicit_agent_label: Option<String>,
-        status: ToolActivityRowStatus,
-    ) -> ToolActivityRecord {
-        let mut record = ToolActivityRecord {
-            source: ToolActivityRecordSource::from(activity.source),
-            explicit_agent_label,
-            tool_display_value: tool_activity_display_value(&activity),
-            status,
-            start_order: self.next_start_order(),
-            reasoning_summary_parts: Vec::new(),
-            receiver_thread_ids: receiver_thread_ids_for_activity(&activity),
-            key,
-        };
-        apply_reasoning_summary_detail(&mut record, &activity);
-        record.tool_display_value = activity_display_value_for_record(&record, &activity);
-        record
-    }
-
-    fn apply_agent_label_updates(&mut self, activity: &ToolActivityEvent) -> bool {
-        let mut changed = false;
-        for update in &activity.agent_label_updates {
-            changed |= self.note_agent_label(
-                update.thread_id.as_str(),
-                Some(update.label.as_str()),
-                AgentLabelPriority::ActivityMetadata,
-            );
-        }
-        changed
-    }
-
-    fn apply_receiver_thread_ownership_updates(
-        &mut self,
-        activity: &ToolActivityEvent,
-    ) -> ReceiverThreadOwnershipChange {
-        if activity.source != ToolActivitySource::CollabAgentToolCall {
-            return ReceiverThreadOwnershipChange::default();
-        }
-
-        let Some(parent_thread_id) = non_empty_trimmed_str(activity.thread_id.as_str()) else {
-            return ReceiverThreadOwnershipChange::default();
-        };
-        let root_turn = self
-            .root_turn_by_child_thread
-            .get(parent_thread_id)
-            .cloned()
-            .unwrap_or_else(|| ToolActivityRootTurnKey {
-                thread_id: parent_thread_id.to_string(),
-                turn_id: activity.turn_id.clone(),
-            });
-
-        let mut change = ReceiverThreadOwnershipChange::default();
-        for receiver_thread_id in receiver_thread_ids_for_activity(activity) {
-            let previous = self
-                .parent_thread_by_child
-                .insert(receiver_thread_id.clone(), parent_thread_id.to_string());
-            if previous.as_deref() != Some(parent_thread_id) {
-                change.changed = true;
-            }
-            let previous_root_turn = self
-                .root_turn_by_child_thread
-                .insert(receiver_thread_id.clone(), root_turn.clone());
-            if previous_root_turn.as_ref() != Some(&root_turn) {
-                change.changed = true;
-            }
-            if self.note_activity_subagent_runtime_metadata(
-                receiver_thread_id.as_str(),
-                activity.collab_agent_spawn_metadata.as_ref(),
-            ) {
-                change.changed = true;
-                change.requires_row_rebuild = true;
-            }
-        }
-        change
-    }
-
-    fn apply_thread_agent_nickname(
-        &mut self,
-        thread_id: &str,
-        agent_nickname: Option<&str>,
-    ) -> bool {
-        let changed = self.note_agent_label(
-            thread_id,
-            agent_nickname,
-            AgentLabelPriority::ThreadMetadataNickname,
-        );
-        if changed {
-            self.rebuild_rows();
-        }
-        changed
-    }
-
-    fn note_thread_summary_agent_nickname(&mut self, thread: &ThreadSummary) -> bool {
-        self.note_agent_label(
-            thread.id.as_str(),
-            thread.agent_nickname.as_deref(),
-            AgentLabelPriority::ThreadMetadataNickname,
-        )
-    }
-
-    fn note_subagent_runtime_metadata(
-        &mut self,
-        thread_id: &str,
-        metadata: &ThreadSessionMetadata,
-    ) -> bool {
-        self.note_subagent_runtime_metadata_values(
-            thread_id,
-            metadata.model.as_deref(),
-            metadata.reasoning_effort.as_deref(),
-            true,
-        )
-    }
-
-    fn note_activity_subagent_runtime_metadata(
-        &mut self,
-        thread_id: &str,
-        metadata: Option<&ToolActivityCollabAgentSpawnMetadata>,
-    ) -> bool {
-        let Some(metadata) = metadata else {
-            return false;
-        };
-        if normalized_optional_metadata_value(metadata.model.as_deref()).is_none() {
-            return false;
-        }
-        self.note_subagent_runtime_metadata_values(
-            thread_id,
-            metadata.model.as_deref(),
-            metadata.reasoning_effort.as_deref(),
-            false,
-        )
     }
 
     fn note_subagent_runtime_metadata_values(
@@ -1270,12 +839,6 @@ impl ToolActivityProjection {
         self.rebuild_visible_row_indexes();
     }
 
-    fn next_start_order(&mut self) -> u64 {
-        let order = self.next_start_order;
-        self.next_start_order = self.next_start_order.saturating_add(1);
-        order
-    }
-
     fn visible_row_indexes_for_selected_thread(
         &self,
         selected_thread_id: Option<&str>,
@@ -1339,15 +902,6 @@ impl ToolActivityProjection {
         if let Some(explicit_agent_label) = record.explicit_agent_label.as_ref() {
             return self.display_agent_label_for_thread(thread_id, explicit_agent_label);
         }
-        if let Some(stored_label) = stored_label {
-            match stored_label.priority {
-                AgentLabelPriority::ActivityMetadata => {
-                    return self.display_agent_label_for_thread(thread_id, &stored_label.value);
-                }
-                AgentLabelPriority::ThreadMetadataNickname => {}
-            }
-        }
-
         String::new()
     }
 
@@ -1364,39 +918,11 @@ impl ToolActivityProjection {
     fn has_resolved_subagent_label(&self, thread_id: &str) -> bool {
         self.agent_labels_by_thread
             .get(thread_id)
-            .is_some_and(|label| {
-                matches!(
-                    label.priority,
-                    AgentLabelPriority::ActivityMetadata
-                        | AgentLabelPriority::ThreadMetadataNickname
-                )
-            })
+            .is_some_and(|label| label.priority == AgentLabelPriority::ThreadMetadataNickname)
     }
 
     fn is_observed_subagent_thread(&self, thread_id: &str) -> bool {
         self.parent_thread_by_child.contains_key(thread_id)
-    }
-}
-
-impl ToolActivityKey {
-    fn from_activity(activity: &ToolActivityEvent) -> Self {
-        Self {
-            thread_id: activity.thread_id.clone(),
-            turn_id: activity.turn_id.clone(),
-            item_id: activity.item_id.clone(),
-        }
-    }
-}
-
-impl From<ToolActivitySource> for ToolActivityRecordSource {
-    fn from(source: ToolActivitySource) -> Self {
-        Self::Backend(source)
-    }
-}
-
-impl ToolActivityRecordSource {
-    fn is_backend(self, source: ToolActivitySource) -> bool {
-        self == Self::Backend(source)
     }
 }
 
@@ -1478,311 +1004,10 @@ fn truncate_label_payload(value: &str) -> String {
     truncate_display_payload(value, ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT)
 }
 
-fn truncate_activity_display_payload(value: &str) -> String {
-    truncate_display_payload(value, ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT)
-}
-
-fn truncate_reasoning_summary_payload(value: &str) -> String {
-    truncate_display_payload(value, ACTIVITY_REASONING_SUMMARY_BYTE_LIMIT)
-}
-
 pub(super) const ACTIVITY_COMPLETED_ROW_BUDGET: usize = 2_000;
 pub(super) const ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET: usize = 8 * 1024 * 1024;
 pub(super) const ACTIVITY_SELECTED_COMPLETED_ROW_WINDOW: usize = 200;
 pub(super) const ACTIVITY_LABEL_DISPLAY_BYTE_LIMIT: usize = 16 * 1024;
-pub(super) const ACTIVITY_DISPLAY_VALUE_BYTE_LIMIT: usize = 16 * 1024;
-pub(super) const ACTIVITY_REASONING_SUMMARY_BYTE_LIMIT: usize = 64 * 1024;
-const ACTIVITY_RECEIVER_THREAD_ID_LIMIT: usize = 64;
-const ACTIVITY_REASONING_SUMMARY_PART_LIMIT: usize = 64;
-const REASONING_SUMMARY_DISPLAY_MAX_CHARS: usize = 120;
-const WINDOWS_POWERSHELL_LAUNCHER_DISPLAY: &str = "powershell.exe";
-static WINDOWS_POWERSHELL_LAUNCHER_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)^[A-Z]:(?:\\\\|\\)Windows(?:\.old)?(?:\\\\|\\)System32(?:\\\\|\\)WindowsPowerShell(?:\\\\|\\)v1\.0(?:\\\\|\\)powershell\.exe$",
-    )
-    .expect("Windows PowerShell launcher regex must compile")
-});
-
-fn tool_activity_display_value(activity: &ToolActivityEvent) -> String {
-    let display_value = if activity.source == ToolActivitySource::Reasoning {
-        reasoning_activity_display_value(
-            activity
-                .reasoning_summary_text
-                .as_deref()
-                .unwrap_or_default(),
-        )
-    } else if activity.source == ToolActivitySource::CommandExecution {
-        if let Some(command_line) = first_non_empty_command_line(activity.raw_command.as_deref()) {
-            command_execution_display_line(command_line)
-        } else {
-            activity.item_type.clone()
-        }
-    } else if activity.source == ToolActivitySource::FileChange
-        && let Some(summary) = activity.file_change_summary.as_ref()
-    {
-        file_change_display_value(summary)
-    } else {
-        activity
-            .raw_tool_name
-            .as_deref()
-            .or(activity.raw_resource_uri.as_deref())
-            .map(str::to_string)
-            .unwrap_or_else(|| activity.item_type.clone())
-    };
-    truncate_activity_display_payload(&display_value)
-}
-
-fn subagent_handoff_display_value(byte_len: usize) -> String {
-    format!("handoff: {byte_len} bytes")
-}
-
-fn file_change_display_value(summary: &ToolActivityFileChangeSummary) -> String {
-    if let Some(path) = single_relative_file_change_path(summary) {
-        return format!(
-            "Patching {}, +{} -{}",
-            path, summary.additions, summary.deletions
-        );
-    }
-
-    let file_label = if summary.file_count == 1 {
-        "file"
-    } else {
-        "files"
-    };
-    format!(
-        "Patching {} {}, +{} -{}",
-        summary.file_count, file_label, summary.additions, summary.deletions
-    )
-}
-
-fn single_relative_file_change_path(summary: &ToolActivityFileChangeSummary) -> Option<String> {
-    if summary.file_count != 1 {
-        return None;
-    }
-
-    generic_relative_file_change_path(summary.single_file_path.as_deref()?)
-}
-
-fn generic_relative_file_change_path(path: &Path) -> Option<String> {
-    let path_text = path.to_string_lossy();
-    is_windows_plain_relative_path(&path_text).then(|| path_text.into_owned())
-}
-
-fn is_windows_plain_relative_path(path: &str) -> bool {
-    let normalized = path.replace('/', "\\");
-    !normalized.is_empty()
-        && !normalized.starts_with('\\')
-        && !has_windows_drive_prefix(normalized.as_str())
-}
-
-fn has_windows_drive_prefix(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
-}
-
-fn receiver_thread_ids_for_activity(activity: &ToolActivityEvent) -> Vec<String> {
-    if activity.source != ToolActivitySource::CollabAgentToolCall {
-        return Vec::new();
-    }
-    let Some(parent_thread_id) = non_empty_trimmed_str(activity.thread_id.as_str()) else {
-        return Vec::new();
-    };
-
-    let mut receiver_thread_ids = Vec::new();
-    for receiver_thread_id in &activity.receiver_thread_ids {
-        let Some(receiver_thread_id) = non_empty_trimmed_str(receiver_thread_id.as_str()) else {
-            continue;
-        };
-        if receiver_thread_id == parent_thread_id
-            || receiver_thread_ids
-                .iter()
-                .any(|existing: &String| existing == receiver_thread_id)
-        {
-            continue;
-        }
-        receiver_thread_ids.push(receiver_thread_id.to_string());
-        if receiver_thread_ids.len() >= ACTIVITY_RECEIVER_THREAD_ID_LIMIT {
-            break;
-        }
-    }
-    receiver_thread_ids
-}
-
-fn merge_receiver_thread_ids(
-    record: &mut ToolActivityRecord,
-    activity: &ToolActivityEvent,
-) -> bool {
-    let mut changed = false;
-    for receiver_thread_id in receiver_thread_ids_for_activity(activity) {
-        if record
-            .receiver_thread_ids
-            .iter()
-            .any(|existing| existing == &receiver_thread_id)
-        {
-            continue;
-        }
-        if record.receiver_thread_ids.len() >= ACTIVITY_RECEIVER_THREAD_ID_LIMIT {
-            break;
-        }
-        record.receiver_thread_ids.push(receiver_thread_id);
-        changed = true;
-    }
-    changed
-}
-
-fn activity_display_value_for_record(
-    record: &ToolActivityRecord,
-    activity: &ToolActivityEvent,
-) -> String {
-    if record.source.is_backend(ToolActivitySource::Reasoning) {
-        return reasoning_activity_display_value(&record.reasoning_summary_parts.join(""));
-    }
-
-    tool_activity_display_value(activity)
-}
-
-fn apply_reasoning_summary_detail(
-    record: &mut ToolActivityRecord,
-    activity: &ToolActivityEvent,
-) -> bool {
-    if activity.source != ToolActivitySource::Reasoning {
-        return false;
-    }
-
-    if let Some(summary_text) = activity.reasoning_summary_text.as_ref() {
-        if summary_text.is_empty() {
-            return false;
-        }
-        let replacement = vec![truncate_reasoning_summary_payload(summary_text)];
-        if record.reasoning_summary_parts == replacement {
-            return false;
-        }
-        record.reasoning_summary_parts = replacement;
-        return true;
-    }
-
-    let Some(summary_index) = activity
-        .reasoning_summary_index
-        .or_else(|| activity.reasoning_summary_delta.as_ref().map(|_| 0))
-    else {
-        return false;
-    };
-    if summary_index >= ACTIVITY_REASONING_SUMMARY_PART_LIMIT {
-        return false;
-    }
-
-    let mut changed =
-        ensure_reasoning_summary_slot(&mut record.reasoning_summary_parts, summary_index);
-    if let Some(delta) = activity.reasoning_summary_delta.as_ref()
-        && !delta.is_empty()
-    {
-        let current_bytes = record
-            .reasoning_summary_parts
-            .iter()
-            .map(String::len)
-            .sum::<usize>();
-        let remaining = ACTIVITY_REASONING_SUMMARY_BYTE_LIMIT.saturating_sub(current_bytes);
-        if remaining > 0 {
-            let delta = truncate_display_payload(delta, remaining);
-            if !delta.is_empty() {
-                record.reasoning_summary_parts[summary_index].push_str(&delta);
-                changed = true;
-            }
-        }
-    }
-    changed
-}
-
-fn ensure_reasoning_summary_slot(parts: &mut Vec<String>, index: usize) -> bool {
-    let required_len = index.saturating_add(1);
-    if parts.len() >= required_len {
-        return false;
-    }
-    parts.resize(required_len, String::new());
-    true
-}
-
-fn reasoning_activity_display_value(summary_text: &str) -> String {
-    normalized_reasoning_summary_excerpt(summary_text)
-        .map(|summary| format!("reasoning: {summary}"))
-        .unwrap_or_else(|| "reasoning".to_string())
-}
-
-fn normalized_reasoning_summary_excerpt(summary_text: &str) -> Option<String> {
-    let normalized = summary_text
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if normalized.is_empty() {
-        return None;
-    }
-    if normalized.chars().count() <= REASONING_SUMMARY_DISPLAY_MAX_CHARS {
-        return Some(normalized);
-    }
-
-    let prefix_len = REASONING_SUMMARY_DISPLAY_MAX_CHARS.saturating_sub(3);
-    let mut truncated = normalized.chars().take(prefix_len).collect::<String>();
-    let trimmed_len = truncated.trim_end().len();
-    truncated.truncate(trimmed_len);
-    truncated.push_str("...");
-    Some(truncated)
-}
-
-fn first_non_empty_command_line(command: Option<&str>) -> Option<&str> {
-    command?
-        .split(['\r', '\n'])
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-}
-
-fn command_execution_display_line(line: &str) -> String {
-    let Some((token, rest)) = first_command_token(line) else {
-        return line.to_string();
-    };
-
-    if is_windows_powershell_launcher(token) {
-        format!("{WINDOWS_POWERSHELL_LAUNCHER_DISPLAY}{rest}")
-    } else {
-        line.to_string()
-    }
-}
-
-fn first_command_token(line: &str) -> Option<(&str, &str)> {
-    if let Some(unquoted) = line.strip_prefix('"') {
-        if let Some(closing_quote_index) = unquoted.find('"') {
-            let token = &unquoted[..closing_quote_index];
-            let rest = &unquoted[closing_quote_index + 1..];
-            return Some((token, rest));
-        }
-
-        return None;
-    }
-
-    let first_whitespace_index = line
-        .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index));
-
-    if let Some(first_whitespace_index) = first_whitespace_index {
-        Some((
-            &line[..first_whitespace_index],
-            &line[first_whitespace_index..],
-        ))
-    } else if line.is_empty() {
-        None
-    } else {
-        Some((line, ""))
-    }
-}
-
-fn is_windows_powershell_launcher(token: &str) -> bool {
-    WINDOWS_POWERSHELL_LAUNCHER_RE.is_match(token)
-}
-
-fn non_empty_trimmed_string(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
-}
-
 fn normalized_optional_metadata_value(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -1790,46 +1015,7 @@ fn normalized_optional_metadata_value(value: Option<&str>) -> Option<String> {
         .map(truncate_label_payload)
 }
 
-fn explicit_agent_label_for_activity(
-    activity: &ToolActivityEvent,
-    explicit_agent_label: Option<String>,
-) -> Option<String> {
-    let explicit_agent_label = explicit_agent_label.and_then(non_empty_trimmed_string)?;
-    if explicit_agent_label == "Main"
-        || !is_fallback_agent_label_for_thread(&explicit_agent_label, &activity.thread_id)
-    {
-        return Some(truncate_label_payload(&explicit_agent_label));
-    }
-    None
-}
-
 fn non_empty_trimmed_str(value: &str) -> Option<&str> {
     let trimmed = value.trim();
     (!trimmed.is_empty()).then_some(trimmed)
-}
-
-fn final_status_from_item_status(raw_item_status: Option<&str>) -> ToolActivityRowStatus {
-    let Some(raw_item_status) = raw_item_status else {
-        return ToolActivityRowStatus::FinishedOk;
-    };
-    let normalized = raw_item_status
-        .chars()
-        .filter(|character| *character != '-' && *character != '_' && !character.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .collect::<String>();
-    match normalized.as_str() {
-        "failed" | "error" | "errored" | "declined" | "interrupted" | "canceled" | "cancelled" => {
-            ToolActivityRowStatus::FinishedError
-        }
-        _ => ToolActivityRowStatus::FinishedOk,
-    }
-}
-
-fn final_status_from_turn_status(status: CompletedTurnStatus) -> ToolActivityRowStatus {
-    match status {
-        CompletedTurnStatus::Completed => ToolActivityRowStatus::FinishedOk,
-        CompletedTurnStatus::Interrupted | CompletedTurnStatus::Failed => {
-            ToolActivityRowStatus::FinishedError
-        }
-    }
 }

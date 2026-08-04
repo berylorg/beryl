@@ -9,6 +9,7 @@ use beryl_model::{
 use crate::RecordRevision;
 
 mod bootstrap;
+mod catalog_source;
 mod codec;
 mod error;
 mod mutation;
@@ -16,6 +17,7 @@ mod validate;
 
 use codec::{ClaimByThreadCodec, ClaimByWindowCodec, SessionHeaderCodec, SessionWindowCodec};
 
+pub use catalog_source::{ThreadClaimCatalogSource, ThreadClaimCatalogSourceError};
 pub use error::{SessionMutationError, SessionReadError};
 pub use mutation::{
     ActivateRestoringClaim, BeginSessionRestore, CreateClaimedWindow, InitializeThreadlessWindow,

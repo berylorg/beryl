@@ -4,7 +4,8 @@ use fjall::PersistMode;
 use thiserror::Error;
 
 use crate::{
-    DomainHandle, HealthGateError, HomeStore, RecordCodec, StorageDomain, health::FailureSeverity,
+    DomainHandle, HealthGateError, HomeStore, RecordCodec, StorageDomain,
+    health::{ClassifiedFjallError, FailureSeverity, HealthAdmission},
     writer::ActiveWriter,
 };
 
@@ -180,15 +181,44 @@ impl HomeStore {
             });
         }
 
-        if let Err(source) = family.keyspace.insert(encoded_key, encoded_value) {
-            admission.fail(FailureSeverity::Verify);
-            return Err(storage(PersistedCorruptionStage::Insert, source));
-        }
-        if let Err(source) = generation.database.persist(PersistMode::SyncAll) {
-            admission.fail(FailureSeverity::Verify);
-            return Err(storage(PersistedCorruptionStage::Persist, source));
-        }
-        admission.confirm()?;
+        let capacity = generation
+            .database
+            .storage_policy()
+            .batch_capacity(
+                1,
+                u64::try_from(encoded_key.len()).unwrap_or(u64::MAX),
+                u64::try_from(encoded_value.len()).unwrap_or(u64::MAX),
+            )
+            .map_err(|source| {
+                classified_storage(&admission, PersistedCorruptionStage::Insert, source)
+            })?;
+        let mut batch = generation
+            .database
+            .batch(capacity, PersistMode::Buffer)
+            .map_err(|source| {
+                classified_storage(&admission, PersistedCorruptionStage::Insert, source)
+            })?;
+        batch
+            .insert(
+                &family.keyspace,
+                encoded_key.to_vec().into_boxed_slice(),
+                encoded_value.to_vec().into_boxed_slice(),
+            )
+            .map_err(|source| {
+                classified_storage(&admission, PersistedCorruptionStage::Insert, source)
+            })?;
+        batch.commit().map_err(|source| {
+            classified_storage(&admission, PersistedCorruptionStage::Insert, source)
+        })?;
+        generation
+            .database
+            .persist(PersistMode::SyncAll)
+            .map_err(|source| {
+                classified_storage(&admission, PersistedCorruptionStage::Persist, source)
+            })?;
+        admission.confirm_database(&generation.database, |source| {
+            storage(PersistedCorruptionStage::Persist, source)
+        })?;
         Ok(())
     }
 }
@@ -224,4 +254,16 @@ fn storage(
         stage,
         source: Box::new(source),
     }
+}
+
+fn classified_storage(
+    admission: &HealthAdmission<'_>,
+    stage: PersistedCorruptionStage,
+    source: fjall::Error,
+) -> PersistedCorruptionError {
+    let source = ClassifiedFjallError::direct(source);
+    if let Some(severity) = source.severity() {
+        admission.fail(severity);
+    }
+    storage(stage, source)
 }

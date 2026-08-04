@@ -1,5 +1,7 @@
 #![cfg(feature = "test-faults")]
 
+#[path = "phase7_transcript_fault_reconciliation/cases.rs"]
+mod cases;
 mod support;
 
 use beryl_home_store::{
@@ -9,14 +11,14 @@ use beryl_home_store::{
 };
 use beryl_model::{SyndicItemId, SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    AdmissionMarkers, AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CasTurnSource,
-    ComposerAtom, ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
-    FinalizeNextTurnItem, HistorySummaryRecord, IdleSubmission, ItemProjectionGeneration,
-    PreparedContent, ProjectionLifecycle, ProjectionOrdinal, SourceEventPayload,
-    StartItemProjectionBuild, StartTranscriptBuild, SyndicPointReadLimit, SyndicStorage,
-    SyndicTimestamp, TranscriptBuildPhase, TranscriptBuildRecord, TranscriptGeneration,
-    TranscriptPosition, TranscriptViewEntryRecord, TranscriptViewHeadRecord, TurnDepth,
-    TurnEndStatus, TurnItemOrdinal, test_faults::fixture_advance_transcript_digest,
+    AdvanceItemProjectionBuild, AdvanceTranscriptBuild, CasTurnSource, ComposerAtom,
+    ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision,
+    FinalizeNextTurnItem, FreezeNextTurnItem, HistorySummaryRecord, IdleSubmission,
+    ItemProjectionGeneration, PreparedContent, ProjectionLifecycle, ProjectionOrdinal,
+    SourceEventPayload, StartItemProjectionBuild, StartTranscriptBuild, SyndicPointReadLimit,
+    SyndicStorage, SyndicTimestamp, TranscriptBuildPhase, TranscriptBuildRecord,
+    TranscriptGeneration, TranscriptPosition, TranscriptViewEntryRecord, TranscriptViewHeadRecord,
+    TurnDepth, TurnEndStatus, TurnItemOrdinal, test_faults::fixture_advance_transcript_digest,
 };
 
 use support::{
@@ -61,7 +63,12 @@ fn create_thread(store: &HomeStore, storage: SyndicStorage) -> SyndicThreadId {
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
-            CreateThread::ordinary(thread, draft_id(2), timestamp(1)),
+            CreateThread::ordinary(
+                thread,
+                draft_id(2),
+                support::exact_cas::execution_binding(),
+                timestamp(1),
+            ),
         ),
     );
     thread
@@ -101,14 +108,14 @@ fn submit_turn(store: &HomeStore, storage: SyndicStorage, thread: SyndicThreadId
     let item = SyndicItemId::from_bytes([20; 16]);
     let submission = IdleSubmission::new(
         thread,
-        thread_record.record().revision(),
+        thread_record.revision(),
         current.draft().id(),
         current.draft().revision(),
         current.draft().content(),
-        gate.record().revision(),
+        gate.revision(),
         draft_id(3),
         item,
-        AdmissionMarkers::default(),
+        None,
         timestamp(3),
     );
     let turn = submission.submitted_turn_id();
@@ -141,7 +148,7 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
         store,
         storage.start_item_projection_build(
             storage.revision(store).unwrap(),
-            StartItemProjectionBuild::new(item, canonical.record().revision(), generation),
+            StartItemProjectionBuild::new(item, canonical.revision(), generation),
         ),
     );
     for _ in 0..1_024 {
@@ -160,7 +167,7 @@ fn project_item(store: &HomeStore, storage: SyndicStorage, item: SyndicItemId) {
             store,
             storage.advance_item_projection_build(
                 storage.revision(store).unwrap(),
-                AdvanceItemProjectionBuild::new(item, generation, build.record().revision()),
+                AdvanceItemProjectionBuild::new(item, generation, build.revision()),
             ),
         );
     }
@@ -201,6 +208,24 @@ fn complete_turn(
         SourceEventPayload::TurnEnded(TurnEndStatus::complete()),
         timestamp(5),
     );
+    let state = storage
+        .turn_state(store, submitted.turn, point_limit())
+        .unwrap()
+        .unwrap();
+    execute(
+        store,
+        storage.freeze_next_turn_item(
+            storage.revision(store).unwrap(),
+            FreezeNextTurnItem::new(
+                thread,
+                submitted.turn,
+                state.revision(),
+                TurnItemOrdinal::FIRST,
+                submitted.item,
+                timestamp(6),
+            ),
+        ),
+    );
     project_item(store, storage, submitted.item);
     let state = storage
         .turn_state(store, submitted.turn, point_limit())
@@ -213,7 +238,7 @@ fn complete_turn(
             FinalizeNextTurnItem::new(
                 thread,
                 submitted.turn,
-                state.record().revision(),
+                state.revision(),
                 TurnItemOrdinal::FIRST,
                 submitted.item,
                 timestamp(6),
@@ -242,17 +267,13 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Publi
         .transcript_view_head(store, thread, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(head.record().lifecycle(), ProjectionLifecycle::Stale);
-    let generation = head.record().generation();
+    assert_eq!(head.lifecycle(), ProjectionLifecycle::Stale);
+    let generation = head.generation();
     execute(
         store,
         storage.start_transcript_build(
             storage.revision(store).unwrap(),
-            StartTranscriptBuild::new(
-                thread,
-                thread_record.record().revision(),
-                head.record().revision(),
-            ),
+            StartTranscriptBuild::new(thread, thread_record.revision(), head.revision()),
         ),
     );
     let collecting = storage
@@ -263,7 +284,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Publi
         store,
         storage.advance_transcript_build(
             storage.revision(store).unwrap(),
-            AdvanceTranscriptBuild::new(thread, generation, collecting.record().revision()),
+            AdvanceTranscriptBuild::new(thread, generation, collecting.revision()),
         ),
     );
 
@@ -272,7 +293,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Publi
         .unwrap()
         .unwrap();
     assert_eq!(
-        ready.record().phase(),
+        ready.phase(),
         TranscriptBuildPhase::Publishing {
             next_depth: TurnDepth::FIRST,
             next_item: TurnItemOrdinal::FIRST,
@@ -291,7 +312,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Publi
         .item_projections(
             store,
             submitted.item,
-            item_head.record().generation(),
+            item_head.generation(),
             None,
             CursorReadLimits::new(2, READ_BYTES).unwrap(),
         )
@@ -304,8 +325,8 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Publi
         generation,
         TranscriptPosition::FIRST,
         submitted.item,
-        canonical.record().revision(),
-        item_head.record().generation(),
+        canonical.revision(),
+        item_head.generation(),
         projection.projection_id(),
         projection.projection_revision(),
     );
@@ -329,22 +350,19 @@ fn observe(
     storage: SyndicStorage,
     target: &PublicationTarget,
 ) -> PublicationSnapshot {
-    let build = *storage
+    let build = storage
         .transcript_build(store, target.thread, target.generation, point_limit())
         .unwrap()
-        .unwrap()
-        .record();
+        .unwrap();
     let head = storage
         .transcript_view_head(store, target.thread, point_limit())
         .unwrap()
         .unwrap()
-        .record()
         .clone();
     let summary = storage
         .history_summary(store, target.thread, point_limit())
         .unwrap()
         .unwrap()
-        .record()
         .clone();
     let page = storage
         .transcript_entries(
@@ -397,6 +415,7 @@ fn expected_published(
         ),
         summary: HistorySummaryRecord::new(
             build.thread_id(),
+            unpublished.summary.revision().checked_next().unwrap(),
             build.source_thread_revision(),
             build.committed_tail(),
             build.selected_path_digest(),
@@ -434,68 +453,5 @@ fn assert_state(
             assert!(is_published, "post-persist cut lost published state")
         }
         ExpectedState::Either => {}
-    }
-}
-
-#[test]
-fn final_transcript_publication_cuts_reconcile_as_one_atomic_state() {
-    for (name, point, expected) in [
-        (
-            "phase7-transcript-final-before-commit",
-            FaultPoint::BeforeCommit,
-            ExpectedState::Unpublished,
-        ),
-        (
-            "phase7-transcript-final-after-commit-before-persist",
-            FaultPoint::AfterCommitBeforePersist,
-            ExpectedState::Either,
-        ),
-        (
-            "phase7-transcript-final-after-persist",
-            FaultPoint::AfterPersist,
-            ExpectedState::Published,
-        ),
-    ] {
-        let home = TestHome::new(name);
-        let faults = FaultController::new();
-        let mut store = open_with_faults(home.path(), faults.clone());
-        let storage = SyndicStorage::register(&mut store).unwrap();
-        let target = prepare_final_publication(&store, storage);
-        let unpublished = observe(&store, storage, &target);
-        assert!(unpublished.entries.is_empty() && unpublished.build.entry_count() == 0);
-        assert!(
-            unpublished.head.entry_count() == 0
-                && unpublished.head.lifecycle() == ProjectionLifecycle::Stale
-        );
-        assert!(!unpublished.summary.complete());
-        assert!(unpublished.build.history_complete());
-        let published = expected_published(&unpublished, &target);
-
-        let contribution = storage.advance_transcript_build(
-            storage.revision(&store).unwrap(),
-            AdvanceTranscriptBuild::new(
-                target.thread,
-                target.generation,
-                unpublished.build.revision(),
-            ),
-        );
-        let command = command(&store, contribution);
-        faults.fail_next(point);
-        assert!(store.execute(command).is_err());
-        assert_eq!(store.health().state(), HomeHealthState::Verifying);
-
-        store.verify_health().unwrap();
-        let recovered = observe(&store, storage, &target);
-        assert_state(&recovered, &unpublished, &published, expected);
-        store.validate_registered_domains().unwrap();
-        store.close().unwrap();
-
-        let mut reopened = open(home.path());
-        let reopened_storage = SyndicStorage::register(&mut reopened).unwrap();
-        let durable = observe(&reopened, reopened_storage, &target);
-        assert_eq!(durable, recovered);
-        assert_state(&durable, &unpublished, &published, expected);
-        reopened.validate_registered_domains().unwrap();
-        reopened.close().unwrap();
     }
 }

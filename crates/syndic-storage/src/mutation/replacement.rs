@@ -1,17 +1,16 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
 use beryl_model::{
-    DomainRevision, DraftRevision, InputGateRevision, SyndicDraftId, SyndicItemId, SyndicThreadId,
-    SyndicTurnId, ThreadRevision,
+    DomainRevision, DraftRevision, InputGateRevision, SealedAssetReferenceSetProof, SyndicDraftId,
+    SyndicItemId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
-    CurrentTranscriptEntryProof, DraftByThreadRecord, DraftRecord, HistorySummaryRecord,
-    InputGateState, InputMarkerOrdinal, InputMarkerOwner, ReplacementEditIntent, SelectedPathProof,
-    SyndicMutationError, SyndicRecordError, SyndicStorage, SyndicTimestamp, codec::*,
-    domain::SyndicDomain,
+    CurrentTranscriptEntryProof, DraftByThreadRecord, DraftRecord, DraftSubmissionIntent,
+    HistorySummaryRecord, InputGateState, ReplacementEditIntent, SelectedPathProof,
+    SyndicMutationError, SyndicStorage, SyndicTimestamp, codec::*, domain::SyndicDomain,
 };
 
-use super::{admission::AdmissionMarkers, current_draft, point, required};
+use super::{current_draft, required};
 
 /// Exact proof and revisions for entering durable replacement-edit mode.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,7 +24,7 @@ pub struct StartReplacementEdit {
     target_item_id: SyndicItemId,
     selected_path: SelectedPathProof,
     transcript_entry: CurrentTranscriptEntryProof,
-    markers: AdmissionMarkers,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
     started_at: SyndicTimestamp,
 }
 
@@ -42,7 +41,7 @@ impl StartReplacementEdit {
         target_item_id: SyndicItemId,
         selected_path: SelectedPathProof,
         transcript_entry: CurrentTranscriptEntryProof,
-        markers: AdmissionMarkers,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
         started_at: SyndicTimestamp,
     ) -> Self {
         Self {
@@ -55,7 +54,7 @@ impl StartReplacementEdit {
             target_item_id,
             selected_path,
             transcript_entry,
-            markers,
+            asset_reference_set,
             started_at,
         }
     }
@@ -76,8 +75,8 @@ impl StartReplacementEdit {
     }
 
     #[must_use]
-    pub const fn markers(&self) -> &AdmissionMarkers {
-        &self.markers
+    pub const fn asset_reference_set(&self) -> Option<SealedAssetReferenceSetProof> {
+        self.asset_reference_set
     }
 
     #[must_use]
@@ -157,7 +156,7 @@ struct CancelReplacementEditMutation {
 struct ReplacementRecords {
     draft: DraftRecord,
     draft_index: DraftByThreadRecord,
-    summary: HistorySummaryRecord,
+    summary: Option<HistorySummaryRecord>,
 }
 
 struct ReplacementBase {
@@ -205,7 +204,9 @@ impl ReplacementRecords {
     ) -> Result<(), SyndicMutationError> {
         mutations.put::<DraftsCodec>(&self.draft.id(), &self.draft)?;
         mutations.put::<DraftByThreadCodec>(&self.draft.thread_id(), &self.draft_index)?;
-        mutations.put::<HistorySummariesCodec>(&self.draft.thread_id(), &self.summary)?;
+        if let Some(summary) = &self.summary {
+            mutations.put::<HistorySummariesCodec>(&self.draft.thread_id(), summary)?;
+        }
         Ok(())
     }
 }
@@ -273,8 +274,14 @@ impl StartReplacementEditMutation {
             edit.expected_gate_revision,
             edit.started_at,
         )?;
-        if base.draft.replacement_edit_intent().is_some() {
-            return Err(SyndicMutationError::ReplacementEditAlreadyActive);
+        match base.draft.submission_intent() {
+            DraftSubmissionIntent::Ordinary => {}
+            DraftSubmissionIntent::Replacement(_) => {
+                return Err(SyndicMutationError::ReplacementEditAlreadyActive);
+            }
+            DraftSubmissionIntent::DiscussionContext(_) => {
+                return Err(SyndicMutationError::ReplacementTargetConflict);
+            }
         }
         let empty = super::admission::canonical_empty_content(reader)?;
         if base.draft.content() != empty {
@@ -292,31 +299,25 @@ impl StartReplacementEditMutation {
             return Err(SyndicMutationError::ReplacementTargetConflict);
         }
         let content = item
-            .payload()
-            .content()
+            .presentation_content()
             .ok_or(SyndicMutationError::ReplacementTargetConflict)?;
         super::admission::require_sealed_composer(reader, content)?;
-        edit.markers.validate_content(content)?;
-        validate_stored_markers(
-            reader,
-            item.id(),
-            item.payload().marker_count(),
-            &edit.markers,
-        )?;
+        super::admission::validate_asset_reference_set(content, edit.asset_reference_set)?;
+        if item.presentation().asset_reference_set() != edit.asset_reference_set {
+            return Err(SyndicMutationError::AssetReferenceSetConflict);
+        }
 
         let revision = base.draft.revision().checked_next()?;
         let draft = DraftRecord::new(
             base.draft.id(),
             base.draft.thread_id(),
             revision,
-            base.draft.parent(),
-            base.draft.context_owner_id(),
-            Some(intent),
+            DraftSubmissionIntent::Replacement(intent),
             content,
             base.draft.created_at(),
             edit.started_at,
         );
-        Ok(replacement_records(base, draft))
+        replacement_records(base, draft)
     }
 }
 
@@ -335,7 +336,10 @@ impl CancelReplacementEditMutation {
             cancellation.expected_gate_revision,
             cancellation.cancelled_at,
         )?;
-        if base.draft.replacement_edit_intent().is_none() {
+        if !matches!(
+            base.draft.submission_intent(),
+            DraftSubmissionIntent::Replacement(_)
+        ) {
             return Err(SyndicMutationError::ReplacementEditNotActive);
         }
         let revision = base.draft.revision().checked_next()?;
@@ -343,85 +347,42 @@ impl CancelReplacementEditMutation {
             base.draft.id(),
             base.draft.thread_id(),
             revision,
-            base.draft.parent(),
-            base.draft.context_owner_id(),
-            None,
+            DraftSubmissionIntent::Ordinary,
             base.draft.content(),
             base.draft.created_at(),
             cancellation.cancelled_at,
         );
-        Ok(replacement_records(base, draft))
+        replacement_records(base, draft)
     }
 }
 
-fn replacement_records(base: ReplacementBase, draft: DraftRecord) -> ReplacementRecords {
+fn replacement_records(
+    base: ReplacementBase,
+    draft: DraftRecord,
+) -> Result<ReplacementRecords, SyndicMutationError> {
     let draft_index = DraftByThreadRecord::new(
         base.thread.id(),
         draft.id(),
         draft.revision(),
         base.thread.revision(),
     );
-    let summary = HistorySummaryRecord::new(
-        base.summary.thread_id(),
-        base.summary.thread_revision(),
-        base.summary.committed_tail(),
-        base.summary.selected_path_digest(),
-        base.summary.complete(),
-        base.summary.last_activity_at().max(draft.updated_at()),
-    );
-    ReplacementRecords {
+    let next_activity = base.summary.last_activity_at().max(draft.updated_at());
+    let summary = if next_activity != base.summary.last_activity_at() {
+        Some(HistorySummaryRecord::new(
+            base.summary.thread_id(),
+            base.summary.revision().checked_next()?,
+            base.summary.thread_revision(),
+            base.summary.committed_tail(),
+            base.summary.selected_path_digest(),
+            base.summary.complete(),
+            next_activity,
+        ))
+    } else {
+        None
+    };
+    Ok(ReplacementRecords {
         draft,
         draft_index,
         summary,
-    }
-}
-
-fn validate_stored_markers(
-    reader: &DomainReader<'_, SyndicDomain>,
-    item_id: SyndicItemId,
-    marker_count: u64,
-    markers: &AdmissionMarkers,
-) -> Result<(), SyndicMutationError> {
-    let actual_count =
-        u64::try_from(markers.markers().len()).map_err(|_| SyndicRecordError::LengthOverflow {
-            kind: "replacement marker resolutions",
-        })?;
-    if marker_count != actual_count {
-        return Err(SyndicMutationError::MarkerResolutionConflict);
-    }
-    let owner = InputMarkerOwner::CanonicalItem(item_id);
-    for (index, marker) in markers.markers().iter().enumerate() {
-        let ordinal = InputMarkerOrdinal::new(
-            u64::try_from(index)
-                .ok()
-                .and_then(|value| value.checked_add(1))
-                .ok_or(SyndicRecordError::LengthOverflow {
-                    kind: "replacement marker resolutions",
-                })?,
-        )?;
-        let record =
-            point::<InputMarkerResolutionsFamily>(reader, &InputMarkerKey { owner, ordinal })?;
-        if record.as_ref().is_none_or(|record| {
-            record.owner() != owner || record.ordinal() != ordinal || record.marker() != *marker
-        }) {
-            return Err(SyndicMutationError::MarkerResolutionConflict);
-        }
-    }
-    let next = InputMarkerOrdinal::new(actual_count.checked_add(1).ok_or(
-        SyndicRecordError::LengthOverflow {
-            kind: "replacement marker resolutions",
-        },
-    )?)?;
-    if point::<InputMarkerResolutionsFamily>(
-        reader,
-        &InputMarkerKey {
-            owner,
-            ordinal: next,
-        },
-    )?
-    .is_some()
-    {
-        return Err(SyndicMutationError::MarkerResolutionConflict);
-    }
-    Ok(())
+    })
 }

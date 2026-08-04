@@ -23,17 +23,12 @@ pub(super) fn validate(
         if item.turn_id() != projection.turn_id() {
             return invariant("projection turn disagrees with source item");
         }
-        let content = item
-            .payload()
-            .content()
+        let source = item
+            .projection_source()
             .ok_or(SyndicValidationError::Invariant(
-                "projection source item omitted canonical content",
+                "projection source item omitted projection text",
             ))?;
-        let manifest = require::<ContentManifestsFamily>(
-            reader,
-            &content.id(),
-            "projection source content is missing",
-        )?;
+        let source_bytes = source.logical_utf8_bytes();
         match projection.payload() {
             ProjectionPayload::Empty => {}
             ProjectionPayload::InlineMarkdown {
@@ -41,9 +36,7 @@ pub(super) fn validate(
                 source,
                 ..
             } => {
-                if source_range.end() > manifest.expected().logical_utf8_bytes()
-                    || source_range.len() != source.len() as u64
-                {
+                if source_range.end() > source_bytes || source_range.len() != source.len() as u64 {
                     return invariant("inline projection source range is invalid");
                 }
             }
@@ -52,7 +45,7 @@ pub(super) fn validate(
                 resource_id,
                 ..
             } => {
-                if source_range.end() > manifest.expected().logical_utf8_bytes() {
+                if source_range.end() > source_bytes {
                     return invariant("resource projection source range is invalid");
                 }
                 let resource = require::<ResourcesFamily>(
@@ -62,7 +55,7 @@ pub(super) fn validate(
                 )?;
                 if resource.projection_id() != Some(projection.id())
                     || resource.item_id() != projection.item_id()
-                    || resource.backing().content_id() != Some(content.id())
+                    || resource.backing().text_source() != Some(source)
                     || resource.backing().range() != Some(*source_range)
                 {
                     return invariant("projection resource metadata disagrees");
@@ -70,7 +63,8 @@ pub(super) fn validate(
             }
             ProjectionPayload::ImageMarker { source_offset, .. } => {
                 if !matches!(item.kind(), CanonicalItemKind::UserInput)
-                    || *source_offset > manifest.expected().logical_utf8_bytes()
+                    || !matches!(source, crate::ProjectionTextSource::Composer(_))
+                    || *source_offset > source_bytes
                 {
                     return invariant("image-marker projection source is invalid");
                 }

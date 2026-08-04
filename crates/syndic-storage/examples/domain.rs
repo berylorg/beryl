@@ -1,5 +1,8 @@
 use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
-use beryl_model::{SyndicDraftId, SyndicThreadId};
+use beryl_model::{
+    ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
+    SyndicThreadId,
+};
 use syndic_storage::{CreateThread, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,6 +13,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let creation = CreateThread::ordinary(
         SyndicThreadId::from_bytes([1; 16]),
         SyndicDraftId::from_bytes([2; 16]),
+        ExecutionBinding::new(
+            RuntimeId::from_bytes([3; 16]),
+            RootId::from_bytes([4; 16]),
+            RuntimeNativePath::from_admitted(
+                RuntimeMode::host(),
+                PathFlavor::Windows,
+                "C:\\beryl-syndic-example",
+            )?,
+        ),
         SyndicTimestamp::from_unix_millis(1),
     );
     let mut command = HomeCommand::new(home.home_revision()?);

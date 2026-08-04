@@ -52,7 +52,6 @@ pub(crate) struct TurnUiState {
     pub cancellable_active_turn: Option<CancellableTurnUiState>,
     pub hard_stop_target_count: usize,
     pub hard_stop_limitation_count: usize,
-    pub turn_stop_request_in_flight: bool,
     pub hard_stop_request_in_flight: bool,
     pub hard_stop_hold_active: bool,
 }

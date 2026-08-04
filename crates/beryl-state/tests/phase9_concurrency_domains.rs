@@ -1,23 +1,18 @@
 mod support;
 
-use std::num::NonZeroU64;
-
-use beryl_home_store::{HomeCommand, SidecarNamespace};
-use beryl_model::AssetId;
+use beryl_home_store::HomeCommand;
 use beryl_state::{
-    AddAssetReference, AdmitBranchHandoffJob, ApplySettings, AssetMediaType,
-    BranchHandoffJobLifecycle, CatalogFreshness, CatalogPointReadLimit, CatalogRowExpectation,
-    CompleteResolvingTurn, CreateAssetWithReference, ExpectedSettingRevision,
+    AdmitBranchHandoffJob, ApplySettings, BranchHandoffJobLifecycle, CatalogFreshness,
+    CatalogPointReadLimit, CatalogRowExpectation, CompleteResolvingTurn, ExpectedSettingRevision,
     HandoffFailureEvidence, HandoffFailureKind, MarkCatalogRowStale, PublishCatalogRow,
-    RecordTerminalHandoffFailure, RemoveAssetReference, SettingKey, SettingUpdate, SettingValue,
-    UnixMillis,
+    RecordTerminalHandoffFailure, SettingKey, SettingUpdate, SettingValue,
 };
 use tempfile::tempdir;
 
 use support::execute;
 use support::phase9::{
-    admission, assert_one_success_one_conflict, asset_owner, catalog_facts, catalog_sources,
-    command, race_commands, sidecar_limit, thread,
+    admission, assert_one_success_one_conflict, catalog_facts, catalog_sources, command,
+    race_commands, thread,
 };
 
 fn absent(key: SettingKey, value: SettingValue) -> SettingUpdate {
@@ -237,7 +232,7 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
         &store,
         state.catalog().mark_stale(
             expected_domain,
-            MarkCatalogRowStale::new(thread_id, initial.row().revision()),
+            MarkCatalogRowStale::new(thread_id, initial.revision()),
         ),
     );
     let rebuild = command(
@@ -246,7 +241,7 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
             expected_domain,
             PublishCatalogRow::new(
                 thread_id,
-                CatalogRowExpectation::Revision(initial.row().revision()),
+                CatalogRowExpectation::Revision(initial.revision()),
                 catalog_sources(2),
                 catalog_facts(50, 2, 200),
             )
@@ -261,14 +256,14 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
         .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
         .unwrap()
         .unwrap();
-    if raced.row().freshness() == CatalogFreshness::Stale {
+    if raced.freshness() == CatalogFreshness::Stale {
         execute(
             &store,
             state.catalog().publish(
                 state.catalog().revision(&store).unwrap(),
                 PublishCatalogRow::new(
                     thread_id,
-                    CatalogRowExpectation::Revision(raced.row().revision()),
+                    CatalogRowExpectation::Revision(raced.revision()),
                     catalog_sources(2),
                     catalog_facts(50, 2, 200),
                 )
@@ -282,8 +277,8 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
         .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
         .unwrap()
         .unwrap();
-    assert_eq!(rebuilt.row().freshness(), CatalogFreshness::Current);
-    assert_eq!(rebuilt.row().sources(), catalog_sources(2));
+    assert_eq!(rebuilt.freshness(), CatalogFreshness::Current);
+    assert_eq!(rebuilt.sources(), catalog_sources(2));
 
     store.close().unwrap();
     let (reopened, state) = support::open(directory.path());
@@ -296,121 +291,5 @@ fn catalog_stale_marking_races_rebuild_publication_without_masking_authority() {
         )
         .unwrap()
         .unwrap();
-    assert_eq!(reopened_row.row(), rebuilt.row());
-}
-
-#[test]
-fn asset_add_vs_remove_race_keeps_metadata_and_both_reference_indexes_coherent() {
-    let directory = tempdir().unwrap();
-    let (store, state) = support::open(directory.path());
-    let first_owner = asset_owner(60);
-    let second_owner = asset_owner(61);
-    let sidecar = store
-        .admit_sidecar(
-            SidecarNamespace::new("images").unwrap(),
-            b"concurrent asset references",
-            sidecar_limit(),
-        )
-        .unwrap();
-    let sidecar_path = sidecar.path().to_path_buf();
-    let asset_id = AssetId::sha256_v1(
-        sidecar.address().digest().as_bytes(),
-        NonZeroU64::new(sidecar.address().length()).unwrap(),
-    );
-    let expected_domain = state.assets().revision(&store).unwrap();
-    let first = state
-        .assets()
-        .create_with_reference(
-            expected_domain,
-            sidecar,
-            CreateAssetWithReference::new(
-                asset_id,
-                AssetMediaType::new("image/png").unwrap(),
-                None,
-                expected_domain.checked_next().unwrap(),
-                first_owner,
-                UnixMillis::new(1),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-    let mut first_command = HomeCommand::new(store.home_revision().unwrap());
-    first.add_to(&mut first_command).unwrap();
-    store.execute(first_command).unwrap();
-
-    let metadata = state.assets().metadata(&store, asset_id).unwrap().unwrap();
-    let expected_domain = state.assets().revision(&store).unwrap();
-    let add = command(
-        &store,
-        state.assets().add_reference(
-            expected_domain,
-            AddAssetReference::new(
-                asset_id,
-                metadata.revision(),
-                second_owner,
-                UnixMillis::new(2),
-            )
-            .unwrap(),
-        ),
-    );
-    let remove = command(
-        &store,
-        state.assets().remove_reference(
-            expected_domain,
-            RemoveAssetReference::new(first_owner, asset_id, metadata.revision()),
-        ),
-    );
-    let results = race_commands(&store, add, remove);
-    assert_one_success_one_conflict(&results);
-
-    let reference_count = state
-        .assets()
-        .metadata(&store, asset_id)
-        .unwrap()
-        .unwrap()
-        .reference_count();
-    let first_present = state
-        .assets()
-        .reference(&store, first_owner)
-        .unwrap()
-        .is_some();
-    let second_present = state
-        .assets()
-        .reference(&store, second_owner)
-        .unwrap()
-        .is_some();
-    assert!(
-        (reference_count == 0 && !first_present && !second_present)
-            || (reference_count == 2 && first_present && second_present)
-    );
-    assert!(sidecar_path.is_file());
-
-    store.close().unwrap();
-    let (reopened, state) = support::open(directory.path());
-    assert_eq!(
-        state
-            .assets()
-            .metadata(&reopened, asset_id)
-            .unwrap()
-            .unwrap()
-            .reference_count(),
-        reference_count
-    );
-    assert_eq!(
-        state
-            .assets()
-            .reference(&reopened, first_owner)
-            .unwrap()
-            .is_some(),
-        first_present
-    );
-    assert_eq!(
-        state
-            .assets()
-            .reference(&reopened, second_owner)
-            .unwrap()
-            .is_some(),
-        second_present
-    );
-    assert!(sidecar_path.is_file());
+    assert_eq!(reopened_row, rebuilt);
 }

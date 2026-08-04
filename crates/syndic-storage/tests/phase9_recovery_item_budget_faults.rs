@@ -8,8 +8,8 @@ use syndic_storage::{
     RecoveryBudgetKind, RecoveryItemCount, RecoveryProjectionError, RecoveryProjectionRequest,
     SyndicStorage, TurnItemOrdinal, TurnStateRecord, TurnTerminalOutcome,
     test_faults::{
-        FixtureBatch, FixtureDelete, FixtureRecord, recovery_frontier_metrics,
-        reset_recovery_frontier_metrics,
+        FixtureBatch, FixtureDelete, FixtureRecord, recovery_residency_metrics,
+        reset_recovery_residency_metrics,
     },
 };
 
@@ -40,7 +40,7 @@ fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
         .turn_state(&store, root.turn, point_limit())
         .unwrap()
         .unwrap();
-    let root_state = root_state.record();
+    let root_state = root_state;
     let mut fault = FixtureBatch::new();
     fault
         .put(FixtureRecord::TurnState(
@@ -79,7 +79,7 @@ fn build_budget_fixture(name: &str, root_item_count: u64) -> BudgetFixture {
 }
 
 #[test]
-fn exact_item_budget_reaches_index_scan_but_plus_one_stops_before_allocation() {
+fn exact_item_budget_reaches_index_scan_without_a_proportional_frontier() {
     assert_eq!(
         u64::from(
             RecoveryItemCount::new(RecoveryItemCount::MAX)
@@ -93,7 +93,7 @@ fn exact_item_budget_reaches_index_scan_but_plus_one_stops_before_allocation() {
         "phase9-recovery-exact-item-budget",
         RecoveryItemCount::MAX - 1,
     );
-    reset_recovery_frontier_metrics();
+    reset_recovery_residency_metrics();
     let error = exact
         .storage
         .prepare_recovery_projection(
@@ -111,15 +111,12 @@ fn exact_item_budget_reaches_index_scan_but_plus_one_stops_before_allocation() {
             record: "turn-item index"
         }
     ));
-    let metrics = recovery_frontier_metrics();
-    assert_eq!(metrics.allocation_attempts(), 1);
-    assert_eq!(metrics.allocation_completions(), 1);
-    assert_eq!(
-        metrics.requested_items(),
-        usize::try_from(RecoveryItemCount::MAX).unwrap()
-    );
-    assert!(metrics.observed_capacity() >= metrics.requested_items());
+    let metrics = recovery_residency_metrics();
+    assert_eq!(metrics.max_resident_turns(), 1);
+    assert_eq!(metrics.max_resident_items(), 0);
     assert_eq!(metrics.turn_item_read_attempts(), 1);
+    assert_eq!(metrics.cursor_page_count(), 0);
+    assert_eq!(metrics.max_cursor_page_bytes(), 0);
     assert_eq!(exact.store.health().state(), HomeHealthState::Healthy);
     exact.store.close().unwrap();
 
@@ -127,7 +124,7 @@ fn exact_item_budget_reaches_index_scan_but_plus_one_stops_before_allocation() {
         "phase9-recovery-item-budget-overflow",
         RecoveryItemCount::MAX,
     );
-    reset_recovery_frontier_metrics();
+    reset_recovery_residency_metrics();
     let error = overflow
         .storage
         .prepare_recovery_projection(
@@ -147,12 +144,12 @@ fn exact_item_budget_reaches_index_scan_but_plus_one_stops_before_allocation() {
             actual,
         } if maximum == RecoveryItemCount::MAX && actual == RecoveryItemCount::MAX + 1
     ));
-    let metrics = recovery_frontier_metrics();
-    assert_eq!(metrics.allocation_attempts(), 0);
-    assert_eq!(metrics.allocation_completions(), 0);
-    assert_eq!(metrics.requested_items(), 0);
-    assert_eq!(metrics.observed_capacity(), 0);
+    let metrics = recovery_residency_metrics();
+    assert_eq!(metrics.max_resident_turns(), 1);
+    assert_eq!(metrics.max_resident_items(), 0);
     assert_eq!(metrics.turn_item_read_attempts(), 0);
+    assert_eq!(metrics.cursor_page_count(), 0);
+    assert_eq!(metrics.max_cursor_page_bytes(), 0);
     assert_eq!(overflow.store.health().state(), HomeHealthState::Healthy);
     overflow.store.close().unwrap();
 }

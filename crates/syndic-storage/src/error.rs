@@ -3,8 +3,6 @@ use std::{error::Error, fmt};
 use beryl_home_store::{DomainCallbackError, DomainCallbackSource, ReadError};
 use beryl_model::SyndicDraftMarkerId;
 
-use crate::ImageLabelOrdinal;
-
 /// Why a bounded record value could not be constructed.
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum SyndicRecordError {
@@ -54,16 +52,6 @@ pub enum SyndicRecordError {
         maximum: usize,
         actual: usize,
     },
-    #[error("live accepted-input count must not exceed {maximum}, got {actual}")]
-    LiveAcceptedInputCountTooLarge { maximum: u32, actual: u32 },
-    #[error("live accepted-input bytes must not exceed {maximum}, got {actual}")]
-    LiveAcceptedInputBytesTooLarge { maximum: u64, actual: u64 },
-    #[error("{kind} contains too many image markers: maximum {maximum}, got {actual}")]
-    TooManyImageMarkers {
-        kind: &'static str,
-        maximum: usize,
-        actual: usize,
-    },
     #[error("{kind} repeats image marker {marker_id}")]
     DuplicateImageMarker {
         kind: &'static str,
@@ -77,12 +65,26 @@ pub enum SyndicRecordError {
     InvalidProviderItemLifecycle,
     #[error("turn capture aggregates or incomplete reason disagree")]
     InvalidTurnCaptureFrontier,
-    #[error("submitted marker resolution count disagrees: expected {expected}, got {actual}")]
-    MarkerResolutionCountMismatch { expected: usize, actual: usize },
-    #[error("submitted marker resolution disagrees with draft atom at index {atom_index}")]
-    MarkerResolutionMismatch { atom_index: usize },
-    #[error("submitted image label resolves to more than one asset")]
-    LabelAssetMismatch { label: ImageLabelOrdinal },
+    #[error("context-compaction authority or fixed observation frontiers disagree")]
+    InvalidCompactionOperation,
+    #[error("thread image-label inherited frontier exceeds its current frontier")]
+    InvalidImageLabelFrontier,
+    #[error("activity-query running-row count exceeds its logical row count")]
+    InvalidActivityQueryFrontier,
+    #[error("activity-query ordering and provider lifecycle disagree")]
+    InvalidActivityQueryLifecycle,
+    #[error("accepted-route interval is empty, reversed, or only partially present")]
+    InvalidAcceptedRouteInterval,
+    #[error("accepted-route interval and checked aggregates disagree")]
+    InvalidAcceptedRouteAggregates,
+    #[error("selected accepted-route generation exceeds its allocator high-water")]
+    InvalidAcceptedRouteSelection,
+    #[error("accepted-input admission source and replacement draft identities collide")]
+    AcceptedInputAdmissionDraftCollision,
+    #[error("accepted-input identity is not derived from its admission source draft")]
+    AcceptedInputIdentityMismatch,
+    #[error("provider-observation build, validator, or chunk frontier disagrees")]
+    InvalidProviderObservationFrontier,
     #[error("{kind} must not be empty")]
     Empty { kind: &'static str },
     #[error("{kind} contains a NUL byte at offset {index}")]
@@ -105,6 +107,15 @@ pub enum SyndicReadError {
         content_bytes: u64,
         offset: u64,
     },
+    InvalidContentTextSegmentCursor {
+        piece_count: u64,
+        after_piece: u64,
+    },
+    InvalidContentTextSegmentOffset {
+        segment_start: u64,
+        segment_end: u64,
+        offset: u64,
+    },
     InvalidContentTextReadLimit {
         maximum: usize,
         actual: usize,
@@ -124,6 +135,26 @@ pub enum SyndicReadError {
     },
     ResourceHasNoTextBacking,
     CaptureItemHasNoTextContent,
+    CatalogSummaryRevisionExhausted,
+    StaleThreadLineage,
+    InvalidThreadLineageCursor,
+    StaleActivityQuery,
+    InvalidActivityQueryCursor,
+    ActivityQueryIsStale,
+    StaleAcceptedRoute,
+    InvalidAcceptedRouteCursor,
+    StaleAcceptedReadySourceScan,
+    InvalidAcceptedReadySourceCursor,
+    StaleAcceptedReadyCandidateSource,
+    InvalidAcceptedReadyCandidateCursor,
+    StaleAcceptedNextSourceScan,
+    InvalidAcceptedNextSourceCursor,
+    StaleAcceptedNextCandidateSource,
+    InvalidAcceptedNextCandidateSource,
+    InvalidAcceptedNextCandidateCursor,
+    InvalidDeliveryRecoveryStartupCursor,
+    StaleRecoveredPendingScan,
+    InvalidRecoveredPendingCursor,
 }
 
 impl fmt::Display for SyndicReadError {
@@ -147,6 +178,21 @@ impl fmt::Display for SyndicReadError {
             } => write!(
                 formatter,
                 "logical content text offset {offset} is not a UTF-8 boundary in {content_bytes} bytes"
+            ),
+            Self::InvalidContentTextSegmentCursor {
+                piece_count,
+                after_piece,
+            } => write!(
+                formatter,
+                "content text segment cursor must name one image marker in {piece_count} pieces, got {after_piece}"
+            ),
+            Self::InvalidContentTextSegmentOffset {
+                segment_start,
+                segment_end,
+                offset,
+            } => write!(
+                formatter,
+                "logical content text offset {offset} lies outside segment {segment_start}..{segment_end}"
             ),
             Self::InvalidContentTextReadLimit { maximum, actual } => write!(
                 formatter,
@@ -174,6 +220,56 @@ impl fmt::Display for SyndicReadError {
             Self::CaptureItemHasNoTextContent => {
                 formatter.write_str("captured item does not have canonical text content")
             }
+            Self::CatalogSummaryRevisionExhausted => {
+                formatter.write_str("thread-catalog summary revision is exhausted")
+            }
+            Self::StaleThreadLineage => formatter.write_str("thread-lineage revision is stale"),
+            Self::InvalidThreadLineageCursor => {
+                formatter.write_str("thread-lineage cursor does not belong to this query")
+            }
+            Self::StaleActivityQuery => formatter.write_str("activity-query revision is stale"),
+            Self::InvalidActivityQueryCursor => {
+                formatter.write_str("activity-query cursor does not belong to this query")
+            }
+            Self::ActivityQueryIsStale => formatter.write_str("activity-query projection is stale"),
+            Self::StaleAcceptedRoute => {
+                formatter.write_str("accepted-route generation revision is stale")
+            }
+            Self::InvalidAcceptedRouteCursor => formatter
+                .write_str("accepted-route cursor does not belong to this generation revision"),
+            Self::StaleAcceptedReadySourceScan => {
+                formatter.write_str("accepted-ready source scan revision is stale")
+            }
+            Self::InvalidAcceptedReadySourceCursor => formatter
+                .write_str("accepted-ready source cursor does not belong to this scan revision"),
+            Self::StaleAcceptedReadyCandidateSource => {
+                formatter.write_str("accepted-ready candidate source is stale")
+            }
+            Self::InvalidAcceptedReadyCandidateCursor => formatter.write_str(
+                "accepted-ready candidate cursor does not belong to this source revision",
+            ),
+            Self::StaleAcceptedNextSourceScan => {
+                formatter.write_str("accepted-next source scan revision is stale")
+            }
+            Self::InvalidAcceptedNextSourceCursor => formatter
+                .write_str("accepted-next source cursor does not belong to this scan revision"),
+            Self::StaleAcceptedNextCandidateSource => {
+                formatter.write_str("accepted-next candidate source is stale")
+            }
+            Self::InvalidAcceptedNextCandidateSource => formatter.write_str(
+                "accepted-next candidate source is not the earliest current source for its thread",
+            ),
+            Self::InvalidAcceptedNextCandidateCursor => formatter.write_str(
+                "accepted-next candidate cursor does not belong to this source revision",
+            ),
+            Self::InvalidDeliveryRecoveryStartupCursor => {
+                formatter.write_str("delivery-recovery startup cursor belongs to another home")
+            }
+            Self::StaleRecoveredPendingScan => {
+                formatter.write_str("recovered-pending scan revision is stale")
+            }
+            Self::InvalidRecoveredPendingCursor => formatter
+                .write_str("recovered-pending cursor does not belong to this scan revision"),
         }
     }
 }
@@ -187,12 +283,34 @@ impl Error for SyndicReadError {
             | Self::ContentTextRequiresSealed
             | Self::ContentTextContainsImageMarkers { .. }
             | Self::InvalidContentTextOffset { .. }
+            | Self::InvalidContentTextSegmentCursor { .. }
+            | Self::InvalidContentTextSegmentOffset { .. }
             | Self::InvalidContentTextReadLimit { .. }
             | Self::ContentTextReadLimitTooSmall { .. }
             | Self::InvalidResourceRange { .. }
             | Self::InvalidResourceReadLimit { .. }
             | Self::ResourceHasNoTextBacking
-            | Self::CaptureItemHasNoTextContent => None,
+            | Self::CaptureItemHasNoTextContent
+            | Self::CatalogSummaryRevisionExhausted => None,
+            Self::StaleThreadLineage
+            | Self::InvalidThreadLineageCursor
+            | Self::StaleActivityQuery
+            | Self::InvalidActivityQueryCursor
+            | Self::ActivityQueryIsStale
+            | Self::StaleAcceptedRoute
+            | Self::InvalidAcceptedRouteCursor
+            | Self::StaleAcceptedReadySourceScan
+            | Self::InvalidAcceptedReadySourceCursor
+            | Self::StaleAcceptedReadyCandidateSource
+            | Self::InvalidAcceptedReadyCandidateCursor
+            | Self::StaleAcceptedNextSourceScan
+            | Self::InvalidAcceptedNextSourceCursor
+            | Self::StaleAcceptedNextCandidateSource
+            | Self::InvalidAcceptedNextCandidateSource
+            | Self::InvalidAcceptedNextCandidateCursor
+            | Self::InvalidDeliveryRecoveryStartupCursor
+            | Self::StaleRecoveredPendingScan
+            | Self::InvalidRecoveredPendingCursor => None,
         }
     }
 }
@@ -247,6 +365,16 @@ pub enum RecoveryProjectionError {
     },
     #[error("Syndic changed concurrently during recovery projection preparation")]
     ConcurrentChange,
+    #[error("the recovery cursor has already emitted its terminal sequence page")]
+    CursorTerminal,
+    #[error("recovery cursor page limit must be nonzero, got {actual}")]
+    InvalidCursorPageLimit { actual: usize },
+    #[error(
+        "recovery cursor page limit {actual} at item offset {offset} cannot fit the next UTF-8 scalar"
+    )]
+    CursorPageLimitTooSmall { offset: u64, actual: usize },
+    #[error("recovery cursor replay disagreed with its compact proof: {reason}")]
+    CursorMismatch { reason: &'static str },
     #[error(transparent)]
     Read(#[from] ReadError),
     #[error("recovery projection invariant failed: {0}")]
@@ -262,12 +390,34 @@ impl From<SyndicReadError> for RecoveryProjectionError {
             SyndicReadError::ContentTextRequiresSealed
             | SyndicReadError::ContentTextContainsImageMarkers { .. }
             | SyndicReadError::InvalidContentTextOffset { .. }
+            | SyndicReadError::InvalidContentTextSegmentCursor { .. }
+            | SyndicReadError::InvalidContentTextSegmentOffset { .. }
             | SyndicReadError::InvalidContentTextReadLimit { .. }
             | SyndicReadError::ContentTextReadLimitTooSmall { .. }
             | SyndicReadError::InvalidResourceRange { .. }
             | SyndicReadError::InvalidResourceReadLimit { .. }
             | SyndicReadError::ResourceHasNoTextBacking
-            | SyndicReadError::CaptureItemHasNoTextContent => Self::Invariant(
+            | SyndicReadError::CaptureItemHasNoTextContent
+            | SyndicReadError::CatalogSummaryRevisionExhausted
+            | SyndicReadError::StaleThreadLineage
+            | SyndicReadError::InvalidThreadLineageCursor
+            | SyndicReadError::StaleActivityQuery
+            | SyndicReadError::InvalidActivityQueryCursor
+            | SyndicReadError::ActivityQueryIsStale
+            | SyndicReadError::StaleAcceptedRoute
+            | SyndicReadError::InvalidAcceptedRouteCursor
+            | SyndicReadError::StaleAcceptedReadySourceScan
+            | SyndicReadError::InvalidAcceptedReadySourceCursor
+            | SyndicReadError::StaleAcceptedReadyCandidateSource
+            | SyndicReadError::InvalidAcceptedReadyCandidateCursor
+            | SyndicReadError::StaleAcceptedNextSourceScan
+            | SyndicReadError::InvalidAcceptedNextSourceCursor
+            | SyndicReadError::StaleAcceptedNextCandidateSource
+            | SyndicReadError::InvalidAcceptedNextCandidateSource
+            | SyndicReadError::InvalidAcceptedNextCandidateCursor
+            | SyndicReadError::InvalidDeliveryRecoveryStartupCursor
+            | SyndicReadError::StaleRecoveredPendingScan
+            | SyndicReadError::InvalidRecoveredPendingCursor => Self::Invariant(
                 "a recovery read unexpectedly used a public content/resource range boundary",
             ),
         }

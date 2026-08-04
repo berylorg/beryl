@@ -1,17 +1,20 @@
 use std::cmp::Ordering;
 
 use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, DomainReader};
-use beryl_model::{ProjectionRevision, SyndicContentId, SyndicItemId};
+use beryl_model::{ProjectionRevision, SyndicItemId};
 
 use crate::{
-    CanonicalItemKind, ContentReference, ItemProjectionBuildPhase, ItemProjectionBuildRecord,
-    ItemProjectionGeneration, ItemProjectionSetRecord, MarkdownParserCheckpoint,
-    ProjectionFormatVersion, ProjectionOrdinal, codec::*, domain::SyndicDomain,
-    error::SyndicValidationError,
+    ItemProjectionBuildPhase, ItemProjectionBuildRecord, ItemProjectionGeneration,
+    ItemProjectionSetRecord, MarkdownParserCheckpoint, ProjectionFormatVersion, ProjectionOrdinal,
+    ProjectionTextSource, codec::*, domain::SyndicDomain, error::SyndicValidationError,
 };
 
 use super::{invariant, source};
-use crate::validation::scan::{point, require, scan};
+use crate::validation::scan::{point, scan};
+
+mod membership;
+
+use membership::{Membership, validate_projection_membership, validate_resource_replay};
 
 pub(super) fn validate(
     reader: &DomainReader<'_, SyndicDomain>,
@@ -19,18 +22,16 @@ pub(super) fn validate(
     scan::<CanonicalItemsFamily>(reader, |_, item| {
         let mut next_set = read_next_set(reader, item.id(), None)?;
         let mut next_build = read_next_build(reader, item.id(), None)?;
-        if !matches!(
-            item.kind(),
-            CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-        ) && (next_set.is_some() || next_build.is_some())
-        {
-            return invariant("operational item owns projection generations");
-        }
+        let Some(initial_source) = item.projection_source() else {
+            if next_set.is_some() || next_build.is_some() {
+                return invariant("nonprojectable item owns projection generations");
+            }
+            return validate_head_selection(reader, item.id(), false, None);
+        };
 
         let mut expected_generation = ItemProjectionGeneration::FIRST;
         let mut previous_source_revision = None;
-        let mut source_replay = source::SnapshotReplay::new(item.id());
-        let mut projection_replay = ProjectionReplay::new();
+        let mut projection_replay = ProjectionReplay::new(initial_source);
         let mut latest_set = None;
         let mut observed_generation = false;
 
@@ -65,13 +66,13 @@ pub(super) fn validate(
                     &mut previous_source_revision,
                     set.source_item_revision(),
                 )?;
-                source_replay.validate(
+                let source_is_immutable = source::validate_projection_snapshot(
                     reader,
                     item,
                     set.source_item_revision(),
-                    set.source_content(),
+                    set.source(),
                 )?;
-                projection_replay.validate_set(reader, item, &set)?;
+                projection_replay.validate_set(reader, item, &set, source_is_immutable)?;
                 latest_set = Some(set.generation());
                 next_set = read_next_set(reader, item.id(), Some(key.generation))?;
             } else {
@@ -87,11 +88,11 @@ pub(super) fn validate(
                     &mut previous_source_revision,
                     build.source_item_revision(),
                 )?;
-                source_replay.validate(
+                source::validate_projection_snapshot(
                     reader,
                     item,
                     build.source_item_revision(),
-                    build.source_content(),
+                    build.source(),
                 )?;
                 projection_replay.validate_build(reader, item, &build)?;
                 next_build = read_next_build(reader, item.id(), Some(key.generation))?;
@@ -175,7 +176,7 @@ fn validate_head_selection(
 
 #[derive(Clone)]
 struct ProjectionReplay {
-    content_id: Option<SyndicContentId>,
+    source: Option<ProjectionTextSource>,
     checkpoint: MarkdownParserCheckpoint,
     projection_count: u64,
     resource_count: u64,
@@ -184,13 +185,13 @@ struct ProjectionReplay {
 }
 
 impl ProjectionReplay {
-    fn new() -> Self {
+    fn new(initial_source: ProjectionTextSource) -> Self {
         Self {
-            content_id: None,
+            source: None,
             checkpoint: MarkdownParserCheckpoint::new(
                 0,
                 0,
-                crate::ContentPieceOrdinal::FIRST,
+                initial_source.initial_cursor(),
                 0,
                 Box::<str>::default(),
                 false,
@@ -208,23 +209,17 @@ impl ProjectionReplay {
         reader: &DomainReader<'_, SyndicDomain>,
         item: &crate::CanonicalItemRecord,
         set: &ItemProjectionSetRecord,
+        source_is_immutable: bool,
     ) -> Result<(), SyndicValidationError> {
         if set.item_id() != item.id()
-            || set.source_bytes() != set.source_content().summary().logical_utf8_bytes()
+            || set.source_bytes() != set.source().logical_utf8_bytes()
             || set.projection_count() == 0
             || set.stable_projection_count() > set.projection_count()
             || set.stable_resource_count() > set.resource_count()
         {
             return invariant("item projection set frontiers are invalid");
         }
-        if set.stable_eof_resolved()
-            != source_snapshot_is_immutable(
-                reader,
-                item,
-                set.source_item_revision(),
-                set.source_content(),
-            )?
-        {
+        if set.stable_eof_resolved() != source_is_immutable {
             return invariant("item projection set EOF stability disagrees with its source");
         }
         self.replay_to(
@@ -233,7 +228,7 @@ impl ProjectionReplay {
             set.generation(),
             set.format(),
             set.source_item_revision(),
-            set.source_content(),
+            set.source(),
             set.resume_checkpoint(),
             set.stable_eof_resolved(),
         )?;
@@ -259,7 +254,7 @@ impl ProjectionReplay {
                 set.generation(),
                 set.format(),
                 set.source_item_revision(),
-                set.source_content(),
+                set.source(),
                 Membership::Suffix(set.generation()),
             )?;
             if !finished {
@@ -284,7 +279,7 @@ impl ProjectionReplay {
         generation: ItemProjectionGeneration,
         format: ProjectionFormatVersion,
         source_item_revision: ProjectionRevision,
-        source: ContentReference,
+        source: ProjectionTextSource,
         membership: Membership,
     ) -> Result<bool, SyndicValidationError> {
         if self.eof_resolved {
@@ -297,7 +292,7 @@ impl ProjectionReplay {
             format,
             source_item_revision,
             source,
-            source.summary().logical_utf8_bytes(),
+            source.logical_utf8_bytes(),
             self.projection_count,
             self.resource_count,
             self.digest,
@@ -321,7 +316,7 @@ impl ProjectionReplay {
                 SyndicValidationError::Invariant("projection replay ordinal is invalid")
             })?;
             let materialized = crate::mutation::projection::materialize_output(
-                reader, item, format, ordinal, output,
+                reader, item, source, format, ordinal, output,
             )
             .map_err(|_| {
                 SyndicValidationError::Invariant("projection replay materialization failed")
@@ -374,134 +369,6 @@ impl ProjectionReplay {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Membership {
-    Stable,
-    Suffix(ItemProjectionGeneration),
-}
-
-fn validate_projection_membership(
-    reader: &DomainReader<'_, SyndicDomain>,
-    item: SyndicItemId,
-    generation: ItemProjectionGeneration,
-    membership: Membership,
-    projection: &crate::ProjectionRecord,
-) -> Result<(), SyndicValidationError> {
-    let stored = require::<ProjectionsFamily>(
-        reader,
-        &projection.id(),
-        "replayed projection record is missing",
-    )?;
-    if stored != *projection {
-        return invariant("replayed projection record disagrees");
-    }
-    match membership {
-        Membership::Stable => {
-            let index = require::<StableItemProjectionsFamily>(
-                reader,
-                &StableItemProjectionKey {
-                    item,
-                    ordinal: projection.ordinal(),
-                },
-                "replayed stable projection membership is missing",
-            )?;
-            if index.projection_id() != projection.id()
-                || index.projection_revision() != projection.revision()
-            {
-                return invariant("replayed stable projection membership disagrees");
-            }
-        }
-        Membership::Suffix(expected_generation) => {
-            if expected_generation != generation {
-                return invariant("replayed projection suffix generation disagrees");
-            }
-            let index = require::<ItemProjectionsFamily>(
-                reader,
-                &ItemProjectionKey {
-                    item,
-                    generation,
-                    ordinal: projection.ordinal(),
-                },
-                "replayed projection suffix membership is missing",
-            )?;
-            if index.projection_id() != projection.id()
-                || index.projection_revision() != projection.revision()
-            {
-                return invariant("replayed projection suffix membership disagrees");
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_resource_replay(
-    reader: &DomainReader<'_, SyndicDomain>,
-    resource: &crate::ResourceMetadataRecord,
-    index: &crate::ProjectionResourceIndexRecord,
-) -> Result<(), SyndicValidationError> {
-    if require::<ResourcesFamily>(
-        reader,
-        &resource.id(),
-        "replayed projection resource is missing",
-    )? != *resource
-    {
-        return invariant("replayed projection resource disagrees");
-    }
-    let key = ProjectionResourceKey {
-        owner: index.projection_id(),
-        ordinal: index.ordinal(),
-    };
-    if require::<ProjectionResourcesFamily>(
-        reader,
-        &key,
-        "replayed projection resource index is missing",
-    )? != *index
-    {
-        return invariant("replayed projection resource index disagrees");
-    }
-    Ok(())
-}
-
-fn source_snapshot_is_immutable(
-    reader: &DomainReader<'_, SyndicDomain>,
-    item: &crate::CanonicalItemRecord,
-    source_item_revision: ProjectionRevision,
-    source: ContentReference,
-) -> Result<bool, SyndicValidationError> {
-    if matches!(item.kind(), CanonicalItemKind::UserInput) {
-        return Ok(true);
-    }
-    if source_item_revision == item.revision() {
-        let manifest = require::<ContentManifestsFamily>(
-            reader,
-            &source.id(),
-            "projection replay source manifest is missing",
-        )?;
-        return Ok(manifest.lifecycle().is_immutable());
-    }
-    let ordinal = crate::ItemSourceEventOrdinal::new(source_item_revision.get())
-        .map_err(|_| SyndicValidationError::Invariant("projection source revision is invalid"))?;
-    let index = require::<ItemSourceEventsFamily>(
-        reader,
-        &ItemEventKey {
-            owner: item.id(),
-            ordinal,
-        },
-        "projection source revision event is missing",
-    )?;
-    let event = require::<SourceEventsFamily>(
-        reader,
-        &TurnEventKey {
-            owner: item.turn_id(),
-            ordinal: index.source_event(),
-        },
-        "projection source event is missing",
-    )?;
-    Ok(matches!(
-        event.payload(),
-        crate::SourceEventPayload::ItemCompleted { .. }
-    ))
-}
 impl ProjectionReplay {
     fn validate_build(
         &mut self,
@@ -514,10 +381,10 @@ impl ProjectionReplay {
             ItemProjectionBuildPhase::Superseded(checkpoint) => (checkpoint, false),
         };
         if build.item_id() != item.id()
-            || build.source_bytes() != build.source_content().summary().logical_utf8_bytes()
+            || build.source_bytes() != build.source().logical_utf8_bytes()
             || active
                 != (build.source_item_revision() == item.revision()
-                    && item.payload().content() == Some(build.source_content()))
+                    && item.projection_source() == Some(build.source()))
         {
             return invariant("item projection build source or lifecycle disagrees");
         }
@@ -527,7 +394,7 @@ impl ProjectionReplay {
             build.generation(),
             build.format(),
             build.source_item_revision(),
-            build.source_content(),
+            build.source(),
             checkpoint,
             false,
         )?;
@@ -548,17 +415,19 @@ impl ProjectionReplay {
         generation: ItemProjectionGeneration,
         format: ProjectionFormatVersion,
         source_item_revision: ProjectionRevision,
-        source: ContentReference,
+        source: ProjectionTextSource,
         target: &MarkdownParserCheckpoint,
         target_eof_resolved: bool,
     ) -> Result<(), SyndicValidationError> {
-        if self.content_id.is_some_and(|id| id != source.id())
-            || self.checkpoint.consumed_source_bytes() > source.summary().logical_utf8_bytes()
+        if self
+            .source
+            .is_some_and(|previous| !previous.can_extend(source))
+            || self.checkpoint.consumed_source_bytes() > source.logical_utf8_bytes()
             || self.eof_resolved && (!target_eof_resolved || self.checkpoint != *target)
         {
             return invariant("stable projection replay source lineage disagrees");
         }
-        self.content_id = Some(source.id());
+        self.source = Some(source);
         while self.checkpoint != *target || self.eof_resolved != target_eof_resolved {
             if self.checkpoint.consumed_source_bytes() > target.consumed_source_bytes() {
                 return invariant("stable projection checkpoint regressed");

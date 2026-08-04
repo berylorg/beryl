@@ -1,18 +1,27 @@
 use beryl_home_store::{
     CurrentDomainCommand, DomainMutation, DomainReader, MutationBuilder, MutationContribution,
 };
-use beryl_model::{DomainRevision, InputGateRevision, SyndicItemId, SyndicThreadId, SyndicTurnId};
-
-use crate::{
-    CasTurnSource, SourceEventPayload, SourceEventRecord, SourceEventSequence, SyndicMutationError,
-    SyndicStorage, SyndicTimestamp, TurnItemOrdinal, TurnStateRevision, codec::*,
-    domain::SyndicDomain,
+use beryl_model::{
+    DomainRevision, InputGateRevision, ProjectionRevision, SyndicItemId, SyndicThreadId,
+    SyndicTurnId,
 };
 
+use crate::{
+    CasTurnSource, InputGateRecord, SourceEventPayload, SourceEventRecord, SourceEventSequence,
+    SyndicMutationError, SyndicStorage, SyndicTimestamp, TurnItemOrdinal, TurnStateRevision,
+    codec::*, domain::SyndicDomain,
+};
+
+mod complete;
 mod event;
 mod finalize;
 mod freeze;
 mod terminal;
+
+pub(in crate::mutation) use event::activity::{
+    ActivityEffect, activity_order, advance as activity_advance, entry_stored_bytes,
+    prune_completed,
+};
 
 /// Exact revisions and normalized payload for one monotonic live-source event.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -123,6 +132,38 @@ pub struct FreezeNextTurnItem {
     updated_at: SyndicTimestamp,
 }
 
+/// Exact proof request that one proven-terminal turn's bounded history has converged.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompleteTerminalHistory {
+    thread_id: SyndicThreadId,
+    turn_id: SyndicTurnId,
+    observed_gate: InputGateRecord,
+    expected_state_revision: TurnStateRevision,
+    expected_transcript_generation: crate::TranscriptGeneration,
+    expected_transcript_revision: ProjectionRevision,
+}
+
+impl CompleteTerminalHistory {
+    #[must_use]
+    pub fn new(
+        thread_id: SyndicThreadId,
+        turn_id: SyndicTurnId,
+        observed_gate: InputGateRecord,
+        expected_state_revision: TurnStateRevision,
+        expected_transcript_generation: crate::TranscriptGeneration,
+        expected_transcript_revision: ProjectionRevision,
+    ) -> Self {
+        Self {
+            thread_id,
+            turn_id,
+            observed_gate,
+            expected_state_revision,
+            expected_transcript_generation,
+            expected_transcript_revision,
+        }
+    }
+}
+
 impl FreezeNextTurnItem {
     #[must_use]
     pub const fn new(
@@ -227,14 +268,46 @@ impl SyndicStorage {
         self.handle
             .current_command(FreezeNextTurnItemMutation { request })
     }
+
+    /// Releases the compatible current descendant of one observed finalizing-history gate.
+    #[must_use]
+    pub fn complete_terminal_history(
+        &self,
+        expected_domain_revision: DomainRevision,
+        request: CompleteTerminalHistory,
+    ) -> MutationContribution {
+        self.handle.contribution(
+            expected_domain_revision,
+            CompleteTerminalHistoryMutation { request },
+        )
+    }
+
+    /// Releases a compatible finalizing-history descendant at writer serialization.
+    #[must_use]
+    pub fn current_complete_terminal_history(
+        &self,
+        request: CompleteTerminalHistory,
+    ) -> CurrentDomainCommand {
+        self.handle
+            .current_command(CompleteTerminalHistoryMutation { request })
+    }
 }
 
 struct LiveSourceEventMutation {
     event: LiveSourceEvent,
 }
 
+#[cfg(feature = "test-faults")]
+pub(crate) fn live_source_event_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    beryl_home_store::test_faults::FaultScope::of::<LiveSourceEventMutation>()
+}
+
 struct FinalizeNextTurnItemMutation {
     request: FinalizeNextTurnItem,
+}
+
+struct CompleteTerminalHistoryMutation {
+    request: CompleteTerminalHistory,
 }
 
 pub(super) struct FreezeNextTurnItemMutation {
@@ -274,6 +347,22 @@ impl DomainMutation<SyndicDomain> for FinalizeNextTurnItemMutation {
 }
 
 impl DomainMutation<SyndicDomain> for FreezeNextTurnItemMutation {
+    type Error = SyndicMutationError;
+
+    fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
+        self.records(reader).map(|_| ())
+    }
+
+    fn contribute(
+        &self,
+        reader: &DomainReader<'_, SyndicDomain>,
+        mutations: &mut MutationBuilder<'_, SyndicDomain>,
+    ) -> Result<(), Self::Error> {
+        self.records(reader)?.contribute(mutations)
+    }
+}
+
+impl DomainMutation<SyndicDomain> for CompleteTerminalHistoryMutation {
     type Error = SyndicMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {

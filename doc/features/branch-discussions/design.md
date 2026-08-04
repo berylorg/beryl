@@ -24,7 +24,10 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 
 - A stable rendered assistant-text selection from a finalized reply exposes `Discuss in new branch` alongside Quote.
 - Activating it creates a new durable Syndic discussion thread and switches the invoking window to that exact thread through ordinary activation.
-- The discussion's first current draft has the source turn as immutable parent and owns the exact selected text plus source turn, item, finalized projection revision, and selected-range provenance.
+- The discussion's first current draft owns an immutable context envelope containing the exact
+  selected text plus source turn, item, finalized projection revision, and selected-range
+  provenance. Drafts have no generic parent field; the envelope source is the explicit branch
+  point.
 - The discussion thread separately owns the exact parent Syndic thread id used for eventual handoff.
 - Creation performs no CAS request and runs no model.
 - Selected context longer than the approved 65,536-byte UTF-8 limit is rejected before thread creation and the source selection remains intact.
@@ -57,7 +60,9 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 ## First Submission
 
 - The user types and submits through the ordinary composer.
-- Submission freezes the same context-bearing draft as the first submitted discussion turn and atomically creates the replacement current draft.
+- Submission freezes the same context-bearing draft as the first submitted discussion turn,
+  derives that turn's immutable parent from the exact envelope source, proves the source agrees
+  with the discussion's branch authority, and atomically creates the replacement current draft.
 - Beryl supplies selected context to CAS once through the exact lossless selected-context projection owned by the CAS-live Syndic system; it is neither ordinary user input nor developer instructions.
 - The selected text remains untrusted source context and cannot gain application-instruction authority merely because Beryl forwards it. Its CAS projection preserves its actual assistant provenance as one assistant-role output-text history item rather than fabricating a user turn.
 - Later discussion turns do not copy the immutable context into new Syndic drafts or resend it to an already established CAS lineage.
@@ -72,7 +77,10 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
   resolution handler admits a call only when exact CAS thread, active CAS turn, Syndic discussion
   thread, current attempt state, and durable revisions prove that the correlated turn is an open
   branch discussion.
-- The user initiates resolution conversationally. The AI calls the tool with the proposed resolution payload; it does not supply authoritative parent, child, thread, job, or archive identities.
+- The user initiates resolution conversationally. The AI calls the tool with one nonempty proposed
+  resolution of at most 65,536 Unicode scalar values; it does not supply authoritative parent,
+  child, thread, job, or archive identities. Invalid or oversized resolution input is rejected
+  before durable mutation.
 - A tool call outside the exact bound discussion and active turn is rejected.
 - If accepted future-turn input is queued, the call returns a structured retryable deferred result and changes no state. Beryl does not retry automatically.
 - Deferred resolution leaves the composer enabled, leaves the discussion unarchived, and lets queued turns run normally.
@@ -97,7 +105,8 @@ Keep discussion context, resolution intent, parent delivery, and archive state d
 
 ## Completion And Navigation
 
-- Archive state is Beryl-owned metadata and does not depend on CAS archive or thread-list state.
+- Archive state is an intrinsic Syndic discussion-thread attribute and does not depend on CAS
+  archive or thread-list state.
 - After successful parent handoff and archival, the current window remains on the archived readonly discussion rather than switching automatically.
 - The lineage strip remains the explicit route to the parent. If the parent is open elsewhere or unavailable, its breadcrumb remains represented and unavailable according to the conversation-thread contract.
 - No successful or failed handoff automatically activates the parent or changes the owning window's selected thread.

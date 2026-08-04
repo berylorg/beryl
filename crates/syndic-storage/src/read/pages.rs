@@ -8,6 +8,8 @@ use crate::{BindingRecord, SourceEventRecord, SyndicReadError, codec::*, domain:
 
 use super::SyndicPage;
 
+mod owner;
+
 const PHASE_7_PAGE_MAX_ITEMS: usize = 256;
 const PHASE_7_PAGE_MAX_STORED_BYTES: usize = crate::TRANSCRIPT_PAGE_MAX_BYTES;
 
@@ -100,16 +102,6 @@ impl SyndicStorage {
         self.owner_page::<SourceEventsFamily>(store, turn, after, limits)
     }
 
-    pub fn input_marker_resolutions(
-        &self,
-        store: &HomeStore,
-        owner: crate::InputMarkerOwner,
-        after: Option<crate::InputMarkerOrdinal>,
-        limits: CursorReadLimits,
-    ) -> Result<SyndicPage<crate::InputMarkerResolutionRecord>, SyndicReadError> {
-        self.owner_page::<InputMarkerResolutionsFamily>(store, owner, after, limits)
-    }
-
     pub fn accepted_order(
         &self,
         store: &HomeStore,
@@ -118,48 +110,6 @@ impl SyndicStorage {
         limits: CursorReadLimits,
     ) -> Result<SyndicPage<crate::AcceptedOrderIndexRecord>, SyndicReadError> {
         self.owner_page::<AcceptedOrderFamily>(store, thread, after, limits)
-    }
-
-    pub fn accepted_next_turn(
-        &self,
-        store: &HomeStore,
-        thread: SyndicThreadId,
-        after: Option<crate::AcceptedInputOrdinal>,
-        limits: CursorReadLimits,
-    ) -> Result<SyndicPage<crate::AcceptedNextTurnIndexRecord>, SyndicReadError> {
-        self.owner_page::<AcceptedNextFamily>(store, thread, after, limits)
-    }
-
-    pub fn accepted_steering(
-        &self,
-        store: &HomeStore,
-        thread: SyndicThreadId,
-        turn: SyndicTurnId,
-        after: Option<crate::AcceptedInputOrdinal>,
-        limits: CursorReadLimits,
-    ) -> Result<SyndicPage<crate::AcceptedSteeringIndexRecord>, SyndicReadError> {
-        let first = SteeringKey {
-            thread,
-            turn,
-            ordinal: crate::AcceptedInputOrdinal::FIRST,
-        };
-        let last = SteeringKey {
-            thread,
-            turn,
-            ordinal: crate::AcceptedInputOrdinal::new(u64::MAX).expect("maximum is nonzero"),
-        };
-        let range = match after {
-            Some(ordinal) => CursorRange::after(
-                SteeringKey {
-                    thread,
-                    turn,
-                    ordinal,
-                },
-                last,
-            ),
-            None => CursorRange::closed(first, last),
-        };
-        self.page::<AcceptedSteeringFamily>(store, range, limits)
     }
 
     pub fn turn_items(
@@ -270,7 +220,7 @@ impl SyndicStorage {
             .ok_or(SyndicReadError::Invariant(
                 "item-projection generation set is missing",
             ))?;
-        let set = set.record();
+        let set = set;
         if set.item_id() != item || set.generation() != generation {
             return Err(SyndicReadError::Invariant(
                 "item-projection generation set identity disagrees",
@@ -284,6 +234,7 @@ impl SyndicStorage {
             return Ok(SyndicPage {
                 records: Vec::new(),
                 stored_bytes: 0,
+                decoded_bytes: 0,
                 has_more: false,
             });
         };
@@ -291,12 +242,14 @@ impl SyndicStorage {
             return Ok(SyndicPage {
                 records: Vec::new(),
                 stored_bytes: 0,
+                decoded_bytes: 0,
                 has_more: false,
             });
         }
 
         let mut records = Vec::with_capacity(limits.max_items());
         let mut stored_bytes = 0_usize;
+        let mut decoded_bytes = 0_usize;
         if next <= set.stable_projection_count() {
             let first_ordinal = crate::ProjectionOrdinal::new(next)
                 .map_err(|_| SyndicReadError::Invariant("stable projection ordinal is invalid"))?;
@@ -321,6 +274,7 @@ impl SyndicStorage {
                 limits,
             )?;
             stored_bytes = page.stored_bytes();
+            decoded_bytes = page.decoded_bytes();
             let stable_has_more = page.has_more();
             let mut ordinal_space_exhausted = false;
             for record in page.into_records() {
@@ -341,6 +295,7 @@ impl SyndicStorage {
                 return Ok(SyndicPage {
                     records,
                     stored_bytes,
+                    decoded_bytes,
                     has_more: true,
                 });
             }
@@ -348,6 +303,7 @@ impl SyndicStorage {
                 return Ok(SyndicPage {
                     records,
                     stored_bytes,
+                    decoded_bytes,
                     has_more: false,
                 });
             }
@@ -355,6 +311,7 @@ impl SyndicStorage {
                 return Ok(SyndicPage {
                     records,
                     stored_bytes,
+                    decoded_bytes,
                     has_more: false,
                 });
             };
@@ -364,10 +321,11 @@ impl SyndicStorage {
         if next <= set.projection_count()
             && records.len() < limits.max_items()
             && stored_bytes < limits.max_bytes()
+            && decoded_bytes < limits.max_bytes()
         {
             let remaining = CursorReadLimits::new(
                 limits.max_items() - records.len(),
-                limits.max_bytes() - stored_bytes,
+                (limits.max_bytes() - stored_bytes).min(limits.max_bytes() - decoded_bytes),
             )
             .expect("nonzero merged item-projection page remainder");
             let first_ordinal = crate::ProjectionOrdinal::new(next)
@@ -398,6 +356,9 @@ impl SyndicStorage {
                     .ok_or(SyndicReadError::Invariant(
                         "item-projection page byte count overflowed",
                     ))?;
+            decoded_bytes = decoded_bytes.checked_add(page.decoded_bytes()).ok_or(
+                SyndicReadError::Invariant("item-projection page decoded byte count overflowed"),
+            )?;
             let has_more = page.has_more();
             records.extend(
                 page.into_records()
@@ -407,6 +368,7 @@ impl SyndicStorage {
             return Ok(SyndicPage {
                 records,
                 stored_bytes,
+                decoded_bytes,
                 has_more,
             });
         }
@@ -414,6 +376,7 @@ impl SyndicStorage {
             has_more: next <= set.projection_count(),
             records,
             stored_bytes,
+            decoded_bytes,
         })
     }
 
@@ -475,47 +438,6 @@ impl SyndicStorage {
         };
         self.page::<TurnChildrenFamily>(store, range, limits)
     }
-
-    fn owner_page<F: OwnerPageFamily>(
-        &self,
-        store: &HomeStore,
-        owner: F::Owner,
-        after: Option<F::Ordinal>,
-        limits: CursorReadLimits,
-    ) -> Result<SyndicPage<F::Value>, SyndicReadError> {
-        let first = F::first(owner);
-        let last = F::last(owner);
-        let range = match after {
-            Some(after) => CursorRange::after(F::key(owner, after), last),
-            None => CursorRange::closed(first, last),
-        };
-        self.page::<F>(store, range, limits)
-    }
-
-    fn page<F: Family>(
-        &self,
-        store: &HomeStore,
-        range: CursorRange<F::Key>,
-        limits: CursorReadLimits,
-    ) -> Result<SyndicPage<F::Value>, SyndicReadError> {
-        let page = store.read_cursor::<crate::domain::SyndicDomain, ExactCodec<F>>(
-            self.handle,
-            &range,
-            CursorDirection::Forward,
-            limits,
-        )?;
-        let stored_bytes = page.stored_bytes();
-        let has_more = page.has_more();
-        Ok(SyndicPage {
-            records: page
-                .into_records()
-                .into_iter()
-                .map(|record| record.into_parts().1)
-                .collect(),
-            stored_bytes,
-            has_more,
-        })
-    }
 }
 
 fn phase_7_page_limits(limits: CursorReadLimits) -> CursorReadLimits {
@@ -525,89 +447,3 @@ fn phase_7_page_limits(limits: CursorReadLimits) -> CursorReadLimits {
     )
     .expect("clamped nonzero Phase 7 page bounds remain nonzero")
 }
-
-trait OwnerPageFamily: Family {
-    type Owner: Copy;
-    type Ordinal: Copy;
-    fn key(owner: Self::Owner, ordinal: Self::Ordinal) -> Self::Key;
-    fn first(owner: Self::Owner) -> Self::Key;
-    fn last(owner: Self::Owner) -> Self::Key;
-}
-
-macro_rules! owner_page_family {
-    ($family:ty,$owner:ty,$ordinal:ty,$key:ident) => {
-        impl OwnerPageFamily for $family {
-            type Owner = $owner;
-            type Ordinal = $ordinal;
-            fn key(owner: Self::Owner, ordinal: Self::Ordinal) -> Self::Key {
-                $key { owner, ordinal }
-            }
-            fn first(owner: Self::Owner) -> Self::Key {
-                $key {
-                    owner,
-                    ordinal: <$ordinal>::FIRST,
-                }
-            }
-            fn last(owner: Self::Owner) -> Self::Key {
-                $key {
-                    owner,
-                    ordinal: <$ordinal>::new(u64::MAX).expect("maximum is nonzero"),
-                }
-            }
-        }
-    };
-}
-owner_page_family!(
-    ContentChunksFamily,
-    SyndicContentId,
-    crate::ContentChunkOrdinal,
-    ContentChunkKey
-);
-owner_page_family!(
-    ContentPiecesFamily,
-    SyndicContentId,
-    crate::ContentPieceOrdinal,
-    ContentPieceKey
-);
-owner_page_family!(
-    SourceEventsFamily,
-    SyndicTurnId,
-    crate::SourceEventSequence,
-    TurnEventKey
-);
-owner_page_family!(
-    InputMarkerResolutionsFamily,
-    crate::InputMarkerOwner,
-    crate::InputMarkerOrdinal,
-    InputMarkerKey
-);
-owner_page_family!(
-    AcceptedOrderFamily,
-    SyndicThreadId,
-    crate::AcceptedInputOrdinal,
-    ThreadAcceptedKey
-);
-owner_page_family!(
-    AcceptedNextFamily,
-    SyndicThreadId,
-    crate::AcceptedInputOrdinal,
-    ThreadAcceptedKey
-);
-owner_page_family!(
-    TurnItemsFamily,
-    SyndicTurnId,
-    crate::TurnItemOrdinal,
-    TurnItemKey
-);
-owner_page_family!(
-    ItemSourceEventsFamily,
-    SyndicItemId,
-    crate::ItemSourceEventOrdinal,
-    ItemEventKey
-);
-owner_page_family!(
-    ProjectionResourcesFamily,
-    SyndicProjectionId,
-    crate::ResourceOrdinal,
-    ProjectionResourceKey
-);

@@ -1,6 +1,8 @@
 use std::{convert::Infallible, io::Read, num::NonZeroU64};
 
-use beryl_model::{AssetId, CasItemId};
+use beryl_model::{
+    AssetId, CasItemId, ContentRevision, ImageLabelOrdinal, SyndicContentDigest, SyndicContentId,
+};
 use sha2::{Digest, Sha256};
 use syndic_storage::*;
 
@@ -62,10 +64,47 @@ fn text(value: impl Into<String>) -> ProviderTextV1 {
 }
 
 fn agent(value: ProviderTextV1) -> ProviderItemV1 {
+    agent_with_phase(value, None)
+}
+
+fn agent_with_phase(
+    value: ProviderTextV1,
+    phase: Option<ProviderMessagePhaseV1>,
+) -> ProviderItemV1 {
     ProviderItemV1::AgentMessage(ProviderAgentMessageV1 {
         text: value,
-        phase: None,
+        phase,
         memory_citation: None,
+    })
+}
+
+fn submitted_content(
+    image_marker_count: u64,
+    maximum_image_label: Option<ImageLabelOrdinal>,
+) -> ContentReference {
+    ContentReference::new(
+        SyndicContentId::from_bytes([3; 16]),
+        ContentRevision::new(2).unwrap(),
+        ContentEncoding::ComposerV1,
+        ContentSummary::new(
+            1,
+            2,
+            3,
+            4,
+            5,
+            image_marker_count,
+            [7; 32],
+            maximum_image_label,
+            SyndicContentDigest::from_bytes([8; 32]),
+        )
+        .unwrap(),
+    )
+}
+
+fn user(content: ContentReference) -> ProviderItemV1 {
+    ProviderItemV1::UserMessage(ProviderUserMessageV1 {
+        client_id: None,
+        submitted: ProviderSubmittedContentV1 { content },
     })
 }
 
@@ -85,6 +124,137 @@ fn encode(frame: &ProviderItemFrameV1, start: u64) -> (CaptureSink, ProviderFram
 
 fn digest(bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(bytes).into()
+}
+
+#[test]
+fn structural_summary_retains_exact_publication_facts_across_reader_boundaries() {
+    let submitted_with_label = submitted_content(6, Some(ImageLabelOrdinal::new(37).unwrap()));
+    let submitted_without_label = submitted_content(0, None);
+    let cases: Vec<(
+        ProviderItemFrameV1,
+        ProviderItemKind,
+        Option<ProviderMessagePhaseV1>,
+        Option<ContentReference>,
+    )> = vec![
+        (
+            frame(
+                1,
+                ProviderItemObservationV1::Started {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(1),
+                    item: agent_with_phase(
+                        text("commentary"),
+                        Some(ProviderMessagePhaseV1::Commentary),
+                    ),
+                },
+            ),
+            ProviderItemKind::AgentMessage,
+            Some(ProviderMessagePhaseV1::Commentary),
+            None,
+        ),
+        (
+            frame(
+                2,
+                ProviderItemObservationV1::Completed {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(2),
+                    item: agent_with_phase(
+                        text("final"),
+                        Some(ProviderMessagePhaseV1::FinalAnswer),
+                    ),
+                },
+            ),
+            ProviderItemKind::AgentMessage,
+            Some(ProviderMessagePhaseV1::FinalAnswer),
+            None,
+        ),
+        (
+            frame(
+                3,
+                ProviderItemObservationV1::Completed {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(3),
+                    item: agent(text("phase absent")),
+                },
+            ),
+            ProviderItemKind::AgentMessage,
+            None,
+            None,
+        ),
+        (
+            frame(
+                4,
+                ProviderItemObservationV1::Delta(ProviderItemDeltaV1::AgentMessage {
+                    delta: text("delta"),
+                }),
+            ),
+            ProviderItemKind::AgentMessage,
+            None,
+            None,
+        ),
+        (
+            frame(
+                5,
+                ProviderItemObservationV1::Started {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(5),
+                    item: ProviderItemV1::Plan(ProviderPlanV1 { text: text("plan") }),
+                },
+            ),
+            ProviderItemKind::Plan,
+            None,
+            None,
+        ),
+        (
+            frame(
+                6,
+                ProviderItemObservationV1::Started {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(6),
+                    item: user(submitted_with_label),
+                },
+            ),
+            ProviderItemKind::UserMessage,
+            None,
+            Some(submitted_with_label),
+        ),
+        (
+            frame(
+                7,
+                ProviderItemObservationV1::Completed {
+                    observed_at: ProviderLifecycleTimestampMsV1::new(7),
+                    item: user(submitted_without_label),
+                },
+            ),
+            ProviderItemKind::UserMessage,
+            None,
+            Some(submitted_without_label),
+        ),
+    ];
+
+    for (frame, expected_kind, expected_phase, expected_content) in cases {
+        let (encoded, reference) = encode(&frame, 0);
+        for maximum_return in [1, 2, 7, encoded.bytes.len()] {
+            let mut reader = TinyReader::new(&encoded.bytes, maximum_return);
+            let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
+            let structural = validate_streaming_provider_item_frame_v1(
+                &mut reader,
+                0,
+                reference.encoded_len(),
+                reference.encoded_digest(),
+                &mut spans,
+            )
+            .unwrap();
+            spans.finish(structural.reference()).unwrap();
+
+            assert_eq!(structural.reference(), &reference);
+            assert_eq!(structural.reference().item_kind(), expected_kind);
+            assert_eq!(structural.message_phase(), expected_phase);
+            assert_eq!(structural.submitted_content(), expected_content);
+            assert_eq!(
+                structural
+                    .submitted_content()
+                    .map(|content| content.summary().maximum_image_label()),
+                expected_content.map(|content| content.summary().maximum_image_label())
+            );
+            assert_eq!(reader.position, encoded.bytes.len());
+        }
+    }
 }
 
 #[test]
@@ -200,451 +370,7 @@ fn completion_reuses_prior_text_range_without_copying_bytes() {
     assert_eq!(lifecycle.kind(), Some(ProviderItemKind::AgentMessage));
 }
 
-#[test]
-fn lifecycle_summary_rejects_missing_start_and_reversed_timestamps() {
-    let delta = frame(
-        1,
-        ProviderItemObservationV1::Delta(ProviderItemDeltaV1::AgentMessage {
-            delta: text("delta"),
-        }),
-    );
-    let (delta_bytes, delta_reference) = encode(&delta, 0);
-    let mut no_spans = ProviderFrameTextSpanValidatorV1::new(delta_reference.ordinal());
-    let delta_structural = validate_streaming_provider_item_frame_v1(
-        &mut TinyReader::new(&delta_bytes.bytes, 7),
-        0,
-        delta_reference.encoded_len(),
-        delta_reference.encoded_digest(),
-        &mut no_spans,
-    )
-    .unwrap();
-    assert_eq!(
-        ProviderItemStreamValidatorV1::new().observe_structural(&delta_structural),
-        Err(ProviderItemValidationError::MissingItemStart)
-    );
-
-    let started = frame(
-        1,
-        ProviderItemObservationV1::Started {
-            observed_at: ProviderLifecycleTimestampMsV1::new(20),
-            item: agent(text("start")),
-        },
-    );
-    let completed = frame(
-        2,
-        ProviderItemObservationV1::Completed {
-            observed_at: ProviderLifecycleTimestampMsV1::new(19),
-            item: agent(text("complete")),
-        },
-    );
-    let mut lifecycle = ProviderItemStreamValidatorV1::new();
-    lifecycle.observe(&started).unwrap();
-    assert_eq!(
-        lifecycle.observe(&completed),
-        Err(ProviderItemValidationError::CompletionBeforeStart {
-            started: 20,
-            completed: 19,
-        })
-    );
-
-    let completion_only = frame(
-        1,
-        ProviderItemObservationV1::Completed {
-            observed_at: ProviderLifecycleTimestampMsV1::new(30),
-            item: ProviderItemV1::SubAgentActivity(ProviderSubAgentActivityV1 {
-                kind: ProviderSubAgentActivityKindV1::Started,
-                agent_thread_id: beryl_model::CasThreadId::new("completion-only").unwrap(),
-                agent_path: text("root/worker"),
-            }),
-        },
-    );
-    let mut completion_only_lifecycle = ProviderItemStreamValidatorV1::new();
-    completion_only_lifecycle.observe(&completion_only).unwrap();
-    assert!(completion_only_lifecycle.is_complete());
-}
-
-#[test]
-fn unsupported_web_search_evidence_is_retained_and_monotonic_in_both_paths() {
-    let started = frame(
-        1,
-        ProviderItemObservationV1::Started {
-            observed_at: ProviderLifecycleTimestampMsV1::new(10),
-            item: ProviderItemV1::WebSearch(ProviderWebSearchV1 {
-                query: text("query"),
-                action: Some(ProviderWebSearchActionV1::Other),
-            }),
-        },
-    );
-    let completed = frame(
-        2,
-        ProviderItemObservationV1::Completed {
-            observed_at: ProviderLifecycleTimestampMsV1::new(11),
-            item: ProviderItemV1::WebSearch(ProviderWebSearchV1 {
-                query: text("query"),
-                action: None,
-            }),
-        },
-    );
-    let unsupported = ProviderFrameHistorySupportV1::Unsupported(
-        UnsupportedHistoryReason::UnsupportedRequiredPayload,
-    );
-    assert_eq!(started.history_support(), unsupported);
-
-    let mut materialized = ProviderItemStreamValidatorV1::new();
-    materialized.observe(&started).unwrap();
-    materialized.observe(&completed).unwrap();
-    assert!(materialized.is_complete());
-    assert!(!materialized.is_history_complete());
-    assert_eq!(materialized.history_support(), unsupported);
-
-    let (start_bytes, start_reference) = encode(&started, 0);
-    let (completion_bytes, completion_reference) =
-        encode(&completed, start_reference.encoded_end());
-    let mut structural_lifecycle = ProviderItemStreamValidatorV1::new();
-    for (bytes, reference, start) in [
-        (&start_bytes.bytes, &start_reference, 0),
-        (
-            &completion_bytes.bytes,
-            &completion_reference,
-            start_reference.encoded_end(),
-        ),
-    ] {
-        let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-        let structural = validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(bytes, 3),
-            start,
-            reference.encoded_len(),
-            reference.encoded_digest(),
-            &mut spans,
-        )
-        .unwrap();
-        structural_lifecycle
-            .observe_structural(&structural)
-            .unwrap();
-    }
-    assert!(structural_lifecycle.is_complete());
-    assert!(!structural_lifecycle.is_history_complete());
-    assert_eq!(structural_lifecycle.history_support(), unsupported);
-}
-
-#[test]
-fn completed_image_generation_rejects_in_progress_status_in_both_decoders() {
-    let started = frame(
-        1,
-        ProviderItemObservationV1::Started {
-            observed_at: ProviderLifecycleTimestampMsV1::new(1),
-            item: ProviderItemV1::StandaloneImageGeneration(ProviderImageGenerationV1 {
-                status: ProviderImageGenerationStatusV1::InProgress,
-                revised_prompt: None,
-                saved_path: None,
-            }),
-        },
-    );
-    let (encoded, reference) = encode(&started, 0);
-    let item_id_length = u32::from_be_bytes(encoded.bytes[12..16].try_into().unwrap()) as usize;
-    let observation_position = 16 + item_id_length;
-    let mut invalid_completion = encoded.bytes.clone();
-    invalid_completion[observation_position] = 2;
-    let expected = ProviderItemValidationError::CompletionStatusInProgress;
-    assert!(matches!(
-        decode_bounded_provider_item_frame_v1(
-            &invalid_completion,
-            PROVIDER_FRAME_BOUNDED_DECODE_MAX_BYTES,
-            0,
-        ),
-        Err(ProviderFrameDecodeError::InvalidValue(error)) if error == expected
-    ));
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    assert!(matches!(
-        validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(&invalid_completion, 1),
-            0,
-            invalid_completion.len() as u64,
-            digest(&invalid_completion),
-            &mut spans,
-        ),
-        Err(ProviderFrameStreamError::Decode(
-            ProviderFrameDecodeError::InvalidValue(error)
-        )) if error == expected
-    ));
-}
-
-fn dynamic_locator_frame() -> ProviderItemFrameV1 {
-    frame(
-        1,
-        ProviderItemObservationV1::Completed {
-            observed_at: ProviderLifecycleTimestampMsV1::new(1),
-            item: ProviderItemV1::DynamicToolCall(ProviderDynamicToolCallV1 {
-                namespace: None,
-                tool: text("tool"),
-                arguments: ProviderStructuredValueV1::Null,
-                status: ProviderToolCallStatusV1::Completed,
-                content_items: Some(vec![ProviderDynamicToolOutputV1::InputImageLocator {
-                    locator: ProviderImageLocatorV1::new("https://example.test/image").unwrap(),
-                }]),
-                success: Some(true),
-                duration_ms: None,
-            }),
-        },
-    )
-}
-
-fn replace_dynamic_locator(bytes: &[u8], replacement: &[u8]) -> Vec<u8> {
-    const ORIGINAL: &[u8] = b"https://example.test/image";
-    let position = bytes
-        .windows(ORIGINAL.len())
-        .position(|window| window == ORIGINAL)
-        .unwrap();
-    let length_position = position - std::mem::size_of::<u64>();
-    let mut changed = bytes.to_vec();
-    changed[length_position..position].copy_from_slice(&(replacement.len() as u64).to_be_bytes());
-    changed.splice(
-        position..position + ORIGINAL.len(),
-        replacement.iter().copied(),
-    );
-    changed
-}
-
-#[test]
-fn streaming_validator_rejects_typed_data_locators_and_frame_corruption() {
-    let frame = dynamic_locator_frame();
-    let (encoded, reference) = encode(&frame, 0);
-    for (replacement, expected) in [
-        (
-            b" \tDATA:image/png;base64,AAAA".as_slice(),
-            ProviderItemValidationError::DynamicImageDataUrlRequiresAsset,
-        ),
-        (
-            b"".as_slice(),
-            ProviderItemValidationError::InvalidDynamicImageLocator,
-        ),
-        (
-            b"   ".as_slice(),
-            ProviderItemValidationError::InvalidDynamicImageLocator,
-        ),
-        (
-            b"not-a-locator".as_slice(),
-            ProviderItemValidationError::InvalidDynamicImageLocator,
-        ),
-        (
-            b"https://bad%escape".as_slice(),
-            ProviderItemValidationError::InvalidDynamicImageLocator,
-        ),
-    ] {
-        let malformed = replace_dynamic_locator(&encoded.bytes, replacement);
-        let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-        assert!(matches!(
-            validate_streaming_provider_item_frame_v1(
-                &mut TinyReader::new(&malformed, 2),
-                0,
-                malformed.len() as u64,
-                digest(&malformed),
-                &mut spans,
-            ),
-            Err(ProviderFrameStreamError::Decode(
-                ProviderFrameDecodeError::InvalidValue(error)
-            )) if error == expected
-        ));
-        assert!(matches!(
-            decode_bounded_provider_item_frame_v1(
-                &malformed,
-                PROVIDER_FRAME_BOUNDED_DECODE_MAX_BYTES,
-                0,
-            ),
-            Err(ProviderFrameDecodeError::InvalidValue(error)) if error == expected
-        ));
-    }
-
-    let truncated = &encoded.bytes[..encoded.bytes.len() - 1];
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    assert!(matches!(
-        validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(truncated, 5),
-            0,
-            reference.encoded_len(),
-            reference.encoded_digest(),
-            &mut spans,
-        ),
-        Err(ProviderFrameStreamError::Decode(
-            ProviderFrameDecodeError::Truncated
-        ))
-    ));
-
-    let mut trailing = encoded.bytes.clone();
-    trailing.push(0);
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    assert!(matches!(
-        validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(&trailing, 5),
-            0,
-            trailing.len() as u64,
-            digest(&trailing),
-            &mut spans,
-        ),
-        Err(ProviderFrameStreamError::Decode(
-            ProviderFrameDecodeError::TrailingBytes
-        ))
-    ));
-
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    assert!(matches!(
-        validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(&encoded.bytes, 5),
-            0,
-            reference.encoded_len(),
-            [0; 32],
-            &mut spans,
-        ),
-        Err(ProviderFrameStreamError::Decode(
-            ProviderFrameDecodeError::DigestMismatch
-        ))
-    ));
-}
-
-#[test]
-fn streaming_validator_classifies_only_the_mcp_type_discriminator() {
-    let content = ProviderMcpContentV1::structured(ProviderStructuredValueV1::Object(vec![
-        ProviderObjectEntryV1 {
-            key: "type".to_owned(),
-            value: ProviderStructuredValueV1::String(text("other")),
-        },
-        ProviderObjectEntryV1 {
-            key: "type".to_owned(),
-            value: ProviderStructuredValueV1::String(text("other")),
-        },
-        ProviderObjectEntryV1 {
-            key: "body".to_owned(),
-            value: ProviderStructuredValueV1::String(text("data:image/png;base64,opaque")),
-        },
-    ]))
-    .unwrap();
-    let frame = frame(
-        1,
-        ProviderItemObservationV1::Completed {
-            observed_at: ProviderLifecycleTimestampMsV1::new(1),
-            item: ProviderItemV1::McpToolCall(ProviderMcpToolCallV1 {
-                server: text("server"),
-                tool: text("tool"),
-                status: ProviderToolCallStatusV1::Completed,
-                arguments: ProviderStructuredValueV1::Null,
-                app_context: None,
-                mcp_app_resource_uri: None,
-                plugin_id: None,
-                result: Some(ProviderMcpResultV1 {
-                    content: vec![content],
-                    structured_content: None,
-                    meta: None,
-                }),
-                error: None,
-                duration_ms: None,
-            }),
-        },
-    );
-    let (encoded, reference) = encode(&frame, 0);
-    let position = encoded
-        .bytes
-        .windows(5)
-        .position(|window| window == b"other")
-        .unwrap();
-    let mut typed_image = encoded.bytes.clone();
-    typed_image[position..position + 5].copy_from_slice(b"image");
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    assert!(matches!(
-        validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(&typed_image, 3),
-            0,
-            typed_image.len() as u64,
-            digest(&typed_image),
-            &mut spans,
-        ),
-        Err(ProviderFrameStreamError::Decode(
-            ProviderFrameDecodeError::InvalidValue(
-                ProviderItemValidationError::McpInlineImageRequiresAsset
-            )
-        ))
-    ));
-}
-
-#[test]
-fn mcp_inline_metadata_depth_maximum_and_plus_one_match_both_decoders() {
-    let mut maximum = ProviderStructuredValueV1::Null;
-    for _ in 1..PROVIDER_STRUCTURED_VALUE_MAX_DEPTH {
-        maximum = ProviderStructuredValueV1::List(vec![maximum]);
-    }
-    let inline_image = ProviderMcpInlineImageV1::new(
-        ProviderInlineImageAssetV1::new(AssetId::sha256_v1([41; 32], NonZeroU64::new(41).unwrap())),
-        vec![ProviderObjectEntryV1 {
-            key: "depth-marker-unique".to_owned(),
-            value: maximum,
-        }],
-    )
-    .unwrap();
-    let maximum_frame = frame(
-        1,
-        ProviderItemObservationV1::Completed {
-            observed_at: ProviderLifecycleTimestampMsV1::new(1),
-            item: ProviderItemV1::McpToolCall(ProviderMcpToolCallV1 {
-                server: text("server"),
-                tool: text("tool"),
-                status: ProviderToolCallStatusV1::Completed,
-                arguments: ProviderStructuredValueV1::Null,
-                app_context: None,
-                mcp_app_resource_uri: None,
-                plugin_id: None,
-                result: Some(ProviderMcpResultV1 {
-                    content: vec![ProviderMcpContentV1::inline_image(inline_image)],
-                    structured_content: None,
-                    meta: None,
-                }),
-                error: None,
-                duration_ms: None,
-            }),
-        },
-    );
-    let (encoded, reference) = encode(&maximum_frame, 0);
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    validate_streaming_provider_item_frame_v1(
-        &mut TinyReader::new(&encoded.bytes, 1),
-        0,
-        reference.encoded_len(),
-        reference.encoded_digest(),
-        &mut spans,
-    )
-    .unwrap();
-
-    let marker = b"depth-marker-unique";
-    let marker_end = encoded
-        .bytes
-        .windows(marker.len())
-        .position(|window| window == marker)
-        .unwrap()
-        + marker.len();
-    let mut excessive = encoded.bytes.clone();
-    let mut extra_list = vec![7];
-    extra_list.extend_from_slice(&1_u64.to_be_bytes());
-    excessive.splice(marker_end..marker_end, extra_list);
-    let expected = ProviderItemValidationError::StructuredDepthExceeded {
-        maximum: PROVIDER_STRUCTURED_VALUE_MAX_DEPTH,
-    };
-    assert!(matches!(
-        decode_bounded_provider_item_frame_v1(
-            &excessive,
-            PROVIDER_FRAME_BOUNDED_DECODE_MAX_BYTES,
-            0,
-        ),
-        Err(ProviderFrameDecodeError::InvalidValue(error)) if error == expected
-    ));
-    let mut spans = ProviderFrameTextSpanValidatorV1::new(reference.ordinal());
-    assert!(matches!(
-        validate_streaming_provider_item_frame_v1(
-            &mut TinyReader::new(&excessive, 1),
-            0,
-            excessive.len() as u64,
-            digest(&excessive),
-            &mut spans,
-        ),
-        Err(ProviderFrameStreamError::Decode(
-            ProviderFrameDecodeError::InvalidValue(error)
-        )) if error == expected
-    ));
-}
+#[path = "phase13_provider_streaming/corruption.rs"]
+mod corruption;
+#[path = "phase13_provider_streaming/lifecycle.rs"]
+mod lifecycle;

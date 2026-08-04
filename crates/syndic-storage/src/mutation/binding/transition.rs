@@ -8,8 +8,8 @@ use crate::{
 use super::{
     PublishStaleBinding, PublishUnboundBinding, PublishValidBinding,
     validation::{
-        ensure_not_active, membership, reservation, retirement, transition_base, validate_stale,
-        validate_usable_current,
+        ensure_not_active, membership, reservation, retirement, transition_base,
+        validate_canonical_execution, validate_stale, validate_usable_current,
     },
 };
 
@@ -38,6 +38,7 @@ impl PublishBindingMutation {
     ) -> Result<PublishBindingRecords, SyndicMutationError> {
         match self {
             Self::Valid(request) => {
+                validate_canonical_execution(reader, request.thread_id, &request.execution)?;
                 let base = transition_base(
                     reader,
                     request.thread_id,
@@ -72,6 +73,7 @@ impl PublishBindingMutation {
                 ))
             }
             Self::Stale(request) => {
+                validate_canonical_execution(reader, request.thread_id, request.stale.execution())?;
                 let base = transition_base(
                     reader,
                     request.thread_id,

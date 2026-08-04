@@ -1,17 +1,33 @@
-use std::num::NonZeroU64;
-
-use beryl_model::{AssetId, ContentRevision, SyndicDraftMarkerId};
+use beryl_model::{
+    AssetReferenceSetDigest, AssetReferenceSetId, ContentRevision, SealedAssetReferenceSetProof,
+    SyndicDraftMarkerId,
+};
 use syndic_storage::{
-    CanonicalItemPayload, ComposerAtom, ComposerPayload, ImageLabelOrdinal, PreparedContent,
-    ResolvedImageMarker, SubmittedComposerAtom, SubmittedComposerPayload, SyndicRecordError,
+    CanonicalItemPresentation, ComposerAtom, ComposerPayload, ImageLabelOrdinal, PreparedContent,
+    SyndicRecordError,
 };
 
 fn marker(value: u8) -> SyndicDraftMarkerId {
     SyndicDraftMarkerId::from_bytes([value; 16])
 }
 
-fn asset(value: u8) -> AssetId {
-    AssetId::sha256_v1([value; 32], NonZeroU64::new(u64::from(value)).unwrap())
+#[test]
+fn image_label_ordinals_use_canonical_bijective_letters() {
+    for (ordinal, expected) in [
+        (1, "A"),
+        (26, "Z"),
+        (27, "AA"),
+        (52, "AZ"),
+        (53, "BA"),
+        (702, "ZZ"),
+        (703, "AAA"),
+        (u64::MAX, "GKGWBYLWRXTLPO"),
+    ] {
+        assert_eq!(
+            ImageLabelOrdinal::new(ordinal).unwrap().to_string(),
+            expected
+        );
+    }
 }
 
 #[test]
@@ -38,7 +54,7 @@ fn composer_markers_have_nonzero_labels_and_unique_stable_identity() {
 }
 
 #[test]
-fn submitted_payload_preserves_exact_order_and_resolves_every_marker() {
+fn canonical_user_input_retains_one_complete_asset_reference_proof() {
     let first_label = ImageLabelOrdinal::FIRST;
     let second_label = ImageLabelOrdinal::new(2).unwrap();
     let draft = ComposerPayload::new(vec![
@@ -48,100 +64,43 @@ fn submitted_payload_preserves_exact_order_and_resolves_every_marker() {
         ComposerAtom::image_marker(marker(2), second_label),
     ])
     .unwrap();
-    let first = ResolvedImageMarker::new(marker(1), first_label, asset(1));
-    let second = ResolvedImageMarker::new(marker(2), second_label, asset(2));
-
-    let submitted = SubmittedComposerPayload::resolve(&draft, vec![first, second]).unwrap();
-    assert_eq!(submitted.utf8_bytes(), "beforebetween".len());
-    assert_eq!(submitted.image_marker_count(), 2);
-    assert!(matches!(
-        submitted.atoms(),
-        [
-            SubmittedComposerAtom::Text(before),
-            SubmittedComposerAtom::ImageMarker(actual_first),
-            SubmittedComposerAtom::Text(between),
-            SubmittedComposerAtom::ImageMarker(actual_second),
-        ] if before.as_ref() == "before"
-            && *actual_first == first
-            && between.as_ref() == "between"
-            && *actual_second == second
-    ));
-
     let content = PreparedContent::composer(&draft).unwrap();
     let reference = content.reference(ContentRevision::new(1).unwrap());
-    let canonical = CanonicalItemPayload::user_input(reference, 2);
-    assert!(matches!(canonical, CanonicalItemPayload::UserInput { .. }));
-    assert_eq!(canonical.content(), Some(reference));
-    assert_eq!(canonical.marker_count(), 2);
-}
-
-#[test]
-fn submitted_resolution_rejects_missing_extra_reordered_and_duplicate_facts() {
-    let first_label = ImageLabelOrdinal::FIRST;
-    let second_label = ImageLabelOrdinal::new(2).unwrap();
-    let draft = ComposerPayload::new(vec![
-        ComposerAtom::image_marker(marker(1), first_label),
-        ComposerAtom::image_marker(marker(2), second_label),
-    ])
-    .unwrap();
-    let first = ResolvedImageMarker::new(marker(1), first_label, asset(1));
-    let second = ResolvedImageMarker::new(marker(2), second_label, asset(2));
-
-    assert!(matches!(
-        SubmittedComposerPayload::resolve(&draft, vec![first]),
-        Err(SyndicRecordError::MarkerResolutionCountMismatch {
-            expected: 2,
-            actual: 1
-        })
-    ));
-    assert!(matches!(
-        SubmittedComposerPayload::resolve(&draft, vec![first, second, first]),
-        Err(SyndicRecordError::MarkerResolutionCountMismatch {
-            expected: 2,
-            actual: 3
-        })
-    ));
-    assert!(matches!(
-        SubmittedComposerPayload::resolve(&draft, vec![second, first]),
-        Err(SyndicRecordError::MarkerResolutionMismatch { atom_index: 0 })
-    ));
-    assert!(matches!(
-        SubmittedComposerPayload::resolve(&draft, vec![first, first]),
-        Err(SyndicRecordError::DuplicateImageMarker {
-            kind: "submitted marker resolutions",
-            marker_id,
-        }) if marker_id == marker(1)
-    ));
-}
-
-#[test]
-fn repeated_label_requires_one_exact_asset_but_distinct_marker_ids() {
-    let label = ImageLabelOrdinal::FIRST;
-    let draft = ComposerPayload::new(vec![
-        ComposerAtom::image_marker(marker(1), label),
-        ComposerAtom::image_marker(marker(2), label),
-    ])
-    .unwrap();
-
-    let submitted = SubmittedComposerPayload::resolve(
-        &draft,
-        vec![
-            ResolvedImageMarker::new(marker(1), label, asset(1)),
-            ResolvedImageMarker::new(marker(2), label, asset(1)),
-        ],
+    let source = reference.sealed_marker_summary().unwrap();
+    let proof = SealedAssetReferenceSetProof::new(
+        AssetReferenceSetId::from_bytes([3; 16]),
+        source,
+        source.marker_count(),
+        AssetReferenceSetDigest::from_bytes([4; 32]),
     )
     .unwrap();
-    assert_eq!(submitted.image_marker_count(), 2);
+    let canonical = CanonicalItemPresentation::user_input(reference, Some(proof));
+    assert!(matches!(
+        canonical,
+        CanonicalItemPresentation::UserInput { .. }
+    ));
+    assert_eq!(canonical.content(), Some(reference));
+    assert_eq!(canonical.asset_reference_set(), Some(proof));
+    assert_eq!(source.maximum_image_label(), Some(second_label));
+}
 
+#[test]
+fn composer_content_accepts_more_than_1024_image_markers() {
+    let atoms = (1_u64..=1_025)
+        .map(|ordinal| {
+            let mut identity = [0_u8; 16];
+            identity[..8].copy_from_slice(&ordinal.to_be_bytes());
+            ComposerAtom::image_marker(
+                SyndicDraftMarkerId::from_bytes(identity),
+                ImageLabelOrdinal::new(ordinal).unwrap(),
+            )
+        })
+        .collect();
+    let payload = ComposerPayload::new(atoms).unwrap();
+    let content = PreparedContent::composer(&payload).unwrap();
+    assert_eq!(content.summary().image_marker_count(), 1_025);
     assert_eq!(
-        SubmittedComposerPayload::resolve(
-            &draft,
-            vec![
-                ResolvedImageMarker::new(marker(1), label, asset(1)),
-                ResolvedImageMarker::new(marker(2), label, asset(2)),
-            ],
-        )
-        .unwrap_err(),
-        SyndicRecordError::LabelAssetMismatch { label }
+        content.summary().maximum_image_label(),
+        Some(ImageLabelOrdinal::new(1_025).unwrap())
     );
 }

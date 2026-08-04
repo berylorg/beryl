@@ -10,7 +10,9 @@ pub use stream::validate_streaming_provider_item_frame_v1;
 use super::{
     ProviderFrameHistorySupportV1, ProviderFrameReferenceV1, ProviderFrameTextSpanV1,
     ProviderFrameTextSpanValidatorV1, ProviderItemValidationError, ProviderLifecycleTimestampMsV1,
+    ProviderMessagePhaseV1,
 };
+use crate::ContentReference;
 
 /// Maximum byte slice offered to a streaming provider-frame sink.
 pub const PROVIDER_FRAME_CHUNK_MAX_BYTES: usize = 65_536;
@@ -117,12 +119,14 @@ pub enum ProviderFrameObservationSummaryV1 {
     Completed(ProviderLifecycleTimestampMsV1),
 }
 
-/// Structurally validated frame identity and observation.
+/// Structurally validated frame identity, observation, and exact publication facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderFrameStructuralValidationV1 {
     reference: ProviderFrameReferenceV1,
     observation: ProviderFrameObservationSummaryV1,
     history_support: ProviderFrameHistorySupportV1,
+    message_phase: Option<ProviderMessagePhaseV1>,
+    submitted_content: Option<ContentReference>,
 }
 
 impl ProviderFrameStructuralValidationV1 {
@@ -139,5 +143,17 @@ impl ProviderFrameStructuralValidationV1 {
     #[must_use]
     pub const fn history_support(&self) -> ProviderFrameHistorySupportV1 {
         self.history_support
+    }
+
+    /// Returns the exact assistant phase on an agent-message start or completion frame.
+    #[must_use]
+    pub const fn message_phase(&self) -> Option<ProviderMessagePhaseV1> {
+        self.message_phase
+    }
+
+    /// Returns the exact submitted composer content on a user-message start or completion frame.
+    #[must_use]
+    pub const fn submitted_content(&self) -> Option<ContentReference> {
+        self.submitted_content
     }
 }

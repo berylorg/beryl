@@ -1,6 +1,7 @@
 # Goals
 
-Define durable branch-discussion context, resolution-tool admission, parent-handoff ordering, recovery, and archive coordination across Syndic, Beryl-home metadata, and CAS execution.
+Define durable branch-discussion context, resolution-tool admission, parent-handoff ordering,
+recovery, and archive coordination across Syndic, Beryl-home durable jobs, and CAS execution.
 
 Guarantee that queued user input is never discarded, one live accepted resolution attempt gates later discussion input, retries cannot duplicate a parent turn, terminal failure restores unarchived discussion editing without erasing failed evidence, and archive occurs only after successful handoff.
 
@@ -20,11 +21,18 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 - A branch-discussion Syndic thread stores exact parent Syndic thread id and exact context-owner draft or submitted-turn id.
 - Its first draft stores an immutable context envelope containing version, exact selected UTF-8 text, source thread id, source turn id, source item/projection id, source revision, normalized selected range, context digest, and creation time.
 - Context-envelope V1 computes its context digest as SHA-256 over the exact selected UTF-8 bytes without trimming, normalization, or framing; source provenance and range remain separately versioned envelope fields.
-- Branch creation accepts only a current assistant projection owned by a proven-terminal source turn. It validates the exact source thread, turn, item, finalized projection identity and revision, selected range, and selected bytes before creating the thread, first draft, parent binding, context-owner link, and initial Beryl metadata in one `SyncAll` home-store command.
+- Branch creation accepts only a current assistant projection owned by a proven-terminal source turn.
+  It validates the exact source thread, turn, item, finalized projection identity and revision,
+  selected range, and selected bytes before creating the Syndic thread, inherited immutable
+  execution, attributes and usage seeds, first draft, parent binding, and context-owner link, plus
+  any exact Beryl window claim and session selection required by the admitting workflow, in one
+  `SyncAll` home-store command.
 - A projection admitted as branch context is finalized durable history. Its identity, revision, text, resource references, and ordering cannot later be invalidated, rebuilt, or rewritten in place.
 - The source turn must lie on the source thread's selected path at branch admission. That is a creation precondition, not a permanent claim about the mutable parent thread: later replacement may move the parent thread tail without invalidating the discussion, its immutable historical source, or its handoff destination.
 - Context reconstruction reads the exact envelope by context-owner identity. It never searches for similar transcript text.
-- The first idle submission transitions that draft identity into the first submitted discussion turn while retaining the envelope unchanged.
+- The first idle submission transitions that draft identity into the first submitted discussion turn,
+  derives the turn's immutable parent from the exact envelope source, and retains the envelope
+  unchanged. The draft record itself has no generic parent field.
 
 ## Scoped Resolution Tool
 
@@ -32,7 +40,9 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
   registry installed at every persistent conversation lineage's initial CAS `thread/start`.
   Registration remains identical through native continuation, resume, and fork for stable provider
   prompt prefixes; it is capability discovery, not mutation authority.
-- The tool accepts one bounded resolution text payload and no parent, child, thread, archive, or job identity arguments.
+- The tool accepts one nonempty resolution text payload of at most 65,536 Unicode scalar values and
+  no parent, child, thread, archive, or job identity arguments. Incremental admission bounds the
+  decoded UTF-8 representation before allocation or durable mutation.
 - Beryl derives discussion thread, resolving Syndic turn, exact CAS thread/turn, parent thread, context owner, and active binding from the correlated tool request.
 - Resolution text is model-produced content, is bounded before durable admission, and is retained exactly after admission.
 - A tool request with missing correlation, an ordinary non-discussion thread, wrong thread, stale
@@ -90,7 +100,8 @@ Guarantee that queued user input is never discarded, one live accepted resolutio
 
 ## Success, Archive, And Failure
 
-- Parent terminal success atomically moves the job to `succeeded` and writes Beryl archive metadata for the discussion.
+- Parent terminal success atomically moves the Beryl job to `succeeded` and publishes the Syndic
+  discussion thread's one-way archived attribute in the same home command.
 - Archive publication occurs only after that commit's `SyncAll` barrier.
 - Parent interruption, incomplete termination, or terminal failure atomically moves the job to `terminal_failed`, leaves the discussion unarchived, releases the handoff composer gate, and retains the exact parent turn identity.
 - Every terminally failed intent, job, accepted parent input, and already-appended failed parent turn remains durable. Failure never rolls those records back or treats them as successful archive.

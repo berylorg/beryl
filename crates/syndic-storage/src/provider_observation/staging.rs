@@ -1,0 +1,374 @@
+use std::error::Error;
+
+use beryl_model::ProviderObservationId;
+
+use super::{
+    CanonicalObservationError, CanonicalObservationState, ProviderObservationBegin,
+    ProviderObservationBuildLifecycle, ProviderObservationBuildRecord,
+    ProviderObservationChunkRecord, ProviderObservationControl, ProviderObservationValidatorError,
+    ProviderObservationValidatorState, ProviderValueContext, SealedProviderObservationHandle,
+};
+
+/// Maximum bytes in one caller-owned provider fragment and one durable fragment record.
+pub const PROVIDER_OBSERVATION_CHUNK_MAX_BYTES: usize = 65_536;
+
+/// One bounded borrowed typed fragment offered to the staging sink.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProviderObservationStagingBytes<'a> {
+    context: ProviderValueContext,
+    bytes: &'a [u8],
+}
+
+impl<'a> ProviderObservationStagingBytes<'a> {
+    pub fn new(
+        context: ProviderValueContext,
+        bytes: &'a [u8],
+    ) -> Result<Self, ProviderObservationStageBatchError> {
+        if bytes.is_empty() {
+            return Err(ProviderObservationStageBatchError::EmptyFragment);
+        }
+        if bytes.len() > PROVIDER_OBSERVATION_CHUNK_MAX_BYTES {
+            return Err(ProviderObservationStageBatchError::FragmentTooLarge {
+                actual: bytes.len(),
+            });
+        }
+        Ok(Self { context, bytes })
+    }
+
+    #[must_use]
+    pub const fn context(self) -> ProviderValueContext {
+        self.context
+    }
+
+    #[must_use]
+    pub const fn bytes(self) -> &'a [u8] {
+        self.bytes
+    }
+}
+
+/// Exact durable position of one begin, append, or seal batch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderObservationStageBatchState {
+    Expected,
+    Next,
+    Conflict,
+}
+
+/// One bounded atomic unpublished-observation frontier transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderObservationStageBatch {
+    expected: Option<ProviderObservationBuildRecord>,
+    next: ProviderObservationBuildRecord,
+    chunk: Option<ProviderObservationChunkRecord>,
+}
+
+impl ProviderObservationStageBatch {
+    pub(crate) fn begin(next: ProviderObservationBuildRecord) -> Self {
+        Self {
+            expected: None,
+            next,
+            chunk: None,
+        }
+    }
+
+    pub(crate) fn advance(
+        expected: ProviderObservationBuildRecord,
+        next: ProviderObservationBuildRecord,
+        chunk: Option<ProviderObservationChunkRecord>,
+    ) -> Self {
+        Self {
+            expected: Some(expected),
+            next,
+            chunk,
+        }
+    }
+
+    #[must_use]
+    pub const fn expected_build(&self) -> Option<&ProviderObservationBuildRecord> {
+        self.expected.as_ref()
+    }
+
+    #[must_use]
+    pub const fn next_build(&self) -> &ProviderObservationBuildRecord {
+        &self.next
+    }
+
+    #[must_use]
+    pub const fn chunk(&self) -> Option<&ProviderObservationChunkRecord> {
+        self.chunk.as_ref()
+    }
+
+    /// Classifies a point-read current build without inferring durability from a receipt.
+    #[must_use]
+    pub fn classify_current(
+        &self,
+        current: Option<&ProviderObservationBuildRecord>,
+    ) -> ProviderObservationStageBatchState {
+        if current == self.expected.as_ref() {
+            ProviderObservationStageBatchState::Expected
+        } else if current == Some(&self.next) {
+            ProviderObservationStageBatchState::Next
+        } else {
+            ProviderObservationStageBatchState::Conflict
+        }
+    }
+
+    pub(crate) fn validate_shape(&self) -> Result<(), ProviderObservationStageBatchError> {
+        match (&self.expected, &self.chunk) {
+            (None, None)
+                if self.next.revision() == 1
+                    && self.next.chunk_count() == 0
+                    && self.next.lifecycle() == ProviderObservationBuildLifecycle::Building =>
+            {
+                Ok(())
+            }
+            (Some(expected), Some(chunk))
+                if expected.lifecycle() == ProviderObservationBuildLifecycle::Building
+                    && self.next.lifecycle() == ProviderObservationBuildLifecycle::Building
+                    && self.next.identity() == expected.identity()
+                    && self.next.begin() == expected.begin()
+                    && self.next.revision() == expected.revision().checked_add(1).unwrap_or(0)
+                    && self.next.chunk_count()
+                        == expected.chunk_count().checked_add(1).unwrap_or(0)
+                    && chunk.identity() == expected.identity()
+                    && chunk.ordinal() == self.next.chunk_count() =>
+            {
+                Ok(())
+            }
+            (Some(expected), None)
+                if expected.lifecycle() == ProviderObservationBuildLifecycle::Building
+                    && self.next.lifecycle() == ProviderObservationBuildLifecycle::Sealed
+                    && self.next.identity() == expected.identity()
+                    && self.next.begin() == expected.begin()
+                    && self.next.revision() == expected.revision().checked_add(1).unwrap_or(0)
+                    && self.next.chunk_count() == expected.chunk_count() =>
+            {
+                Ok(())
+            }
+            _ => Err(ProviderObservationStageBatchError::InvalidTransition),
+        }
+    }
+}
+
+/// Synchronous durability and exact reconciliation boundary.
+pub trait ProviderObservationStageCallback {
+    type Error: Error + Send + Sync + 'static;
+
+    /// Returns success only after the batch is durably `Next`, including after ambiguity.
+    fn stage_batch(&mut self, batch: &ProviderObservationStageBatch) -> Result<(), Self::Error>;
+}
+
+impl<F, E> ProviderObservationStageCallback for F
+where
+    F: FnMut(&ProviderObservationStageBatch) -> Result<(), E>,
+    E: Error + Send + Sync + 'static,
+{
+    type Error = E;
+
+    fn stage_batch(&mut self, batch: &ProviderObservationStageBatch) -> Result<(), Self::Error> {
+        self(batch)
+    }
+}
+
+/// Consuming, non-cloneable unpublished observation stager.
+pub struct ProviderObservationStager {
+    current: ProviderObservationBuildRecord,
+    validator: ProviderObservationValidatorState,
+    canonical: CanonicalObservationState,
+}
+
+impl ProviderObservationStager {
+    /// Begins one caller-identified durable unpublished observation.
+    pub fn begin<C: ProviderObservationStageCallback>(
+        identity: ProviderObservationId,
+        begin: ProviderObservationBegin,
+        callback: &mut C,
+    ) -> Result<Self, ProviderObservationStagingError<C::Error>> {
+        let canonical = CanonicalObservationState::initial(begin);
+        let current = ProviderObservationBuildRecord::initial(
+            identity,
+            begin,
+            canonical.canonical_bytes(),
+            canonical.digest(),
+        );
+        let batch = ProviderObservationStageBatch::begin(current.clone());
+        callback
+            .stage_batch(&batch)
+            .map_err(ProviderObservationStagingError::Callback)?;
+        Ok(Self {
+            current,
+            validator: ProviderObservationValidatorState::initial(),
+            canonical,
+        })
+    }
+
+    pub(crate) fn from_replayed(
+        current: ProviderObservationBuildRecord,
+        validator: ProviderObservationValidatorState,
+        canonical: CanonicalObservationState,
+    ) -> Result<Self, ProviderObservationStageBatchError> {
+        if current.lifecycle() != ProviderObservationBuildLifecycle::Building
+            || current.validator() != &validator
+            || current.canonical_bytes() != canonical.canonical_bytes()
+            || current.digest() != canonical.digest()
+        {
+            return Err(ProviderObservationStageBatchError::ReplayMismatch);
+        }
+        Ok(Self {
+            current,
+            validator,
+            canonical,
+        })
+    }
+
+    /// Stages one bounded typed structural control.
+    pub fn control<C: ProviderObservationStageCallback>(
+        &mut self,
+        control: ProviderObservationControl,
+        callback: &mut C,
+    ) -> Result<(), ProviderObservationStagingError<C::Error>> {
+        let mut validator = self.validator.clone();
+        validator.control(self.current.begin(), control)?;
+        let mut canonical = self.canonical.clone();
+        canonical.control(control).map_err(map_canonical)?;
+        let ordinal = self
+            .current
+            .chunk_count()
+            .checked_add(1)
+            .ok_or(ProviderObservationStageBatchError::FrontierOverflow)?;
+        let chunk =
+            ProviderObservationChunkRecord::control(self.current.identity(), ordinal, control)?;
+        self.commit_append(validator, canonical, chunk, callback)
+    }
+
+    /// Stages one nonempty bounded UTF-8 fragment for the currently open typed field.
+    pub fn fragment<C: ProviderObservationStageCallback>(
+        &mut self,
+        fragment: ProviderObservationStagingBytes<'_>,
+        callback: &mut C,
+    ) -> Result<(), ProviderObservationStagingError<C::Error>> {
+        let mut validator = self.validator.clone();
+        for byte in fragment.bytes() {
+            validator.fragment_byte(fragment.context(), *byte)?;
+        }
+        let mut canonical = self.canonical.clone();
+        canonical
+            .fragment(fragment.bytes())
+            .map_err(map_canonical)?;
+        let ordinal = self
+            .current
+            .chunk_count()
+            .checked_add(1)
+            .ok_or(ProviderObservationStageBatchError::FrontierOverflow)?;
+        let chunk = ProviderObservationChunkRecord::fragment(
+            self.current.identity(),
+            ordinal,
+            fragment.context(),
+            fragment.bytes(),
+        )?;
+        self.commit_append(validator, canonical, chunk, callback)
+    }
+
+    fn commit_append<C: ProviderObservationStageCallback>(
+        &mut self,
+        validator: ProviderObservationValidatorState,
+        canonical: CanonicalObservationState,
+        chunk: ProviderObservationChunkRecord,
+        callback: &mut C,
+    ) -> Result<(), ProviderObservationStagingError<C::Error>> {
+        let next = self.current.advance(
+            canonical.canonical_bytes(),
+            canonical.digest(),
+            validator.clone(),
+            ProviderObservationBuildLifecycle::Building,
+            true,
+        )?;
+        let batch =
+            ProviderObservationStageBatch::advance(self.current.clone(), next.clone(), Some(chunk));
+        callback
+            .stage_batch(&batch)
+            .map_err(ProviderObservationStagingError::Callback)?;
+        self.current = next;
+        self.validator = validator;
+        self.canonical = canonical;
+        Ok(())
+    }
+
+    /// Seals the exact structurally complete observation and consumes the stager.
+    pub fn seal<C: ProviderObservationStageCallback>(
+        self,
+        callback: &mut C,
+    ) -> Result<SealedProviderObservationHandle, ProviderObservationStagingError<C::Error>> {
+        self.validator.finish(self.current.begin())?;
+        let next = self.current.advance(
+            self.canonical.canonical_bytes(),
+            self.canonical.digest(),
+            self.validator.clone(),
+            ProviderObservationBuildLifecycle::Sealed,
+            false,
+        )?;
+        let batch = ProviderObservationStageBatch::advance(self.current, next.clone(), None);
+        callback
+            .stage_batch(&batch)
+            .map_err(ProviderObservationStagingError::Callback)?;
+        Ok(SealedProviderObservationHandle::from_build(&next))
+    }
+
+    /// Explicitly abandons this unpublished generation without a durable mutation.
+    pub fn abandon(self) {}
+}
+
+fn map_canonical(_: CanonicalObservationError) -> ProviderObservationStageBatchError {
+    ProviderObservationStageBatchError::FrontierOverflow
+}
+
+/// Why one bounded batch shape or replay state was invalid.
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum ProviderObservationStageBatchError {
+    #[error("provider-observation fragment must be nonempty")]
+    EmptyFragment,
+    #[error("provider-observation fragment has {actual} bytes; maximum is 65536")]
+    FragmentTooLarge { actual: usize },
+    #[error("provider-observation batch transition is not canonical")]
+    InvalidTransition,
+    #[error("provider-observation frontier overflowed")]
+    FrontierOverflow,
+    #[error("replayed provider-observation state disagrees with its durable build")]
+    ReplayMismatch,
+}
+
+/// Why unpublished staging could not advance one exact durable frontier.
+#[derive(Debug, thiserror::Error)]
+pub enum ProviderObservationStagingError<E: Error + Send + Sync + 'static> {
+    #[error(transparent)]
+    Validation(#[from] ProviderObservationValidatorError),
+    #[error(transparent)]
+    Batch(#[from] ProviderObservationStageBatchError),
+    #[error(transparent)]
+    Record(#[from] crate::SyndicRecordError),
+    #[error("provider-observation durable callback rejected the exact batch: {0}")]
+    Callback(#[source] E),
+}
+
+pub(crate) fn replay_chunk(
+    begin: ProviderObservationBegin,
+    validator: &mut ProviderObservationValidatorState,
+    canonical: &mut CanonicalObservationState,
+    chunk: &ProviderObservationChunkRecord,
+) -> Result<(), ProviderObservationStageBatchError> {
+    match chunk.payload() {
+        super::ProviderObservationChunkPayload::Control(control) => validator
+            .control(begin, *control)
+            .map_err(|_| ProviderObservationStageBatchError::ReplayMismatch)?,
+        super::ProviderObservationChunkPayload::Fragment { context, bytes } => {
+            for byte in bytes.iter().copied() {
+                validator
+                    .fragment_byte(*context, byte)
+                    .map_err(|_| ProviderObservationStageBatchError::ReplayMismatch)?;
+            }
+        }
+    }
+    canonical
+        .apply_chunk(chunk.payload())
+        .map_err(|_| ProviderObservationStageBatchError::FrontierOverflow)
+}

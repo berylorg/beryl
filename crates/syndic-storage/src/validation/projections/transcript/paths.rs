@@ -76,6 +76,7 @@ pub(super) fn validate(
             path.finalized_item_count(),
             state.open_item_count(),
             state.history_blocking_item_count(),
+            state.provider_observation_issue(),
             state.incomplete_reason(),
         );
         previous_depth = key.depth.get();

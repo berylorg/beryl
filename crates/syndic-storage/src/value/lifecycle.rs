@@ -10,6 +10,8 @@ pub enum ProviderOperationKind {
 pub enum TurnKind {
     /// A user-authored submission and its agent response.
     OrdinaryUser,
+    /// Beryl-owned fixed lifecycle continuation; not user-authored input.
+    BerylLifecycleContinuation,
     /// A provider operation that owns turn-scoped items.
     ProviderOperation(ProviderOperationKind),
 }
@@ -169,6 +171,12 @@ impl ProviderItemKind {
     pub const fn permits_completion_only(self) -> bool {
         matches!(self, Self::SubAgentActivity)
     }
+
+    /// Returns whether this item owns a selected transcript narrative.
+    #[must_use]
+    pub const fn requires_narrative(self) -> bool {
+        matches!(self, Self::AgentMessage | Self::Plan)
+    }
 }
 
 /// Provider-observation lifecycle retained independently from canonical finalization.
@@ -178,6 +186,23 @@ pub enum ProviderItemLifecycle {
     AwaitingCorrelation,
     Started,
     Completed,
+}
+
+/// Why one exact-route sealed provider observation cannot advance item lifecycle.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ProviderObservationIssueReason {
+    /// A start was observed for a completion-only item kind.
+    CompletionOnlyItemStarted,
+    /// A second start was observed while the same item remained open.
+    DuplicateItemStart,
+    /// A delta or non-instantaneous completion arrived without a preceding start.
+    MissingItemStart,
+    /// An observation arrived after the same item had already completed.
+    EventAfterCompletion,
+    /// The observation kind disagreed with the already admitted item kind.
+    ItemKindMismatch,
+    /// Completion's provider timestamp preceded the admitted start timestamp.
+    CompletionBeforeStart,
 }
 
 /// Why one observed item cannot support a complete-history claim.
@@ -218,12 +243,20 @@ pub enum AcceptedInputLifecycle {
     ///
     /// The admitted input remains permanent history and must never be replayed automatically.
     DeliveryUnknown,
+    /// The accepted input was moved into one exact fresh pending ordinary turn.
+    ///
+    /// The accepted input remains permanent history and its route leaf retains the exact
+    /// successor witness.
+    Promoted,
 }
 
 impl AcceptedInputLifecycle {
     #[must_use]
     pub const fn is_terminal(self) -> bool {
-        matches!(self, Self::Delivered | Self::Failed | Self::DeliveryUnknown)
+        matches!(
+            self,
+            Self::Delivered | Self::Failed | Self::DeliveryUnknown | Self::Promoted
+        )
     }
 }
 

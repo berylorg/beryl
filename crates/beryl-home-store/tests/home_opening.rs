@@ -1,10 +1,13 @@
+#[path = "support/fjall.rs"]
+mod fjall_support;
+
 use std::{fs, path::PathBuf};
 
 use beryl_home_store::{
     HomeLockCapability, HomeOpenError, HomeOpenOptions, HomeOpenStage, HomeSchemaVersion,
     HomeStore, HomeUnreadableStage,
 };
-use fjall::{Database, KeyspaceCreateOptions, PersistMode};
+use fjall::{Database, PersistMode};
 
 fn open(path: impl Into<PathBuf>) -> Result<HomeStore, HomeOpenError> {
     HomeStore::open(HomeOpenOptions::new(path, HomeSchemaVersion::CURRENT))
@@ -152,8 +155,7 @@ fn existing_fjall_database_without_beryl_header_is_unreadable() {
     let directory = tempfile::tempdir().expect("temp directory");
     let configured = directory.path().join("home");
     let database_path = configured.join("state");
-    let database = Database::builder(&database_path)
-        .open()
+    let database = Database::create(fjall_support::config(&database_path))
         .expect("create plain Fjall database");
     database
         .persist(PersistMode::SyncAll)
@@ -174,9 +176,8 @@ fn existing_fjall_database_without_beryl_header_is_unreadable() {
 fn fjall_database_directory_cannot_be_used_as_a_beryl_home() {
     let directory = tempfile::tempdir().expect("temp directory");
     let configured = directory.path().join("foreign-database");
-    let database = Database::builder(&configured)
-        .open()
-        .expect("create Fjall database");
+    let database =
+        Database::create(fjall_support::config(&configured)).expect("create Fjall database");
     database
         .persist(PersistMode::SyncAll)
         .expect("persist Fjall database");
@@ -245,11 +246,10 @@ fn malformed_home_header_is_not_replaced() {
     let database_path = store.database_path().to_path_buf();
     store.close().expect("orderly close");
 
-    let database = Database::builder(&database_path)
-        .open()
+    let database = Database::recover(fjall_support::config(&database_path))
         .expect("open database directly for corruption fixture");
     let header = database
-        .keyspace("_beryl_home", KeyspaceCreateOptions::default)
+        .open_keyspace("_beryl_home")
         .expect("open header keyspace");
     header
         .insert("header", b"malformed")
@@ -269,19 +269,18 @@ fn malformed_home_header_is_not_replaced() {
         }
     ));
 
-    let database = Database::builder(&database_path)
-        .open()
-        .expect("reopen fixture database");
+    let database =
+        Database::recover(fjall_support::config(&database_path)).expect("reopen fixture database");
     let header = database
-        .keyspace("_beryl_home", KeyspaceCreateOptions::default)
+        .open_keyspace("_beryl_home")
         .expect("reopen header keyspace");
-    assert_eq!(
-        header
-            .get("header")
-            .expect("read malformed header")
-            .as_deref(),
-        Some(b"malformed".as_slice())
-    );
+    let snapshot = database.snapshot().expect("snapshot fixture database");
+    let point = snapshot
+        .point(&header, b"header")
+        .expect("select malformed header")
+        .expect("malformed header remains");
+    let pair = point.acquire().expect("read malformed header");
+    assert_eq!(pair.value(), b"malformed");
 }
 
 #[test]

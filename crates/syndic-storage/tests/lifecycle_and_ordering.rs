@@ -4,7 +4,7 @@ use beryl_model::{
     BindingRevision, CasThreadId, CasTurnId, SyndicExecutionSnapshotId, SyndicTurnId,
 };
 use syndic_storage::{
-    AcceptedInputDisposition, AcceptedInputLifecycle, AcceptedInputOrdinal, BindingLifecycle,
+    AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedRouteTarget, BindingLifecycle,
     PendingSteeringTargetProof, SourceEventSequence, SteeringTargetProof, SyndicValueError,
     TranscriptPosition, TurnLifecycle,
 };
@@ -28,13 +28,14 @@ fn accepted_input_and_binding_lifecycles_do_not_collapse() {
     assert!(AcceptedInputLifecycle::Delivered.is_terminal());
     assert!(AcceptedInputLifecycle::Failed.is_terminal());
     assert!(AcceptedInputLifecycle::DeliveryUnknown.is_terminal());
+    assert!(AcceptedInputLifecycle::Promoted.is_terminal());
     assert!(!AcceptedInputLifecycle::Retryable.is_terminal());
     assert_ne!(BindingLifecycle::Unbound, BindingLifecycle::Stale);
     assert_ne!(BindingLifecycle::Valid, BindingLifecycle::Active);
 }
 
 #[test]
-fn steering_disposition_carries_the_exact_active_turn() {
+fn route_generation_target_carries_the_exact_active_turn() {
     let active_turn = SyndicTurnId::from_bytes([7; 16]);
     let other_turn = SyndicTurnId::from_bytes([8; 16]);
     let target = |turn| {
@@ -48,16 +49,16 @@ fn steering_disposition_carries_the_exact_active_turn() {
             CasTurnId::new("turn").unwrap(),
         )
     };
-    let disposition = AcceptedInputDisposition::SteerActiveTurn(target(active_turn));
+    let route_target = AcceptedRouteTarget::Steering(target(active_turn));
 
     assert!(matches!(
-        &disposition,
-        AcceptedInputDisposition::SteerActiveTurn(target)
+        &route_target,
+        AcceptedRouteTarget::Steering(target)
             if target.pending().active_turn_id() == active_turn
     ));
     assert_ne!(
-        disposition,
-        AcceptedInputDisposition::SteerActiveTurn(target(other_turn))
+        route_target,
+        AcceptedRouteTarget::Steering(target(other_turn))
     );
 }
 

@@ -3,18 +3,24 @@
 use std::time::Duration;
 
 use beryl_app::draft_persistence::{
-    DraftAutosavePublication, DraftCompletionAction, DraftFlushAction, DraftPersistenceService,
-    DraftPersistenceTime, DraftReconciliationAction, DraftSuspensionCause, execute_draft_save,
-    read_draft_persistence_seed,
+    DraftAutosaveAction, DraftAutosavePublication, DraftCompletionAction, DraftFlushAction,
+    DraftPersistenceService, DraftPersistenceTime, DraftReconciliationAction, DraftSuspensionCause,
+    execute_draft_save, read_draft_persistence_seed,
 };
 use beryl_home_store::{
     HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
     test_faults::{FaultController, FaultPoint},
 };
-use beryl_model::{SyndicDraftId, SyndicThreadId};
+use beryl_model::{
+    ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
+    SyndicThreadId, ThreadRevision,
+};
 use syndic_storage::{
-    CONTENT_APPEND_MAX_CHUNKS, ComposerAtom, ComposerPayload, ContentAppend, ContentBuild,
-    CreateThread, PreparedContent, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, CONTENT_APPEND_MAX_CHUNKS,
+    ComposerAtom, ComposerPayload, ContentAppend, ContentBuild, CreateThread, DraftByThreadRecord,
+    HistorySummaryRecord, PreparedContent, SelectedPathProof, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp, ThreadRecord,
+    test_faults::{FixtureBatch, FixtureRecord},
 };
 
 struct Fixture {
@@ -39,6 +45,7 @@ impl Fixture {
         let creation = CreateThread::ordinary(
             thread_id,
             SyndicDraftId::from_bytes([2; 16]),
+            execution_binding(),
             SyndicTimestamp::from_unix_millis(0),
         );
         let mut command = HomeCommand::new(store.home_revision().unwrap());
@@ -77,6 +84,138 @@ impl Fixture {
             DraftAutosavePublication::absent_default(),
         )
     }
+
+    fn advance_thread_revision(&self) -> ThreadRevision {
+        let current = self
+            .storage
+            .current_draft(&self.store, self.thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let thread = current.thread();
+        let thread_revision = thread.revision().checked_next().unwrap();
+        let selected = SelectedPathProof::new(
+            thread.committed_tail(),
+            thread_revision,
+            thread.selected_path_digest(),
+        );
+        let summary = self
+            .storage
+            .history_summary(&self.store, self.thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let current_binding = self
+            .storage
+            .current_binding(&self.store, self.thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let execution = self
+            .storage
+            .thread_execution(&self.store, self.thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let attributes = self
+            .storage
+            .thread_attributes(&self.store, self.thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let current_catalog = self
+            .storage
+            .thread_catalog_summary(&self.store, self.thread_id, point_limit())
+            .unwrap()
+            .unwrap();
+        let binding_revision = current_binding.binding().revision().checked_next().unwrap();
+        let thread_record = ThreadRecord::new(
+            thread.id(),
+            selected,
+            thread.current_draft_id(),
+            thread.lineage(),
+            thread.image_label_frontiers(),
+            thread.context_owner_id(),
+        );
+        let history_summary = HistorySummaryRecord::new(
+            summary.thread_id(),
+            summary.revision().checked_next().unwrap(),
+            thread_revision,
+            summary.committed_tail(),
+            summary.selected_path_digest(),
+            summary.complete(),
+            summary.last_activity_at(),
+        );
+        let catalog = ThreadCatalogSummaryRecord::new(
+            thread.id(),
+            current_catalog.revision().checked_next().unwrap(),
+            current_catalog.title().cloned(),
+            execution.execution().clone(),
+            attributes.archive(),
+            history_summary.last_activity_at(),
+            history_summary.complete(),
+            thread_record.parent_thread_id(),
+            thread_record.lineage_depth(),
+            thread_record.lineage_digest(),
+            ThreadCatalogSourceWitnesses::new(
+                attributes.revision(),
+                history_summary.revision(),
+                history_summary.thread_revision(),
+                history_summary.selected_path_digest(),
+                thread_record.revision(),
+            ),
+        );
+        let mut fixture = FixtureBatch::new();
+        fixture.put(FixtureRecord::Thread(thread_record)).unwrap();
+        fixture
+            .put(FixtureRecord::DraftByThread(DraftByThreadRecord::new(
+                thread.id(),
+                current.draft().id(),
+                current.draft().revision(),
+                thread_revision,
+            )))
+            .unwrap();
+        fixture
+            .put(FixtureRecord::HistorySummary(history_summary))
+            .unwrap();
+        fixture
+            .put(FixtureRecord::ThreadCatalogSummary(catalog))
+            .unwrap();
+        fixture
+            .put(FixtureRecord::Binding(BindingRecord::new(
+                thread.id(),
+                binding_revision,
+                selected,
+                BindingState::unbound("draft persistence rebind test").unwrap(),
+            )))
+            .unwrap();
+        fixture
+            .put(FixtureRecord::BindingHead(BindingHeadRecord::new(
+                thread.id(),
+                binding_revision,
+                BindingLifecycle::Unbound,
+                thread.selected_path_digest(),
+            )))
+            .unwrap();
+        let mut command = HomeCommand::new(self.store.home_revision().unwrap());
+        command
+            .add(
+                self.storage
+                    .fixture_contribution(self.storage.revision(&self.store).unwrap(), fixture),
+            )
+            .unwrap();
+        self.store.execute(command).unwrap();
+        self.store.validate_registered_domains().unwrap();
+        thread_revision
+    }
+}
+
+fn execution_binding() -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([3; 16]),
+        RootId::from_bytes([4; 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::host(),
+            PathFlavor::Windows,
+            r"C:\work\beryl-draft-persistence-faults",
+        )
+        .unwrap(),
+    )
 }
 
 fn payload(text: &str) -> ComposerPayload {
@@ -131,6 +270,38 @@ fn stage_payload_prefix(fixture: &Fixture, payload: &ComposerPayload, command_co
         fixture.store.execute(command).unwrap();
         manifest = next;
     }
+}
+
+#[test]
+fn same_draft_thread_advance_does_not_invalidate_autosave() {
+    let fixture = Fixture::new();
+    let mut service = fixture.service();
+    service
+        .edit(payload("retained"), SyndicTimestamp::from_unix_millis(1))
+        .unwrap();
+    let request = match service.poll_autosave(time(30)).unwrap() {
+        DraftAutosaveAction::Started(request) => request,
+        other => panic!("unexpected autosave action: {other:?}"),
+    };
+    let prior_binding = service.binding();
+    let advanced_revision = fixture.advance_thread_revision();
+
+    let execution = execute_draft_save(&fixture.store, &fixture.storage, &request, point_limit());
+    assert!(execution.failure().is_none());
+    assert!(matches!(
+        service.complete(execution, time(31)).unwrap(),
+        DraftCompletionAction::Published {
+            flush_complete: false
+        }
+    ));
+    let seed = fixture.seed(&fixture.storage, 31);
+    assert_eq!(seed.current().thread().revision(), advanced_revision);
+    assert_eq!(seed.payload(), &payload("retained"));
+    assert_eq!(service.binding(), prior_binding);
+    assert_eq!(request.binding(), prior_binding);
+    assert_eq!(service.editor_payload(), &payload("retained"));
+    assert!(!service.is_dirty());
+    fixture.store.validate_registered_domains().unwrap();
 }
 
 #[test]

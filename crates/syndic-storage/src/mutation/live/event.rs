@@ -2,22 +2,29 @@ use super::*;
 use crate::mutation::{point, required};
 use crate::{
     BindingHeadRecord, BindingRecord, BindingState, CasThreadBindingIndexRecord,
-    CasThreadIndexRecord, HistorySummaryRecord, InputGateRecord, TranscriptViewHeadRecord,
+    CasThreadIndexRecord, HistorySummaryRecord, StopOperationRecord, TranscriptViewHeadRecord,
     TurnLifecycle, TurnStateRecord,
 };
 
+pub(in crate::mutation) mod activity;
+mod issue;
 mod item;
 
-use super::terminal::{terminal_gate, terminal_valid_binding};
-use item::{ItemEffect, append_item, complete_item, start_item};
+use super::terminal::{
+    LiveGateEffect, activation_gate_effect, terminal_gate_effect, terminal_stop_operation,
+    terminal_valid_binding,
+};
+use issue::publish_provider_observation_issue;
+use item::{ItemEffect, publish_item_frame};
 
 pub(super) struct EventRecords {
     event: SourceEventRecord,
     state: TurnStateRecord,
-    gate: Option<InputGateRecord>,
-    summary: HistorySummaryRecord,
+    gate: Option<LiveGateEffect>,
+    summary: Option<HistorySummaryRecord>,
     transcript_head: Option<TranscriptViewHeadRecord>,
     transcript_build: Option<crate::TranscriptBuildRecord>,
+    activity: activity::ActivityEffect,
     effect: Option<ItemEffect>,
     terminal_binding: Option<(
         BindingRecord,
@@ -25,6 +32,7 @@ pub(super) struct EventRecords {
         CasThreadIndexRecord,
         CasThreadBindingIndexRecord,
     )>,
+    terminal_stop: Option<StopOperationRecord>,
 }
 
 impl LiveSourceEventMutation {
@@ -103,6 +111,7 @@ impl LiveSourceEventMutation {
         let finalized_item_count = current.finalized_item_count();
         let mut open_item_count = current.open_item_count();
         let mut history_blocking_item_count = current.history_blocking_item_count();
+        let mut provider_observation_issue = current.provider_observation_issue();
         let mut end_status = current.end_status();
         let mut next_gate = None;
         let (effect, transcript_dirty) = match &request.payload {
@@ -115,83 +124,64 @@ impl LiveSourceEventMutation {
                 }
                 lifecycle = TurnLifecycle::Active;
                 end_status = None;
+                next_gate = activation_gate_effect(reader, &gate, turn.id())?;
                 (None, false)
             }
-            SourceEventPayload::ItemStarted {
-                item,
-                assistant_phase,
-            } => {
+            SourceEventPayload::ItemFrame { item_id, frame } => {
                 require_live_capture(lifecycle)?;
-                let new_ordinal = item_count.saturating_add(1);
-                let started = start_item(reader, &event, new_ordinal, item, *assistant_phase)?;
-                if started.added_item {
+                let published =
+                    publish_item_frame(reader, &event, thread.id(), item_count, *item_id, frame)?;
+                if published.added_item {
                     item_count = item_count
                         .checked_add(1)
                         .ok_or(SyndicMutationError::CanonicalItemConflict)?;
+                }
+                if published.opened_item {
                     open_item_count = open_item_count
                         .checked_add(1)
                         .ok_or(SyndicMutationError::CanonicalItemConflict)?;
-                    if item.disposition().is_history_blocking() {
-                        history_blocking_item_count = history_blocking_item_count
-                            .checked_add(1)
-                            .ok_or(SyndicMutationError::CanonicalItemConflict)?;
-                    }
                 }
-                (Some(started.effect), started.transcript_dirty)
-            }
-            SourceEventPayload::ItemDelta {
-                item_id,
-                cas_item_id,
-                expected_kind,
-                text,
-            } => {
-                require_live_capture(lifecycle)?;
-                let (effect, visible) =
-                    append_item(reader, &event, *item_id, cas_item_id, *expected_kind, text)?;
-                (Some(effect), visible)
-            }
-            SourceEventPayload::ItemCompleted {
-                item,
-                assistant_phase,
-            } => {
-                require_live_capture(lifecycle)?;
-                let completed = complete_item(
-                    reader,
-                    &event,
-                    item_count.saturating_add(1),
-                    item,
-                    *assistant_phase,
-                )?;
-                if completed.added_item {
-                    item_count = item_count
-                        .checked_add(1)
-                        .ok_or(SyndicMutationError::CanonicalItemConflict)?;
-                    if item.disposition().is_history_blocking() {
-                        history_blocking_item_count = history_blocking_item_count
-                            .checked_add(1)
-                            .ok_or(SyndicMutationError::CanonicalItemConflict)?;
-                    }
-                } else {
+                if published.completed_item {
                     open_item_count = open_item_count
                         .checked_sub(1)
                         .ok_or(SyndicMutationError::ProviderItemLifecycleConflict)?;
                 }
-                (Some(completed.effect), completed.transcript_dirty)
+                if published.history_became_blocking {
+                    history_blocking_item_count = history_blocking_item_count
+                        .checked_add(1)
+                        .ok_or(SyndicMutationError::CanonicalItemConflict)?;
+                }
+                (Some(published.effect), published.transcript_dirty)
+            }
+            SourceEventPayload::ProviderObservationIssue(issue) => {
+                require_live_capture(lifecycle)?;
+                publish_provider_observation_issue(reader, &event, issue)?;
+                provider_observation_issue = provider_observation_issue.or(Some(issue.reason()));
+                (None, true)
             }
             SourceEventPayload::TurnEnded(status) => {
                 if status.incomplete_reason().is_none()
-                    && (open_item_count != 0 || history_blocking_item_count != 0)
+                    && (open_item_count != 0
+                        || history_blocking_item_count != 0
+                        || provider_observation_issue.is_some())
                 {
                     return Err(SyndicMutationError::TerminalItemAuditConflict);
                 }
+                if provider_observation_issue.is_some()
+                    && event.source().is_some()
+                    && status.incomplete_reason()
+                        != Some(crate::TurnIncompleteReason::CompletionMismatch)
+                {
+                    return Err(SyndicMutationError::ProviderObservationIssueConflict);
+                }
                 lifecycle = status.lifecycle();
                 end_status = Some(*status);
-                next_gate = Some(terminal_gate(&gate, turn.id(), lifecycle)?);
+                next_gate = Some(terminal_gate_effect(reader, &gate, turn.id(), lifecycle)?);
                 (None, true)
             }
         };
 
-        let state = TurnStateRecord::with_capture_frontiers(
+        let state = TurnStateRecord::with_capture_frontiers_and_issue(
             turn.id(),
             current.revision().checked_next()?,
             lifecycle,
@@ -200,6 +190,7 @@ impl LiveSourceEventMutation {
             finalized_item_count,
             open_item_count,
             history_blocking_item_count,
+            provider_observation_issue,
             end_status,
             request.observed_at,
         )?;
@@ -208,19 +199,47 @@ impl LiveSourceEventMutation {
         } else {
             (None, None)
         };
-        let summary = HistorySummaryRecord::new(
-            summary.thread_id(),
-            summary.thread_revision(),
-            summary.committed_tail(),
-            summary.selected_path_digest(),
-            false,
-            request.observed_at,
-        );
+        let summary = if summary.complete() || summary.last_activity_at() != request.observed_at {
+            Some(HistorySummaryRecord::new(
+                summary.thread_id(),
+                summary.revision().checked_next()?,
+                summary.thread_revision(),
+                summary.committed_tail(),
+                summary.selected_path_digest(),
+                false,
+                request.observed_at,
+            ))
+        } else {
+            None
+        };
         let terminal_binding = if lifecycle.is_proven_terminal() {
             terminal_valid_binding(reader, &thread, turn.id(), request.source.as_ref())?
         } else {
             None
         };
+        let terminal_stop = if lifecycle.is_proven_terminal() {
+            let successor_gate = next_gate
+                .as_ref()
+                .expect("proven terminal payload publishes a successor gate");
+            terminal_stop_operation(
+                reader,
+                &turn,
+                request.source.as_ref(),
+                &gate,
+                successor_gate.gate().revision(),
+                state.revision(),
+            )?
+        } else {
+            None
+        };
+        let activity = activity::advance(
+            reader,
+            thread.id(),
+            turn.id(),
+            request.sequence,
+            lifecycle.is_proven_terminal(),
+            effect.as_ref().map(ItemEffect::item),
+        )?;
         Ok(EventRecords {
             event,
             state,
@@ -228,8 +247,10 @@ impl LiveSourceEventMutation {
             summary,
             transcript_head,
             transcript_build,
+            activity,
             effect,
             terminal_binding,
+            terminal_stop,
         })
     }
 }
@@ -247,10 +268,12 @@ impl EventRecords {
             &self.event,
         )?;
         mutations.put::<TurnStatesCodec>(&self.state.turn_id(), &self.state)?;
-        if let Some(gate) = &self.gate {
-            mutations.put::<InputGatesCodec>(&gate.thread_id(), gate)?;
+        if let Some(gate) = self.gate {
+            gate.contribute(mutations)?;
         }
-        mutations.put::<HistorySummariesCodec>(&self.summary.thread_id(), &self.summary)?;
+        if let Some(summary) = &self.summary {
+            mutations.put::<HistorySummariesCodec>(&summary.thread_id(), summary)?;
+        }
         if let Some(head) = &self.transcript_head {
             mutations.put::<TranscriptHeadsCodec>(&head.thread_id(), head)?;
         }
@@ -263,6 +286,7 @@ impl EventRecords {
                 build,
             )?;
         }
+        self.activity.contribute(mutations)?;
         if let Some(effect) = self.effect {
             effect.contribute(mutations)?;
         }
@@ -286,6 +310,9 @@ impl EventRecords {
                 ),
                 membership,
             )?;
+        }
+        if let Some(stop) = &self.terminal_stop {
+            mutations.put::<StopOperationsCodec>(&stop.id(), stop)?;
         }
         Ok(())
     }

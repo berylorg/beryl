@@ -3,15 +3,13 @@
 mod status_line;
 
 use beryl_backend::{
-    AccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow, ThreadSessionMetadata,
-    ThreadStatus, ThreadTokenUsage, TokenUsageBreakdown,
+    ThreadActiveFlags, ThreadSessionMetadata, ThreadStatus, ThreadTokenUsage, TokenUsageBreakdown,
 };
 use status_line::{
-    CancellableActiveTurn, CancellableActiveTurnKind, StatusLineCellAction,
-    StatusLineCellValueKind, StatusLineCellValueSegmentKind, StatusLineProjection, StatusLineState,
-    StatusLineTurnView, ThreadTurnDefaults,
+    CancellableActiveTurn, StatusLineCellAction, StatusLineCellValueKind,
+    StatusLineCellValueSegmentKind, StatusLineProjection, StatusLineState, StatusLineTurnView,
+    ThreadTurnDefaults,
 };
-use std::collections::BTreeMap;
 
 #[test]
 fn status_projection_uses_unknown_fallbacks() {
@@ -43,102 +41,6 @@ fn status_projection_uses_session_metadata() {
 }
 
 #[test]
-fn context_compaction_overrides_selected_turn_state() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.begin_context_compaction("thread_1"));
-
-    let selected_projection = state.projection(Some("thread_1"), "ok");
-    assert_eq!(selected_projection.last_turn_state, "compacting");
-
-    let other_projection = state.projection(Some("thread_2"), "ok");
-    assert_eq!(other_projection.last_turn_state, "ok");
-}
-
-#[test]
-fn context_compaction_finish_restores_underlying_turn_state() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.begin_context_compaction("thread_1"));
-    assert!(state.finish_context_compaction("thread_1"));
-
-    let projection = state.projection(Some("thread_1"), "ok");
-    assert_eq!(projection.last_turn_state, "ok");
-}
-
-#[test]
-fn context_compaction_is_cancellable_only_after_turn_id_is_known() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.begin_context_compaction("thread_1"));
-    assert_eq!(
-        state.context_compaction_cancellation_target(Some("thread_1")),
-        None
-    );
-
-    assert!(state.set_context_compaction_turn_id("thread_1", "turn_compact"));
-    let target = state
-        .context_compaction_cancellation_target(Some("thread_1"))
-        .unwrap();
-
-    assert_eq!(target.thread_id, "thread_1");
-    assert_eq!(target.turn_id, "turn_compact");
-    assert_eq!(target.kind, CancellableActiveTurnKind::ContextCompaction);
-    assert_eq!(
-        state.context_compaction_cancellation_target(Some("thread_2")),
-        None
-    );
-}
-
-#[test]
-fn unsupported_compaction_stop_keeps_turn_cell_disabled() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.begin_context_compaction("thread_1"));
-    let projection = state.projection_with_turn_operations(
-        Some("thread_1"),
-        false,
-        false,
-        "working",
-        state.context_compaction_cancellation_target(Some("thread_1")),
-        None,
-    );
-    let specs = status_line::status_line_cell_specs(projection, false, false, true);
-
-    assert_eq!(specs[2].value, "compacting");
-    assert_eq!(specs[2].action, StatusLineCellAction::None);
-    assert!(!specs[2].enabled);
-
-    assert!(state.set_context_compaction_turn_id("thread_1", "turn_compact"));
-    let projection = state.projection_with_turn_operations(
-        Some("thread_1"),
-        false,
-        false,
-        "working",
-        state.context_compaction_cancellation_target(Some("thread_1")),
-        None,
-    );
-    let specs = status_line::status_line_cell_specs(projection, false, false, true);
-
-    assert_eq!(specs[2].action, StatusLineCellAction::TurnOperations);
-    assert!(specs[2].enabled);
-}
-
-#[test]
-fn context_compaction_finish_clears_cancellation_target() {
-    let mut state = StatusLineState::default();
-
-    assert!(state.begin_context_compaction("thread_1"));
-    assert!(state.set_context_compaction_turn_id("thread_1", "turn_compact"));
-    assert!(state.finish_context_compaction("thread_1"));
-
-    assert_eq!(
-        state.context_compaction_cancellation_target(Some("thread_1")),
-        None
-    );
-}
-
-#[test]
 fn status_projection_carries_cancellable_active_turn() {
     let state = StatusLineState::default();
     let target = CancellableActiveTurn::ordinary("thread_1", "turn_1");
@@ -153,32 +55,6 @@ fn status_projection_carries_cancellable_active_turn() {
 
     assert!(projection.turn_operation_available());
     assert_eq!(projection.cancellable_active_turn, Some(target));
-}
-
-#[test]
-fn status_projection_carries_hard_stop_targets_for_selected_turn() {
-    let state = StatusLineState::default();
-    let target = CancellableActiveTurn::ordinary("thread_1", "turn_1");
-    let hard_targets = status_line::SelectedTurnHardStopTargets::new(
-        target.clone(),
-        vec![beryl_backend::HardStopTarget::turn(
-            beryl_model::CasThreadId::new("thread_1").unwrap(),
-            beryl_model::CasTurnId::new("turn_1").unwrap(),
-        )],
-        Vec::new(),
-    );
-
-    let projection = state.projection_with_turn_operations(
-        Some("thread_1"),
-        false,
-        false,
-        "working",
-        Some(target.clone()),
-        Some(hard_targets.clone()),
-    );
-
-    assert_eq!(projection.cancellable_active_turn, Some(target));
-    assert_eq!(projection.hard_stop_targets, Some(hard_targets));
 }
 
 #[test]
@@ -411,7 +287,7 @@ fn status_line_model_reasoning_is_available_only_for_an_idle_selected_thread() {
     assert!(!status_line::status_line_model_reasoning_available(
         Some("thread_1"),
         Some(&ThreadStatus::Active {
-            active_flags: Vec::new()
+            active_flags: ThreadActiveFlags::empty(),
         }),
     ));
     assert!(!status_line::status_line_model_reasoning_available(
@@ -433,7 +309,7 @@ fn status_line_context_operations_require_selected_idle_thread() {
     assert!(!status_line::status_line_context_operation_available(
         Some("thread_1"),
         Some(&ThreadStatus::Active {
-            active_flags: Vec::new()
+            active_flags: ThreadActiveFlags::empty(),
         }),
     ));
     assert!(!status_line::status_line_context_operation_available(
@@ -444,11 +320,7 @@ fn status_line_context_operations_require_selected_idle_thread() {
 
 #[test]
 fn waiting_on_user_input_thread_status_is_interactive() {
-    let waiting_on_input: ThreadStatus = serde_json::from_value(serde_json::json!({
-        "type": "active",
-        "activeFlags": ["waitingOnUserInput"]
-    }))
-    .unwrap();
+    let waiting_on_input = ThreadStatus::active(ThreadActiveFlags::new(false, true));
 
     assert!(status_line::status_line_model_reasoning_available(
         Some("thread_1"),
@@ -496,7 +368,6 @@ fn status_line_cell_specs_cover_three_cells_and_disabled_interactions() {
             model_reasoning_available: true,
             context_operation_available: true,
             cancellable_active_turn: None,
-            hard_stop_targets: None,
         },
         true,
         false,
@@ -585,7 +456,6 @@ fn cancellable_turn_target_enables_turn_operations_cell_when_backend_allows_it()
         model_reasoning_available: false,
         context_operation_available: false,
         cancellable_active_turn: Some(CancellableActiveTurn::ordinary("thread_1", "turn_1")),
-        hard_stop_targets: None,
     };
 
     let disabled_specs =
@@ -616,7 +486,6 @@ fn non_owned_active_turn_state_does_not_enable_turn_operations_cell() {
         model_reasoning_available: false,
         context_operation_available: false,
         cancellable_active_turn: None,
-        hard_stop_targets: None,
     };
 
     let specs = status_line::status_line_cell_specs(projection, false, false, true);
@@ -638,7 +507,6 @@ fn known_turn_view_does_not_enable_turn_operations_cell_without_stop_target() {
         model_reasoning_available: false,
         context_operation_available: false,
         cancellable_active_turn: None,
-        hard_stop_targets: None,
     };
 
     let specs = status_line::status_line_cell_specs(projection, false, false, true);
@@ -661,179 +529,6 @@ fn context_percent_uses_selected_thread_last_input_tokens() {
     let projection = state.projection(Some("thread_1"), "ok");
 
     assert_eq!(projection.context_space_left, "75%");
-}
-
-#[test]
-fn context_status_appends_available_account_rate_limit_remaining_percentages() {
-    let mut state = StatusLineState::default();
-    assert!(state.apply_token_usage(
-        true,
-        "thread_1".to_string(),
-        "turn_1".to_string(),
-        token_usage(250, 0, Some(1000)),
-    ));
-    assert!(state.apply_account_rate_limits(rate_limits(Some((15, 1440)), Some((55, 10080)))));
-
-    let projection = state.projection(Some("thread_1"), "ok");
-
-    assert_eq!(projection.context_space_left, "75% Daily 85% Weekly 45%");
-}
-
-#[test]
-fn context_status_exposes_rate_limit_labels_as_value_segments() {
-    let mut state = StatusLineState::default();
-    assert!(state.apply_token_usage(
-        true,
-        "thread_1".to_string(),
-        "turn_1".to_string(),
-        token_usage(250, 0, Some(1000)),
-    ));
-    assert!(state.apply_account_rate_limits(rate_limits(Some((15, 1440)), Some((55, 10080)))));
-
-    let projection = state.projection(Some("thread_1"), "ok");
-    let specs = status_line::status_line_cell_specs(projection, true, true, true);
-    let segments = &specs[1].value_segments;
-
-    assert_eq!(segments.len(), 5);
-    assert_eq!(segments[0].kind, StatusLineCellValueSegmentKind::Value);
-    assert_eq!(segments[0].text, "75%");
-    assert_eq!(segments[1].kind, StatusLineCellValueSegmentKind::Label);
-    assert_eq!(segments[1].text, "Daily");
-    assert_eq!(segments[2].kind, StatusLineCellValueSegmentKind::Value);
-    assert_eq!(segments[2].text, "85%");
-    assert_eq!(segments[3].kind, StatusLineCellValueSegmentKind::Label);
-    assert_eq!(segments[3].text, "Weekly");
-    assert_eq!(segments[4].kind, StatusLineCellValueSegmentKind::Value);
-    assert_eq!(segments[4].text, "45%");
-}
-
-#[test]
-fn account_rate_limit_read_uses_multi_bucket_view_and_notifications_are_partial() {
-    let mut state = StatusLineState::default();
-    state.set_session_metadata(ThreadSessionMetadata {
-        model: Some("gpt-5.3-codex".to_string()),
-        model_provider: Some("openai".to_string()),
-        reasoning_effort: Some("medium".to_string()),
-    });
-    assert!(
-        state.replace_account_rate_limits(account_rate_limits_response(
-            rate_limits(None, Some((55, 10080))),
-            [("codex", rate_limits(Some((15, 1440)), Some((55, 10080))),)],
-        ))
-    );
-
-    assert_eq!(
-        state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown Daily 85% Weekly 45%"
-    );
-
-    assert!(state.apply_account_rate_limits(rate_limits(None, Some((60, 10080)))));
-
-    assert_eq!(
-        state.projection(Some("thread_1"), "ok").context_space_left,
-        "Unknown Daily 85% Weekly 40%"
-    );
-}
-
-#[test]
-fn account_rate_limit_read_selects_main_bucket_and_renders_short_window_label() {
-    let mut state = StatusLineState::default();
-    state.set_session_metadata(ThreadSessionMetadata {
-        model: Some("gpt-5.3-codex".to_string()),
-        model_provider: Some("openai".to_string()),
-        reasoning_effort: Some("medium".to_string()),
-    });
-
-    assert!(
-        state.replace_account_rate_limits(account_rate_limits_response(
-            rate_limits(None, Some((2, 10080))),
-            [
-                (
-                    "codex",
-                    rate_limits_for_limit("codex", "Codex", Some((9, 300)), Some((2, 10080))),
-                ),
-                (
-                    "gpt-5.3-codex-spark",
-                    rate_limits_for_limit(
-                        "gpt-5.3-codex-spark",
-                        "GPT-5.3-Codex-Spark",
-                        Some((0, 300)),
-                        Some((0, 10080)),
-                    ),
-                ),
-            ],
-        ))
-    );
-
-    let projection = state.projection(Some("thread_1"), "ok");
-
-    assert_eq!(projection.context_space_left, "Unknown 5h 91% Weekly 98%");
-}
-
-#[test]
-fn account_rate_limit_read_selects_spark_bucket_for_spark_model() {
-    let mut state = StatusLineState::default();
-    state.set_session_metadata(ThreadSessionMetadata {
-        model: Some("gpt-5.3-codex-spark".to_string()),
-        model_provider: Some("openai".to_string()),
-        reasoning_effort: Some("medium".to_string()),
-    });
-
-    assert!(
-        state.replace_account_rate_limits(account_rate_limits_response(
-            rate_limits(None, Some((2, 10080))),
-            [
-                (
-                    "codex",
-                    rate_limits_for_limit("codex", "Codex", Some((9, 300)), Some((2, 10080))),
-                ),
-                (
-                    "gpt-5.3-codex-spark",
-                    rate_limits_for_limit(
-                        "gpt-5.3-codex-spark",
-                        "GPT-5.3-Codex-Spark",
-                        Some((25, 300)),
-                        Some((30, 10080)),
-                    ),
-                ),
-            ],
-        ))
-    );
-
-    let projection = state.projection(Some("thread_1"), "ok");
-
-    assert_eq!(projection.context_space_left, "Unknown 5h 75% Weekly 70%");
-}
-
-#[test]
-fn account_rate_limit_segments_are_partial_and_independent_from_context_usage() {
-    let mut state = StatusLineState::default();
-    assert!(state.apply_account_rate_limits(rate_limits(Some((15, 1440)), None)));
-
-    let projection = state.projection(Some("thread_1"), "ok");
-
-    assert_eq!(projection.context_space_left, "Unknown Daily 85%");
-}
-
-#[test]
-fn account_rate_limit_remaining_clamps_used_percent_and_requires_known_window() {
-    let mut state = StatusLineState::default();
-    assert!(state.apply_token_usage(
-        true,
-        "thread_1".to_string(),
-        "turn_1".to_string(),
-        token_usage(0, 0, Some(1000)),
-    ));
-    assert!(state.apply_account_rate_limits(RateLimitSnapshot {
-        limit_id: None,
-        limit_name: None,
-        primary: Some(rate_limit_window(-5, Some(1440))),
-        secondary: Some(rate_limit_window(120, None)),
-    }));
-
-    let projection = state.projection(Some("thread_1"), "ok");
-
-    assert_eq!(projection.context_space_left, "100% Daily 100%");
 }
 
 #[test]
@@ -956,59 +651,5 @@ fn token_usage(
             ..TokenUsageBreakdown::default()
         },
         model_context_window,
-    }
-}
-
-fn rate_limits(primary: Option<(i32, i64)>, secondary: Option<(i32, i64)>) -> RateLimitSnapshot {
-    RateLimitSnapshot {
-        limit_id: None,
-        limit_name: None,
-        primary: primary.map(|(used_percent, window_duration_mins)| {
-            rate_limit_window(used_percent, Some(window_duration_mins))
-        }),
-        secondary: secondary.map(|(used_percent, window_duration_mins)| {
-            rate_limit_window(used_percent, Some(window_duration_mins))
-        }),
-    }
-}
-
-fn rate_limits_for_limit(
-    limit_id: &str,
-    limit_name: &str,
-    primary: Option<(i32, i64)>,
-    secondary: Option<(i32, i64)>,
-) -> RateLimitSnapshot {
-    RateLimitSnapshot {
-        limit_id: Some(limit_id.to_string()),
-        limit_name: Some(limit_name.to_string()),
-        primary: primary.map(|(used_percent, window_duration_mins)| {
-            rate_limit_window(used_percent, Some(window_duration_mins))
-        }),
-        secondary: secondary.map(|(used_percent, window_duration_mins)| {
-            rate_limit_window(used_percent, Some(window_duration_mins))
-        }),
-    }
-}
-
-fn account_rate_limits_response(
-    rate_limits: RateLimitSnapshot,
-    rate_limits_by_limit_id: impl IntoIterator<Item = (&'static str, RateLimitSnapshot)>,
-) -> AccountRateLimitsResponse {
-    AccountRateLimitsResponse {
-        rate_limits,
-        rate_limits_by_limit_id: Some(
-            rate_limits_by_limit_id
-                .into_iter()
-                .map(|(limit_id, snapshot)| (limit_id.to_string(), snapshot))
-                .collect::<BTreeMap<_, _>>(),
-        ),
-    }
-}
-
-fn rate_limit_window(used_percent: i32, window_duration_mins: Option<i64>) -> RateLimitWindow {
-    RateLimitWindow {
-        used_percent,
-        window_duration_mins,
-        resets_at: None,
     }
 }

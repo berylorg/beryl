@@ -143,6 +143,7 @@ impl SettingsState {
             limits,
         )?;
         let stored_bytes = page.stored_bytes();
+        let decoded_bytes = page.decoded_bytes();
         let has_more = page.has_more();
         Ok(StatePage {
             records: page
@@ -151,6 +152,7 @@ impl SettingsState {
                 .map(|record| record.into_parts().1)
                 .collect(),
             stored_bytes,
+            decoded_bytes,
             has_more,
         })
     }

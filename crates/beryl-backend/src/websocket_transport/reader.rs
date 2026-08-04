@@ -77,7 +77,7 @@ impl PayloadReaderState {
 
     fn fail(&self, error: ManagedBackendError) -> io::Error {
         self.shared.borrow_mut().failure = Some(error);
-        io::Error::new(io::ErrorKind::Other, "backend WebSocket ingress failed")
+        io::Error::other("backend WebSocket ingress failed")
     }
 }
 

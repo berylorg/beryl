@@ -4,8 +4,8 @@ use beryl_model::{
 };
 
 use crate::{
-    ContentPieceOrdinal, ContentReference, ItemProjectionGeneration, ProjectionFormatVersion,
-    ProjectionOrdinal, SyndicTimestamp, TranscriptGeneration, TurnDepth, TurnItemOrdinal,
+    ItemProjectionGeneration, ProjectionFormatVersion, ProjectionOrdinal, ProjectionTextSource,
+    ProjectionTextSourceCursor, SyndicTimestamp, TranscriptGeneration, TurnDepth, TurnItemOrdinal,
     TurnLifecycle, TurnStateRevision,
 };
 
@@ -79,7 +79,7 @@ pub enum MarkdownOpenBlock {
 pub struct MarkdownParserCheckpoint {
     consumed_source_bytes: u64,
     closed_source_bytes: u64,
-    next_piece_ordinal: ContentPieceOrdinal,
+    source_cursor: ProjectionTextSourceCursor,
     line_start: u64,
     line_carry: Box<str>,
     line_continuation: bool,
@@ -91,7 +91,7 @@ impl MarkdownParserCheckpoint {
     pub fn new(
         consumed_source_bytes: u64,
         closed_source_bytes: u64,
-        next_piece_ordinal: ContentPieceOrdinal,
+        source_cursor: ProjectionTextSourceCursor,
         line_start: u64,
         line_carry: Box<str>,
         line_continuation: bool,
@@ -100,7 +100,7 @@ impl MarkdownParserCheckpoint {
         Self {
             consumed_source_bytes,
             closed_source_bytes,
-            next_piece_ordinal,
+            source_cursor,
             line_start,
             line_carry,
             line_continuation,
@@ -119,8 +119,8 @@ impl MarkdownParserCheckpoint {
     }
 
     #[must_use]
-    pub const fn next_piece_ordinal(&self) -> ContentPieceOrdinal {
-        self.next_piece_ordinal
+    pub const fn source_cursor(&self) -> ProjectionTextSourceCursor {
+        self.source_cursor
     }
 
     #[must_use]
@@ -152,7 +152,7 @@ pub struct ItemProjectionBuildRecord {
     revision: ProjectionRevision,
     format: ProjectionFormatVersion,
     source_item_revision: ProjectionRevision,
-    source_content: ContentReference,
+    source: ProjectionTextSource,
     source_bytes: u64,
     projection_count: u64,
     resource_count: u64,
@@ -169,7 +169,7 @@ impl ItemProjectionBuildRecord {
         revision: ProjectionRevision,
         format: ProjectionFormatVersion,
         source_item_revision: ProjectionRevision,
-        source_content: ContentReference,
+        source: ProjectionTextSource,
         source_bytes: u64,
         projection_count: u64,
         resource_count: u64,
@@ -182,7 +182,7 @@ impl ItemProjectionBuildRecord {
             revision,
             format,
             source_item_revision,
-            source_content,
+            source,
             source_bytes,
             projection_count,
             resource_count,
@@ -212,8 +212,8 @@ impl ItemProjectionBuildRecord {
         self.source_item_revision
     }
     #[must_use]
-    pub const fn source_content(&self) -> ContentReference {
-        self.source_content
+    pub const fn source(&self) -> ProjectionTextSource {
+        self.source
     }
     #[must_use]
     pub const fn source_bytes(&self) -> u64 {

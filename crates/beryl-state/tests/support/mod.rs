@@ -9,12 +9,11 @@ use beryl_home_store::{
     MutationContribution,
 };
 use beryl_model::{
-    AdmittedHostPath, Availability, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath, SyndicThreadId,
+    AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
 };
 use beryl_state::{
     AvailabilitySnapshot, BerylState, CreateRuntimeWithHomeRoot, RootRegistration,
-    RuntimeRegistration, ThreadMetadataKind, UnixMillis,
+    RuntimeRegistration, UnixMillis,
 };
 
 pub fn open(path: &Path) -> (HomeStore, BerylState) {
@@ -100,29 +99,6 @@ pub fn create_host_runtime(
     let contribution = state.runtime_roots().create_runtime_with_home_root(
         state.runtime_roots().revision(store).unwrap(),
         host_runtime(runtime_byte, root_byte, executable, root),
-    );
-    execute(store, contribution).unwrap();
-}
-
-pub fn binding(runtime_byte: u8, root_byte: u8, path: &str) -> ExecutionBinding {
-    ExecutionBinding::new(
-        RuntimeId::from_bytes([runtime_byte; 16]),
-        RootId::from_bytes([root_byte; 16]),
-        RuntimeNativePath::from_admitted(RuntimeMode::host(), PathFlavor::Windows, path).unwrap(),
-    )
-}
-
-pub fn create_metadata(
-    store: &HomeStore,
-    state: BerylState,
-    thread_byte: u8,
-    binding: ExecutionBinding,
-    kind: ThreadMetadataKind,
-) {
-    let thread_id = SyndicThreadId::from_bytes([thread_byte; 16]);
-    let contribution = state.thread_metadata().create(
-        state.thread_metadata().revision(store).unwrap(),
-        beryl_state::CreateThreadMetadata::new(thread_id, binding, kind),
     );
     execute(store, contribution).unwrap();
 }

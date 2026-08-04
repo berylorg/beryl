@@ -1,21 +1,23 @@
-use std::num::NonZeroU64;
-
-use beryl_home_store::{
-    CursorDirection, CursorRange, CursorReadLimits, DomainReader, PointReadLimit, SidecarAddress,
-    SidecarByteLimit, SidecarDigest, SidecarNamespace, SidecarVerifier,
-};
-use beryl_model::{AssetId, SyndicDraftId, SyndicDraftMarkerId, SyndicProjectionId};
+use beryl_home_store::{CursorDirection, DomainReader, SidecarByteLimit, SidecarVerifier};
+use beryl_model::{ImageLabelOrdinal, advance_content_marker_digest, content_marker_digest_seed};
 
 use super::{
-    ASSET_METADATA_LIMIT, ASSET_NAMESPACE, ASSET_REFERENCE_LIMIT, AssetDomain, AssetReferenceOwner,
-    AssetValidationError, MAX_ASSET_BYTES,
+    AssetDomain, AssetEntryKey, AssetLabelDisposition, AssetLabelFirstKey, AssetMarkerKey,
+    AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetValidationError,
+    asset_sidecar_address,
     codec::{
-        AssetMetadataCodec, AssetReferenceCodec, AssetReferenceIndexCodec, AssetReferenceIndexKey,
+        AssetMetadataCodec, AssetOwnerHeadCodec, AssetReferenceEntryCodec,
+        AssetReferenceLabelFirstCodec, AssetReferenceManifestCodec, AssetReferenceMarkerCodec,
     },
+    digest,
 };
 
-const PAGE_ITEMS: usize = 128;
-const PAGE_BYTES: usize = 2 * 1_024 * 1_024;
+mod range;
+
+use range::{
+    all_entry_range, asset_range, entry_limit, entry_range, index_limit, label_range, limits,
+    manifest_limit, marker_range, metadata_limit, owner_range, set_range,
+};
 
 pub(super) fn validate(reader: &DomainReader<'_, AssetDomain>) -> Result<(), AssetValidationError> {
     validate_records(reader, None)
@@ -33,8 +35,11 @@ fn validate_records(
     sidecars: Option<&SidecarVerifier<'_>>,
 ) -> Result<(), AssetValidationError> {
     validate_metadata(reader, sidecars)?;
-    validate_primary_references(reader)?;
-    validate_reference_indexes(reader)?;
+    validate_manifests(reader)?;
+    validate_all_entries(reader)?;
+    validate_marker_indexes(reader)?;
+    validate_label_indexes(reader)?;
+    validate_owner_heads(reader)?;
     Ok(())
 }
 
@@ -44,29 +49,22 @@ fn validate_metadata(
 ) -> Result<(), AssetValidationError> {
     let mut after = None;
     loop {
-        let range = asset_range(after);
-        let page =
-            reader.cursor::<AssetMetadataCodec>(&range, CursorDirection::Forward, limits())?;
+        let page = reader.cursor::<AssetMetadataCodec>(
+            &asset_range(after),
+            CursorDirection::Forward,
+            limits(),
+        )?;
         for entry in page.records() {
-            let record = entry.value();
-            if entry.key() != &record.asset_id {
-                return Err(AssetValidationError::Invariant(
-                    "asset metadata key does not match its identity",
-                ));
-            }
-            if record.asset_id.length().get() > MAX_ASSET_BYTES {
-                return Err(AssetValidationError::Invariant(
-                    "asset exceeds the durable byte bound",
-                ));
-            }
-            let count = count_asset_references(reader, record.asset_id)?;
-            if count != record.reference_count {
-                return Err(AssetValidationError::Invariant(
-                    "asset reference count disagrees with its index",
-                ));
+            if entry.key() != &entry.value().asset_id {
+                return invariant("asset metadata key does not match its identity");
             }
             if let Some(sidecars) = sidecars {
-                verify_sidecar(sidecars, record.asset_id)?;
+                sidecars
+                    .verify(
+                        &asset_sidecar_address(entry.value().asset_id),
+                        SidecarByteLimit::new(entry.value().asset_id.length()),
+                    )
+                    .map_err(AssetValidationError::Sidecar)?;
             }
         }
         if !page.has_more() {
@@ -74,141 +72,194 @@ fn validate_metadata(
         }
         after = page.records().last().map(|entry| *entry.key());
         if after.is_none() {
-            return Err(AssetValidationError::Invariant(
-                "asset cursor reported more without a record",
-            ));
+            return invariant("asset metadata cursor reported more without a record");
         }
     }
 }
 
-fn count_asset_references(
+fn validate_manifests(reader: &DomainReader<'_, AssetDomain>) -> Result<(), AssetValidationError> {
+    let mut after = None;
+    loop {
+        let page = reader.cursor::<AssetReferenceManifestCodec>(
+            &set_range(after),
+            CursorDirection::Forward,
+            limits(),
+        )?;
+        for entry in page.records() {
+            if entry.key() != &entry.value().set_id {
+                return invariant("asset reference-set manifest key disagrees with its identity");
+            }
+            if entry.value().marker_count != entry.value().entry_frontier {
+                return invariant("asset reference-set count disagrees with its entry frontier");
+            }
+            validate_manifest_entries(reader, entry.value())?;
+        }
+        if !page.has_more() {
+            return Ok(());
+        }
+        after = page.records().last().map(|entry| *entry.key());
+        if after.is_none() {
+            return invariant("asset manifest cursor reported more without a record");
+        }
+    }
+}
+
+fn validate_manifest_entries(
     reader: &DomainReader<'_, AssetDomain>,
-    asset_id: AssetId,
-) -> Result<u64, AssetValidationError> {
+    manifest: &AssetReferenceSetManifest,
+) -> Result<(), AssetValidationError> {
     let mut after = None;
     let mut count = 0_u64;
+    let mut chain_digest = digest::seed(manifest.set_id, manifest.source);
+    let mut marker_digest = content_marker_digest_seed();
+    let mut maximum_image_label = None;
     loop {
-        let start = AssetReferenceIndexKey::minimum(asset_id, after);
-        let end = AssetReferenceIndexKey::maximum(asset_id);
-        let range = if after.is_some() {
-            CursorRange::after(start, end)
-        } else {
-            CursorRange::closed(start, end)
-        };
-        let page = reader.cursor::<AssetReferenceIndexCodec>(
-            &range,
+        let page = reader.cursor::<AssetReferenceEntryCodec>(
+            &entry_range(manifest.set_id, after),
             CursorDirection::Forward,
             limits(),
         )?;
-        for entry in page.records() {
-            if entry.key().asset_id != asset_id
-                || entry.value().asset_id != asset_id
-                || entry.key().owner != entry.value().owner
-            {
-                return Err(AssetValidationError::Invariant(
-                    "asset reference index record is inconsistent",
-                ));
-            }
-            let primary =
-                reader.point::<AssetReferenceCodec>(&entry.key().owner, reference_limit())?;
-            if primary.as_ref() != Some(entry.value()) {
-                return Err(AssetValidationError::Invariant(
-                    "asset reference index lacks an exact primary record",
-                ));
-            }
-            count = count.checked_add(1).ok_or(AssetValidationError::Invariant(
-                "asset reference count overflow",
+        for stored in page.records() {
+            let entry = stored.value();
+            let expected_ordinal = count.checked_add(1).ok_or(AssetValidationError::Invariant(
+                "asset reference-set count overflow",
             ))?;
-        }
-        if !page.has_more() {
-            return Ok(count);
-        }
-        after = page.records().last().map(|entry| entry.key().owner);
-        if after.is_none() {
-            return Err(AssetValidationError::Invariant(
-                "asset reference cursor reported more without a record",
-            ));
-        }
-    }
-}
-
-fn validate_primary_references(
-    reader: &DomainReader<'_, AssetDomain>,
-) -> Result<(), AssetValidationError> {
-    let mut after = None;
-    loop {
-        let range = owner_range(after);
-        let page =
-            reader.cursor::<AssetReferenceCodec>(&range, CursorDirection::Forward, limits())?;
-        for entry in page.records() {
-            if entry.key() != &entry.value().owner {
-                return Err(AssetValidationError::Invariant(
-                    "asset reference key does not match its owner",
-                ));
+            if stored.key().set_id != manifest.set_id
+                || entry.set_id != manifest.set_id
+                || stored.key().ordinal != entry.ordinal
+                || entry.ordinal.get() != expected_ordinal
+            {
+                return invariant("asset reference-set entries are not exact and contiguous");
             }
-            let metadata =
-                reader.point::<AssetMetadataCodec>(&entry.value().asset_id, metadata_limit())?;
-            if metadata.is_none() {
-                return Err(AssetValidationError::Invariant(
-                    "asset reference names missing metadata",
-                ));
+            if reader
+                .point::<AssetMetadataCodec>(&entry.asset_id, metadata_limit())?
+                .is_none()
+            {
+                return invariant("asset reference entry names missing metadata");
             }
-            let index_key = AssetReferenceIndexKey {
-                asset_id: entry.value().asset_id,
-                owner: entry.value().owner,
+            let marker = reader.point::<AssetReferenceMarkerCodec>(
+                &AssetMarkerKey {
+                    set_id: manifest.set_id,
+                    marker_id: entry.marker_id,
+                },
+                index_limit(),
+            )?;
+            if marker != Some(entry.ordinal) {
+                return invariant("asset marker uniqueness index disagrees with its entry");
+            }
+            let label = reader
+                .point::<AssetReferenceLabelFirstCodec>(
+                    &AssetLabelFirstKey {
+                        set_id: manifest.set_id,
+                        label: entry.label,
+                    },
+                    index_limit(),
+                )?
+                .ok_or(AssetValidationError::Invariant(
+                    "asset entry lacks its label-first index",
+                ))?;
+            if label.asset_id != entry.asset_id {
+                return invariant("asset label-first index names a different asset");
+            }
+            let first_ordinal = match entry.label_disposition {
+                AssetLabelDisposition::First => {
+                    if label.first_ordinal != entry.ordinal {
+                        return invariant("first asset label entry is not its label-first index");
+                    }
+                    entry.ordinal
+                }
+                AssetLabelDisposition::Repeated { first_ordinal } => {
+                    if label.first_ordinal != first_ordinal || first_ordinal >= entry.ordinal {
+                        return invariant("repeated asset label has an invalid first ordinal");
+                    }
+                    let first = reader
+                        .point::<AssetReferenceEntryCodec>(
+                            &AssetEntryKey {
+                                set_id: manifest.set_id,
+                                ordinal: first_ordinal,
+                            },
+                            entry_limit(),
+                        )?
+                        .ok_or(AssetValidationError::Invariant(
+                            "repeated asset label names a missing first entry",
+                        ))?;
+                    if first.label != entry.label
+                        || first.asset_id != entry.asset_id
+                        || first.label_disposition != AssetLabelDisposition::First
+                    {
+                        return invariant("repeated asset label disagrees with its first entry");
+                    }
+                    first_ordinal
+                }
             };
-            let indexed =
-                reader.point::<AssetReferenceIndexCodec>(&index_key, reference_limit())?;
-            if indexed.as_ref() != Some(entry.value()) {
-                return Err(AssetValidationError::Invariant(
-                    "asset reference lacks an exact index record",
-                ));
+            chain_digest = digest::advance(
+                chain_digest,
+                entry.ordinal,
+                entry.marker_id,
+                entry.label,
+                entry.asset_id,
+                first_ordinal,
+            );
+            if entry.chain_digest != chain_digest {
+                return invariant("asset reference entry chain digest is invalid");
             }
+            marker_digest =
+                advance_content_marker_digest(marker_digest, entry.marker_id, entry.label);
+            maximum_image_label = Some(
+                maximum_image_label.map_or(entry.label, |maximum: ImageLabelOrdinal| {
+                    maximum.max(entry.label)
+                }),
+            );
+            count = expected_ordinal;
         }
         if !page.has_more() {
-            return Ok(());
+            break;
         }
-        after = page.records().last().map(|entry| *entry.key());
+        after = page.records().last().map(|entry| entry.key().ordinal);
         if after.is_none() {
-            return Err(AssetValidationError::Invariant(
-                "asset reference cursor reported more without a record",
-            ));
+            return invariant("asset entry cursor reported more without a record");
         }
     }
+    if count != manifest.marker_count
+        || count != manifest.entry_frontier
+        || marker_digest != manifest.marker_digest
+        || maximum_image_label != manifest.maximum_image_label
+        || chain_digest != manifest.asset_chain_digest
+    {
+        return invariant("asset reference-set manifest does not match its entry chain");
+    }
+    if manifest.lifecycle == AssetReferenceSetLifecycle::Sealed
+        && (manifest.marker_count != manifest.source.marker_count()
+            || manifest.marker_digest != manifest.source.marker_digest()
+            || manifest.maximum_image_label != manifest.source.maximum_image_label()
+            || manifest.sealed_proof().is_none())
+    {
+        return invariant("sealed asset reference-set does not match its source marker summary");
+    }
+    Ok(())
 }
 
-fn validate_reference_indexes(
+fn validate_all_entries(
     reader: &DomainReader<'_, AssetDomain>,
 ) -> Result<(), AssetValidationError> {
     let mut after = None;
     loop {
-        let range = index_range(after);
-        let page = reader.cursor::<AssetReferenceIndexCodec>(
-            &range,
+        let page = reader.cursor::<AssetReferenceEntryCodec>(
+            &all_entry_range(after),
             CursorDirection::Forward,
             limits(),
         )?;
         for entry in page.records() {
-            if entry.key().asset_id != entry.value().asset_id
-                || entry.key().owner != entry.value().owner
+            if entry.key().set_id != entry.value().set_id
+                || entry.key().ordinal != entry.value().ordinal
             {
-                return Err(AssetValidationError::Invariant(
-                    "asset index key does not match its reference",
-                ));
+                return invariant("asset entry key disagrees with its value");
             }
-            let metadata =
-                reader.point::<AssetMetadataCodec>(&entry.key().asset_id, metadata_limit())?;
-            if metadata.is_none() {
-                return Err(AssetValidationError::Invariant(
-                    "asset index names missing metadata",
-                ));
-            }
-            let primary =
-                reader.point::<AssetReferenceCodec>(&entry.key().owner, reference_limit())?;
-            if primary.as_ref() != Some(entry.value()) {
-                return Err(AssetValidationError::Invariant(
-                    "asset index lacks an exact primary reference",
-                ));
+            if reader
+                .point::<AssetReferenceManifestCodec>(&entry.key().set_id, manifest_limit())?
+                .is_none()
+            {
+                return invariant("asset reference entry has no manifest");
             }
         }
         if !page.has_more() {
@@ -216,91 +267,122 @@ fn validate_reference_indexes(
         }
         after = page.records().last().map(|entry| *entry.key());
         if after.is_none() {
-            return Err(AssetValidationError::Invariant(
-                "asset index cursor reported more without a record",
-            ));
+            return invariant("all-entry cursor reported more without a record");
         }
     }
 }
 
-fn verify_sidecar(
-    verifier: &SidecarVerifier<'_>,
-    asset_id: AssetId,
+fn validate_marker_indexes(
+    reader: &DomainReader<'_, AssetDomain>,
 ) -> Result<(), AssetValidationError> {
-    let namespace = SidecarNamespace::new(ASSET_NAMESPACE)
-        .map_err(|_| AssetValidationError::Invariant("asset sidecar namespace is invalid"))?;
-    let address = SidecarAddress::new(
-        namespace,
-        SidecarDigest::from_bytes(asset_id.digest()),
-        asset_id.length().get(),
-    );
-    verifier
-        .verify(
-            &address,
-            SidecarByteLimit::new(
-                NonZeroU64::new(MAX_ASSET_BYTES).expect("asset bound is nonzero"),
-            ),
-        )
-        .map_err(AssetValidationError::Sidecar)
-}
-
-fn asset_range(after: Option<AssetId>) -> CursorRange<AssetId> {
-    let start = after.unwrap_or_else(min_asset);
-    if after.is_some() {
-        CursorRange::after(start, max_asset())
-    } else {
-        CursorRange::closed(start, max_asset())
+    let mut after = None;
+    loop {
+        let page = reader.cursor::<AssetReferenceMarkerCodec>(
+            &marker_range(after),
+            CursorDirection::Forward,
+            limits(),
+        )?;
+        for indexed in page.records() {
+            let entry = reader
+                .point::<AssetReferenceEntryCodec>(
+                    &AssetEntryKey {
+                        set_id: indexed.key().set_id,
+                        ordinal: *indexed.value(),
+                    },
+                    entry_limit(),
+                )?
+                .ok_or(AssetValidationError::Invariant(
+                    "asset marker index names a missing entry",
+                ))?;
+            if entry.marker_id != indexed.key().marker_id {
+                return invariant("asset marker index names a different marker");
+            }
+        }
+        if !page.has_more() {
+            return Ok(());
+        }
+        after = page.records().last().map(|entry| *entry.key());
+        if after.is_none() {
+            return invariant("asset marker-index cursor reported more without a record");
+        }
     }
 }
 
-fn owner_range(after: Option<AssetReferenceOwner>) -> CursorRange<AssetReferenceOwner> {
-    let start = after.unwrap_or_else(min_owner);
-    if after.is_some() {
-        CursorRange::after(start, max_owner())
-    } else {
-        CursorRange::closed(start, max_owner())
+fn validate_label_indexes(
+    reader: &DomainReader<'_, AssetDomain>,
+) -> Result<(), AssetValidationError> {
+    let mut after = None;
+    loop {
+        let page = reader.cursor::<AssetReferenceLabelFirstCodec>(
+            &label_range(after),
+            CursorDirection::Forward,
+            limits(),
+        )?;
+        for indexed in page.records() {
+            let entry = reader
+                .point::<AssetReferenceEntryCodec>(
+                    &AssetEntryKey {
+                        set_id: indexed.key().set_id,
+                        ordinal: indexed.value().first_ordinal,
+                    },
+                    entry_limit(),
+                )?
+                .ok_or(AssetValidationError::Invariant(
+                    "asset label-first index names a missing entry",
+                ))?;
+            if entry.label != indexed.key().label
+                || entry.asset_id != indexed.value().asset_id
+                || entry.label_disposition != AssetLabelDisposition::First
+            {
+                return invariant("asset label-first index disagrees with its first entry");
+            }
+        }
+        if !page.has_more() {
+            return Ok(());
+        }
+        after = page.records().last().map(|entry| *entry.key());
+        if after.is_none() {
+            return invariant("asset label-index cursor reported more without a record");
+        }
     }
 }
 
-fn index_range(after: Option<AssetReferenceIndexKey>) -> CursorRange<AssetReferenceIndexKey> {
-    let start = after.unwrap_or_else(|| AssetReferenceIndexKey::minimum(min_asset(), None));
-    let end = AssetReferenceIndexKey::maximum(max_asset());
-    if after.is_some() {
-        CursorRange::after(start, end)
-    } else {
-        CursorRange::closed(start, end)
+fn validate_owner_heads(
+    reader: &DomainReader<'_, AssetDomain>,
+) -> Result<(), AssetValidationError> {
+    let mut after = None;
+    loop {
+        let page = reader.cursor::<AssetOwnerHeadCodec>(
+            &owner_range(after),
+            CursorDirection::Forward,
+            limits(),
+        )?;
+        for entry in page.records() {
+            let head = entry.value();
+            if entry.key() != &head.owner {
+                return invariant("asset owner-head key disagrees with its owner");
+            }
+            let manifest = reader
+                .point::<AssetReferenceManifestCodec>(&head.set.set_id(), manifest_limit())?
+                .ok_or(AssetValidationError::Invariant(
+                    "asset owner head names a missing reference set",
+                ))?;
+            if manifest.lifecycle != AssetReferenceSetLifecycle::Sealed
+                || manifest.sealed_proof() != Some(head.set)
+            {
+                return invariant("asset owner head does not select its exact sealed set proof");
+            }
+        }
+        if !page.has_more() {
+            return Ok(());
+        }
+        after = page.records().last().map(|entry| *entry.key());
+        if after.is_none() {
+            return invariant("asset owner-head cursor reported more without a record");
+        }
     }
 }
 
-fn min_asset() -> AssetId {
-    AssetId::sha256_v1([0; 32], NonZeroU64::MIN)
-}
-
-fn max_asset() -> AssetId {
-    AssetId::sha256_v1([u8::MAX; 32], NonZeroU64::MAX)
-}
-
-fn min_owner() -> AssetReferenceOwner {
-    AssetReferenceOwner::CurrentDraftMarker {
-        draft_id: SyndicDraftId::from_bytes([0; 16]),
-        marker_id: SyndicDraftMarkerId::from_bytes([0; 16]),
-    }
-}
-
-fn max_owner() -> AssetReferenceOwner {
-    AssetReferenceOwner::TranscriptProjection {
-        projection_id: SyndicProjectionId::from_bytes([u8::MAX; 16]),
-    }
-}
-
-fn limits() -> CursorReadLimits {
-    CursorReadLimits::new(PAGE_ITEMS, PAGE_BYTES).expect("asset validation limits are nonzero")
-}
-
-fn metadata_limit() -> PointReadLimit {
-    PointReadLimit::new(ASSET_METADATA_LIMIT + 4).expect("asset metadata limit is nonzero")
-}
-
-fn reference_limit() -> PointReadLimit {
-    PointReadLimit::new(ASSET_REFERENCE_LIMIT + 4).expect("asset reference limit is nonzero")
+fn invariant<T>(message: &'static str) -> Result<T, AssetValidationError> {
+    Err(AssetValidationError::Invariant(message))
 }

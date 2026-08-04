@@ -20,6 +20,13 @@ Treating the input as pre-finalized would also weaken the single ordered finaliz
 same frontier must later advance across the admitted user input and captured response items only
 after the provider terminal fact and required visible projections are current.
 
+The later ProviderItemV1 fixture cutover exposed the same invalid assumption in an older active-turn
+fixture. It retained one completed provider item inside `finalized_item_count = 1` while the turn
+remained active. Exact provider replay correctly rejected the alternative states: a live provider
+manifest could not satisfy that finalized frontier, while a finalized manifest could not belong to
+an active turn. This was a stale fixture contract, not authority to weaken terminal-only
+finalization.
+
 ## Course Correction
 
 Ordinary preflight requires exactly one sealed canonical user-input item, no source events, pending
@@ -28,6 +35,10 @@ proven-terminal convergence later projects and finalizes it as ordinal one befor
 assistant and operational items.
 
 No fixture-only state rewrite or premature finalization mutation is permitted.
+
+Active-turn fixtures therefore retain completed provider evidence as live canonical capture with a
+zero finalized-item frontier. They expose it through active capture state, not finalized transcript
+entries; terminal convergence later performs the ordinary freeze and frontier advance.
 
 ## Affected Authority
 

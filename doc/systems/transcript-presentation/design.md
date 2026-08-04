@@ -20,6 +20,8 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 - `doc/features/transcript/design.md` owns user-visible transcript behavior.
 - `doc/systems/syndic-conversation-history/design.md` owns durable history, canonical items, transcript views, Markdown projections, resources, and replay.
 - `doc/systems/cas-live-syndic-transcript/design.md` owns normalized live-event routing and durable CAS capture; this system consumes only its exact target-scoped presentation facts.
+- `doc/systems/bounded-resource-dataflow/design.md` owns the risk-based page, working-set,
+  backpressure, decoded-media, layout, and GPU constraints that this system consumes.
 
 ## System Boundary
 
@@ -45,9 +47,15 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 
 - The exact routed live-turn stream may contribute one bounded transient suffix to the active transcript-visible item while durable CAS capture independently coalesces that same ordered text into Syndic.
 - The suffix is process-local presentation state keyed by exact thread, turn, item, kind, and logical-text frontier. It never becomes canonical history, a recovery source, a second item, or authority for history commands.
-- The transcript host publishes every normalized text delta on the next GUI frame that consumes it. It keeps no paced character-reveal queue and does not replay original timestamps; multiple deltas already pending at one frame boundary may naturally publish together.
+- The transcript host publishes each arrived bounded text fragment of one normalized delta on the
+  next GUI frame that consumes it while retaining the delta's exact observation identity and order.
+  It keeps no paced character-reveal queue and does not replay original timestamps; multiple
+  fragments already pending at one frame boundary may naturally publish together. Fragmentation is
+  transport only and never invents another provider delta or durable source event.
 - Resident durable projection and transient suffix form one visible record. As Syndic projection catches up, the host removes only the exact matching prefix from transient ownership; a mismatch, gap, stale identity, or reversed frontier fails closed rather than guessing or duplicating text.
-- The host retains no second whole-item live model. Its transient suffix and pending event channel stay bounded independently of total response size, while already reconciled text belongs only to ordinary resident Syndic projection data.
+- The host retains no second whole-item live model. Its transient suffix and pending fragment
+  channel stay bounded independently of total response size, while already reconciled text belongs
+  only to ordinary resident Syndic projection data.
 
 ## Residency And Demand
 
@@ -67,6 +75,8 @@ Keep transcript residency, presentation records, scroll state, renderer demand, 
 
 - Large code, table, generated-image, attachment, and comparable resources are represented by Syndic resource metadata and range-readable resource data.
 - Beryl admits only resource ranges needed for the current viewport, nested-widget viewport, copy action, or active UI pin.
-- Transcript presentation budgets resident projection data, presentation records, resource slices, decoded or uploaded media resources, measured geometry, widget state, and active UI pins.
+- Transcript presentation owns practical item and byte budgets for resident projection data,
+  presentation records, resource slices, measured geometry, widget state, and active UI pins.
+  Decoded and uploaded media additionally consume the shared coarse media and GPU cache budgets.
 - Synthetic context bytes remain bounded by the accepted branch-context limit, and their rendered chunk count remains bounded by the realized frame rather than total passage height.
 - Visual fallbacks are required when content cannot be admitted or rendered within Beryl resource policy.

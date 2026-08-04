@@ -1,21 +1,26 @@
 mod abandon;
 mod active;
 mod cancel;
+mod publish;
 mod transition;
 mod validation;
 
+pub use publish::{PublishStaleBinding, PublishValidBinding};
 pub(in crate::mutation) use validation::{advance_reservation, membership};
 
 use beryl_home_store::{CurrentDomainCommand, MutationContribution};
 use beryl_model::{
-    BindingRevision, CasConversationToolProfile, CasLoadedSessionGeneration, CasNativeTurnCount,
-    CasThreadId, CasTurnId, DomainRevision, ExecutionBinding, InputGateRevision,
-    SyndicExecutionSnapshotId, SyndicThreadId, SyndicTurnId,
+    AcceptedInputRevision, BindingRevision, CasConversationToolProfile, CasLoadedSessionGeneration,
+    CasNativeTurnCount, CasThreadId, CasTurnId, DomainRevision, ExecutionBinding,
+    InputGateRevision, SyndicAcceptedInputId, SyndicExecutionSnapshotId, SyndicThreadId,
+    SyndicTurnId,
 };
 
 use crate::{
-    BindingState, CasLineageProof, CasRepresentedPrefixProof, SelectedPathProof, StaleCasBinding,
-    SyndicRecordError, SyndicStorage, SyndicTimestamp,
+    AcceptedRouteAbandonmentKind, AcceptedRouteAbandonmentProof, AcceptedRouteGeneration,
+    AcceptedRouteHeadProof, AcceptedRouteLostTarget, BindingState, CasLineageProof,
+    CasRepresentedPrefixProof, SelectedPathProof, StaleCasBinding, SyndicRecordError,
+    SyndicStorage, SyndicTimestamp,
 };
 
 use abandon::AbandonActiveBindingMutation;
@@ -23,138 +28,41 @@ use active::{ActivateBindingMutation, PublishActiveCasTurnMutation};
 use cancel::CancelBindingActivationMutation;
 use transition::PublishBindingMutation;
 
-/// Exact immutable inputs for publishing one usable CAS projection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PublishValidBinding {
-    thread_id: SyndicThreadId,
-    expected_binding_revision: BindingRevision,
-    selected_path: SelectedPathProof,
-    execution: ExecutionBinding,
-    cas_thread_id: CasThreadId,
-    represented_prefix: CasRepresentedPrefixProof,
-    native_turn_count: CasNativeTurnCount,
-    tool_profile: CasConversationToolProfile,
-    lineage: CasLineageProof,
+#[cfg(feature = "test-faults")]
+pub(crate) fn active_cas_turn_fault_scope() -> beryl_home_store::test_faults::FaultScope {
+    beryl_home_store::test_faults::FaultScope::of::<PublishActiveCasTurnMutation>()
 }
 
-impl PublishValidBinding {
-    #[allow(clippy::too_many_arguments)]
+/// Exact delivering input proven rejected without a closed active-target verdict.
+///
+/// The surrounding active-binding abandonment preserves this one input as retryable
+/// projection-lost next-turn work. Other delivering inputs remain possibly dispatched.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExactRejectedInputDelivery {
+    input_id: SyndicAcceptedInputId,
+    expected_input_revision: AcceptedInputRevision,
+}
+
+impl ExactRejectedInputDelivery {
     #[must_use]
     pub const fn new(
-        thread_id: SyndicThreadId,
-        expected_binding_revision: BindingRevision,
-        selected_path: SelectedPathProof,
-        execution: ExecutionBinding,
-        cas_thread_id: CasThreadId,
-        represented_prefix: CasRepresentedPrefixProof,
-        native_turn_count: CasNativeTurnCount,
-        tool_profile: CasConversationToolProfile,
-        lineage: CasLineageProof,
+        input_id: SyndicAcceptedInputId,
+        expected_input_revision: AcceptedInputRevision,
     ) -> Self {
         Self {
-            thread_id,
-            expected_binding_revision,
-            selected_path,
-            execution,
-            cas_thread_id,
-            represented_prefix,
-            native_turn_count,
-            tool_profile,
-            lineage,
+            input_id,
+            expected_input_revision,
         }
     }
 
     #[must_use]
-    pub const fn thread_id(&self) -> SyndicThreadId {
-        self.thread_id
+    pub const fn input_id(self) -> SyndicAcceptedInputId {
+        self.input_id
     }
 
     #[must_use]
-    pub const fn expected_binding_revision(&self) -> BindingRevision {
-        self.expected_binding_revision
-    }
-
-    #[must_use]
-    pub const fn selected_path(&self) -> SelectedPathProof {
-        self.selected_path
-    }
-
-    #[must_use]
-    pub const fn execution(&self) -> &ExecutionBinding {
-        &self.execution
-    }
-
-    #[must_use]
-    pub const fn cas_thread_id(&self) -> &CasThreadId {
-        &self.cas_thread_id
-    }
-
-    #[must_use]
-    pub const fn represented_prefix(&self) -> CasRepresentedPrefixProof {
-        self.represented_prefix
-    }
-
-    /// Returns the coordinator-proven exact native CAS turn count for the prefix.
-    #[must_use]
-    pub const fn native_turn_count(&self) -> CasNativeTurnCount {
-        self.native_turn_count
-    }
-
-    /// Returns the exact canonical conversation-tool profile established on the CAS thread.
-    #[must_use]
-    pub const fn tool_profile(&self) -> CasConversationToolProfile {
-        self.tool_profile
-    }
-
-    #[must_use]
-    pub const fn lineage(&self) -> CasLineageProof {
-        self.lineage
-    }
-}
-
-/// Exact immutable inputs for retaining one stale or abandoned CAS projection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PublishStaleBinding {
-    thread_id: SyndicThreadId,
-    expected_binding_revision: BindingRevision,
-    selected_path: SelectedPathProof,
-    stale: StaleCasBinding,
-}
-
-impl PublishStaleBinding {
-    #[must_use]
-    pub const fn new(
-        thread_id: SyndicThreadId,
-        expected_binding_revision: BindingRevision,
-        selected_path: SelectedPathProof,
-        stale: StaleCasBinding,
-    ) -> Self {
-        Self {
-            thread_id,
-            expected_binding_revision,
-            selected_path,
-            stale,
-        }
-    }
-
-    #[must_use]
-    pub const fn thread_id(&self) -> SyndicThreadId {
-        self.thread_id
-    }
-
-    #[must_use]
-    pub const fn expected_binding_revision(&self) -> BindingRevision {
-        self.expected_binding_revision
-    }
-
-    #[must_use]
-    pub const fn selected_path(&self) -> SelectedPathProof {
-        self.selected_path
-    }
-
-    #[must_use]
-    pub const fn stale(&self) -> &StaleCasBinding {
-        &self.stale
+    pub const fn expected_input_revision(self) -> AcceptedInputRevision {
+        self.expected_input_revision
     }
 }
 
@@ -163,9 +71,11 @@ impl PublishStaleBinding {
 pub struct AbandonActiveBinding {
     thread_id: SyndicThreadId,
     expected_binding_revision: BindingRevision,
-    expected_gate_revision: InputGateRevision,
+    route_generation: AcceptedRouteGeneration,
+    target: AcceptedRouteLostTarget,
     selected_path: SelectedPathProof,
     stale: StaleCasBinding,
+    exact_rejected_delivery: Option<ExactRejectedInputDelivery>,
 }
 
 impl AbandonActiveBinding {
@@ -173,16 +83,41 @@ impl AbandonActiveBinding {
     pub const fn new(
         thread_id: SyndicThreadId,
         expected_binding_revision: BindingRevision,
-        expected_gate_revision: InputGateRevision,
+        route_generation: AcceptedRouteGeneration,
+        target: AcceptedRouteLostTarget,
         selected_path: SelectedPathProof,
         stale: StaleCasBinding,
     ) -> Self {
         Self {
             thread_id,
             expected_binding_revision,
-            expected_gate_revision,
+            route_generation,
+            target,
             selected_path,
             stale,
+            exact_rejected_delivery: None,
+        }
+    }
+
+    /// Constructs an atomic abandonment that preserves one exactly rejected delivery.
+    #[must_use]
+    pub fn after_exact_rejection(
+        thread_id: SyndicThreadId,
+        expected_binding_revision: BindingRevision,
+        route_generation: AcceptedRouteGeneration,
+        target: AcceptedRouteLostTarget,
+        selected_path: SelectedPathProof,
+        stale: StaleCasBinding,
+        exact_rejected_delivery: ExactRejectedInputDelivery,
+    ) -> Self {
+        Self {
+            thread_id,
+            expected_binding_revision,
+            route_generation,
+            target,
+            selected_path,
+            stale,
+            exact_rejected_delivery: Some(exact_rejected_delivery),
         }
     }
 
@@ -197,8 +132,13 @@ impl AbandonActiveBinding {
     }
 
     #[must_use]
-    pub const fn expected_gate_revision(&self) -> InputGateRevision {
-        self.expected_gate_revision
+    pub const fn route_generation(&self) -> AcceptedRouteGeneration {
+        self.route_generation
+    }
+
+    #[must_use]
+    pub const fn target(&self) -> &AcceptedRouteLostTarget {
+        &self.target
     }
 
     #[must_use]
@@ -209,6 +149,34 @@ impl AbandonActiveBinding {
     #[must_use]
     pub const fn stale(&self) -> &StaleCasBinding {
         &self.stale
+    }
+
+    #[must_use]
+    pub const fn exact_rejected_delivery(&self) -> Option<ExactRejectedInputDelivery> {
+        self.exact_rejected_delivery
+    }
+
+    pub(crate) const fn route_abandonment_proof(
+        &self,
+        source_gate_revision: InputGateRevision,
+        source_route: AcceptedRouteHeadProof,
+    ) -> AcceptedRouteAbandonmentProof {
+        AcceptedRouteAbandonmentProof::new(
+            self.expected_binding_revision,
+            source_gate_revision,
+            source_route,
+            self.route_abandonment_kind(),
+        )
+    }
+
+    pub(crate) const fn route_abandonment_kind(&self) -> AcceptedRouteAbandonmentKind {
+        match self.exact_rejected_delivery {
+            Some(rejected) => AcceptedRouteAbandonmentKind::ExactRejectedInput {
+                input_id: rejected.input_id(),
+                expected_input_revision: rejected.expected_input_revision(),
+            },
+            None => AcceptedRouteAbandonmentKind::Generic,
+        }
     }
 }
 

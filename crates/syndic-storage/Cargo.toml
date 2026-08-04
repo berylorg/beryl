@@ -12,5 +12,9 @@ test-faults = ["beryl-home-store/test-faults"]
 [dependencies]
 beryl-home-store.workspace = true
 beryl-model.workspace = true
+beryl-stream.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+beryl-state.workspace = true

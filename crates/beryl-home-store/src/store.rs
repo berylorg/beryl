@@ -15,7 +15,7 @@ use crate::{
     HomeSchemaVersion,
     domain::{DomainBlueprint, DomainRegistry, StoreInstanceId},
     fault::FaultController,
-    health::HealthGate,
+    health::{ClassifiedFjallError, HealthGate},
     layout::{
         DatabaseDisposition, HomeLayout, LayoutAdmissionError, inspect_database,
         reject_database_as_home,
@@ -24,9 +24,11 @@ use crate::{
 };
 
 mod opening;
+mod profile;
 
 use opening::create_fresh_database;
 pub(crate) use opening::open_existing_database;
+use profile::StorageProfile;
 
 static NEXT_STORE_INSTANCE: AtomicU64 = AtomicU64::new(1);
 static NEXT_WRITER_ID: AtomicU64 = AtomicU64::new(1);
@@ -102,6 +104,7 @@ pub struct HomeStore {
     pub(crate) health: HealthGate,
     pub(crate) faults: FaultController,
     ownership: Option<HomeOwnership>,
+    pub(crate) storage_profile: StorageProfile,
     database_path: PathBuf,
     home_id: BerylHomeId,
     schema: HomeSchemaVersion,
@@ -130,6 +133,13 @@ impl HomeStore {
         faults: FaultController,
     ) -> Result<Self, HomeOpenError> {
         let configured_path = options.configured_path.clone();
+        let storage_profile = StorageProfile::production().map_err(|source| {
+            HomeOpenError::open(
+                &configured_path,
+                HomeOpenStage::ConfigureStoragePolicy,
+                ClassifiedFjallError::direct(source),
+            )
+        })?;
         let directory = OpenedHomeDirectory::open(&configured_path)?;
 
         reject_database_as_home(directory.canonical_path()).map_err(|source| {
@@ -155,10 +165,15 @@ impl HomeStore {
             })?;
 
         let opened = match disposition {
-            DatabaseDisposition::Fresh => {
-                create_fresh_database(&configured_path, &layout, options.supported_schema)?
+            DatabaseDisposition::Fresh => create_fresh_database(
+                &configured_path,
+                &layout,
+                options.supported_schema,
+                storage_profile,
+            )?,
+            DatabaseDisposition::Existing => {
+                open_existing_database(&configured_path, &layout, storage_profile)?
             }
-            DatabaseDisposition::Existing => open_existing_database(&configured_path, &layout)?,
         };
 
         if opened.header.schema != options.supported_schema {
@@ -189,6 +204,7 @@ impl HomeStore {
             health: HealthGate::healthy(),
             faults,
             ownership: Some(ownership),
+            storage_profile,
             database_path: layout.database_path,
             home_id: opened.header.home_id,
             schema: opened.header.schema,

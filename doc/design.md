@@ -51,7 +51,8 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - Image content addressing, references, sidecars, and Host/WSL projection are defined in `doc/systems/image-assets/design.md`.
 - Backend runtime launch, listener security, managed lifecycle, capability probing, coalesced warm-up, and connection recovery are defined in `doc/systems/backend-runtime/design.md`.
 - Transcript residency, presentation, renderer demand, resources, diagnostics, and scroll architecture are defined in `doc/systems/transcript-presentation/design.md`.
-- Codex-compatible replacement-agent constraints are defined in `doc/systems/codex-compatible-agent-layer/design.md`.
+- Risk-based limits for large-data streaming, paging, queues, caches, decode and layout expansion,
+  media, and GPU working sets are defined in `doc/systems/bounded-resource-dataflow/design.md`.
 
 ## Implementation Technology
 
@@ -65,6 +66,7 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 ## Backend Boundary
 
 - Agent execution, live event streams, authentication, sandboxing, approvals, tools, skills, MCP, subagents, managed configuration, and enterprise policy flow through out-of-process `codex app-server`.
+- Unmodified out-of-process `codex app-server` is Beryl's sole agent-execution provider; Beryl does not implement a replacement, fork, embedded Codex runtime, or independently operated CAS-compatible provider.
 - Beryl does not bundle, install, modify, or directly link Codex internal crates.
 - Beryl may launch and supervise app-server processes and may implement narrow GUI-side orchestration from public protocol primitives.
 - Cross-boundary communication uses the app-server contract rather than Codex storage, process memory, or internal implementation details.
@@ -74,9 +76,21 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 ## Codex App Server Version Invariant
 
-- This Beryl version targets exactly `codex-cli 0.144.1` / Codex App Server 0.144.1.
+- This Beryl version targets exactly `codex-cli 0.146.0` / Codex App Server 0.146.0.
 - Beryl carries no runtime branches for older schemas or speculative future schemas.
-- Compatibility validation parses the app-server version from the initialize response user-agent product token, requires exact 0.144.1, and probes every required method and field through non-destructive typed requests.
+- Compatibility validation parses the app-server version from the initialize response user-agent
+  product token, requires exact 0.146.0, and probes every required method and field through non-
+  destructive typed requests.
+- CAS-native collaboration owns subagent creation and lifecycle. Its native `spawn_agent` tool
+  exposes optional `model` and `reasoning_effort` selection to the orchestrating model. Each
+  explicit value precedes its configured subagent default. If neither resolves, the child keeps the
+  parent profile. Reasoning alone applies to the parent model; a selected model without resolved
+  reasoning uses that model's catalog default; and a resolved pair is validated together. Context
+  selection through `fork_turns` is independent of this profile selection, including for a child
+  seeded from full parent history. Beryl does not require a subagent to use its parent's profile,
+  register an imitation spawning tool, or maintain a parallel child-agent registry. Compatibility
+  admission requires the effective native tool profile to expose both
+  inputs; the exact executable version alone is insufficient when configuration disables them.
 - The target requires exact CAS-native continuation and fork primitives for the ordinary path, plus stable `thread/inject_items` for one-time recovery when exact CAS lineage cannot be reused.
 - Recovered Syndic history is never a normal per-turn payload. Beryl injects it only into a fresh CAS thread whose native lineage is missing, stale, unavailable, or unprovable, and never repeats that injected prefix on later `turn/start` or `turn/steer` requests.
 - The proven branch-selection channel injects one bounded provenance-framed assistant/output-text item carrying the exact accepted selected passage once before the first branch-local user turn. It does not use `additionalContext`, developer instructions, ordinary user input, or a CAS-private wrapper convention.
@@ -87,8 +101,12 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 
 ## Responsibility Split
 
-- Syndic owns stable threads, exactly one current durable draft per thread, submitted turns, immutable parentage, canonical captured events, transcript projections, resources, and exclusive CAS projection bindings.
-- Beryl-home state owns executable-path runtimes, configured roots, per-thread execution bindings and presentation metadata, generated titles, automatic branch-discussion archive state, window/session records, settings, installed themes, asset references, durable host jobs, and compact catalog projections.
+- Syndic owns stable threads, each thread's immutable execution binding and intrinsic properties,
+  exactly one current durable draft per thread, submitted turns, immutable parentage, canonical
+  captured events, transcript projections, resources, and exclusive CAS projection bindings.
+- Beryl-home state owns executable-path runtimes, configured roots, runtime/root availability,
+  window/session records and thread claims, settings, installed themes, paged asset-reference sets
+  and compact owner heads, durable host jobs, and rebuildable compact catalog projections.
 - CAS owns live execution and all Codex policy-sensitive behavior.
 - Main windows own only their selection, navigation, presentation, focus, transient interaction, and in-memory editing projection over the selected durable draft.
 - Resident transcript data, activity records, caches, diagnostics, and render state are bounded runtime projections and never replace durable authority.
@@ -125,11 +143,20 @@ Let users create, browse, branch, edit, and resume durable threads without makin
 - The GPUI thread performs no blocking filesystem, process, network, parsing, image decode, persistence, or backend protocol work.
 - Established coherent content remains visible during asynchronous replacement whenever possible; Beryl does not flicker through temporary blank or opening surfaces.
 - Selected-thread content and its initial viewport publish in one transaction and are not corrected by later render callbacks.
-- Complete catalog metadata may reside in memory as exact compact domain state, while GUI row construction remains fixed-height and virtualized.
-- Every externally variable runtime cache, queue, projection, history, retry set, diagnostic buffer, media store, and dependency-facing handle has deterministic count and byte bounds unless it is exact durable domain state.
-- Operations over large exact durable content use bounded pages and bounded staged commits; they do not require one unbounded record, command, or background-worker message.
+- Catalog metadata and large durable collections remain paged from durable indexes. GUI row
+  construction is virtualized over revision-bound query pages, and each owning cache has a
+  practical item or byte budget.
+- The major CAS-to-Syndic, Syndic-to-Beryl, Beryl-to-CAS, and Beryl-to-renderer paths use enforced
+  payload, page, queue, cache, concurrency, decode, layout, pixel, or GPU limits at their actual
+  amplification and accumulation points.
+- Operations over large exact durable content use paging, streaming, or bounded staged commits
+  where practical. A dependency that necessarily materializes a whole value is governed by a
+  documented generous operation limit rather than reconstructed private allocation accounting.
 - Background work is bounded, cancellable, and lower priority than foreground turn streaming and selected transcript activation.
-- Implementation favors predictable latency and explicit rejection over unbounded retention or hidden fallback work.
+- Implementation favors predictable latency, backpressure, eviction, and explicit unavailability
+  over unbounded queues, caches, decode expansion, or renderer retention. Canonical content is
+  never silently truncated, but explicit product limits are allowed where an external API requires
+  a contiguous whole value.
 
 ## Platform Targeting
 
@@ -162,6 +189,20 @@ This section is a non-authoritative issue-tracker substitute. Items here express
 - Design explicit removal of configured Codex executable runtimes and roots after the Beryl-home rework.
 - Design explicit rebinding of an existing thread to another runtime/root without weakening exact history, draft, and CAS-projection identity.
 - Reconsider manual thread rename, pin, archive, and delete commands only as later product work. The current rework retains automatic generated titles and automatic branch-discussion archive after successful handoff.
+
+## Deferred Fjall Performance Rework
+
+- Complete Beryl's functional storage integration against the final practical Fjall API before
+  resuming the owned `lsm-tree` CPU attribution and optimization campaign.
+- Run future benchmark collection on a stable tower-class environment. A Windows evidence
+  controller must bind continuous external-power provenance before accepting another run.
+- Treat the accepted Fjall and `lsm-tree` public storage contracts as frozen inputs. Later
+  optimization must remain behind those boundaries and preserve metadata-first reads, configured
+  block, value, topology, cache, memtable, page and batch limits, exact error and durability
+  semantics, recovery validation, and durable format.
+- If a measured optimization would require changing a consumed public contract, stop and promote
+  that architectural question into authoritative Fjall, storage-system, and package docs before
+  changing Beryl.
 
 ## AIPM GUI Skill Local-Adaptation Cleanup
 

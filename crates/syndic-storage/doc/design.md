@@ -1,8 +1,12 @@
 # Goals
 
-Provide the reusable production storage boundary for Syndic-owned durable threads, current drafts, submitted conversation state, source events, reference metadata, transcript views, unfinished rebuildable projection state, and finalized immutable projection history.
+Provide the reusable production storage boundary for Syndic-owned durable threads and their
+intrinsic properties, current drafts, submitted conversation state, source events, reference
+metadata, compact thread summaries, transcript views, unfinished rebuildable projection state, and
+finalized immutable projection history.
 
-Support low-latency Beryl reads over large captured conversation histories while keeping UI memory growth bounded.
+Support low-latency Beryl reads over large captured conversation histories, thread lineages, and
+activity projections while keeping UI memory growth bounded.
 
 Support short durable write commits for live CAS event ingestion, streaming assistant output, generated artifacts, and future concurrent user or subagent activity.
 
@@ -11,7 +15,8 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Calling OpenAI, ChatGPT, Codex App Server, or any model provider.
 - Owning authentication, token refresh, sandboxing, approvals, skills, MCP, enterprise policy, or live execution.
 - Owning GPUI transcript presentation, renderer residency, scroll behavior, or widget state.
-- Owning Beryl thread presentation metadata, runtimes, roots, window sessions, settings, installed themes, or asset lifecycle policy.
+- Owning Beryl runtime/root registries and availability, window sessions and claims, settings,
+  installed themes, durable host jobs, catalog query indexes, or asset lifecycle policy.
 - Opening a separate physical database outside the Beryl-home store or exposing raw Fjall access to callers.
 - Persisting access tokens, refresh tokens, API keys, cookies, bearer headers, or app-server listener capability tokens.
 
@@ -27,7 +32,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 
 ## Pure Values And Dependency Boundary
 
-- Stable cross-package Syndic identities, typed revisions, discussion-context owner/digest facts, external CAS identities, and exact CAS generation facts belong to `beryl-model`.
+- Stable cross-package Syndic identities, typed revisions, image-label ordinals,
+  discussion-context owner/digest facts, external CAS identities, and exact CAS generation facts
+  belong to `beryl-model`.
 - Syndic-specific lifecycle, ordering, immutable parent/context, transcript-position,
   recovery-budget, selected-path, CAS-represented-prefix, and CAS-lineage proof values belong to
   this package and perform no clock observation, identity generation, filesystem access, provider
@@ -35,8 +42,21 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - An idle submission preserves the draft identity's exact 128-bit payload while changing its typed identity from `SyndicDraftId` to `SyndicTurnId`.
 - A context-bearing draft's typed context-owner descriptor follows the same transition without rewriting its immutable envelope.
 - Discussion-context envelope V1 preserves the exact selected UTF-8 text and computes its typed context digest as SHA-256 over those exact bytes; the pure constructor observes no clock and accepts creation time from its caller.
-- One accepted input keeps one `SyndicAcceptedInputId` and its exact resolved marker atoms while moving between pending, steering, retryable, and next-turn queue dispositions. There is no second queued-input identity or queued asset-owner identity.
-- An accepted-input steering disposition names the exact active Syndic turn. Fresh native CAS
+- One immutable accepted-input record is the permanent admission receipt. It keeps one
+  `SyndicAcceptedInputId`, the expected source thread, draft, and gate revisions, source and
+  replacement draft identities, exact resolved content and asset proof, admission time, and one
+  route-generation identity. Revisioned generation heads plus bounded per-input leaves resolve
+  pending, steering, retryable, next-turn, and terminal delivery state without copying a target
+  proof into every record. There is no second queued-input identity or queued asset-owner identity.
+- A resolved accepted-input steering view names the exact active Syndic turn through its selected
+  route-generation state. Exact ready and delivering reads admit only an immutable input whose
+  current route leaf is respectively `Routed` plus `Admitted`/`Retryable`, or `Routed` plus
+  `Delivering`, whose selected generation is a live steering target, and whose steerable gate,
+  active binding, execution snapshot, one-way CAS-turn publication, loaded generation, and CAS
+  identities all agree. Each read uses a fixed set of twelve point reads, stabilizes the gate,
+  route head, and binding head with first/last reads, and never scans route membership. Missing or
+  stably ineligible input returns no view, inconsistent relationships are corruption, and an
+  anchor race is a concurrent change. Fresh native CAS
   lineage establishes an empty selected path. Continuation, resume, fork, and recovered injection
   require an exact non-empty committed tail. Syndic publishes no valid in-place-rollback lineage.
 - Public value serialization, where explicitly provided, is a transport value shape only. Versioned package codecs and exact domain declarations remain the sole persisted-schema authority.
@@ -46,42 +66,305 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - This package implements the storage boundary consumed by `doc/systems/syndic-conversation-history/design.md` and `doc/systems/cas-live-syndic-transcript/design.md`.
 - The package exposes operations for constructing its opaque domain handle, creating threads and
   current drafts, revisioned draft updates, atomic draft submission/replacement, accepted-input
-  admission, exact steering-delivery claim/outcome transitions, committing live-source events,
-  advancing the exact terminal item-finalization frontier, reading historical summaries, reading
-  thread/draft/turn metadata, reading immutable branch-context envelopes by context-owner identity,
+  admission, revision-bound ready-steering source and candidate pages, revision-bound next-source
+  pages, atomic accepted-input promotion and exact reconciliation, exact steering-delivery
+  claim/outcome transitions, exact stop admission, dispatch claim, safe reopening, terminal
+  consumption, restart abandonment and reconciliation, exact context-compaction admission,
+  dispatch claim and request reconciliation, CAS-turn publication, provider-terminal settlement,
+  lifecycle-continuation settlement, stop handoff and restart consumption, committing live-source
+  events, advancing
+  the exact terminal item-finalization frontier, reading historical summaries, reading
+  thread/draft/turn metadata,
+  reading thread-lineage pages, point-reading image-label frontier and origin authority, reading
+  activity-query pages, reading immutable branch-context envelopes by context-owner identity,
   reading transcript-view pages, reading projection records, reading resource metadata, and reading
   resource byte ranges, plus reading bounded logical UTF-8 pages from one exact sealed content
   reference.
+- Restart delivery recovery uses the existing input-gate family as its only global durable source.
+  One capped forward page returns compact non-idle gate rows plus a continuation after the last
+  physical thread key scanned. This startup cursor is bound to the exact home identity but
+  intentionally not to its domain revision: the exclusive recovery owner may mutate already
+  visited gate rows, while stable thread keys and the admission fence prevent an unseen key from
+  appearing behind the cursor. The API adds no stored index or schema family.
+- A separate domain-revision-bound recovered-pending source page returns only `PendingTurn` gates
+  whose blocking turn is the current incomplete committed tail, with no selected active route,
+  source-free pending turn state, and a non-active binding. It is safe for the concurrent
+  post-handoff scheduler; any domain drift invalidates the observed page revision. The caller may
+  rebind an already-advanced physical cursor only for the current sweep and only when every
+  mutation capable of creating eligible work behind that cursor independently opens a new scan
+  from the beginning. The rebind API is therefore not generic stale-read recovery and carries no
+  source authority. Empty filtered pages still advance by the last physical gate row scanned, so
+  terminal-heavy homes make bounded progress.
+- For one startup source row, a storage-owned fixed-work classifier double-observes the exact gate,
+  blocking turn state, binding head and current binding, referenced execution snapshot and active
+  CAS turn when present, and selected route-generation authority. It publishes only closed typed
+  cases: safe undispatched pending, exact active steering or awaiting-terminal authority requiring
+  generic abandonment, exact stopping authority requiring stop abandonment, exact compacting
+  authority classified by its provider-operation lifecycle, authenticated post-abandonment
+  terminal work, or settled idle. Awaiting-terminal
+  classification returns its retained exact pre-uncertainty target; stopping classification also
+  returns the matching stop record and attempt state. A mismatched or missing authority pair is
+  coherent corruption. Concurrent change is distinct from coherent corruption.
 - Public APIs use Syndic identities and revisions as their stable boundary.
 - External execution ids, including CAS thread ids, turn ids, and item ids, are stored as source metadata and never become the only primary key.
 - Public reads are bounded by caller-supplied limits or explicit range requests.
+- Every exact Syndic family defines stored and decoded schema limits enforced through the bounded
+  home-store read boundary. Ordinary point values carry no accounting wrapper; their limits pass
+  before publication. Natural pages, text/range reads, route and lineage queries, activity
+  queries, provider-observation reads, and recovery metadata report checked item, stored-byte, and
+  decoded-byte totals where useful.
+- Composite reads retain only a fixed number of bounded constituents. They do not concatenate a
+  complete logical collection or retain a data-dependent collection of pages merely because each
+  individual read is bounded.
 - Branch-context reads return the exact bounded immutable envelope and owner revision; they do not manufacture transcript-view records or synthetic turns.
 - Public writes keep each metadata record, content chunk, mutation batch, and read page bounded. They do not reject a logical draft or canonical text merely because its complete content exceeds one record.
-- Public mutations require expected revisions for every correctness-sensitive thread, draft, binding, or accepted-input record they change.
+- Public mutations require expected revisions for every correctness-sensitive thread, draft,
+  binding, route, or accepted-input record they read or change. Accepted-input promotion does not
+  read or mutate the current draft record; it preserves the exact thread-to-draft reverse binding
+  while advancing that index's enclosing thread revision.
+- A caller retaining process-local external execution authority across same-home recovery must
+  reacquire this package's domain handle and repeat the complete bounded pending-turn and current-
+  binding stabilization against the new home generation. Prior-generation read values and handles
+  provide no transfer authority. The reauthentication is read-only: this package neither rewrites
+  the binding nor blesses an external lease, and any changed thread, gate, turn, item, selected path,
+  binding, or lineage fact rejects the caller's transfer.
 - Recovery preparation is a read-only public boundary with two explicit request scopes. Current-path
-  preflight assembles a complete recovery-complete selected path before input admission and returns
-  the native empty prefix without model metadata when that path is empty. Pending-turn restart
-  preparation retains the current behavior of assembling only the pending selected turn's parent.
+  preflight proves a complete recovery-complete selected path before input admission and returns one
+  compact replayable cursor-source proof, or the native empty prefix without model metadata when
+  that path is empty. Pending-turn restart preparation applies the same two-pass boundary only to
+  the pending selected turn's parent. Its immediate predecessor alone may instead be exact
+  authority-lost tail context when its latest source event is the matching source-less
+  `Incomplete(AuthorityLost)` terminal, its nonempty item frontier is fully finalized with no open
+  or history-blocking item and no provider-observation issue, and every item passes the ordinary
+  recovery proof. Earlier ancestors must remain recovery-complete.
+  `RecoveryAssembly::Ready` contains only the version, thread and selected-path proof, represented
+  prefix, exact item and UTF-8 byte totals, sequence digest, and source revision. It contains no
+  item collection or item-text accessor. The selected-path and represented-prefix relationship
+  re-establishes the applicable current-path or pending-parent eligibility contract on cursor open.
+- A ready proof opens one opaque non-cloneable `RecoveryCursor`. Each read fills a caller-supplied
+  fixed page with at most one nonempty 65,536-byte valid UTF-8 range and returns that page plus its
+  one-based sequence ordinal, closed user-input-text or assistant-output-text role, declared item
+  byte length, item-local offset, item terminal, and sequence terminal. The requested byte ceiling
+  is applied before storage access and may be smaller than the physical page. The terminal page is
+  returned
+  only after exact item/byte totals and the shared V1 digest accumulator agree; the next
+  revision-checked read returns one exact EOF, and later reads reject. Opening, every page read, and
+  EOF bind to the proof's exact source revision and selected path. Internal projection text-source
+  identity is not part of this public recovery boundary.
   Recovery-complete means `complete`, `interrupted`, or `failed` with the complete finalized item
-  frontier and explicitly excludes `incomplete`. The returned domain `source_revision` records
-  assembly provenance only; later recovery-proof publication uses the then-current domain revision
-  plus exact current thread, selected-path, and binding expected revisions rather than the older
-  global revision.
+  frontier, no history-incomplete disposition, and no provider-observation issue; it excludes
+  `incomplete`. Authority-lost tail context is a separate scope-bound eligibility fact; it does not
+  make that predecessor recovery-complete or change its stored lifecycle. The returned domain
+  `source_revision` records preflight provenance only; later
+  recovery-proof publication uses the then-current domain revision plus exact current thread,
+  selected-path, and binding expected revisions rather than the older global revision.
 
 ## Logical Records
 
 - Logical record names mirror the Syndic history and CAS-live capture system contracts; this package owns their stored representation and typed API behavior.
-- A thread record stores stable thread identity, committed conversation-tail id when any, current draft id, thread revision, optional parent-thread handoff binding, and optional branch-context owner id. External execution metadata belongs to revisioned binding records rather than the thread record.
-- A current-draft record stores stable draft identity, owning thread id, draft revision, one exact sealed content reference, immutable parent turn id when any, optional immutable typed branch-context owner identity, optional replacement-edit intent containing the exact target and bounded selected-transcript proof, and timestamps. The context envelope itself occupies the separate `context-envelopes` family.
+- A thread record stores stable thread identity, committed conversation-tail id when any, current
+  draft id, thread revision, optional immutable parent-thread handoff binding, thread-lineage depth,
+  chain digest and deterministic ancestor skip, inherited and current image-label frontiers, and
+  optional branch-context owner id. Top-level threads use the canonical root lineage facts and a
+  zero inherited label frontier.
+- A thread-execution record is keyed one-to-one by stable thread id and stores the exact immutable
+  `ExecutionBinding` accepted at creation. It has no replacement mutation or mutable record
+  revision. A child thread inherits its parent's exact value. CAS binding and execution-snapshot
+  records retain execution copies as provenance but must agree with this canonical record.
+- A thread-attributes record is keyed one-to-one by thread id and owns a nonzero monotonic
+  attributes revision, optional accepted generated title with its exact source user turn, sealed
+  content identity and digest, selected-path digest, thread revision, and generation time, and the
+  ordinary, open-branch-discussion, or archived-branch-discussion state.
+  Generated title acceptance and open-to-archived transition are one-way.
+- A thread-usage record is keyed one-to-one by thread id and owns a nonzero monotonic usage revision
+  plus an optional exact token-usage observation. The observation retains nonnegative last and
+  total counters, optional positive model context window, observation time, and the exact immutable
+  `ExecutionBinding`, binding revision, CAS thread, managed-process generation, loaded-thread
+  generation, connection generation, and monotonic provider-control ordinal. Usage publication
+  requires the current valid or active route and cannot advance thread or attributes revisions.
+- A current-draft record stores stable draft identity, owning thread id, draft revision, one exact
+  sealed content reference, one closed `DraftSubmissionIntent`, and timestamps. The intent is
+  exactly `Ordinary`, `DiscussionContext` with its immutable context-owner identity, or
+  `Replacement` with the exact target and bounded selected-transcript proof. It stores no ordinary
+  or generic conversation parent. The context envelope itself occupies the separate
+  `context-envelopes` family and names the first branch source turn. Draft-owned context validation
+  proves the source records and parent-thread binding; it does not require that immutable source
+  to equal the child thread's later mutable committed tail.
 - A content-manifest record stores content identity, optional canonical-item owner, encoding, lifecycle, exact chunk frontier, encoded and logical lengths, atom and marker counts, and a chain digest. Content-chunk records store bounded ordered encoded bytes. Building content is unreachable; ownerless sealed content is immutable and content-addressed; item-owned live UTF-8 content has a deterministic item-derived identity and may append only before it becomes finalized.
-- A canonical user-input item references the exact sealed draft content and an exact count of separately ordered marker-resolution records. Each resolution retains marker identity, final label ordinal, and durable asset id; it does not embed image bytes or duplicate text.
-- An accepted-input record stores input frozen from a draft for active-turn steering or later-turn queueing, including one stable accepted-input identity, owning thread, permanent order, current disposition and lifecycle, the exact admission input-gate revision, the sealed content reference, exact marker-resolution count, and admission state. A steering disposition retains the exact binding, execution snapshot, Syndic turn, CAS thread, and known-or-explicitly-unknown CAS turn proof.
-- One input-gate record per thread stores its independent monotonic revision, idle/pending-turn/steering/compaction/stopping state, accepted-order high-water mark, and exact live steering, next-turn, and logical-byte counters. Permanent accepted order and bounded live routing are distinct authorities.
+- A canonical user-input item references the exact sealed draft content and matching compact sealed
+  asset-reference-set proof. Syndic content pieces retain ordered marker identity and final label;
+  the Beryl-state set retains the matching asset identity and first-occurrence disposition. Syndic
+  does not duplicate those paged marker-to-asset records or embed image bytes.
+- An accepted-input record stores immutable input frozen from a draft for active-turn steering or
+  later-turn queueing: one stable identity, owning thread, permanent order, complete source
+  thread/draft/gate revision proof, source and replacement draft identities, sealed content
+  reference, compact sealed asset-reference-set proof, admitted timestamp, and route-generation
+  identity. The selected generation state retains the
+  exact binding, execution snapshot, Syndic turn, CAS thread, and known-or-explicitly-unknown CAS
+  turn proof once for every member; one bounded route leaf owns only that input's delivery state.
+- One accepted-route generation owns one disjoint contiguous permanent-order interval, immutable
+  membership through `accepted-order`, a revisioned selected state head, target or next-turn
+  disposition, and checked `u64` aggregates for ready/retryable, delivering, next-turn, terminal,
+  and live logical bytes. One compact `accepted-ready-source` record makes a currently selected
+  exact steering generation with ready or retryable work scheduler-visible, while one distinct
+  compact `accepted-next-source` record does the same for effective next-turn work. Neither copies
+  generation members.
+- An `AwaitingTerminal` route target retains the complete exact prior steering target but classifies
+  every routed admitted or retryable member as effective `NextTurn(UnknownTerminal)`. Its
+  generation has no ready or delivering aggregate and no ready-source row. Queue-only admission
+  allocates later `NextTurn(UnknownTerminal)` generations while the input gate continues selecting
+  the retained awaiting-terminal target needed for late evidence and active abandonment.
+- A bounded ordered ready-source page discovers those compact records by thread and route
+  generation. A revision-bound candidate page accepts one exact source record, walks its permanent
+  accepted-order interval from the cursor's last scanned ordinal, and returns only compact
+  `Admitted` or `Retryable` routed input identity, ordinal, lifecycle, and leaf-revision facts.
+  The cursor advances over delivering or terminal rows as well as returned candidates. It rejects
+  gate, route-head, source, or generation drift; the separate fixed-work ready-input read remains
+  the authority that reopens the complete target and execution proof after local worker admission.
+- A terminal promoted route leaf retains one bounded immutable witness containing the source gate,
+  selected route-head and leaf revisions plus the exact fresh successor turn, canonical item, and
+  promotion timestamp. Its accepted-input record and permanent-order entry remain immutable.
+- One input-gate record per thread stores its independent monotonic revision,
+  idle/pending-turn/steering/awaiting-terminal/finalizing-history/compaction/stopping state,
+  accepted-order high-water mark, selected route-generation/head revision, and exact checked `u64`
+  live steering, next-turn, and logical-byte counters. An awaiting-terminal gate names the
+  unknown-terminal blocking turn while its selected route retains the exact prior steering target.
+  Permanent accepted order and durable paged generation/leaf routing are distinct authorities.
+- A compacting gate stores one caller-generated compaction-operation nonce and the exact parentless
+  provider-operation turn. It selects one bounded current record keyed by `(Syndic thread,
+  operation nonce)`. The record retains the exact `BerylHomeId` from admission and owns an
+  immutable provider-operation execution snapshot containing the exact valid binding revision,
+  represented-prefix proof and native count, runtime and managed-process generation, loaded-thread
+  generation, and CAS thread. It never reuses the ordinary active-binding activation mutation or
+  increments the native count.
+- Compaction-operation and request-attempt nonces are distinct caller-owned 128-bit natural
+  identities. The caller-supplied provider-operation turn id must have the exact operation-nonce
+  payload, and the caller-supplied snapshot id must equal the documented app derivation over the
+  complete admission target. Storage allocates no identity and rejects turn, snapshot, operation,
+  or existing durable collisions before mutation. Admission is revision one. One immediate
+  dispatch-claim revision names the sole
+  attempt and its source revision; later compatible revisions independently retain the closed
+  request disposition, ordered thread-status frontier, one-way CAS-turn publication, context-
+  compaction marker/item frontier, and terminal observation. Exact replays are idempotent,
+  conflicts or gaps are invalid, and the attempt never authorizes a second backend request.
+- Compaction admission atomically requires an idle gate, no effective accepted-next aggregate, an
+  exact current valid binding and reverse authority, and no colliding provider-operation identity.
+  It creates the provider-operation turn, source-free turn state, execution snapshot, operation
+  record, and compacting gate while leaving thread tail, selected path, draft, binding head,
+  represented prefix, and native count unchanged.
+- Queue admission against compaction appends ordinary accepted input as `NextTurn(Compaction)` with
+  its stable accepted identity and permanent order. It advances only the gate's compatible route
+  and aggregate descendants; it neither changes the compaction target nor creates steering
+  authority.
+- Dedicated compaction mutations publish the exact CAS turn, admit only matching provider source
+  events, transition a stop handoff to the non-consumed `Stopping(stop nonce)` relationship, and
+  settle completed-marker-then-successful-terminal, interrupted terminal with exact idle-or-non-
+  idle status evidence, failed terminal, local nondispatch, rejection, completion-unknown,
+  cancellation, or authority-loss successors. Only the later stop terminal or abandonment
+  successor consumes a handed-off operation. Generic live-
+  terminal gate code rejects provider-operation turns and cannot convert them to `PendingTurn` or
+  selected conversation transcript work.
+- A provider-operation stop witness retains both the exact source compaction revision and its
+  immediate `Stopping(stop nonce)` successor revision. Live reads, reopen validation, safe reopen,
+  terminal handoff, and abandonment cross-check those revisions with the compaction record and any
+  later settlement receipt; a matching nonce at an impossible revision is corruption. Each
+  provider-specific safe-reopen, matching-terminal, and abandonment successor additionally retains
+  the exact source `Stopping` descendant revision and immediate successor compaction revision that
+  consumed it. Its validator reauthenticates the source against the admission handoff and then the
+  exact successor or a fully witnessed later provider descendant; loose revision floors are never
+  post-stop ancestry.
+- A matching successful terminal retained by the compaction record is the provider-operation
+  turn's canonical terminal source authority. The mutation records its exact turn-state revision
+  and stores no duplicate ordinary `TurnEnded` source event. Domain validation permits a complete
+  turn with zero source events only when exactly one compaction record targets that turn and its
+  terminal status and recorded turn-state revision equal the turn state. Absence, multiple
+  authorities, an ordinary terminal source event, or any disagreement is coherent corruption.
+- Consumed compaction records retain the complete claim, observation, and settlement witness. A
+  separately keyed immutable settlement receipt is written in the same atomic command and repeats
+  the exact predecessor/successor operation revisions, complete predecessor/successor gate
+  snapshots, and settlement. The consumed operation independently commits to the complete
+  canonical receipt value. A consumed operation and receipt must agree exactly, and the public
+  recovery read must authenticate the concrete settlement-specific lifecycle, binding,
+  accepted-work, or continuation successor, before the current gate may be accepted as a later
+  validated descendant. Lifecycle-continuation receipts additionally retain the initial parent,
+  selected path, unbound binding revision, and fixed content reference; validation rederives that
+  topology by appending the continuation to the immutable admission snapshot path, then accepts
+  later ordinary lifecycle progress without requiring the continuation to remain pending. A
+  compact-start response
+  reconciler may classify a late matching empty acknowledgement as already
+  implied by an exact terminal successor without mutating it. It separately classifies same-
+  attempt completion unknown as `TerminalAlreadySettled`: the terminal lifecycle, gate, and
+  terminal-chosen binding successor remain exact while the app retires connection authority. A
+  late incompatible rejection, proven-nondispatch result, attempt identity, or provider
+  observation remains a collision.
+- Successful lifecycle settlement accepts the caller-derived continuation turn and canonical-item
+  ids plus the ownerless sealed content and exact empty asset-set proof, but no home-id input. It
+  verifies the two documented domain-separated identity hashes from the durable operation's
+  admission `BerylHomeId`, the fixed content digest and one-text-atom shape, and zero
+  markers/assets. Under the serialized current gate and accepted-next aggregates it either releases
+  the gate for already effective user work or creates exactly one pending
+  `BerylLifecycleContinuation` conversation turn and canonical user-role item with the unchanged
+  current draft. Its parent and selected path extend the admission snapshot's immutable selected
+  path exactly. Its immutable consumed witness names the operation, turn, item, content, gate, and
+  result that won, permitting exact reconciliation without another continuation identity.
+- A stopping gate carries the current caller-supplied stop-operation nonce and selects exactly one
+  live stop-operation record by `(Syndic thread, operation nonce)`. That record stores the
+  immutable exact blocked-operation target: Syndic thread and turn,
+  ordinary-turn or closed provider-operation kind, binding revision, execution snapshot id,
+  runtime and managed-process generation, loaded-thread generation, CAS thread, and one-way-
+  published CAS turn. Context compaction is the currently defined provider-operation kind and is
+  stop-eligible only after its compaction record has one-way published that exact CAS turn. The
+  record also stores the caller-supplied operation
+  identity, monotonic revision, fixed first-publication revision for every present member of the
+  nonempty closed cause set, and either `Admitted` or one
+  `DispatchClaimed(source_revision, caller_attempt_id)` witness. Causes present at admission name
+  revision one. The gate names the same blocked operation and route authority. A missing half,
+  target disagreement, transition-revision gap or duplicate, or provenance later than the current
+  record is invalid durable state, and a historical claimed attempt is never an idempotency key for
+  another backend request.
+- Consuming live stop authority does not delete or reuse its keyed record. The same atomic terminal,
+  safe-reopen, or abandonment command changes it to one closed consumed disposition containing the
+  exact bounded successor witness already required for reconciliation. Consumed records are inert
+  identity receipts: they cannot become current again, authorize dispatch, or retain a hard-run
+  snapshot.
+- Stop causes form a fixed closed set distinguishing selected-operation control, diagnostic
+  control, healthy-home window close, and Beryl-owned interrupting approval. An exact later caller
+  monotonically adds its cause while joining the existing record; it does not create another
+  operation or dispatch identity. Adding a cause is fixed work and stores the immediate successor
+  revision as that cause's immutable first-publication witness. Exact reconciliation proves that
+  witness is the checked immediate successor of the caller's source revision even after later
+  compatible cause, claim, or consumed descendants. It conflicts atomically with safe reopen,
+  terminal consumption, and abandonment, so a caller cannot authorize an external side effect from
+  a stale cause join.
+- The record's fixed transition provenance is canonical. Admission occupies revision one. Every
+  later revision through the current record is occupied exactly once by one newly published cause,
+  the sole dispatch claim, or the consuming disposition. Initial causes may share revision one;
+  no later transition revision may be absent, duplicated, reordered, or overwritten. The public
+  typed boundary exposes the closed cause-first revisions and optional claim source revision rather
+  than asking callers to infer history from the aggregate cause set or current revision.
+- Stop-operation and attempt nonces are distinct 128-bit caller-owned natural identities. The
+  operation's durable identity is `(Syndic thread, operation nonce)`, while an attempt is scoped to
+  that operation. The retained consumed record makes operation-nonce reuse on the same thread a
+  collision. Storage validates non-reuse and exact agreement but does not allocate either nonce or
+  derive it from external execution ids.
+- One keyed bounded stop-admission read stabilizes the current gate, turn and turn state, binding
+  and heads, execution snapshot, published CAS turn, CAS reverse indexes, accepted route sources,
+  and matching live stop record when present. For ordinary execution it also stabilizes the
+  selected steering route and active binding; for compaction it instead stabilizes the live
+  compaction record, provider-operation snapshot, and valid binding. The complete observation
+  shares the canonical target and live authenticators used by reconciliation. It returns a closed
+  ordinary-admissible, provider-operation-admissible, already-stopping, or ineligible
+  classification. Cross-pass selector drift is concurrent change; a stable missing or
+  contradictory relationship is invariant failure. Callers never assemble stop authority outside
+  this package.
 - A turn record captures turn identity, turn kind, immutable parent relationship, deterministic
   ancestor skip, origin thread, immutable chain proof, and creation time. Mutable lifecycle,
   source-event frontier, item frontier, contiguous finalized-item frontier, and terminal or
   incomplete facts belong to its matching turn-state record.
-- Turn kind distinguishes ordinary user turns from provider-operation turns such as context compaction.
+- Turn kind distinguishes user-authored ordinary turns, Beryl lifecycle-continuation conversation
+  turns, and provider-operation turns such as context compaction. Provider-operation turns are
+  parentless ownership roots and never advance a thread tail; lifecycle-continuation turns carry
+  explicit non-user origin but otherwise advance and execute on the selected conversation path.
 - CAS projection binding records store the current external execution projection state when present, including valid, stale, unbound, or active binding status, external CAS ids, and immutable execution snapshot identity needed by higher-level systems.
 - A CAS projection binding record is keyed by Syndic thread view and binding revision, and stores
   the exact current selected-path proof used to classify the binding. A structurally distinct
@@ -94,12 +377,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - A recovered-lineage proof records the exact injected Syndic prefix, sequence proof, completion
   time, and exact loaded process/thread generations that established the fresh CAS prefix. This
   establishment provenance remains distinct if ordinary later CAS turns advance the represented
-  prefix, and it never authorizes replaying the injected prefix. Activation under recovered
-  lineage requires the same loaded generation and cannot start before injection completed.
+  prefix, and it never authorizes replaying the injected prefix. The recorded generation identifies
+  the injection event. Activation under recovered lineage requires one exact loaded generation
+  supplied by the current non-cloneable projection capability, cannot start before injection
+  completed, and must retain the proof's managed-process generation. Its loaded-thread generation
+  may differ only after the app proves the exact overlapping same-process handoff.
 - Active binding records additionally store the accepted immutable execution snapshot id and
   active submitted turn. The snapshot stores its exact selected path, represented base prefix,
   represented-base native CAS turn count, execution binding, loaded process/thread generation,
-  and start time without an accepted-input vector or a mutable optional CAS-turn field.
+  and start time without an accepted-input vector or a mutable optional CAS-turn field. Its loaded
+  generation is the actual current execution session. Under recovered lineage its process component
+  equals the injection proof; its thread component may differ after an exact app-owned handoff.
 - A separate one-way active-CAS-turn record publishes the exact returned CAS turn identity for one
   snapshot. Its reverse CAS-turn index records the checked next native CAS turn count, and its
   same-thread input-gate transition commits atomically; a different second identity is a collision
@@ -110,15 +398,32 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   zero. A source-less lifecycle update cannot claim that CAS accepted or now represents the
   submitted turn. No mutation publishes an in-place-rollback lineage as usable authority.
 - Losing active projection authority uses one atomic abandonment mutation rather than an ordinary
-  stale publication. It retires the CAS thread, publishes exact stale provenance, and returns the
-  gate to the same submitted turn. Undispatched `Admitted` or `Retryable` steering routes move to
-  ordered next-turn work under `ProjectionLost`; a possibly dispatched `Delivering` route becomes
-  terminal `DeliveryUnknown`, leaves no live route or counter, and remains permanent
-  accepted-input history without automatic replay. If no exact activation event was admitted, the
-  still-pending turn may be rebound through a fresh projection. Once activation was admitted, the
-  turn is never replayed automatically; the pending gate withholds competing work until a later
-  source-less interrupted, failed, incomplete, or unknown-terminal update converges local
-  lifecycle without restoring external authority.
+  stale publication. The request names stable binding, route-generation, semantic-target, and
+  disposition identity. Inside the serialized mutation, storage validates that identity against
+  the current compatible route and gate and consumes their actual shared authority; callers do not
+  fence abandonment on a previously read shared route-head or gate revision. It retires the CAS
+  thread, publishes exact stale provenance, and returns the gate to the same submitted turn.
+  Undispatched `Admitted` or `Retryable` steering routes move to ordered next-turn work under
+  `ProjectionLost`; a possibly dispatched `Delivering` route becomes terminal `DeliveryUnknown`,
+  leaves no live route or counter, and remains permanent accepted-input history without automatic
+  replay. Ambiguous command completion reconciles the stale binding, retired reservation,
+  successor gate and route head, projection-loss generation, and optional named leaf together. The
+  projection-loss generation persists the exact source binding, gate, and route plus whether the
+  command was generic or named one exact rejected input and source leaf revision.
+  Reconciliation compares that complete bounded abandonment witness; a matching binding,
+  successor aggregate shape, or other abandonment mode is never exact evidence.
+- The abandonment command may additionally name exactly one current `Delivering` route whose
+  normalized CAS response proves that request was rejected before acceptance but provides no
+  machine target verdict. The same atomic mutation revision-checks that input, route generation,
+  steering target, gate, and active binding, then rewrites only that named route leaf to ordered
+  next-turn work under `ProjectionLost` with a last-transition proof naming the exact rejection
+  abandonment. Every sibling `Delivering` route without equivalent exact non-acceptance proof still
+  becomes `DeliveryUnknown`; this exception never comes from diagnostic message text or a separate
+  pre-retirement mutation.
+- If no exact activation event was admitted, the still-pending turn may be rebound through a fresh
+  projection. Once activation was admitted, the turn is never replayed automatically; the pending
+  gate withholds competing work until a later source-less interrupted, failed, incomplete, or
+  unknown-terminal update converges local lifecycle without restoring external authority.
 - Stale binding records preserve the old execution binding, CAS thread id, any observed lineage,
   prefix, exact observed native turn count, and generation facts, bounded reason, and timestamp as
   non-authorizing provenance. Retirement from known usable authority preserves its exact count; an
@@ -130,49 +435,111 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   allowing the new represented-prefix proof to carry a later source-thread revision for the same
   tail and digest. This distinction prevents a local selected-path revision from being
   misrepresented as a newer CAS history-establishment event.
+- Draft or accepted-input admission may likewise advance the broad thread revision without
+  changing the selected tail or digest. Native planning treats that proof as a compatible
+  descendant of the projection request and current binding. If activation follows, the active
+  binding advances only the represented prefix's source-thread revision to the current compatible
+  proof; its CAS thread, native count, execution, tool profile, and original establishment lineage
+  remain exact. Mutation validation, publication reconciliation, and reopen validation use the
+  same relation.
+- An exact recovered-lineage handoff preserves its original `RecoveredInjectionProof` unchanged
+  while admitting a new loaded-thread generation under the same managed-process generation. The
+  binding therefore records how the in-memory CAS history was seeded without pretending that
+  injection ran again. Storage does not authorize cold resume; the app must supply the
+  non-cloneable overlapping-subscription proof for this transition.
 - Unbound binding records represent a view with no usable CAS projection and may store the reason that no projection exists.
 - A source-event record stores one normalized turn activation, typed item start, typed coalesced item
-  delta, typed item completion, or status-only turn-ending outcome with a monotonic per-turn sequence
-  number and bounded payload or sealed provider-frame reference. One turn-ending status stores the exact provider or local execution
+  delta, typed item completion, typed provider-observation issue, or status-only turn-ending outcome
+  with a monotonic per-turn sequence number and bounded payload, sealed provider-frame reference, or
+  compact sealed-observation reference. One turn-ending status stores the exact provider or local execution
   outcome independently from an optional typed history-incomplete reason. A locally incomplete
   outcome requires a reason; a provider-complete outcome may also carry a reason when the observed
-  history cannot be published complete. Activation, provider content, item completion, and
-  successful turn completion require exact CAS turn or item identity. A source-less event may only
+  history cannot be published complete. An interrupted pinned-CAS terminal uses
+  `ForcedAbortOrderingUnproven` unless release-scoped authority proves it is a no-later-item
+  barrier. Activation, provider content, item completion, and
+  provider-observation issues require exact CAS turn or item identity. Successful turn completion
+  requires exact CAS turn identity. A source-less event may only
   record local interrupted, failed, incomplete, or unknown-terminal convergence while the current
   projection is stale or the thread is unbound; a still-usable valid binding is not sufficient
   because it represents only the pending turn's parent. Local convergence cannot manufacture
   provider activity or success.
-- A canonical item record stores bounded kind, phase, source, ordering, revision, narrative/resource
-  policy, latest sealed provider-frame reference, and item-local source-event frontier for correlated
-  submitted input, assistant messages, operational records, generated media references, and
-  presentation-only activity records. The provider frame remains mandatory when the normalized
-  public variant has fields even when the item contributes no transcript narrative. The API has no
-  generic item shape that silently discards history-relevant fields while permitting successful
-  turn completion.
+- A provider-observation issue identifies one structurally valid, exact-route sealed observation
+  that conflicts with the current durable item lifecycle. The compact payload retains the immutable
+  observation build identity and digest-covered frontier, exact CAS item id, and a closed conflict
+  reason. Its atomic mutation validates the referenced sealed build and proves the conflict against
+  the current canonical frontier before advancing source sequence, turn revision, activity, and
+  transcript staleness. It records the turn's first monotonic issue fact without creating,
+  replacing, completing, or revising a canonical item. A legally admissible observation is rejected
+  from this issue mutation and must use normal provider-frame publication. Observation sealing
+  retains a structurally valid start for a completion-only kind; normal frame preparation rejects
+  it, while the issue mutation may admit it only as `CompletionOnlyItemStarted`.
+- A canonical item record stores bounded kind, phase, source, ordering, revision, closed
+  narrative/resource policy, latest sealed provider-frame reference, and item-local source-event
+  frontier for correlated submitted input, assistant messages, operational records, generated media
+  references, and presentation-only activity records. Transcript-visible text selects exactly one
+  closed projection source: sealed composer content for submitted input or one selected provider
+  narrative view for provider-authored narrative. The provider frame remains mandatory when the
+  normalized public variant has fields even when the item contributes no transcript narrative. The
+  API has no generic item shape that silently discards history-relevant fields while permitting
+  successful turn completion.
+- An activity-query head names one exact owner-thread work period, root source turn, checked source
+  count and aggregate admitted source frontier, query revision, logical/running/completed row and
+  stored-byte counts, full-order completed retention cutoff, and current lifecycle. One immutable
+  source-membership row per observed owner or direct-child turn binds that period to an exact
+  `activity_start..=source_frontier` interval, active/terminal state, and optional exact terminal
+  child final-answer item/range. Ordered activity entries contain only bounded row metadata, exact
+  Syndic/CAS item and source-event identity, lifecycle state, and compact GUI-derived facts; they
+  never duplicate command, reasoning, handoff, or provider payloads or bind an unrelated later
+  projection revision. A child handoff requires its membership key to be absent and inserts one
+  inactive terminal member. The final-answer source event must be immediately followed by the
+  terminal event, and the retained row's item/range fact must equal the membership exactly. It never
+  refreshes or converts a prior child membership. The rejected shapes are recorded in
+  `doc/failures/syndic-phase13-activity-handoff-membership-authority.md`.
 - `ProviderItemV1` is the sole item-owned byte authority for provider-created admitted public
   payload. Its
   deterministic, length-delimited, digest-covered start, delta, and completion frames use a closed
   enum for every pinned item variant and a closed recursive structured-value algebra. Raw JSON,
   opaque blobs, ignored-field fallbacks, and unknown future-variant containers are forbidden.
-- Materialized and constant-resident frame validation produce the same typed history-support fact.
+- The observed pinned Web-search catch-all is the sole explicit lossy exception: backend ingress
+  emits the closed `Other` marker and structurally consumes the unknown action payload through fixed
+  discard state. Syndic retains only that marker and typed unsupported-history evidence; it does not
+  retain raw JSON, field names, payload bytes, or a generic future-variant container.
+- The sole constant-resident frame validation path produces the typed history-support fact.
   Unsupported-but-retained observations remain structurally valid, their first unsupported reason
   accumulates monotonically across the item stream, and later publication cannot reinterpret them as
   complete history. In particular, the pinned Web-search `Other` action is retained while carrying
-  `UnsupportedRequiredPayload`.
+  `UnsupportedRequiredPayload`. No materialized provider-frame compatibility path remains.
+- Constant-resident validation also returns the exact bounded assistant phase and submitted
+  composer-content reference needed by atomic publication. Every sealed frame snapshot retains a
+  resumable item-stream state containing exact provider identity and kind, the next frame ordinal,
+  the original start timestamp, completion state, and cumulative history support. Advancing one
+  frame therefore preserves lifecycle and timestamp proof without rescanning or materializing the
+  preceding item stream.
 - The standalone image-generation frame retains exact identity, lifecycle timestamps, status,
   optional revised prompt, and optional `savedPath`. It has no base64 `result` field because the
   backend discards that transport payload before normalization. Syndic has no codec, chunk family,
   or fallback mutation that can store those image bytes in Fjall.
 - Standalone image status is closed to the pinned producer's `in_progress`, `failed`, and `completed`
   values; an authoritative completion frame cannot retain `in_progress`.
+- `ReasoningTextObserved` retains exact item identity and `content_index` only. The provider's raw
+  reasoning delta is a backend-discarded private wire field, not part of the admitted normalized
+  grammar; Syndic has no text field, content range, chunk, codec member, or diagnostic escape hatch
+  for those bytes.
+- Authoritative completion frames for command execution, file change, MCP tool calls, dynamic tool
+  calls, collaboration tool calls, and standalone image generation reject their kind's
+  `in_progress` status independently of backend validation.
 - Arbitrarily large provider strings and structured leaves remain in bounded ordered content chunks.
-  Typed field structure and exact range references remain in the same chunked encoding; a
-  frame-specific logical-text span index exposes only that frame's selected narrative and
-  operational text over those existing bytes. A completion frame may therefore replace an earlier
-  delta-derived view without exposing stale bytes or copying unchanged payload.
-  `CanonicalItemPayload::Text` therefore refers to the same provider content rather than storing a
-  second copy. Submitted-user correlation instead refers to its already sealed composer content and
-  retains only exact provider metadata and correlation proof.
+  Typed field structure and exact range references remain in the same chunked encoding. A selected
+  provider narrative view exposes only transcript-visible provider text over those existing bytes:
+  start and delta frames extend one item-owned append generation. Every view carries exact span and
+  logical-byte frontiers plus one chain digest over ordered span provenance and logical ranges. Each
+  span retains the frame that selected the field plus its exact physical source range in the same
+  immutable stream. For `AgentMessage` and `Plan`, completion performs a bounded byte-for-byte
+  comparison against that complete append generation and never selects another narrative. An equal
+  completion field may reuse the proven prior ranges without copying cumulative text. A mismatch
+  retains the exact completion frame as evidence, keeps the live append generation selected, and
+  records typed history incompleteness. Submitted-user correlation instead selects its already
+  sealed composer content and retains only exact provider metadata and correlation proof.
 - Provider item lifecycle and owned-resource availability are independent durable facts. A
   generated-media item may record exact provider completion while its resource disposition remains
   `PendingAsset` or typed unavailable; its finalized-item frontier and history completeness do not
@@ -184,11 +551,10 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   ordinal, and digest proof. It permits bounded predecessor lookup and range continuation without
   scanning from the start of a logical content value.
 - A content-text-span index stores ordered logical UTF-8 ranges and their exact encoded source
-  ranges. `Utf8V1` spans map directly; `ComposerV1` spans skip atom framing and image-marker bytes;
-  provider frames use their separate frame-keyed text-span index because an authoritative snapshot
-  may revise an earlier delta-derived logical view. Both indexes preserve field and element
-  boundaries and allow user, assistant, and operational projection work to use bounded logical-text
-  cursors over the same stored provider bytes.
+  ranges. `Utf8V1` spans map directly and `ComposerV1` spans skip atom framing and image-marker
+  bytes. Provider narrative uses its separate generation-keyed span index because provider-frame
+  structure is not a cumulative text value. Both indexes preserve field and element boundaries and
+  allow bounded logical-text cursors over the original stored bytes.
 - A content-piece index stores the exact render-significant order of logical text spans and
   `ComposerV1` image markers. Projection and transcript work can therefore preserve authored
   text-marker interleaving without decoding or retaining the complete logical content value.
@@ -199,42 +565,91 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   content-piece frontier. Zero-width image markers advance the piece frontier without fabricating
   logical bytes, including in trailing and marker-only input, while a later live append cannot be
   mistaken for part of an older generation.
+- A provider-observation build record owns connection-scoped unattached staging for exactly one
+  pinned lifecycle or delta wire observation whose route may trail its size-unbounded item fields.
+  It retains only compact parser/structure state, observation identity, field frontier, chunk counts,
+  byte counts, and digests while typed observation chunks hold the bounded staged bytes. It names no
+  Syndic turn, canonical item, source sequence, or published provider content.
+- Completing structural decode seals one compact non-cloneable observation handle. After the app
+  proves the trailing CAS thread/turn route against one admitted lane, the exact target consumes that
+  handle through bounded reads. If the durable item lifecycle admits the observation, consumption
+  stages its provider-item build. If that exact lifecycle rejects an otherwise valid observation,
+  consumption produces a private-constructible compact issue reference derived from the sealed
+  handle. Only the final target publication makes either the provider-frame effects or the issue
+  source event authoritative. Missing, mismatched, cancelled, or retired routes leave the
+  observation build unreachable and never visible as history.
+- The public issue-reference boundary exposes exact immutable identity and closed reason accessors,
+  but not a constructor from caller-supplied build facts. Reopen validation point-reads and replays
+  the referenced observation under fixed buffers, verifies its seal, identity, item evidence,
+  canonical bytes, digest, and actual lifecycle conflict, and folds the same first-issue fact from
+  source order. An absent, unsealed, mismatched, admissible, or ambiguously referenced observation is
+  corruption or a typed mutation rejection, never permission to retain an unverifiable issue.
 - A provider-item build record retains bounded resumable staging authority for one unpublished typed
-  frame: exact item and prior published frontier, frame lifecycle and kind, chunk and byte counts,
-  structural digest, and the next bounded encoding frontier. Publication atomically advances the
-  content manifest, source event, canonical item and indexes, lifecycle, and transcript staleness.
-  A conflicting or abandoned build remains unreachable and cannot satisfy item or terminal audit.
-- A provider-frame text-span record is keyed by exact sealed frame identity and logical start. It
-  maps that frame's bounded logical view to exact item-content byte ranges, including discontiguous
-  reuse of unchanged earlier fields. All spans for an unpublished frame may be staged in bounded
-  batches; they become readable authority only when the final publication command selects the frame.
+  frame and its target narrative-view change when applicable: exact item and prior published
+  frontiers, frame lifecycle and kind, chunk, byte, narrative-span, and logical-byte counts, exact
+  digests, and the next bounded encoding frontier. Publication atomically advances the content
+  manifest, selected narrative view, source event, canonical item and indexes, lifecycle, and
+  transcript staleness. A conflicting or abandoned build remains unreachable and cannot satisfy
+  item or terminal audit.
+- A provider-narrative-span record is keyed by provider content, narrative generation, and logical
+  start. It maps one exact logical range to the immutable frame that selected the field and one
+  encoded byte range in the same ProviderItemV1 stream. The physical range may be earlier than the
+  selecting frame when the typed field uses exact proven reuse. Start and delta staging append after
+  the current generation frontier. Completion stages its exact provider frame and a bounded
+  comparison against that generation but creates no narrative spans or generation. Staged spans
+  become readable authority only when the final publication command selects their complete
+  referenced view.
 - An item-projection head selects one coherent generation for an item and records whether that
   selection is current or stale against the canonical source revision.
-- An immutable item-projection-set record retains the exact source item/content revisions, parser
-  version, stable-prefix projection and resource counts, total output counts, stable and complete
-  digests, the reusable parser checkpoint, and whether that checkpoint has resolved end-of-input.
-- An item-projection-build record retains only bounded resumable state for one uncurrent
-  generation: the next canonical byte location, current block classification, bounded undecided
-  source, preview state, output ordinals, and resource digest/count state. Whole canonical items
-  and whole heavy resources never enter this record.
+- An immutable item-projection-set record retains the exact canonical item revision and closed
+  projection source, parser version, stable-prefix projection and resource counts, total output
+  counts, stable and complete digests, the source-typed reusable parser checkpoint, and whether that
+  checkpoint has resolved end-of-input.
+- An item-projection-build record retains only bounded resumable state for one uncurrent generation:
+  the exact closed projection source, its next composer-piece or provider-narrative cursor, current
+  block classification, bounded undecided source, preview state, output ordinals, and resource
+  digest/count state. Whole canonical items and whole heavy resources never enter this record.
 - A transcript-view head selects one explicit generation and tracks that generation's mutation revision, selected path, frontier, and lifecycle. Transcript-view entry keys include thread, generation, and position so changed paths and bounded rebuilds never rewrite a prior generation.
 - A transcript-build record and generation-owned path-turn records retain the bounded two-pass
   selected-path rebuild. The first pass walks parent links tail-to-root and writes exact depth
   records; the second walks depth records root-to-tail and publishes bounded entry batches.
-- An incomplete transcript build requires the exact current broad thread revision. A completed
-  current build may predate draft-only or accepted-input thread revisions; it remains authoritative
-  exactly while its committed tail and selected-path digest still equal the current thread and its
-  captured source revision does not exceed the thread revision.
-- A history summary record exposes the owning thread revision, committed tail and selected-path digest, exact captured-history completeness, and last captured activity for Beryl-home catalog joins without storing title text, parent-thread metadata, or selected-thread GUI state.
+- A transcript build's semantic source identity is its committed tail plus selected-path digest.
+  Its captured broad thread revision is a monotonic lower-bound observation, not identity. Active
+  and completed builds may therefore predate draft-only or accepted-input thread revisions while
+  the current thread retains that exact tail and digest and the captured revision is not from the
+  future. A selected-path change supersedes an active build.
+- A history summary record owns an independent nonzero projection revision and exposes the owning
+  thread revision, committed tail and selected-path digest, exact captured-history completeness,
+  and last captured activity for catalog-summary rebuilds without storing title text, parent-thread
+  metadata, or selected-thread GUI state. Every semantic successor advances the summary revision;
+  semantic no-ops publish no successor.
 - V1 history-summary `complete` is true exactly when the selected transcript frontier is current and every selected-path turn has a known terminal lifecycle other than explicit `incomplete` with its finalized-item frontier equal to its item frontier; pending, active, incomplete, unknown-terminal, unfinished item finalization, or stale projection state makes it false. An empty current transcript is complete.
 - V1 history-summary `last_activity_at` is the maximum of the current draft's update time and every selected-path turn's submission and turn-state update times. Summary publication is atomic with every mutation that changes a contributing fact; reopen recomputes and validates both derived values with bounded traversal.
+- A thread-catalog-summary record is a rebuildable compact Syndic projection keyed by thread id. It
+  contains one resolved generated, history-derived, or absent title source; the immutable execution
+  binding; automatic archive state; last activity; completeness; bounded lineage facts; exact
+  execution, attributes, history-summary, and thread source witnesses; and its own nonzero projection
+  revision. Stale source witnesses invalidate it instead of allowing Beryl to recompute precedence.
+- The history-derived title builder streams the exact eligible canonical user input through bounded
+  content reads and applies the algorithm in `doc/features/conversation-threads/design.md`. It never
+  loads a complete input or selected path merely to construct a title.
+- One stable public preparation read returns either the exact source-current compact summary or an
+  opaque checked successor. The successor exposes its exact post-publication summary for same-home
+  cross-domain composition but only Syndic can turn it into mutation authority.
+- Exact-current preparation can contribute one validation-only Syndic participant to a
+  heterogeneous home command. Prepared replacement publication and that command's Beryl catalog
+  join may therefore use the same all-or-nothing home commit without transferring title precedence
+  or canonical-source validation to Beryl.
+- Reopen recomputes a history-derived title only when every catalog source witness is current.
+  A source-stale catalog summary remains valid rebuildable state when its retained payload and each
+  independently current source relationship are otherwise well formed.
 - An immutable projection record stores one typed Markdown block/span or one resource reference,
   its exact source range and block-group provenance, and the bounded inline source or preview
   consumed by the transcript provider. Its identity and revision are generation-independent.
-- An immutable resource metadata record describes one exact canonical logical-text range or a
-  later feature-owned external backing, plus generation-independent revision, kind, preview range,
-  byte length, digest, and bounded code/table structural metadata. Metadata reads never load
-  backing bytes.
+- An immutable resource metadata record describes one exact logical-text range in its closed
+  composer-content or provider-narrative backing, or a later feature-owned external backing, plus
+  generation-independent revision, kind, preview range, byte length, digest, and bounded code/table
+  structural metadata. Metadata reads never load backing bytes.
 - Closed item-projection membership is keyed only by item and logical projection ordinal. Every
   later generation reuses that exact immutable stable prefix. Outputs that exist only because a
   live source snapshot reached its current end remain in the generation-owned suffix; a later
@@ -245,27 +660,77 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   is optional resumable work rather than selected authority; losing it requires rebuilding that
   generation but does not corrupt canonical history or a published set.
 
-## V2 Domain Schema
+## V5 Domain Schema
 
-- The stable logical domain name is `syndic` at domain schema V2. Every family uses keyspace schema
-  V1 and one exact package-owned record version selected per family. Changed `content-manifests`,
-  `source-events`, and `canonical-items` records use V2; the new `provider-item-builds` family and
-  `provider-frame-text-spans` family and every unchanged family use V1. There is no V1-domain
-  compatibility decoder or migration adapter inside this replacement rework.
-- V2 primary families are `threads`, `drafts`, `content-manifests`, `context-envelopes`, `turns`,
-  `turn-states`, `input-gates`, `accepted-inputs`, `source-events`, `canonical-items`,
-  `provider-item-builds`,
-  `item-projection-heads`, `item-projection-sets`, `item-projection-builds`,
-  `transcript-view-heads`, `transcript-builds`, `projections`, `resources`, `history-summaries`,
-  `bindings`, `execution-snapshots`, and `active-cas-turns`.
-- V2 exact reverse and ordering families are `content-chunks`, `content-byte-spans`,
-  `content-text-spans`, `content-pieces`, frame-keyed `provider-frame-text-spans`,
-  `input-marker-resolutions`, `draft-by-thread`, `thread-parent-index`, `turn-children`, permanent
-  `accepted-order`, live-only `accepted-steering`, live-only `accepted-next-turn`, `turn-items`,
-  `item-source-events`, `cas-item-index`, `transcript-path-turns`, `transcript-view-entries`,
-  generation-independent `stable-item-projections`, generation-owned suffix `item-projections`,
-  `projection-resources`, `binding-heads`, permanent per-revision `cas-thread-bindings`,
-  `cas-thread-index`, and `cas-turn-index`.
+- The stable logical domain name is `syndic` at domain schema V5. Every family uses keyspace schema
+  V1 and one exact package-owned record version selected per family. `source-events`,
+  and `accepted-inputs` use record V3; `accepted-route-leaves` and `input-gates` use record V4;
+  `accepted-route-generations` and `turns` use record V3; `threads`, `drafts`, `turn-states`,
+  `accepted-order`, `content-manifests`, `canonical-items`, and `execution-snapshots` use record V2;
+  every other V5 family uses record V1. V5 is a clean replacement
+  schema: no prior-record decoder, migration path, or compatibility adapter exists inside this
+  rework.
+- The first 38 registered V5 families are `threads`, `thread-executions`, `thread-attributes`,
+  `thread-usage`, `thread-catalog-summaries`, `drafts`, `content-manifests`,
+  `content-chunks`, `content-byte-spans`, `content-text-spans`, `provider-narrative-spans`,
+  `content-pieces`, `context-envelopes`, `turns`, `turn-states`, `input-gates`, `accepted-inputs`,
+  `stop-operations`, `compaction-operations`, `compaction-settlement-receipts`,
+  `accepted-route-generation-heads`,
+  `accepted-route-leaves`, `source-events`,
+  `provider-observation-builds`, `provider-item-builds`, `canonical-items`,
+  `activity-query-heads`, `item-projection-heads`, `item-projection-sets`,
+  `item-projection-builds`, `transcript-view-heads`, `transcript-builds`, `projections`,
+  `resources`, `history-summaries`, `bindings`, `execution-snapshots`, and `active-cas-turns`.
+- The remaining 23 registered V5 families are `draft-by-thread`, `thread-parent-index`,
+  `image-label-origin-spans`, `turn-children`, `accepted-order`, `accepted-route-generations`,
+  `accepted-ready-sources`, `accepted-next-sources`, `turn-items`, `activity-query-entries`,
+  `activity-query-sources`, `item-source-events`, `cas-item-index`, `transcript-path-turns`,
+  `transcript-view-entries`, `stable-item-projections`, `item-projections`,
+  `projection-resources`, `binding-heads`, `cas-thread-index`, `cas-thread-bindings`,
+  `cas-turn-index`, and `provider-observation-chunks`.
+- A V4 `input-gates` value canonically stores the exact stopping variant—blocked Syndic turn plus
+  16-byte stop-operation nonce—the compacting variant naming its parentless provider-operation
+  turn plus 16-byte compaction-operation nonce, and the distinct awaiting-terminal variant naming
+  its unknown-terminal turn. A V3 `accepted-route-generations` value adds the
+  `AwaitingTerminal(exact prior steering target)` authority. V4 route leaves add the closed
+  `UnknownTerminal` next-turn reason. There are no predecessor record decoders because the V5
+  domain is replacement authority.
+- `stop-operations` is a primary family keyed by the exact 32-byte concatenation of Syndic thread
+  identity and stop-operation nonce. Its V1 value repeats both key fields and stores the immutable
+  target, record revision, four fixed cause-first-revision slots, an optional dispatch-claim source
+  revision and attempt nonce, and a closed live-or-consumed state. Live states are `Admitted` and
+  `DispatchClaimed`; consumed states are safe reopen, matching terminal, and stop abandonment, each
+  carrying its exact bounded successor witness while retaining all earlier fixed provenance.
+  Reopen requires key/value agreement, exactly one live record selected by every stopping gate, no
+  live record for any other gate, and agreement between every consumed record and its named
+  successor.
+- `compaction-operations` is a primary family keyed by the exact 32-byte concatenation of Syndic
+  thread identity and compaction-operation nonce. Its bounded V1 value repeats both key fields and
+  stores the admission `BerylHomeId`, provider-operation turn, provider-operation execution
+  snapshot, exact binding and loaded target, admitted revision, optional dispatch claim and
+  attempt, closed request disposition, optional published CAS turn, fixed ordered
+  status/marker/terminal frontiers, and a live, stopping, or consumed disposition with its exact
+  successor witness. It stores no timeout deadline, lifecycle-continuation intent, accepted-input
+  collection, or provider payload.
+- `compaction-settlement-receipts` is a primary family keyed by the same exact operation identity.
+  Its bounded V1 value stores the exact consumed operation transition, complete source and
+  successor input-gate records, settlement, and optional continuation topology. It is created only
+  in the atomic consumption command; a live operation with a receipt, a consumed operation without
+  one, any operation/receipt mismatch, or an orphan receipt is corruption. Later gate, binding,
+  selected-path, and continuation lifecycle descendants remain valid only after the immutable
+  receipt authenticates their exact historical predecessor.
+- Every compacting gate selects exactly one live compaction record. A record handed to stop names
+  the current stop nonce while the stopping gate and stop record name the same provider-operation
+  target. A consumed record is inert but remains exact response and mutation-reconciliation
+  authority. Reopen proves key/value identity, nonce non-reuse, contiguous fixed transition
+  provenance, provider-source ordering, gate/stop pairing, turn and snapshot agreement, and any
+  named binding, CAS-turn reverse index, item frontier, continuation-turn, or queue-release
+  successor.
+- A V3 `turns` value adds the closed `BerylLifecycleContinuation` conversation origin while
+  preserving ordinary-user and provider-operation kinds. A V2 `execution-snapshots` value is a
+  closed ordinary-conversation or provider-operation shape; the latter contains no accepted route,
+  ordinary active-gate correlation, or native-count increment. `cas-turn-index` covers published
+  provider-operation CAS turns as well as ordinary turns and permanently rejects reuse.
 - Index values retain the authoritative identity plus the revision or digest needed to prove agreement. Empty marker values are not sufficient index authority.
 - Binding records are immutable revisioned history keyed by thread and binding revision. `binding-heads` selects exactly one current record per thread. `cas-thread-bindings` records immutable ordered membership for every CAS-bearing binding revision, while `cas-thread-index` permanently assigns each CAS thread identity to one Syndic thread, its first and latest binding revisions, and one-way retirement at the first stale or abandoned revision. Reopen requires the membership sequence, binding history, and reservation frontiers to agree exactly. After retirement, that CAS thread cannot authorize execution for either the original owner or another thread. Only agreement with the current valid or active binding head and a non-retired reverse record authorizes execution; a retired index entry is provenance, not live authorization.
 - Immutable turn topology and mutable lifecycle/frontier facts occupy separate `turns` and `turn-states` families so later event commits cannot rewrite parentage through a lifecycle update.
@@ -274,6 +739,17 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   ancestor at that depth. Selected-path membership therefore uses constant resident memory and at
   most 2,080 bounded turn point reads for the complete `u64` depth domain instead of an unbounded
   parent walk or a per-turn jump table.
+- Every non-root thread with a parent-thread handoff binding stores the same deterministic skip
+  shape over immutable thread lineage; top-level threads have depth one and no parent or skip.
+  A revision-bound lineage query uses the selected leaf's depth and digest to return bounded
+  top-to-bottom ancestor pages by exact logical depth without retaining the complete path or a jump
+  table. Reopen validates parent, depth, digest, and skip agreement through bounded point reads.
+- A thread image-label origin span is immutable and maps one admission's monotonic frontier advance
+  to its exact admitted owner and compact sealed asset-set proof. A child records its parent's
+  current frontier as its immutable inherited frontier and copies no spans. Label lookup finds the
+  unique span containing the ordinal, then point-reads the selected Beryl-state set's label-first
+  index; lookup at or below the inherited boundary follows validated lineage toward the origin with
+  constant resident state. Missing ordinals inside a published span remain reserved gaps.
 - A context envelope is keyed by its typed draft-or-submitted-turn owner. First submission moves the same exact envelope bytes and owner payload from the draft identity type to its deterministic submitted-turn identity type.
 - `DiscussionContextRange` uses half-open absolute canonical logical UTF-8 byte coordinates within
   the source item, never projection-local coordinates. The range must lie within one finalized
@@ -288,53 +764,113 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   candidate, not visible membership. Any reachable membership, set, head, transcript entry, or
   context envelope still requires its complete exact reverse agreement.
 
-## V2 Bounds And Canonical Encoding
+## V5 Bounds And Canonical Encoding
 
 - Persisted integer ordering uses unsigned big-endian encoding. Composite index keys order first by their owning identity and then by one-based ordinal or revision. Cursor-only lower or upper sentinels are rejected as stored keys.
 - Stable Beryl and Syndic identities use their exact 16-byte payloads. Digests use exact 32-byte values. External CAS identities retain validated UTF-8 and remain bounded by `beryl-model`.
+- Stop-operation keys are exactly 32 bytes. Stop-operation values use the package's 65,536-byte
+  small-record ceiling, but their only variable-width fields are the exact CAS thread and turn
+  identities, each limited to 256 UTF-8 bytes by `beryl-model`. Causes use four canonical
+  fixed-width revision slots in closed cause order; zero means absent and a nonzero value is the
+  exact first-publication revision. The optional dispatch claim canonically contains both its
+  source revision and attempt nonce. Every other identity, revision, generation, state, and
+  successor field is fixed-width. Unknown state tags, operation kinds, noncanonical cause or claim
+  provenance, or a value exceeding either external-identity bound are invalid rather than
+  truncation.
 - One content chunk carries at most 65,536 encoded bytes, and one staged append command carries a
   fixed bounded chunk count. Content manifests use `u64` counts and lengths; no smaller whole-draft,
-  whole-submitted-input, or whole-provider-item byte ceiling is encoded in V2.
+  whole-submitted-input, or whole-provider-item byte ceiling is encoded in V5.
 - Provider structured values accept at most 128 nested list/object containers, matching the pinned
-  backend JSON parser's admitted recursion depth. The streaming validator uses fixed bounded depth
+  backend JSON parser's configured recursion depth. The streaming validator uses fixed bounded depth
   state; string bytes and collection element counts remain chunked and have no smaller per-item cap.
-- One composer payload may retain at most 1,024 image-marker atoms under the image-input resource budget. Text and total atom ordering are chunked and are not limited by one physical record.
-- One thread may retain at most 256 simultaneously live accepted inputs and 268,435,456 logical UTF-8 bytes across its live steering and next-turn routes. These are live-work safety ceilings, not accepted-history or turn-count ceilings; exact provider and model limits may reject earlier.
+- Composer text, atom ordering, and image-marker count are logical `u64` domains represented by
+  bounded content and marker-index pages. No whole-composer marker ceiling is used as a process
+  memory bound; exact provider/model input limits may reject a dispatch without changing stored
+  content authority.
+- Accepted-route generations and their leaves may contain any representable durable count and
+  logical byte total. The input gate and selected generation heads retain checked `u64` aggregates,
+  while schedulers, reopen validation, and delivery workers traverse fixed revision-bound cursor
+  pages and admit only bounded active work. CAS-turn publication and projection loss change one
+  compact generation head and, for the exact-rejection abandonment variant, at most the one named
+  leaf rather than every member. Logical backlog size never authorizes a resident route vector or a
+  process-memory safety cap.
 - One recovery projection contains from one through 262,144 nonempty canonical text items and at most 262,144 logical UTF-8 text bytes. The item ceiling follows from the byte ceiling and therefore does not introduce a smaller retained-history or turn-count limit.
 - Recovery assembly first walks only the exact immutable parent topology and matching
-  recovery-complete turn states, adding item frontiers with checked arithmetic. Explicit
-  `incomplete` is proven terminal for lifecycle accounting but is not recovery-complete. An item
+  recovery-complete turn states, adding only compact item counts with checked arithmetic. In the
+  pending-parent scope, the one immediate authority-lost tail-context exception is authenticated
+  independently before its ordinary item proof; no earlier incomplete turn is accepted. Explicit
+  `incomplete` remains terminal for lifecycle accounting rather than recovery-complete. An item
   total above 262,144 is rejected
-  before allocating the item frontier or reading any turn-item index; an accepted total allocates
-  exactly that bounded metadata capacity and then reads canonical indexes and text in bounded
-  pages and ranges.
-- One normalized source-event remains bounded at 262,144 payload bytes. Canonical-item records contain metadata and a content reference rather than whole text. One transcript-view entry or inline projection remains within the 65,536-byte page limit; larger source is represented by ordered projections or resources without ceasing to exist as canonical chunks.
+  before starting the replay pass or reading item text. An accepted total retains only compact
+  count, byte, revision, tail, and digest proof; canonical indexes and text are replayed later in
+  bounded pages and ranges without allocating an item frontier.
+- Root-to-tail recovery scans lift the immutable tail to each deterministic depth through stored
+  ancestor skips; neither preflight nor cursor retains a path vector. Preflight first proves the
+  item ceiling without text reads, then proves role, lifecycle, media exclusion, nonempty item and
+  context-byte budgets, and hashes bounded text ranges through
+  `beryl-model::RecoveryItemSequenceAccumulator`. Cursor EOF independently repeats the same closed
+  sequence proof.
+- One normalized source-event metadata record remains bounded and refers to exact sealed provider
+  frame ranges; it does not contain a whole provider payload or impose a 262,144-byte event-content
+  ceiling. Canonical-item records contain metadata and a content reference rather than whole text.
+  One transcript-view entry or inline projection remains within the 65,536-byte page limit; larger
+  source is represented by ordered projections or resources without ceasing to exist as canonical
+  chunks.
 - One metadata-only thread, turn-state, history-summary, binding, execution-snapshot, projection-metadata, or resource-metadata record remains at or below 65,536 payload bytes. Codec ceilings include only codec payload bytes; the home store owns the record-version prefix.
 - One projection-construction step consumes at most one 65,536-byte canonical chunk plus a bounded
   UTF-8 carry and undecided Markdown window, and emits a bounded record batch. Persisted undecided
   Markdown never exceeds the accepted 16,384-byte inline-paragraph threshold plus one UTF-8 scalar
   carry.
-- Public transcript-entry, transcript-path, item-projection, and projection-resource pages contain
-  at most 256 records and 65,536 stored encoded bytes. One public textual-resource range response
-  contains at most 65,536 payload bytes. Callers may request smaller byte and item bounds; larger
-  requests are clamped and return continuation cursors rather than authorizing a larger allocation.
+- Public transcript-entry, transcript-path, item-projection, projection-resource, thread-lineage,
+  accepted-ready-source, accepted-ready-candidate, accepted-next-source, accepted-next-candidate,
+  and activity-query pages contain at most 256 records and 65,536 stored encoded bytes. One public
+  textual-resource range response contains at most 65,536 payload bytes. Callers may request
+  smaller byte and item bounds; larger requests are clamped and return continuation cursors rather
+  than materializing a larger page. An accepted-ready-candidate or accepted-next-candidate cursor
+  binds the thread, gate revision, source generation/revision, and scanned-after ordinal; it can
+  therefore advance across non-candidate source ranges without repeating an empty page or
+  accepting route drift.
 - Projection format V1 applies the exact paragraph, code, table, preview, and page thresholds in
   `doc/systems/syndic-conversation-history/concepts.md`. Malformed or undecidable syntax is emitted
   as source-preserving spans of at most 8,192 UTF-8 bytes.
 - Every bounded collection encodes its exact count before its elements, rejects multiplication or allocation overflow before materialization, and rejects trailing bytes, unknown tags, invalid UTF-8, invalid enum combinations, and noncanonical option encodings.
+- Home-store page, item, stored-byte, and decoded-byte limit failures remain typed read failures and
+  do not imply durable corruption. Mutation and validation callbacks perform only operation-bounded
+  reads and never wait for resource capacity while holding the serialized writer.
 
 ## V1 Structural Proofs
 
 - Every immutable turn header stores a nonzero depth and a V1 chain digest. A root has depth one and the canonical root digest derived from the domain separator and its exact turn id. A child has its parent's depth plus one and a digest derived from the V1 domain separator, child id, parent id, and parent chain digest.
 - Reopen recomputes each root or child digest and checks exact depth progression. This proves every parent chain reaches a root and cannot contain a cycle while retaining only one bounded page and point-read parent records.
+- Every thread has the corresponding nonzero lineage depth and domain-separated chain digest.
+  Top-level threads use the root form; a discussion child derives its digest from its exact child and
+  parent thread identities. Reopen validates thread-parent indexes, depth, digest, and skip facts in
+  bounded pages without constructing an ancestor set.
+- Reopen validates each thread's inherited/current image-label frontiers and immutable local
+  origin spans against parent-frontier inheritance, contiguous span advances, and exact admitted
+  sealed-set proofs. It scans indexes in bounded pages and never constructs a per-thread used-label
+  set.
 - An empty selected path uses the V1 digest of the dedicated empty-path domain separator. A nonempty thread's selected-path digest equals its committed tail's chain digest.
 - A pending, active, or unknown-terminal turn must be the committed tail of its origin thread. Because one thread has one committed tail, this is also the bounded durable proof that one thread cannot retain competing execution-blocking turns.
 - Reopen proves current structural agreement. Parent immutability and one-way draft consumption are additionally enforced by the absence of any production mutation that rewrites a turn header or recreates a consumed draft; they are not inferred as historical events from one snapshot.
 - Reopen replays each canonical item's exact `item-source-events` sequence in bounded memory and
   requires its kind, assistant phase, external CAS identity, typed provider-frame references,
-  structural and chunk digests, logical-text spans, completion state, and source-event frontier to
-  agree exactly with the canonical item and content manifest. A completed provider item requires an
-  exact sealed completion frame even when its presentation policy exposes no narrative text.
+  structural and chunk digests, selected provider-narrative generation and digests when applicable,
+  completion state, and source-event frontier to agree exactly with the canonical item, content
+  manifest, and narrative-span index. A completed provider item requires an exact sealed completion
+  frame and, when transcript-visible, a durable exact equality result against its selected append
+  generation. A retained mismatch must agree with the typed history-incomplete disposition and may
+  never select completion text for presentation.
+- Reopen validates activity-query heads, source memberships, and entries against exact owner/period,
+  source turn and event interval, CAS item identity, provider lifecycle, handoff range, full ordering
+  key, retained stored bytes, cutoff, and logical counters in bounded pages. It proves the exact
+  first activity-visible event, the presence of every logically running row, and the deterministic
+  maximal newest completed prefix under both fixed retention caps; coherently shrinking those
+  records or counters is corruption. A child handoff can be published only after the child turn is
+  proven terminal; its inactive membership binds the exact terminal source frontier so later child
+  activity cannot make parent authority stale. A
+  rebuildable mismatch must carry an explicit stale head and complete a bounded rebuild before the
+  query can publish; it cannot expose a mixed generation.
 - A proven-terminal turn with admitted source events must end at the matching turn-ending source event. Its contiguous finalized-item frontier may advance afterward only over already admitted immutable or terminal-finalized canonical content.
 - Projection construction may consume one exact current live or immutable canonical snapshot. Any
   source advance atomically marks a selected projection stale and supersedes an incomplete build;
@@ -348,53 +884,247 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Revisions And Ordering
 
 - Thread and draft revisions are monotonic and independently checked.
-- One atomic idle-thread submission validates the expected thread, draft, input-gate, and sealed-content revisions, transitions the current draft identity into a submitted turn, updates the committed tail, and creates the caller-named replacement current draft.
+- One atomic idle-thread submission validates the expected thread, draft, input-gate, and
+  sealed-content revisions, derives the ordinary parent from the current thread tail, transitions
+  the current draft identity into a submitted turn, updates the committed tail, and creates the
+  caller-named replacement current draft. Context-first submission derives its parent from the
+  matching draft-owned envelope source, and replacement submission derives it from the validated
+  target turn.
 - The idle transition preserves the draft identity's exact payload in the typed submitted-turn identity and allocates no unrelated turn id.
-- One atomic active-or-queued submission validates the expected thread, draft, input-gate, and sealed-content revisions, freezes the payload into an ordered accepted-input record, and creates the caller-named replacement current draft without creating a competing submitted turn. Later queue movement preserves that accepted-input identity.
-- Every thread creation also publishes its initial idle input gate. Active-or-queued submission requires the exact gate revision, advances its accepted-order high-water mark and live counters atomically, and never scans retained accepted history to choose an ordinal or enforce capacity.
-- A live accepted input has exactly one live steering or next-turn index. Delivered, terminally
-  failed, or delivery-unknown input has neither live index but retains its permanent accepted-order
-  entry. Claim, proven-pre-dispatch retry, exact success, and structured rejection each
-  revision-check the input and gate, advance their revisions, and update the accepted-order
-  revision atomically with the exact live-route and counter change.
-- A non-steerable or stale-target CAS rejection changes one delivering accepted input to retryable and replaces its steering route with `NextTurn(SteeringRejected)`. It preserves the input identity, permanent ordinal, original admission gate revision, content, marker records, and admitted timestamp.
-- A possibly dispatched steering attempt whose provider response is unavailable changes to terminal
-  delivery-unknown only as part of atomic active-binding abandonment. The same transition retires
-  the active CAS thread, removes the input's live route and gate accounting, retains permanent
-  accepted-input history, and supplies no automatic retry authority. Projection-loss rerouting may
-  move only work proven not dispatched.
-- Execution snapshots contain no accepted-input vector. Their relationship to accepted steering is expressed by each accepted input's exact target proof, keeping snapshot metadata bounded independently of thread history.
-- Branch-discussion creation atomically creates the thread, context-bearing first draft, parent-thread binding, and context-owner identity.
+- One atomic active-or-queued submission validates the expected thread, draft, input-gate,
+  route-generation head, and sealed-content revisions, freezes the payload into an immutable
+  ordered accepted-input record plus one bounded route leaf, advances that generation's aggregates,
+  and creates the caller-named replacement current draft without creating a competing submitted
+  turn. Later route transitions preserve that accepted-input identity and permanent membership.
+- The same first-acceptance command validates the compact sealed-set proof against the exact content
+  marker digest/count, advances the thread frontier monotonically, and creates at most one immutable
+  local origin span. Per-marker validation already completed through bounded set-staging pages;
+  later delivery disposition changes never rescan or rewrite label authority.
+- Every thread creation also publishes its initial idle input gate. Active-or-queued submission
+  requires the exact gate and selected route-generation head revisions, advances its accepted-order
+  high-water mark and checked `u64` live counters atomically, and never scans retained accepted
+  history to choose an ordinal or enforce capacity. `FinalizingHistory(turn)` is a non-idle,
+  queue-only gate state and is itself the durable recovery source for a proven-terminal turn whose
+  bounded canonical and selected-transcript convergence has not yet settled.
+- One immutable accepted-order entry is the input's unique route-generation membership. Its bounded
+  route leaf is live while ready, retryable, delivering, or next-turn and terminal otherwise. Claim,
+  proven-pre-dispatch retry, exact success, and structured rejection each identify the exact source
+  leaf, transition kind, immutable generation, and semantic steering target. Under the serialized
+  writer, the mutation validates that stable identity against the current compatible gate,
+  generation head, and target, then captures those actual current revisions while updating only
+  that leaf, one new generation-state revision/head, compact ready-source or next-source presence
+  when needed, and aggregate counters. A sibling admission in the same generation may advance the
+  shared gate and route head without invalidating the leaf operation. A ready source exists exactly
+  when the selected gate and route head identify one `Steering` generation whose ready/retryable
+  count is nonzero; awaiting target identity, projection loss, and a zero ready count leave it
+  absent. They never rewrite accepted input or accepted-order authority. Each transition has a
+  current-domain command and one fixed-work `Prior`/`Exact`/`Collision` reconciliation read. The
+  successor leaf persists the actual consumed gate and selected-route proof, source leaf revision,
+  and transition kind as its bounded operation witness. A matching successor state without the
+  complete proof is a collision, not publication evidence. Absence of a transition witness is
+  valid only for the initial admitted leaf. Exact reconciliation uses that immutable witness plus
+  monotonic compatible descendants; it never requires two identical snapshots of a mutable gate or
+  generation head. A later route-wide stop, unknown-terminal, terminal-history, or projection-loss
+  reclassification is such a compatible descendant: it changes scheduling authority but cannot
+  erase or contradict an earlier leaf-local retry or structured-rejection witness.
+- `Retryable` is durable non-dispatch eligibility, not a clock, retry count, transient-error claim,
+  or command to retry immediately. Ready-source and candidate pages expose it so the app can run a
+  bounded retry pass under separate process-lifecycle authority; this package owns no timer,
+  process wake, scheduler retry set, or error-cause inference.
+- A source-backed unknown-terminal event against the exact active CAS turn requires a selected
+  steering generation with no delivering member. Its final event commit atomically changes that
+  generation to `AwaitingTerminal(exact prior steering target)`, transfers every ready/retryable
+  aggregate from live steering to next-turn work, removes its ready source, publishes its next
+  source when nonempty, and changes the gate to `AwaitingTerminal(turn)`. Leaves, accepted
+  identities, permanent order, and logical bytes are unchanged.
+- While awaiting terminal evidence, ordinary accepted input enters later
+  `NextTurn(UnknownTerminal)` generations and cannot replace the selected retained target. Exact
+  late item events advance capture without changing the gate. Exact late activation atomically
+  opens a fresh empty steering generation for the same active target while preserving every
+  unknown-terminal generation as next-turn work. Exact late terminal publication enters
+  `FinalizingHistory`; active-authority loss uses ordinary abandonment with a distinct
+  awaiting-terminal lost-target witness.
+- Stop admission is one fixed-work target-kind-specific serialized mutation. An ordinary target
+  reads the exact active binding and CAS turn, input gate, selected steering generation, ready-
+  source authority, and new stop record; it proves no delivering leaf from aggregates, publishes
+  the stopping gate and record, removes ready eligibility, and changes admitted or retryable work
+  through the compact `Stop` generation transition. A provider-operation target instead reads the
+  exact compacting gate, compaction record and published CAS turn, provider snapshot, valid binding,
+  route aggregates, and new stop record; it changes the compaction record to stopping and publishes
+  the gate/stop pair without creating a steering generation or rewriting
+  `NextTurn(Compaction)`. Both preserve identities, order, and bytes and conflict with matching
+  terminal through the same target-operation election.
+- Stop-admission reconciliation uses the caller-owned operation identity, exact target, consumed
+  source revisions, stop record, gate, and generation-transition witness. It accepts compatible
+  path-neutral stopping descendants such as queued admission, cause join, or dispatch claim. If
+  terminal, safe-reopen, or abandonment already consumed the current record, that transition's
+  bounded successor witness remains the exact result; an aggregate-shape match without the
+  operation identity is a collision.
+- Stop-period accepted input uses the ordinary bounded admission mutation against the current
+  stopping gate. It enters a later next-turn generation, may advance path-neutral gate and thread
+  revisions, and does not mutate the immutable stop target. The matching stop record's closed
+  target kind selects `NextTurn(Stop)` for ordinary execution or `NextTurn(Compaction)` for a
+  provider operation; the admission read never guesses from the blocked turn alone.
+- Dispatch claim is a one-way fixed-work mutation from `Admitted` to
+  `DispatchClaimed(source_revision, caller_attempt_id)`. The immutable witness names the exact live
+  record revision consumed by the claim. Its reconciliation returns `Prior`, `Exact`, or
+  `Collision` from the complete gate, target, stop identity, source revision, attempt identity, and
+  successor witness, including after later compatible cause joins or consumption. Neither repeated
+  reads nor absence of another attempt authorizes a second claim.
+- Safe stop reopening requires an exact admitted or claimed record, absence of interrupting-
+  approval cause, and the caller's closed local proof that every request byte was prevented while
+  the same target authority remains current. The ordinary variant atomically consumes the stop,
+  publishes an active-steering gate with a fresh empty generation, and leaves existing next-turn
+  work unchanged. The provider-operation variant atomically consumes the stop, changes the exact
+  compaction record from stopping back to live, and restores the compacting gate without any
+  steering generation or route rewrite. The consumed record and target-specific successor agree
+  on operation, attempt when any, source revisions, and transition kind as one bounded witness for
+  `Prior`/`Exact`/`Collision` reconciliation.
+- A provider rejection that proves no core interruption but lacks a current-target verdict is not a
+  safe-reopen disposition. The caller supplies that closed witness to ordinary stop abandonment,
+  whose successor records the consumed operation and attempt plus projection retirement and
+  source-less incomplete convergence; storage does not parse provider codes or diagnostic text.
+- Stop abandonment records one closed caller-classified reason distinguishing provider rejection
+  before core interruption, live connection or target-authority loss, and startup loss of the old
+  process generation. The reason is diagnostic and lifecycle provenance, never replay, retry, or
+  safe-reopen authority.
+- Matching terminal publication consumes the record's live authority into its terminal disposition.
+  The ordinary variant changes the gate to `FinalizingHistory`; the provider-operation variant
+  records terminal in the compaction record and restores `Compacting` only for its dedicated
+  bounded item finalization. Both preserve queued generations. The bounded successor retains the
+  stop operation and complete cause-first and dispatch-claim provenance so an app-owned process-
+  local hard-run hold can authenticate any delayed finalization release; storage persists no hard-
+  run state and recovery waits for no lost process-local hold. Stop abandonment instead marks the
+  record consumed by abandonment while retiring the target projection, preserving effective next-
+  turn work, and publishing the target-kind-specific source-less incomplete convergence. Both
+  commands expose complete fixed-work
+  `Prior`/`Exact`/`Collision` reconciliation; neither state can be reconstructed from a gate-only
+  successor or used to replay an interrupt.
+- One atomic accepted-input promotion selects the earliest effective next-turn leaf from a
+  revision-bound next-source page and requires an idle gate with no terminal-history obligation. It
+  creates caller-named fresh pending
+  turn and item identities, parents the turn to the precommit thread tail, advances thread,
+  transcript, history summary, activity, unbound binding, and input gate authority, transfers one
+  next-turn route count and its live bytes to terminal state, and publishes the exact promotion
+  witness. It retains the accepted-input and accepted-order records, leaves the current draft
+  record untouched, and updates only the draft reverse index's matching thread revision.
+- Transcript projection lifecycle is not a promotion eligibility gate. An exact `Current` or
+  rebuildable `Stale` head with the selected tail and digest is a valid basis; promotion supersedes
+  any active build and advances that exact head to the new pending tail as `Stale`.
+- Queued accepted-input admission preserves the selected tail and digest while advancing the broad
+  thread revision. It therefore preserves both an active transcript build and an already-completed
+  `Current` generation. The admission advances the history summary to the new current thread
+  revision, preserves its derived completeness, and advances its draft activity. A later
+  path-changing mutation, not a path-neutral admission, supersedes an active build.
+- Promotion exposes a fixed-work `Prior`/`Exact`/`Collision` reconciliation contract. `Exact`
+  authenticates the complete immutable terminal route witness and exact promoted successor
+  identities, then accepts current thread, gate, route, binding, transcript/summary/activity, and
+  reverse-index authority when it is a compatible monotonic descendant of that promotion. `Prior`
+  requires the complete source parent, its proven-terminal state, and its bounded
+  deterministic ancestry proof; missing source lineage is a collision rather than benign absence.
+  A later valid accepted-input admission against the promoted pending gate may rotate the current
+  draft,
+  advance thread and gate revisions, label and accepted-input frontiers, next-turn aggregates,
+  history summary and thread-parent revision, and create new route authority. It does not erase
+  publication proof while the promoted selected tail, pending-turn identity, original terminal
+  route witness, successor records, binding, transcript source, and activity source remain exact
+  or compatible. A current-draft save may independently advance the matching draft reverse revision
+  and summary activity time. Reconciliation never requires the complete immediate post-promotion
+  mutable shape to remain current. Identity or successor reuse, incompatible lineage, an impossible
+  descendant, a similar aggregate without the witness, or partial publication is `Collision`.
+- Local worker or connection-attempt capacity pressure is not a storage transition. It leaves the
+  ready or retryable steering leaf, generation head, gate counters, next-source authority, and
+  accepted identity unchanged so a later bounded attempt may still steer the exact active target.
+- A closed structured non-steerable CAS rejection changes one delivering accepted input to
+  retryable and replaces its steering route with `NextTurn(SteeringRejected)`. It preserves the
+  input identity, permanent ordinal, original admission gate revision, content, marker records,
+  and admitted timestamp. An exact rejection without a closed target verdict cannot use this
+  standalone transition; it uses the named exact-rejection variant of atomic active abandonment.
+- A possibly dispatched steering attempt whose provider response is unavailable resolves to
+  terminal delivery-unknown only through the same route-generation head transition that atomically
+  abandons the active binding and retires the CAS thread. Ready or retryable leaves in that
+  generation resolve to next-turn work; delivering leaves resolve to delivery-unknown except for
+  the one optional exact-rejected leaf named by the abandonment command. That leaf resolves to
+  next-turn work only after the mutation validates its current delivering revision and exact
+  generation target and writes its next-turn leaf state. Abandonment carries stable binding,
+  target, and generic-or-named disposition identity; the serialized mutation consumes the actual
+  current compatible gate and route head, so a sibling admission between loss proof and publication
+  cannot turn exact loss into a collision. The generation's retained aggregates update the gate in
+  constant command work, so no member vector or generation-wide per-input rewrite is required. The
+  permanent accepted-input history remains and supplies no automatic retry authority for any
+  delivery lacking exact non-acceptance proof. Projection-loss rerouting affects only work proven
+  not dispatched.
+- Execution snapshots contain no accepted-input vector. Their relationship to accepted steering is
+  expressed once by the selected accepted-route generation's exact target proof, keeping snapshot
+  metadata and immutable accepted-input records bounded independently of thread history.
+- Branch-discussion creation atomically creates the thread, context-bearing first draft,
+  parent-thread binding, validated lineage depth/digest/skip facts, the parent's exact current
+  image-label frontier as the child's immutable inherited/current starting frontier, and
+  context-owner identity. It copies no label-origin spans.
 - Starting or cancelling replacement edit revision-checks the current empty draft and atomically sets or clears its exact ordinary-user-turn target and selected-path proof without rewriting submitted turns; provider-operation turns are never replacement targets, and cancellation preserves the mutable payload.
 - Starting replacement edit copies the target user item's exact sealed content reference and marker facts into the current draft while retaining the target item as immutable history. The edit alone changes no selected path, committed tail, input gate, or CAS binding.
 - Provider event updates never mutate submitted turn parentage.
+- Provider item and lifecycle publication atomically advances the affected activity-query head and
+  ordered entry when that event has activity presentation. A bounded GUI-derived fact such as a
+  child handoff byte count may contribute only through its exact source identity and checked fixed
+  metadata; it cannot carry the source payload. Query-page reads require the exact head revision and
+  return stale rather than mixing entry generations.
 - Storage maintains monotonic revisions for live canonical items and content manifests while source capture remains open. A committed transcript-visible event advances those canonical revisions and marks the selected transcript head stale; the bounded projection builder advances projection records separately from the already admitted source frontier.
-- `capture_item` stabilizes one exact CAS-item index, canonical item, latest provider frame, and owned
-  live-or-finalized content manifest by rereading that CAS index. Bounded provider-frame reads expose
-  typed structural pages; `capture_item_text_range` returns at most 65,536 logical UTF-8 bytes from
-  indexed narrative spans while stabilizing the same exact composite item before and after the page.
-  Mutation of that item is concurrent state; unrelated thread and item commits do not invalidate
-  either read.
+- `capture_item` stabilizes one exact CAS-item index, canonical item, latest provider frame, selected
+  provider narrative view when any, and owned live-or-finalized content manifest by rereading that
+  CAS index. Bounded provider-frame reads expose typed structural pages;
+  `capture_provider_narrative_range` returns at most 65,536 logical UTF-8 bytes by walking the exact
+  selected generation's narrative spans and referenced ProviderItemV1 ranges while stabilizing the
+  same composite item before and after the page. Mutation of that item is concurrent state;
+  unrelated thread and item commits do not invalidate either read.
 - A typed delta names the exact item kind it is permitted to advance. Live mutation compares that
   kind with the durable CAS-item/canonical-item kind before staging a provider-frame addition and
   rejects any mismatch without publication. Protocol indices retained by typed frames are bounded
   and nonnegative before they cross the storage API. Final publication stores only the sealed frame
   reference in the source event and advances its canonical/content frontiers atomically.
-- When a visible canonical source revision advances, its selected item-projection set and transcript
-  head become stale in the same commit. A later bounded builder starts a new item-projection
-  generation; it may reuse frozen closed-block projections by exact reference but never rewrites a
-  prior generation's indexes.
+- A transcript-visible canonical revision marks the selected transcript head stale in the same
+  commit. It invalidates selected item-projection state only when that canonical item owns an actual
+  closed `ProjectionTextSource`. Generated media remains transcript-visible through resource
+  presentation but owns no Markdown projection; operational text may own a projection source under
+  its separate presentation policy. A later bounded builder starts a new item-projection generation
+  only for a projectable item; it may reuse frozen closed-block projections by exact reference but
+  never rewrites a prior generation's indexes.
 - Multiple canonical advances before publication may supersede intermediate builds and converge
-  directly on the latest revision. If the content reference is unchanged, including submitted-user
-  correlation and provider-lifecycle-only advances, the new generation reuses the prior stable
-  end-of-input checkpoint, projection and resource identities, membership, and digest. It republishes
-  exact revision provenance without rereading or reparsing unchanged text.
+  directly on the latest revision. A provider live append may reuse the exact stable checkpoint of
+  the same narrative generation. Completion seals that same generation only after bounded exact
+  comparison and never starts a replacement projection source. If the closed projection source is
+  unchanged, including submitted-user correlation, agreeing completion, and other
+  provider-lifecycle-only advances, the new
+  generation reuses the prior stable end-of-input checkpoint, projection and resource identities,
+  membership, and digest. It republishes exact revision provenance without rereading or reparsing
+  unchanged text.
 - The builder resumes a later source revision from the prior generation's durable stable
   checkpoint and digest rather than replaying source from byte zero. `stable_eof_resolved = false`
   means the checkpoint precedes the live snapshot's provisional end-of-input outputs;
   `stable_eof_resolved = true` means immutable end-of-input has been consumed into the stable
   prefix. No current source revision may shrink behind or disagree with that checkpoint.
-- A transition to a proven-terminal turn lifecycle closes ordinary source-event admission. The same commit leaves every affected derived frontier current only when it already includes the complete accepted event frontier; otherwise it marks that work stale for bounded first-time completion.
+- A transition to a proven-terminal ordinary-turn lifecycle closes ordinary source-event admission
+  and atomically moves its input gate to `FinalizingHistory(turn)`. The same commit leaves every
+  affected derived frontier current only when it already includes the complete accepted event
+  frontier; otherwise it marks that work stale for bounded first-time completion. It never makes
+  the gate idle merely because terminal status is durable.
+- Terminal-history completion is a separate exact mutation after the bounded item and selected-
+  transcript pipelines. It requires the same finalizing gate and proven-terminal committed tail,
+  a current transcript build for the exact selected path, and an item frontier that is fully
+  finalized or stopped at a structurally valid non-finalizable captured item or pending-resource
+  disposition. Its observed gate is a lower-bound proof: at writer serialization it may consume a
+  compatible `FinalizingHistory` descendant produced only by path-neutral queued admissions. The
+  current gate must retain the same thread, turn, selected route, zero steering work, monotonic
+  live bytes, and exact one-for-one accepted-input, next-turn, route-generation, and pre-release
+  gate-revision advances. Completion contributes the sole additional gate revision and atomically
+  changes only that current gate to idle while preserving its route authority and accounting. A
+  failed, ambiguous, or interrupted completion leaves the durable finalizing source discoverable
+  and idempotently resumable.
+- Reopen validation treats a stale binding's abandoned active predecessor as historical authority,
+  not as permanent ownership of the current gate. While that terminal remains the committed tail,
+  the gate is either its pending `FinalizingHistory` obligation or idle only when the same item and
+  transcript fixed-point predicate re-proves. Once a later committed tail exists, ordinary current
+  gate ordering governs it and the older terminal cannot pin the gate back to its prior phase.
 - A current item projection becomes finalized when its source turn has a proven terminal lifecycle. Finalized turn-owned canonical content, projection identity, revision, text, resources, and item-local ordering are immutable.
 - A named thread's transcript-view head and entries remain a rebuildable selected-path index: they may advance when the thread tail changes, when another finalized turn is appended, or while unfinished projection work changes state. Rebuilding that view may reference finalized projections but cannot rewrite them.
 - Starting a transcript rebuild allocates the head's next generation and records an exact head
@@ -412,20 +1142,37 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Write commits implement the durability and projection-revision requirements of the owning systems at the storage boundary.
 - Large content construction uses a bounded sequence of revision-checked commands. Each command atomically appends the next bounded chunk batch and advances its manifest frontier; one final command seals the exact completed manifest and publishes its owner reference. No owner can reference building content.
 - A surfaced failure during staging is reconciled against the exact content identity, frontier, and chunk digests before work resumes. A conflicting or abandoned building object remains unreachable and is never overwritten or reinterpreted as another payload.
-- Correctness-sensitive operations contribute all Syndic and required Beryl-domain changes to one typed home-store command and are not reported successful until its `SyncAll` barrier completes. Image-bearing admission includes one bounded Beryl-state per-marker reference move whose exact marker and asset facts agree with the admitted Syndic payload.
+- Correctness-sensitive operations contribute all Syndic and required Beryl-domain changes to one
+  typed home-store command and are not reported successful until its `SyncAll` barrier completes.
+  Image-bearing admission references one already sealed Beryl-state asset-reference set and swaps
+  only compact owner heads whose identity, marker frontier, count, and digest agree with the
+  admitted Syndic payload.
 - Validation rejection, revision conflict, and cancellation observed before writer admission leave the prior Syndic records unchanged. Cancellation after admission does not retract a command.
-- A surfaced post-admission storage or persistence failure has an ambiguous durable outcome. Higher-level services retain exact natural identities and caller-owned editor state, gate publication, and reconcile through same-home verification or recovery plus coherent typed reads; they do not infer rollback from the error or blindly replay the mutation.
-- Admission reconciliation is intentionally publication-gated and immediate: `Absent` proves the expected current draft still exists and all draft-derived result identities are absent; `ExactSubmitted` or `ExactAccepted` additionally proves the caller-named replacement draft, advanced input gate, immutable admitted owner, exact content and marker set; `Collision` authorizes neither replay nor success. Later mutations need not preserve an earlier admission's exact reconciliation snapshot.
-- Live event ingestion stages an arbitrarily large typed provider frame through bounded resumable
-  commands while published authority remains unchanged. Its final command writes the sealed frame
-  reference, source event, turn lifecycle/frontiers, canonical item/content changes, exact source
-  indexes, history activity, input-gate terminal transition when any, and transcript-staleness
-  effect in one durable commit. An unreachable staged suffix is retained only for future garbage
-  collection and cannot authorize history.
-- Live-event, binding, finalization, item-projection, and transcript mutations expose
+- A surfaced post-admission storage or persistence failure has an ambiguous durable outcome. Higher-level services retain exact natural identities and caller-owned editor state and reconcile through same-home verification or recovery plus coherent typed reads; they do not infer rollback from the error or blindly replay the mutation.
+- `Absent` admission reconciliation proves the expected current draft still exists and all draft-derived result identities are absent. Its source-identity classifier retries at most once when that natural anchor changes; it never waits for a quiet whole-domain revision. `ExactSubmitted` proves the caller-named replacement draft, advanced input gate, immutable admitted owner, exact content and marker set. Every accepted-input record additionally retains the complete original accepted-admission intent: expected source thread and draft revisions, source and replacement draft identities, expected gate revision, content, asset proof, and admission time. `ExactAccepted` proves that immutable receipt plus permanent accepted-order and route-leaf identity. It remains exact across later valid route, gate, draft, delivery, rejection, activation, terminal, promotion, or projection-loss descendants. `Collision` means the durable receipt or permanent membership disagrees and authorizes neither replay nor success.
+- Live event ingestion stages an arbitrarily large typed provider frame, applicable append-only
+  narrative spans, and any completion-equality comparison through bounded resumable commands while
+  published authority remains unchanged. Its final command writes the sealed frame reference,
+  selected narrative view, equality or mismatch disposition, source event, turn
+  lifecycle/frontiers, canonical item/content changes, exact source indexes, history activity,
+  input-gate terminal transition when any, and transcript-staleness effect in one durable commit.
+  An unreachable staged byte or span suffix is retained only for future garbage collection and
+  cannot authorize history.
+- Exact-route provider lifecycle conflicts use a separate atomic live-event mutation over the same
+  source-order fences. It verifies the compact sealed-observation reference and its inadmissibility,
+  writes the issue source record, advances the turn's source and first-issue frontiers, updates
+  history activity, and marks transcript work stale in one durable commit. It writes no provider
+  frame, canonical item, item index, content generation, or item lifecycle effect.
+- Live-event, binding, stop-operation, finalization, item-projection, and transcript mutations expose
   narrow current-domain command constructors. The home store captures their physical domain basis
   after writer admission, while each mutation continues to validate its exact logical record
   revisions and never retries semantic conflict.
+- Startup recovery reads only the physical input-gate family. Non-idle
+  `FinalizingHistory(turn)` rows are the sole durable terminal-history work source; no secondary
+  queue, derived idle scan, or process-local obligation may replace that authority.
+- The same bounded gate scan discovers `Stopping` rows, but their matching current stop-operation
+  record is the sole stop authority. Startup may classify and abandon that pair; it may not derive a
+  stop from an active binding, scan a secondary queue, or issue an interruption.
 - Transcript projection building is deferred from live capture. Storage marks the selected transcript head stale and retains enough exact source and canonical data for deterministic bounded projection work.
 - Projection work never calls a whole-message Markdown parser. It advances one persisted bounded
   state machine over indexed canonical ranges. A parser crash or process loss resumes from the
@@ -449,16 +1196,39 @@ Support short durable write commits for live CAS event ingestion, streaming assi
   history-complete publication. The terminal event does not supply a provider snapshot and cannot
   prove or reconstruct an unobserved item. The storage API imposes no smaller whole-turn item ceiling
   and does not expose a raw iterator or global-domain quietness requirement for that audit.
+- A turn with a durable provider-observation issue cannot publish a history-complete terminal.
+  Normal provider terminal publication retains the provider outcome and uses
+  `CompletionMismatch` as its terminal history-incomplete reason. Source-less loss convergence
+  retains its primary local loss reason while preserving the separate issue field in turn state;
+  neither transition erases or rewrites the issue source record.
 - No API may detach or rewrite a submitted turn parent edge. Replacement edits create a new turn and update only the selected thread bindings.
-- Starting or cancelling replacement edit never mutates the current draft's immutable parent. The accepted replacement turn derives its parent from the immutable target turn, while a bounded current transcript-generation entry proves that target belonged to the selected path when edit intent was admitted.
+- Starting or cancelling replacement edit changes only the draft's explicit typed intent and
+  selected content. The accepted replacement turn derives its parent from the immutable target
+  turn, while a bounded current transcript-generation entry proves that target belonged to the
+  selected path when edit intent was admitted.
 
 ## Ordinary Thread And Draft Mutation Boundary
 
-- Empty ordinary-thread creation atomically contributes the thread, empty current draft referencing the canonical sealed empty-composer content, draft reverse index, current zero-entry transcript head, complete history summary, unbound binding revision, and binding head. Natural thread and draft identities are caller-owned inputs.
-- Thread-from-tail creation requires one coherent nonempty source-thread selected-tail proof and source activity fact. It creates no turn or transcript-entry copy, gives the new draft that exact tail as immutable parent, publishes a zero-entry stale transcript head, and uses the caller's exact non-regressing timestamp for the draft and history summary.
+- Empty ordinary-thread creation atomically contributes the thread, immutable execution record,
+  initial attributes and usage records, empty current draft referencing the canonical sealed empty-
+  composer content, draft reverse index, current zero-entry transcript head, complete history
+  summary, initial compact catalog summary, unbound binding revision, and binding head. Natural
+  thread and draft identities are caller-owned inputs.
+- Thread-from-tail creation requires one coherent nonempty source-thread selected-tail proof and
+  source activity fact. It creates no turn or transcript-entry copy, stores that exact tail only as
+  the new thread's selected path, publishes a zero-entry stale transcript head, and uses the
+  caller's exact non-regressing timestamp for the draft and history summary. In the same creation
+  command it inherits the source thread's immutable execution and publishes the child's initial
+  attributes, usage, compact catalog summary, unbound binding revision, and binding head.
 - Creation rejects any target identity or required-record collision. A bounded stable reconciliation read classifies the natural identity set as absent, exactly committed, or collided after replay or an ambiguous admitted outcome.
 - Current-draft reads stabilize the reverse index around the thread and draft reads and reject concurrent or contradictory publication rather than returning a mixed generation.
-- A payload save first stages an exact content object without changing the draft. Final publication requires the exact current thread revision, draft identity, draft revision, complete building-content frontier, and expected manifest. It seals the content, advances only the draft revision, replaces the content reference, preserves immutable thread, parent, context, replacement-intent, identity, and creation facts, and updates the draft reverse index and history-summary activity in the same contribution.
+- A payload save first stages an exact content object without changing the draft. Final publication
+  requires the exact current draft identity and revision, complete building-content frontier, and
+  expected manifest; it does not take an expected selected-path thread revision. On the serialized
+  writer snapshot it proves the same draft is still current, carries the then-current thread
+  revision into the reverse index, seals the content, advances only the draft revision, replaces
+  the content reference, preserves thread ownership, submission intent, identity, and creation
+  facts, and updates history-summary activity in the same contribution.
 - Exact payload equality is a typed caller-visible no-change decision and produces no home command. An update timestamp may equal but never precede current durable draft activity.
 - Pre-admission cancellation is owned by `HomeCommand`. A mutation API makes no rollback claim after writer admission; exact current-draft and natural-creation reads are the reconciliation authority after a surfaced ambiguous failure.
 - Draft-only thread revision advance does not invalidate a CAS binding whose observed selected-path tail and digest still agree exactly. A tail or digest change publishes a new unbound binding revision for the pending path; it never copies prior valid lineage onto an undelivered turn.
@@ -477,8 +1247,23 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - A missing top-level manifest returns absence. Malformed envelopes and inconsistent referenced
   records return the existing typed read or invariant failures, while a manifest change across the
   bounded assembly returns `ConcurrentChange` rather than publishing mixed state.
-- Valid marker-bearing content is rejected explicitly at this text-only boundary. Marker-aware
-  projection continues to use ordered content pieces and marker resolutions.
+- Valid marker-bearing content is rejected explicitly at this whole-content text-only boundary.
+  Marker-aware projection first derives exact marker-bounded logical segments from ordered content
+  pieces, then uses the separate segment-range read for authored text.
+- One bounded segment-proof read accepts the exact sealed content reference plus an optional opaque
+  preceding-marker boundary returned by the prior proof. A bare piece ordinal is never accepted as
+  authenticated cursor authority. No cursor means the unique leading or whole segment;
+  a cursor means the unique segment immediately after that marker. The read derives both logical
+  bounds, scans the consecutive ordered piece interval once, and returns an opaque proof plus its
+  authenticated following-marker boundary when any. Caller-supplied raw ranges never select a
+  segment. Feeding each following-marker cursor into the next proof uniquely walks leading,
+  adjacent, trailing, marker-only, and marker-free content.
+- Segment-range page reads require that opaque proof plus an absolute page start. They return
+  UTF-8-safe continuation without rescanning the complete segment and still reject a contradictory
+  marker encountered in the physical page path. One proof plus sequential replay is linear in the
+  segment's pieces, spans, payload, and page count.
+- Segment reads never return image labels or marker substitutions; those generated fragments remain
+  the app/composer projection boundary's responsibility.
 - The result reports the exact logical start, bounded UTF-8 payload, optional next offset, exact
   sealed reference, and checked stored key-and-value byte total for both manifest reads, span-index
   pages, and chunk records.
@@ -486,9 +1271,9 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 ## Resource Payloads
 
 - Heavy resources are addressed by metadata records and explicit byte ranges.
-- Phase 7 code and table resources retain one exact canonical content reference and half-open
-  logical UTF-8 range. The content-text-span and content-byte-span indexes map a requested resource
-  range to the minimal bounded encoded chunk ranges for both composer and plain UTF-8 content;
+- Code and table resources retain one exact closed composer-content or provider-narrative backing
+  plus a half-open logical UTF-8 range. The appropriate content or narrative span index maps a
+  requested resource range to the minimal bounded encoded ProviderItemV1 or composer chunk ranges;
   storage does not duplicate those bytes into projection records or sidecars.
 - Large externally owned byte payloads may live in sidecar files when their owning later feature
   can admit and range-read them through an explicitly bounded home-store contract. Phase 7 does not
@@ -513,14 +1298,63 @@ Support short durable write commits for live CAS event ingestion, streaming assi
 - Storage does not treat CAS reconnect, resume, late subscription, process restart, historical reads,
   or a later status-only terminal event as replay of missing source events. After live authority is
   lost, retained admitted source records remain the exact prefix and recovery converges through an
-  explicit incomplete disposition, retaining a typed unsupported-history reason when applicable,
-  rather than fabricating a complete item set.
+  explicit incomplete disposition, retaining typed unsupported-history and provider-observation
+  issue facts when applicable, rather than fabricating a complete item set.
 - Proven loss of an active execution session atomically stales its binding and retires the old
   projection. Once no usable projection authority remains, a later source-less terminal transition
   may close local turn capture as incomplete. A possibly dispatched start is never reset to pending,
   and a possibly dispatched steering fragment is never reset to retryable solely because the session
   disappeared.
-- Storage startup validates exactly one current draft per thread, matching thread/draft ownership, one-way draft-to-turn identity consumption with no live raw-payload collision, committed-tail reachability, immutable parentage, monotonic revisions, accepted-input ordering, CAS-binding uniqueness, source-event ordering and per-item replay, terminal closure and finalization frontiers, stale projection markers, and referenced resources.
+- Restart classification treats every active binding as possible dispatch, including an activation
+  with no active CAS-turn row or source event. A safe pending result requires a pending,
+  source-free turn, no selected active route, and a non-active current binding. A selected
+  projection-loss route with the matching stale successor instead proves that abandonment already
+  committed and authorizes only source-less incomplete terminal convergence.
+- An active awaiting-terminal classification requires an unknown-terminal committed tail, the
+  matching gate, exact active binding and CAS turn, and a selected `AwaitingTerminal` generation
+  with no ready or delivering aggregate. Startup returns its distinct retained lost-target witness
+  and permits only generic active abandonment; it never restores steering, synthesizes activation,
+  waits for late evidence from the lost process, or resumes that session.
+- A stopping classifier requires the exact gate-record pair and returns admitted or
+  dispatch-claimed state without making either replayable. Restart abandonment preserves the
+  distinction in the transition witness, consumes the record's live authority into its startup-
+  abandonment disposition, retires the old projection, and leaves accepted next-turn work intact
+  before source-less incomplete convergence.
+- A compacting classifier requires the exact gate, operation record, provider-operation turn and
+  snapshot, valid-or-retired binding relationship, optional CAS turn, marker, terminal state, and
+  route aggregates. `Admitted` is proven unissued and may be consumed locally while retaining the
+  valid binding. A claimed record with durable proven nondispatch may finish the same local
+  consumption and retain the binding without reusing its attempt. A claim with no disposition,
+  acceptance, or completion unknown is possible dispatch and authorizes only binding retirement
+  plus source-less incomplete convergence. Pinned rejection proves no core admission but still
+  requires target retirement. None authorizes compact-start replay.
+- Matching marker-then-successful-terminal evidence authorizes resumable bounded provider-item
+  finalization and successful compaction consumption even if request acknowledgement is absent.
+  Interrupted terminal authorizes interrupted consumption with
+  `ForcedAbortOrderingUnproven`; it preserves the binding only with separate exact idle-status
+  evidence. Failed terminal, idle-unproven interruption, or successful terminal without the marker
+  authorizes failure consumption and binding retirement. Timeout is not stored as a durable
+  lifecycle transition and therefore does not change startup classification.
+- A compacting operation handed to stop must retain an exact two-way link between the compaction
+  record, its provider-operation target, the stopping gate, and the stop record. Restart consumes
+  the paired authorities through the stop abandonment successor. A missing half or disagreeing
+  target is corruption, not authority to delete a record or replay either request.
+- Compaction consumption preserves every accepted input and exposes the ordinary accepted-next
+  readiness transition only after provider-operation item finalization is fixed. Storage records
+  no process-local lifecycle intent and cannot reconstruct an automatic continuation at restart.
+  A continuation already admitted by the consumed compaction witness is instead an ordinary
+  durable `PendingTurn` with exact item/content authority and is returned through the existing
+  recovered-pending source without creating another identity.
+- Repeating classification after an ambiguous abandonment or terminal commit yields the exact
+  successor case or settled idle state. It never manufactures a retry decision from absence,
+  rewrites a terminal accepted-input lifecycle, or scans every accepted leaf to authenticate the
+  constant-size projection-loss witness.
+- Storage startup validates exactly one current draft per thread, matching thread/draft ownership,
+  one-way draft-to-turn identity consumption with no live raw-payload collision, committed-tail
+  reachability, immutable parentage, monotonic revisions, accepted-input ordering, CAS-binding
+  uniqueness, source-event ordering and per-item replay, sealed provider-observation issue evidence,
+  folded first-issue turn state, terminal closure and finalization frontiers, stale projection
+  markers, and referenced resources.
 - Unfinished or stale projections can be invalidated and recomputed from canonical items and source events. A finalized projection is durable history and is never an in-place rebuild target.
 - Corrupt, missing, or unsupported records produce typed storage errors rather than silent fallback to CAS history or GUI-local caches.
 - Unreachable turns and unreferenced sidecars are not startup errors and are not deleted; they remain for the future explicit garbage-collection design.

@@ -1,18 +1,67 @@
 mod cas;
 mod content;
+mod projection;
+mod provider;
+mod query;
+mod transcript;
 
 pub(crate) use cas::*;
 pub(crate) use content::*;
+pub(crate) use projection::*;
+pub(crate) use provider::*;
+pub(crate) use query::*;
+pub(crate) use transcript::*;
 
 use beryl_model::*;
 
 use crate::{
-    AcceptedInputOrdinal, ContentChunkOrdinal, InputMarkerOrdinal, InputMarkerOwner,
-    ItemProjectionGeneration, ItemSourceEventOrdinal, ProjectionOrdinal, ResourceOrdinal,
-    SourceEventSequence, TranscriptGeneration, TranscriptPosition, TurnDepth, TurnItemOrdinal,
+    AcceptedInputOrdinal, AcceptedRouteGeneration, ContentChunkOrdinal, ItemProjectionGeneration,
+    ItemSourceEventOrdinal, ProjectionOrdinal, ResourceOrdinal, SourceEventSequence,
+    TranscriptGeneration, TranscriptPosition, TurnDepth, TurnItemOrdinal,
 };
 
-use super::{CodecError, parts::*};
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ThreadRouteKey {
+    pub(crate) thread: SyndicThreadId,
+    pub(crate) generation: AcceptedRouteGeneration,
+}
+
+impl ScanKey for ThreadRouteKey {
+    fn first() -> Self {
+        Self {
+            thread: SyndicThreadId::from_bytes([0; 16]),
+            generation: AcceptedRouteGeneration::FIRST,
+        }
+    }
+    fn last() -> Self {
+        Self {
+            thread: SyndicThreadId::from_bytes([u8::MAX; 16]),
+            generation: AcceptedRouteGeneration::new(u64::MAX).expect("maximum is nonzero"),
+        }
+    }
+}
+
+impl ThreadRouteKey {
+    pub(crate) fn encode(self) -> Vec<u8> {
+        let mut e = Encoder::new();
+        enc_thread(&mut e, self.thread);
+        e.u64(self.generation.get());
+        e.finish()
+    }
+
+    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
+        let mut d = Decoder::new(bytes);
+        let value = Self {
+            thread: dec_thread(&mut d)?,
+            generation: AcceptedRouteGeneration::new(d.u64()?)
+                .map_err(|source| invalid("accepted-route generation key", source))?,
+        };
+        d.finish()?;
+        Ok(value)
+    }
+}
+
+use super::{CodecError, invalid, parts::*};
 
 pub(crate) trait ScanKey: Clone {
     fn first() -> Self;
@@ -40,6 +89,7 @@ id_scan_key!(SyndicItemId);
 id_scan_key!(SyndicProjectionId);
 id_scan_key!(SyndicResourceId);
 id_scan_key!(SyndicExecutionSnapshotId);
+id_scan_key!(ProviderObservationId);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ContextOwnerKey {
@@ -71,46 +121,6 @@ impl ScanKey for ContextOwnerKey {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct InputMarkerKey {
-    pub(crate) owner: InputMarkerOwner,
-    pub(crate) ordinal: InputMarkerOrdinal,
-}
-
-impl ScanKey for InputMarkerKey {
-    fn first() -> Self {
-        Self {
-            owner: InputMarkerOwner::AcceptedInput(SyndicAcceptedInputId::from_bytes([0; 16])),
-            ordinal: InputMarkerOrdinal::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            owner: InputMarkerOwner::CanonicalItem(SyndicItemId::from_bytes([u8::MAX; 16])),
-            ordinal: InputMarkerOrdinal::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl InputMarkerKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_input_marker_owner(&mut e, self.owner);
-        enc_input_marker_ord(&mut e, self.ordinal);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            owner: dec_input_marker_owner(&mut d)?,
-            ordinal: dec_input_marker_ord(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}
 pub(crate) fn enc_context_key(key: &ContextOwnerKey) -> Vec<u8> {
     let mut e = Encoder::new();
     match key {
@@ -273,20 +283,6 @@ owner_ordinal_key!(
     SyndicThreadId::from_bytes([0; 16]),
     SyndicThreadId::from_bytes([u8::MAX; 16])
 );
-impl ThreadAcceptedKey {
-    pub(crate) fn first_for_thread(owner: SyndicThreadId) -> Self {
-        Self {
-            owner,
-            ordinal: AcceptedInputOrdinal::FIRST,
-        }
-    }
-    pub(crate) fn last_for_thread(owner: SyndicThreadId) -> Self {
-        Self {
-            owner,
-            ordinal: AcceptedInputOrdinal::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
 owner_ordinal_key!(
     TurnEventKey,
     SyndicTurnId,
@@ -331,385 +327,3 @@ owner_ordinal_key!(
     SyndicProjectionId::from_bytes([0; 16]),
     SyndicProjectionId::from_bytes([u8::MAX; 16])
 );
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ItemProjectionSetKey {
-    pub(crate) item: SyndicItemId,
-    pub(crate) generation: ItemProjectionGeneration,
-}
-
-impl ScanKey for ItemProjectionSetKey {
-    fn first() -> Self {
-        Self {
-            item: SyndicItemId::from_bytes([0; 16]),
-            generation: ItemProjectionGeneration::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            item: SyndicItemId::from_bytes([u8::MAX; 16]),
-            generation: ItemProjectionGeneration::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl ItemProjectionSetKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_item(&mut e, self.item);
-        enc_item_projection_generation(&mut e, self.generation);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            item: dec_item(&mut d)?,
-            generation: dec_item_projection_generation(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-
-    pub(crate) fn first_for_item(item: SyndicItemId) -> Self {
-        Self {
-            item,
-            generation: ItemProjectionGeneration::FIRST,
-        }
-    }
-
-    pub(crate) fn last_for_item(item: SyndicItemId) -> Self {
-        Self {
-            item,
-            generation: ItemProjectionGeneration::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct StableItemProjectionKey {
-    pub(crate) item: SyndicItemId,
-    pub(crate) ordinal: ProjectionOrdinal,
-}
-
-impl ScanKey for StableItemProjectionKey {
-    fn first() -> Self {
-        Self {
-            item: SyndicItemId::from_bytes([0; 16]),
-            ordinal: ProjectionOrdinal::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            item: SyndicItemId::from_bytes([u8::MAX; 16]),
-            ordinal: ProjectionOrdinal::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl StableItemProjectionKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_item(&mut e, self.item);
-        enc_projection_ord(&mut e, self.ordinal);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            item: dec_item(&mut d)?,
-            ordinal: dec_projection_ord(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ItemProjectionKey {
-    pub(crate) item: SyndicItemId,
-    pub(crate) generation: ItemProjectionGeneration,
-    pub(crate) ordinal: ProjectionOrdinal,
-}
-
-impl ScanKey for ItemProjectionKey {
-    fn first() -> Self {
-        Self {
-            item: SyndicItemId::from_bytes([0; 16]),
-            generation: ItemProjectionGeneration::FIRST,
-            ordinal: ProjectionOrdinal::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            item: SyndicItemId::from_bytes([u8::MAX; 16]),
-            generation: ItemProjectionGeneration::new(u64::MAX).expect("maximum is nonzero"),
-            ordinal: ProjectionOrdinal::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl ItemProjectionKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_item(&mut e, self.item);
-        enc_item_projection_generation(&mut e, self.generation);
-        enc_projection_ord(&mut e, self.ordinal);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            item: dec_item(&mut d)?,
-            generation: dec_item_projection_generation(&mut d)?,
-            ordinal: dec_projection_ord(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ThreadTranscriptBuildKey {
-    pub(crate) thread: SyndicThreadId,
-    pub(crate) generation: TranscriptGeneration,
-}
-
-impl ScanKey for ThreadTranscriptBuildKey {
-    fn first() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([0; 16]),
-            generation: TranscriptGeneration::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([u8::MAX; 16]),
-            generation: TranscriptGeneration::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl ThreadTranscriptBuildKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_thread(&mut e, self.thread);
-        enc_transcript_generation(&mut e, self.generation);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            thread: dec_thread(&mut d)?,
-            generation: dec_transcript_generation(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-
-    pub(crate) fn first_for_thread(thread: SyndicThreadId) -> Self {
-        Self {
-            thread,
-            generation: TranscriptGeneration::FIRST,
-        }
-    }
-
-    pub(crate) fn last_for_thread(thread: SyndicThreadId) -> Self {
-        Self {
-            thread,
-            generation: TranscriptGeneration::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ThreadTranscriptPathKey {
-    pub(crate) thread: SyndicThreadId,
-    pub(crate) generation: TranscriptGeneration,
-    pub(crate) depth: TurnDepth,
-}
-
-impl ScanKey for ThreadTranscriptPathKey {
-    fn first() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([0; 16]),
-            generation: TranscriptGeneration::FIRST,
-            depth: TurnDepth::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([u8::MAX; 16]),
-            generation: TranscriptGeneration::new(u64::MAX).expect("maximum is nonzero"),
-            depth: TurnDepth::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl ThreadTranscriptPathKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_thread(&mut e, self.thread);
-        enc_transcript_generation(&mut e, self.generation);
-        enc_turn_depth(&mut e, self.depth);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            thread: dec_thread(&mut d)?,
-            generation: dec_transcript_generation(&mut d)?,
-            depth: dec_turn_depth(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ThreadTranscriptKey {
-    pub(crate) thread: SyndicThreadId,
-    pub(crate) generation: TranscriptGeneration,
-    pub(crate) position: TranscriptPosition,
-}
-
-impl ScanKey for ThreadTranscriptKey {
-    fn first() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([0; 16]),
-            generation: TranscriptGeneration::FIRST,
-            position: TranscriptPosition::FIRST,
-        }
-    }
-
-    fn last() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([u8::MAX; 16]),
-            generation: TranscriptGeneration::new(u64::MAX).expect("maximum is nonzero"),
-            position: TranscriptPosition::new(u64::MAX).expect("maximum is nonzero"),
-        }
-    }
-}
-
-impl ThreadTranscriptKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_thread(&mut e, self.thread);
-        enc_transcript_generation(&mut e, self.generation);
-        enc_transcript_pos(&mut e, self.position);
-        e.finish()
-    }
-
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            thread: dec_thread(&mut d)?,
-            generation: dec_transcript_generation(&mut d)?,
-            position: dec_transcript_pos(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct SteeringKey {
-    pub(crate) thread: SyndicThreadId,
-    pub(crate) turn: SyndicTurnId,
-    pub(crate) ordinal: AcceptedInputOrdinal,
-}
-impl ScanKey for SteeringKey {
-    fn first() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([0; 16]),
-            turn: SyndicTurnId::from_bytes([0; 16]),
-            ordinal: AcceptedInputOrdinal::FIRST,
-        }
-    }
-    fn last() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([u8::MAX; 16]),
-            turn: SyndicTurnId::from_bytes([u8::MAX; 16]),
-            ordinal: AcceptedInputOrdinal::new(u64::MAX).expect("nonzero"),
-        }
-    }
-}
-impl SteeringKey {
-    pub(crate) fn first_for_thread(thread: SyndicThreadId) -> Self {
-        Self {
-            thread,
-            turn: SyndicTurnId::from_bytes([0; 16]),
-            ordinal: AcceptedInputOrdinal::FIRST,
-        }
-    }
-    pub(crate) fn last_for_thread(thread: SyndicThreadId) -> Self {
-        Self {
-            thread,
-            turn: SyndicTurnId::from_bytes([u8::MAX; 16]),
-            ordinal: AcceptedInputOrdinal::new(u64::MAX).expect("nonzero"),
-        }
-    }
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_thread(&mut e, self.thread);
-        enc_turn(&mut e, self.turn);
-        enc_accepted_ord(&mut e, self.ordinal);
-        e.finish()
-    }
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            thread: dec_thread(&mut d)?,
-            turn: dec_turn(&mut d)?,
-            ordinal: dec_accepted_ord(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct BindingKey {
-    pub(crate) thread: SyndicThreadId,
-    pub(crate) revision: BindingRevision,
-}
-impl ScanKey for BindingKey {
-    fn first() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([0; 16]),
-            revision: BindingRevision::new(1).expect("nonzero"),
-        }
-    }
-    fn last() -> Self {
-        Self {
-            thread: SyndicThreadId::from_bytes([u8::MAX; 16]),
-            revision: BindingRevision::new(u64::MAX).expect("nonzero"),
-        }
-    }
-}
-impl BindingKey {
-    pub(crate) fn encode(&self) -> Vec<u8> {
-        let mut e = Encoder::new();
-        enc_thread(&mut e, self.thread);
-        enc_binding_rev(&mut e, self.revision);
-        e.finish()
-    }
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
-        let mut d = Decoder::new(bytes);
-        let key = Self {
-            thread: dec_thread(&mut d)?,
-            revision: dec_binding_rev(&mut d)?,
-        };
-        d.finish()?;
-        Ok(key)
-    }
-}

@@ -63,3 +63,14 @@ Do not truncate the item, split one external CAS item into unrelated canonical i
 The same audit initially described `LARGE_MAX` as an acceptable envelope for a whole `DraftRecord`. The Operator rejected that product assumption: a user may paste documents sized for million-token or larger context windows, and durable composer storage must preserve them even when a selected CAS model later cannot accept the complete input.
 
 Raising the Fjall value ceiling would only move the failure and would keep autosave, submission, canonical capture, reads, and crash recovery dependent on one unbounded value. The accepted correction is one shared chunked-content authority: small owner records reference exact manifests; bounded ordered chunks carry content; staged chunk commits remain unreachable until one atomic sealed-manifest publication; submitted and canonical owners reuse content references instead of copying whole text; and derived transcript projections never replace canonical source. Physical records and individual commands stay bounded, while one logical draft or canonical item has no fixed whole-content byte ceiling.
+
+## Draft-Parent Supersession
+
+Phase 55 later proved that preserving generic draft parentage was itself invalid once accepted
+next-turn input could advance the selected tail without consuming the current composer. The
+Operator clarified that a draft is only unsent composer state.
+
+The current correction therefore removes `DraftRecord.parent`. Ordinary submission derives parentage
+from the transaction-current thread tail; branch context and replacement use their separate typed
+provenance. The earlier instruction in this note to preserve draft parentage records the
+intermediate Phase 4 conclusion and is no longer target authority.

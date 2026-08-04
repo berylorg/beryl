@@ -8,7 +8,7 @@ use self::cleanup::StaleObservation;
 use super::{
     AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LoadedCasProjection,
     ProjectionCancellationToken, ProjectionCoordinatorError, ProjectionExecutionError,
-    ProjectionPublicationFailure,
+    ProjectionPublicationFailure, service::ProjectionFlight,
 };
 use crate::cas_projection::connection::{ExistingLease, ThreadRetirement};
 use crate::conversation_tools::ConversationToolRegistry;
@@ -17,11 +17,11 @@ mod cleanup;
 mod decision;
 mod fresh;
 mod native;
-mod native_retry;
+pub(super) mod native_retry;
 mod recovery;
-mod support;
+pub(super) mod support;
 
-use support::{point_limit, recovered_generation_matches};
+use support::{point_limit, recovered_process_matches};
 
 impl CasProjectionCoordinator {
     /// Obtains one exact loaded projection and publishes durable authority before returning it.
@@ -33,11 +33,59 @@ impl CasProjectionCoordinator {
         request: &CasProjectionRequest,
         cancellation: &ProjectionCancellationToken,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        let (request, tool_profile) =
+            self.prepare_projection_request(home, session, request, cancellation)?;
+        let flight = self.begin_projection(request.thread_id())?;
+        self.obtain_projection_with_prepared_flight(
+            home,
+            storage,
+            session,
+            &request,
+            cancellation,
+            tool_profile,
+            &flight,
+        )
+    }
+
+    pub(super) fn obtain_projection_in_flight(
+        &self,
+        home: &HomeStore,
+        storage: SyndicStorage,
+        session: &mut AdmittedProjectionSession,
+        request: &CasProjectionRequest,
+        cancellation: &ProjectionCancellationToken,
+        flight: &ProjectionFlight,
+    ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        let (request, tool_profile) =
+            self.prepare_projection_request(home, session, request, cancellation)?;
+        self.obtain_projection_with_prepared_flight(
+            home,
+            storage,
+            session,
+            &request,
+            cancellation,
+            tool_profile,
+            flight,
+        )
+    }
+
+    fn prepare_projection_request(
+        &self,
+        home: &HomeStore,
+        session: &AdmittedProjectionSession,
+        request: &CasProjectionRequest,
+        cancellation: &ProjectionCancellationToken,
+    ) -> Result<
+        (
+            CasProjectionRequest,
+            beryl_model::CasConversationToolProfile,
+        ),
+        ProjectionExecutionError,
+    > {
         self.ensure_home(home)?;
         let tools = ConversationToolRegistry::canonical();
         let request =
             request.with_installed_thread_options(tools.install(request.thread_options().clone())?);
-        let request = &request;
         if session.runtime_id() != request.execution_binding().runtime_id() {
             return Err(ProjectionExecutionError::RuntimeMismatch {
                 requested: request.execution_binding().runtime_id(),
@@ -50,7 +98,21 @@ impl CasProjectionCoordinator {
         if cancellation.is_cancelled() {
             return Err(ProjectionExecutionError::Cancelled);
         }
-        let _flight = self.begin_projection(request.thread_id())?;
+        Ok((request, tools.profile()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn obtain_projection_with_prepared_flight(
+        &self,
+        home: &HomeStore,
+        storage: SyndicStorage,
+        session: &mut AdmittedProjectionSession,
+        request: &CasProjectionRequest,
+        cancellation: &ProjectionCancellationToken,
+        tool_profile: beryl_model::CasConversationToolProfile,
+        flight: &ProjectionFlight,
+    ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
+        self.ensure_projection_flight(flight, request.thread_id())?;
         self.ensure_home(home)?;
         let native = storage.prepare_native_projection(
             home,
@@ -58,7 +120,7 @@ impl CasProjectionCoordinator {
                 request.thread_id(),
                 request.selected_path(),
                 request.execution_binding().clone(),
-                tools.profile(),
+                tool_profile,
             ),
             point_limit(),
         )?;
@@ -151,7 +213,7 @@ impl CasProjectionCoordinator {
         )? {
             ExistingLease::Exact(lease) => {
                 let generation = lease.generation();
-                if recovered_generation_matches(source.binding().lineage(), generation) {
+                if recovered_process_matches(source.binding().lineage(), generation) {
                     return Ok(self.capability(
                         request,
                         source.binding_revision(),
@@ -169,7 +231,7 @@ impl CasProjectionCoordinator {
                     cancellation,
                     basis,
                     source,
-                    "recovered CAS loaded generation no longer matches",
+                    "recovered CAS managed process no longer matches",
                 );
             }
             ExistingLease::AnotherConnection => {
@@ -178,6 +240,11 @@ impl CasProjectionCoordinator {
                         thread_id: source.binding().cas_thread_id().clone(),
                     },
                 );
+            }
+            ExistingLease::Quarantined => {
+                return Err(ProjectionExecutionError::ReacquisitionInProgress {
+                    thread_id: source.binding().cas_thread_id().clone(),
+                });
             }
             ExistingLease::AnotherOwner { existing_owner } => {
                 return Err(ProjectionCoordinatorError::CasThreadOwnerCollision {
@@ -194,7 +261,7 @@ impl CasProjectionCoordinator {
         if source
             .binding()
             .lineage()
-            .recovered_loaded_generation()
+            .recovered_injection_generation()
             .is_some()
         {
             return self.retire_current_then_recover(
@@ -229,7 +296,7 @@ impl CasProjectionCoordinator {
         )? {
             ExistingLease::Exact(lease) => {
                 let generation = lease.generation();
-                if !recovered_generation_matches(source.binding().lineage(), generation) {
+                if !recovered_process_matches(source.binding().lineage(), generation) {
                     drop(lease);
                     return self.retire_current_then_recover(
                         home,
@@ -239,7 +306,7 @@ impl CasProjectionCoordinator {
                         cancellation,
                         basis,
                         source,
-                        "recovered CAS loaded generation no longer matches",
+                        "recovered CAS managed process no longer matches",
                     );
                 }
                 return self.publish_existing_loaded(home, storage, request, basis, source, lease);
@@ -250,6 +317,11 @@ impl CasProjectionCoordinator {
                         thread_id: source.binding().cas_thread_id().clone(),
                     },
                 );
+            }
+            ExistingLease::Quarantined => {
+                return Err(ProjectionExecutionError::ReacquisitionInProgress {
+                    thread_id: source.binding().cas_thread_id().clone(),
+                });
             }
             ExistingLease::AnotherOwner { existing_owner } => {
                 return Err(ProjectionCoordinatorError::CasThreadOwnerCollision {
@@ -266,7 +338,7 @@ impl CasProjectionCoordinator {
         if source
             .binding()
             .lineage()
-            .recovered_loaded_generation()
+            .recovered_injection_generation()
             .is_some()
         {
             return self.retire_current_then_recover(
@@ -309,8 +381,12 @@ impl CasProjectionCoordinator {
             source.thread_id(),
             request.timeout(),
         );
-        let release_error = match retirement {
-            Ok(ThreadRetirement::Absent | ThreadRetirement::Retired) => None,
+        let (release_error, retired_loaded_generation) = match retirement {
+            Ok(ThreadRetirement::Absent) => (None, None),
+            Ok(ThreadRetirement::Retired {
+                generation,
+                release_error,
+            }) => (release_error, Some(generation)),
             Ok(ThreadRetirement::AnotherConnection) => {
                 return Err(
                     ProjectionExecutionError::LoadedProjectionConnectionMismatch {
@@ -328,8 +404,10 @@ impl CasProjectionCoordinator {
                 }
                 .into());
             }
-            Err(error) => Some(error),
+            Err(error) => (Some(error), None),
         };
+        let observed_loaded_generation = retired_loaded_generation
+            .or_else(|| source.binding().lineage().recovered_injection_generation());
         let retired_revision = self.publish_abandoned_target(
             home,
             storage,
@@ -342,7 +420,7 @@ impl CasProjectionCoordinator {
                 source.binding().tool_profile(),
                 source.binding().lineage(),
                 source.binding().native_turn_count(),
-                source.binding().lineage().recovered_loaded_generation(),
+                observed_loaded_generation,
             ),
             reason,
         )?;

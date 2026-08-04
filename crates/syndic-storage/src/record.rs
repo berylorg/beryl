@@ -1,4 +1,5 @@
 mod binding;
+mod compaction;
 mod content;
 mod digest;
 mod history;
@@ -6,8 +7,14 @@ mod index;
 mod input_gate;
 mod payload;
 mod projection;
+mod provider;
+mod query;
+mod route;
+mod stop;
+mod thread_properties;
 
 pub use binding::*;
+pub use compaction::*;
 pub use content::*;
 pub use digest::*;
 pub use history::*;
@@ -15,9 +22,12 @@ pub use index::*;
 pub use input_gate::*;
 pub use payload::*;
 pub use projection::*;
+pub use provider::*;
+pub use query::*;
+pub use route::*;
+pub use stop::*;
+pub use thread_properties::*;
 
-pub(crate) const MAX_COMPOSER_IMAGE_MARKERS: usize = 1_024;
-pub(crate) const MAX_LARGE_TEXT_BYTES: usize = 262_144;
 pub(crate) const MAX_INLINE_TEXT_BYTES: usize = 65_536;
 pub(crate) const MAX_REASON_BYTES: usize = 1_024;
 pub(crate) const MAX_MEDIA_TYPE_BYTES: usize = 256;

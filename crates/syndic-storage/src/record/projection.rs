@@ -1,94 +1,28 @@
 use beryl_model::{
-    ProjectionRevision, SyndicItemId, SyndicPathDigest, SyndicResourceId, SyndicThreadId,
-    SyndicTurnId, ThreadRevision,
+    ProjectionRevision, SealedAssetReferenceSetProof, SyndicItemId, SyndicPathDigest,
+    SyndicResourceId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
-    AssistantMessagePhase, ContentReference, ProjectionLifecycle, ProviderItemKind,
-    ProviderItemLifecycle, SourceEventSequence, SyndicRecordError, SyndicTimestamp,
-    TranscriptGeneration, TurnItemOrdinal, UnsupportedHistoryReason,
+    AssistantMessagePhase, ContentReference, ProjectionLifecycle, ProviderFrameHistorySupportV1,
+    ProviderFrameObservationSummaryV1, ProviderItemKind, ProviderItemLifecycle,
+    ProviderNarrativeCompletionDisposition, SealedProviderFrameReference, SourceEventSequence,
+    SyndicRecordError, SyndicTimestamp, TranscriptGeneration, TurnItemOrdinal,
 };
 
 mod build;
 mod item;
+mod presentation;
 mod resource;
 mod source;
+mod text_source;
 
 pub use build::*;
 pub use item::*;
+pub use presentation::*;
 pub use resource::*;
 pub use source::*;
-
-/// Closed canonical item classification retained below transcript projection.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CanonicalItemKind {
-    UserInput,
-    AssistantMessage(AssistantMessagePhase),
-    ProviderText(ProviderItemKind),
-    Operational(ProviderItemKind),
-    Activity(ProviderItemKind),
-    GeneratedMedia,
-    Unsupported(ProviderItemKind),
-}
-
-/// Closed typed payload retained by one canonical item.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CanonicalItemPayload {
-    UserInput {
-        content: ContentReference,
-        marker_count: u64,
-    },
-    Text(ContentReference),
-    Activity,
-    GeneratedMedia(SyndicResourceId),
-    Unsupported(UnsupportedHistoryReason),
-}
-
-impl CanonicalItemPayload {
-    #[must_use]
-    pub const fn user_input(content: ContentReference, marker_count: u64) -> Self {
-        Self::UserInput {
-            content,
-            marker_count,
-        }
-    }
-
-    #[must_use]
-    pub const fn text(content: ContentReference) -> Self {
-        Self::Text(content)
-    }
-
-    #[must_use]
-    pub const fn activity() -> Self {
-        Self::Activity
-    }
-
-    #[must_use]
-    pub const fn generated_media(resource: SyndicResourceId) -> Self {
-        Self::GeneratedMedia(resource)
-    }
-
-    #[must_use]
-    pub const fn unsupported(reason: UnsupportedHistoryReason) -> Self {
-        Self::Unsupported(reason)
-    }
-
-    #[must_use]
-    pub const fn content(&self) -> Option<ContentReference> {
-        match self {
-            Self::UserInput { content, .. } | Self::Text(content) => Some(*content),
-            Self::Activity | Self::GeneratedMedia(_) | Self::Unsupported(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn marker_count(&self) -> u64 {
-        match self {
-            Self::UserInput { marker_count, .. } => *marker_count,
-            Self::Text(_) | Self::Activity | Self::GeneratedMedia(_) | Self::Unsupported(_) => 0,
-        }
-    }
-}
+pub use text_source::*;
 
 /// One canonical lightweight item with exact turn and source frontiers.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -102,20 +36,21 @@ pub struct CanonicalItemRecord {
     cas_source: Option<CasItemSource>,
     provider_kind: ProviderItemKind,
     provider_lifecycle: ProviderItemLifecycle,
-    disposition: ProviderItemDisposition,
     assistant_phase: Option<AssistantMessagePhase>,
-    payload: CanonicalItemPayload,
+    provider: Option<SealedProviderFrameReference>,
+    narrative_completion: Option<ProviderNarrativeCompletionDisposition>,
+    presentation: CanonicalItemPresentation,
 }
 
 impl CanonicalItemRecord {
     #[must_use]
-    pub const fn local_user_input(
+    pub fn local_user_input(
         id: SyndicItemId,
         turn_id: SyndicTurnId,
         ordinal: TurnItemOrdinal,
         revision: ProjectionRevision,
         content: ContentReference,
-        marker_count: u64,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
     ) -> Self {
         Self {
             id,
@@ -127,43 +62,43 @@ impl CanonicalItemRecord {
             cas_source: None,
             provider_kind: ProviderItemKind::UserMessage,
             provider_lifecycle: ProviderItemLifecycle::AwaitingCorrelation,
-            disposition: ProviderItemDisposition::CorrelatedUserInput {
-                content,
-                marker_count,
-            },
             assistant_phase: None,
-            payload: CanonicalItemPayload::user_input(content, marker_count),
+            provider: None,
+            narrative_completion: None,
+            presentation: CanonicalItemPresentation::user_input(content, asset_reference_set),
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn with_source_state(
+    pub fn with_provider_state(
         id: SyndicItemId,
         turn_id: SyndicTurnId,
         ordinal: TurnItemOrdinal,
         revision: ProjectionRevision,
-        source_event: Option<SourceEventSequence>,
+        source_event: SourceEventSequence,
         source_event_count: u64,
-        cas_source: Option<CasItemSource>,
-        provider_kind: ProviderItemKind,
-        provider_lifecycle: ProviderItemLifecycle,
-        disposition: ProviderItemDisposition,
+        cas_source: CasItemSource,
         assistant_phase: Option<AssistantMessagePhase>,
-        payload: CanonicalItemPayload,
+        provider: SealedProviderFrameReference,
+        narrative_completion: Option<ProviderNarrativeCompletionDisposition>,
+        presentation: CanonicalItemPresentation,
     ) -> Result<Self, SyndicRecordError> {
+        let provider_kind = provider.frame().item_kind();
+        let provider_lifecycle = lifecycle_for_observation(provider.observation());
         let value = Self {
             id,
             turn_id,
             ordinal,
             revision,
-            source_event,
+            source_event: Some(source_event),
             source_event_count,
-            cas_source,
+            cas_source: Some(cas_source),
             provider_kind,
             provider_lifecycle,
-            disposition,
             assistant_phase,
-            payload,
+            provider: Some(provider),
+            narrative_completion,
+            presentation,
         };
         value.validate_shape()?;
         Ok(value)
@@ -185,26 +120,25 @@ impl CanonicalItemRecord {
         self.revision
     }
     #[must_use]
-    pub const fn kind(&self) -> CanonicalItemKind {
-        if matches!(self.disposition, ProviderItemDisposition::Unsupported(_)) {
-            return CanonicalItemKind::Unsupported(self.provider_kind);
-        }
-        match self.provider_kind {
-            ProviderItemKind::UserMessage => CanonicalItemKind::UserInput,
-            ProviderItemKind::AgentMessage => {
+    pub fn kind(&self) -> CanonicalItemKind {
+        match &self.presentation {
+            CanonicalItemPresentation::UserInput { .. } => CanonicalItemKind::UserInput,
+            CanonicalItemPresentation::Narrative
+                if self.provider_kind == ProviderItemKind::AgentMessage =>
+            {
                 CanonicalItemKind::AssistantMessage(match self.assistant_phase {
                     Some(phase) => phase,
                     None => AssistantMessagePhase::Unknown,
                 })
             }
-            ProviderItemKind::StandaloneImageGeneration => CanonicalItemKind::GeneratedMedia,
-            kind if matches!(self.disposition, ProviderItemDisposition::ActivityOnly) => {
-                CanonicalItemKind::Activity(kind)
-            }
-            ProviderItemKind::HookPrompt | ProviderItemKind::Plan | ProviderItemKind::Reasoning => {
+            CanonicalItemPresentation::Narrative => {
                 CanonicalItemKind::ProviderText(self.provider_kind)
             }
-            kind => CanonicalItemKind::Operational(kind),
+            CanonicalItemPresentation::Operational => {
+                CanonicalItemKind::Operational(self.provider_kind)
+            }
+            CanonicalItemPresentation::Activity => CanonicalItemKind::Activity(self.provider_kind),
+            CanonicalItemPresentation::GeneratedMedia { .. } => CanonicalItemKind::GeneratedMedia,
         }
     }
     #[must_use]
@@ -228,63 +162,168 @@ impl CanonicalItemRecord {
         self.provider_lifecycle
     }
     #[must_use]
-    pub const fn disposition(&self) -> ProviderItemDisposition {
-        self.disposition
-    }
-    #[must_use]
     pub const fn assistant_phase(&self) -> Option<AssistantMessagePhase> {
         self.assistant_phase
     }
     #[must_use]
-    pub const fn payload(&self) -> &CanonicalItemPayload {
-        &self.payload
+    pub const fn provider(&self) -> Option<&SealedProviderFrameReference> {
+        self.provider.as_ref()
+    }
+    #[must_use]
+    pub const fn narrative_completion(&self) -> Option<ProviderNarrativeCompletionDisposition> {
+        self.narrative_completion
+    }
+    #[must_use]
+    pub const fn presentation(&self) -> &CanonicalItemPresentation {
+        &self.presentation
+    }
+    #[must_use]
+    pub const fn presentation_content(&self) -> Option<ContentReference> {
+        self.presentation.content()
+    }
+    #[must_use]
+    pub const fn projection_source(&self) -> Option<ProjectionTextSource> {
+        match &self.presentation {
+            CanonicalItemPresentation::UserInput { content, .. } => {
+                Some(ProjectionTextSource::composer(*content))
+            }
+            CanonicalItemPresentation::Narrative => match &self.provider {
+                Some(provider) => match provider.narrative() {
+                    Some(narrative) => Some(ProjectionTextSource::provider_narrative(narrative)),
+                    None => None,
+                },
+                None => None,
+            },
+            CanonicalItemPresentation::Operational
+            | CanonicalItemPresentation::Activity
+            | CanonicalItemPresentation::GeneratedMedia { .. } => None,
+        }
+    }
+    #[must_use]
+    pub const fn provider_content(&self) -> Option<ContentReference> {
+        match &self.provider {
+            Some(provider) => Some(provider.content()),
+            None => None,
+        }
+    }
+    #[must_use]
+    pub const fn history_support(&self) -> ProviderFrameHistorySupportV1 {
+        match &self.provider {
+            Some(provider) => provider.history_support(),
+            None => ProviderFrameHistorySupportV1::Supported,
+        }
+    }
+    #[must_use]
+    pub const fn is_history_blocking(&self) -> bool {
+        !self.history_support().is_supported()
+            || matches!(
+                self.narrative_completion,
+                Some(ProviderNarrativeCompletionDisposition::Mismatch { .. })
+            )
     }
 
     fn validate_shape(&self) -> Result<(), SyndicRecordError> {
-        if (self.source_event_count == 0) != self.source_event.is_none()
-            || !source::disposition_is_valid(self.provider_kind, self.disposition)
-        {
+        if (self.source_event_count == 0) != self.source_event.is_none() {
             return Err(SyndicRecordError::InvalidProviderItemDisposition);
         }
         match self.provider_lifecycle {
             ProviderItemLifecycle::AwaitingCorrelation
                 if self.provider_kind == ProviderItemKind::UserMessage
                     && self.cas_source.is_none()
-                    && self.source_event_count == 0 => {}
+                    && self.source_event_count == 0
+                    && self.provider.is_none() => {}
             ProviderItemLifecycle::Started | ProviderItemLifecycle::Completed
-                if self.cas_source.is_some() && self.source_event_count != 0 => {}
+                if self.cas_source.is_some()
+                    && self.source_event_count != 0
+                    && self.provider.is_some() => {}
             _ => return Err(SyndicRecordError::InvalidProviderItemLifecycle),
         }
-        let payload_matches = match (self.disposition, &self.payload) {
-            (
-                ProviderItemDisposition::CorrelatedUserInput {
-                    content,
-                    marker_count,
-                },
-                CanonicalItemPayload::UserInput {
-                    content: actual,
-                    marker_count: actual_markers,
-                },
-            ) => content == *actual && marker_count == *actual_markers,
-            (ProviderItemDisposition::CanonicalText, CanonicalItemPayload::Text(_))
-            | (ProviderItemDisposition::ActivityOnly, CanonicalItemPayload::Activity) => true,
-            (
-                ProviderItemDisposition::GeneratedMedia { resource_id },
-                CanonicalItemPayload::GeneratedMedia(actual),
-            ) => resource_id == *actual,
-            (
-                ProviderItemDisposition::Unsupported(reason),
-                CanonicalItemPayload::Unsupported(actual),
-            ) => reason == *actual,
-            _ => false,
-        };
-        if !payload_matches
+        if !presentation_is_valid(self.provider_kind, &self.presentation)
             || (self.provider_kind == ProviderItemKind::AgentMessage)
                 != self.assistant_phase.is_some()
+            || (self.provider_kind.requires_narrative()
+                && self.provider_lifecycle == ProviderItemLifecycle::Completed)
+                != self.narrative_completion.is_some()
         {
             return Err(SyndicRecordError::InvalidProviderItemDisposition);
         }
+        if let (Some(source), Some(provider)) = (&self.cas_source, &self.provider)
+            && (source.item_id() != provider.frame().item_id()
+                || self.provider_kind != provider.frame().item_kind()
+                || self.provider_lifecycle != lifecycle_for_observation(provider.observation()))
+        {
+            return Err(SyndicRecordError::SourceIdentityMismatch);
+        }
+        if let Some(disposition) = self.narrative_completion {
+            let provider = self
+                .provider
+                .as_ref()
+                .ok_or(SyndicRecordError::InvalidProviderItemDisposition)?;
+            let narrative = provider
+                .narrative()
+                .ok_or(SyndicRecordError::InvalidProviderItemDisposition)?;
+            let live_bytes = narrative.logical_utf8_bytes();
+            let completion_bytes = provider.frame().logical_utf8_bytes();
+            let valid = match disposition {
+                ProviderNarrativeCompletionDisposition::Equal => live_bytes == completion_bytes,
+                ProviderNarrativeCompletionDisposition::Mismatch { utf8_byte_offset } => {
+                    utf8_byte_offset <= live_bytes.min(completion_bytes)
+                        && (live_bytes != completion_bytes || utf8_byte_offset < live_bytes)
+                }
+            };
+            if !valid {
+                return Err(SyndicRecordError::InvalidProviderItemDisposition);
+            }
+        }
         Ok(())
+    }
+}
+
+const fn lifecycle_for_observation(
+    observation: ProviderFrameObservationSummaryV1,
+) -> ProviderItemLifecycle {
+    match observation {
+        ProviderFrameObservationSummaryV1::Started(_)
+        | ProviderFrameObservationSummaryV1::Delta => ProviderItemLifecycle::Started,
+        ProviderFrameObservationSummaryV1::Completed(_) => ProviderItemLifecycle::Completed,
+    }
+}
+
+const fn presentation_is_valid(
+    kind: ProviderItemKind,
+    presentation: &CanonicalItemPresentation,
+) -> bool {
+    match kind {
+        ProviderItemKind::UserMessage => {
+            matches!(presentation, CanonicalItemPresentation::UserInput { .. })
+        }
+        ProviderItemKind::AgentMessage | ProviderItemKind::Plan => {
+            matches!(presentation, CanonicalItemPresentation::Narrative)
+        }
+        ProviderItemKind::CommandExecution
+        | ProviderItemKind::FileChange
+        | ProviderItemKind::McpToolCall
+        | ProviderItemKind::DynamicToolCall => {
+            matches!(presentation, CanonicalItemPresentation::Operational)
+        }
+        ProviderItemKind::HookPrompt
+        | ProviderItemKind::Reasoning
+        | ProviderItemKind::CollabAgentToolCall
+        | ProviderItemKind::SubAgentActivity
+        | ProviderItemKind::WebSearch
+        | ProviderItemKind::ImageView
+        | ProviderItemKind::Sleep
+        | ProviderItemKind::EnteredReviewMode
+        | ProviderItemKind::ExitedReviewMode
+        | ProviderItemKind::ContextCompaction => {
+            matches!(presentation, CanonicalItemPresentation::Activity)
+        }
+        ProviderItemKind::StandaloneImageGeneration => {
+            matches!(
+                presentation,
+                CanonicalItemPresentation::GeneratedMedia { .. }
+            )
+        }
     }
 }
 
@@ -355,6 +394,7 @@ impl TranscriptViewHeadRecord {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HistorySummaryRecord {
     thread_id: SyndicThreadId,
+    revision: ProjectionRevision,
     thread_revision: ThreadRevision,
     committed_tail: Option<SyndicTurnId>,
     selected_path_digest: SyndicPathDigest,
@@ -366,6 +406,7 @@ impl HistorySummaryRecord {
     #[must_use]
     pub const fn new(
         thread_id: SyndicThreadId,
+        revision: ProjectionRevision,
         thread_revision: ThreadRevision,
         committed_tail: Option<SyndicTurnId>,
         selected_path_digest: SyndicPathDigest,
@@ -374,6 +415,7 @@ impl HistorySummaryRecord {
     ) -> Self {
         Self {
             thread_id,
+            revision,
             thread_revision,
             committed_tail,
             selected_path_digest,
@@ -384,6 +426,10 @@ impl HistorySummaryRecord {
     #[must_use]
     pub const fn thread_id(&self) -> SyndicThreadId {
         self.thread_id
+    }
+    #[must_use]
+    pub const fn revision(&self) -> ProjectionRevision {
+        self.revision
     }
     #[must_use]
     pub const fn thread_revision(&self) -> ThreadRevision {

@@ -2,7 +2,15 @@ use beryl_model::*;
 
 use super::{CodecError, invalid};
 
+mod projection;
+mod provider;
+mod provider_observation;
+mod provider_observation_header;
 mod value;
+pub(crate) use projection::*;
+pub(crate) use provider::*;
+pub(crate) use provider_observation::*;
+pub(crate) use provider_observation_header::*;
 pub(crate) use value::*;
 
 pub(crate) struct Encoder {
@@ -14,6 +22,9 @@ impl Encoder {
     }
     pub(crate) fn finish(self) -> Vec<u8> {
         self.bytes
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.bytes.len()
     }
     pub(crate) fn u8(&mut self, value: u8) {
         self.bytes.push(value);
@@ -377,6 +388,34 @@ ordinal_helpers!(
     crate::TurnDepth,
     "turn depth"
 );
+ordinal_helpers!(
+    enc_thread_lineage_depth,
+    dec_thread_lineage_depth,
+    crate::ThreadLineageDepth,
+    "thread-lineage depth"
+);
+ordinal_helpers!(
+    enc_activity_query_revision,
+    dec_activity_query_revision,
+    crate::ActivityQueryRevision,
+    "activity-query revision"
+);
+ordinal_helpers!(
+    enc_activity_work_period,
+    dec_activity_work_period,
+    crate::ActivityWorkPeriod,
+    "activity work period"
+);
+
+pub(crate) fn enc_image_label_frontier(e: &mut Encoder, value: crate::ImageLabelFrontier) {
+    e.u64(value.get());
+}
+
+pub(crate) fn dec_image_label_frontier(
+    d: &mut Decoder<'_>,
+) -> Result<crate::ImageLabelFrontier, CodecError> {
+    Ok(crate::ImageLabelFrontier::from_raw(d.u64()?))
+}
 ordinal_helpers!(
     enc_turn_state_rev,
     dec_turn_state_rev,

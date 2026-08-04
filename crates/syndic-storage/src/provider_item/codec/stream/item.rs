@@ -5,33 +5,71 @@ mod message;
 use std::io::Read;
 
 use super::StreamDecoder;
-use crate::ProviderItemKind;
 use crate::provider_item::*;
+use crate::{ContentReference, ProviderItemKind};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct StreamItemSummary {
+    pub(super) kind: ProviderItemKind,
+    pub(super) in_progress: bool,
+    pub(super) history_support: ProviderFrameHistorySupportV1,
+    pub(super) message_phase: Option<ProviderMessagePhaseV1>,
+    pub(super) submitted_content: Option<ContentReference>,
+}
+
+impl StreamItemSummary {
+    pub(super) const fn supported(kind: ProviderItemKind) -> Self {
+        Self {
+            kind,
+            in_progress: false,
+            history_support: ProviderFrameHistorySupportV1::Supported,
+            message_phase: None,
+            submitted_content: None,
+        }
+    }
+
+    const fn in_progress(kind: ProviderItemKind, in_progress: bool) -> Self {
+        Self {
+            in_progress,
+            ..Self::supported(kind)
+        }
+    }
+
+    const fn with_history_support(
+        kind: ProviderItemKind,
+        history_support: ProviderFrameHistorySupportV1,
+    ) -> Self {
+        Self {
+            history_support,
+            ..Self::supported(kind)
+        }
+    }
+}
 
 impl<R: Read, S: ProviderFrameTextSpanSinkV1> StreamDecoder<'_, R, S> {
-    pub(super) fn item(
-        &mut self,
-    ) -> Result<
-        (ProviderItemKind, bool, ProviderFrameHistorySupportV1),
-        ProviderFrameStreamError<S::Error>,
-    > {
-        let supported = ProviderFrameHistorySupportV1::Supported;
+    pub(super) fn item(&mut self) -> Result<StreamItemSummary, ProviderFrameStreamError<S::Error>> {
         match self.u8()? {
             0 => {
-                self.user_message()?;
-                Ok((ProviderItemKind::UserMessage, false, supported))
+                let submitted_content = self.user_message()?;
+                Ok(StreamItemSummary {
+                    submitted_content: Some(submitted_content),
+                    ..StreamItemSummary::supported(ProviderItemKind::UserMessage)
+                })
             }
             1 => {
                 self.hook_prompt()?;
-                Ok((ProviderItemKind::HookPrompt, false, supported))
+                Ok(StreamItemSummary::supported(ProviderItemKind::HookPrompt))
             }
             2 => {
-                self.agent_message()?;
-                Ok((ProviderItemKind::AgentMessage, false, supported))
+                let message_phase = self.agent_message()?;
+                Ok(StreamItemSummary {
+                    message_phase,
+                    ..StreamItemSummary::supported(ProviderItemKind::AgentMessage)
+                })
             }
             3 => {
                 self.text("plan text", Some(ProviderLogicalTextRoleV1::Narrative))?;
-                Ok((ProviderItemKind::Plan, false, supported))
+                Ok(StreamItemSummary::supported(ProviderItemKind::Plan))
             }
             4 => {
                 let count = self.count("reasoning summary")?;
@@ -41,49 +79,49 @@ impl<R: Read, S: ProviderFrameTextSpanSinkV1> StreamDecoder<'_, R, S> {
                         Some(ProviderLogicalTextRoleV1::Activity),
                     )?;
                 }
-                Ok((ProviderItemKind::Reasoning, false, supported))
+                Ok(StreamItemSummary::supported(ProviderItemKind::Reasoning))
             }
-            5 => self
-                .command_execution()
-                .map(|in_progress| (ProviderItemKind::CommandExecution, in_progress, supported)),
+            5 => self.command_execution().map(|value| {
+                StreamItemSummary::in_progress(ProviderItemKind::CommandExecution, value)
+            }),
             6 => self
                 .file_change()
-                .map(|in_progress| (ProviderItemKind::FileChange, in_progress, supported)),
+                .map(|value| StreamItemSummary::in_progress(ProviderItemKind::FileChange, value)),
             7 => self
                 .mcp_tool_call()
-                .map(|in_progress| (ProviderItemKind::McpToolCall, in_progress, supported)),
-            8 => self
-                .dynamic_tool_call()
-                .map(|in_progress| (ProviderItemKind::DynamicToolCall, in_progress, supported)),
-            9 => self.collab_tool_call().map(|in_progress| {
-                (
-                    ProviderItemKind::CollabAgentToolCall,
-                    in_progress,
-                    supported,
-                )
+                .map(|value| StreamItemSummary::in_progress(ProviderItemKind::McpToolCall, value)),
+            8 => self.dynamic_tool_call().map(|value| {
+                StreamItemSummary::in_progress(ProviderItemKind::DynamicToolCall, value)
+            }),
+            9 => self.collab_tool_call().map(|value| {
+                StreamItemSummary::in_progress(ProviderItemKind::CollabAgentToolCall, value)
             }),
             10 => {
                 self.subagent_activity()?;
-                Ok((ProviderItemKind::SubAgentActivity, false, supported))
+                Ok(StreamItemSummary::supported(
+                    ProviderItemKind::SubAgentActivity,
+                ))
             }
             11 => {
                 let history_support = self.web_search()?;
-                Ok((ProviderItemKind::WebSearch, false, history_support))
+                Ok(StreamItemSummary::with_history_support(
+                    ProviderItemKind::WebSearch,
+                    history_support,
+                ))
             }
             12 => {
                 self.text("image-view path", Some(ProviderLogicalTextRoleV1::Activity))?;
-                Ok((ProviderItemKind::ImageView, false, supported))
+                Ok(StreamItemSummary::supported(ProviderItemKind::ImageView))
             }
             13 => {
                 self.u64()?;
-                Ok((ProviderItemKind::Sleep, false, supported))
+                Ok(StreamItemSummary::supported(ProviderItemKind::Sleep))
             }
             14 => {
                 let in_progress = self.image_generation()?;
-                Ok((
+                Ok(StreamItemSummary::in_progress(
                     ProviderItemKind::StandaloneImageGeneration,
                     in_progress,
-                    supported,
                 ))
             }
             15 => {
@@ -91,16 +129,22 @@ impl<R: Read, S: ProviderFrameTextSpanSinkV1> StreamDecoder<'_, R, S> {
                     "entered-review text",
                     Some(ProviderLogicalTextRoleV1::Activity),
                 )?;
-                Ok((ProviderItemKind::EnteredReviewMode, false, supported))
+                Ok(StreamItemSummary::supported(
+                    ProviderItemKind::EnteredReviewMode,
+                ))
             }
             16 => {
                 self.text(
                     "exited-review text",
                     Some(ProviderLogicalTextRoleV1::Activity),
                 )?;
-                Ok((ProviderItemKind::ExitedReviewMode, false, supported))
+                Ok(StreamItemSummary::supported(
+                    ProviderItemKind::ExitedReviewMode,
+                ))
             }
-            17 => Ok((ProviderItemKind::ContextCompaction, false, supported)),
+            17 => Ok(StreamItemSummary::supported(
+                ProviderItemKind::ContextCompaction,
+            )),
             tag => Err(ProviderFrameDecodeError::InvalidTag {
                 kind: "provider item",
                 tag,

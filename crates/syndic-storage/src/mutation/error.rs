@@ -86,11 +86,17 @@ pub enum SyndicMutationError {
     },
     SourceEventFrontierExhausted,
     SourceIdentityConflict,
+    ProviderFrameBuildConflict,
+    ProviderFrameValidationConflict,
+    ProviderObservationIssueConflict,
     ProviderItemKindConflict,
     ProviderItemLifecycleConflict,
     TerminalItemAuditConflict,
     CanonicalItemConflict,
+    ActivityQueryConflict,
+    GeneratedMediaResourceCollision,
     CanonicalFinalizationConflict,
+    TerminalHistoryCompletionConflict,
     ProjectionBuildConflict,
     ProjectionAlreadyCurrent,
     ProjectionIdentityCollision,
@@ -101,7 +107,22 @@ pub enum SyndicMutationError {
     AssistantPhaseConflict,
     InputGateStateConflict,
     AcceptedInputDeliveryConflict,
+    AcceptedInputPromotionConflict,
     BindingStateConflict,
+    ExecutionBindingConflict,
+    ThreadAttributesRevisionConflict {
+        expected: crate::ThreadAttributesRevision,
+        current: crate::ThreadAttributesRevision,
+    },
+    ThreadUsageRevisionConflict {
+        expected: crate::ThreadUsageRevision,
+        current: crate::ThreadUsageRevision,
+    },
+    ThreadCatalogSummaryConflict,
+    GeneratedTitleAlreadyAccepted,
+    ThreadArchiveStateConflict,
+    UsageRouteConflict,
+    UsageProviderOrdinalConflict,
     BindingPathConflict,
     CasThreadOwnershipConflict,
     CasThreadRetired,
@@ -111,7 +132,7 @@ pub enum SyndicMutationError {
     ActiveSteeringRouteConflict,
     EmptySubmission,
     AdmissionIdentityCollision,
-    MarkerResolutionConflict,
+    AssetReferenceSetConflict,
     ReplacementEditAlreadyActive,
     ReplacementEditNotActive,
     ReplacementDraftNotEmpty,
@@ -225,6 +246,14 @@ impl fmt::Display for SyndicMutationError {
             Self::SourceIdentityConflict => {
                 formatter.write_str("source event external identity correlation disagrees")
             }
+            Self::ProviderFrameBuildConflict => {
+                formatter.write_str("sealed provider-frame build disagrees with publication")
+            }
+            Self::ProviderFrameValidationConflict => formatter
+                .write_str("staged provider frame failed exact structural validation"),
+            Self::ProviderObservationIssueConflict => formatter.write_str(
+                "provider-observation issue evidence or lifecycle conflict disagrees",
+            ),
             Self::ProviderItemKindConflict => {
                 formatter.write_str("source item kind disagrees with durable item authority")
             }
@@ -236,9 +265,17 @@ impl fmt::Display for SyndicMutationError {
             Self::CanonicalItemConflict => {
                 formatter.write_str("canonical item identity or live frontier disagrees")
             }
+            Self::ActivityQueryConflict => {
+                formatter.write_str("activity-query projection frontier disagrees")
+            }
+            Self::GeneratedMediaResourceCollision => formatter
+                .write_str("generated-media resource identity collides with durable state"),
             Self::CanonicalFinalizationConflict => {
                 formatter.write_str("canonical item finalization frontier disagrees")
             }
+            Self::TerminalHistoryCompletionConflict => formatter.write_str(
+                "terminal history is not at the exact durable convergence fixed point",
+            ),
             Self::ProjectionBuildConflict => {
                 formatter.write_str("item projection build frontier disagrees")
             }
@@ -267,8 +304,37 @@ impl fmt::Display for SyndicMutationError {
             }
             Self::AcceptedInputDeliveryConflict => formatter
                 .write_str("accepted-input delivery state does not admit the requested transition"),
+            Self::AcceptedInputPromotionConflict => formatter.write_str(
+                "accepted-input authority does not admit the requested next-turn promotion",
+            ),
             Self::BindingStateConflict => {
                 formatter.write_str("binding state does not admit the requested transition")
+            }
+            Self::ExecutionBindingConflict => formatter
+                .write_str("CAS execution copy disagrees with canonical thread execution"),
+            Self::ThreadAttributesRevisionConflict { expected, current } => write!(
+                formatter,
+                "thread-attributes revision conflict: expected {}, current {}",
+                expected.get(),
+                current.get()
+            ),
+            Self::ThreadUsageRevisionConflict { expected, current } => write!(
+                formatter,
+                "thread-usage revision conflict: expected {}, current {}",
+                expected.get(),
+                current.get()
+            ),
+            Self::ThreadCatalogSummaryConflict => formatter
+                .write_str("thread-catalog summary or exact canonical source changed"),
+            Self::GeneratedTitleAlreadyAccepted => {
+                formatter.write_str("thread already has an accepted generated title")
+            }
+            Self::ThreadArchiveStateConflict => formatter
+                .write_str("thread archive state does not admit the requested transition"),
+            Self::UsageRouteConflict => formatter
+                .write_str("token usage does not name the exact current usable route"),
+            Self::UsageProviderOrdinalConflict => {
+                formatter.write_str("token usage provider-control ordinal is stale")
             }
             Self::BindingPathConflict => {
                 formatter.write_str("binding path or represented prefix disagrees")
@@ -295,8 +361,8 @@ impl fmt::Display for SyndicMutationError {
             Self::AdmissionIdentityCollision => {
                 formatter.write_str("submission natural identity collides with durable state")
             }
-            Self::MarkerResolutionConflict => {
-                formatter.write_str("resolved markers disagree with the sealed draft content")
+            Self::AssetReferenceSetConflict => {
+                formatter.write_str("sealed asset-reference proof disagrees with the content")
             }
             Self::ReplacementEditAlreadyActive => {
                 formatter.write_str("the current draft already has replacement-edit intent")

@@ -58,6 +58,7 @@ impl Family for ContentChunksFamily {
     type Key = ContentChunkKey;
     type Value = ContentChunkRecord;
     const NAME: &'static str = "content-chunks";
+    const RECORD_VERSION: beryl_home_store::RecordVersion = beryl_home_store::RecordVersion::new(1);
     const MAX_KEY_BYTES: usize = 24;
     const MAX_VALUE_BYTES: usize = CONTENT_CHUNK_MAX_BYTES + 128;
 
@@ -88,51 +89,6 @@ impl Family for ContentChunksFamily {
         if value.digest() != &digest {
             return Err(CodecError::InvalidLength("content chunk digest"));
         }
-        d.finish()?;
-        Ok(value)
-    }
-}
-
-pub(crate) struct InputMarkerResolutionsFamily;
-pub(crate) type InputMarkerResolutionsCodec = ExactCodec<InputMarkerResolutionsFamily>;
-
-impl Family for InputMarkerResolutionsFamily {
-    type Key = InputMarkerKey;
-    type Value = InputMarkerResolutionRecord;
-    const NAME: &'static str = "input-marker-resolutions";
-    const MAX_KEY_BYTES: usize = 25;
-    const MAX_VALUE_BYTES: usize = 128;
-
-    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
-        Ok(key.encode())
-    }
-
-    fn decode_key(encoded: &[u8]) -> Result<Self::Key, CodecError> {
-        InputMarkerKey::decode(encoded)
-    }
-
-    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, CodecError> {
-        let mut e = Encoder::new();
-        enc_input_marker_owner(&mut e, value.owner());
-        enc_input_marker_ord(&mut e, value.ordinal());
-        let marker = value.marker();
-        enc_marker(&mut e, marker.marker_id());
-        enc_image_label(&mut e, marker.label());
-        enc_asset_id(&mut e, marker.asset_id());
-        Ok(e.finish())
-    }
-
-    fn decode_value(encoded: &[u8]) -> Result<Self::Value, CodecError> {
-        let mut d = Decoder::new(encoded);
-        let value = InputMarkerResolutionRecord::new(
-            dec_input_marker_owner(&mut d)?,
-            dec_input_marker_ord(&mut d)?,
-            ResolvedImageMarker::new(
-                dec_marker(&mut d)?,
-                dec_image_label(&mut d)?,
-                dec_asset_id(&mut d)?,
-            ),
-        );
         d.finish()?;
         Ok(value)
     }

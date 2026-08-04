@@ -6,18 +6,40 @@ use crate::{
     ContentReference, ContentTextSpanRecord, SyndicReadError,
     codec::{
         ContentChunkKey, ContentChunksFamily, ContentManifestsFamily, ContentTextSpanKey,
-        ContentTextSpansCodec, Family, family_point_limit,
+        ContentTextSpansCodec, Family, family_cursor_max_bytes, family_point_limit,
     },
     content::input_marker_digest,
     domain::SyndicStorage,
 };
 
-use super::SyndicPointReadLimit;
+use super::{ReadByteTotals, SyndicPointReadLimit};
+
+mod append;
+mod segment;
+
+use append::{append_span, concurrent, finish_page};
+pub(super) use append::{family_limit, invalid_offset};
+
+pub use segment::{
+    SyndicContentTextSegment, SyndicContentTextSegmentBoundary, SyndicContentTextSegmentRangeRead,
+};
 
 pub(super) const CONTENT_TEXT_MAX_PAYLOAD_BYTES: usize = 65_536;
 const CONTENT_TEXT_INDEX_PAGE_ITEMS: usize = 256;
 const CONTENT_TEXT_INDEX_PAGE_BYTES: usize = 65_536;
 const CONTENT_TEXT_OPERATION: &str = "sealed-content text-range read";
+
+#[cfg(feature = "test-faults")]
+use crate::test_faults::{ContentTextReadResidencyLease, ContentTextReadResidencyTracker};
+
+pub(super) struct TextPageAssembly {
+    bytes: Vec<u8>,
+    end: u64,
+    stored_bytes: usize,
+    decoded_bytes: usize,
+    #[cfg(feature = "test-faults")]
+    output_residency: Option<ContentTextReadResidencyLease>,
+}
 
 /// One bounded UTF-8 page from an exact immutable logical content value.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,25 +49,10 @@ pub struct SyndicContentTextRangeRead {
     text: Box<str>,
     next_offset: Option<u64>,
     stored_bytes: usize,
+    decoded_bytes: usize,
 }
 
 impl SyndicContentTextRangeRead {
-    pub(super) fn new(
-        content: ContentReference,
-        start: u64,
-        text: Box<str>,
-        next_offset: Option<u64>,
-        stored_bytes: usize,
-    ) -> Self {
-        Self {
-            content,
-            start,
-            text,
-            next_offset,
-            stored_bytes,
-        }
-    }
-
     /// Returns the exact sealed content reference read by this page.
     #[must_use]
     pub const fn content(&self) -> ContentReference {
@@ -64,6 +71,12 @@ impl SyndicContentTextRangeRead {
         &self.text
     }
 
+    /// Consumes the page and transfers its bounded text without copying bytes.
+    #[must_use]
+    pub fn into_text(self) -> Box<str> {
+        self.text
+    }
+
     /// Returns the exact logical UTF-8 offset for the next page, when any.
     #[must_use]
     pub const fn next_offset(&self) -> Option<u64> {
@@ -74,6 +87,12 @@ impl SyndicContentTextRangeRead {
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
+    }
+
+    /// Returns the checked practical decoded bytes retained by typed cursor pages.
+    #[must_use]
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
     }
 }
 
@@ -91,6 +110,44 @@ impl SyndicStorage {
         start: u64,
         max_payload_bytes: usize,
     ) -> Result<Option<SyndicContentTextRangeRead>, SyndicReadError> {
+        self.sealed_content_text_range_inner(
+            store,
+            content,
+            start,
+            max_payload_bytes,
+            #[cfg(feature = "test-faults")]
+            None,
+        )
+    }
+
+    /// Reads through the production path while recording content-free dependency residency.
+    #[cfg(feature = "test-faults")]
+    #[doc(hidden)]
+    pub fn sealed_content_text_range_tracked_for_lifecycle_test(
+        &self,
+        store: &HomeStore,
+        content: ContentReference,
+        start: u64,
+        max_payload_bytes: usize,
+        tracker: &ContentTextReadResidencyTracker,
+    ) -> Result<Option<SyndicContentTextRangeRead>, SyndicReadError> {
+        self.sealed_content_text_range_inner(
+            store,
+            content,
+            start,
+            max_payload_bytes,
+            Some(tracker),
+        )
+    }
+
+    fn sealed_content_text_range_inner(
+        &self,
+        store: &HomeStore,
+        content: ContentReference,
+        start: u64,
+        max_payload_bytes: usize,
+        #[cfg(feature = "test-faults")] tracker: Option<&ContentTextReadResidencyTracker>,
+    ) -> Result<Option<SyndicContentTextRangeRead>, SyndicReadError> {
         if max_payload_bytes == 0 || max_payload_bytes > CONTENT_TEXT_MAX_PAYLOAD_BYTES {
             return Err(SyndicReadError::InvalidContentTextReadLimit {
                 maximum: CONTENT_TEXT_MAX_PAYLOAD_BYTES,
@@ -105,53 +162,80 @@ impl SyndicStorage {
                 Some(_) => Err(concurrent()),
             };
         };
-        validate_manifest(first.record(), content)?;
+        validate_manifest(&first, content, MarkerPolicy::MarkerFree)?;
         let content_bytes = content.summary().logical_utf8_bytes();
         if start > content_bytes {
             return Err(invalid_offset(content_bytes, start));
         }
 
-        let (bytes, end, range_stored_bytes) = if start == content_bytes {
-            (Vec::new(), start, 0)
+        let assembly = if start == content_bytes {
+            TextPageAssembly {
+                bytes: Vec::new(),
+                end: start,
+                stored_bytes: 0,
+                decoded_bytes: 0,
+                #[cfg(feature = "test-faults")]
+                output_residency: None,
+            }
         } else {
             let payload_bytes_u64 = u64::try_from(max_payload_bytes)
                 .expect("the fixed content text payload bound fits u64");
             let desired_end = start.saturating_add(payload_bytes_u64).min(content_bytes);
-            read_text_page(self, store, content, start, desired_end, max_payload_bytes)?
+            read_text_page(
+                self,
+                store,
+                content,
+                start,
+                desired_end,
+                max_payload_bytes,
+                None,
+                #[cfg(feature = "test-faults")]
+                tracker,
+            )?
         };
 
         let second = self
             .content_manifest(store, content.id(), manifest_limit)?
             .ok_or_else(concurrent)?;
-        if second.record() != first.record() {
+        if second != first {
             return Err(concurrent());
         }
-        validate_manifest(second.record(), content)?;
-        let stored_bytes = first
-            .stored_bytes()
-            .checked_add(range_stored_bytes)
-            .and_then(|value| value.checked_add(second.stored_bytes()))
-            .ok_or(SyndicReadError::Invariant(
-                "logical content text stored-byte accounting overflowed",
-            ))?;
-        let text = String::from_utf8(bytes)
+        validate_manifest(&second, content, MarkerPolicy::MarkerFree)?;
+        let text = String::from_utf8(assembly.bytes)
             .map_err(|_| {
                 SyndicReadError::Invariant("logical content text page is not valid UTF-8")
             })?
             .into_boxed_str();
-        Ok(Some(SyndicContentTextRangeRead {
+        let page = SyndicContentTextRangeRead {
             content,
             start,
             text,
-            next_offset: (end < content_bytes).then_some(end),
-            stored_bytes,
-        }))
+            next_offset: (assembly.end < content_bytes).then_some(assembly.end),
+            stored_bytes: assembly.stored_bytes,
+            decoded_bytes: assembly.decoded_bytes,
+        };
+        #[cfg(feature = "test-faults")]
+        drop(assembly.output_residency);
+        Ok(Some(page))
     }
 }
 
-fn validate_manifest(
+#[derive(Clone, Copy)]
+pub(super) enum MarkerPolicy {
+    MarkerFree,
+    MarkerAware,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct TextSegmentBounds {
+    pub(super) start: u64,
+    pub(super) break_at_start: bool,
+}
+
+pub(super) fn validate_manifest(
     manifest: &ContentManifestRecord,
     content: ContentReference,
+    marker_policy: MarkerPolicy,
 ) -> Result<(), SyndicReadError> {
     let summary = content.summary();
     if manifest.id() != content.id()
@@ -177,14 +261,24 @@ fn validate_manifest(
             "sealed content reference disagrees with its exact manifest",
         ));
     }
-    if summary.image_marker_count() != 0 {
+    if matches!(marker_policy, MarkerPolicy::MarkerFree) && summary.image_marker_count() != 0 {
         return Err(SyndicReadError::ContentTextContainsImageMarkers {
             actual: summary.image_marker_count(),
         });
     }
-    if summary.marker_digest() != input_marker_digest(std::iter::empty()) {
+    if summary.image_marker_count() == 0
+        && summary.marker_digest() != input_marker_digest(std::iter::empty())
+    {
         return Err(SyndicReadError::Invariant(
             "marker-free content has a nonempty marker digest",
+        ));
+    }
+    if matches!(marker_policy, MarkerPolicy::MarkerAware)
+        && summary.image_marker_count() != 0
+        && content.encoding() != crate::ContentEncoding::ComposerV1
+    {
+        return Err(SyndicReadError::Invariant(
+            "marker-bearing sealed content is not ComposerV1",
         ));
     }
     Ok(())
@@ -197,47 +291,71 @@ pub(super) fn read_text_page(
     start: u64,
     desired_end: u64,
     max_payload_bytes: usize,
-) -> Result<(Vec<u8>, u64, usize), SyndicReadError> {
-    let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
-        storage.handle,
-        &CursorRange::closed(
-            ContentTextSpanKey {
-                owner: content.id(),
-                logical_start: 0,
-            },
-            ContentTextSpanKey {
-                owner: content.id(),
-                logical_start: start,
-            },
-        ),
-        CursorDirection::Reverse,
-        CursorReadLimits::new(1, 512).expect("text predecessor bounds are nonzero"),
-    )?;
-    let mut stored_bytes = predecessor.stored_bytes();
-    let Some(first) = predecessor.records().first() else {
-        return Err(SyndicReadError::Invariant(
-            "logical content text has no indexed predecessor",
-        ));
+    segment: Option<TextSegmentBounds>,
+    #[cfg(feature = "test-faults")] tracker: Option<&ContentTextReadResidencyTracker>,
+) -> Result<TextPageAssembly, SyndicReadError> {
+    let (first_key, first_span, mut totals) = {
+        let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
+            storage.handle,
+            &CursorRange::closed(
+                ContentTextSpanKey {
+                    owner: content.id(),
+                    logical_start: 0,
+                },
+                ContentTextSpanKey {
+                    owner: content.id(),
+                    logical_start: start,
+                },
+            ),
+            CursorDirection::Reverse,
+            CursorReadLimits::new(1, 512).expect("text predecessor bounds are nonzero"),
+        )?;
+        #[cfg(feature = "test-faults")]
+        let _cursor_page_residency =
+            tracker.map(|tracker| tracker.acquire_cursor_page(predecessor.stored_bytes()));
+        let Some(first) = predecessor.records().first() else {
+            return Err(SyndicReadError::Invariant(
+                "logical content text has no indexed predecessor",
+            ));
+        };
+        (
+            *first.key(),
+            *first.value(),
+            ReadByteTotals::new(predecessor.stored_bytes(), predecessor.decoded_bytes()),
+        )
     };
     let mut logical = start;
-    let mut after_start = first.key().logical_start;
+    let mut after_start = first_key.logical_start;
+    #[cfg(feature = "test-faults")]
+    let output_residency = tracker.map(|tracker| tracker.acquire_output(max_payload_bytes));
     let mut output = Vec::with_capacity(max_payload_bytes);
     let mut cached_chunk = None;
     let reached_page_boundary = append_span(
         storage,
         store,
         content,
-        first.key(),
-        *first.value(),
+        &first_key,
+        first_span,
         true,
+        segment,
         &mut cached_chunk,
         &mut logical,
         desired_end,
         &mut output,
-        &mut stored_bytes,
+        &mut totals,
+        #[cfg(feature = "test-faults")]
+        tracker,
     )?;
     if reached_page_boundary {
-        return finish_page(output, logical, start, max_payload_bytes, stored_bytes);
+        return finish_page(
+            output,
+            logical,
+            start,
+            max_payload_bytes,
+            totals,
+            #[cfg(feature = "test-faults")]
+            output_residency,
+        );
     }
 
     while logical < desired_end {
@@ -257,12 +375,14 @@ pub(super) fn read_text_page(
             CursorReadLimits::new(CONTENT_TEXT_INDEX_PAGE_ITEMS, CONTENT_TEXT_INDEX_PAGE_BYTES)
                 .expect("text index-page bounds are nonzero"),
         )?;
-        stored_bytes =
-            stored_bytes
-                .checked_add(page.stored_bytes())
-                .ok_or(SyndicReadError::Invariant(
-                    "logical content text stored-byte accounting overflowed",
-                ))?;
+        #[cfg(feature = "test-faults")]
+        let _cursor_page_residency =
+            tracker.map(|tracker| tracker.acquire_cursor_page(page.stored_bytes()));
+        totals.add(
+            page.stored_bytes(),
+            page.decoded_bytes(),
+            "logical content text byte accounting overflowed",
+        )?;
         if page.records().is_empty() {
             return Err(SyndicReadError::Invariant(
                 "logical content text has an indexed gap",
@@ -277,205 +397,37 @@ pub(super) fn read_text_page(
                 record.key(),
                 *record.value(),
                 false,
+                segment,
                 &mut cached_chunk,
                 &mut logical,
                 desired_end,
                 &mut output,
-                &mut stored_bytes,
+                &mut totals,
+                #[cfg(feature = "test-faults")]
+                tracker,
             )? {
-                return finish_page(output, logical, start, max_payload_bytes, stored_bytes);
+                return finish_page(
+                    output,
+                    logical,
+                    start,
+                    max_payload_bytes,
+                    totals,
+                    #[cfg(feature = "test-faults")]
+                    output_residency,
+                );
             }
             if logical == desired_end {
                 break;
             }
         }
     }
-    finish_page(output, logical, start, max_payload_bytes, stored_bytes)
-}
-
-fn finish_page(
-    output: Vec<u8>,
-    logical: u64,
-    start: u64,
-    max_payload_bytes: usize,
-    stored_bytes: usize,
-) -> Result<(Vec<u8>, u64, usize), SyndicReadError> {
-    if output.is_empty() {
-        return Err(SyndicReadError::ContentTextReadLimitTooSmall {
-            offset: start,
-            actual: max_payload_bytes,
-        });
-    }
-    Ok((output, logical, stored_bytes))
-}
-
-struct CachedChunk {
-    ordinal: ContentChunkOrdinal,
-    start: u64,
-    record: ContentChunkRecord,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn append_span(
-    storage: &SyndicStorage,
-    store: &HomeStore,
-    content: ContentReference,
-    key: &ContentTextSpanKey,
-    span: ContentTextSpanRecord,
-    predecessor: bool,
-    cached_chunk: &mut Option<CachedChunk>,
-    logical: &mut u64,
-    desired_end: u64,
-    output: &mut Vec<u8>,
-    stored_bytes: &mut usize,
-) -> Result<bool, SyndicReadError> {
-    validate_span(content, key, span, predecessor, *logical)?;
-    if cached_chunk.as_ref().is_none_or(|cached| {
-        cached.ordinal != span.chunk_ordinal() || cached.start != span.chunk_start()
-    }) {
-        let chunk = storage
-            .point::<ContentChunksFamily>(
-                store,
-                ContentChunkKey {
-                    owner: content.id(),
-                    ordinal: span.chunk_ordinal(),
-                },
-                family_limit::<ContentChunksFamily>(),
-            )?
-            .ok_or(SyndicReadError::Invariant(
-                "sealed content text chunk is missing",
-            ))?;
-        *stored_bytes =
-            stored_bytes
-                .checked_add(chunk.stored_bytes())
-                .ok_or(SyndicReadError::Invariant(
-                    "logical content text stored-byte accounting overflowed",
-                ))?;
-        *cached_chunk = Some(CachedChunk {
-            ordinal: span.chunk_ordinal(),
-            start: span.chunk_start(),
-            record: chunk.record().clone(),
-        });
-    }
-    let cached = cached_chunk
-        .as_ref()
-        .expect("sealed content text loads its span chunk");
-    if cached.record.content_id() != content.id()
-        || cached.record.ordinal() != span.chunk_ordinal()
-        || <[u8; 32]>::from(Sha256::digest(cached.record.bytes())) != *cached.record.digest()
-    {
-        return Err(SyndicReadError::Invariant(
-            "sealed content text chunk identity or digest disagrees",
-        ));
-    }
-
-    let full_start = span
-        .encoded_start()
-        .checked_sub(span.chunk_start())
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or(SyndicReadError::Invariant(
-            "sealed content text span start is outside its chunk",
-        ))?;
-    let full_end = span
-        .encoded_end()
-        .checked_sub(span.chunk_start())
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or(SyndicReadError::Invariant(
-            "sealed content text span end is outside its chunk",
-        ))?;
-    let source =
-        cached
-            .record
-            .bytes()
-            .get(full_start..full_end)
-            .ok_or(SyndicReadError::Invariant(
-                "sealed content text span is outside its chunk",
-            ))?;
-    if <[u8; 32]>::from(Sha256::digest(source)) != span.digest() {
-        return Err(SyndicReadError::Invariant(
-            "sealed content text span digest disagrees with its bytes",
-        ));
-    }
-    let source = std::str::from_utf8(source)
-        .map_err(|_| SyndicReadError::Invariant("sealed content text span is not valid UTF-8"))?;
-    let local_start = usize::try_from(*logical - span.logical_start())
-        .map_err(|_| SyndicReadError::Invariant("sealed content text logical offset overflowed"))?;
-    if !source.is_char_boundary(local_start) {
-        return Err(invalid_offset(
-            content.summary().logical_utf8_bytes(),
-            *logical,
-        ));
-    }
-    let selected_end = desired_end.min(span.logical_end());
-    let mut local_end = usize::try_from(selected_end - span.logical_start())
-        .map_err(|_| SyndicReadError::Invariant("sealed content text logical offset overflowed"))?;
-    while local_end > local_start && !source.is_char_boundary(local_end) {
-        local_end -= 1;
-    }
-    if local_end == local_start {
-        return Ok(true);
-    }
-    output.extend_from_slice(&source.as_bytes()[local_start..local_end]);
-    let local_end = u64::try_from(local_end)
-        .map_err(|_| SyndicReadError::Invariant("sealed content text logical offset overflowed"))?;
-    *logical = span
-        .logical_start()
-        .checked_add(local_end)
-        .ok_or(SyndicReadError::Invariant(
-            "sealed content text logical offset overflowed",
-        ))?;
-    Ok(*logical < selected_end)
-}
-
-fn validate_span(
-    content: ContentReference,
-    key: &ContentTextSpanKey,
-    span: ContentTextSpanRecord,
-    predecessor: bool,
-    logical: u64,
-) -> Result<(), SyndicReadError> {
-    let summary = content.summary();
-    let start_agrees = if predecessor {
-        span.logical_start() <= logical
-    } else {
-        span.logical_start() == logical
-    };
-    if key.owner != content.id()
-        || key.logical_start != span.logical_start()
-        || span.content_id() != content.id()
-        || !start_agrees
-        || span.logical_end() <= logical
-        || span.logical_end() > summary.logical_utf8_bytes()
-        || span.encoded_end() > summary.encoded_bytes()
-        || span.chunk_ordinal().get() > summary.chunk_count()
-        || span.piece_ordinal().get() > summary.piece_count()
-    {
-        return Err(SyndicReadError::Invariant(
-            "sealed content text span identity or frontier disagrees",
-        ));
-    }
-    if span.break_before() {
-        return Err(SyndicReadError::Invariant(
-            "marker-free sealed content contains a marker-separated text span",
-        ));
-    }
-    Ok(())
-}
-
-fn family_limit<F: Family>() -> SyndicPointReadLimit {
-    SyndicPointReadLimit::new(family_point_limit::<F>().max_bytes())
-        .expect("codec family point-read bound is nonzero")
-}
-
-pub(super) fn invalid_offset(content_bytes: u64, offset: u64) -> SyndicReadError {
-    SyndicReadError::InvalidContentTextOffset {
-        content_bytes,
-        offset,
-    }
-}
-
-fn concurrent() -> SyndicReadError {
-    SyndicReadError::ConcurrentChange {
-        operation: CONTENT_TEXT_OPERATION,
-    }
+    finish_page(
+        output,
+        logical,
+        start,
+        max_payload_bytes,
+        totals,
+        #[cfg(feature = "test-faults")]
+        output_residency,
+    )
 }

@@ -437,7 +437,6 @@ fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
     let known_thread_constant = ["KNOWN", "THREADS"].join("_");
     let direct_store_open = ["SyndicStore", "open"].join("::");
     let store_open_options = ["Store", "Open", "Options"].join("");
-    let storage_module = format!("{}::", ["syndic", "storage"].join("_"));
     let member_inventory = ["Member", "Thread", "Inventory"].join("");
     let selector_projection = ["Thread", "Selector", "Projection"].join("");
     let mut offenders = Vec::new();
@@ -469,7 +468,6 @@ fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
             known_thread_constant.as_str(),
             direct_store_open.as_str(),
             store_open_options.as_str(),
-            storage_module.as_str(),
             member_inventory.as_str(),
             selector_projection.as_str(),
         ] {
@@ -489,68 +487,71 @@ fn live_app_source_avoids_obsolete_catalog_storage_and_activation_inputs() {
 }
 
 #[test]
-fn cas_thread_name_is_not_thread_title_authority() {
+fn activity_metadata_read_uses_compact_typed_boundary() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let crates_dir = manifest_dir
-        .parent()
-        .expect("app crate should be under workspace crates");
-    let backend_src_dir = crates_dir.join("beryl-backend").join("src");
-    let model_src_dir = crates_dir.join("beryl-model").join("src");
-    let app_src_dir = manifest_dir.join("src");
-    let backend_forbidden = [
-        "thread/name/set",
-        "ThreadNameSet",
-        "ThreadSetNameParams",
-        "set_thread_name(",
-    ];
-    let title_authority_forbidden = [
-        "thread/name/set",
-        "ThreadNameSet",
-        "ThreadSetNameParams",
-        "set_thread_name(",
-        "apply_thread_name_update",
-        "apply_authoritative_thread_name_update",
-        "set_authoritative_thread_backend_name",
-        "set_authoritative_backend_name",
-        "set_thread_backend_name",
-        "title_with_backend_name(",
-        "backend_name",
-        "ignored_backend_name_for_automatic_title",
-        "ignores_backend_name_for_automatic_title",
-        "with_ignored_backend_name_for_automatic_title",
-    ];
-    let mut offenders = Vec::new();
+    let src_dir = manifest_dir.join("src");
+    let metadata_read_path = "shell/tool_activity_nickname.rs";
+    let mut metadata_read_sources = Vec::new();
 
-    for path in rust_files_under(&backend_src_dir) {
-        let source = fs::read_to_string(&path).expect("backend source should be readable");
-        for forbidden in backend_forbidden {
-            if source.contains(forbidden) {
-                offenders.push(format!(
-                    "beryl-backend/{} contains {forbidden}",
-                    display_test_path(&backend_src_dir, &path)
-                ));
-            }
+    for path in rust_files_under(&src_dir) {
+        let source = fs::read_to_string(&path).expect("app source should be readable");
+        let relative_path = display_test_path(&src_dir, &path).replace('\\', "/");
+        assert!(
+            !source.contains("read_thread_metadata_details("),
+            "{relative_path} contains obsolete detailed metadata-only thread/read"
+        );
+        if source.contains("read_thread_metadata(") {
+            metadata_read_sources.push(relative_path);
         }
     }
+    metadata_read_sources.sort();
+    metadata_read_sources.dedup();
+    assert_eq!(metadata_read_sources, vec![metadata_read_path.to_string()]);
 
-    for (crate_label, src_dir) in [("beryl-app", app_src_dir), ("beryl-model", model_src_dir)] {
-        for path in rust_files_under(&src_dir) {
-            let source = fs::read_to_string(&path).expect("source should be readable");
-            for forbidden in title_authority_forbidden {
-                if source.contains(forbidden) {
-                    offenders.push(format!(
-                        "{crate_label}/{} contains {forbidden}",
-                        display_test_path(&src_dir, &path)
-                    ));
-                }
-            }
-        }
-    }
-
+    let metadata_read_source = fs::read_to_string(src_dir.join(metadata_read_path))
+        .expect("activity metadata resolver source should be readable");
+    let identity_validation = metadata_read_source
+        .find("CasThreadId::new")
+        .expect("metadata resolver must validate compact CAS thread identity");
+    let connection = metadata_read_source
+        .find("connect_request_client")
+        .expect("metadata resolver must use a request-only client");
     assert!(
-        offenders.is_empty(),
-        "CAS thread-name title authority remains live: {offenders:?}"
+        identity_validation < connection,
+        "metadata resolver must reject invalid string targets before opening a request client"
     );
+    assert!(metadata_read_source.contains("read_thread_metadata(&thread_id, timeout)"));
+    for forbidden in [
+        "read_thread_metadata_details(",
+        "ThreadSummary",
+        "ThreadSessionMetadata",
+        "metadata.thread.",
+        "metadata.session_metadata",
+    ] {
+        assert!(
+            !metadata_read_source.contains(forbidden),
+            "activity metadata resolver retained obsolete read shape {forbidden}"
+        );
+    }
+
+    let projection_source = fs::read_to_string(src_dir.join("shell").join("tool_activity.rs"))
+        .expect("activity projection source should be readable");
+    assert!(projection_source.contains("metadata.thread_id().as_str()"));
+    assert!(projection_source.contains("metadata.agent_nickname()"));
+    assert!(
+        projection_source
+            .contains("note_subagent_runtime_metadata_values(thread_id, None, None, true)")
+    );
+
+    let title_backend_source = fs::read_to_string(
+        src_dir
+            .join("shell")
+            .join("thread_title")
+            .join("backend.rs"),
+    )
+    .expect("thread-title backend source should be readable");
+    assert!(title_backend_source.contains("FreshLoadedThreadSession"));
+    assert!(!title_backend_source.contains("ThreadSessionResponse"));
 }
 
 #[test]

@@ -48,6 +48,7 @@ pub(super) fn collect_path_turn(
             state.finalized_item_count(),
             state.open_item_count(),
             state.history_blocking_item_count(),
+            state.provider_observation_issue(),
             state.incomplete_reason(),
         );
     let parent = turn.parent().turn();

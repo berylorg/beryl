@@ -11,6 +11,8 @@ test-faults = []
 [dependencies]
 beryl-home-store.workspace = true
 beryl-model.workspace = true
+sha2.workspace = true
+unicode-normalization.workspace = true
 
 [dev-dependencies]
 beryl-home-store = { workspace = true, features = ["test-faults"] }

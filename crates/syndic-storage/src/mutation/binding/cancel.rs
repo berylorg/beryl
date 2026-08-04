@@ -1,9 +1,9 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
 
 use crate::{
-    BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, CasThreadBindingIndexRecord,
-    CasThreadIndexRecord, InputGateRecord, InputGateState, SyndicMutationError, TurnLifecycle,
-    codec::*, domain::SyndicDomain,
+    AcceptedRouteTarget, BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState,
+    CasThreadBindingIndexRecord, CasThreadIndexRecord, InputGateRecord, InputGateState,
+    SyndicMutationError, TurnLifecycle, codec::*, domain::SyndicDomain,
 };
 
 use super::{
@@ -83,10 +83,25 @@ impl CancelBindingActivationMutation {
                 current: current_gate.revision(),
             });
         }
-        let InputGateState::AwaitingSteering(pending) = current_gate.state() else {
+        let InputGateState::AwaitingSteering(gate_turn) = current_gate.state() else {
             return Err(SyndicMutationError::InputGateStateConflict);
         };
-        if pending.binding_revision() != base.current.revision()
+        let route_proof = current_gate
+            .selected_route()
+            .ok_or(SyndicMutationError::InputGateStateConflict)?;
+        let route = required::<AcceptedRouteGenerationsFamily>(
+            reader,
+            &ThreadRouteKey {
+                thread: request.thread_id(),
+                generation: route_proof.generation(),
+            },
+        )?;
+        let AcceptedRouteTarget::AwaitingSteering(pending) = route.target() else {
+            return Err(SyndicMutationError::InputGateStateConflict);
+        };
+        if *gate_turn != active.turn_id()
+            || route.revision() != route_proof.revision()
+            || pending.binding_revision() != base.current.revision()
             || pending.snapshot_id() != active.snapshot_id()
             || pending.active_turn_id() != active.turn_id()
             || pending.cas_thread_id() != active.usable().cas_thread_id()
@@ -113,6 +128,8 @@ impl CancelBindingActivationMutation {
             current_gate.revision().checked_next()?,
             InputGateState::PendingTurn(active.turn_id()),
             current_gate.accepted_high_water(),
+            current_gate.route_generation_high_water(),
+            None,
             0,
             0,
             0,

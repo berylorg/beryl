@@ -1,12 +1,9 @@
 use beryl_model::{
-    ContentRevision, SyndicAcceptedInputId, SyndicContentDigest, SyndicContentId, SyndicItemId,
+    ContentRevision, SealedContentMarkerSummary, SyndicContentDigest, SyndicContentId, SyndicItemId,
 };
 use sha2::{Digest, Sha256};
 
-use crate::{
-    ContentChunkOrdinal, ContentEncoding, ContentLifecycle, InputMarkerOrdinal,
-    ResolvedImageMarker, SyndicRecordError,
-};
+use crate::{ContentChunkOrdinal, ContentEncoding, ContentLifecycle, SyndicRecordError};
 
 mod span;
 
@@ -25,11 +22,11 @@ pub struct ContentSummary {
     atom_count: u64,
     image_marker_count: u64,
     marker_digest: [u8; 32],
+    maximum_image_label: Option<crate::ImageLabelOrdinal>,
     digest: SyndicContentDigest,
 }
 
 impl ContentSummary {
-    #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
         chunk_count: u64,
@@ -39,9 +36,13 @@ impl ContentSummary {
         atom_count: u64,
         image_marker_count: u64,
         marker_digest: [u8; 32],
+        maximum_image_label: Option<crate::ImageLabelOrdinal>,
         digest: SyndicContentDigest,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, SyndicRecordError> {
+        if (image_marker_count == 0) != maximum_image_label.is_none() {
+            return Err(SyndicRecordError::InvalidContentEncoding);
+        }
+        Ok(Self {
             chunk_count,
             piece_count,
             encoded_bytes,
@@ -49,8 +50,9 @@ impl ContentSummary {
             atom_count,
             image_marker_count,
             marker_digest,
+            maximum_image_label,
             digest,
-        }
+        })
     }
 
     #[must_use]
@@ -80,6 +82,10 @@ impl ContentSummary {
     #[must_use]
     pub const fn marker_digest(self) -> [u8; 32] {
         self.marker_digest
+    }
+    #[must_use]
+    pub const fn maximum_image_label(self) -> Option<crate::ImageLabelOrdinal> {
+        self.maximum_image_label
     }
     #[must_use]
     pub const fn digest(self) -> SyndicContentDigest {
@@ -127,6 +133,19 @@ impl ContentReference {
     #[must_use]
     pub const fn summary(self) -> ContentSummary {
         self.summary
+    }
+
+    /// Returns exact cross-domain marker evidence for this immutable content reference.
+    pub const fn sealed_marker_summary(
+        self,
+    ) -> Result<SealedContentMarkerSummary, beryl_model::AssetProofError> {
+        SealedContentMarkerSummary::new(
+            self.id,
+            self.summary.digest(),
+            self.summary.marker_digest(),
+            self.summary.image_marker_count(),
+            self.summary.maximum_image_label(),
+        )
     }
 }
 
@@ -209,8 +228,10 @@ impl ContentManifestRecord {
             1,
             0,
             crate::content::input_marker_digest(std::iter::empty()),
+            None,
             digest,
-        );
+        )
+        .expect("marker-free live content summary is valid");
         Self::with_owner(
             id,
             Some(owner),
@@ -299,49 +320,6 @@ pub struct ContentChunkRecord {
     ordinal: ContentChunkOrdinal,
     digest: [u8; 32],
     bytes: Box<[u8]>,
-}
-
-/// Logical owner of one separately ordered admitted marker resolution.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InputMarkerOwner {
-    AcceptedInput(SyndicAcceptedInputId),
-    CanonicalItem(SyndicItemId),
-}
-
-/// Exact resolved image fact retained without duplicating submitted text.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct InputMarkerResolutionRecord {
-    owner: InputMarkerOwner,
-    ordinal: InputMarkerOrdinal,
-    marker: ResolvedImageMarker,
-}
-
-impl InputMarkerResolutionRecord {
-    #[must_use]
-    pub const fn new(
-        owner: InputMarkerOwner,
-        ordinal: InputMarkerOrdinal,
-        marker: ResolvedImageMarker,
-    ) -> Self {
-        Self {
-            owner,
-            ordinal,
-            marker,
-        }
-    }
-
-    #[must_use]
-    pub const fn owner(self) -> InputMarkerOwner {
-        self.owner
-    }
-    #[must_use]
-    pub const fn ordinal(self) -> InputMarkerOrdinal {
-        self.ordinal
-    }
-    #[must_use]
-    pub const fn marker(self) -> ResolvedImageMarker {
-        self.marker
-    }
 }
 
 impl ContentChunkRecord {

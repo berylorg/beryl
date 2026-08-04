@@ -23,11 +23,11 @@ Widgets:
 
 # Anatomy
 
-The thread lineage contains a fixed root strip, structural heading, horizontal trail viewport, windowed trail layer, ordered parent breadcrumb controls, separators, readonly current-thread endpoint, and an overlay horizontal scrollbar.
+The thread lineage contains a fixed root strip, structural heading, horizontal trail viewport, fixed-stride windowed trail layer, ordered parent breadcrumb controls, separators, readonly current-thread endpoint, and an overlay horizontal scrollbar.
 
-Each parent breadcrumb has an owner-supplied stable thread identity, title, availability state, accessible context, and navigation command. The current endpoint has stable identity and title but no activation command.
+Each resident parent breadcrumb has an owner-supplied stable thread identity, title, availability state, bounded accessible context, and navigation command. The current endpoint has stable identity and title but no activation command.
 
-The widget owns strip anatomy, breadcrumb geometry, focus movement, truncation, horizontal overflow, bounded realization, unavailable/current presentation, and tooltip anchoring. The owning feature supplies lineage order, labels, availability meaning, navigation effects, and whether the widget is mounted.
+The widget owns strip anatomy, breadcrumb geometry, focus movement, truncation, horizontal overflow, bounded realization, page requests, unavailable/current presentation, and tooltip anchoring. The owning feature supplies one revision-bound lineage query identity, the total parent count, bounded resident breadcrumb pages, stable identities, labels, availability meaning, navigation effects, the current endpoint, and whether the widget is mounted. The widget never receives the complete lineage collection.
 
 # Look
 
@@ -39,7 +39,7 @@ Horizontal overflow does not wrap the trail, increase strip height, or create ou
 
 # States
 
-The widget supports ready, horizontal overflow, leading clamped, trailing clamped, manually scrolled, auto-revealing current, focused breadcrumb, tooltip visible, reconciling, and inert states.
+The widget supports loading page, ready, horizontal overflow, leading clamped, trailing clamped, manually scrolled, auto-revealing current, focused breadcrumb, tooltip visible, reconciling, and inert states.
 
 Parent breadcrumbs support normal, hover, pressed, focused, unavailable, open elsewhere, truncated, and navigation-pending states. The current endpoint supports current and truncated states only.
 
@@ -47,25 +47,25 @@ Parent breadcrumbs support normal, hover, pressed, focused, unavailable, open el
 
 Activating an available parent breadcrumb reports its exact stable thread identity and command to the owner. Enter and Space activate the focused breadcrumb. Unavailable breadcrumbs remain represented, do not activate through pointer, keyboard, or programmatic paths, and satisfy `disabled-command-tooltip`.
 
-Left and Right move focus through every parent breadcrumb in lineage order, including unavailable breadcrumbs that expose an explanation. Home and End focus the first and last parent breadcrumb. Focus movement reveals the complete focused control geometry without activating it.
+Left and Right move focus through every logical parent breadcrumb in lineage order, including unavailable breadcrumbs that expose an explanation. Home and End target the first and last parent breadcrumb. Navigation into a nonresident range requests its bounded page, preserves the logical target, and moves focus only after the matching query revision and stable identity arrive. Focus movement reveals the complete fixed-stride control geometry without activating it.
 
 The trail viewport owns horizontal wheel, touchpad, Shift-plus-wheel, scrollbar drag, and programmatic reveal while it has overflow. Boundary propagation follows `scroll-ownership`. Vertical wheel intent is not converted to horizontal motion unless the platform or gesture explicitly supplies horizontal intent.
 
 On first mount and after a selected-thread identity change, the viewport reveals the current endpoint at the trailing edge. Manual horizontal scrolling detaches that automatic placement until another selected-thread identity is published.
 
-The trail uses variable-width horizontal windowing. Each breadcrumb width is clamped between the widget minimum and maximum. The widget realizes items intersecting the viewport plus at most two complete breadcrumb items before and two after the visible range; separators are realized with their following item.
+The trail uses fixed-stride horizontal windowing. Every parent slot has one fixed inline stride and truncates its label, so the logical extent is derived from parent count without measuring or retaining offscreen breadcrumbs. The widget realizes resident items intersecting the viewport plus at most two complete breadcrumb items before and two after the visible range; separators are part of their following slot. A missing visible or overscan page triggers one deduplicated bounded page request and renders no fabricated breadcrumb.
 
-Stable thread identity, not visible index, owns focus, width measurement, navigation dispatch, and tooltip anchoring. A reconciliation that retains the focused breadcrumb preserves focus and reveals it. If the focused identity disappears, focus returns to the trail viewport without activating another breadcrumb.
+Stable thread identity, not visible index, owns focus, navigation dispatch, and tooltip anchoring. Query revision owns page reconciliation. A reconciliation that retains the focused breadcrumb preserves focus and reveals it. If the focused identity disappears, focus returns to the trail viewport without activating another breadcrumb.
 
 If windowing removes a tooltip-owning item, the tooltip closes intentionally. The widget never retains unbounded offscreen breadcrumbs solely to preserve focus, hover, or popup geometry.
 
-Content-free diagnostics expose widget instance id, opaque nonreversible selected-thread and breadcrumb diagnostic keys, lineage count, realized item count, visible diagnostic-key range, overscan item count, measured-width count, viewport width, content width, scroll offset, clamp direction, focused-key presence, current endpoint presence, and tooltip-anchor presence. Diagnostics never include titles, paths, availability explanations, raw thread ids, or tooltip text.
+Content-free diagnostics expose widget instance id, opaque nonreversible selected-thread, query-revision, and breadcrumb diagnostic keys, parent count, resident and pending page counts, realized item count, visible diagnostic-key range, overscan item count, fixed item stride, viewport width, logical content width, scroll offset, clamp direction, focused-key presence, current endpoint presence, and tooltip-anchor presence. Diagnostics never include titles, paths, availability explanations, raw thread ids, or tooltip text.
 
 # Layout
 
 The root fills `main-window.thread-lineage` and keeps one fixed block size. The structural heading is fixed at the leading edge. The trail viewport receives all remaining inline space and clips overflow.
 
-Breadcrumbs and separators occupy one horizontal row. Each breadcrumb has a capped content width and one fixed block size. The current endpoint may use the remaining inline allocation but remains width-capped when the complete trail overflows.
+Breadcrumbs and separators occupy one horizontal row. Each parent slot has one fixed inline stride and block size. The current endpoint may use the remaining inline allocation but remains width-capped when the complete trail overflows.
 
 The horizontal scrollbar overlays the viewport's bottom edge and does not change strip height when overflow begins or ends.
 
@@ -114,18 +114,20 @@ Spec CSS:
 
 .thread-lineage__breadcrumb,
 .thread-lineage__current {
-  min-inline-size: var(--breadcrumb-min-width);
-  max-inline-size: var(--breadcrumb-max-width);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .thread-lineage__breadcrumb {
+  flex: none;
+  inline-size: var(--breadcrumb-width);
   color: var(--foreground);
 }
 
 .thread-lineage__current {
+  min-inline-size: var(--breadcrumb-width);
+  max-inline-size: var(--current-max-width);
   color: var(--foreground);
   font-weight: var(--font-weight);
 }
@@ -170,8 +172,8 @@ Default variant: ordered parent breadcrumbs with a readonly current endpoint.
 
 .thread-lineage__breadcrumb,
 .thread-lineage__current {
-  --breadcrumb-min-width: 48px;
-  --breadcrumb-max-width: 220px;
+  --breadcrumb-width: 176px;
+  --current-max-width: 220px;
 }
 
 .thread-lineage__breadcrumb {

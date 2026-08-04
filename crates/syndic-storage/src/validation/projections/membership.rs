@@ -1,10 +1,7 @@
 use beryl_home_store::DomainReader;
 
 use crate::validation::scan::{point, require, scan, scan_range};
-use crate::{
-    CanonicalItemKind, ProjectionPayload, codec::*, domain::SyndicDomain,
-    error::SyndicValidationError,
-};
+use crate::{ProjectionPayload, codec::*, domain::SyndicDomain, error::SyndicValidationError};
 
 use super::invariant;
 
@@ -47,10 +44,9 @@ pub(super) fn validate_stable(
         validate_projection_source(
             reader,
             &projection,
-            item.payload()
-                .content()
+            item.projection_source()
                 .ok_or(SyndicValidationError::Invariant(
-                    "stable projection source item omitted canonical content",
+                    "stable projection source item omitted projection text",
                 ))?,
         )?;
         expected = expected
@@ -159,7 +155,7 @@ pub(super) fn validate_generation_suffixes(
 fn generation_source(
     reader: &DomainReader<'_, SyndicDomain>,
     key: &ItemProjectionKey,
-) -> Result<crate::ContentReference, SyndicValidationError> {
+) -> Result<crate::ProjectionTextSource, SyndicValidationError> {
     let owner = ItemProjectionSetKey {
         item: key.item,
         generation: key.generation,
@@ -172,17 +168,17 @@ fn generation_source(
     if point::<ItemProjectionBuildsFamily>(reader, &owner)?.is_some() {
         return invariant("item projection generation has two owners");
     }
-    Ok(set.source_content())
+    Ok(set.source())
 }
 
 fn validate_projection_source(
     reader: &DomainReader<'_, SyndicDomain>,
     projection: &crate::ProjectionRecord,
-    source: crate::ContentReference,
+    source: crate::ProjectionTextSource,
 ) -> Result<(), SyndicValidationError> {
     match projection.payload() {
         ProjectionPayload::Empty => {
-            if source.summary().logical_utf8_bytes() != 0 {
+            if source.logical_utf8_bytes() != 0 {
                 return invariant("empty projection has nonempty generation source");
             }
         }
@@ -191,25 +187,25 @@ fn validate_projection_source(
             source: inline,
             ..
         } => {
-            let resolved = crate::validation::content::read_logical_range(
+            let resolved = crate::validation::read_projection_text_range(
                 reader,
                 source,
                 source_range.start(),
                 source_range.end(),
             )?;
-            if source_range.end() > source.summary().logical_utf8_bytes()
-                || resolved != inline.as_bytes()
-            {
+            if source_range.end() > source.logical_utf8_bytes() || resolved != inline.as_bytes() {
                 return invariant("inline projection bytes disagree with generation source");
             }
         }
         ProjectionPayload::ResourceReference { source_range, .. } => {
-            if source_range.end() > source.summary().logical_utf8_bytes() {
+            if source_range.end() > source.logical_utf8_bytes() {
                 return invariant("resource projection exceeds its generation source");
             }
         }
         ProjectionPayload::ImageMarker { source_offset, .. } => {
-            if *source_offset > source.summary().logical_utf8_bytes() {
+            if !matches!(source, crate::ProjectionTextSource::Composer(_))
+                || *source_offset > source.logical_utf8_bytes()
+            {
                 return invariant("image marker exceeds its generation source");
             }
         }
@@ -256,10 +252,7 @@ pub(super) fn validate_heads(
             key,
             "item projection head source item is missing",
         )?;
-        if !matches!(
-            item.kind(),
-            CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-        ) {
+        if item.projection_source().is_none() {
             return invariant("non-visible item has a projection head");
         }
         let set = require::<ItemProjectionSetsFamily>(
@@ -274,17 +267,15 @@ pub(super) fn validate_heads(
             return invariant("item projection head and set source revisions disagree");
         }
         let source_is_current = set.source_item_revision() == item.revision()
-            && item.payload().content() == Some(set.source_content());
+            && item.projection_source() == Some(set.source());
         if source_is_current != (head.lifecycle() == crate::ProjectionLifecycle::Current) {
             return invariant("item projection head lifecycle disagrees with its source");
         }
         Ok(())
     })?;
     scan::<CanonicalItemsFamily>(reader, |key, item| {
-        if !matches!(
-            item.kind(),
-            CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-        ) && point::<ItemProjectionHeadsFamily>(reader, key)?.is_some()
+        if item.projection_source().is_none()
+            && point::<ItemProjectionHeadsFamily>(reader, key)?.is_some()
         {
             return invariant("operational canonical item has a projection head");
         }

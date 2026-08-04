@@ -1,47 +1,27 @@
-use std::num::NonZeroU64;
-
 use beryl_home_store::{RecordCodec, RecordVersion};
 use beryl_model::{
-    AssetId, AssetIdentityVersion, DomainRevision, SyndicAcceptedInputId, SyndicDraftId,
-    SyndicDraftMarkerId, SyndicItemId, SyndicProjectionId, SyndicRetryRecordId,
+    AssetId, AssetReferenceSetDigest, AssetReferenceSetId, DomainRevision, ImageLabelOrdinal,
+    SyndicDraftMarkerId,
 };
 
-use crate::{
-    UnixMillis,
-    encoding::{CodecError, Decoder, Encoder},
-};
+use crate::encoding::{CodecError, Decoder, Encoder};
 
 use super::{
-    ASSET_METADATA_LIMIT, ASSET_REFERENCE_LIMIT, AssetDimensions, AssetDomain, AssetMediaType,
-    AssetMetadataRecord, AssetReferenceOwner, AssetReferenceRecord, AssetSidecarState,
+    ASSET_ENTRY_LIMIT, ASSET_HEAD_LIMIT, ASSET_INDEX_LIMIT, ASSET_MANIFEST_LIMIT,
+    ASSET_METADATA_LIMIT, AssetDomain, AssetEntryKey, AssetLabelDisposition, AssetLabelFirstKey,
+    AssetLabelFirstRecord, AssetMarkerKey, AssetMediaType, AssetMetadataRecord, AssetOwner,
+    AssetOwnerHeadRecord, AssetReferenceEntryRecord, AssetReferenceOrdinal,
+    AssetReferenceSetLifecycle, AssetReferenceSetManifest, AssetSidecarState,
 };
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) struct AssetReferenceIndexKey {
-    pub(super) asset_id: AssetId,
-    pub(super) owner: AssetReferenceOwner,
-}
+mod parts;
 
-impl AssetReferenceIndexKey {
-    pub(super) fn minimum(asset_id: AssetId, after: Option<AssetReferenceOwner>) -> Self {
-        Self {
-            asset_id,
-            owner: after.unwrap_or(AssetReferenceOwner::CurrentDraftMarker {
-                draft_id: SyndicDraftId::from_bytes([0; 16]),
-                marker_id: SyndicDraftMarkerId::from_bytes([0; 16]),
-            }),
-        }
-    }
-
-    pub(super) fn maximum(asset_id: AssetId) -> Self {
-        Self {
-            asset_id,
-            owner: AssetReferenceOwner::TranscriptProjection {
-                projection_id: SyndicProjectionId::from_bytes([u8::MAX; 16]),
-            },
-        }
-    }
-}
+use parts::{
+    decode_asset, decode_dimensions, decode_fixed_16, decode_image_label_option, decode_ordinal,
+    decode_owner, decode_sealed_proof, decode_source, encode_asset, encode_dimensions,
+    encode_image_label_option, encode_owner, encode_sealed_proof, encode_source, encoded_asset,
+    invalid, invalid_tag,
+};
 
 pub(super) struct AssetMetadataCodec;
 
@@ -51,15 +31,19 @@ impl RecordCodec<AssetDomain> for AssetMetadataCodec {
     type Error = CodecError;
 
     const FAMILY: &'static str = "metadata";
-    const VERSION: RecordVersion = RecordVersion::new(1);
+    const VERSION: RecordVersion = RecordVersion::new(2);
     const MAX_KEY_BYTES: usize = 41;
     const MAX_VALUE_BYTES: usize = ASSET_METADATA_LIMIT;
 
     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
-        Ok(encode_asset_id(*key))
+        Ok(encoded_asset(*key))
     }
+
     fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
-        decode_asset_id(encoded)
+        let mut decoder = Decoder::new(encoded);
+        let value = decode_asset(&mut decoder)?;
+        decoder.finish()?;
+        Ok(value)
     }
 
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
@@ -71,7 +55,6 @@ impl RecordCodec<AssetDomain> for AssetMetadataCodec {
         encoder.u8(match value.sidecar_state {
             AssetSidecarState::Committed => 0,
         });
-        encoder.u64(value.reference_count);
         encoder.u64(value.revision.get());
         Ok(encoder.finish())
     }
@@ -86,14 +69,8 @@ impl RecordCodec<AssetDomain> for AssetMetadataCodec {
             .map_err(|source| invalid("asset creation revision", source))?;
         let sidecar_state = match decoder.u8()? {
             0 => AssetSidecarState::Committed,
-            tag => {
-                return Err(CodecError::InvalidTag {
-                    kind: "asset sidecar state",
-                    tag,
-                });
-            }
+            tag => return Err(invalid_tag("asset sidecar state", tag)),
         };
-        let reference_count = decoder.u64()?;
         let revision = decoder.record_revision()?;
         decoder.finish()?;
         Ok(AssetMetadataRecord {
@@ -102,23 +79,252 @@ impl RecordCodec<AssetDomain> for AssetMetadataCodec {
             dimensions,
             creation_revision,
             sidecar_state,
-            reference_count,
             revision,
         })
     }
 }
 
-pub(super) struct AssetReferenceCodec;
+pub(super) struct AssetReferenceManifestCodec;
 
-impl RecordCodec<AssetDomain> for AssetReferenceCodec {
-    type Key = AssetReferenceOwner;
-    type Value = AssetReferenceRecord;
+impl RecordCodec<AssetDomain> for AssetReferenceManifestCodec {
+    type Key = AssetReferenceSetId;
+    type Value = AssetReferenceSetManifest;
     type Error = CodecError;
 
-    const FAMILY: &'static str = "references";
-    const VERSION: RecordVersion = RecordVersion::new(1);
-    const MAX_KEY_BYTES: usize = 33;
-    const MAX_VALUE_BYTES: usize = ASSET_REFERENCE_LIMIT;
+    const FAMILY: &'static str = "reference_set_manifests";
+    const VERSION: RecordVersion = RecordVersion::new(2);
+    const MAX_KEY_BYTES: usize = 16;
+    const MAX_VALUE_BYTES: usize = ASSET_MANIFEST_LIMIT;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        Ok(key.as_bytes().to_vec())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        decode_fixed_16(encoded, "asset reference-set identity")
+            .map(AssetReferenceSetId::from_bytes)
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.fixed(value.set_id.as_bytes());
+        encode_source(&mut encoder, value.source);
+        encoder.u8(match value.lifecycle {
+            AssetReferenceSetLifecycle::Building => 0,
+            AssetReferenceSetLifecycle::Sealed => 1,
+        });
+        encoder.u64(value.marker_count);
+        encoder.fixed_32(&value.marker_digest);
+        encode_image_label_option(&mut encoder, value.maximum_image_label);
+        encoder.u64(value.entry_frontier);
+        encoder.fixed_32(&value.asset_chain_digest.as_bytes());
+        encoder.u64(value.revision.get());
+        Ok(encoder.finish())
+    }
+
+    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
+        let source = decode_source(&mut decoder)?;
+        let lifecycle = match decoder.u8()? {
+            0 => AssetReferenceSetLifecycle::Building,
+            1 => AssetReferenceSetLifecycle::Sealed,
+            tag => return Err(invalid_tag("asset reference-set lifecycle", tag)),
+        };
+        let marker_count = decoder.u64()?;
+        let marker_digest = decoder.fixed_32()?;
+        let maximum_image_label = decode_image_label_option(&mut decoder)?;
+        let entry_frontier = decoder.u64()?;
+        let asset_chain_digest = AssetReferenceSetDigest::from_bytes(decoder.fixed_32()?);
+        let revision = decoder.record_revision()?;
+        decoder.finish()?;
+        Ok(AssetReferenceSetManifest {
+            set_id,
+            source,
+            lifecycle,
+            marker_count,
+            marker_digest,
+            maximum_image_label,
+            entry_frontier,
+            asset_chain_digest,
+            revision,
+        })
+    }
+}
+
+pub(super) struct AssetReferenceEntryCodec;
+
+impl RecordCodec<AssetDomain> for AssetReferenceEntryCodec {
+    type Key = AssetEntryKey;
+    type Value = AssetReferenceEntryRecord;
+    type Error = CodecError;
+
+    const FAMILY: &'static str = "reference_set_entries";
+    const VERSION: RecordVersion = RecordVersion::new(2);
+    const MAX_KEY_BYTES: usize = 24;
+    const MAX_VALUE_BYTES: usize = ASSET_ENTRY_LIMIT;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.fixed(key.set_id.as_bytes());
+        encoder.u64(key.ordinal.get());
+        Ok(encoder.finish())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
+        let ordinal = decode_ordinal(&mut decoder)?;
+        decoder.finish()?;
+        Ok(AssetEntryKey { set_id, ordinal })
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.fixed(value.set_id.as_bytes());
+        encoder.u64(value.ordinal.get());
+        encoder.fixed(value.marker_id.as_bytes());
+        encoder.u64(value.label.get());
+        encode_asset(&mut encoder, value.asset_id);
+        match value.label_disposition {
+            AssetLabelDisposition::First => encoder.u8(0),
+            AssetLabelDisposition::Repeated { first_ordinal } => {
+                encoder.u8(1);
+                encoder.u64(first_ordinal.get());
+            }
+        }
+        encoder.fixed_32(&value.chain_digest.as_bytes());
+        Ok(encoder.finish())
+    }
+
+    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
+        let ordinal = decode_ordinal(&mut decoder)?;
+        let marker_id = SyndicDraftMarkerId::from_bytes(decoder.fixed()?);
+        let label = ImageLabelOrdinal::new(decoder.u64()?)
+            .map_err(|source| invalid("image-label ordinal", source))?;
+        let asset_id = decode_asset(&mut decoder)?;
+        let label_disposition = match decoder.u8()? {
+            0 => AssetLabelDisposition::First,
+            1 => AssetLabelDisposition::Repeated {
+                first_ordinal: decode_ordinal(&mut decoder)?,
+            },
+            tag => return Err(invalid_tag("asset label disposition", tag)),
+        };
+        let chain_digest = AssetReferenceSetDigest::from_bytes(decoder.fixed_32()?);
+        decoder.finish()?;
+        Ok(AssetReferenceEntryRecord {
+            set_id,
+            ordinal,
+            marker_id,
+            label,
+            asset_id,
+            label_disposition,
+            chain_digest,
+        })
+    }
+}
+
+pub(super) struct AssetReferenceMarkerCodec;
+
+impl RecordCodec<AssetDomain> for AssetReferenceMarkerCodec {
+    type Key = AssetMarkerKey;
+    type Value = AssetReferenceOrdinal;
+    type Error = CodecError;
+
+    const FAMILY: &'static str = "reference_set_markers";
+    const VERSION: RecordVersion = RecordVersion::new(2);
+    const MAX_KEY_BYTES: usize = 32;
+    const MAX_VALUE_BYTES: usize = ASSET_INDEX_LIMIT;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.fixed(key.set_id.as_bytes());
+        encoder.fixed(key.marker_id.as_bytes());
+        Ok(encoder.finish())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let key = AssetMarkerKey {
+            set_id: AssetReferenceSetId::from_bytes(decoder.fixed()?),
+            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
+        };
+        decoder.finish()?;
+        Ok(key)
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        Ok(value.get().to_be_bytes().to_vec())
+    }
+
+    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let value = decode_ordinal(&mut decoder)?;
+        decoder.finish()?;
+        Ok(value)
+    }
+}
+
+pub(super) struct AssetReferenceLabelFirstCodec;
+
+impl RecordCodec<AssetDomain> for AssetReferenceLabelFirstCodec {
+    type Key = AssetLabelFirstKey;
+    type Value = AssetLabelFirstRecord;
+    type Error = CodecError;
+
+    const FAMILY: &'static str = "reference_set_label_first";
+    const VERSION: RecordVersion = RecordVersion::new(2);
+    const MAX_KEY_BYTES: usize = 24;
+    const MAX_VALUE_BYTES: usize = ASSET_INDEX_LIMIT;
+
+    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.fixed(key.set_id.as_bytes());
+        encoder.u64(key.label.get());
+        Ok(encoder.finish())
+    }
+
+    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let set_id = AssetReferenceSetId::from_bytes(decoder.fixed()?);
+        let label = ImageLabelOrdinal::new(decoder.u64()?)
+            .map_err(|source| invalid("image-label ordinal", source))?;
+        decoder.finish()?;
+        Ok(AssetLabelFirstKey { set_id, label })
+    }
+
+    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
+        let mut encoder = Encoder::new();
+        encoder.u64(value.first_ordinal.get());
+        encode_asset(&mut encoder, value.asset_id);
+        Ok(encoder.finish())
+    }
+
+    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
+        let mut decoder = Decoder::new(encoded);
+        let first_ordinal = decode_ordinal(&mut decoder)?;
+        let asset_id = decode_asset(&mut decoder)?;
+        decoder.finish()?;
+        Ok(AssetLabelFirstRecord {
+            first_ordinal,
+            asset_id,
+        })
+    }
+}
+
+pub(super) struct AssetOwnerHeadCodec;
+
+impl RecordCodec<AssetDomain> for AssetOwnerHeadCodec {
+    type Key = AssetOwner;
+    type Value = AssetOwnerHeadRecord;
+    type Error = CodecError;
+
+    const FAMILY: &'static str = "owner_heads";
+    const VERSION: RecordVersion = RecordVersion::new(2);
+    const MAX_KEY_BYTES: usize = 17;
+    const MAX_VALUE_BYTES: usize = ASSET_HEAD_LIMIT;
 
     fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
         let mut encoder = Encoder::new();
@@ -128,228 +334,29 @@ impl RecordCodec<AssetDomain> for AssetReferenceCodec {
 
     fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
         let mut decoder = Decoder::new(encoded);
-        let owner = decode_owner(&mut decoder)?;
+        let value = decode_owner(&mut decoder)?;
         decoder.finish()?;
-        Ok(owner)
+        Ok(value)
     }
 
     fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
-        Ok(encode_reference(value))
-    }
-
-    fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
-        decode_reference(encoded)
-    }
-}
-
-pub(super) struct AssetReferenceIndexCodec;
-
-impl RecordCodec<AssetDomain> for AssetReferenceIndexCodec {
-    type Key = AssetReferenceIndexKey;
-    type Value = AssetReferenceRecord;
-    type Error = CodecError;
-
-    const FAMILY: &'static str = "references_by_asset";
-    const VERSION: RecordVersion = RecordVersion::new(1);
-    const MAX_KEY_BYTES: usize = 74;
-    const MAX_VALUE_BYTES: usize = ASSET_REFERENCE_LIMIT;
-
-    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, Self::Error> {
-        let mut bytes = encode_asset_id(key.asset_id);
         let mut encoder = Encoder::new();
-        encode_owner(&mut encoder, key.owner);
-        bytes.extend_from_slice(&encoder.finish());
-        Ok(bytes)
+        encode_owner(&mut encoder, value.owner);
+        encode_sealed_proof(&mut encoder, value.set);
+        encoder.u64(value.owner_revision.get());
+        Ok(encoder.finish())
     }
 
-    fn decode_key(encoded: &[u8]) -> Result<Self::Key, Self::Error> {
-        if encoded.len() < 42 {
-            return Err(CodecError::Truncated);
-        }
-        let asset_id = decode_asset_id(&encoded[..41])?;
-        let mut decoder = Decoder::new(&encoded[41..]);
-        let owner = decode_owner(&mut decoder)?;
-        decoder.finish()?;
-        Ok(AssetReferenceIndexKey { asset_id, owner })
-    }
-
-    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, Self::Error> {
-        Ok(encode_reference(value))
-    }
     fn decode_value(encoded: &[u8]) -> Result<Self::Value, Self::Error> {
-        decode_reference(encoded)
-    }
-}
-
-fn encode_asset_id(asset_id: AssetId) -> Vec<u8> {
-    let mut encoder = Encoder::new();
-    encode_asset(&mut encoder, asset_id);
-    encoder.finish()
-}
-
-fn encode_asset(encoder: &mut Encoder, asset_id: AssetId) {
-    encoder.u8(match asset_id.version() {
-        AssetIdentityVersion::Sha256V1 => 1,
-    });
-    encoder.fixed_32(&asset_id.digest());
-    encoder.u64(asset_id.length().get());
-}
-
-fn decode_asset_id(encoded: &[u8]) -> Result<AssetId, CodecError> {
-    let mut decoder = Decoder::new(encoded);
-    let asset_id = decode_asset(&mut decoder)?;
-    decoder.finish()?;
-    Ok(asset_id)
-}
-
-fn decode_asset(decoder: &mut Decoder<'_>) -> Result<AssetId, CodecError> {
-    match decoder.u8()? {
-        1 => {
-            let digest = decoder.fixed_32()?;
-            let length = NonZeroU64::new(decoder.u64()?).ok_or_else(|| {
-                invalid(
-                    "asset byte length",
-                    std::io::Error::other("length must be nonzero"),
-                )
-            })?;
-            Ok(AssetId::sha256_v1(digest, length))
-        }
-        tag => Err(CodecError::InvalidTag {
-            kind: "asset identity version",
-            tag,
-        }),
-    }
-}
-
-fn encode_dimensions(encoder: &mut Encoder, dimensions: Option<AssetDimensions>) {
-    match dimensions {
-        Some(dimensions) => {
-            encoder.u8(1);
-            encoder.u64(dimensions.width().get());
-            encoder.u64(dimensions.height().get());
-        }
-        None => encoder.u8(0),
-    }
-}
-
-fn decode_dimensions(decoder: &mut Decoder<'_>) -> Result<Option<AssetDimensions>, CodecError> {
-    match decoder.u8()? {
-        0 => Ok(None),
-        1 => {
-            let width = NonZeroU64::new(decoder.u64()?).ok_or_else(|| {
-                invalid(
-                    "asset width",
-                    std::io::Error::other("width must be nonzero"),
-                )
-            })?;
-            let height = NonZeroU64::new(decoder.u64()?).ok_or_else(|| {
-                invalid(
-                    "asset height",
-                    std::io::Error::other("height must be nonzero"),
-                )
-            })?;
-            Ok(Some(AssetDimensions::new(width, height)))
-        }
-        tag => Err(CodecError::InvalidTag {
-            kind: "asset dimensions option",
-            tag,
-        }),
-    }
-}
-
-fn encode_owner(encoder: &mut Encoder, owner: AssetReferenceOwner) {
-    match owner {
-        AssetReferenceOwner::CurrentDraftMarker {
-            draft_id,
-            marker_id,
-        } => {
-            encoder.u8(0);
-            encoder.fixed(draft_id.as_bytes());
-            encoder.fixed(marker_id.as_bytes());
-        }
-        AssetReferenceOwner::AcceptedInputMarker {
-            input_id,
-            marker_id,
-        } => {
-            encoder.u8(1);
-            encoder.fixed(input_id.as_bytes());
-            encoder.fixed(marker_id.as_bytes());
-        }
-        AssetReferenceOwner::SubmittedTurnItemMarker { item_id, marker_id } => {
-            encoder.u8(2);
-            encoder.fixed(item_id.as_bytes());
-            encoder.fixed(marker_id.as_bytes());
-        }
-        AssetReferenceOwner::RetryRecordMarker {
-            retry_id,
-            marker_id,
-        } => {
-            encoder.u8(4);
-            encoder.fixed(retry_id.as_bytes());
-            encoder.fixed(marker_id.as_bytes());
-        }
-        AssetReferenceOwner::TranscriptProjection { projection_id } => {
-            encoder.u8(5);
-            encoder.fixed(projection_id.as_bytes());
-        }
-    }
-}
-
-fn decode_owner(decoder: &mut Decoder<'_>) -> Result<AssetReferenceOwner, CodecError> {
-    match decoder.u8()? {
-        0 => Ok(AssetReferenceOwner::CurrentDraftMarker {
-            draft_id: SyndicDraftId::from_bytes(decoder.fixed()?),
-            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
-        }),
-        1 => Ok(AssetReferenceOwner::AcceptedInputMarker {
-            input_id: SyndicAcceptedInputId::from_bytes(decoder.fixed()?),
-            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
-        }),
-        2 => Ok(AssetReferenceOwner::SubmittedTurnItemMarker {
-            item_id: SyndicItemId::from_bytes(decoder.fixed()?),
-            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
-        }),
-        4 => Ok(AssetReferenceOwner::RetryRecordMarker {
-            retry_id: SyndicRetryRecordId::from_bytes(decoder.fixed()?),
-            marker_id: SyndicDraftMarkerId::from_bytes(decoder.fixed()?),
-        }),
-        5 => Ok(AssetReferenceOwner::TranscriptProjection {
-            projection_id: SyndicProjectionId::from_bytes(decoder.fixed()?),
-        }),
-        tag => Err(CodecError::InvalidTag {
-            kind: "asset reference owner",
-            tag,
-        }),
-    }
-}
-
-fn encode_reference(value: &AssetReferenceRecord) -> Vec<u8> {
-    let mut encoder = Encoder::new();
-    encode_owner(&mut encoder, value.owner);
-    encode_asset(&mut encoder, value.asset_id);
-    encoder.u64(value.created_at.get());
-    encoder.finish()
-}
-
-fn decode_reference(encoded: &[u8]) -> Result<AssetReferenceRecord, CodecError> {
-    let mut decoder = Decoder::new(encoded);
-    let owner = decode_owner(&mut decoder)?;
-    let asset_id = decode_asset(&mut decoder)?;
-    let created_at = UnixMillis::new(decoder.u64()?);
-    decoder.finish()?;
-    Ok(AssetReferenceRecord {
-        owner,
-        asset_id,
-        created_at,
-    })
-}
-
-fn invalid(
-    kind: &'static str,
-    source: impl std::error::Error + Send + Sync + 'static,
-) -> CodecError {
-    CodecError::InvalidValue {
-        kind,
-        source: Box::new(source),
+        let mut decoder = Decoder::new(encoded);
+        let owner = decode_owner(&mut decoder)?;
+        let set = decode_sealed_proof(&mut decoder)?;
+        let owner_revision = decoder.record_revision()?;
+        decoder.finish()?;
+        Ok(AssetOwnerHeadRecord {
+            owner,
+            set,
+            owner_revision,
+        })
     }
 }

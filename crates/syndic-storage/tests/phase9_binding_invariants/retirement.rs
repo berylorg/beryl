@@ -11,9 +11,9 @@ fn reopen_rejects_first_cas_membership_established_at_another_prefix() {
         .unwrap()
         .unwrap();
     let represented = CasRepresentedPrefixProof::new(
-        Some(parent.record().id()),
+        Some(parent.id()),
         selected.thread_revision(),
-        parent.record().chain_digest(),
+        parent.chain_digest(),
     );
     let established = CasRepresentedPrefixProof::new(
         None,
@@ -117,9 +117,9 @@ fn first_stale_fork_retains_its_exact_nonzero_native_position() {
         .unwrap()
         .unwrap();
     let represented = CasRepresentedPrefixProof::new(
-        Some(parent.record().id()),
+        Some(parent.id()),
         selected.thread_revision(),
-        parent.record().chain_digest(),
+        parent.chain_digest(),
     );
     let lineage = CasLineageProof::native(NativeCasLineage::Fork, represented).unwrap();
     let stale = StaleCasBinding::new(
@@ -269,7 +269,7 @@ fn retirement_cannot_rewrite_an_existing_cas_execution() {
     .unwrap_err();
     assert!(matches!(
         typed_error(&error),
-        SyndicMutationError::BindingStateConflict
+        SyndicMutationError::ExecutionBindingConflict
     ));
     store.validate_registered_domains().unwrap();
     store.close().unwrap();

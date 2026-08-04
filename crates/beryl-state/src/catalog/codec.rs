@@ -29,6 +29,11 @@ pub(super) enum CatalogCodecError {
     InvalidUtf8 {
         kind: &'static str,
     },
+    InvalidNormalizationProfile {
+        version: u16,
+        unicode: (u8, u8, u8),
+    },
+    SearchFieldsMismatch,
     InvalidValue {
         kind: &'static str,
         source: Box<dyn Error + Send + Sync>,
@@ -46,6 +51,14 @@ impl fmt::Display for CatalogCodecError {
             Self::InvalidTag { kind, tag } => write!(formatter, "invalid {kind} tag {tag}"),
             Self::InvalidLength { kind } => write!(formatter, "invalid {kind} byte length"),
             Self::InvalidUtf8 { kind } => write!(formatter, "{kind} is not valid UTF-8"),
+            Self::InvalidNormalizationProfile { version, unicode } => write!(
+                formatter,
+                "invalid catalog normalization profile {version} with Unicode {}.{}.{}",
+                unicode.0, unicode.1, unicode.2
+            ),
+            Self::SearchFieldsMismatch => formatter.write_str(
+                "catalog normalized search fields disagree with their visible source facts",
+            ),
             Self::InvalidValue { kind, source } => write!(formatter, "invalid {kind}: {source}"),
         }
     }
@@ -86,6 +99,10 @@ impl Encoder {
     }
 
     fn fixed(&mut self, value: &[u8; 16]) {
+        self.bytes.extend_from_slice(value);
+    }
+
+    fn fixed32(&mut self, value: &[u8; 32]) {
         self.bytes.extend_from_slice(value);
     }
 
@@ -144,6 +161,12 @@ impl<'a> Decoder<'a> {
 
     fn fixed(&mut self) -> Result<[u8; 16], CatalogCodecError> {
         self.take(16)?
+            .try_into()
+            .map_err(|_| CatalogCodecError::Truncated)
+    }
+
+    fn fixed32(&mut self) -> Result<[u8; 32], CatalogCodecError> {
+        self.take(32)?
             .try_into()
             .map_err(|_| CatalogCodecError::Truncated)
     }
@@ -251,7 +274,7 @@ fn encode_row(row: &CatalogRow) -> Result<Vec<u8>, CatalogCodecError> {
         CatalogFreshness::Current => 0,
         CatalogFreshness::Stale => 1,
     });
-    encode_titles(&mut encoder, row.facts().titles());
+    encode_title(&mut encoder, row.facts().title());
     encode_execution(&mut encoder, row.facts().execution());
     encoder.u8(match row.facts().archive() {
         CatalogArchiveSummary::Ordinary => 0,
@@ -259,6 +282,7 @@ fn encode_row(row: &CatalogRow) -> Result<Vec<u8>, CatalogCodecError> {
         CatalogArchiveSummary::BranchDiscussionArchived => 2,
     });
     encoder.u64(row.facts().last_activity_at().get());
+    encoder.u8(u8::from(row.facts().complete()));
     encode_claim(&mut encoder, row.facts().claim());
     encode_lineage(&mut encoder, row.facts().lineage());
     encode_search(&mut encoder, row.facts().search());
@@ -280,13 +304,23 @@ fn decode_row(encoded: &[u8]) -> Result<CatalogRow, CatalogCodecError> {
             });
         }
     };
-    let titles = decode_titles(&mut decoder)?;
+    let title = decode_title(&mut decoder)?;
     let execution = decode_execution(&mut decoder)?;
     let archive = decode_archive(&mut decoder)?;
     let last_activity_at = UnixMillis::new(decoder.u64()?);
+    let complete = match decoder.u8()? {
+        0 => false,
+        1 => true,
+        tag => {
+            return Err(CatalogCodecError::InvalidTag {
+                kind: "catalog completeness",
+                tag,
+            });
+        }
+    };
     let claim = decode_claim(&mut decoder)?;
     let lineage = decode_lineage(&mut decoder)?;
-    let search = decode_search(&mut decoder)?;
+    let search = decode_search(&mut decoder, &title, &execution)?;
     let revision = CatalogRevision::new(decoder.u64()?)
         .map_err(|source| invalid("catalog revision", source))?;
     decoder.finish()?;
@@ -294,11 +328,12 @@ fn decode_row(encoded: &[u8]) -> Result<CatalogRow, CatalogCodecError> {
         thread_id,
         sources,
         freshness,
-        CatalogFacts::new(
-            titles,
+        CatalogFacts::from_parts(
+            title,
             execution,
             archive,
             last_activity_at,
+            complete,
             claim,
             lineage,
             search,

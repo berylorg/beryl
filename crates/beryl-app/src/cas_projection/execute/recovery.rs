@@ -1,24 +1,30 @@
 use std::path::Path;
 
 use beryl_backend::{
-    ThreadInjectionBatch, ThreadInjectionItem, ThreadInjectionOutcome, ThreadStatus,
+    ThreadInjectionOutcome, ThreadInjectionPreflight, ThreadInjectionSourceError,
+    ThreadInjectionSourceRevision, ThreadStatus,
 };
 use beryl_home_store::HomeStore;
 use beryl_model::CasNativeTurnCount;
 use syndic_storage::{
     CasLineageProof, NativeProjectionBasis, PublishValidBinding, RecoveredInjectionProof,
-    RecoveryAssembly, RecoveryItem, RecoveryProjectionRequest, SyndicStorage,
+    RecoveryAssembly, RecoveryProjectionRequest, SyndicStorage,
 };
 
 use crate::cas_projection::{
     AdmittedProjectionSession, CasProjectionCoordinator, CasProjectionRequest, LoadedCasProjection,
-    ProjectionCancellationToken, ProjectionExecutionError, publication,
+    ProjectionCancellationToken, ProjectionCoordinatorError, ProjectionExecutionError,
+    connection::ConnectionRoutingFailure, publication,
 };
 
 use super::{
     cleanup::StaleObservation,
     support::{completion_timestamp, point_limit},
 };
+
+mod source;
+
+use source::{map_recovery_cursor_error, map_recovery_page, recovery_source_identity};
 
 impl CasProjectionCoordinator {
     pub(super) fn recover_projection(
@@ -41,10 +47,20 @@ impl CasProjectionCoordinator {
         let RecoveryAssembly::Ready(projection) = assembly else {
             return Err(ProjectionExecutionError::UnexpectedNativeEmptyRecovery);
         };
-        let batch = recovery_batch(projection.items())?;
+        let source_identity = recovery_source_identity(self.home_id(), projection);
+        let source_revision =
+            ThreadInjectionSourceRevision::new(projection.source_revision().get());
+        let preflight = ThreadInjectionPreflight::new(
+            source_identity,
+            source_revision,
+            projection.item_count().get().into(),
+            projection.utf8_bytes().get(),
+            projection.sequence_digest(),
+        )?;
         if cancellation.is_cancelled() {
             return Err(ProjectionExecutionError::Cancelled);
         }
+        let prepared_source = session.connection().prepare_recovery_source()?;
 
         let root_path = request.execution_binding().root_path().as_str().to_owned();
         let thread_options = request.thread_options().clone();
@@ -53,7 +69,7 @@ impl CasProjectionCoordinator {
             backend.start_thread_with_options(Path::new(&root_path), thread_options, timeout)
         })?;
         let cas_thread_id = fresh.thread_id().clone();
-        let lease = match session.connection().register_new(
+        let lease = match session.register_loaded(
             cas_thread_id.clone(),
             request.thread_id(),
             request.timeout(),
@@ -133,14 +149,11 @@ impl CasProjectionCoordinator {
             ));
         }
 
-        let timeout = request.timeout();
-        let outcome = match session.call(move |backend| {
-            Ok::<_, beryl_backend::ManagedBackendError>(
-                backend.inject_thread_items(target, &batch, timeout),
-            )
-        }) {
-            Ok(outcome) => outcome,
-            Err(primary) => {
+        #[cfg(feature = "test-faults")]
+        crate::cas_projection::test_faults::pause_recovery_source(request.thread_id(), u64::MAX);
+        let mut cursor = match storage.open_recovery_cursor(home, projection) {
+            Ok(cursor) => cursor,
+            Err(error) => {
                 return Err(self.abandon_projection_target(
                     home,
                     storage,
@@ -149,12 +162,83 @@ impl CasProjectionCoordinator {
                     basis,
                     cas_thread_id,
                     StaleObservation::unknown(Some(generation)),
-                    "recovery target connection was lost before injection dispatch",
-                    primary,
+                    "recovery source could not be reconfirmed for the fresh target",
+                    ProjectionExecutionError::from(error),
                     Some(lease),
                 ));
             }
         };
+        if cancellation.is_cancelled() {
+            return Err(self.abandon_projection_target(
+                home,
+                storage,
+                session,
+                request,
+                basis,
+                cas_thread_id,
+                StaleObservation::unknown(Some(generation)),
+                "recovery was cancelled before injection dispatch",
+                ProjectionExecutionError::Cancelled,
+                Some(lease),
+            ));
+        }
+
+        let timeout = request.timeout();
+        #[cfg(feature = "test-faults")]
+        let recovery_thread_id = request.thread_id();
+        #[cfg(feature = "test-faults")]
+        let mut served_pages = 0_u64;
+        let command = session.connection().inject_thread_items_with_source(
+            target,
+            preflight,
+            prepared_source,
+            timeout,
+            |max_utf8_bytes, page_lease| {
+                #[cfg(feature = "test-faults")]
+                crate::cas_projection::test_faults::pause_recovery_source(
+                    recovery_thread_id,
+                    served_pages,
+                );
+                if cancellation.is_cancelled() {
+                    return Err(ThreadInjectionSourceError::Cancelled);
+                }
+                let page = storage
+                    .read_recovery_cursor_page(home, &mut cursor, page_lease, max_utf8_bytes)
+                    .map_err(map_recovery_cursor_error)?;
+                let mapped = page
+                    .map(|page| {
+                        map_recovery_page(page, source_identity, source_revision, max_utf8_bytes)
+                    })
+                    .transpose()?;
+                #[cfg(feature = "test-faults")]
+                if mapped.is_some() {
+                    crate::cas_projection::test_faults::pause_recovery_page_handoff(
+                        recovery_thread_id,
+                        served_pages,
+                    );
+                    served_pages = served_pages.saturating_add(1);
+                }
+                Ok(mapped)
+            },
+        );
+        let command = match command {
+            Ok(command) => command,
+            Err(error) => {
+                return Err(self.abandon_projection_target(
+                    home,
+                    storage,
+                    session,
+                    request,
+                    basis,
+                    cas_thread_id,
+                    StaleObservation::unknown(Some(generation)),
+                    "recovery target connection stopped before injection completed",
+                    ProjectionExecutionError::Coordinator(error),
+                    Some(lease),
+                ));
+            }
+        };
+        let (outcome, routing_failure) = command.into_parts();
         match outcome {
             ThreadInjectionOutcome::Succeeded { thread } => {
                 let completed_at = match completion_timestamp() {
@@ -214,6 +298,28 @@ impl CasProjectionCoordinator {
                     }
                 };
                 let lineage = CasLineageProof::recovered(proof);
+                if let Some(failure) = routing_failure {
+                    let primary = routing_failure_error(session, failure);
+                    return Err(self.abandon_projection_target(
+                        home,
+                        storage,
+                        session,
+                        request,
+                        basis,
+                        thread.thread_id().clone(),
+                        StaleObservation::exact(
+                            request.execution_binding().clone(),
+                            projection.represented_prefix(),
+                            basis.tool_profile(),
+                            lineage,
+                            CasNativeTurnCount::ZERO,
+                            Some(generation),
+                        ),
+                        "recovery injection completed but ordered routing authority was lost",
+                        primary,
+                        Some(lease),
+                    ));
+                }
                 if let Err(error) = self.ensure_home(home) {
                     let primary = ProjectionExecutionError::Coordinator(error);
                     return Err(self.abandon_projection_target(
@@ -302,8 +408,25 @@ impl CasProjectionCoordinator {
                     Some(lease),
                 ))
             }
+            ThreadInjectionOutcome::ProvenNotDispatched { thread_id, error } => {
+                let primary = ProjectionExecutionError::InjectionNotDispatched {
+                    thread_id: thread_id.clone(),
+                    source: error,
+                };
+                Err(self.abandon_projection_target(
+                    home,
+                    storage,
+                    session,
+                    request,
+                    basis,
+                    thread_id,
+                    StaleObservation::unknown(Some(generation)),
+                    "recovery injection was proven not dispatched",
+                    primary,
+                    Some(lease),
+                ))
+            }
             ThreadInjectionOutcome::TransportLost { thread_id, error } => {
-                session.invalidate_connection();
                 let primary = ProjectionExecutionError::InjectionTransportLost {
                     thread_id: thread_id.clone(),
                     source: error,
@@ -322,9 +445,6 @@ impl CasProjectionCoordinator {
                 ))
             }
             ThreadInjectionOutcome::CompletionUnknown { thread_id, error } => {
-                if error.invalidates_connection_authority() {
-                    session.invalidate_connection();
-                }
                 let primary = ProjectionExecutionError::InjectionCompletionUnknown {
                     thread_id: thread_id.clone(),
                     source: error,
@@ -346,19 +466,20 @@ impl CasProjectionCoordinator {
     }
 }
 
-fn recovery_batch(
-    items: &[RecoveryItem],
-) -> Result<ThreadInjectionBatch, ProjectionExecutionError> {
-    let items = items
-        .iter()
-        .map(|item| match item {
-            RecoveryItem::UserInputText(text) => {
-                ThreadInjectionItem::user_input_text(text.as_ref())
+fn routing_failure_error(
+    session: &AdmittedProjectionSession,
+    failure: ConnectionRoutingFailure,
+) -> ProjectionExecutionError {
+    match failure {
+        ConnectionRoutingFailure::Backend | ConnectionRoutingFailure::Router => {
+            ProjectionCoordinatorError::ProjectionConnectionUnavailable {
+                runtime_id: session.runtime_id(),
+                process_generation: session.process_generation(),
             }
-            RecoveryItem::AssistantOutputText(text) => {
-                ThreadInjectionItem::assistant_output_text(text.as_ref())
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(ThreadInjectionBatch::new(items)?)
+            .into()
+        }
+        ConnectionRoutingFailure::Target { thread_id, reason } => {
+            ProjectionExecutionError::LiveEventRouting { thread_id, reason }
+        }
+    }
 }

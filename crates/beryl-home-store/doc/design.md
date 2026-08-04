@@ -17,12 +17,36 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 ## Public Boundary
 
 - The package opens and locks one Beryl home according to `doc/systems/beryl-home-storage/design.md`.
-- It owns the single Fjall `Database`, logical keyspace registration, serialized writer, persistence barriers, store-health state, and bounded typed read execution.
-- Logical domains register private record families, exact codecs, validation hooks, typed reads, and typed mutation contributors through package-owned traits.
+- It owns the single Fjall `Database`, logical keyspace registration, serialized writer, persistence
+  barriers, store-health state, and bounded typed read execution. Read, staging, writer, scan, and
+  result paths enforce the practical limits defined by
+  `doc/systems/bounded-resource-dataflow/design.md`; the package owns no universal process
+  governor.
+- The sole home opener requires the configured Fjall block, value, topology, cache, memtable, read,
+  and batch limits needed by this boundary. It does not require typed process resource
+  capabilities, structural-slot currency, or an exact allocation baseline.
+- V1 uses one package-owned practical production profile for those dependency and
+  storage-concurrency limits. `HomeOpenOptions` remains the package-owned path-and-schema input and
+  never accepts or exposes a Fjall policy type. The opened store retains the validated profile and
+  constructs a fresh Fjall configuration from the same values for every same-home recovery, so
+  later internal tuning does not churn Beryl-state or Syndic caller APIs.
+- Logical domains register private record families, exact codecs, validation hooks, typed reads,
+  typed mutation contributors, and typed validation-only command participants through
+  package-owned traits.
 - Registration never gives a domain a raw database or keyspace handle.
 - Each live domain blueprint, handle, command contribution, and reacquired recovery registration carries the exact process-local Rust owner type. Each family likewise carries the exact process-local codec type. Stable names and schemas remain durable compatibility facts, but cannot impersonate either live Rust owner; neither `TypeId` is persisted.
 - Stable domain and family identifiers are bounded lowercase ASCII components. The persistent registry records the exact domain schema, complete sorted family declaration, exact family schemas, physical family names, and current domain revision; reopening rejects missing families or any incompatible declaration instead of creating or guessing it.
-- Registering an already-persisted domain exhaustively validates every declared physical family and then runs its sidecar-aware domain validator before publishing a typed handle. Fresh registration persists an empty declared domain; explicit verification and recovery rerun exhaustive validation for every registered domain.
+- Registering an already-persisted domain exhaustively validates every snapshot-current
+  application record in every declared physical family and then runs its sidecar-aware domain
+  validator before publishing a typed handle. Fresh registration persists an empty declared
+  domain; explicit verification and recovery rerun exhaustive validation for every registered
+  domain. Retired LSM versions and tombstones are dependency internals, not application envelopes.
+- An interrupted fresh registration may leave one or more empty physical families before the
+  registry record becomes durable because Fjall intentionally exposes no keyspace deletion or
+  multi-keyspace transaction. A later exact fresh registration may open and adopt only an empty
+  same-name family before creating the remaining declarations and publishing the complete registry
+  record. A nonempty unregistered family or incompatible durable declaration fails structurally;
+  no cleanup, renamed schema, or compatibility route is allowed.
 - Stored record values carry a store-owned exact record-version prefix. Domain codecs remain private to their package and application-facing APIs exchange only typed keys and values.
 - Cross-domain commands name typed participants and expected revisions, then either commit one batch or return one typed rejection.
 
@@ -48,6 +72,22 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 - Receipt-bound domain revision access is admitted only against the exact current healthy store generation and matching typed domain handle. It returns `None` for an unaffected domain and a typed stale-or-foreign error for an obsolete generation rather than allowing revision values alone to authorize publication.
 - Read APIs require explicit item, byte, or range bounds unless the result is a documented exact fixed-size record set such as the active session header.
 - Cursor reads require two finite typed endpoints, materialize at most one caller-bounded page, report cumulative stored-byte cost and whether more matching records exist, and never return a Fjall iterator or guard.
+- `RecordCodec` validates stored key and value envelopes and reports a practical decoded-byte
+  estimate while producing each typed result. Point and cursor execution enforce configured
+  stored-key, stored-value, item, cumulative stored-byte, and decoded-byte ceilings with checked
+  arithmetic. Stored limits apply before separated-value acquisition; decoded limits apply before
+  a completed result is published or accumulated into a page. The package does not predict
+  allocator overhead or dependency-private workspace.
+- Point presence returns one ordinary typed value after its stored and decoded limits pass; it does
+  not carry a resource charge or accounting wrapper. Cursor reads return one naturally bounded
+  typed page with checked stored and decoded page totals plus continuation state. Empty and absent
+  results remain ordinary bounded results. Callers that retain pages must apply their own
+  configured page or cache limit.
+- The physical dependency cursor must expose a metadata-first key or stored-length step so the
+  configured value and page ceilings can reject unsafe reads before separated-value acquisition or
+  caller-owned decode. Inline backing already present in a decoded block remains bounded by the
+  Fjall block policy. A range API that first materializes an unbounded result or ignores configured
+  LSM topology ceilings is not an implementation of this read contract.
 - Read errors distinguish caller-produced key and result limits from malformed physical stored key and value envelopes. Caller limits leave health unchanged; a stored-envelope violation observed by an ordinary admitted read fails that generation structurally before another successful state-dependent result can publish.
 
 ## Atomicity And Durability
@@ -60,10 +100,40 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
   performs no retry and cannot combine domains or retain a sidecar token.
 - `HomeCommand` remains the caller-fenced boundary for cross-domain and sidecar-retaining atomic
   work. A current-domain command is not a blind-write escape from record-level revision checks.
-- Ordinary commands run only each participant's bounded mutation validation and contribution callbacks. They never rerun an exhaustive domain validator or scan unrelated records; one-record command work is independent of total domain size unless that mutation's own documented bounded reads reject.
-- Registration, explicit verification, and recovery use a separate store-owned exhaustive path. It walks every physical key/value envelope with bounded memory, rejects empty or oversized keys and values before unbounded materialization, and delegates unknown, out-of-range, sentinel, version, and payload validation to the family's exact registered codec before the domain-level invariant callback runs.
+- A home command may include an explicitly typed validation-only domain participant alongside at
+  least one mutation participant. Validation-only participants share the serialized writer
+  snapshot, exact owner identity, expected domain revision, cancellation boundary, and typed
+  callback-error provenance of mutations. They cannot assemble records or sidecar operations,
+  advance the validated domain revision, or appear in the receipt's affected-domain revisions. A
+  command containing only validation participants fails before callbacks with a typed
+  `ValidationOnlyCommand` error and produces no commit receipt. A mutation participant whose
+  contribution callback emits nothing still fails as an `EmptyContribution`.
+- One domain may participate at most once in a home command across both roles. A domain mutation
+  carries every same-domain guard in its own validation callback; combining a separate validator
+  and mutation for the same domain is rejected as duplicate participation rather than assigning
+  ambiguous revision or receipt effects.
+- Ordinary commands run only each participant's bounded validation and mutation-contribution callbacks. They never rerun an exhaustive domain validator or scan unrelated records; one-record command work is independent of total domain size unless that participant's own documented bounded reads reject.
+- A validation or mutation callback performs only operation-bounded reads. A page, item, stored-byte,
+  or decoded-byte limit failure returns through typed read-error provenance without waiting while
+  the serialized writer is held, mutating health, or partially assembling a contribution.
+- The opener applies the validated Fjall block, value, topology, cache, memtable, and batch policy
+  before opening the database. This package neither requests exact dependency residency quotes nor
+  reconstructs dependency-private allocation formulas.
+- Registration, explicit verification, and recovery use a separate store-owned exhaustive path. It
+  walks every snapshot-current application key/value envelope with bounded memory, rejects empty or
+  oversized keys and values before unbounded materialization, and delegates unknown, out-of-range,
+  sentinel, version, and payload validation to the family's exact registered codec before the
+  domain-level invariant callback runs. The dedicated exhaustive cursor spans the complete visible
+  keyspace without typed endpoints; it does not expose retired LSM versions or tombstones. Domain
+  validation consumes bounded pages and compact checkpoint state; a callback may not accumulate the
+  complete domain in a set or collection. Cross-record invariants use durable indexes, ordered
+  traversal, staged durable proof, or another bounded validation algorithm.
 - Callback errors explicitly separate typed `ReadError` or `SidecarError` access provenance from domain-owned semantic rejection. The store never guesses provenance by walking an erased error chain.
 - A failure at any validation or contribution stage drops the complete uncommitted command.
+- Before physical batch construction, the writer checks exact mutation count plus encoded key and
+  value totals against the configured batch limits and passes that same `BatchCapacity` to Fjall.
+  Oversized batches fail before commit; no exact dependency allocation quote or structural-slot
+  reservation is required.
 - A successful correctness-sensitive mutation includes batch commit and `PersistMode::SyncAll` completion.
 - The package never reports durable success before the required persistence barrier.
 - Cooperative cancellation is accepted only before writer admission. Once admitted, a command runs to one durable success or typed failure result; same-thread writer reentry is rejected explicitly rather than deadlocking.
@@ -74,9 +144,22 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 
 - The package exposes coherent `opening`, `healthy`, `verifying`, `failed`, and `reopening` states.
 - Every state-dependent read, write, domain registration or reacquisition, and sidecar operation enters the same generation-aware admission gate. A surfaced storage or persistence failure whose durable outcome needs checking moves a healthy generation to `verifying`; malformed records, invalid trusted contracts, poisoned authority, and other structural disagreement move it directly to `failed`. Domain-owned semantic mutation rejection does not change health. Once admission closes, no newly admitted operation can publish state.
+- Admission also observes Fjall's retained autonomous-maintenance health before a newly completed
+  state-dependent result may publish. A direct pre-commit policy denial remains a typed bounded
+  operation failure and leaves home health unchanged. Corruption, integrity, keyspace-identity, or
+  poison disagreement fails structurally; I/O, durability, committed or indeterminate mutation
+  outcomes, and maintenance terminals close the gate for verification or recovery according to
+  their stable Fjall class and commit state before the dependency error is erased.
+- Dependency-health observation and exact-generation confirmation are one store-owned publication
+  operation. Reads, writes, registration, reacquisition, receipt revision projection, sidecar
+  admission, sidecar verification, and test-only durable fixtures cannot invoke generation
+  confirmation without first observing the exact admitted Fjall database.
 - An unwind from an admitted writer operation moves the store directly to `failed` before writer admission drains. Only exact same-home recovery may cross the poisoned unit writer mutex, and that poison is cleared only after a fully validated replacement generation is published; poison in registration or generation state remains fatal.
 - Verification is single-flight, waits for already admitted work to drain, releases the ordinary writer before exhaustive work, performs `SyncAll`, validates the home header, control records, exact domain registry, every physical record envelope, domain invariants, and referenced sidecars, and either reopens the same generation as healthy or leaves the store failed.
 - Recovery is single-flight and is accepted only from `failed`. It keeps the outer opened-directory, `home.lock`, and exact retained `state` object, drains every Fjall and keyspace handle from the failed generation, then reopens the final `state` component without following reparse points and requires the same complete opened-object identity before forced recovery. It never dispatches through create-or-recover, accepts a copied database merely because its header matches, or initializes replacement state.
+- Recovery constructs the candidate from a fresh Fjall configuration and retains no dependency
+  cache from the failed generation. Block and blob residents are live-generation performance state,
+  never reopen-validation evidence or authority for the replacement generation.
 - A recovered candidate must preserve the exact home identity and schema, reacquire every registered domain from its retained exact-owner blueprint, exhaustively validate all physical families plus domain and sidecar invariants away from the ordinary writer, and complete `SyncAll` before publication. Any disagreement or I/O failure leaves admission failed and permits a later retry.
 - Successful forced recovery increments the monotonic process-local home generation and replaces the private store-instance identity. Handles, commands, sidecar-admission tokens, command receipts, and asynchronous completions from the obsolete generation cannot authorize work; callers reacquire typed domain handles through `HomeStore::domain_handle`, and receipt consumers validate the receipt against that exact current generation.
 - The package exposes the accepted recovery delays as `1`, `2`, `5`, `10`, and `30` seconds, remaining at `30` seconds until successful recovery resets the schedule. Scheduling and preserving caller-owned in-memory GUI values remain application responsibilities.
@@ -96,22 +179,30 @@ Provide typed, revision-checked, crash-durable coordination across registered Sy
 ## Fault-Test Boundary
 
 - The `test-faults` Cargo feature exposes deterministic actions only at concrete package call boundaries around reads, batch commit, persistence, verification, forced reopen, and sidecar file and directory operations. Production builds compile those checks to no-ops; there is no alternate storage engine, virtual filesystem, compatibility layer, or retry path.
+- Writer actions may additionally be scoped to the exact Rust mutation type carried by a typed
+  current-domain command. The scope is process-local test identity, remains at the same physical
+  before-commit, after-commit-before-persist, and after-persist boundaries, and only prevents an
+  unrelated typed command from consuming an intended action. Unscoped actions retain their prior
+  behavior, and neither scope metadata nor scope selection exists in production builds.
 - The feature additionally exposes one bounded persisted-corruption seam for post-registration read-health, verification, and recovery proofs. It requires the exact current typed domain handle and codec owner, accepts only a nonempty physical record envelope that the registered exact codec rejects, shares the existing explicit same-thread writer-reentry guard, serializes through the existing writer, and completes `SyncAll`.
 - The corruption seam enforces fixed fixture-byte ceilings, exposes neither Fjall handles nor a reusable raw reader/writer, and rejects every envelope the exact codec would accept. It is absent from production builds and cannot bypass registration, recovery, or validation there.
-- Package tests inject surfaced errors with exact I/O kinds, typed root/namespace/shard/final sidecar barriers, deterministic concurrency blocks, writer panics, subprocess aborts, parent-forced termination, callback-stage failures, closed-generation raw corruption, and bounded post-registration exact-codec-rejected envelopes. They prove exact owner and codec identity, bounded command work, writer-reentry rejection, exhaustive record-envelope rejection, ordinary-read fail-closed classification, admitted-read publication rejection, single-flight maintenance, old-or-new batch recovery, exact physical-state non-replacement, obsolete-generation rejection, retained-final object safety, and sidecar publication ordering at the boundaries Beryl controls.
-- Fjall exposes no downstream failpoint inside its private journal write. The tests therefore do not claim to inject or observe the suppressed internal error described under Known Issues.
+- The feature also exposes one no-input maintenance-terminal fixture. It installs an actual retained
+  terminal through Fjall's non-production fault boundary while deliberately leaving the Beryl gate
+  healthy, exposes no database handle or generic engine operation, and exists only to prove that
+  every state-dependent result observes dependency health before publication.
+- Package tests inject surfaced errors with exact I/O kinds, typed root/namespace/shard/final sidecar barriers, deterministic concurrency blocks, writer panics, subprocess aborts, parent-forced termination, callback-stage failures, closed-generation raw corruption, and bounded post-registration exact-codec-rejected envelopes. They prove exact owner and codec identity, bounded command work, writer-reentry rejection, exhaustive record-envelope rejection, ordinary-read fail-closed classification, stale-read publication rejection, single-flight maintenance, old-or-new batch recovery, exact physical-state non-replacement, obsolete-generation rejection, retained-final object safety, and sidecar publication ordering at the boundaries Beryl controls.
+- The owned Fjall fork exposes a deterministic non-production journal-write failure seam. Package
+  tests exercise that exact failure before in-memory batch publication and prove it cannot be
+  followed by reported durable success; production builds expose neither the seam nor raw Fjall
+  mutation authority.
 
 ## Dependency Boundary
 
-- This package may depend on Fjall and platform file-lock primitives.
+- This package depends on the unpublishable owned Fjall fork at `../fjall-fork` and may depend on
+  platform file-lock primitives.
+- The Fjall fork must require bounded block, value, cursor-topology, cache, memtable, and batch
+  policy, expose metadata-first stored-value inspection, reject configured limit violations, and
+  propagate journal write failures. Its independently versioned `lsm-tree` fork owns the lower
+  storage-engine implementation.
 - It must not depend on `gpui`, `beryl-app`, `beryl-backend`, or CAS protocol types.
 - `syndic-storage` and Beryl metadata packages consume or register through this boundary without depending on one another's private records.
-
-# Known Issues
-
-## Fjall Batch Journal-Write Error Suppression
-
-- The current approved dependency is the exact official Fjall 3.1.6 release.
-- Fjall 3.1.6 `WriteBatch::commit` discards the fallible result of its journal `write_batch` call before applying and publishing the batch in memory. A transient or intermediate journal-write failure can therefore be followed by a successful persistence operation and Beryl `SyncAll` barrier even though recovery cannot reconstruct the complete batch.
-- This dependency defect is tracked upstream as [fjall-rs/fjall#304](https://github.com/fjall-rs/fjall/issues/304). The Operator explicitly accepted using the official release with this known durability gap while awaiting the upstream response; whether to adopt a corrected release or maintain an owned fork remains deferred.
-- Beryl still performs the required `SyncAll` barrier and fails closed for every error Fjall surfaces. It must not disguise this upstream gap with retries, dual writes, batch-size assumptions, or a compatibility adapter, and it must not claim that fault verification proves the suppressed-error path safe.

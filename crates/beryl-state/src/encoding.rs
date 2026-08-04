@@ -1,8 +1,8 @@
 use std::{error::Error, fmt};
 
 use beryl_model::{
-    AdmittedHostPath, Availability, JobId, PathFlavor, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath, SyndicThreadId, ThreadRevision, UnavailableReason,
+    AdmittedHostPath, Availability, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
+    UnavailableReason,
 };
 
 use crate::{AvailabilitySnapshot, RecordRevision, UnixMillis};
@@ -305,10 +305,6 @@ impl<'a> Decoder<'a> {
     pub(crate) fn record_revision(&mut self) -> Result<RecordRevision, CodecError> {
         RecordRevision::new(self.u64()?).map_err(|source| invalid("record revision", source))
     }
-
-    pub(crate) fn thread_revision(&mut self) -> Result<ThreadRevision, CodecError> {
-        ThreadRevision::new(self.u64()?).map_err(|source| invalid("thread revision", source))
-    }
 }
 
 pub(crate) fn encode_runtime_id(value: RuntimeId) -> Vec<u8> {
@@ -325,22 +321,6 @@ pub(crate) fn encode_root_id(value: RootId) -> Vec<u8> {
 
 pub(crate) fn decode_root_id(bytes: &[u8]) -> Result<RootId, CodecError> {
     decode_identity(bytes, "root identity").map(RootId::from_bytes)
-}
-
-pub(crate) fn encode_thread_id(value: SyndicThreadId) -> Vec<u8> {
-    value.as_bytes().to_vec()
-}
-
-pub(crate) fn decode_thread_id(bytes: &[u8]) -> Result<SyndicThreadId, CodecError> {
-    decode_identity(bytes, "Syndic thread identity").map(SyndicThreadId::from_bytes)
-}
-
-pub(crate) fn encode_job_id(encoder: &mut Encoder, value: JobId) {
-    encoder.fixed(value.as_bytes());
-}
-
-pub(crate) fn decode_job_id(decoder: &mut Decoder<'_>) -> Result<JobId, CodecError> {
-    decoder.fixed().map(JobId::from_bytes)
 }
 
 fn decode_identity(bytes: &[u8], kind: &'static str) -> Result<[u8; 16], CodecError> {

@@ -2,9 +2,11 @@ use std::{
     fmt,
     fs::{self, OpenOptions},
     io::Write,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
+use beryl_model::{AdmittedHostPath, RuntimeMode, RuntimeNativePath};
+use sha2::{Digest, Sha256};
 use tracing::warn;
 
 use crate::ManagedBackendError;
@@ -13,20 +15,27 @@ const TOKEN_BYTES: usize = 32;
 const NONCE_BYTES: usize = 16;
 pub(crate) struct ManagedBackendAuthMaterial {
     token: String,
+    token_sha256: String,
     host_token_file_path: PathBuf,
-    backend_token_file_path: PathBuf,
+    backend_token_file_path: String,
     cleaned_up: bool,
 }
 
 impl ManagedBackendAuthMaterial {
     pub(crate) fn generate(
-        host_token_directory: &Path,
-        backend_token_directory: &Path,
+        host_token_directory: &AdmittedHostPath,
+        runtime_token_directory: &RuntimeNativePath,
     ) -> Result<Self, ManagedBackendError> {
         let token = random_hex(TOKEN_BYTES)?;
         let file_name = format!("token-{}.txt", random_hex(NONCE_BYTES)?);
-        let host_token_file_path = host_token_directory.join(&file_name);
-        let backend_token_file_path = backend_token_directory.join(file_name);
+        let host_token_file_path = PathBuf::from(host_token_directory.as_str()).join(&file_name);
+        let backend_token_file_path = match runtime_token_directory.mode() {
+            RuntimeMode::Host => PathBuf::from(runtime_token_directory.as_str())
+                .join(&file_name)
+                .display()
+                .to_string(),
+            RuntimeMode::Wsl(_) => posix_join(runtime_token_directory.as_str(), &file_name),
+        };
 
         if let Some(parent) = host_token_file_path.parent() {
             fs::create_dir_all(parent).map_err(|source| {
@@ -64,6 +73,7 @@ impl ManagedBackendAuthMaterial {
         }
 
         Ok(Self {
+            token_sha256: hex::encode(Sha256::digest(token.as_bytes())),
             token,
             host_token_file_path,
             backend_token_file_path,
@@ -71,12 +81,12 @@ impl ManagedBackendAuthMaterial {
         })
     }
 
-    pub(crate) fn host_token_file_path(&self) -> &Path {
-        &self.host_token_file_path
+    pub(crate) fn backend_token_file_path(&self) -> &str {
+        &self.backend_token_file_path
     }
 
-    pub(crate) fn backend_token_file_path(&self) -> &Path {
-        &self.backend_token_file_path
+    pub(crate) fn token_sha256(&self) -> &str {
+        &self.token_sha256
     }
 
     pub(crate) fn authorization_header_value(&self) -> String {
@@ -103,16 +113,29 @@ impl ManagedBackendAuthMaterial {
             }),
         }
     }
+
+    pub(crate) fn preserve_file_on_drop(&mut self) {
+        self.cleaned_up = true;
+    }
 }
 
 impl fmt::Debug for ManagedBackendAuthMaterial {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ManagedBackendAuthMaterial")
             .field("token", &"<redacted>")
+            .field("token_sha256", &self.token_sha256)
             .field("host_token_file_path", &self.host_token_file_path)
             .field("backend_token_file_path", &self.backend_token_file_path)
             .field("cleaned_up", &self.cleaned_up)
             .finish()
+    }
+}
+
+fn posix_join(directory: &str, file_name: &str) -> String {
+    if directory == "/" {
+        format!("/{file_name}")
+    } else {
+        format!("{}/{file_name}", directory.trim_end_matches('/'))
     }
 }
 

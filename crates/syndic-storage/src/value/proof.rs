@@ -184,6 +184,18 @@ impl SelectedPathProof {
     pub const fn digest(self) -> SyndicPathDigest {
         self.digest
     }
+
+    /// Returns whether this proof is the same selected path at an equal or newer thread revision.
+    ///
+    /// Draft and accepted-input admission can advance the enclosing thread revision without
+    /// changing its committed tail or selected-path digest. Consumers that intentionally tolerate
+    /// that drift use this relation instead of weakening exact proof equality globally.
+    #[must_use]
+    pub fn is_compatible_descendant_of(self, prior: Self) -> bool {
+        self.tail == prior.tail
+            && self.digest == prior.digest
+            && self.thread_revision.get() >= prior.thread_revision.get()
+    }
 }
 
 /// CAS-native mechanism whose own history already represents the selected path.
@@ -346,9 +358,9 @@ impl CasLineageProof {
         }
     }
 
-    /// Returns the exact loaded-session generation required by recovered lineage.
+    /// Returns the exact loaded-session generation that established recovered lineage.
     #[must_use]
-    pub const fn recovered_loaded_generation(self) -> Option<CasLoadedSessionGeneration> {
+    pub const fn recovered_injection_generation(self) -> Option<CasLoadedSessionGeneration> {
         match self {
             Self::Native { .. } => None,
             Self::RecoveredInjection(proof) => Some(proof.loaded_generation()),

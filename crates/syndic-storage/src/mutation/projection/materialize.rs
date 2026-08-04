@@ -1,10 +1,9 @@
 use beryl_home_store::DomainReader;
 use beryl_model::ProjectionRevision;
 
-use crate::{ProjectionFormatVersion, SyndicMutationError, codec::*, domain::SyndicDomain};
+use crate::{ProjectionFormatVersion, SyndicMutationError, domain::SyndicDomain};
 
 use super::{parser, range};
-use crate::mutation::required;
 
 pub(crate) struct MaterializedOutput {
     pub(crate) projection: crate::ProjectionRecord,
@@ -27,14 +26,11 @@ type ResourceDraft = (
 pub(crate) fn materialize_output(
     reader: &DomainReader<'_, SyndicDomain>,
     item: &crate::CanonicalItemRecord,
+    source: crate::ProjectionTextSource,
     format: ProjectionFormatVersion,
     ordinal: crate::ProjectionOrdinal,
     output: parser::ParserOutput,
 ) -> Result<MaterializedOutput, SyndicMutationError> {
-    let content = item
-        .payload()
-        .content()
-        .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
     let (block_start, payload, resource_draft) = match output {
         parser::ParserOutput::Inline {
             block_start,
@@ -42,17 +38,11 @@ pub(crate) fn materialize_output(
             span_ordinal,
             range,
         } => {
-            let source = range::read_logical_range(reader, content, range)?;
+            let text = range::read_source_range(reader, source, range)?;
             let block = crate::projection::markdown_block_id(format, item.id(), block_start, kind);
             (
                 block_start,
-                crate::ProjectionPayload::inline_markdown(
-                    block,
-                    kind,
-                    span_ordinal,
-                    range,
-                    source,
-                )?,
+                crate::ProjectionPayload::inline_markdown(block, kind, span_ordinal, range, text)?,
                 None,
             )
         }
@@ -75,7 +65,7 @@ pub(crate) fn materialize_output(
                 item.id(),
                 resource_ordinal,
                 resource_kind,
-                content.id(),
+                source,
                 range,
             );
             let block = crate::projection::markdown_block_id(format, item.id(), block_start, kind);
@@ -106,29 +96,16 @@ pub(crate) fn materialize_output(
             source_offset,
             marker_id,
             label,
-        } => {
-            let resolution = required::<InputMarkerResolutionsFamily>(
-                reader,
-                &InputMarkerKey {
-                    owner: crate::InputMarkerOwner::CanonicalItem(item.id()),
-                    ordinal: marker_ordinal,
-                },
-            )?;
-            if resolution.marker().marker_id() != marker_id || resolution.marker().label() != label
-            {
-                return Err(SyndicMutationError::ProjectionBuildConflict);
-            }
-            (
+        } => (
+            source_offset,
+            crate::ProjectionPayload::image_marker(
+                atom_ordinal,
+                marker_ordinal,
                 source_offset,
-                crate::ProjectionPayload::image_marker(
-                    atom_ordinal,
-                    marker_ordinal,
-                    source_offset,
-                    resolution.marker(),
-                ),
-                None,
-            )
-        }
+                crate::ComposerImageMarker::new(marker_id, label),
+            ),
+            None,
+        ),
         parser::ParserOutput::Empty => (0, crate::ProjectionPayload::empty(), None),
     };
     let (projection_id, projection_revision) =
@@ -142,7 +119,7 @@ pub(crate) fn materialize_output(
         payload,
     );
     let resource = resource_draft
-        .map(|draft| materialize_resource(item, &projection, draft))
+        .map(|draft| materialize_resource(item, source, &projection, draft))
         .transpose()?;
     Ok(MaterializedOutput {
         projection,
@@ -152,6 +129,7 @@ pub(crate) fn materialize_output(
 
 fn materialize_resource(
     item: &crate::CanonicalItemRecord,
+    source: crate::ProjectionTextSource,
     projection: &crate::ProjectionRecord,
     draft: ResourceDraft,
 ) -> Result<
@@ -161,10 +139,6 @@ fn materialize_resource(
     ),
     SyndicMutationError,
 > {
-    let content = item
-        .payload()
-        .content()
-        .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
     let (id, revision, ordinal, kind, preview, structure, digest) = draft;
     let range = projection
         .payload()
@@ -188,10 +162,7 @@ fn materialize_resource(
         ordinal,
         kind,
         media_type,
-        crate::ResourceBacking::CanonicalTextRange {
-            content_id: content.id(),
-            range,
-        },
+        crate::ResourceBacking::TextRange { source, range },
         digest,
         preview_range,
         structure,

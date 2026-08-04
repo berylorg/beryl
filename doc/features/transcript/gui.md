@@ -10,13 +10,20 @@ The transcript feature mounts one project-local `transcript view` in this slot. 
 
 The feature configures the widget's interactive-narrative variant over the transcript host's resident presentation snapshot. It supplies which records are narrative content, their Syndic provenance, their command eligibility, and the user-visible meaning of loading, missing-data, pending-range, stale-result, rejected-demand, and budget-fallback presentation states.
 
-For an active assistant record, the feature supplies the arrival-streaming and durable-reconciling states without adding a second row, overlay, or progress surface. Normalized CAS text deltas become visible on the next consumed GUI frame without a typewriter animation; exact Syndic takeover preserves the record's position and visible prefix.
+For an active assistant record, the feature supplies the arrival-streaming and durable-reconciling
+states without adding a second row, overlay, or progress surface. Arrived bounded fragments that
+preserve their normalized CAS text delta identity and order become visible on the next consumed GUI
+frame without a typewriter animation; exact Syndic takeover preserves the record's position and
+visible prefix.
 
 The transcript view also composes applicable records from `transcript.context-records` into the host-supplied ordered presentation flow. A synthetic-context contribution receives the transcript's ordinary variable-height realization, chunking, measurement, selection, accessibility, and anchor mechanics without becoming another transcript viewport or turn record.
 
 The feature selects tail-oriented placement unless an explicit navigation command provides another target. During selected-thread activation, it keeps the prior coherent `transcript view` visible in activation-pending state until the replacement content and initial viewport state can publish together.
 
 Large code blocks configure project-local `code panel` widgets. Large tables configure project-local `table panel` widgets. Transcript image references use the readonly-inline variant of the project-local `image marker`. The feature supplies source ranges, resource state, copy behavior, media labels, fallbacks, and command payloads; the canonical widgets own their reusable rendering and interaction mechanics.
+For range-backed code and table resources, the feature configures clipboard-limited Copy and
+streaming `Save…` commands over the same exact source identity; it never derives either command from
+painted or currently realized content.
 
 ## Transcript Menus And Previews
 

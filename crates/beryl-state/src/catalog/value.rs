@@ -1,21 +1,20 @@
-use std::num::{NonZeroU16, NonZeroU64};
+use std::num::NonZeroU64;
 
 use beryl_model::{
-    AdmittedHostPath, Availability, ClaimRevision, RootId, RuntimeId, SyndicThreadId,
-    ThreadRevision, WindowId,
+    AdmittedHostPath, Availability, ClaimRevision, ProjectionRevision, RootId, RuntimeId,
+    SyndicPathDigest, SyndicThreadId, WindowId,
 };
 
 use crate::RecordRevision;
 
-use super::{CatalogValueError, error::bounded_text};
+use super::{CatalogValueError, error::bounded_text, normalization::normalize};
 
 pub const CATALOG_TITLE_MAX_BYTES: usize = 512;
+pub const CATALOG_HISTORY_TITLE_MAX_SCALARS: usize = 80;
 pub const CATALOG_ENVIRONMENT_LABEL_MAX_BYTES: usize = 256;
 pub const CATALOG_NORMALIZED_TITLE_MAX_BYTES: usize = 2 * 1024;
 pub const CATALOG_NORMALIZED_ENVIRONMENT_MAX_BYTES: usize = 1024;
 pub const CATALOG_NORMALIZED_PATH_MAX_BYTES: usize = 64 * 1024;
-
-const UNTITLED: &str = "Untitled";
 
 /// Package-local monotonic revision of one compact catalog row.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -44,87 +43,95 @@ impl CatalogRevision {
     }
 }
 
-/// One bounded title candidate and the Syndic revision from which it was derived.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CatalogTitleCandidate {
-    text: Box<str>,
-    source_thread_revision: ThreadRevision,
+/// The already-resolved title source copied from one Syndic catalog summary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CatalogTitleSource {
+    Generated,
+    HistoryDerived,
+    Absent,
 }
 
-impl CatalogTitleCandidate {
-    pub fn new(
-        text: impl AsRef<str>,
-        source_thread_revision: ThreadRevision,
-    ) -> Result<Self, CatalogValueError> {
+/// One bounded title whose precedence was already resolved by Syndic.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogResolvedTitle {
+    text: Option<Box<str>>,
+    source: CatalogTitleSource,
+}
+
+impl CatalogResolvedTitle {
+    pub fn generated(text: impl AsRef<str>) -> Result<Self, CatalogValueError> {
+        let text = bounded_text(
+            "generated catalog title",
+            text.as_ref(),
+            CATALOG_TITLE_MAX_BYTES,
+        )?;
+        if !text.chars().any(char::is_alphanumeric) {
+            return Err(CatalogValueError::MissingAlphanumeric {
+                kind: "generated catalog title",
+            });
+        }
         Ok(Self {
-            text: bounded_text("catalog title", text.as_ref(), CATALOG_TITLE_MAX_BYTES)?,
-            source_thread_revision,
+            text: Some(text),
+            source: CatalogTitleSource::Generated,
+        })
+    }
+
+    pub fn history_derived(text: impl AsRef<str>) -> Result<Self, CatalogValueError> {
+        let text = text.as_ref();
+        if text.is_empty() {
+            return Err(CatalogValueError::Empty {
+                kind: "history-derived catalog title",
+            });
+        }
+        if text.len() > CATALOG_TITLE_MAX_BYTES {
+            return Err(CatalogValueError::TooLong {
+                kind: "history-derived catalog title",
+                maximum: CATALOG_TITLE_MAX_BYTES,
+                actual: text.len(),
+            });
+        }
+        let scalar_count = text.chars().count();
+        if scalar_count > CATALOG_HISTORY_TITLE_MAX_SCALARS {
+            return Err(CatalogValueError::TooManyScalars {
+                kind: "history-derived catalog title",
+                maximum: CATALOG_HISTORY_TITLE_MAX_SCALARS,
+                actual: scalar_count,
+            });
+        }
+        if text.trim_end() != text {
+            return Err(CatalogValueError::TrailingWhitespace {
+                kind: "history-derived catalog title",
+            });
+        }
+        if let Some((index, _)) = text.char_indices().find(|(_, value)| value.is_control()) {
+            return Err(CatalogValueError::ControlCharacter {
+                kind: "history-derived catalog title",
+                index,
+            });
+        }
+        Ok(Self {
+            text: Some(text.into()),
+            source: CatalogTitleSource::HistoryDerived,
         })
     }
 
     #[must_use]
-    pub fn text(&self) -> &str {
-        &self.text
-    }
-
-    #[must_use]
-    pub const fn source_thread_revision(&self) -> ThreadRevision {
-        self.source_thread_revision
-    }
-}
-
-/// Generated and Syndic-history title facts retained for exact display precedence.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct CatalogTitleFacts {
-    generated: Option<CatalogTitleCandidate>,
-    syndic: Option<CatalogTitleCandidate>,
-}
-
-impl CatalogTitleFacts {
-    #[must_use]
-    pub const fn new(
-        generated: Option<CatalogTitleCandidate>,
-        syndic: Option<CatalogTitleCandidate>,
-    ) -> Self {
-        Self { generated, syndic }
-    }
-
-    #[must_use]
-    pub const fn generated(&self) -> Option<&CatalogTitleCandidate> {
-        self.generated.as_ref()
-    }
-
-    #[must_use]
-    pub const fn syndic(&self) -> Option<&CatalogTitleCandidate> {
-        self.syndic.as_ref()
-    }
-
-    #[must_use]
-    pub fn display_title(&self) -> &str {
-        self.generated
-            .as_ref()
-            .or(self.syndic.as_ref())
-            .map_or(UNTITLED, CatalogTitleCandidate::text)
-    }
-
-    #[must_use]
-    pub const fn display_source(&self) -> CatalogTitleSource {
-        if self.generated.is_some() {
-            CatalogTitleSource::Generated
-        } else if self.syndic.is_some() {
-            CatalogTitleSource::Syndic
-        } else {
-            CatalogTitleSource::Untitled
+    pub const fn absent() -> Self {
+        Self {
+            text: None,
+            source: CatalogTitleSource::Absent,
         }
     }
-}
 
-/// Which title fact currently wins generated/Syndic/untitled precedence.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CatalogTitleSource {
-    Generated,
-    Syndic,
-    Untitled,
+    #[must_use]
+    pub fn text(&self) -> Option<&str> {
+        self.text.as_deref()
+    }
+
+    #[must_use]
+    pub const fn source(&self) -> CatalogTitleSource {
+        self.source
+    }
 }
 
 /// Runtime and root availability copied into one compact projection.
@@ -261,37 +268,26 @@ impl CatalogClaimSummary {
 pub enum CatalogLineageSummary {
     TopLevel,
     Descendant {
-        top_level_thread_id: SyndicThreadId,
         parent_thread_id: SyndicThreadId,
-        depth: NonZeroU16,
+        depth: NonZeroU64,
+        path_digest: SyndicPathDigest,
     },
 }
 
 impl CatalogLineageSummary {
     pub fn descendant(
-        top_level_thread_id: SyndicThreadId,
         parent_thread_id: SyndicThreadId,
-        depth: u16,
+        depth: u64,
+        path_digest: SyndicPathDigest,
     ) -> Result<Self, CatalogValueError> {
-        let depth = NonZeroU16::new(depth).ok_or(CatalogValueError::InvalidLineage(
+        let depth = NonZeroU64::new(depth).ok_or(CatalogValueError::InvalidLineage(
             "a descendant lineage depth must be nonzero",
         ))?;
         Ok(Self::Descendant {
-            top_level_thread_id,
             parent_thread_id,
             depth,
+            path_digest,
         })
-    }
-
-    #[must_use]
-    pub const fn top_level_thread_id(self) -> Option<SyndicThreadId> {
-        match self {
-            Self::TopLevel => None,
-            Self::Descendant {
-                top_level_thread_id,
-                ..
-            } => Some(top_level_thread_id),
-        }
     }
 
     #[must_use]
@@ -305,10 +301,18 @@ impl CatalogLineageSummary {
     }
 
     #[must_use]
-    pub const fn depth(self) -> u16 {
+    pub const fn depth(self) -> u64 {
         match self {
             Self::TopLevel => 0,
             Self::Descendant { depth, .. } => depth.get(),
+        }
+    }
+
+    #[must_use]
+    pub const fn path_digest(self) -> Option<SyndicPathDigest> {
+        match self {
+            Self::TopLevel => None,
+            Self::Descendant { path_digest, .. } => Some(path_digest),
         }
     }
 }
@@ -321,11 +325,7 @@ pub enum CatalogArchiveSummary {
     BranchDiscussionArchived,
 }
 
-/// Caller-admitted normalized lexical fields used by catalog search.
-///
-/// This boundary deliberately does not normalize Unicode. The caller must pass
-/// already normalized, case-folded text; this constructor enforces only the
-/// durable v1 size and text-shape contract.
+/// Catalog-owned normalized lexical fields used by catalog search.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CatalogSearchFields {
     title: Box<str>,
@@ -335,31 +335,29 @@ pub struct CatalogSearchFields {
 }
 
 impl CatalogSearchFields {
-    pub fn from_admitted_normalized(
-        title: impl AsRef<str>,
-        environment_label: impl AsRef<str>,
-        configured_executable_path: impl AsRef<str>,
-        full_root_path: impl AsRef<str>,
+    pub(super) fn from_visible(
+        title: &CatalogResolvedTitle,
+        execution: &CatalogExecutionSummary,
     ) -> Result<Self, CatalogValueError> {
         Ok(Self {
-            title: bounded_text(
+            title: normalize(
                 "normalized catalog title",
-                title.as_ref(),
+                title.text().unwrap_or_default(),
                 CATALOG_NORMALIZED_TITLE_MAX_BYTES,
             )?,
-            environment_label: bounded_text(
+            environment_label: normalize(
                 "normalized catalog environment label",
-                environment_label.as_ref(),
+                execution.environment_label(),
                 CATALOG_NORMALIZED_ENVIRONMENT_MAX_BYTES,
             )?,
-            configured_executable_path: bounded_text(
+            configured_executable_path: normalize(
                 "normalized catalog executable path",
-                configured_executable_path.as_ref(),
+                execution.configured_executable_path().as_str(),
                 CATALOG_NORMALIZED_PATH_MAX_BYTES,
             )?,
-            full_root_path: bounded_text(
+            full_root_path: normalize(
                 "normalized catalog root path",
-                full_root_path.as_ref(),
+                execution.full_root_path().as_str(),
                 CATALOG_NORMALIZED_PATH_MAX_BYTES,
             )?,
         })
@@ -386,11 +384,10 @@ impl CatalogSearchFields {
     }
 }
 
-/// Exact authoritative record revisions from which one catalog row was built.
+/// Exact Syndic-summary and Beryl-record fences from which one catalog row was built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CatalogSourceRevisions {
-    thread: ThreadRevision,
-    thread_metadata: RecordRevision,
+    syndic_summary: ProjectionRevision,
     runtime: RecordRevision,
     root: RecordRevision,
     claim: Option<ClaimRevision>,
@@ -399,15 +396,13 @@ pub struct CatalogSourceRevisions {
 impl CatalogSourceRevisions {
     #[must_use]
     pub const fn new(
-        thread: ThreadRevision,
-        thread_metadata: RecordRevision,
+        syndic_summary: ProjectionRevision,
         runtime: RecordRevision,
         root: RecordRevision,
         claim: Option<ClaimRevision>,
     ) -> Self {
         Self {
-            thread,
-            thread_metadata,
+            syndic_summary,
             runtime,
             root,
             claim,
@@ -415,13 +410,8 @@ impl CatalogSourceRevisions {
     }
 
     #[must_use]
-    pub const fn thread(self) -> ThreadRevision {
-        self.thread
-    }
-
-    #[must_use]
-    pub const fn thread_metadata(self) -> RecordRevision {
-        self.thread_metadata
+    pub const fn syndic_summary(self) -> ProjectionRevision {
+        self.syndic_summary
     }
 
     #[must_use]
@@ -440,10 +430,8 @@ impl CatalogSourceRevisions {
     }
 
     pub(super) fn regression_from(self, previous: Self) -> Option<&'static str> {
-        if self.thread < previous.thread {
-            Some("Syndic thread")
-        } else if self.thread_metadata < previous.thread_metadata {
-            Some("thread metadata")
+        if self.syndic_summary < previous.syndic_summary {
+            Some("Syndic catalog summary")
         } else if self.runtime < previous.runtime {
             Some("runtime")
         } else if self.root < previous.root {

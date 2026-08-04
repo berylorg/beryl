@@ -1,3 +1,6 @@
+#[path = "support/fjall.rs"]
+mod fjall_support;
+
 use std::{error::Error, fmt};
 
 #[cfg(feature = "test-faults")]
@@ -14,7 +17,7 @@ use beryl_home_store::{
     HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
     ReadError, RecordCodec, RecordFamily, RecordVersion, StorageDomain,
 };
-use fjall::{Config, Database, KeyspaceCreateOptions, PersistMode};
+use fjall::{Database, PersistMode};
 use tempfile::tempdir;
 
 struct StrictDomain;
@@ -147,12 +150,9 @@ fn open(path: &std::path::Path) -> HomeStore {
 }
 
 fn raw_insert(path: &std::path::Path, key: &[u8], value: &[u8]) {
-    let database = Database::recover(Config::new(&path.join("state"))).unwrap();
+    let database = Database::recover(fjall_support::config(&path.join("state"))).unwrap();
     let keyspace = database
-        .keyspace(
-            "d.strict_validation.records",
-            KeyspaceCreateOptions::default,
-        )
+        .open_keyspace("d.strict_validation.records")
         .unwrap();
     keyspace.insert(key, value).unwrap();
     database.persist(PersistMode::SyncAll).unwrap();

@@ -1,9 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{
+        Arc, Mutex, OnceLock, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
-use beryl_backend::RateLimitSnapshot;
 use beryl_model::{CasProcessGeneration, RuntimeId};
 
 use super::{LiveEventConnectionState, LiveEventTargetCloseReason};
@@ -42,9 +44,6 @@ pub struct LiveEventProcessSnapshot {
     runtime_id: RuntimeId,
     process_generation: CasProcessGeneration,
     revision: u64,
-    account_rate_limits: Option<RateLimitSnapshot>,
-    account_source_connection_generation: Option<u64>,
-    account_event_count: u64,
     active_connection_count: usize,
     latest_connection_fact: Option<LiveEventConnectionFact>,
 }
@@ -68,24 +67,6 @@ impl LiveEventProcessSnapshot {
         self.revision
     }
 
-    /// Borrows the latest account rate-limit snapshot from any live connection.
-    #[must_use]
-    pub const fn account_rate_limits(&self) -> Option<&RateLimitSnapshot> {
-        self.account_rate_limits.as_ref()
-    }
-
-    /// Returns the connection generation that published the latest account fact.
-    #[must_use]
-    pub const fn account_source_connection_generation(&self) -> Option<u64> {
-        self.account_source_connection_generation
-    }
-
-    /// Returns the process-wide count of accepted account events.
-    #[must_use]
-    pub const fn account_event_count(&self) -> u64 {
-        self.account_event_count
-    }
-
     /// Returns the number of currently live projection connections.
     #[must_use]
     pub const fn active_connection_count(&self) -> usize {
@@ -102,9 +83,6 @@ impl LiveEventProcessSnapshot {
 #[derive(Debug)]
 struct ProcessState {
     revision: u64,
-    account_rate_limits: Option<RateLimitSnapshot>,
-    account_source_connection_generation: Option<u64>,
-    account_event_count: u64,
     active_connections: HashSet<u64>,
     latest_connection_fact: Option<LiveEventConnectionFact>,
 }
@@ -113,6 +91,24 @@ struct ProcessState {
 pub(super) struct ProcessEventProjection {
     key: ProcessKey,
     state: Mutex<ProcessState>,
+}
+
+#[derive(Debug)]
+struct StableConnectionFactInner {
+    process: Arc<ProcessEventProjection>,
+    connection_generation: u64,
+    retired: AtomicBool,
+}
+
+/// Stable-core ownership of one connection fact in its managed process.
+pub(in crate::cas_projection::connection) struct StableConnectionProcessFact {
+    inner: StableConnectionFactInner,
+}
+
+/// Read-only process projection supplied to replaceable epoch routers.
+#[derive(Clone, Debug)]
+pub(in crate::cas_projection::connection) struct ProcessEventObservation {
+    process: Arc<ProcessEventProjection>,
 }
 
 #[derive(Default)]
@@ -147,9 +143,6 @@ pub(super) fn acquire_process_projection(
         key,
         state: Mutex::new(ProcessState {
             revision: 0,
-            account_rate_limits: None,
-            account_source_connection_generation: None,
-            account_event_count: 0,
             active_connections: HashSet::new(),
             latest_connection_fact: None,
         }),
@@ -158,6 +151,55 @@ pub(super) fn acquire_process_projection(
         .projections
         .insert(key, Arc::downgrade(&projection));
     Ok(projection)
+}
+
+impl StableConnectionProcessFact {
+    pub(in crate::cas_projection::connection) fn register(
+        runtime_id: RuntimeId,
+        process_generation: CasProcessGeneration,
+        connection_generation: u64,
+    ) -> Result<Self, ProjectionCoordinatorError> {
+        let process = acquire_process_projection(runtime_id, process_generation)?;
+        process.register_connection(connection_generation)?;
+        Ok(Self {
+            inner: StableConnectionFactInner {
+                process,
+                connection_generation,
+                retired: AtomicBool::new(false),
+            },
+        })
+    }
+
+    pub(in crate::cas_projection::connection) fn observe(&self) -> ProcessEventObservation {
+        ProcessEventObservation {
+            process: Arc::clone(&self.inner.process),
+        }
+    }
+
+    pub(in crate::cas_projection::connection) fn retire(&self, reason: LiveEventTargetCloseReason) {
+        self.inner.retire(reason);
+    }
+}
+
+impl ProcessEventObservation {
+    pub(super) fn snapshot(&self) -> Result<LiveEventProcessSnapshot, ProjectionCoordinatorError> {
+        self.process.snapshot()
+    }
+}
+
+impl StableConnectionFactInner {
+    fn retire(&self, reason: LiveEventTargetCloseReason) {
+        if !self.retired.swap(true, Ordering::AcqRel) {
+            self.process
+                .retire_connection(self.connection_generation, reason);
+        }
+    }
+}
+
+impl Drop for StableConnectionProcessFact {
+    fn drop(&mut self) {
+        self.inner.retire(LiveEventTargetCloseReason::WorkerStopped);
+    }
 }
 
 impl ProcessEventProjection {
@@ -174,22 +216,6 @@ impl ProcessEventProjection {
             advance_revision(&mut state);
         }
         Ok(())
-    }
-
-    pub(super) fn publish_account(
-        &self,
-        connection_generation: u64,
-        rate_limits: RateLimitSnapshot,
-    ) -> Result<bool, ProjectionCoordinatorError> {
-        let mut state = self.lock()?;
-        if !state.active_connections.contains(&connection_generation) {
-            return Ok(false);
-        }
-        state.account_rate_limits = Some(rate_limits);
-        state.account_source_connection_generation = Some(connection_generation);
-        state.account_event_count = state.account_event_count.saturating_add(1);
-        advance_revision(&mut state);
-        Ok(true)
     }
 
     pub(super) fn retire_connection(
@@ -216,9 +242,6 @@ impl ProcessEventProjection {
             runtime_id: self.key.runtime_id,
             process_generation: self.key.process_generation,
             revision: state.revision,
-            account_rate_limits: state.account_rate_limits.clone(),
-            account_source_connection_generation: state.account_source_connection_generation,
-            account_event_count: state.account_event_count,
             active_connection_count: state.active_connections.len(),
             latest_connection_fact: state.latest_connection_fact,
         })
@@ -235,4 +258,12 @@ impl ProcessEventProjection {
 
 fn advance_revision(state: &mut ProcessState) {
     state.revision = state.revision.saturating_add(1);
+}
+
+#[cfg(test)]
+mod tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/stable_connection_process_fact.rs"
+    ));
 }

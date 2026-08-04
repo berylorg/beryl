@@ -2,11 +2,11 @@ use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, DomainRea
 use beryl_model::SyndicItemId;
 
 use crate::{
-    ContentPieceOrdinal, ItemProjectionBuildPhase, ItemProjectionBuildRecord,
-    MarkdownParserCheckpoint, SyndicMutationError, codec::*, domain::SyndicDomain,
+    ItemProjectionBuildPhase, ItemProjectionBuildRecord, MarkdownParserCheckpoint,
+    ProjectionTextSource, SyndicMutationError, codec::*, domain::SyndicDomain,
 };
 
-use crate::mutation::point;
+use crate::mutation::{point, required};
 
 pub(super) struct ProjectionSeed {
     pub(super) projection_count: u64,
@@ -15,8 +15,52 @@ pub(super) struct ProjectionSeed {
     pub(super) checkpoint: MarkdownParserCheckpoint,
 }
 
+pub(in crate::mutation) fn validate_projection_source(
+    reader: &DomainReader<'_, SyndicDomain>,
+    item: &crate::CanonicalItemRecord,
+    source: ProjectionTextSource,
+) -> Result<bool, SyndicMutationError> {
+    if item.projection_source() != Some(source) {
+        return Err(SyndicMutationError::ProjectionBuildConflict);
+    }
+    match source {
+        ProjectionTextSource::Composer(content) => {
+            let manifest = required::<ContentManifestsFamily>(reader, &content.id())?;
+            if content.encoding() != crate::ContentEncoding::ComposerV1
+                || manifest.lifecycle() != crate::ContentLifecycle::Sealed
+                || manifest.sealed_reference() != Some(content)
+            {
+                return Err(SyndicMutationError::ProjectionBuildConflict);
+            }
+            Ok(true)
+        }
+        ProjectionTextSource::ProviderNarrative(narrative) => {
+            let provider = item
+                .provider()
+                .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
+            let manifest = required::<ContentManifestsFamily>(reader, &narrative.content_id())?;
+            let complete = provider.stream_state().is_complete();
+            let valid_lifecycle = match manifest.lifecycle() {
+                crate::ContentLifecycle::Live => true,
+                crate::ContentLifecycle::Finalized => complete,
+                crate::ContentLifecycle::Building | crate::ContentLifecycle::Sealed => false,
+            };
+            if provider.narrative() != Some(narrative)
+                || provider.content().id() != narrative.content_id()
+                || manifest.owner() != Some(item.id())
+                || manifest.encoding() != crate::ContentEncoding::ProviderItemV1
+                || manifest.current_reference() != Some(provider.content())
+                || !valid_lifecycle
+            {
+                return Err(SyndicMutationError::ProjectionBuildConflict);
+            }
+            Ok(complete)
+        }
+    }
+}
+
 impl ProjectionSeed {
-    fn empty() -> Self {
+    fn empty(source: ProjectionTextSource) -> Self {
         Self {
             projection_count: 0,
             resource_count: 0,
@@ -24,7 +68,7 @@ impl ProjectionSeed {
             checkpoint: MarkdownParserCheckpoint::new(
                 0,
                 0,
-                ContentPieceOrdinal::FIRST,
+                source.initial_cursor(),
                 0,
                 Box::<str>::default(),
                 false,
@@ -52,7 +96,7 @@ pub(super) fn latest_build(
 pub(super) fn projection_seed(
     build: Option<&ItemProjectionBuildRecord>,
     set: Option<&crate::ItemProjectionSetRecord>,
-    current: crate::ContentReference,
+    current: ProjectionTextSource,
 ) -> Result<ProjectionSeed, SyndicMutationError> {
     let use_build = match (build, set) {
         (Some(build), Some(set)) => build.generation() > set.generation(),
@@ -66,7 +110,7 @@ pub(super) fn projection_seed(
             | ItemProjectionBuildPhase::Superseded(checkpoint) => checkpoint.clone(),
         };
         validate_projection_seed_source(
-            build.source_content(),
+            build.source(),
             build.source_bytes(),
             &checkpoint,
             current,
@@ -79,11 +123,11 @@ pub(super) fn projection_seed(
         });
     }
     if let Some(set) = set {
-        if set.stable_eof_resolved() && set.source_content() != current {
+        if set.stable_eof_resolved() && set.source() != current {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
         validate_projection_seed_source(
-            set.source_content(),
+            set.source(),
             set.source_bytes(),
             set.resume_checkpoint(),
             current,
@@ -100,20 +144,18 @@ pub(super) fn projection_seed(
             checkpoint: set.resume_checkpoint().clone(),
         });
     }
-    Ok(ProjectionSeed::empty())
+    Ok(ProjectionSeed::empty(current))
 }
 
 fn validate_projection_seed_source(
-    previous: crate::ContentReference,
+    previous: ProjectionTextSource,
     previous_bytes: u64,
     checkpoint: &MarkdownParserCheckpoint,
-    current: crate::ContentReference,
+    current: ProjectionTextSource,
 ) -> Result<(), SyndicMutationError> {
-    if previous.id() != current.id()
-        || previous.encoding() != current.encoding()
-        || previous.revision() > current.revision()
-        || previous_bytes != previous.summary().logical_utf8_bytes()
-        || previous_bytes > current.summary().logical_utf8_bytes()
+    if !previous.can_extend(current)
+        || previous_bytes != previous.logical_utf8_bytes()
+        || previous_bytes > current.logical_utf8_bytes()
         || checkpoint.consumed_source_bytes() > previous_bytes
         || checkpoint.closed_source_bytes() > checkpoint.consumed_source_bytes()
     {
@@ -132,16 +174,13 @@ pub(in crate::mutation) fn invalidate_item_projection(
     ),
     SyndicMutationError,
 > {
-    let content = item
-        .payload()
-        .content()
+    let source = item
+        .projection_source()
         .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
     let build = match latest_build(reader, item.id())? {
         Some(build) => match build.phase() {
             ItemProjectionBuildPhase::Parsing(checkpoint) => {
-                if build.source_item_revision() != item.revision()
-                    || build.source_content() != content
-                {
+                if build.source_item_revision() != item.revision() || build.source() != source {
                     return Err(SyndicMutationError::ProjectionBuildConflict);
                 }
                 Some(ItemProjectionBuildRecord::new(
@@ -150,7 +189,7 @@ pub(in crate::mutation) fn invalidate_item_projection(
                     build.revision().checked_next()?,
                     build.format(),
                     build.source_item_revision(),
-                    build.source_content(),
+                    build.source(),
                     build.source_bytes(),
                     build.projection_count(),
                     build.resource_count(),

@@ -36,7 +36,10 @@ Keep storage access, projection ownership, Markdown parsing, and resource byte l
 
 Beryl keeps only the transcript presentation stack above Syndic.
 
-Transcript residency is the only Beryl transcript layer that requests Syndic data. It admits transcript-view cursor pages, projection records, resource metadata, and resource ranges into bounded resident memory. It owns byte budgets, pins, eviction, preload, cancellation, stale-result handling, and diagnostics.
+Transcript residency is the only Beryl transcript layer that requests Syndic data. It admits
+transcript-view cursor pages, projection records, resource metadata, and resource ranges into its
+configured working set. It owns transcript-local item and byte budgets, priority, pins, eviction,
+preload, cancellation, stale-result handling, and diagnostics.
 
 Presentation data turns resident Syndic data into Beryl render records. It owns stable presentation identity, row and chunk ordering, synthetic-context insertion, fallback records, widget descriptors, copy spans, context-menu targets, and presentation revisions. It does not perform storage IO or raw Markdown parsing.
 
@@ -92,7 +95,10 @@ Renderer-driven residency is indirect.
 
 The scroll controller, renderer, and nested widgets report demand facts such as current anchor, realized range, visible range, scroll direction, measured fill, missing adjacent range, needed resource range, active selection pin, open context-menu pin, and ranges no longer needed.
 
-Transcript residency evaluates those facts under policy and performs the actual load or release work. It may reject a demand because of byte budget, turn budget, resource budget, stale revision, cancellation, or feature policy. Rejections produce explicit fallback or clamp state rather than unbounded memory growth.
+Transcript residency evaluates those facts under its practical page, byte, record, resource, and
+pin limits, then performs the actual load or release work. It may reject a demand because of a
+working-set limit, stale revision, cancellation, or feature policy. Rejections produce explicit
+fallback or clamp state rather than unbounded memory growth.
 
 Resident Syndic data can be released only when doing so preserves the current semantic scroll anchor, visible content, active selection contract, and active UI pins.
 
@@ -118,7 +124,10 @@ Live-tail following and live-turn reading anchors are explicit viewport modes. M
 
 Autoscroll must be stateful and must not issue competing viewport corrections for every layout, stream, or resource event.
 
-The renderer publishes all normalized text deltas available to a frame as one current snapshot. It neither delays them behind a fixed-rate reveal cursor nor replays their characters or original arrival timestamps; frame scheduling is the only permitted visual coalescing of already received deltas.
+The renderer publishes all arrived bounded normalized-text fragments available to a frame as one
+current snapshot while preserving their parent-delta identity and order. It neither delays them
+behind a fixed-rate reveal cursor nor replays their characters or original arrival timestamps;
+frame scheduling is the only permitted visual coalescing of already received fragments.
 
 Durable reconciliation preserves the authored record identity and replaces only a transient prefix proven equal to the newly resident Syndic projection. It never briefly renders both copies or clears the record between them.
 
@@ -130,7 +139,10 @@ Code blocks, tables, generated images, attachments, and comparable heavy resourc
 
 Code and table panels own their internal visible-range rendering, selection, copy affordances, and local fallbacks. The outer transcript renderer treats the panel shell as one bounded presentation record with measured outer geometry.
 
-Syndic's range-readable projections reduce the need for coarse full-turn fallbacks, but they do not remove Beryl-side budget bookkeeping. Beryl still budgets resident projection data, presentation records, resource slices, decoded or uploaded media resources, measured geometry, widget state, and active UI pins.
+Syndic's range-readable projections reduce the need for coarse full-turn fallbacks, but they do not
+remove Beryl-side working-set policy. Transcript hosts bound resident projection data, presentation
+records, resource slices, measured geometry, widget state, and active UI pins; shared media and GPU
+caches bound decoded or uploaded resources across windows.
 
 Visual fallbacks remain necessary when content cannot be admitted or rendered within Beryl's resource policy. Images are the clearest case because an oversized raster cannot be made safe by an inner lazy scroller. Pathological inline layout, unsupported resources, decode failures, and stale or rejected resource ranges also need stable local fallbacks.
 

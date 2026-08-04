@@ -2,11 +2,15 @@ use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore
 use beryl_model::SyndicResourceId;
 
 use crate::{
-    ContentChunkRecord, ContentTextSpanRecord, ResourceBacking, SyndicReadError, codec::*,
-    domain::SyndicStorage,
+    ContentChunkRecord, ContentTextSpanRecord, ProjectionTextSource, ResourceBacking,
+    SyndicReadError, codec::*, domain::SyndicStorage,
 };
 
-use super::SyndicPointReadLimit;
+use super::{ReadByteTotals, SyndicPointReadLimit};
+
+mod provider;
+
+use provider::read_provider_narrative_bytes_into;
 
 /// One bounded slice of immutable textual resource bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,6 +20,7 @@ pub struct SyndicResourceRangeRead {
     bytes: Box<[u8]>,
     next_offset: Option<u64>,
     stored_bytes: usize,
+    decoded_bytes: usize,
 }
 
 impl SyndicResourceRangeRead {
@@ -44,6 +49,11 @@ impl SyndicResourceRangeRead {
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
     }
+
+    #[must_use]
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
+    }
 }
 
 impl SyndicStorage {
@@ -70,10 +80,15 @@ impl SyndicStorage {
         let Some(resource) = self.resource(store, resource_id, point_limit)? else {
             return Ok(None);
         };
-        let metadata = resource.record();
-        let ResourceBacking::CanonicalTextRange { content_id, range } = metadata.backing() else {
+        let metadata = resource;
+        let ResourceBacking::TextRange { source, range } = metadata.backing() else {
             return Err(SyndicReadError::ResourceHasNoTextBacking);
         };
+        if range.end() > source.logical_utf8_bytes() {
+            return Err(SyndicReadError::Invariant(
+                "resource backing exceeds its projection text source",
+            ));
+        }
         let resource_bytes = metadata.byte_length().ok_or(SyndicReadError::Invariant(
             "text-backed resource omitted its byte length",
         ))?;
@@ -84,14 +99,14 @@ impl SyndicStorage {
                 end,
             });
         }
-        let mut stored_bytes = resource.stored_bytes();
         if start == end {
             return Ok(Some(SyndicResourceRangeRead {
                 resource_id,
                 start,
                 bytes: Box::default(),
                 next_offset: None,
-                stored_bytes,
+                stored_bytes: 0,
+                decoded_bytes: 0,
             }));
         }
         let absolute_start = range
@@ -108,14 +123,8 @@ impl SyndicStorage {
                 .ok_or(SyndicReadError::Invariant(
                     "resource range offset overflowed",
                 ))?;
-        let (bytes, range_stored_bytes) =
-            read_logical_bytes(self, store, content_id, absolute_start, absolute_end)?;
-        stored_bytes =
-            stored_bytes
-                .checked_add(range_stored_bytes)
-                .ok_or(SyndicReadError::Invariant(
-                    "resource range stored-byte accounting overflowed",
-                ))?;
+        let (bytes, totals) =
+            read_projection_text_source_range(self, store, source, absolute_start, absolute_end)?;
         let next = start
             .checked_add(returned)
             .ok_or(SyndicReadError::Invariant(
@@ -126,18 +135,82 @@ impl SyndicStorage {
             start,
             bytes: bytes.into_boxed_slice(),
             next_offset: (next < end).then_some(next),
-            stored_bytes,
+            stored_bytes: totals.stored,
+            decoded_bytes: totals.decoded,
         }))
     }
 }
 
-fn read_logical_bytes(
+/// Reads one exact bounded logical range from either supported projection text source.
+pub(super) fn read_projection_text_source_range(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    source: ProjectionTextSource,
+    start: u64,
+    end: u64,
+) -> Result<(Vec<u8>, ReadByteTotals), SyndicReadError> {
+    let length = end.checked_sub(start).ok_or(SyndicReadError::Invariant(
+        "projection text source range is reversed",
+    ))?;
+    if length > crate::TRANSCRIPT_PAGE_MAX_BYTES as u64 || end > source.logical_utf8_bytes() {
+        return Err(SyndicReadError::Invariant(
+            "resource range exceeds its bounded projection text source",
+        ));
+    }
+    if length == 0 {
+        return Ok((Vec::new(), ReadByteTotals::default()));
+    }
+    let capacity = usize::try_from(length)
+        .map_err(|_| SyndicReadError::Invariant("resource range length overflowed"))?;
+    let mut output = vec![0; capacity];
+    let totals =
+        read_projection_text_source_range_into(storage, store, source, start, end, &mut output)?;
+    Ok((output, totals))
+}
+
+/// Fills one exact bounded logical range in caller-provided storage.
+pub(super) fn read_projection_text_source_range_into(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    source: ProjectionTextSource,
+    start: u64,
+    end: u64,
+    output: &mut [u8],
+) -> Result<ReadByteTotals, SyndicReadError> {
+    let length = end.checked_sub(start).ok_or(SyndicReadError::Invariant(
+        "projection text source range is reversed",
+    ))?;
+    if length > crate::TRANSCRIPT_PAGE_MAX_BYTES as u64 || end > source.logical_utf8_bytes() {
+        return Err(SyndicReadError::Invariant(
+            "resource range exceeds its bounded projection text source",
+        ));
+    }
+    if usize::try_from(length).ok() != Some(output.len()) {
+        return Err(SyndicReadError::Invariant(
+            "caller storage disagrees with the projection text source range",
+        ));
+    }
+    if length == 0 {
+        return Ok(ReadByteTotals::default());
+    }
+    match source {
+        ProjectionTextSource::Composer(content) => {
+            read_composer_logical_bytes_into(storage, store, content.id(), start, end, output)
+        }
+        ProjectionTextSource::ProviderNarrative(narrative) => {
+            read_provider_narrative_bytes_into(storage, store, narrative, start, end, output)
+        }
+    }
+}
+
+fn read_composer_logical_bytes_into(
     storage: &SyndicStorage,
     store: &HomeStore,
     content_id: beryl_model::SyndicContentId,
     start: u64,
     end: u64,
-) -> Result<(Vec<u8>, usize), SyndicReadError> {
+    output: &mut [u8],
+) -> Result<ReadByteTotals, SyndicReadError> {
     let predecessor = store.read_cursor::<crate::domain::SyndicDomain, ContentTextSpansCodec>(
         storage.handle,
         &CursorRange::closed(
@@ -153,7 +226,7 @@ fn read_logical_bytes(
         CursorDirection::Reverse,
         CursorReadLimits::new(1, 512).expect("logical predecessor bound is nonzero"),
     )?;
-    let mut stored_bytes = predecessor.stored_bytes();
+    let mut totals = ReadByteTotals::new(predecessor.stored_bytes(), predecessor.decoded_bytes());
     let Some(first) = predecessor.records().first() else {
         return Err(SyndicReadError::Invariant(
             "resource range has no indexed text predecessor",
@@ -162,22 +235,21 @@ fn read_logical_bytes(
     let mut pending = Some(*first.value());
     let mut after_start = first.value().logical_start();
     let mut logical = start;
-    let capacity = usize::try_from(end - start)
-        .map_err(|_| SyndicReadError::Invariant("resource range length overflowed"))?;
-    let mut output = Vec::with_capacity(capacity);
+    let mut written = 0;
     let mut cached_chunk: Option<ContentChunkRecord> = None;
 
     while logical < end {
         if let Some(span) = pending.take() {
-            append_span(
+            append_composer_span(
                 storage,
                 store,
                 span,
                 &mut cached_chunk,
                 &mut logical,
                 end,
-                &mut output,
-                &mut stored_bytes,
+                output,
+                &mut written,
+                &mut totals,
             )?;
             if logical == end {
                 break;
@@ -200,12 +272,11 @@ fn read_logical_bytes(
             CursorReadLimits::new(256, 65_536)
                 .expect("logical range index-page bounds are nonzero"),
         )?;
-        stored_bytes =
-            stored_bytes
-                .checked_add(page.stored_bytes())
-                .ok_or(SyndicReadError::Invariant(
-                    "resource range stored-byte accounting overflowed",
-                ))?;
+        totals.add(
+            page.stored_bytes(),
+            page.decoded_bytes(),
+            "resource range byte accounting overflowed",
+        )?;
         if page.records().is_empty() {
             return Err(SyndicReadError::Invariant(
                 "resource range has an indexed text gap",
@@ -214,39 +285,41 @@ fn read_logical_bytes(
         for record in page.records() {
             let span = *record.value();
             after_start = span.logical_start();
-            append_span(
+            append_composer_span(
                 storage,
                 store,
                 span,
                 &mut cached_chunk,
                 &mut logical,
                 end,
-                &mut output,
-                &mut stored_bytes,
+                output,
+                &mut written,
+                &mut totals,
             )?;
             if logical == end {
                 break;
             }
         }
     }
-    if output.len() != capacity {
+    if written != output.len() {
         return Err(SyndicReadError::Invariant(
             "resource range returned an incomplete logical byte window",
         ));
     }
-    Ok((output, stored_bytes))
+    Ok(totals)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn append_span(
+fn append_composer_span(
     storage: &SyndicStorage,
     store: &HomeStore,
     span: ContentTextSpanRecord,
     cached_chunk: &mut Option<ContentChunkRecord>,
     logical: &mut u64,
     end: u64,
-    output: &mut Vec<u8>,
-    stored_bytes: &mut usize,
+    output: &mut [u8],
+    written: &mut usize,
+    totals: &mut ReadByteTotals,
 ) -> Result<(), SyndicReadError> {
     if span.logical_start() > *logical || span.logical_end() <= *logical {
         return Err(SyndicReadError::Invariant(
@@ -259,25 +332,29 @@ fn append_span(
     {
         let limit = SyndicPointReadLimit::new(crate::CONTENT_CHUNK_MAX_BYTES + 512)
             .expect("content chunk point-read bound is nonzero");
-        let chunk = storage
-            .point::<ContentChunksFamily>(
-                store,
-                ContentChunkKey {
-                    owner: span.content_id(),
-                    ordinal: span.chunk_ordinal(),
-                },
-                limit,
-            )?
+        let key = ContentChunkKey {
+            owner: span.content_id(),
+            ordinal: span.chunk_ordinal(),
+        };
+        let page = storage.page::<ContentChunksFamily>(
+            store,
+            CursorRange::closed(key.clone(), key),
+            CursorReadLimits::new(1, limit.max_bytes())
+                .expect("content chunk cursor bound is nonzero"),
+        )?;
+        totals.add(
+            page.stored_bytes(),
+            page.decoded_bytes(),
+            "resource range byte accounting overflowed",
+        )?;
+        let chunk = page
+            .into_records()
+            .into_iter()
+            .next()
             .ok_or(SyndicReadError::Invariant(
                 "resource range content chunk is missing",
             ))?;
-        *stored_bytes =
-            stored_bytes
-                .checked_add(chunk.stored_bytes())
-                .ok_or(SyndicReadError::Invariant(
-                    "resource range stored-byte accounting overflowed",
-                ))?;
-        *cached_chunk = Some(chunk.record().clone());
+        *cached_chunk = Some(chunk);
     }
     let chunk = cached_chunk
         .as_ref()
@@ -310,7 +387,27 @@ fn append_span(
         .ok_or(SyndicReadError::Invariant(
             "resource range lies outside its content chunk",
         ))?;
-    output.extend_from_slice(bytes);
+    append_output_bytes(output, written, bytes)?;
     *logical = selected_end;
+    Ok(())
+}
+
+pub(super) fn append_output_bytes(
+    output: &mut [u8],
+    written: &mut usize,
+    bytes: &[u8],
+) -> Result<(), SyndicReadError> {
+    let end = written
+        .checked_add(bytes.len())
+        .ok_or(SyndicReadError::Invariant(
+            "projection text output offset overflowed",
+        ))?;
+    let destination = output
+        .get_mut(*written..end)
+        .ok_or(SyndicReadError::Invariant(
+            "projection text exceeded its caller-provided storage",
+        ))?;
+    destination.copy_from_slice(bytes);
+    *written = end;
     Ok(())
 }

@@ -6,7 +6,9 @@ Sometimes known as: composer panel, message composer
 
 # Purpose
 
-Provides the reusable conversation-input panel around a multiline text-input, including adaptive height, inline atom presentation, writable submission-disabled treatment, and fully inert treatment.
+Provides the reusable conversation-input panel around a range-backed multiline text-input,
+including adaptive height, inline atom presentation, bounded editor residency, writable
+submission-disabled treatment, and fully inert treatment.
 
 # References
 
@@ -21,9 +23,16 @@ Widgets:
 
 # Anatomy
 
-The conversation composer consists of a root panel, editor surface, multiline text-input, inline-atom hosts, and optional transient state treatment.
+The conversation composer consists of a root panel, editor surface, range-backed multiline
+text-input, inline-atom hosts, and optional transient state treatment.
 
-The external text-input owns text editing, caret, selection, clipboard primitives, IME, undo and redo, opaque atom ranges, wrapping, visible byte range, and inner vertical scrolling. The conversation composer owns the surrounding panel surface, adaptive panel measurement, state treatment, and integration of owner-supplied inline atom widgets.
+The external text-input's range-backed variant owns text editing, caret, compact logical selection,
+bounded clipboard primitives, IME, bounded undo and redo, opaque atom ranges, wrapping of resident
+ranges, visible byte-range demand, and inner vertical scrolling. The owner supplies a revision-bound
+document source and edit sink. The text-input retains only the visible range, bounded overscan,
+active editing/IME ranges, and compact range identities; it never requests or stores the complete
+document. The conversation composer owns the surrounding panel surface, adaptive panel
+measurement, state treatment, and integration of owner-supplied inline atom widgets.
 
 The widget does not contain a persistent submission button or a manual resize handle.
 
@@ -33,25 +42,42 @@ The owning feature supplies the current input model, atom identity and payload, 
 
 The widget reads as a pinned input surface whose editor remains visually stable as submission availability changes. Its border and background distinguish the writable area from the transcript without making it look like a modal form.
 
-Submission-disabled treatment preserves normal readable text, markers, caret, and selection. Inert treatment dims the complete panel and removes editing affordances while leaving its last coherent content visible.
+Submission-disabled treatment preserves normal readable text, markers, caret, and selection. Inert
+treatment dims the complete panel and removes editing affordances while leaving its last coherent
+content visible. Paste-pending uses the same stable dimmed surface without inserting progress text or
+partial clipboard content.
 
 Inline atoms remain compact and baseline-aligned with surrounding text. The active theme may style them through the shared image-marker roles rather than a composer-specific duplicate.
 
 # States
 
-The widget supports writable, focused, unfocused, empty, populated, submission-ready, submission-disabled, inert, activation-pending, atom-present, growing, clamped, inner-overflowing, and inner-scrolling states.
+The widget supports writable, focused, unfocused, empty, populated, submission-ready,
+submission-disabled, inert, activation-pending, paste-pending, atom-present, growing, clamped,
+inner-overflowing, and inner-scrolling states.
 
 Submission-disabled and inert are distinct. Submission-disabled keeps the text-input editable; inert makes the text-input disabled or read-only according to the owner-supplied state and rejects draft-changing interaction.
 
 Activation-pending retains the previously coherent composer until the owning feature publishes the replacement input and transcript selection atomically.
 
+Paste-pending retains the coherent editor, caret, and selection while the owner streams one staged
+paste. It suppresses draft-changing input and submission without replacing the editor or presenting
+part of the incoming content.
+
 # Interaction
 
-Text editing, pointer selection, caret movement, clipboard behavior, IME, undo, redo, and inline-atom hit testing follow the external text-input contract.
+Text editing, pointer selection, caret movement, clipboard behavior, IME, undo, redo, and inline-atom
+hit testing follow the external text-input contract's range-backed multiline variant. Crossing a
+nonresident boundary requests bounded document pages and preserves the last coherent editor frame
+until they arrive.
 
 The owning feature chooses whether focused Enter propagates as a submission or edit-commit command and whether Shift+Enter inserts a newline. The widget reports those key events without defining acceptance, queueing, steering, or persistence effects.
 
 When submission is disabled, all draft-editing interaction remains available and submission invocation reports the owner-supplied disabled outcome without clearing or replacing editor state.
+
+When paste-pending, draft-changing keys, pointer edits, additional paste, undo, redo, and submission
+are unavailable. `Escape` reports a cancellation request to the owner; the widget does not decide
+whether the staged edit is still cancellable. Navigation or readonly selection remains available
+only when the owner marks the retained range safe for that interaction.
 
 When inert, pointer and keyboard input cannot mutate text or atoms. Existing content remains selectable only if the owning feature's inert reason explicitly permits readonly selection; otherwise the editor does not accept focus.
 
@@ -59,15 +85,25 @@ Inline image markers occupy indivisible opaque atom ranges in the text-input. Th
 
 When wrapped content exceeds the current panel clamp, the text-input owns vertical scrolling and keeps the caret or active selection endpoint visible. Scroll input propagates outward when the inner editor cannot scroll further, following `scroll-ownership`.
 
-Panel growth or shrinkage remeasures surrounding layout without changing the editor content, caret, selection, undo history, or inner scroll position except where the external text-input must reveal the active endpoint.
+Panel growth or shrinkage remeasures surrounding layout without changing the editor document,
+caret, selection, bounded undo frontier, or inner scroll position except where the external
+text-input must reveal the active endpoint.
 
-Content-free diagnostics expose widget instance id, state family, focus presence, atom count, visual line count, measured content height, allocated panel height, clamp presence, inner overflow presence, visible byte-range length, and text-input geometry revision. Diagnostics never include draft text, atom labels, asset ids, clipboard content, or validation messages.
+Content-free diagnostics expose widget instance id, state family, focus presence, resident atom
+count, resident visual line count, total logical bytes, resident text bytes, requested and visible
+byte-range lengths, admitted editor-page count, measured content height, allocated panel height,
+clamp presence, inner overflow presence, and text-input geometry revision. Diagnostics never include
+draft text, atom labels, asset ids, clipboard content, or validation messages.
 
 # Layout
 
 The root panel fills the available inline size and uses content-derived block size between the owner-supplied minimum and maximum allocations. The owning feature configures the maximum allocation from the conversation layout, including its window-relative cap and required transcript minimum.
 
-The editor surface fills the root panel. The multiline text-input wraps to the available inline size and does not horizontally scroll. Before the clamp is reached, its measured wrapped content grows or shrinks the panel. After the clamp is reached, panel height remains bounded and the text-input owns vertical overflow.
+The editor surface fills the root panel. The range-backed multiline text-input wraps resident lines
+to the available inline size and does not horizontally scroll. Before the clamp is reached, its
+measured wrapped content grows or shrinks the panel. After the clamp is reached, panel height
+remains bounded and the text-input owns vertical overflow. Total logical line count and total draft
+size never determine resident layout or shaped-text storage.
 
 Inline atoms participate in text shaping as indivisible ranges. Their outer geometry contributes to line height without creating a separate panel row.
 
@@ -116,7 +152,8 @@ Spec CSS:
 }
 
 .conversation-composer[data-state~="inert"],
-.conversation-composer[data-state~="activation-pending"] {
+.conversation-composer[data-state~="activation-pending"],
+.conversation-composer[data-state~="paste-pending"] {
   opacity: var(--opacity);
 }
 ```
@@ -157,7 +194,8 @@ Default variant: ordinary input.
 }
 
 .conversation-composer[data-state~="inert"],
-.conversation-composer[data-state~="activation-pending"] {
+.conversation-composer[data-state~="activation-pending"],
+.conversation-composer[data-state~="paste-pending"] {
   --opacity: 0.55;
 }
 ```

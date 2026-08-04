@@ -138,6 +138,10 @@ pub(super) fn encode_execution_snapshot(
     value: &ExecutionSnapshotRecord,
 ) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
+    e.u8(match value.kind() {
+        ExecutionSnapshotKind::OrdinaryConversation => 0,
+        ExecutionSnapshotKind::ProviderOperation(ProviderOperationKind::ContextCompaction) => 1,
+    });
     enc_snapshot(&mut e, value.id());
     enc_thread(&mut e, value.thread_id());
     enc_binding_rev(&mut e, value.binding_revision());
@@ -159,6 +163,16 @@ pub(super) fn decode_execution_snapshot(
     bytes: &[u8],
 ) -> Result<ExecutionSnapshotRecord, CodecError> {
     let mut d = Decoder::new(bytes);
+    let kind = match d.u8()? {
+        0 => ExecutionSnapshotKind::OrdinaryConversation,
+        1 => ExecutionSnapshotKind::ProviderOperation(ProviderOperationKind::ContextCompaction),
+        tag => {
+            return Err(CodecError::InvalidTag {
+                kind: "execution-snapshot kind",
+                tag,
+            });
+        }
+    };
     let id = dec_snapshot(&mut d)?;
     let thread = dec_thread(&mut d)?;
     let revision = dec_binding_rev(&mut d)?;
@@ -173,22 +187,42 @@ pub(super) fn decode_execution_snapshot(
     let execution = dec_execution(&mut d)?;
     let loaded = dec_loaded_generation(&mut d)?;
     let started = dec_timestamp(&mut d)?;
-    let value = ExecutionSnapshotRecord::new(
-        id,
-        thread,
-        revision,
-        activation_gate_revision,
-        turn,
-        cas_thread,
-        selected,
-        represented,
-        represented_native_turn_count,
-        tool_profile,
-        lineage,
-        execution,
-        loaded,
-        started,
-    );
+    let value = match kind {
+        ExecutionSnapshotKind::OrdinaryConversation => ExecutionSnapshotRecord::new(
+            id,
+            thread,
+            revision,
+            activation_gate_revision,
+            turn,
+            cas_thread,
+            selected,
+            represented,
+            represented_native_turn_count,
+            tool_profile,
+            lineage,
+            execution,
+            loaded,
+            started,
+        ),
+        ExecutionSnapshotKind::ProviderOperation(ProviderOperationKind::ContextCompaction) => {
+            ExecutionSnapshotRecord::provider_operation(
+                id,
+                thread,
+                revision,
+                activation_gate_revision,
+                turn,
+                cas_thread,
+                selected,
+                represented,
+                represented_native_turn_count,
+                tool_profile,
+                lineage,
+                execution,
+                loaded,
+                started,
+            )
+        }
+    };
     d.finish()?;
     Ok(value)
 }

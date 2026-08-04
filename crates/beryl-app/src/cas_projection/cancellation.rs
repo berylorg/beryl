@@ -21,6 +21,10 @@ impl ProjectionCancellationToken {
         Self::default()
     }
 
+    pub(in crate::cas_projection) fn from_shared_flag(cancelled: Arc<AtomicBool>) -> Self {
+        Self { cancelled }
+    }
+
     /// Requests cancellation at the next safe operation boundary.
     ///
     /// This operation is idempotent and is observed by every clone.

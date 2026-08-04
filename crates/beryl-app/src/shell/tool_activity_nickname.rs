@@ -6,6 +6,7 @@ use std::{
 };
 
 use beryl_backend::{ManagedBackendClientConnector, ThreadReadMetadata};
+use beryl_model::CasThreadId;
 use tracing::warn;
 
 const MAX_RESOLUTION_BATCH: usize = 8;
@@ -172,8 +173,8 @@ impl ToolActivityNicknameResolver {
         for outcome in outcomes {
             match outcome {
                 ToolActivityNicknameOutcome::Resolved { metadata } => {
-                    self.in_flight.remove(&metadata.thread.id);
-                    self.retry_by_thread.remove(&metadata.thread.id);
+                    self.in_flight.remove(metadata.thread_id().as_str());
+                    self.retry_by_thread.remove(metadata.thread_id().as_str());
                 }
                 ToolActivityNicknameOutcome::Unresolved { thread_id, .. } => {
                     self.in_flight.remove(thread_id);
@@ -255,52 +256,89 @@ fn resolve_tool_activity_nicknames(
     resolution_targets: Vec<ToolActivityNicknameResolutionTarget>,
     timeout: Duration,
 ) -> Vec<ToolActivityNicknameOutcome> {
+    enum ValidatedTarget {
+        Valid {
+            target: ToolActivityNicknameResolutionTarget,
+            thread_id: CasThreadId,
+        },
+        Invalid(ToolActivityNicknameOutcome),
+    }
+
+    let validated_targets = resolution_targets
+        .into_iter()
+        .map(|target| match CasThreadId::new(&target.thread_id) {
+            Ok(thread_id) => ValidatedTarget::Valid { target, thread_id },
+            Err(error) => ValidatedTarget::Invalid(ToolActivityNicknameOutcome::Unresolved {
+                thread_id: target.thread_id,
+                message: error.to_string(),
+            }),
+        })
+        .collect::<Vec<_>>();
+    if !validated_targets
+        .iter()
+        .any(|target| matches!(target, ValidatedTarget::Valid { .. }))
+    {
+        return validated_targets
+            .into_iter()
+            .map(|target| match target {
+                ValidatedTarget::Invalid(outcome) => outcome,
+                ValidatedTarget::Valid { .. } => unreachable!("validated target scan was exact"),
+            })
+            .collect();
+    }
+
     let mut session = match connector.connect_request_client(timeout) {
         Ok(session) => session,
         Err(error) => {
             let message = format!("Beryl could not connect to the managed backend: {error}");
-            return resolution_targets
+            return validated_targets
                 .into_iter()
-                .map(|target| ToolActivityNicknameOutcome::Unresolved {
-                    thread_id: target.thread_id,
-                    message: message.clone(),
+                .map(|target| match target {
+                    ValidatedTarget::Valid { target, .. } => {
+                        ToolActivityNicknameOutcome::Unresolved {
+                            thread_id: target.thread_id,
+                            message: message.clone(),
+                        }
+                    }
+                    ValidatedTarget::Invalid(outcome) => outcome,
                 })
                 .collect();
         }
     };
 
-    resolution_targets
+    validated_targets
         .into_iter()
-        .map(
-            |target| match session.read_thread_metadata_details(&target.thread_id, timeout) {
-                Ok(metadata)
-                    if !target.requires_nickname
-                        || metadata
-                            .thread
-                            .agent_nickname
-                            .as_deref()
-                            .is_some_and(|label| !label.trim().is_empty()) =>
-                {
-                    ToolActivityNicknameOutcome::Resolved { metadata }
-                }
-                Ok(_) => ToolActivityNicknameOutcome::Unresolved {
-                    thread_id: target.thread_id,
-                    message: "Backend thread metadata did not include a subagent nickname."
-                        .to_string(),
-                },
-                Err(error) => {
-                    warn!(
-                        thread_id = target.thread_id.as_str(),
-                        error = %error,
-                        "failed to resolve tool-activity subagent nickname"
-                    );
-                    ToolActivityNicknameOutcome::Unresolved {
+        .map(|validated| match validated {
+            ValidatedTarget::Invalid(outcome) => outcome,
+            ValidatedTarget::Valid { target, thread_id } => {
+                match session.read_thread_metadata(&thread_id, timeout) {
+                    Ok(metadata)
+                        if !target.requires_nickname
+                            || metadata
+                                .agent_nickname()
+                                .is_some_and(|label| !label.trim().is_empty()) =>
+                    {
+                        ToolActivityNicknameOutcome::Resolved { metadata }
+                    }
+                    Ok(_) => ToolActivityNicknameOutcome::Unresolved {
                         thread_id: target.thread_id,
-                        message: error.to_string(),
+                        message: "Backend thread metadata did not include a subagent nickname."
+                            .to_string(),
+                    },
+                    Err(error) => {
+                        warn!(
+                            thread_id = target.thread_id.as_str(),
+                            error = %error,
+                            "failed to resolve tool-activity subagent nickname"
+                        );
+                        ToolActivityNicknameOutcome::Unresolved {
+                            thread_id: target.thread_id,
+                            message: error.to_string(),
+                        }
                     }
                 }
-            },
-        )
+            }
+        })
         .collect()
 }
 

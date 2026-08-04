@@ -1,20 +1,19 @@
 use beryl_model::{
-    AdmittedHostPath, Availability, ClaimRevision, PathFlavor, RootId, RuntimeId, SyndicThreadId,
-    ThreadRevision, UnavailableReason, WindowId,
+    AdmittedHostPath, Availability, ClaimRevision, PathFlavor, ProjectionRevision, RootId,
+    RuntimeId, SyndicPathDigest, SyndicThreadId, UnavailableReason, WindowId,
 };
 
 use crate::RecordRevision;
 
 use super::{CatalogCodecError, Decoder, Encoder, invalid};
 use crate::catalog::{
-    CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
-    CatalogExecutionSummary, CatalogLineageSummary, CatalogSearchFields, CatalogSourceRevisions,
-    CatalogTitleCandidate, CatalogTitleFacts,
+    CATALOG_NORMALIZATION_PROFILE, CatalogArchiveSummary, CatalogAvailabilitySummary,
+    CatalogClaimKind, CatalogClaimSummary, CatalogExecutionSummary, CatalogLineageSummary,
+    CatalogResolvedTitle, CatalogSearchFields, CatalogSourceRevisions, CatalogTitleSource,
 };
 
 pub(super) fn encode_sources(encoder: &mut Encoder, value: CatalogSourceRevisions) {
-    encoder.u64(value.thread().get());
-    encoder.u64(value.thread_metadata().get());
+    encoder.u64(value.syndic_summary().get());
     encoder.u64(value.runtime().get());
     encoder.u64(value.root().get());
     match value.claim() {
@@ -29,10 +28,8 @@ pub(super) fn encode_sources(encoder: &mut Encoder, value: CatalogSourceRevision
 pub(super) fn decode_sources(
     decoder: &mut Decoder<'_>,
 ) -> Result<CatalogSourceRevisions, CatalogCodecError> {
-    let thread = ThreadRevision::new(decoder.u64()?)
-        .map_err(|source| invalid("catalog Syndic source revision", source))?;
-    let metadata = RecordRevision::new(decoder.u64()?)
-        .map_err(|source| invalid("catalog metadata source revision", source))?;
+    let syndic_summary = ProjectionRevision::new(decoder.u64()?)
+        .map_err(|source| invalid("catalog Syndic summary revision", source))?;
     let runtime = RecordRevision::new(decoder.u64()?)
         .map_err(|source| invalid("catalog runtime source revision", source))?;
     let root = RecordRevision::new(decoder.u64()?)
@@ -51,51 +48,38 @@ pub(super) fn decode_sources(
         }
     };
     Ok(CatalogSourceRevisions::new(
-        thread, metadata, runtime, root, claim,
+        syndic_summary,
+        runtime,
+        root,
+        claim,
     ))
 }
 
-pub(super) fn encode_titles(encoder: &mut Encoder, value: &CatalogTitleFacts) {
-    encode_title_candidate(encoder, value.generated());
-    encode_title_candidate(encoder, value.syndic());
-}
-
-fn encode_title_candidate(encoder: &mut Encoder, value: Option<&CatalogTitleCandidate>) {
-    match value {
-        Some(value) => {
+pub(super) fn encode_title(encoder: &mut Encoder, value: &CatalogResolvedTitle) {
+    match value.source() {
+        CatalogTitleSource::Absent => encoder.u8(0),
+        CatalogTitleSource::Generated => {
             encoder.u8(1);
-            encoder.text(value.text());
-            encoder.u64(value.source_thread_revision().get());
+            encoder.text(value.text().expect("generated title has text"));
         }
-        None => encoder.u8(0),
+        CatalogTitleSource::HistoryDerived => {
+            encoder.u8(2);
+            encoder.text(value.text().expect("history-derived title has text"));
+        }
     }
 }
 
-pub(super) fn decode_titles(
+pub(super) fn decode_title(
     decoder: &mut Decoder<'_>,
-) -> Result<CatalogTitleFacts, CatalogCodecError> {
-    Ok(CatalogTitleFacts::new(
-        decode_title_candidate(decoder, "generated title")?,
-        decode_title_candidate(decoder, "Syndic title")?,
-    ))
-}
-
-fn decode_title_candidate(
-    decoder: &mut Decoder<'_>,
-    kind: &'static str,
-) -> Result<Option<CatalogTitleCandidate>, CatalogCodecError> {
+) -> Result<CatalogResolvedTitle, CatalogCodecError> {
     match decoder.u8()? {
-        0 => Ok(None),
-        1 => {
-            let text = decoder.text(kind)?;
-            let revision = ThreadRevision::new(decoder.u64()?)
-                .map_err(|source| invalid("catalog title source revision", source))?;
-            CatalogTitleCandidate::new(text, revision)
-                .map(Some)
-                .map_err(|source| invalid(kind, source))
-        }
+        0 => Ok(CatalogResolvedTitle::absent()),
+        1 => CatalogResolvedTitle::generated(decoder.text("generated catalog title")?)
+            .map_err(|source| invalid("generated catalog title", source)),
+        2 => CatalogResolvedTitle::history_derived(decoder.text("history-derived catalog title")?)
+            .map_err(|source| invalid("history-derived catalog title", source)),
         tag => Err(CatalogCodecError::InvalidTag {
-            kind: "catalog title option",
+            kind: "resolved catalog title source",
             tag,
         }),
     }
@@ -268,14 +252,14 @@ pub(super) fn encode_lineage(encoder: &mut Encoder, value: CatalogLineageSummary
     match value {
         CatalogLineageSummary::TopLevel => encoder.u8(0),
         CatalogLineageSummary::Descendant {
-            top_level_thread_id,
             parent_thread_id,
             depth,
+            path_digest,
         } => {
             encoder.u8(1);
-            encoder.fixed(top_level_thread_id.as_bytes());
             encoder.fixed(parent_thread_id.as_bytes());
-            encoder.u16(depth.get());
+            encoder.u64(depth.get());
+            encoder.fixed32(path_digest.as_bytes());
         }
     }
 }
@@ -287,8 +271,8 @@ pub(super) fn decode_lineage(
         0 => Ok(CatalogLineageSummary::TopLevel),
         1 => CatalogLineageSummary::descendant(
             SyndicThreadId::from_bytes(decoder.fixed()?),
-            SyndicThreadId::from_bytes(decoder.fixed()?),
-            decoder.u16()?,
+            decoder.u64()?,
+            SyndicPathDigest::from_bytes(decoder.fixed32()?),
         )
         .map_err(|source| invalid("catalog lineage", source)),
         tag => Err(CatalogCodecError::InvalidTag {
@@ -299,6 +283,12 @@ pub(super) fn decode_lineage(
 }
 
 pub(super) fn encode_search(encoder: &mut Encoder, value: &CatalogSearchFields) {
+    let profile = CATALOG_NORMALIZATION_PROFILE;
+    encoder.u16(profile.version());
+    let unicode = profile.unicode_version();
+    encoder.u8(unicode.0);
+    encoder.u8(unicode.1);
+    encoder.u8(unicode.2);
     encoder.text(value.title());
     encoder.text(value.environment_label());
     encoder.text(value.configured_executable_path());
@@ -307,11 +297,27 @@ pub(super) fn encode_search(encoder: &mut Encoder, value: &CatalogSearchFields) 
 
 pub(super) fn decode_search(
     decoder: &mut Decoder<'_>,
+    visible_title: &CatalogResolvedTitle,
+    visible_execution: &CatalogExecutionSummary,
 ) -> Result<CatalogSearchFields, CatalogCodecError> {
+    let version = decoder.u16()?;
+    let unicode = (decoder.u8()?, decoder.u8()?, decoder.u8()?);
+    let expected_profile = CATALOG_NORMALIZATION_PROFILE;
+    if version != expected_profile.version() || unicode != expected_profile.unicode_version() {
+        return Err(CatalogCodecError::InvalidNormalizationProfile { version, unicode });
+    }
     let title = decoder.text("normalized catalog title")?;
     let environment = decoder.text("normalized catalog environment label")?;
     let executable = decoder.text("normalized catalog executable path")?;
     let root = decoder.text("normalized catalog root path")?;
-    CatalogSearchFields::from_admitted_normalized(title, environment, executable, root)
-        .map_err(|source| invalid("catalog search fields", source))
+    let expected = CatalogSearchFields::from_visible(visible_title, visible_execution)
+        .map_err(|source| invalid("catalog search fields", source))?;
+    if title != expected.title()
+        || environment != expected.environment_label()
+        || executable != expected.configured_executable_path()
+        || root != expected.full_root_path()
+    {
+        return Err(CatalogCodecError::SearchFieldsMismatch);
+    }
+    Ok(expected)
 }

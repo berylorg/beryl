@@ -6,6 +6,22 @@ use crate::validation::scan::require;
 
 const RANGE_MAX_BYTES: u64 = 65_536;
 
+pub(crate) fn read_projection_text_range(
+    reader: &DomainReader<'_, SyndicDomain>,
+    source: crate::ProjectionTextSource,
+    start: u64,
+    end: u64,
+) -> Result<Vec<u8>, SyndicValidationError> {
+    match source {
+        crate::ProjectionTextSource::Composer(content) => {
+            read_logical_range(reader, content, start, end)
+        }
+        crate::ProjectionTextSource::ProviderNarrative(narrative) => {
+            read_provider_narrative_range(reader, narrative, start, end)
+        }
+    }
+}
+
 pub(in crate::validation) fn read_logical_range(
     reader: &DomainReader<'_, SyndicDomain>,
     content: crate::ContentReference,
@@ -212,6 +228,110 @@ pub(super) fn read_encoded_range(
         }
         if !page.has_more() {
             return invariant("encoded content range ended before its requested frontier");
+        }
+    }
+}
+
+fn read_provider_narrative_range(
+    reader: &DomainReader<'_, SyndicDomain>,
+    narrative: crate::ProviderNarrativeReference,
+    start: u64,
+    end: u64,
+) -> Result<Vec<u8>, SyndicValidationError> {
+    let length = bounded_length(start, end, narrative.logical_utf8_bytes())?;
+    let manifest = require::<ContentManifestsFamily>(
+        reader,
+        &narrative.content_id(),
+        "provider narrative content manifest is missing",
+    )?;
+    if manifest.encoding() != crate::ContentEncoding::ProviderItemV1
+        || manifest.current_reference().is_none()
+    {
+        return invariant("provider narrative content manifest is not published");
+    }
+    let predecessor = reader.cursor::<ProviderNarrativeSpansCodec>(
+        &CursorRange::closed(
+            ProviderNarrativeSpanKey::first_for_generation(
+                narrative.content_id(),
+                narrative.generation(),
+            ),
+            ProviderNarrativeSpanKey::new(narrative.content_id(), narrative.generation(), start),
+        ),
+        CursorDirection::Reverse,
+        CursorReadLimits::new(1, 512).expect("narrative predecessor bounds are nonzero"),
+    )?;
+    let first = predecessor
+        .records()
+        .first()
+        .ok_or(SyndicValidationError::Invariant(
+            "provider narrative range has no indexed predecessor",
+        ))?;
+    let mut after = None;
+    let mut output = Vec::with_capacity(length);
+    let mut cursor_start = start;
+    loop {
+        let range = match after {
+            Some(previous) => CursorRange::after(
+                ProviderNarrativeSpanKey::new(
+                    narrative.content_id(),
+                    narrative.generation(),
+                    previous,
+                ),
+                ProviderNarrativeSpanKey::new(narrative.content_id(), narrative.generation(), end),
+            ),
+            None => CursorRange::closed(
+                *first.key(),
+                ProviderNarrativeSpanKey::new(narrative.content_id(), narrative.generation(), end),
+            ),
+        };
+        let page = reader.cursor::<ProviderNarrativeSpansCodec>(
+            &range,
+            CursorDirection::Forward,
+            CursorReadLimits::new(256, 65_536)
+                .expect("provider narrative range-page bounds are nonzero"),
+        )?;
+        if page.records().is_empty() {
+            return invariant("provider narrative range has an indexed gap");
+        }
+        for record in page.records() {
+            let span = record.value();
+            if record.key().content_id() != narrative.content_id()
+                || record.key().generation() != narrative.generation()
+                || record.key().logical_start() != span.logical_start()
+                || span.logical_start() > cursor_start
+                || span.logical_end() <= cursor_start
+                || span.logical_end() > narrative.logical_utf8_bytes()
+            {
+                return invariant("provider narrative range index is not contiguous");
+            }
+            let take_end = end.min(span.logical_end());
+            let encoded_start = span
+                .source_start()
+                .checked_add(cursor_start - span.logical_start())
+                .ok_or(SyndicValidationError::Invariant(
+                    "provider narrative range mapping overflowed",
+                ))?;
+            let encoded_end = encoded_start.checked_add(take_end - cursor_start).ok_or(
+                SyndicValidationError::Invariant("provider narrative range mapping overflowed"),
+            )?;
+            if encoded_end > span.source_end() {
+                return invariant("provider narrative range exceeds its selected span");
+            }
+            output.extend_from_slice(&read_encoded_range(
+                reader,
+                narrative.content_id(),
+                manifest.encoded_bytes(),
+                encoded_start,
+                encoded_end,
+            )?);
+            cursor_start = take_end;
+            after = Some(span.logical_start());
+            if cursor_start == end {
+                return Ok(output);
+            }
+        }
+        if !page.has_more() {
+            return invariant("provider narrative range ended before its requested frontier");
         }
     }
 }

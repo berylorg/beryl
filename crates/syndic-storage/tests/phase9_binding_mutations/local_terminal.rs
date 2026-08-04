@@ -39,8 +39,8 @@ fn source_less_terminal_requires_a_retired_or_unbound_projection() {
     let local_terminal = LiveSourceEvent::new(
         thread,
         turn,
-        state.record().revision(),
-        gate.record().revision(),
+        state.revision(),
+        gate.revision(),
         SourceEventSequence::FIRST,
         None,
         SourceEventPayload::TurnEnded(
@@ -90,7 +90,6 @@ fn source_less_terminal_requires_a_retired_or_unbound_projection() {
             .turn_state(&store, turn, point_limit())
             .unwrap()
             .unwrap()
-            .record()
             .lifecycle(),
         TurnLifecycle::Interrupted
     );
@@ -99,9 +98,8 @@ fn source_less_terminal_requires_a_retired_or_unbound_projection() {
             .input_gate(&store, thread, point_limit())
             .unwrap()
             .unwrap()
-            .record()
             .state(),
-        &InputGateState::Idle
+        &InputGateState::FinalizingHistory(turn)
     );
     store.close().unwrap();
 

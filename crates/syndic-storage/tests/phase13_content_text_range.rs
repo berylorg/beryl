@@ -12,7 +12,7 @@ use beryl_model::{ContentRevision, SyndicContentId, SyndicDraftMarkerId};
 use syndic_storage::test_faults::{FixtureBatch, FixtureDelete, FixtureRecord};
 use syndic_storage::{
     ComposerAtom, ComposerPayload, ContentEncoding, ContentReference, ImageLabelOrdinal,
-    PreparedContent, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
+    PreparedContent, SyndicReadError, SyndicStorage,
 };
 
 use support::{TestHome, batch, commit, open, prepared_content_records};
@@ -126,17 +126,29 @@ fn pages_trim_at_utf8_boundaries_and_reject_nonprogress() {
 }
 
 #[test]
-fn stored_byte_count_includes_both_manifests_index_and_chunk() {
-    let fixture = seed("phase13-content-text-accounting", &composer("accounted"));
-    let manifest = fixture
+fn consuming_page_transfers_exact_bounded_utf8_without_copying() {
+    let fixture = seed(
+        "phase13-content-text-consuming-page",
+        &composer("a\u{1f48e}\u{e9}z"),
+    );
+    let page = fixture
         .storage
-        .content_manifest(
-            &fixture.store,
-            fixture.content.id(),
-            SyndicPointReadLimit::new(65_536).unwrap(),
-        )
+        .sealed_content_text_range(&fixture.store, fixture.content, 1, 6)
         .unwrap()
         .unwrap();
+    assert_eq!(page.text(), "\u{1f48e}\u{e9}");
+    assert_eq!(page.text().len(), 6);
+    assert_eq!(page.next_offset(), Some(7));
+
+    let borrowed_pointer = page.text().as_ptr();
+    let text = page.into_text();
+    assert_eq!(&*text, "\u{1f48e}\u{e9}");
+    assert_eq!(text.as_ptr(), borrowed_pointer);
+}
+
+#[test]
+fn page_byte_counts_include_span_and_chunk_cursors() {
+    let fixture = seed("phase13-content-text-accounting", &composer("accounted"));
     let spans = fixture
         .storage
         .content_text_spans(
@@ -162,7 +174,11 @@ fn stored_byte_count_includes_both_manifests_index_and_chunk() {
         .unwrap();
     assert_eq!(
         page.stored_bytes(),
-        manifest.stored_bytes() * 2 + spans.stored_bytes() + chunks.stored_bytes()
+        spans.stored_bytes() + chunks.stored_bytes()
+    );
+    assert_eq!(
+        page.decoded_bytes(),
+        spans.decoded_bytes() + chunks.decoded_bytes()
     );
 }
 
@@ -177,7 +193,8 @@ fn empty_content_and_exact_end_return_one_terminal_empty_page() {
         .unwrap();
     assert_eq!(page.text(), "");
     assert_eq!(page.next_offset(), None);
-    assert!(page.stored_bytes() > 0);
+    assert_eq!(page.stored_bytes(), 0);
+    assert_eq!(page.decoded_bytes(), 0);
 
     let fixture = seed("phase13-content-text-exact-end", &composer("done"));
     let page = fixture

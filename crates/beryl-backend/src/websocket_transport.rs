@@ -1,44 +1,88 @@
 use std::{
     collections::VecDeque,
-    io::{self, Read, Write},
+    io::{self, Read},
     net::{Ipv4Addr, Shutdown, SocketAddr, TcpStream},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use serde_json::Value;
+use serde::Serialize;
 use soketto::{
     Parsing,
     base::{Codec, Header, OpCode},
     handshake::client::{Client, Header as HandshakeHeader},
 };
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
-use tracing::debug;
 
 use crate::{
-    BackendWebSocketEndpoint, incoming_json,
-    session::{ManagedBackendError, ManagedWebSocketError, TransportWriteFailure},
+    BackendWebSocketEndpoint,
+    session::{
+        ManagedBackendError, ManagedWebSocketError, TransportWriteFailure,
+        outbound::{OutboundWriteFailure, OutboundWriteMetrics, write_json},
+    },
+    thread_injection::{
+        ThreadInjectionSourceFailureSlot, ThreadInjectionWriteFailure, write_injection_source_json,
+    },
+    turn::{
+        StreamedInputJsonWriteFailure, StreamedInputSourceFailureSlot, write_source_aware_json,
+    },
 };
 
+#[cfg(feature = "lifecycle-test-support")]
+pub(crate) mod diagnostics;
 mod message;
+mod provider;
 mod reader;
+mod writer;
+
+#[cfg(feature = "lifecycle-test-support")]
+pub(crate) use diagnostics::WebSocketDiagnostics;
 
 use message::{MessagePayload, PayloadRead};
 use reader::{PayloadReaderState, WebSocketPayloadReader};
+use writer::{OUTBOUND_FRAME_PAYLOAD_BYTES, WebSocketMessageWriter, write_control_frame};
 
-const READ_CHUNK_BYTES: usize = 8 * 1024;
-const WEBSOCKET_FRAME_PAYLOAD_BUDGET: usize = 64 * 1024 * 1024;
-const WEBSOCKET_TEXT_MESSAGE_BUDGET: usize = 64 * 1024 * 1024;
+const WEBSOCKET_PROTOCOL_PAYLOAD_BUDGET: usize = usize::MAX;
 const WEBSOCKET_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const WEBSOCKET_HANDSHAKE_READ_AHEAD_BUDGET: usize = 4 * 1024;
 
-pub(crate) struct WebSocketClientTransport {
+struct WebSocketClientTransport {
     endpoint: String,
     stream: TcpStream,
     read_codec: Codec,
     write_codec: Codec,
+    outbound_payload: Box<[u8]>,
     pending_read: VecDeque<u8>,
     last_ingress_stats: Option<WebSocketIngressStats>,
+    #[cfg(feature = "lifecycle-test-support")]
+    diagnostics: WebSocketDiagnostics,
+    #[cfg(feature = "lifecycle-test-support")]
+    fail_next_write_before_dispatch: bool,
     closed: bool,
+}
+
+/// Immutable foreground candidate selected before the authenticated handshake reads any byte.
+pub(crate) struct ForegroundWebSocketCandidate {
+    endpoint: BackendWebSocketEndpoint,
+    authorization_header_value: String,
+    config: Option<crate::ForegroundSessionConfig>,
+}
+
+/// Connected WebSocket whose only ingress policy is the foreground incremental machine.
+pub(crate) struct ForegroundWebSocketTransport {
+    inner: WebSocketClientTransport,
+    config: crate::ForegroundSessionConfig,
+}
+
+/// Immutable request-only candidate selected before the authenticated handshake reads any byte.
+pub(crate) struct RequestOnlyWebSocketCandidate {
+    endpoint: BackendWebSocketEndpoint,
+    authorization_header_value: String,
+}
+
+/// Connected request-only WebSocket that uses incremental response ingress without foreground
+/// verifier, ordered-sink, or compact-control capabilities.
+pub(crate) struct RequestOnlyWebSocketTransport {
+    inner: WebSocketClientTransport,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,11 +91,62 @@ pub(crate) struct WebSocketIngressStats {
     pub(crate) maximum_transport_chunk_bytes: usize,
     pub(crate) maximum_parser_buffer_bytes: usize,
     pub(crate) discarded_image_result_bytes: usize,
+    pub(crate) verified_user_text_wire_bytes: usize,
     pub(crate) retained_item_result_present: bool,
 }
 
+impl ForegroundWebSocketCandidate {
+    pub(crate) const fn new(
+        endpoint: BackendWebSocketEndpoint,
+        authorization_header_value: String,
+        config: crate::ForegroundSessionConfig,
+    ) -> Self {
+        Self {
+            endpoint,
+            authorization_header_value,
+            config: Some(config),
+        }
+    }
+
+    pub(crate) fn try_connect(
+        &mut self,
+    ) -> Result<ForegroundWebSocketTransport, ManagedBackendError> {
+        let inner = WebSocketClientTransport::connect_profiled(
+            &self.endpoint,
+            self.authorization_header_value.clone(),
+        )?;
+        Ok(ForegroundWebSocketTransport {
+            inner,
+            config: self
+                .config
+                .take()
+                .expect("a foreground candidate connects at most once"),
+        })
+    }
+}
+
+impl RequestOnlyWebSocketCandidate {
+    pub(crate) const fn new(
+        endpoint: BackendWebSocketEndpoint,
+        authorization_header_value: String,
+    ) -> Self {
+        Self {
+            endpoint,
+            authorization_header_value,
+        }
+    }
+
+    pub(crate) fn try_connect(&self) -> Result<RequestOnlyWebSocketTransport, ManagedBackendError> {
+        WebSocketClientTransport::connect_profiled(
+            &self.endpoint,
+            self.authorization_header_value.clone(),
+        )
+        .map(|inner| RequestOnlyWebSocketTransport { inner })
+    }
+}
+
 impl WebSocketClientTransport {
-    pub(crate) fn connect(
+    fn connect_profiled(
         endpoint: &BackendWebSocketEndpoint,
         authorization_header_value: String,
     ) -> Result<Self, ManagedBackendError> {
@@ -64,15 +159,27 @@ impl WebSocketClientTransport {
         })?;
 
         let mut read_codec = Codec::new();
-        read_codec.set_max_data_size(WEBSOCKET_FRAME_PAYLOAD_BUDGET);
+        read_codec.set_max_data_size(WEBSOCKET_PROTOCOL_PAYLOAD_BUDGET);
 
+        let outbound_payload = vec![0; OUTBOUND_FRAME_PAYLOAD_BYTES].into_boxed_slice();
+        #[cfg(feature = "lifecycle-test-support")]
+        let diagnostics = {
+            let diagnostics = WebSocketDiagnostics::default();
+            diagnostics.record_outbound_buffer_capacity(outbound_payload.len());
+            diagnostics
+        };
         Ok(Self {
             endpoint: endpoint_label,
             stream: stream.stream,
             read_codec,
             write_codec: Codec::new(),
+            outbound_payload,
             pending_read: stream.pending_read,
             last_ingress_stats: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            diagnostics,
+            #[cfg(feature = "lifecycle-test-support")]
+            fail_next_write_before_dispatch: false,
             closed: false,
         })
     }
@@ -85,11 +192,20 @@ impl WebSocketClientTransport {
         self.last_ingress_stats
     }
 
-    pub(crate) fn write_message(
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn diagnostics(&self) -> WebSocketDiagnostics {
+        self.diagnostics.clone()
+    }
+
+    pub(crate) const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    pub(crate) fn write_message<T: Serialize + ?Sized>(
         &mut self,
         method: &str,
-        line: &str,
-    ) -> Result<(), TransportWriteFailure> {
+        message: &T,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
         if self.closed {
             return Err(TransportWriteFailure::ProvenNotDispatched(
                 ManagedBackendError::TransportClosed {
@@ -97,83 +213,189 @@ impl WebSocketClientTransport {
                 },
             ));
         }
-        self.write_frame_payload(OpCode::Text, line.as_bytes())
-            .map_err(|failure| match failure {
-                FrameWriteFailure::ProvenNotDispatched(source) => {
-                    TransportWriteFailure::ProvenNotDispatched(self.transport_error(method, source))
+        #[cfg(feature = "lifecycle-test-support")]
+        if std::mem::replace(&mut self.fail_next_write_before_dispatch, false) {
+            return Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::WriteRequest {
+                    method: method.to_string(),
+                    source: io::Error::other("forced pre-dispatch lifecycle write failure"),
+                },
+            ));
+        }
+        let result = {
+            let mut writer = WebSocketMessageWriter::new(
+                &mut self.stream,
+                &mut self.write_codec,
+                &mut self.outbound_payload,
+                #[cfg(feature = "lifecycle-test-support")]
+                self.diagnostics.clone(),
+            );
+            write_json(&mut writer, message)
+        };
+        match result {
+            Ok(metrics) => Ok(metrics),
+            Err(failure) => {
+                let progress = failure.progress();
+                let error = match failure {
+                    OutboundWriteFailure::Serialize { source, .. } if progress.some_bytes() => self
+                        .transport_error(
+                            method,
+                            ManagedWebSocketError::from_io(io::Error::other(source)),
+                        ),
+                    OutboundWriteFailure::Serialize { source, .. } => {
+                        ManagedBackendError::SerializeRequest {
+                            method: method.to_string(),
+                            source,
+                        }
+                    }
+                    OutboundWriteFailure::Transport { source, .. } => {
+                        self.transport_error(method, source)
+                    }
+                };
+                if progress.some_bytes() {
+                    self.poison();
                 }
-                FrameWriteFailure::MayHaveDispatched(source) => {
-                    TransportWriteFailure::MayHaveDispatched(self.transport_error(method, source))
-                }
-            })
+                Err(TransportWriteFailure::from_progress(progress, error))
+            }
+        }
     }
 
-    pub(crate) fn recv_json_value_timeout(
+    pub(crate) fn write_streamed_message<T: Serialize + ?Sized>(
         &mut self,
         method: &str,
-        timeout: Duration,
-    ) -> Result<Option<Value>, ManagedBackendError> {
-        self.set_read_timeout(Some(timeout), method)?;
-        let receive_started = Instant::now();
-        let state = PayloadReaderState::default();
-        let reader =
-            WebSocketPayloadReader::new(self, method, WEBSOCKET_TEXT_MESSAGE_BUDGET, state.clone());
-        let decoded = incoming_json::decode_reader(reader, READ_CHUNK_BYTES);
-
-        if let Some(error) = state.take_failure() {
-            self.close();
-            return Err(error);
+        message: &T,
+        source_failure: &StreamedInputSourceFailureSlot,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
+        if self.closed {
+            return Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::TransportClosed {
+                    method: method.to_string(),
+                },
+            ));
         }
-        if !state.started() {
-            return Ok(None);
+        #[cfg(feature = "lifecycle-test-support")]
+        if std::mem::replace(&mut self.fail_next_write_before_dispatch, false) {
+            return Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::WriteRequest {
+                    method: method.to_string(),
+                    source: io::Error::other("forced pre-dispatch lifecycle write failure"),
+                },
+            ));
         }
-        let decoded = match decoded {
-            Ok(decoded) => decoded,
-            Err(source) => {
-                self.close();
-                return Err(ManagedBackendError::InvalidJsonLine {
-                    line: incoming_json::redacted_invalid_json(),
-                    source,
-                });
-            }
-        };
-        if !state.complete() {
-            let error = self.transport_error(
-                method,
-                ManagedWebSocketError::protocol(
-                    "incoming JSON parser stopped before the WebSocket message completed",
-                ),
+        let result = {
+            let mut writer = WebSocketMessageWriter::new(
+                &mut self.stream,
+                &mut self.write_codec,
+                &mut self.outbound_payload,
+                #[cfg(feature = "lifecycle-test-support")]
+                self.diagnostics.clone(),
             );
-            self.close();
-            return Err(error);
-        }
-
-        let ingress_stats = WebSocketIngressStats {
-            message_bytes: state.bytes_read(),
-            maximum_transport_chunk_bytes: state.maximum_chunk_bytes(),
-            maximum_parser_buffer_bytes: decoded.stats.maximum_buffered_input_bytes,
-            discarded_image_result_bytes: decoded.stats.discarded_image_result_bytes,
-            retained_item_result_present: decoded
-                .value
-                .pointer("/params/item")
-                .and_then(Value::as_object)
-                .is_some_and(|item| item.contains_key("result")),
+            write_source_aware_json(&mut writer, message, source_failure)
         };
-        self.last_ingress_stats = Some(ingress_stats);
+        match result {
+            Ok(metrics) => Ok(metrics),
+            Err(failure) => {
+                let progress = failure.progress();
+                let error =
+                    match failure {
+                        StreamedInputJsonWriteFailure::Source { source, .. } => {
+                            ManagedBackendError::StreamedInputSource {
+                                method: method.to_string(),
+                                source,
+                                transport_bytes_written: progress.some_bytes(),
+                            }
+                        }
+                        StreamedInputJsonWriteFailure::Outbound(
+                            OutboundWriteFailure::Serialize { source, .. },
+                        ) if progress.some_bytes() => self.transport_error(
+                            method,
+                            ManagedWebSocketError::from_io(io::Error::other(source)),
+                        ),
+                        StreamedInputJsonWriteFailure::Outbound(
+                            OutboundWriteFailure::Serialize { source, .. },
+                        ) => ManagedBackendError::SerializeRequest {
+                            method: method.to_string(),
+                            source,
+                        },
+                        StreamedInputJsonWriteFailure::Outbound(
+                            OutboundWriteFailure::Transport { source, .. },
+                        ) => self.transport_error(method, source),
+                    };
+                if progress.some_bytes() {
+                    self.poison();
+                }
+                Err(TransportWriteFailure::from_progress(progress, error))
+            }
+        }
+    }
 
-        debug!(
-            method,
-            response_bytes = ingress_stats.message_bytes,
-            maximum_transport_chunk_bytes = ingress_stats.maximum_transport_chunk_bytes,
-            maximum_parser_buffer_bytes = ingress_stats.maximum_parser_buffer_bytes,
-            discarded_image_result_bytes = ingress_stats.discarded_image_result_bytes,
-            retained_item_result_present = ingress_stats.retained_item_result_present,
-            wait_first_frame_ms = state.first_frame_after().map(elapsed_ms),
-            wait_first_payload_ms = state.first_payload_after().map(elapsed_ms),
-            full_message_ms = elapsed_ms(receive_started.elapsed()),
-            "received and parsed backend WebSocket JSON message"
-        );
-        Ok(Some(decoded.value))
+    pub(crate) fn write_injection_message<T: Serialize + ?Sized>(
+        &mut self,
+        method: &str,
+        message: &T,
+        source_failure: &ThreadInjectionSourceFailureSlot,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
+        if self.closed {
+            return Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::TransportClosed {
+                    method: method.to_string(),
+                },
+            ));
+        }
+        #[cfg(feature = "lifecycle-test-support")]
+        if std::mem::replace(&mut self.fail_next_write_before_dispatch, false) {
+            return Err(TransportWriteFailure::ProvenNotDispatched(
+                ManagedBackendError::WriteRequest {
+                    method: method.to_string(),
+                    source: io::Error::other("forced pre-dispatch lifecycle write failure"),
+                },
+            ));
+        }
+        let result = {
+            let mut writer = WebSocketMessageWriter::new(
+                &mut self.stream,
+                &mut self.write_codec,
+                &mut self.outbound_payload,
+                #[cfg(feature = "lifecycle-test-support")]
+                self.diagnostics.clone(),
+            );
+            write_injection_source_json(&mut writer, message, source_failure)
+        };
+        match result {
+            Ok(metrics) => Ok(metrics),
+            Err(failure) => {
+                let progress = failure.progress();
+                let error =
+                    match failure {
+                        ThreadInjectionWriteFailure::Source { source, .. } => {
+                            ManagedBackendError::ThreadInjectionSource {
+                                method: method.to_string(),
+                                source,
+                                transport_bytes_written: progress.some_bytes(),
+                            }
+                        }
+                        ThreadInjectionWriteFailure::Outbound(
+                            OutboundWriteFailure::Serialize { source, .. },
+                        ) if progress.some_bytes() => self.transport_error(
+                            method,
+                            ManagedWebSocketError::from_io(io::Error::other(source)),
+                        ),
+                        ThreadInjectionWriteFailure::Outbound(
+                            OutboundWriteFailure::Serialize { source, .. },
+                        ) => ManagedBackendError::SerializeRequest {
+                            method: method.to_string(),
+                            source,
+                        },
+                        ThreadInjectionWriteFailure::Outbound(
+                            OutboundWriteFailure::Transport { source, .. },
+                        ) => self.transport_error(method, source),
+                    };
+                if progress.some_bytes() {
+                    self.poison();
+                }
+                Err(TransportWriteFailure::from_progress(progress, error))
+            }
+        }
     }
 
     pub(crate) fn close(&mut self) {
@@ -186,22 +408,115 @@ impl WebSocketClientTransport {
     }
 }
 
+impl ForegroundWebSocketTransport {
+    pub(crate) fn endpoint(&self) -> &str {
+        self.inner.endpoint()
+    }
+
+    pub(crate) fn last_ingress_stats(&self) -> Option<WebSocketIngressStats> {
+        self.inner.last_ingress_stats()
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn diagnostics(&self) -> WebSocketDiagnostics {
+        self.inner.diagnostics()
+    }
+
+    pub(crate) const fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+
+    pub(crate) fn write_message<T: Serialize + ?Sized>(
+        &mut self,
+        method: &str,
+        message: &T,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
+        self.inner.write_message(method, message)
+    }
+
+    pub(crate) fn write_streamed_message<T: Serialize + ?Sized>(
+        &mut self,
+        method: &str,
+        message: &T,
+        source_failure: &StreamedInputSourceFailureSlot,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
+        self.inner
+            .write_streamed_message(method, message, source_failure)
+    }
+
+    pub(crate) fn write_injection_message<T: Serialize + ?Sized>(
+        &mut self,
+        method: &str,
+        message: &T,
+        source_failure: &ThreadInjectionSourceFailureSlot,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
+        self.inner
+            .write_injection_message(method, message, source_failure)
+    }
+
+    pub(crate) fn recv_json_value_timeout<'a>(
+        &mut self,
+        method: &str,
+        timeout: Duration,
+        verifier: Option<crate::turn::StreamedUserMessageVerifierHandle<'a>>,
+        ordered_sink: Option<&'a mut dyn crate::OrderedTurnStreamSink>,
+        response_authority_generation: u64,
+        response_expectation: &mut crate::incoming_json::ResponseExpectationSlot,
+    ) -> Result<Option<crate::incoming_json::DecodedIncoming>, ManagedBackendError> {
+        self.inner.recv_json_value_timeout(
+            method,
+            timeout,
+            verifier,
+            ordered_sink,
+            response_authority_generation,
+            response_expectation,
+        )
+    }
+
+    pub(crate) const fn config(&self) -> crate::ForegroundSessionConfig {
+        self.config
+    }
+
+    pub(crate) fn close(&mut self) {
+        self.inner.close();
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn fail_next_write_before_dispatch_for_lifecycle_test(&mut self) {
+        self.inner.fail_next_write_before_dispatch = true;
+    }
+}
+
+impl RequestOnlyWebSocketTransport {
+    pub(crate) fn endpoint(&self) -> &str {
+        self.inner.endpoint()
+    }
+
+    pub(crate) const fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+
+    pub(crate) fn write_message<T: Serialize + ?Sized>(
+        &mut self,
+        method: &str,
+        message: &T,
+    ) -> Result<OutboundWriteMetrics, TransportWriteFailure> {
+        self.inner.write_message(method, message)
+    }
+
+    pub(crate) fn close(&mut self) {
+        self.inner.close();
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn fail_next_write_before_dispatch_for_lifecycle_test(&mut self) {
+        self.inner.fail_next_write_before_dispatch = true;
+    }
+}
+
 enum HeaderRead {
     Idle,
     Header(Header),
-}
-
-enum FrameWriteFailure {
-    ProvenNotDispatched(ManagedWebSocketError),
-    MayHaveDispatched(ManagedWebSocketError),
-}
-
-impl FrameWriteFailure {
-    fn into_error(self) -> ManagedWebSocketError {
-        match self {
-            Self::ProvenNotDispatched(error) | Self::MayHaveDispatched(error) => error,
-        }
-    }
 }
 
 impl WebSocketClientTransport {
@@ -304,7 +619,6 @@ impl WebSocketClientTransport {
 
     fn write_close_frame(&mut self, method: &str) -> Result<(), ManagedBackendError> {
         self.write_frame_payload(OpCode::Close, &1000_u16.to_be_bytes())
-            .map_err(FrameWriteFailure::into_error)
             .map_err(|source| self.transport_error(method, source))
     }
 
@@ -312,26 +626,13 @@ impl WebSocketClientTransport {
         &mut self,
         opcode: OpCode,
         payload: &[u8],
-    ) -> Result<(), FrameWriteFailure> {
-        let mut header = Header::new(opcode);
-        let mut mask = [0_u8; 4];
-        getrandom::fill(&mut mask)
-            .map_err(ManagedWebSocketError::from_mask_generation)
-            .map_err(FrameWriteFailure::ProvenNotDispatched)?;
-        header
-            .set_masked(true)
-            .set_mask(u32::from_be_bytes(mask))
-            .set_payload_len(payload.len());
+    ) -> Result<(), ManagedWebSocketError> {
+        write_control_frame(&mut self.stream, &mut self.write_codec, opcode, payload)
+    }
 
-        let header_bytes = self.write_codec.encode_header(&header);
-        let mut masked_payload = payload.to_vec();
-        Codec::apply_mask(&header, &mut masked_payload);
-        self.stream
-            .write_all(header_bytes)
-            .and_then(|()| self.stream.write_all(&masked_payload))
-            .and_then(|()| self.stream.flush())
-            .map_err(ManagedWebSocketError::from_io)
-            .map_err(FrameWriteFailure::MayHaveDispatched)
+    fn poison(&mut self) {
+        let _ = self.stream.shutdown(Shutdown::Both);
+        self.closed = true;
     }
 
     fn set_read_timeout(

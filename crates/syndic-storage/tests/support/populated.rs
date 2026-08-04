@@ -1,16 +1,20 @@
 mod active;
+mod bindings;
 mod context;
+mod provider;
+mod source;
 
 use beryl_model::{
     BindingRevision, CasItemId, CasLoadedSessionGeneration, CasLoadedThreadGeneration,
     CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId, DraftRevision,
-    InputGateRevision, ProjectionRevision, SyndicAcceptedInputId, SyndicExecutionSnapshotId,
-    SyndicItemId, SyndicProjectionId, SyndicResourceId, SyndicTurnId, ThreadRevision,
+    InputGateRevision, ProjectionRevision, SyndicAcceptedInputId, SyndicContentId,
+    SyndicExecutionSnapshotId, SyndicItemId, SyndicProjectionId, SyndicResourceId, SyndicTurnId,
+    ThreadRevision,
 };
 use syndic_storage::test_faults::{
     FixtureRecord, fixture_advance_item_projection_digest, fixture_advance_transcript_digest,
     fixture_inline_paragraph_projection, fixture_item_projection_digest_seed,
-    fixture_transcript_digest_seed,
+    fixture_provider_content_manifest, fixture_transcript_digest_seed,
 };
 use syndic_storage::*;
 
@@ -19,259 +23,13 @@ use super::{
     utf8_content_records,
 };
 
-pub fn source_turn() -> SyndicTurnId {
-    SyndicTurnId::from_bytes([32; 16])
-}
-
-pub fn source_item() -> SyndicItemId {
-    SyndicItemId::from_bytes([33; 16])
-}
-
-fn source_cas_thread() -> CasThreadId {
-    CasThreadId::new("source-history-thread").unwrap()
-}
-
-fn source_cas_turn() -> CasTurnId {
-    CasTurnId::new("source-history-turn").unwrap()
-}
-
-fn source_cas_item() -> CasItemId {
-    CasItemId::new("source-history-item").unwrap()
-}
-
-pub fn source_cas_authority() -> CasTurnSource {
-    CasTurnSource::new(source_cas_thread(), source_cas_turn())
-}
-
-fn source_snapshot() -> SyndicExecutionSnapshotId {
-    SyndicExecutionSnapshotId::from_bytes([35; 16])
-}
-
-pub fn source_projection() -> SyndicProjectionId {
-    syndic_storage::test_faults::fixture_inline_paragraph_projection(
-        source_item(),
-        source_turn(),
-        "assistant",
-    )
-    .id()
-}
-
-pub fn correlate_source_user_item(
-    records: &mut Vec<FixtureRecord>,
-    item: SyndicItemId,
-    revision: ProjectionRevision,
-    content: ContentReference,
-    marker_count: u64,
-    updated_at: SyndicTimestamp,
-) {
-    let source = source_turn();
-    let source_thread = id(30);
-    let source_digest = child_turn_chain_digest(
-        source,
-        SyndicTurnId::from_bytes([29; 16]),
-        root_turn_chain_digest(SyndicTurnId::from_bytes([29; 16])),
-    );
-    records.retain(|record| {
-        !matches!(record, FixtureRecord::TurnState(state) if state.turn_id() == source)
-            && !matches!(record, FixtureRecord::SourceEvent(event)
-                if event.turn_id() == source && event.sequence().get() >= 5)
-            && !matches!(record, FixtureRecord::CanonicalItem(existing) if existing.id() == item)
-            && !matches!(record, FixtureRecord::TurnItem(index)
-                if index.turn_id() == source && index.ordinal() == TurnItemOrdinal::new(2).unwrap())
-            && !matches!(record, FixtureRecord::ItemSourceEvent(index) if index.item_id() == item)
-            && !matches!(record, FixtureRecord::CasItem(index) if index.item_id() == item)
-            && !matches!(record, FixtureRecord::TranscriptPathTurn(path)
-                if path.thread_id() == source_thread
-                    && path.generation() == TranscriptGeneration::FIRST
-                    && path.depth() == TurnDepth::new(2).unwrap())
-    });
-    let cas_thread = source_cas_thread();
-    let cas_turn = source_cas_turn();
-    let cas_item = CasItemId::new(format!("source-user-{item}")).unwrap();
-    let disposition = ProviderItemDisposition::CorrelatedUserInput {
-        content,
-        marker_count,
-    };
-    let descriptor = SourceItemDescriptor::new(
-        item,
-        cas_item.clone(),
-        ProviderItemKind::UserMessage,
-        disposition,
-    )
-    .unwrap();
-    let source_authority = CasTurnSource::new(cas_thread.clone(), cas_turn.clone());
-    records.extend([
-        FixtureRecord::TurnState(fixture_turn_state(
-            source,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            7,
-            2,
-            updated_at,
-        )),
-        FixtureRecord::SourceEvent(
-            SourceEventRecord::new(
-                source,
-                SourceEventSequence::new(5).unwrap(),
-                Some(source_authority.clone()),
-                SourceEventPayload::ItemStarted {
-                    item: descriptor.clone(),
-                    assistant_phase: None,
-                },
-            )
-            .unwrap(),
-        ),
-        FixtureRecord::SourceEvent(
-            SourceEventRecord::new(
-                source,
-                SourceEventSequence::new(6).unwrap(),
-                Some(source_authority.clone()),
-                SourceEventPayload::ItemCompleted {
-                    item: descriptor,
-                    assistant_phase: None,
-                },
-            )
-            .unwrap(),
-        ),
-        FixtureRecord::SourceEvent(
-            SourceEventRecord::new(
-                source,
-                SourceEventSequence::new(7).unwrap(),
-                Some(source_authority.clone()),
-                SourceEventPayload::TurnEnded(
-                    TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
-                ),
-            )
-            .unwrap(),
-        ),
-        FixtureRecord::CanonicalItem(
-            CanonicalItemRecord::with_source_state(
-                item,
-                source,
-                TurnItemOrdinal::new(2).unwrap(),
-                revision,
-                Some(SourceEventSequence::new(6).unwrap()),
-                2,
-                Some(CasItemSource::new(source_authority, cas_item.clone())),
-                ProviderItemKind::UserMessage,
-                ProviderItemLifecycle::Completed,
-                disposition,
-                None,
-                CanonicalItemPayload::user_input(content, marker_count),
-            )
-            .unwrap(),
-        ),
-        FixtureRecord::TurnItem(TurnItemIndexRecord::new(
-            source,
-            TurnItemOrdinal::new(2).unwrap(),
-            item,
-            revision,
-        )),
-        FixtureRecord::ItemSourceEvent(ItemSourceEventIndexRecord::new(
-            item,
-            ItemSourceEventOrdinal::FIRST,
-            source,
-            SourceEventSequence::new(5).unwrap(),
-        )),
-        FixtureRecord::ItemSourceEvent(ItemSourceEventIndexRecord::new(
-            item,
-            ItemSourceEventOrdinal::new(2).unwrap(),
-            source,
-            SourceEventSequence::new(6).unwrap(),
-        )),
-        FixtureRecord::CasItem(CasItemIndexRecord::new(
-            cas_thread, cas_turn, cas_item, item, revision,
-        )),
-        FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-            source_thread,
-            TranscriptGeneration::FIRST,
-            TurnDepth::new(2).unwrap(),
-            source,
-            source_digest,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            7,
-            2,
-            2,
-            updated_at,
-        )),
-    ]);
-}
-
-pub fn source_resource() -> SyndicResourceId {
-    SyndicResourceId::from_bytes([35; 16])
-}
-
-pub fn source_resource_projection() -> SyndicProjectionId {
-    SyndicProjectionId::from_bytes([34; 16])
-}
-
-pub fn active_turn() -> SyndicTurnId {
-    SyndicTurnId::from_bytes([42; 16])
-}
-
-pub fn active_item() -> SyndicItemId {
-    SyndicItemId::from_bytes([43; 16])
-}
-
-pub fn active_projection() -> SyndicProjectionId {
-    syndic_storage::test_faults::fixture_inline_paragraph_projection(
-        active_item(),
-        active_turn(),
-        "active",
-    )
-    .id()
-}
-
-pub fn suffix_item() -> SyndicItemId {
-    SyndicItemId::from_bytes([60; 16])
-}
-
-pub fn build_item() -> SyndicItemId {
-    SyndicItemId::from_bytes([61; 16])
-}
-
-pub fn suffix_projection() -> SyndicProjectionId {
-    syndic_storage::test_faults::fixture_empty_projection(suffix_item(), active_turn()).id()
-}
-
-pub fn active_snapshot() -> SyndicExecutionSnapshotId {
-    SyndicExecutionSnapshotId::from_bytes([45; 16])
-}
-
-pub fn steering_input() -> SyndicAcceptedInputId {
-    SyndicAcceptedInputId::from_bytes([46; 16])
-}
-
-pub fn next_input() -> SyndicAcceptedInputId {
-    SyndicAcceptedInputId::from_bytes([47; 16])
-}
-
-pub fn cas_thread() -> CasThreadId {
-    CasThreadId::new("populated-thread").unwrap()
-}
-
-pub fn cas_turn() -> CasTurnId {
-    CasTurnId::new("populated-turn").unwrap()
-}
-
-pub fn cas_item() -> CasItemId {
-    CasItemId::new("populated-item").unwrap()
-}
-
-fn execution_binding() -> beryl_model::ExecutionBinding {
-    let path = beryl_model::RuntimeNativePath::from_admitted(
-        beryl_model::RuntimeMode::host(),
-        beryl_model::PathFlavor::Windows,
-        "C:\\populated",
-    )
-    .unwrap();
-    beryl_model::ExecutionBinding::new(
-        beryl_model::RuntimeId::from_bytes([48; 16]),
-        beryl_model::RootId::from_bytes([49; 16]),
-        path,
-    )
-}
+use provider::{
+    AgentItemFixtureState, agent_item_fixture, command_item_fixture, correlated_user_item_fixture,
+};
+pub use source::*;
+use source::{
+    execution_binding, source_cas_item, source_cas_thread, source_cas_turn, source_snapshot,
+};
 
 pub fn populated_records() -> Vec<FixtureRecord> {
     let source_thread = id(30);
@@ -280,7 +38,8 @@ pub fn populated_records() -> Vec<FixtureRecord> {
     let source = source_turn();
     let root_digest = root_turn_chain_digest(root);
     let source_digest = child_turn_chain_digest(source, root, root_digest);
-    let revision = ProjectionRevision::new(1).unwrap();
+    let projection_revision = ProjectionRevision::new(1).unwrap();
+    let item_revision = ProjectionRevision::new(4).unwrap();
     let thread_revision = ThreadRevision::new(1).unwrap();
     let draft_revision = DraftRevision::new(1).unwrap();
     let binding_one = BindingRevision::new(1).unwrap();
@@ -289,7 +48,9 @@ pub fn populated_records() -> Vec<FixtureRecord> {
     let binding_four = BindingRevision::new(4).unwrap();
     let (empty_content, empty_content_records) =
         composer_content_records(&ComposerPayload::default());
-    let (assistant_content, assistant_content_records) = utf8_content_records("assistant");
+    // Retained unreferenced content is valid until the future garbage collector removes it.
+    // Keep one exact text object so physical-family fixtures cover every chunked text family.
+    let (_, retained_text_records) = utf8_content_records("assistant");
     let source_selected = SelectedPathProof::new(Some(source), thread_revision, source_digest);
     let represented_parent =
         CasRepresentedPrefixProof::new(Some(root), thread_revision, root_digest);
@@ -297,6 +58,21 @@ pub fn populated_records() -> Vec<FixtureRecord> {
     let source_cas_thread = source_cas_thread();
     let source_cas_turn = source_cas_turn();
     let source_cas_item = source_cas_item();
+    let item = source_item();
+    let source_authority = CasTurnSource::new(source_cas_thread.clone(), source_cas_turn.clone());
+    let source_item_authority =
+        CasItemSource::new(source_authority.clone(), source_cas_item.clone());
+    let provider = agent_item_fixture(
+        item,
+        source,
+        source_item_authority.clone(),
+        SourceEventSequence::new(2).unwrap(),
+        ProviderMessagePhaseV1::FinalAnswer,
+        "assistant",
+        AgentItemFixtureState::Finalized,
+    );
+    let assistant_source =
+        ProjectionTextSource::provider_narrative(provider.canonical.narrative().unwrap());
     let source_usable = UsableCasBinding::new(
         execution_binding(),
         source_cas_thread.clone(),
@@ -320,31 +96,51 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         test_tool_profile(),
         lineage,
     );
-    let source_descriptor = SourceItemDescriptor::new(
-        source_item(),
-        source_cas_item.clone(),
-        ProviderItemKind::AgentMessage,
-        ProviderItemDisposition::CanonicalText,
-    )
-    .unwrap();
-
+    let source_execution = ThreadExecutionRecord::new(source_thread, execution_binding());
+    let source_attributes = ThreadAttributesRecord::ordinary(source_thread);
+    let source_usage = ThreadUsageRecord::empty(source_thread);
+    let source_catalog = ThreadCatalogSummaryRecord::new(
+        source_thread,
+        ProjectionRevision::new(1).unwrap(),
+        None,
+        execution_binding(),
+        ThreadArchiveState::Ordinary,
+        timestamp(4),
+        true,
+        None,
+        ThreadLineageDepth::FIRST,
+        root_thread_lineage_digest(source_thread),
+        ThreadCatalogSourceWitnesses::new(
+            source_attributes.revision(),
+            projection_revision,
+            thread_revision,
+            source_digest,
+            thread_revision,
+        ),
+    );
     let mut records = vec![
         FixtureRecord::Thread(ThreadRecord::new(
             source_thread,
-            thread_revision,
-            Some(source),
+            source_selected,
             source_draft,
+            ThreadLineageProof::new(
+                None,
+                None,
+                syndic_storage::ThreadLineageDepth::FIRST,
+                syndic_storage::root_thread_lineage_digest(source_thread),
+            ),
+            syndic_storage::ThreadImageLabelFrontiers::empty(),
             None,
-            None,
-            source_digest,
         )),
+        FixtureRecord::ThreadExecution(source_execution),
+        FixtureRecord::ThreadAttributes(source_attributes),
+        FixtureRecord::ThreadUsage(source_usage),
+        FixtureRecord::ThreadCatalogSummary(source_catalog),
         FixtureRecord::Draft(DraftRecord::new(
             source_draft,
             source_thread,
             draft_revision,
-            ConversationParent::Turn(source),
-            None,
-            None,
+            DraftSubmissionIntent::Ordinary,
             empty_content,
             timestamp(1),
             timestamp(1),
@@ -356,6 +152,7 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             thread_revision,
         )),
         FixtureRecord::InputGate(InputGateRecord::idle(source_thread)),
+        FixtureRecord::ActivityQueryHead(ActivityQueryHeadRecord::empty(source_thread)),
         FixtureRecord::Turn(TurnRecord::new(
             root,
             source_thread,
@@ -423,9 +220,9 @@ pub fn populated_records() -> Vec<FixtureRecord> {
                     source_cas_thread.clone(),
                     source_cas_turn.clone(),
                 )),
-                SourceEventPayload::ItemStarted {
-                    item: source_descriptor.clone(),
-                    assistant_phase: Some(AssistantMessagePhase::FinalAnswer),
+                SourceEventPayload::ItemFrame {
+                    item_id: item,
+                    frame: Box::new(provider.frames[0].clone()),
                 },
             )
             .unwrap(),
@@ -438,11 +235,9 @@ pub fn populated_records() -> Vec<FixtureRecord> {
                     source_cas_thread.clone(),
                     source_cas_turn.clone(),
                 )),
-                SourceEventPayload::ItemDelta {
-                    item_id: source_item(),
-                    cas_item_id: source_cas_item.clone(),
-                    expected_kind: ProviderItemKind::AgentMessage,
-                    text: SourceEventText::new("assistant").unwrap(),
+                SourceEventPayload::ItemFrame {
+                    item_id: item,
+                    frame: Box::new(provider.frames[1].clone()),
                 },
             )
             .unwrap(),
@@ -455,9 +250,9 @@ pub fn populated_records() -> Vec<FixtureRecord> {
                     source_cas_thread.clone(),
                     source_cas_turn.clone(),
                 )),
-                SourceEventPayload::ItemCompleted {
-                    item: source_descriptor,
-                    assistant_phase: Some(AssistantMessagePhase::FinalAnswer),
+                SourceEventPayload::ItemFrame {
+                    item_id: item,
+                    frame: Box::new(provider.frames[2].clone()),
                 },
             )
             .unwrap(),
@@ -484,8 +279,8 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         )),
     ];
     records.extend(empty_content_records);
+    records.extend(provider.records);
 
-    let item = source_item();
     let projection = source_projection();
     let projection_record = fixture_inline_paragraph_projection(item, source, "assistant");
     let resource = source_resource();
@@ -494,12 +289,12 @@ pub fn populated_records() -> Vec<FixtureRecord> {
     let projection_digest = fixture_advance_item_projection_digest(
         fixture_item_projection_digest_seed(),
         projection,
-        revision,
+        projection_revision,
     );
     let projection_checkpoint = MarkdownParserCheckpoint::new(
         9,
         9,
-        ContentPieceOrdinal::new(2).unwrap(),
+        ProjectionTextSourceCursor::ProviderNarrative { logical_start: 9 },
         9,
         Box::<str>::default(),
         false,
@@ -510,31 +305,27 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         TranscriptGeneration::FIRST,
         TranscriptPosition::FIRST,
         item,
-        revision,
+        item_revision,
         item_generation,
         projection,
-        revision,
+        projection_revision,
     );
     let transcript_digest =
         fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &transcript_entry);
     records.extend([
         FixtureRecord::CanonicalItem(
-            CanonicalItemRecord::with_source_state(
+            CanonicalItemRecord::with_provider_state(
                 item,
                 source,
                 TurnItemOrdinal::FIRST,
-                revision,
-                Some(SourceEventSequence::new(4).unwrap()),
+                item_revision,
+                SourceEventSequence::new(4).unwrap(),
                 3,
-                Some(CasItemSource::new(
-                    CasTurnSource::new(source_cas_thread.clone(), source_cas_turn.clone()),
-                    source_cas_item.clone(),
-                )),
-                ProviderItemKind::AgentMessage,
-                ProviderItemLifecycle::Completed,
-                ProviderItemDisposition::CanonicalText,
+                source_item_authority,
                 Some(AssistantMessagePhase::FinalAnswer),
-                CanonicalItemPayload::text(assistant_content),
+                provider.canonical,
+                Some(ProviderNarrativeCompletionDisposition::Equal),
+                CanonicalItemPresentation::Narrative,
             )
             .unwrap(),
         ),
@@ -542,7 +333,7 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             source,
             TurnItemOrdinal::FIRST,
             item,
-            revision,
+            item_revision,
         )),
         FixtureRecord::ItemSourceEvent(ItemSourceEventIndexRecord::new(
             item,
@@ -567,12 +358,12 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             source_cas_turn.clone(),
             source_cas_item,
             item,
-            revision,
+            item_revision,
         )),
         FixtureRecord::Projection(projection_record),
         FixtureRecord::Projection(ProjectionRecord::new(
             resource_projection,
-            revision,
+            projection_revision,
             item,
             source,
             ProjectionOrdinal::new(2).unwrap(),
@@ -589,14 +380,14 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             item,
             ProjectionOrdinal::FIRST,
             projection,
-            revision,
+            projection_revision,
         )),
         FixtureRecord::ItemProjectionSet(ItemProjectionSetRecord::new(
             item,
             item_generation,
             ProjectionFormatVersion::V1,
-            revision,
-            assistant_content,
+            item_revision,
+            assistant_source,
             9,
             1,
             0,
@@ -609,22 +400,22 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         )),
         FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
             item,
-            revision,
-            revision,
+            projection_revision,
+            item_revision,
             item_generation,
             ProjectionLifecycle::Current,
         )),
         FixtureRecord::Resource(
             ResourceMetadataRecord::new(
                 resource,
-                revision,
+                projection_revision,
                 resource_projection,
                 item,
                 ResourceOrdinal::FIRST,
                 ResourceKind::Attachment,
                 "text/plain",
-                ResourceBacking::CanonicalTextRange {
-                    content_id: assistant_content.id(),
+                ResourceBacking::TextRange {
+                    source: assistant_source,
                     range: ProjectionSourceRange::new(0, 9).unwrap(),
                 },
                 [50; 32],
@@ -637,13 +428,13 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             resource_projection,
             ResourceOrdinal::FIRST,
             resource,
-            revision,
+            projection_revision,
             [50; 32],
         )),
         FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
             source_thread,
             TranscriptGeneration::FIRST,
-            revision,
+            projection_revision,
             1,
             Some(source),
             source_digest,
@@ -652,7 +443,7 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         FixtureRecord::TranscriptBuild(TranscriptBuildRecord::new(
             source_thread,
             TranscriptGeneration::FIRST,
-            revision,
+            projection_revision,
             thread_revision,
             Some(source),
             source_digest,
@@ -691,6 +482,7 @@ pub fn populated_records() -> Vec<FixtureRecord> {
         FixtureRecord::TranscriptViewEntry(transcript_entry),
         FixtureRecord::HistorySummary(HistorySummaryRecord::new(
             source_thread,
+            projection_revision,
             thread_revision,
             Some(source),
             source_digest,
@@ -698,100 +490,26 @@ pub fn populated_records() -> Vec<FixtureRecord> {
             timestamp(4),
         )),
     ]);
-    records.extend(assistant_content_records);
-
-    records.extend([
-        FixtureRecord::Binding(BindingRecord::new(
-            source_thread,
-            binding_one,
-            source_selected,
-            BindingState::unbound("source fixture").unwrap(),
-        )),
-        FixtureRecord::Binding(BindingRecord::new(
-            source_thread,
-            binding_two,
-            source_selected,
-            BindingState::valid(source_usable.clone()),
-        )),
-        FixtureRecord::Binding(BindingRecord::new(
-            source_thread,
-            binding_three,
-            source_selected,
-            BindingState::active(source_active),
-        )),
-        FixtureRecord::Binding(BindingRecord::new(
-            source_thread,
-            binding_four,
-            source_selected,
-            BindingState::valid(terminal_usable),
-        )),
-        FixtureRecord::BindingHead(BindingHeadRecord::new(
-            source_thread,
-            binding_four,
-            BindingLifecycle::Valid,
-            source_digest,
-        )),
-        FixtureRecord::ExecutionSnapshot(ExecutionSnapshotRecord::new(
-            source_snapshot(),
-            source_thread,
-            binding_three,
-            InputGateRevision::new(1).unwrap(),
-            source,
-            source_cas_thread.clone(),
-            source_selected,
-            represented_parent,
-            CasNativeTurnCount::ZERO,
-            test_tool_profile(),
-            lineage,
-            execution_binding(),
-            CasLoadedSessionGeneration::new(
-                CasProcessGeneration::new(1).unwrap(),
-                CasLoadedThreadGeneration::new(1).unwrap(),
-            ),
-            timestamp(3),
-        )),
-        FixtureRecord::ActiveCasTurn(ActiveCasTurnRecord::new(
-            source_snapshot(),
-            source_thread,
-            source,
-            binding_three,
-            source_cas_thread.clone(),
-            source_cas_turn.clone(),
-            timestamp(3),
-        )),
-        FixtureRecord::CasThread(CasThreadIndexRecord::with_latest(
-            source_cas_thread.clone(),
-            source_thread,
-            binding_two,
-            binding_four,
-        )),
-        FixtureRecord::CasThreadBinding(CasThreadBindingIndexRecord::new(
-            source_cas_thread.clone(),
-            source_thread,
-            binding_two,
-        )),
-        FixtureRecord::CasThreadBinding(CasThreadBindingIndexRecord::new(
-            source_cas_thread.clone(),
-            source_thread,
-            binding_three,
-        )),
-        FixtureRecord::CasThreadBinding(CasThreadBindingIndexRecord::new(
-            source_cas_thread.clone(),
-            source_thread,
-            binding_four,
-        )),
-        FixtureRecord::CasTurn(CasTurnIndexRecord::new(
-            source_cas_thread,
-            source_cas_turn,
-            source_thread,
-            source,
-            binding_three,
-            source_snapshot(),
-            CasNativeTurnCount::new(1),
-        )),
-    ]);
+    records.extend(bindings::records(
+        source_thread,
+        binding_one,
+        binding_two,
+        binding_three,
+        binding_four,
+        source_selected,
+        source_usable,
+        source_active,
+        terminal_usable,
+        source_digest,
+        source,
+        source_cas_thread,
+        represented_parent,
+        lineage,
+        source_cas_turn,
+    ));
 
     records.extend(context::records());
     records.extend(active::records());
+    records.extend(retained_text_records);
     records
 }

@@ -1,48 +1,125 @@
-use beryl_backend::{NonIdempotentRequestOutcome, UserInput};
+use beryl_backend::NonIdempotentRequestOutcome;
 use beryl_home_store::HomeStore;
 use beryl_model::{BindingRevision, SyndicExecutionSnapshotId};
+use beryl_state::AssetState;
 use syndic_storage::{
-    AbandonActiveBinding, ActivateBinding, CancelBindingActivation, SyndicPointReadLimit,
-    SyndicStorage, TurnIncompleteReason,
+    ActivateBinding, CancelBindingActivation, SyndicPointReadLimit, SyndicStorage,
+    TurnIncompleteReason,
 };
 
 use super::{
-    capture_loop::{StartIdentityEvidence, begin_capture, wait_for_start_evidence},
-    cleanup::abandon_without_cas_turn,
-    identity::{execution_snapshot_id, point_limit, stale_binding},
+    capture_loop::{begin_capture, converge_completion_unknown_start, converge_target_loss},
+    identity::{execution_snapshot_id, system_timestamp_at_least},
 };
 use crate::cas_projection::connection::TargetTurnStartOutcome;
 use crate::cas_projection::ordinary::{
-    OrdinaryDynamicToolHandler, OrdinaryNotStartedProjection, OrdinaryTurnCaptureLoss,
-    OrdinaryTurnExecutionError, OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionRequest,
-    OrdinaryTurnNotStarted, capture::system_timestamp_at_least,
-    preflight::PendingOrdinaryExecution,
+    OrdinaryDynamicToolHandlers, OrdinaryNotStartedProjection, OrdinaryTurnCaptureLoss,
+    OrdinaryTurnExecutionError, OrdinaryTurnExecutionFailure, OrdinaryTurnExecutionOutcome,
+    OrdinaryTurnExecutionRequest, OrdinaryTurnNotStarted, preflight::PendingOrdinaryExecution,
 };
 use crate::cas_projection::{
-    CasProjectionCoordinator, LiveEventTarget, LoadedCasProjection, publication,
+    CasProjectionCoordinator, LiveEventTarget, LoadedCasProjection, PendingTurnActivation,
+    ProjectionCancellationToken, ProjectionPublicationFailure,
+    input_replay::{
+        InputReplayContext, InputReplayFactory, InputReplayRecord, check_cancelled, point_limit,
+    },
+    publication,
 };
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "ordinary execution keeps its durable authorities and request-local handlers explicit"
+)]
 pub(super) fn execute(
     coordinator: &CasProjectionCoordinator,
     store: &HomeStore,
     storage: SyndicStorage,
+    assets: AssetState,
     projection: LoadedCasProjection,
+    cancellation: &ProjectionCancellationToken,
     request: &OrdinaryTurnExecutionRequest,
-    tools: &mut impl OrdinaryDynamicToolHandler,
-) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionError> {
-    coordinator.ensure_home(store)?;
+    tools: &mut OrdinaryDynamicToolHandlers<'_>,
+) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
+    let thread_id = projection.syndic_thread_id();
+    let flight = match coordinator.begin_projection(thread_id) {
+        Ok(flight) => flight,
+        Err(source) => return Err(pre_activation(projection, source.into())),
+    };
+    execute_in_flight(
+        coordinator,
+        store,
+        storage,
+        assets,
+        projection,
+        cancellation,
+        request,
+        tools,
+        &flight,
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "ordinary execution keeps its durable authorities and request-local handlers explicit"
+)]
+pub(super) fn execute_in_flight(
+    coordinator: &CasProjectionCoordinator,
+    store: &HomeStore,
+    storage: SyndicStorage,
+    assets: AssetState,
+    projection: LoadedCasProjection,
+    cancellation: &ProjectionCancellationToken,
+    request: &OrdinaryTurnExecutionRequest,
+    tools: &mut OrdinaryDynamicToolHandlers<'_>,
+    flight: &crate::cas_projection::service::ProjectionFlight,
+) -> Result<OrdinaryTurnExecutionOutcome, OrdinaryTurnExecutionFailure> {
+    macro_rules! retain_projection {
+        ($result:expr) => {
+            match $result {
+                Ok(value) => value,
+                Err(source) => {
+                    let source: OrdinaryTurnExecutionError = source.into();
+                    return Err(pre_activation(projection, source));
+                }
+            }
+        };
+    }
+
+    retain_projection!(check_cancelled(cancellation));
+    retain_projection!(coordinator.ensure_home(store));
     if projection.home_id() != coordinator.home_id()
         || projection.home_generation() != coordinator.home_generation()
     {
-        return Err(OrdinaryTurnExecutionError::ProjectionMismatch {
-            thread_id: projection.syndic_thread_id(),
-        });
+        let thread_id = projection.syndic_thread_id();
+        return Err(pre_activation(
+            projection,
+            OrdinaryTurnExecutionError::ProjectionMismatch { thread_id },
+        ));
     }
-    let _flight = coordinator.begin_projection(projection.syndic_thread_id())?;
+    retain_projection!(coordinator.ensure_projection_flight(flight, projection.syndic_thread_id()));
     let limit = point_limit();
-    let pending = PendingOrdinaryExecution::read(store, storage, &projection, limit)?;
-    let input = pending.assemble_input(store, storage)?;
-    let started_at = system_timestamp_at_least(pending.minimum_observed_at)?;
+    let pending = retain_projection!(PendingOrdinaryExecution::read(
+        store,
+        storage,
+        assets,
+        &projection,
+        limit,
+    ));
+    let prepared = retain_projection!(InputReplayFactory::prepare(
+        store,
+        storage,
+        assets,
+        InputReplayContext::from_projection(&projection),
+        InputReplayRecord::submitted(pending.thread_id, pending.item_id),
+        pending.input,
+        pending.asset_reference_set,
+        pending.asset_owner_head.clone(),
+        cancellation,
+        #[cfg(feature = "test-faults")]
+        request.input_replay_diagnostics(),
+    ));
+    let started_at = retain_projection!(system_timestamp_at_least(pending.minimum_observed_at));
+    retain_projection!(check_cancelled(cancellation));
     let snapshot_id = execution_snapshot_id(coordinator, &projection, &pending);
     let activation = ActivateBinding::new(
         pending.thread_id,
@@ -55,44 +132,58 @@ pub(super) fn execute(
         started_at,
     );
     let (active_binding_revision, active_gate_revision) =
-        publication::activate(store, storage, &activation, limit)?;
-    let stale = stale_binding(&projection, &pending, started_at)?;
-    let target = match projection.into_pending_live_event_target() {
+        match activate(store, storage, &activation, limit) {
+            ActivationAttempt::Activated {
+                binding_revision,
+                gate_revision,
+            } => (binding_revision, gate_revision),
+            ActivationAttempt::ProvenPrior(source) => {
+                return Err(pre_activation(projection, source.into()));
+            }
+            ActivationAttempt::AuthorityUncertain(source) => {
+                return Err(activation_failure(source.into()));
+            }
+        };
+    let activation = PendingTurnActivation::new(
+        pending.thread_id,
+        pending.turn_id,
+        active_binding_revision,
+        active_gate_revision,
+        pending.state_revision,
+        snapshot_id,
+        started_at,
+    );
+    let target = match projection.into_pending_live_event_target(activation) {
         Ok(target) => target,
-        Err(error) => {
-            publication::abandon_active(
-                store,
-                storage,
-                &AbandonActiveBinding::new(
-                    pending.thread_id,
-                    active_binding_revision,
-                    active_gate_revision,
-                    pending.selected_path,
-                    stale,
-                ),
-                limit,
-            )?;
-            return Err(error.into());
-        }
+        Err(error) => return Err(activation_failure(error.into())),
     };
-    let start = match target.start_turn(
-        vec![UserInput::text(input)],
+    #[cfg(feature = "test-faults")]
+    let target = {
+        let mut target = target;
+        crate::cas_projection::test_faults::abandon_live_event_target_if_requested(&mut target);
+        target
+    };
+    let mut replay = prepared.fresh_source();
+    let start = match target.start_streamed_turn(
         request.start_options().clone(),
         request.request_timeout(),
+        replay.service(store, storage, cancellation),
     ) {
         Ok(start) => start,
         Err(error) => {
-            abandon_without_cas_turn(
+            if let Some(outcome) = converge_target_loss(
                 store,
                 storage,
+                target,
                 &pending,
                 active_binding_revision,
-                active_gate_revision,
-                stale,
                 TurnIncompleteReason::AuthorityLost,
                 limit,
-            )?;
-            drop(target);
+            )
+            .map_err(after_activation)?
+            {
+                return Ok(outcome);
+            }
             return Ok(OrdinaryTurnExecutionOutcome::Incomplete {
                 reason: OrdinaryTurnCaptureLoss::StartAuthorityLost(Box::new(error)),
             });
@@ -110,7 +201,8 @@ pub(super) fn execute(
             active_gate_revision,
             snapshot_id,
             limit,
-        ),
+        )
+        .map_err(after_activation),
         NonIdempotentRequestOutcome::ExactResponse { response } => {
             let cas_turn_id = response.turn_id().clone();
             begin_capture(
@@ -120,36 +212,77 @@ pub(super) fn execute(
                 start,
                 pending,
                 active_binding_revision,
-                active_gate_revision,
-                snapshot_id,
                 cas_turn_id,
-                StartIdentityEvidence::Response,
-                stale,
                 tools,
                 limit,
+                request.context_compaction_timeout(),
             )
+            .map_err(after_activation)
         }
-        NonIdempotentRequestOutcome::CompletionUnknown { .. } => wait_for_start_evidence(
+        NonIdempotentRequestOutcome::CompletionUnknown { .. } => converge_completion_unknown_start(
             store,
             storage,
             target,
             start,
             pending,
             active_binding_revision,
-            active_gate_revision,
-            snapshot_id,
-            stale,
-            tools,
             limit,
-        ),
+        )
+        .map_err(after_activation),
     }
+}
+
+enum ActivationAttempt {
+    Activated {
+        binding_revision: BindingRevision,
+        gate_revision: beryl_model::InputGateRevision,
+    },
+    ProvenPrior(ProjectionPublicationFailure),
+    AuthorityUncertain(ProjectionPublicationFailure),
+}
+
+fn activate(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    activation: &ActivateBinding,
+    limit: SyndicPointReadLimit,
+) -> ActivationAttempt {
+    match publication::activate(store, storage, activation, limit) {
+        Ok((binding_revision, gate_revision)) => ActivationAttempt::Activated {
+            binding_revision,
+            gate_revision,
+        },
+        Err(source @ ProjectionPublicationFailure::Prior)
+        | Err(source @ ProjectionPublicationFailure::Command(_)) => {
+            ActivationAttempt::ProvenPrior(source)
+        }
+        Err(source) => ActivationAttempt::AuthorityUncertain(source),
+    }
+}
+
+fn pre_activation(
+    projection: LoadedCasProjection,
+    source: OrdinaryTurnExecutionError,
+) -> OrdinaryTurnExecutionFailure {
+    OrdinaryTurnExecutionFailure::PreActivation {
+        projection: Box::new(projection),
+        source,
+    }
+}
+
+fn activation_failure(source: OrdinaryTurnExecutionError) -> OrdinaryTurnExecutionFailure {
+    OrdinaryTurnExecutionFailure::Activation { source }
+}
+
+fn after_activation(source: OrdinaryTurnExecutionError) -> OrdinaryTurnExecutionFailure {
+    OrdinaryTurnExecutionFailure::AfterActivation { source }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn finish_not_started(
     store: &HomeStore,
     storage: SyndicStorage,
-    target: LiveEventTarget,
+    mut target: LiveEventTarget,
     start: TargetTurnStartOutcome,
     pending: PendingOrdinaryExecution,
     active_binding_revision: BindingRevision,

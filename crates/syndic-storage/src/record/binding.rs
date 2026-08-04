@@ -1,7 +1,7 @@
 use beryl_model::{
     BindingRevision, CasConversationToolProfile, CasLoadedSessionGeneration, CasNativeTurnCount,
     CasThreadId, CasTurnId, ExecutionBinding, InputGateRevision, SyndicExecutionSnapshotId,
-    SyndicThreadId, SyndicTurnId,
+    SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
@@ -66,6 +66,28 @@ impl UsableCasBinding {
     #[must_use]
     pub const fn lineage(&self) -> CasLineageProof {
         self.lineage
+    }
+
+    pub(crate) fn advance_represented_source_revision(
+        &self,
+        source_thread_revision: ThreadRevision,
+    ) -> Option<Self> {
+        let represented = self.represented_prefix;
+        if source_thread_revision < represented.source_thread_revision() {
+            return None;
+        }
+        Some(Self::new(
+            self.execution.clone(),
+            self.cas_thread_id.clone(),
+            CasRepresentedPrefixProof::new(
+                represented.tail(),
+                source_thread_revision,
+                represented.digest(),
+            ),
+            self.native_turn_count,
+            self.tool_profile,
+            self.lineage,
+        ))
     }
 }
 
@@ -242,6 +264,16 @@ impl BindingState {
             Self::Unbound { .. } => None,
         }
     }
+
+    #[must_use]
+    pub const fn execution(&self) -> Option<&ExecutionBinding> {
+        match self {
+            Self::Valid(value) => Some(value.execution()),
+            Self::Active(value) => Some(value.usable().execution()),
+            Self::Stale(value) => Some(value.execution()),
+            Self::Unbound { .. } => None,
+        }
+    }
 }
 
 /// One immutable revision in a thread's CAS projection-binding history.
@@ -289,6 +321,7 @@ impl BindingRecord {
 /// Immutable exact execution facts accepted for one active binding revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionSnapshotRecord {
+    kind: ExecutionSnapshotKind,
     id: SyndicExecutionSnapshotId,
     thread_id: SyndicThreadId,
     binding_revision: BindingRevision,
@@ -303,6 +336,13 @@ pub struct ExecutionSnapshotRecord {
     execution: ExecutionBinding,
     loaded_generation: CasLoadedSessionGeneration,
     started_at: SyndicTimestamp,
+}
+
+/// Closed shape of one immutable execution snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionSnapshotKind {
+    OrdinaryConversation,
+    ProviderOperation(crate::ProviderOperationKind),
 }
 
 impl ExecutionSnapshotRecord {
@@ -324,6 +364,7 @@ impl ExecutionSnapshotRecord {
         started_at: SyndicTimestamp,
     ) -> Self {
         Self {
+            kind: ExecutionSnapshotKind::OrdinaryConversation,
             id,
             thread_id,
             binding_revision,
@@ -339,6 +380,48 @@ impl ExecutionSnapshotRecord {
             loaded_generation,
             started_at,
         }
+    }
+    /// Captures one provider operation without activating the ordinary binding.
+    #[allow(clippy::too_many_arguments)]
+    pub fn provider_operation(
+        id: SyndicExecutionSnapshotId,
+        thread_id: SyndicThreadId,
+        binding_revision: BindingRevision,
+        source_gate_revision: InputGateRevision,
+        provider_turn_id: SyndicTurnId,
+        cas_thread_id: CasThreadId,
+        selected_path: SelectedPathProof,
+        represented_base_prefix: CasRepresentedPrefixProof,
+        represented_base_native_turn_count: CasNativeTurnCount,
+        tool_profile: CasConversationToolProfile,
+        lineage: CasLineageProof,
+        execution: ExecutionBinding,
+        loaded_generation: CasLoadedSessionGeneration,
+        started_at: SyndicTimestamp,
+    ) -> Self {
+        Self {
+            kind: ExecutionSnapshotKind::ProviderOperation(
+                crate::ProviderOperationKind::ContextCompaction,
+            ),
+            id,
+            thread_id,
+            binding_revision,
+            activation_gate_revision: source_gate_revision,
+            active_turn_id: provider_turn_id,
+            cas_thread_id,
+            selected_path,
+            represented_base_prefix,
+            represented_base_native_turn_count,
+            tool_profile,
+            lineage,
+            execution,
+            loaded_generation,
+            started_at,
+        }
+    }
+    #[must_use]
+    pub const fn kind(&self) -> ExecutionSnapshotKind {
+        self.kind
     }
     #[must_use]
     pub const fn id(&self) -> SyndicExecutionSnapshotId {

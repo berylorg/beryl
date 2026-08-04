@@ -13,13 +13,55 @@ name = "managed_process_lifecycle"
 path = "tests/managed_process_lifecycle.rs"
 required-features = ["lifecycle-test-support"]
 
+[[test]]
+name = "incoming_json_ingress"
+path = "tests/incoming_json_ingress.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "image_generation_ingress"
+path = "tests/image_generation_ingress.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "ordered_turn_stream"
+path = "tests/ordered_turn_stream.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "phase31_request_flow"
+path = "tests/phase31_bounded_dispatch.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "phase32_lineage_flow"
+path = "tests/phase32_lineage_flow.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "phase39_thread_injection_session"
+path = "tests/phase39_thread_injection_session.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "provider_observation_ingress"
+path = "tests/provider_observation_ingress.rs"
+required-features = ["lifecycle-test-support"]
+
+[[test]]
+name = "exact_interruption"
+path = "tests/exact_interruption.rs"
+required-features = ["lifecycle-test-support"]
+
 [dependencies]
-base64.workspace = true
+bounded-json.workspace = true
 beryl-model.workspace = true
+beryl-stream.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 shlex.workspace = true
 soketto.workspace = true
 thiserror.workspace = true

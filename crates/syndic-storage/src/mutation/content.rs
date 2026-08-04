@@ -1,13 +1,15 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
-use beryl_model::{
-    DomainRevision, DraftRevision, SyndicContentId, SyndicDraftId, SyndicThreadId, ThreadRevision,
-};
+use beryl_model::{DomainRevision, DraftRevision, SyndicContentId, SyndicDraftId, SyndicThreadId};
 
 use crate::{
-    ContentChunkRecord, ContentLifecycle, ContentManifestRecord, ContentSummary,
+    ContentChunkRecord, ContentLifecycle, ContentManifestRecord, ContentReference, ContentSummary,
     DraftByThreadRecord, DraftRecord, HistorySummaryRecord, PreparedContent, SyndicCurrentDraft,
     SyndicStorage, SyndicTimestamp, advance_content_chain, codec::*, domain::SyndicDomain,
 };
+
+mod validation;
+
+use validation::{validate_prepared_manifest, validate_publishable};
 
 use super::{SyndicMutationError, current_draft, point, required};
 
@@ -143,7 +145,6 @@ pub enum DraftPayloadUpdateDecision {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DraftPayloadUpdate {
     thread_id: SyndicThreadId,
-    expected_thread_revision: ThreadRevision,
     draft_id: SyndicDraftId,
     expected_revision: DraftRevision,
     content_id: SyndicContentId,
@@ -152,15 +153,50 @@ pub struct DraftPayloadUpdate {
 }
 
 impl DraftPayloadUpdate {
+    /// Prepares a dirty draft revision from newly prepared in-memory content.
     pub fn prepare(
         current: &SyndicCurrentDraft,
         content: &PreparedContent,
         updated_at: SyndicTimestamp,
     ) -> Result<DraftPayloadUpdateDecision, SyndicMutationError> {
+        Self::prepare_fields(
+            current,
+            content.id(),
+            content.encoding(),
+            content.summary(),
+            updated_at,
+        )
+    }
+
+    /// Prepares a dirty draft revision from an exact already-sealed content reference.
+    ///
+    /// This is the bounded publication boundary for content constructed directly in durable
+    /// storage. The mutation still validates the referenced manifest before publishing the draft.
+    pub fn prepare_reference(
+        current: &SyndicCurrentDraft,
+        content: ContentReference,
+        updated_at: SyndicTimestamp,
+    ) -> Result<DraftPayloadUpdateDecision, SyndicMutationError> {
+        Self::prepare_fields(
+            current,
+            content.id(),
+            content.encoding(),
+            content.summary(),
+            updated_at,
+        )
+    }
+
+    fn prepare_fields(
+        current: &SyndicCurrentDraft,
+        content_id: SyndicContentId,
+        content_encoding: crate::ContentEncoding,
+        content_summary: ContentSummary,
+        updated_at: SyndicTimestamp,
+    ) -> Result<DraftPayloadUpdateDecision, SyndicMutationError> {
         let current_content = current.draft().content();
-        if current_content.id() == content.id()
-            && current_content.encoding() == content.encoding()
-            && current_content.summary() == content.summary()
+        if current_content.id() == content_id
+            && current_content.encoding() == content_encoding
+            && current_content.summary() == content_summary
         {
             return Ok(DraftPayloadUpdateDecision::NoChange);
         }
@@ -169,11 +205,10 @@ impl DraftPayloadUpdate {
         }
         Ok(DraftPayloadUpdateDecision::Update(Self {
             thread_id: current.thread().id(),
-            expected_thread_revision: current.thread().revision(),
             draft_id: current.draft().id(),
             expected_revision: current.draft().revision(),
-            content_id: content.id(),
-            content_summary: content.summary(),
+            content_id,
+            content_summary,
             updated_at,
         }))
     }
@@ -185,10 +220,6 @@ impl DraftPayloadUpdate {
     #[must_use]
     pub const fn draft_id(&self) -> SyndicDraftId {
         self.draft_id
-    }
-    #[must_use]
-    pub const fn expected_thread_revision(&self) -> ThreadRevision {
-        self.expected_thread_revision
     }
     #[must_use]
     pub const fn expected_revision(&self) -> DraftRevision {
@@ -206,7 +237,6 @@ impl DraftPayloadUpdate {
         };
         let content = current.draft().content();
         current.thread().id() == self.thread_id
-            && current.thread().revision() == self.expected_thread_revision
             && current.draft().id() == self.draft_id
             && current.draft().revision().get() == expected_revision
             && content.id() == self.content_id
@@ -374,13 +404,6 @@ impl DomainMutation<SyndicDomain> for PublishDraftMutation {
     type Error = SyndicMutationError;
 
     fn validate(&self, reader: &DomainReader<'_, SyndicDomain>) -> Result<(), Self::Error> {
-        let thread = required::<ThreadsFamily>(reader, &self.update.thread_id)?;
-        if thread.revision() != self.update.expected_thread_revision {
-            return Err(SyndicMutationError::ThreadRevisionConflict {
-                expected: self.update.expected_thread_revision,
-                current: thread.revision(),
-            });
-        }
         let current = current_draft(reader, self.update.thread_id)?;
         if current.id() != self.update.draft_id {
             return Err(SyndicMutationError::CurrentDraftConflict);
@@ -442,62 +465,30 @@ impl DomainMutation<SyndicDomain> for PublishDraftMutation {
             current.id(),
             current.thread_id(),
             revision,
-            current.parent(),
-            current.context_owner_id(),
-            current.replacement_edit_intent(),
+            current.submission_intent(),
             content,
             current.created_at(),
             self.update.updated_at,
         );
         let index = DraftByThreadRecord::new(thread.id(), next.id(), revision, thread.revision());
-        let summary = required::<HistorySummariesFamily>(reader, &thread.id())?;
-        let summary = HistorySummaryRecord::new(
-            summary.thread_id(),
-            summary.thread_revision(),
-            summary.committed_tail(),
-            summary.selected_path_digest(),
-            summary.complete(),
-            summary.last_activity_at().max(self.update.updated_at),
-        );
+        let current_summary = required::<HistorySummariesFamily>(reader, &thread.id())?;
+        let next_activity = current_summary
+            .last_activity_at()
+            .max(self.update.updated_at);
         mutations.put::<DraftsCodec>(&next.id(), &next)?;
         mutations.put::<DraftByThreadCodec>(&thread.id(), &index)?;
-        mutations.put::<HistorySummariesCodec>(&thread.id(), &summary)?;
+        if next_activity != current_summary.last_activity_at() {
+            let summary = HistorySummaryRecord::new(
+                current_summary.thread_id(),
+                current_summary.revision().checked_next()?,
+                current_summary.thread_revision(),
+                current_summary.committed_tail(),
+                current_summary.selected_path_digest(),
+                current_summary.complete(),
+                next_activity,
+            );
+            mutations.put::<HistorySummariesCodec>(&thread.id(), &summary)?;
+        }
         Ok(())
     }
-}
-
-fn validate_prepared_manifest(
-    manifest: &ContentManifestRecord,
-    content: &PreparedContent,
-) -> Result<(), SyndicMutationError> {
-    if manifest.id() != content.id()
-        || manifest.encoding() != content.encoding()
-        || manifest.expected() != content.summary()
-        || SyndicContentId::from_digest(*content.summary().digest().as_bytes()) != content.id()
-    {
-        return Err(SyndicMutationError::ContentIdentityCollision);
-    }
-    if manifest.lifecycle() == ContentLifecycle::Sealed
-        && (manifest.chunk_count() != manifest.expected().chunk_count()
-            || manifest.encoded_bytes() != manifest.expected().encoded_bytes()
-            || manifest.chain_digest() != manifest.expected().digest())
-    {
-        return Err(SyndicMutationError::ContentManifestConflict);
-    }
-    Ok(())
-}
-
-fn validate_publishable(
-    manifest: &ContentManifestRecord,
-    expected: ContentSummary,
-) -> Result<(), SyndicMutationError> {
-    if manifest.expected() != expected
-        || manifest.id() != SyndicContentId::from_digest(*expected.digest().as_bytes())
-        || manifest.chunk_count() != expected.chunk_count()
-        || manifest.encoded_bytes() != expected.encoded_bytes()
-        || manifest.chain_digest() != expected.digest()
-    {
-        return Err(SyndicMutationError::ContentNotComplete);
-    }
-    Ok(())
 }

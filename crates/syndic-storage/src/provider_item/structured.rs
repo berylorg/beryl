@@ -2,6 +2,10 @@ use beryl_model::AssetId;
 
 use super::ProviderItemValidationError;
 
+mod locator;
+
+pub(crate) use locator::ProviderImageLocatorValidatorV1;
+
 /// Maximum admitted nesting of provider list and object containers.
 pub const PROVIDER_STRUCTURED_VALUE_MAX_DEPTH: usize = 128;
 
@@ -156,144 +160,6 @@ impl ProviderImageLocatorV1 {
     pub(crate) fn validate(&self) -> Result<(), ProviderItemValidationError> {
         ProviderImageLocatorValidatorV1::validate(self.0.as_bytes())
     }
-}
-
-/// Fixed-state validator shared by materialized and streaming image locators.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ProviderImageLocatorValidatorV1 {
-    scheme_length: usize,
-    colon_seen: bool,
-    remainder_seen: bool,
-    percent_digits_remaining: u8,
-    invalid: bool,
-    data_probe_position: u8,
-    data_probe_possible: bool,
-    data_scheme: bool,
-}
-
-impl ProviderImageLocatorValidatorV1 {
-    pub(crate) const fn new() -> Self {
-        Self {
-            scheme_length: 0,
-            colon_seen: false,
-            remainder_seen: false,
-            percent_digits_remaining: 0,
-            invalid: false,
-            data_probe_position: 0,
-            data_probe_possible: true,
-            data_scheme: false,
-        }
-    }
-
-    pub(crate) fn validate(bytes: &[u8]) -> Result<(), ProviderItemValidationError> {
-        let mut validator = Self::new();
-        validator.push(bytes);
-        validator.finish()
-    }
-
-    pub(crate) fn push(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            self.observe_data_scheme(byte);
-            self.observe_uri(byte);
-        }
-    }
-
-    pub(crate) fn finish(self) -> Result<(), ProviderItemValidationError> {
-        if self.data_scheme {
-            return Err(ProviderItemValidationError::DynamicImageDataUrlRequiresAsset);
-        }
-        if self.invalid
-            || !self.colon_seen
-            || self.scheme_length == 0
-            || !self.remainder_seen
-            || self.percent_digits_remaining != 0
-        {
-            return Err(ProviderItemValidationError::InvalidDynamicImageLocator);
-        }
-        Ok(())
-    }
-
-    fn observe_data_scheme(&mut self, byte: u8) {
-        const DATA_SCHEME: &[u8; 5] = b"data:";
-        if !self.data_probe_possible || self.data_scheme {
-            return;
-        }
-        if self.data_probe_position == 0 && byte.is_ascii_whitespace() {
-            return;
-        }
-        let expected = DATA_SCHEME[usize::from(self.data_probe_position)];
-        if byte.eq_ignore_ascii_case(&expected) {
-            self.data_probe_position += 1;
-            self.data_scheme = usize::from(self.data_probe_position) == DATA_SCHEME.len();
-        } else {
-            self.data_probe_possible = false;
-        }
-    }
-
-    fn observe_uri(&mut self, byte: u8) {
-        if !byte.is_ascii() || byte.is_ascii_whitespace() || byte.is_ascii_control() {
-            self.invalid = true;
-            return;
-        }
-        if !self.colon_seen {
-            if self.scheme_length == 0 {
-                if byte.is_ascii_alphabetic() {
-                    self.scheme_length = 1;
-                } else {
-                    self.invalid = true;
-                }
-            } else if byte == b':' {
-                self.colon_seen = true;
-            } else if byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.') {
-                self.scheme_length = self.scheme_length.saturating_add(1);
-            } else {
-                self.invalid = true;
-            }
-            return;
-        }
-
-        self.remainder_seen = true;
-        if self.percent_digits_remaining != 0 {
-            if byte.is_ascii_hexdigit() {
-                self.percent_digits_remaining -= 1;
-            } else {
-                self.invalid = true;
-                self.percent_digits_remaining = 0;
-            }
-        } else if byte == b'%' {
-            self.percent_digits_remaining = 2;
-        } else if !is_uri_character(byte) {
-            self.invalid = true;
-        }
-    }
-}
-
-const fn is_uri_character(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'-' | b'.'
-                | b'_'
-                | b'~'
-                | b':'
-                | b'/'
-                | b'?'
-                | b'#'
-                | b'['
-                | b']'
-                | b'@'
-                | b'!'
-                | b'$'
-                | b'&'
-                | b'\''
-                | b'('
-                | b')'
-                | b'*'
-                | b'+'
-                | b','
-                | b';'
-                | b'='
-        )
 }
 
 /// One ordered object entry. Order is retained exactly and is not map-sorted by this codec.

@@ -32,28 +32,54 @@ pub(super) fn records() -> Vec<FixtureRecord> {
     let empty_digest = empty_selected_path_digest();
     let selected = SelectedPathProof::new(None, thread_revision, empty_digest);
     let (content, content_records) = composer_content_records(&ComposerPayload::default());
+    let lineage = ThreadLineageProof::new(
+        Some(source_thread),
+        Some(source_thread),
+        ThreadLineageDepth::new(2).unwrap(),
+        child_thread_lineage_digest(
+            child_thread,
+            source_thread,
+            root_thread_lineage_digest(source_thread),
+        ),
+    );
+    let thread = ThreadRecord::new(
+        child_thread,
+        selected,
+        child_draft,
+        lineage,
+        ThreadImageLabelFrontiers::empty(),
+        Some(owner),
+    );
+    let execution = ThreadExecutionRecord::new(child_thread, super::source::execution_binding());
+    let attributes = syndic_storage::test_faults::open_branch_thread_attributes(child_thread);
+    let usage = ThreadUsageRecord::empty(child_thread);
+    let history = HistorySummaryRecord::new(
+        child_thread,
+        revision,
+        thread_revision,
+        None,
+        empty_digest,
+        true,
+        timestamp(5),
+    );
+    let catalog = ThreadCatalogSummaryRecord::initial(&thread, &execution, &attributes, &history);
 
     let mut records = vec![
-        FixtureRecord::Thread(ThreadRecord::new(
-            child_thread,
-            thread_revision,
-            None,
-            child_draft,
-            Some(source_thread),
-            Some(owner),
-            empty_digest,
-        )),
+        FixtureRecord::Thread(thread),
+        FixtureRecord::ThreadExecution(execution),
+        FixtureRecord::ThreadAttributes(attributes),
+        FixtureRecord::ThreadUsage(usage),
+        FixtureRecord::ThreadCatalogSummary(catalog),
         FixtureRecord::Draft(DraftRecord::new(
             child_draft,
             child_thread,
             draft_revision,
-            ConversationParent::Turn(source_turn),
-            Some(owner),
-            None,
+            DraftSubmissionIntent::DiscussionContext(owner),
             content,
             timestamp(5),
             timestamp(5),
         )),
+        FixtureRecord::ActivityQueryHead(ActivityQueryHeadRecord::empty(child_thread)),
         FixtureRecord::ContextEnvelope(ContextEnvelopeRecord::new(
             owner,
             ContextEnvelopeRevision::FIRST,
@@ -94,14 +120,7 @@ pub(super) fn records() -> Vec<FixtureRecord> {
             true,
             TranscriptBuildPhase::Complete,
         )),
-        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-            child_thread,
-            thread_revision,
-            None,
-            empty_digest,
-            true,
-            timestamp(5),
-        )),
+        FixtureRecord::HistorySummary(history),
         FixtureRecord::Binding(BindingRecord::new(
             child_thread,
             binding_revision,

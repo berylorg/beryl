@@ -243,6 +243,7 @@ pub enum SidecarStage {
     RenameFinal,
     OpenFinal,
     ReadFinal,
+    ConfirmHealth,
 }
 
 /// Why sidecar admission or verification did not produce a retained token.

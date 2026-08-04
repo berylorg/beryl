@@ -2,8 +2,8 @@ use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
 use beryl_model::ProjectionRevision;
 
 use crate::{
-    CanonicalItemKind, ItemProjectionBuildPhase, ItemProjectionBuildRecord,
-    ProjectionFormatVersion, SyndicMutationError, codec::*, domain::SyndicDomain,
+    ItemProjectionBuildPhase, ItemProjectionBuildRecord, ProjectionFormatVersion,
+    SyndicMutationError, codec::*, domain::SyndicDomain,
 };
 
 use super::{StartBuildMutation, lifecycle};
@@ -21,23 +21,14 @@ impl StartBuildMutation {
     ) -> Result<StartBuildRecords, SyndicMutationError> {
         let item = required::<CanonicalItemsFamily>(reader, &self.request.item_id)?;
         if item.revision() != self.request.expected_item_revision
-            || !matches!(
-                item.kind(),
-                CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-            )
+            || item.projection_source().is_none()
         {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
-        let content = item
-            .payload()
-            .content()
+        let source = item
+            .projection_source()
             .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
-        let manifest = required::<ContentManifestsFamily>(reader, &content.id())?;
-        if matches!(manifest.lifecycle(), crate::ContentLifecycle::Building)
-            || manifest.current_reference() != Some(content)
-        {
-            return Err(SyndicMutationError::ProjectionBuildConflict);
-        }
+        lifecycle::validate_projection_source(reader, &item, source)?;
         if let Some(head) = point::<ItemProjectionHeadsFamily>(reader, &item.id())?
             && head.lifecycle() == crate::ProjectionLifecycle::Current
             && head.source_item_revision() == item.revision()
@@ -63,13 +54,11 @@ impl StartBuildMutation {
         if self.request.generation != expected_generation {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
-        let seed = lifecycle::projection_seed(latest_build.as_ref(), latest_set.as_ref(), content)?;
+        let seed = lifecycle::projection_seed(latest_build.as_ref(), latest_set.as_ref(), source)?;
         let superseded = match latest_build {
             Some(build) => match build.phase() {
                 ItemProjectionBuildPhase::Parsing(checkpoint) => {
-                    if build.source_item_revision() == item.revision()
-                        && build.source_content() == content
-                    {
+                    if build.source_item_revision() == item.revision() && build.source() == source {
                         return Err(SyndicMutationError::ProjectionBuildConflict);
                     }
                     Some(ItemProjectionBuildRecord::new(
@@ -78,7 +67,7 @@ impl StartBuildMutation {
                         build.revision().checked_next()?,
                         build.format(),
                         build.source_item_revision(),
-                        build.source_content(),
+                        build.source(),
                         build.source_bytes(),
                         build.projection_count(),
                         build.resource_count(),
@@ -96,8 +85,8 @@ impl StartBuildMutation {
             ProjectionRevision::new(1).expect("initial build revision is nonzero"),
             ProjectionFormatVersion::V1,
             item.revision(),
-            content,
-            content.summary().logical_utf8_bytes(),
+            source,
+            source.logical_utf8_bytes(),
             seed.projection_count,
             seed.resource_count,
             seed.output_digest,

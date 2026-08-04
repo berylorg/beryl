@@ -11,6 +11,8 @@ use crate::{
 
 use super::SyndicPointReadLimit;
 
+mod publication;
+
 struct CasThreadReservationPublication<'a> {
     status: BindingPublicationStatus,
     thread: beryl_model::SyndicThreadId,
@@ -20,121 +22,6 @@ struct CasThreadReservationPublication<'a> {
 }
 
 impl SyndicStorage {
-    /// Reconciles one valid-binding publication through its immutable next revision.
-    pub fn valid_binding_publication_status(
-        &self,
-        store: &HomeStore,
-        request: &PublishValidBinding,
-        limit: SyndicPointReadLimit,
-    ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let revision = next_binding_revision(request.expected_binding_revision())?;
-        let usable = UsableCasBinding::new(
-            request.execution().clone(),
-            request.cas_thread_id().clone(),
-            request.represented_prefix(),
-            request.native_turn_count(),
-            request.tool_profile(),
-            request.lineage(),
-        );
-        let status = self.classify_binding_publication(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            BindingRecord::new(
-                request.thread_id(),
-                revision,
-                request.selected_path(),
-                BindingState::valid(usable),
-            ),
-            limit,
-        )?;
-        self.classify_cas_thread_reservation(
-            store,
-            CasThreadReservationPublication {
-                status,
-                thread: request.thread_id(),
-                cas_thread: request.cas_thread_id(),
-                revision,
-                stale: false,
-            },
-            limit,
-        )
-    }
-
-    /// Reconciles one stale-binding publication through its immutable next revision.
-    pub fn stale_binding_publication_status(
-        &self,
-        store: &HomeStore,
-        request: &PublishStaleBinding,
-        limit: SyndicPointReadLimit,
-    ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let revision = next_binding_revision(request.expected_binding_revision())?;
-        let status = self.classify_binding_publication(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            BindingRecord::new(
-                request.thread_id(),
-                revision,
-                request.selected_path(),
-                BindingState::stale(request.stale().clone()),
-            ),
-            limit,
-        )?;
-        self.classify_cas_thread_reservation(
-            store,
-            CasThreadReservationPublication {
-                status,
-                thread: request.thread_id(),
-                cas_thread: request.stale().cas_thread_id(),
-                revision,
-                stale: true,
-            },
-            limit,
-        )
-    }
-
-    /// Reconciles one atomic active-projection abandonment through its stale binding revision.
-    pub fn abandoned_active_binding_publication_status(
-        &self,
-        store: &HomeStore,
-        request: &AbandonActiveBinding,
-        limit: SyndicPointReadLimit,
-    ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        self.stale_binding_publication_status(
-            store,
-            &PublishStaleBinding::new(
-                request.thread_id(),
-                request.expected_binding_revision(),
-                request.selected_path(),
-                request.stale().clone(),
-            ),
-            limit,
-        )
-    }
-
-    /// Reconciles one unbound-binding publication through its immutable next revision.
-    pub fn unbound_binding_publication_status(
-        &self,
-        store: &HomeStore,
-        request: &PublishUnboundBinding,
-        limit: SyndicPointReadLimit,
-    ) -> Result<BindingPublicationStatus, SyndicReadError> {
-        let revision = next_binding_revision(request.expected_binding_revision())?;
-        self.classify_binding_publication(
-            store,
-            request.thread_id(),
-            request.expected_binding_revision(),
-            BindingRecord::new(
-                request.thread_id(),
-                revision,
-                request.selected_path(),
-                request.state().clone(),
-            ),
-            limit,
-        )
-    }
-
     /// Reconciles activation through its immutable active binding and execution snapshot.
     pub fn binding_activation_status(
         &self,
@@ -151,12 +38,20 @@ impl SyndicStorage {
         else {
             return Ok(BindingPublicationStatus::Collision);
         };
-        let BindingState::Valid(usable) = prior.record().state() else {
+        let BindingState::Valid(usable) = prior.state() else {
             return Ok(BindingPublicationStatus::Collision);
         };
-        if prior.record().selected_path() != request.selected_path() {
+        if !request
+            .selected_path()
+            .is_compatible_descendant_of(prior.selected_path())
+        {
             return Ok(BindingPublicationStatus::Collision);
         }
+        let Some(usable) =
+            usable.advance_represented_source_revision(request.selected_path().thread_revision())
+        else {
+            return Ok(BindingPublicationStatus::Collision);
+        };
         let revision = next_binding_revision(request.expected_binding_revision())?;
         let activation_gate_revision =
             request
@@ -211,9 +106,9 @@ impl SyndicStorage {
                 Ok(
                     if snapshot
                         .as_ref()
-                        .is_some_and(|stored| stored.record() == &expected_snapshot)
+                        .is_some_and(|stored| stored == &expected_snapshot)
                         && membership.as_ref().is_some_and(|stored| {
-                            stored.record()
+                            stored
                                 == &expected_membership(
                                     usable.cas_thread_id(),
                                     request.thread_id(),
@@ -221,11 +116,10 @@ impl SyndicStorage {
                                 )
                         })
                         && owner.as_ref().is_some_and(|owner| {
-                            owner.record().thread_id() == request.thread_id()
-                                && owner.record().first_binding_revision() <= revision
-                                && owner.record().latest_binding_revision() >= revision
+                            owner.thread_id() == request.thread_id()
+                                && owner.first_binding_revision() <= revision
+                                && owner.latest_binding_revision() >= revision
                                 && owner
-                                    .record()
                                     .retired_binding_revision()
                                     .is_none_or(|retired| retired > revision)
                         })
@@ -243,15 +137,14 @@ impl SyndicStorage {
                     if snapshot.is_none()
                         && membership.is_none()
                         && owner.as_ref().is_some_and(|owner| {
-                            owner.record().thread_id() == request.thread_id()
-                                && owner.record().latest_binding_revision()
+                            owner.thread_id() == request.thread_id()
+                                && owner.latest_binding_revision()
                                     == request.expected_binding_revision()
-                                && owner.record().retired_binding_revision().is_none()
+                                && owner.retired_binding_revision().is_none()
                         })
                         && gate.as_ref().is_some_and(|stored| {
-                            stored.record().revision() == request.expected_gate_revision()
-                                && stored.record().state()
-                                    == &InputGateState::PendingTurn(request.turn_id())
+                            stored.revision() == request.expected_gate_revision()
+                                && stored.state() == &InputGateState::PendingTurn(request.turn_id())
                         })
                     {
                         BindingPublicationStatus::Prior
@@ -280,10 +173,10 @@ impl SyndicStorage {
         else {
             return Ok(BindingPublicationStatus::Collision);
         };
-        let BindingState::Active(active) = prior.record().state() else {
+        let BindingState::Active(active) = prior.state() else {
             return Ok(BindingPublicationStatus::Collision);
         };
-        if prior.record().selected_path() != request.selected_path()
+        if prior.selected_path() != request.selected_path()
             || active.snapshot_id() != request.snapshot_id()
             || active.turn_id() != request.turn_id()
         {
@@ -292,10 +185,10 @@ impl SyndicStorage {
         let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)? else {
             return Ok(BindingPublicationStatus::Collision);
         };
-        if snapshot.record().thread_id() != request.thread_id()
-            || snapshot.record().binding_revision() != request.expected_binding_revision()
-            || snapshot.record().activation_gate_revision() != request.expected_gate_revision()
-            || snapshot.record().active_turn_id() != request.turn_id()
+        if snapshot.thread_id() != request.thread_id()
+            || snapshot.binding_revision() != request.expected_binding_revision()
+            || snapshot.activation_gate_revision() != request.expected_gate_revision()
+            || snapshot.active_turn_id() != request.turn_id()
             || self
                 .active_cas_turn(store, request.snapshot_id(), limit)?
                 .is_some()
@@ -337,30 +230,25 @@ impl SyndicStorage {
         Ok(match status {
             BindingPublicationStatus::Exact
                 if gate.as_ref().is_some_and(|stored| {
-                    stored.record().revision() == expected_next_gate
-                        && stored.record().state()
-                            == &InputGateState::PendingTurn(request.turn_id())
-                        && stored.record().live_count() == 0
-                        && stored.record().live_logical_utf8_bytes() == 0
+                    stored.revision() == expected_next_gate
+                        && stored.state() == &InputGateState::PendingTurn(request.turn_id())
+                        && stored.live_count() == 0
+                        && stored.live_logical_utf8_bytes() == 0
                 }) =>
             {
                 BindingPublicationStatus::Exact
             }
             BindingPublicationStatus::Prior
                 if gate.as_ref().is_some_and(|stored| {
-                    stored.record().revision() == request.expected_gate_revision()
+                    stored.revision() == request.expected_gate_revision()
                         && matches!(
-                            stored.record().state(),
-                            InputGateState::AwaitingSteering(pending)
-                                if pending.binding_revision()
-                                    == request.expected_binding_revision()
-                                    && pending.snapshot_id() == request.snapshot_id()
-                                    && pending.active_turn_id() == request.turn_id()
-                                    && pending.cas_thread_id()
-                                        == active.usable().cas_thread_id()
+                            stored.state(),
+                            InputGateState::AwaitingSteering(turn)
+                                if *turn == request.turn_id()
                         )
-                        && stored.record().live_count() == 0
-                        && stored.record().live_logical_utf8_bytes() == 0
+                        && stored.selected_route().is_some()
+                        && stored.live_count() == 0
+                        && stored.live_logical_utf8_bytes() == 0
                 }) =>
             {
                 BindingPublicationStatus::Prior
@@ -390,12 +278,11 @@ impl SyndicStorage {
                 ActiveCasTurnPublicationStatus::Collision
             });
         };
-        let stored = primary.record();
+        let stored = primary;
         let Some(snapshot) = self.execution_snapshot(store, request.snapshot_id(), limit)? else {
             return Ok(ActiveCasTurnPublicationStatus::Collision);
         };
         let post_turn_native_count = snapshot
-            .record()
             .represented_base_native_turn_count()
             .checked_next()
             .map_err(|_| {
@@ -422,10 +309,10 @@ impl SyndicStorage {
             post_turn_native_count,
         );
         Ok(
-            if stored == &expected_primary
+            if stored == expected_primary
                 && reverse
                     .as_ref()
-                    .is_some_and(|record| record.record() == &expected_reverse)
+                    .is_some_and(|record| record == &expected_reverse)
             {
                 ActiveCasTurnPublicationStatus::Exact
             } else {
@@ -450,7 +337,7 @@ impl SyndicStorage {
             },
             limit,
         )? {
-            Some(stored) => Ok(if stored.record() == &expected {
+            Some(stored) => Ok(if stored == expected {
                 BindingPublicationStatus::Exact
             } else {
                 BindingPublicationStatus::Collision
@@ -460,7 +347,9 @@ impl SyndicStorage {
                 Ok(
                     if current.as_ref().is_some_and(|current| {
                         current.head().revision() == prior_revision
-                            && current.binding().selected_path() == expected.selected_path()
+                            && expected
+                                .selected_path()
+                                .is_compatible_descendant_of(current.binding().selected_path())
                     }) {
                         BindingPublicationStatus::Prior
                     } else {
@@ -487,20 +376,19 @@ impl SyndicStorage {
         Ok(match (publication.status, owner, membership) {
             (BindingPublicationStatus::Collision, _, _) => BindingPublicationStatus::Collision,
             (BindingPublicationStatus::Exact, Some(owner), Some(membership))
-                if owner.record().thread_id() == publication.thread
-                    && owner.record().first_binding_revision() <= publication.revision
-                    && owner.record().latest_binding_revision() >= publication.revision
-                    && membership.record()
-                        == &expected_membership(
+                if owner.thread_id() == publication.thread
+                    && owner.first_binding_revision() <= publication.revision
+                    && owner.latest_binding_revision() >= publication.revision
+                    && membership
+                        == expected_membership(
                             publication.cas_thread,
                             publication.thread,
                             publication.revision,
                         )
                     && if publication.stale {
-                        owner.record().retired_binding_revision() == Some(publication.revision)
+                        owner.retired_binding_revision() == Some(publication.revision)
                     } else {
                         owner
-                            .record()
                             .retired_binding_revision()
                             .is_none_or(|retired| retired > publication.revision)
                     } =>
@@ -509,9 +397,9 @@ impl SyndicStorage {
             }
             (BindingPublicationStatus::Prior, None, None) => BindingPublicationStatus::Prior,
             (BindingPublicationStatus::Prior, Some(owner), None)
-                if owner.record().thread_id() == publication.thread
-                    && owner.record().latest_binding_revision() < publication.revision
-                    && owner.record().retired_binding_revision().is_none() =>
+                if owner.thread_id() == publication.thread
+                    && owner.latest_binding_revision() < publication.revision
+                    && owner.retired_binding_revision().is_none() =>
             {
                 BindingPublicationStatus::Prior
             }
@@ -525,8 +413,7 @@ impl SyndicStorage {
         cas_thread: &beryl_model::CasThreadId,
         revision: beryl_model::BindingRevision,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<super::SyndicStoredRecord<CasThreadBindingIndexRecord>>, SyndicReadError>
-    {
+    ) -> Result<Option<CasThreadBindingIndexRecord>, SyndicReadError> {
         self.point::<CasThreadBindingIndexFamily>(
             store,
             CasThreadBindingKey::Record(cas_thread.clone(), revision),

@@ -153,6 +153,8 @@ pub enum DomainRegistrationStage {
     CommitRegistry,
     /// Complete the registration durability barrier.
     PersistRegistry,
+    /// Confirm the dependency's retained maintenance health before publication.
+    ConfirmHealth,
 }
 
 /// Why a typed logical domain could not join this home generation.
@@ -184,10 +186,11 @@ pub enum DomainRegistrationError {
         domain: &'static str,
     },
 
-    /// A new registration found a physical family without registry authority.
-    #[error("unregistered physical keyspace `{keyspace}` already exists")]
+    /// A fresh registration found a family already owned in-process or containing unregistered
+    /// records, so the physical keyspace could not be adopted.
+    #[error("physical keyspace `{keyspace}` cannot be adopted by a fresh domain registration")]
     UnexpectedKeyspace {
-        /// Existing physical keyspace name.
+        /// Conflicting or nonempty physical keyspace name.
         keyspace: String,
     },
 
@@ -285,6 +288,20 @@ pub enum DomainValidationError {
     /// A panic poisoned the in-process generation lock.
     #[error("the Beryl-home generation lock is poisoned")]
     GenerationPoisoned,
+    /// Fjall could not capture the coherent validation snapshot.
+    #[error("domain validation could not capture a coherent snapshot: {source}")]
+    Snapshot {
+        /// Engine source hidden behind the package boundary.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+    /// Fjall reported retained maintenance failure before validation could publish success.
+    #[error("domain validation could not confirm storage health: {source}")]
+    Health {
+        /// Stable classified engine source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
     /// A typed home-store read or sidecar verification failed.
     #[error("domain `{domain}` could not validate authoritative records: {source}")]
     Access {
@@ -314,6 +331,13 @@ pub enum DomainHandleError {
     /// A panic poisoned the in-process generation lock.
     #[error("the Beryl-home generation lock is poisoned")]
     GenerationPoisoned,
+    /// Fjall reported retained maintenance failure before reacquisition could publish.
+    #[error("domain handle reacquisition could not confirm storage health: {source}")]
+    StorageHealth {
+        /// Stable classified engine source.
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
     /// The requested typed domain was never registered in this process.
     #[error("domain `{domain}` is not registered in this home generation")]
     NotRegistered {

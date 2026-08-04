@@ -8,7 +8,9 @@ Mount-into: main-window.user-input-panel
 
 The composer feature mounts one project-local `conversation composer` in this slot. It is pinned below any branch-discussion status strip and above the global status line inside the conversation column and receives the selected Syndic thread's current durable draft.
 
-The feature configures the composer's external `text-input` dependency as multiline, editable, Enter-propagates, atom-clipboard-propagates, and rich-paste-propagates. It owns the resulting submission, replacement-edit, clipboard-marker, and paste commands.
+The feature configures the composer's external `text-input` dependency as range-backed multiline,
+editable, Enter-propagates, atom-clipboard-propagates, and rich-paste-propagates. It owns the
+resulting submission, replacement-edit, clipboard-marker, and paste commands.
 
 The feature supplies the composer height clamp as half the OS-window height, further constrained to preserve the transcript-region minimum height. The canonical widget grows and shrinks to wrapped content within that allocation and owns inner editor overflow.
 
@@ -20,7 +22,8 @@ During selected-thread activation, the feature keeps the prior coherent composer
 
 When the backend-runtime-recovery feature mounts its `native lineage recovery prompt` into the same
 slot, the ordinary composer is not visible or interactive. The composer feature retains its exact
-editor model, caret, selection, undo history, inner scroll position, and draft binding without
+bounded resident editor ranges, caret, compact selection, bounded undo frontier, inner scroll
+position, and draft binding without
 adding recovery controls to the canonical `conversation composer` widget. Successful recovery
 restores that retained composer when no already-admitted turn owns the input.
 

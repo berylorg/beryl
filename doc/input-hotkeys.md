@@ -65,8 +65,16 @@ Windows-first behavior is the canonical target for this contract.
 - `Ctrl+Insert` copies the selected range to the system clipboard.
 - `Ctrl+X` cuts the selected range to the system clipboard.
 - `Shift+Delete` cuts the selected range to the system clipboard.
+- When a platform clipboard representation requires contiguous memory, the owning feature checks
+  the logical selection against its admitted clipboard limit before reconstruction. Rejection is
+  explicit, preserves the selection, and makes cut non-destructive; the feature contract owns any
+  streaming save or export alternative.
 - `Ctrl+V` pastes system clipboard text at the caret or replaces the current selection.
 - `Shift+Insert` pastes system clipboard text at the caret or replaces the current selection.
+- A feature may complete a large paste asynchronously only when its feature contract defines the
+  visible pending, cancellation, failure, and atomic-edit behavior. Clipboard format and size are
+  preflighted before content-dependent allocation; an unavailable oversized representation does not
+  partially mutate the field.
 - `Ctrl+Z` undoes the most recent edit operation in the focused field.
 - `Ctrl+Y` redoes the most recently undone edit operation.
 - `Ctrl+Shift+Z` may be accepted as a redo alias, but `Ctrl+Y` remains the canonical Windows redo binding.

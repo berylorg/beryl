@@ -33,18 +33,16 @@ fn target_entry() -> CurrentTranscriptEntryProof {
     )
 }
 
-fn replacement_draft(
-    target: SyndicTurnId,
-    selected: SelectedPathProof,
-    parent: ConversationParent,
-) -> FixtureRecord {
+fn replacement_draft(target: SyndicTurnId, selected: SelectedPathProof) -> FixtureRecord {
     FixtureRecord::Draft(DraftRecord::new(
         draft_id(31),
         id(30),
         DraftRevision::new(2).unwrap(),
-        parent,
-        None,
-        Some(ReplacementEditIntent::new(target, selected, target_entry())),
+        DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
+            target,
+            selected,
+            target_entry(),
+        )),
         empty_composer_content(),
         timestamp(1),
         timestamp(4),
@@ -52,11 +50,7 @@ fn replacement_draft(
 }
 
 fn valid_replacement_mutation() -> FixtureBatch {
-    replacement_mutation(replacement_draft(
-        source_turn(),
-        selected_source(),
-        ConversationParent::Turn(source_turn()),
-    ))
+    replacement_mutation(replacement_draft(source_turn(), selected_source()))
 }
 
 fn replacement_mutation(draft: FixtureRecord) -> FixtureBatch {
@@ -75,6 +69,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
     let turn = source_turn();
     let item = SyndicItemId::from_bytes([27; 16]);
     let revision = ProjectionRevision::new(1).unwrap();
+    let item_revision = ProjectionRevision::new(4).unwrap();
     let content = empty_composer_content();
     let projection_record = fixture_empty_projection(item, turn);
     let projection = projection_record.id();
@@ -88,7 +83,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
         TranscriptGeneration::FIRST,
         TranscriptPosition::FIRST,
         source_item(),
-        revision,
+        item_revision,
         ItemProjectionGeneration::FIRST,
         source_projection(),
         revision,
@@ -98,7 +93,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
         TranscriptGeneration::FIRST,
         TranscriptPosition::new(2).unwrap(),
         item,
-        revision,
+        item_revision,
         ItemProjectionGeneration::FIRST,
         projection,
         projection_record.revision(),
@@ -134,7 +129,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
             TurnItemOrdinal::new(2).unwrap(),
             revision,
             content,
-            0,
+            None,
         )),
         FixtureRecord::TurnItem(TurnItemIndexRecord::new(
             turn,
@@ -153,8 +148,8 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
             item,
             ItemProjectionGeneration::FIRST,
             ProjectionFormatVersion::V1,
-            revision,
-            content,
+            item_revision,
+            ProjectionTextSource::composer(content),
             0,
             1,
             0,
@@ -165,7 +160,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
             MarkdownParserCheckpoint::new(
                 0,
                 0,
-                ContentPieceOrdinal::FIRST,
+                ProjectionTextSourceCursor::Composer(ContentPieceOrdinal::FIRST),
                 0,
                 Box::<str>::default(),
                 false,
@@ -176,7 +171,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
         FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
             item,
             revision,
-            revision,
+            item_revision,
             ItemProjectionGeneration::FIRST,
             ProjectionLifecycle::Current,
         )),
@@ -217,7 +212,7 @@ fn replacement_seed_records() -> Vec<FixtureRecord> {
         )),
         FixtureRecord::TranscriptViewEntry(target_entry),
     ]);
-    correlate_source_user_item(&mut records, item, revision, content, 0, timestamp(4));
+    correlate_source_user_item(&mut records, item, revision, content, None, timestamp(4));
     records
 }
 
@@ -241,7 +236,9 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
         )
         .unwrap()
         .unwrap();
-    let intent = draft.record().replacement_edit_intent().unwrap();
+    let DraftSubmissionIntent::Replacement(intent) = draft.submission_intent() else {
+        panic!("replacement intent did not roundtrip");
+    };
     assert_eq!(intent.target_turn_id(), source_turn());
     assert_eq!(intent.selected_path(), selected_source());
     assert_eq!(intent.transcript_entry(), target_entry());
@@ -254,7 +251,7 @@ fn replacement_intent_roundtrips_with_exact_selected_path_proof() {
 }
 
 #[test]
-fn replacement_intent_rejects_stale_proof_changed_parent_and_wrong_entry_target() {
+fn replacement_intent_rejects_stale_proof_and_wrong_entry_target() {
     exercise_case(
         "replacement-selected-proof",
         "replacement edit selected-path proof disagrees with current thread",
@@ -265,23 +262,7 @@ fn replacement_intent_rejects_stale_proof_changed_parent_and_wrong_entry_target(
                 ThreadRevision::new(1).unwrap(),
                 root_turn_chain_digest(root()),
             );
-            replacement_mutation(replacement_draft(
-                source_turn(),
-                selected,
-                ConversationParent::Turn(source_turn()),
-            ))
-        },
-    );
-    exercise_case(
-        "replacement-parent",
-        "ordinary current draft parent disagrees with committed tail",
-        replacement_seed,
-        || {
-            replacement_mutation(replacement_draft(
-                source_turn(),
-                selected_source(),
-                ConversationParent::Turn(root()),
-            ))
+            replacement_mutation(replacement_draft(source_turn(), selected))
         },
     );
     exercise_case(
@@ -292,7 +273,6 @@ fn replacement_intent_rejects_stale_proof_changed_parent_and_wrong_entry_target(
             replacement_mutation(replacement_draft(
                 SyndicTurnId::from_bytes([28; 16]),
                 selected_source(),
-                ConversationParent::Turn(source_turn()),
             ))
         },
     );
@@ -305,9 +285,7 @@ fn replacement_intent_rejects_stale_proof_changed_parent_and_wrong_entry_target(
                 draft_id(2),
                 id(1),
                 DraftRevision::new(1).unwrap(),
-                ConversationParent::Root,
-                None,
-                Some(ReplacementEditIntent::new(
+                DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
                     SyndicTurnId::from_bytes([3; 16]),
                     SelectedPathProof::new(
                         None,
@@ -385,9 +363,7 @@ fn replacement_intent_rejects_provider_operation_target() {
                     draft,
                     thread,
                     DraftRevision::new(2).unwrap(),
-                    ConversationParent::Root,
-                    None,
-                    Some(ReplacementEditIntent::new(
+                    DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
                         target,
                         selected,
                         CurrentTranscriptEntryProof::new(
@@ -421,9 +397,7 @@ fn replacement_validation_uses_one_exact_current_entry_instead_of_ancestry_walk(
                 draft_id(31),
                 id(30),
                 DraftRevision::new(2).unwrap(),
-                ConversationParent::Turn(source_turn()),
-                None,
-                Some(ReplacementEditIntent::new(
+                DraftSubmissionIntent::Replacement(ReplacementEditIntent::new(
                     source_turn(),
                     selected_source(),
                     CurrentTranscriptEntryProof::new(

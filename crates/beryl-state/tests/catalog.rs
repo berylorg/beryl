@@ -9,15 +9,16 @@ use beryl_home_store::{
     ReadError,
 };
 use beryl_model::{
-    AdmittedHostPath, Availability, ClaimRevision, PathFlavor, RootId, RuntimeId, SyndicThreadId,
-    ThreadRevision, WindowId,
+    AdmittedHostPath, Availability, ClaimRevision, PathFlavor, ProjectionRevision, RootId,
+    RuntimeId, SyndicPathDigest, SyndicThreadId, WindowId,
 };
 use catalog::{
-    CATALOG_MAX_STORED_RECENCY_BYTES, CatalogArchiveSummary, CatalogAvailabilitySummary,
-    CatalogClaimKind, CatalogClaimSummary, CatalogExecutionSummary, CatalogFacts, CatalogFreshness,
-    CatalogLineageSummary, CatalogMutationError, CatalogPointReadLimit, CatalogReadError,
-    CatalogRowExpectation, CatalogSearchFields, CatalogSourceRevisions, CatalogState,
-    CatalogTitleCandidate, CatalogTitleFacts, CatalogTitleSource, MarkCatalogRowStale,
+    CATALOG_MAX_STORED_RECENCY_BYTES, CATALOG_NORMALIZATION_PROFILE, CATALOG_QUERY_MAX_BYTES,
+    CatalogArchiveSummary, CatalogAvailabilitySummary, CatalogClaimKind, CatalogClaimSummary,
+    CatalogExecutionSummary, CatalogFacts, CatalogFreshness, CatalogLineageSummary,
+    CatalogMutationError, CatalogNormalizationProfile, CatalogNormalizedQuery,
+    CatalogPointReadLimit, CatalogReadError, CatalogResolvedTitle, CatalogRowExpectation,
+    CatalogSourceRevisions, CatalogState, CatalogTitleSource, MarkCatalogRowStale,
     PublishCatalogRow,
 };
 
@@ -42,8 +43,7 @@ fn execute(
 
 fn sources(revision: u64, claimed: bool) -> CatalogSourceRevisions {
     CatalogSourceRevisions::new(
-        ThreadRevision::new(revision).unwrap(),
-        RecordRevision::new(revision).unwrap(),
+        ProjectionRevision::new(revision).unwrap(),
         RecordRevision::new(revision).unwrap(),
         RecordRevision::new(revision).unwrap(),
         claimed.then(|| ClaimRevision::new(revision).unwrap()),
@@ -52,16 +52,10 @@ fn sources(revision: u64, claimed: bool) -> CatalogSourceRevisions {
 
 fn facts(
     thread_byte: u8,
-    source_revision: u64,
     activity: u64,
-    generated: Option<&str>,
-    syndic: Option<&str>,
+    title: CatalogResolvedTitle,
     claimed: bool,
 ) -> CatalogFacts {
-    let title = |text: &str| {
-        CatalogTitleCandidate::new(text, ThreadRevision::new(source_revision).unwrap()).unwrap()
-    };
-    let titles = CatalogTitleFacts::new(generated.map(title), syndic.map(title));
     let execution = CatalogExecutionSummary::new(
         RuntimeId::from_bytes([10; 16]),
         RootId::from_bytes([11; 16]),
@@ -80,20 +74,15 @@ fn facts(
         CatalogClaimSummary::Unclaimed
     };
     CatalogFacts::new(
-        titles,
+        title,
         execution,
         CatalogArchiveSummary::Ordinary,
         UnixMillis::new(activity),
+        true,
         claim,
         CatalogLineageSummary::TopLevel,
-        CatalogSearchFields::from_admitted_normalized(
-            generated.or(syndic).unwrap_or("untitled").to_lowercase(),
-            "host",
-            r"c:\codex\codex.exe",
-            r"c:\work\beryl",
-        )
-        .unwrap(),
     )
+    .unwrap()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -104,22 +93,14 @@ fn publish(
     expectation: CatalogRowExpectation,
     source_revision: u64,
     activity: u64,
-    generated: Option<&str>,
-    syndic: Option<&str>,
+    title: CatalogResolvedTitle,
 ) -> Result<(), CommandError> {
     let thread_id = SyndicThreadId::from_bytes([thread_byte; 16]);
     let mutation = PublishCatalogRow::new(
         thread_id,
         expectation,
         sources(source_revision, false),
-        facts(
-            thread_byte,
-            source_revision,
-            activity,
-            generated,
-            syndic,
-            false,
-        ),
+        facts(thread_byte, activity, title, false),
     )
     .unwrap();
     execute(store, state, |revision| state.publish(revision, mutation))
@@ -134,30 +115,70 @@ fn contributor_source<T: std::error::Error + 'static>(error: &CommandError) -> O
 }
 
 #[test]
-fn title_precedence_and_caller_admitted_search_are_exact() {
-    let titles = CatalogTitleFacts::new(
-        Some(CatalogTitleCandidate::new("Generated", ThreadRevision::new(2).unwrap()).unwrap()),
-        Some(CatalogTitleCandidate::new("History", ThreadRevision::new(1).unwrap()).unwrap()),
+fn resolved_title_and_catalog_owned_search_are_exact() {
+    let generated = CatalogResolvedTitle::generated("Generated").unwrap();
+    assert_eq!(generated.text(), Some("Generated"));
+    assert_eq!(generated.source(), CatalogTitleSource::Generated);
+
+    let history = CatalogResolvedTitle::history_derived("History").unwrap();
+    assert_eq!(history.text(), Some("History"));
+    assert_eq!(history.source(), CatalogTitleSource::HistoryDerived);
+
+    let absent = CatalogResolvedTitle::absent();
+    assert_eq!(absent.text(), None);
+    assert_eq!(absent.source(), CatalogTitleSource::Absent);
+    assert!(CatalogResolvedTitle::generated("---").is_err());
+    assert!(CatalogResolvedTitle::history_derived(" ---").is_ok());
+    assert!(CatalogResolvedTitle::history_derived("History ").is_err());
+    assert!(CatalogResolvedTitle::history_derived("-".repeat(80)).is_ok());
+    assert!(CatalogResolvedTitle::history_derived("-".repeat(81)).is_err());
+
+    let normalized_facts = facts(
+        1,
+        1,
+        CatalogResolvedTitle::history_derived("Straße").unwrap(),
+        false,
     );
-    assert_eq!(titles.display_title(), "Generated");
-    assert_eq!(titles.display_source(), CatalogTitleSource::Generated);
+    assert_eq!(normalized_facts.search().title(), "strasse");
+    assert_eq!(
+        CatalogNormalizedQuery::new("STRASSE").unwrap().as_str(),
+        "strasse"
+    );
+    assert!(CatalogNormalizedQuery::new("\u{00ad}").unwrap().is_empty());
+    assert!(
+        CatalogNormalizedQuery::new("\u{00ad}".repeat(CATALOG_QUERY_MAX_BYTES / 2 + 1)).is_err()
+    );
+    assert!(CatalogNormalizedQuery::new("\u{fdfa}".repeat(2_000)).is_err());
+    let profile: CatalogNormalizationProfile = CATALOG_NORMALIZATION_PROFILE;
+    assert_eq!(profile.version(), 1);
+    assert_eq!(profile.unicode_version(), (17, 0, 0));
 
-    let history = CatalogTitleFacts::new(None, titles.syndic().cloned());
-    assert_eq!(history.display_title(), "History");
-    assert_eq!(history.display_source(), CatalogTitleSource::Syndic);
+    let absent = facts(2, 2, CatalogResolvedTitle::absent(), false);
+    assert_eq!(absent.search().title(), "");
+    assert!(
+        CatalogFacts::new(
+            CatalogResolvedTitle::history_derived("\u{fdfa}".repeat(80)).unwrap(),
+            absent.execution().clone(),
+            CatalogArchiveSummary::Ordinary,
+            UnixMillis::new(2),
+            true,
+            CatalogClaimSummary::Unclaimed,
+            CatalogLineageSummary::TopLevel,
+        )
+        .is_err()
+    );
 
-    let untitled = CatalogTitleFacts::default();
-    assert_eq!(untitled.display_title(), "Untitled");
-    assert_eq!(untitled.display_source(), CatalogTitleSource::Untitled);
-
-    let admitted = CatalogSearchFields::from_admitted_normalized(
-        "already folded",
-        "host",
-        r"c:\codex\codex.exe",
-        r"c:\work\beryl",
+    let lineage = CatalogLineageSummary::descendant(
+        SyndicThreadId::from_bytes([9; 16]),
+        u64::MAX,
+        SyndicPathDigest::from_bytes([7; 32]),
     )
     .unwrap();
-    assert_eq!(admitted.title(), "already folded");
+    assert_eq!(lineage.depth(), u64::MAX);
+    assert_eq!(
+        lineage.path_digest(),
+        Some(SyndicPathDigest::from_bytes([7; 32]))
+    );
 }
 
 #[test]
@@ -172,8 +193,7 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
             CatalogRowExpectation::Missing,
             1,
             100,
-            None,
-            Some("History"),
+            CatalogResolvedTitle::history_derived("History").unwrap(),
         )
         .unwrap();
     }
@@ -214,11 +234,10 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
         &store,
         state,
         2,
-        CatalogRowExpectation::Revision(thread_two.row().revision()),
+        CatalogRowExpectation::Revision(thread_two.revision()),
         2,
         200,
-        Some("Generated"),
-        Some("History"),
+        CatalogResolvedTitle::generated("Generated").unwrap(),
     )
     .unwrap();
 
@@ -228,11 +247,18 @@ fn recent_first_order_is_stable_and_index_moves_atomically() {
         page.rows()[0].thread_id(),
         SyndicThreadId::from_bytes([2; 16])
     );
-    assert_eq!(page.rows()[0].display_title(), "Generated");
+    assert_eq!(page.rows()[0].title().text(), Some("Generated"));
+    assert_eq!(page.rows()[0].title_source(), CatalogTitleSource::Generated);
 }
 
 #[test]
-fn point_and_page_reads_report_exact_stored_byte_costs() {
+fn point_limits_and_page_costs_cover_stored_and_decoded_bytes() {
+    assert_eq!(
+        CatalogPointReadLimit::schema_maximum().max_bytes(),
+        4 + 256 * 1024,
+        "the point limit covers only the stored value envelope, not its request key",
+    );
+
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
     publish(
@@ -242,36 +268,20 @@ fn point_and_page_reads_report_exact_stored_byte_costs() {
         CatalogRowExpectation::Missing,
         1,
         100,
-        None,
-        None,
+        CatalogResolvedTitle::absent(),
     )
     .unwrap();
 
     let thread_id = SyndicThreadId::from_bytes([1; 16]);
-    let generous = state
+    let row = state
         .row(&store, thread_id, CatalogPointReadLimit::schema_maximum())
         .unwrap()
         .unwrap();
-    let exact = generous.stored_bytes();
-    assert!(exact > 0);
-    assert_eq!(
-        state
-            .row(
-                &store,
-                thread_id,
-                CatalogPointReadLimit::new(exact).unwrap()
-            )
-            .unwrap()
-            .unwrap()
-            .stored_bytes(),
-        exact
-    );
+    assert_eq!(row.thread_id(), thread_id);
+    assert!(row.facts().complete());
+    assert_eq!(row.facts().search().title(), "");
     let error = state
-        .row(
-            &store,
-            thread_id,
-            CatalogPointReadLimit::new(exact - 1).unwrap(),
-        )
+        .row(&store, thread_id, CatalogPointReadLimit::new(1).unwrap())
         .unwrap_err();
     assert!(matches!(
         error,
@@ -286,7 +296,9 @@ fn point_and_page_reads_report_exact_stored_byte_costs() {
         )
         .unwrap();
     assert_eq!(page.rows().len(), 1);
-    let exact_page = page.stored_bytes();
+    assert!(page.stored_bytes() > 0);
+    assert!(page.decoded_bytes() > 0);
+    let exact_page = page.stored_bytes().max(page.decoded_bytes());
     assert!(
         state
             .recency_page(&store, None, CursorReadLimits::new(1, exact_page).unwrap(),)
@@ -298,6 +310,7 @@ fn point_and_page_reads_report_exact_stored_byte_costs() {
 fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
     let directory = tempfile::tempdir().unwrap();
     let (store, state) = open(directory.path());
+    let visible_title = "Stra\u{00df}e";
     publish(
         &store,
         state,
@@ -305,8 +318,7 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
         CatalogRowExpectation::Missing,
         1,
         100,
-        None,
-        Some("History"),
+        CatalogResolvedTitle::history_derived(visible_title).unwrap(),
     )
     .unwrap();
     let current = state
@@ -317,8 +329,10 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
         )
         .unwrap()
         .unwrap();
-    let sources = current.row().sources();
-    let command = MarkCatalogRowStale::new(current.row().thread_id(), current.row().revision());
+    assert_eq!(current.title().text(), Some(visible_title));
+    assert_eq!(current.facts().search().title(), "strasse");
+    let sources = current.sources();
+    let command = MarkCatalogRowStale::new(current.thread_id(), current.revision());
     execute(&store, state, |revision| {
         state.mark_stale(revision, command)
     })
@@ -344,8 +358,14 @@ fn stale_marker_preserves_sources_and_recency_copy_across_reopen() {
         )
         .unwrap()
         .unwrap();
-    assert_eq!(row.row().freshness(), CatalogFreshness::Stale);
-    assert_eq!(row.row().sources(), sources);
+    assert_eq!(row.freshness(), CatalogFreshness::Stale);
+    assert_eq!(row.sources(), sources);
+    assert_eq!(row.title().text(), Some(visible_title));
+    assert_eq!(row.facts().search().title(), "strasse");
+    assert_eq!(
+        CatalogNormalizedQuery::new("STRASSE").unwrap().as_str(),
+        row.facts().search().title(),
+    );
 }
 
 #[test]
@@ -359,8 +379,7 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
         CatalogRowExpectation::Missing,
         2,
         100,
-        None,
-        Some("History"),
+        CatalogResolvedTitle::history_derived("History").unwrap(),
     )
     .unwrap();
     let current = state
@@ -375,17 +394,16 @@ fn publish_rejects_regressing_authoritative_source_revisions() {
         &store,
         state,
         1,
-        CatalogRowExpectation::Revision(current.row().revision()),
+        CatalogRowExpectation::Revision(current.revision()),
         1,
         101,
-        None,
-        Some("Older"),
+        CatalogResolvedTitle::history_derived("Older").unwrap(),
     )
     .unwrap_err();
     assert!(matches!(
         contributor_source::<CatalogMutationError>(&error),
         Some(CatalogMutationError::SourceRevisionRegressed {
-            kind: "Syndic thread"
+            kind: "Syndic catalog summary"
         })
     ));
 }
@@ -396,7 +414,7 @@ fn claim_fact_and_source_revision_must_have_the_same_shape() {
         SyndicThreadId::from_bytes([1; 16]),
         CatalogRowExpectation::Missing,
         sources(1, true),
-        facts(1, 1, 100, None, None, false),
+        facts(1, 100, CatalogResolvedTitle::absent(), false),
     );
     assert!(mismatch.is_err());
 }
@@ -413,8 +431,7 @@ fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
             CatalogRowExpectation::Missing,
             1,
             100,
-            None,
-            Some("History"),
+            CatalogResolvedTitle::history_derived("History").unwrap(),
         )
         .unwrap();
     }
@@ -427,8 +444,6 @@ fn reopen_rejects_a_recency_copy_that_disagrees_with_its_row() {
             )
             .unwrap()
             .unwrap()
-            .row()
-            .clone()
     };
     let first = read(1);
     let second = read(2);

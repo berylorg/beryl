@@ -71,6 +71,9 @@ impl<S: ProviderFrameSinkV1> Encoder<'_, S> {
         self.u64(summary.atom_count())?;
         self.u64(summary.image_marker_count())?;
         self.bytes(&summary.marker_digest())?;
+        self.option(&summary.maximum_image_label(), |encoder, label| {
+            encoder.u64(label.get())
+        })?;
         self.bytes(summary.digest().as_bytes())
     }
 }

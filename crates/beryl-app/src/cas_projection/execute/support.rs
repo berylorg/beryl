@@ -14,7 +14,7 @@ use crate::cas_projection::{
 
 const POINT_READ_LIMIT: usize = 1_000_000;
 
-pub(super) fn point_limit() -> SyndicPointReadLimit {
+pub(in crate::cas_projection) fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(POINT_READ_LIMIT).expect("projection point-read bound is nonzero")
 }
 
@@ -27,12 +27,12 @@ pub(super) fn completion_timestamp() -> Result<SyndicTimestamp, ProjectionExecut
     Ok(SyndicTimestamp::from_unix_millis(unix_millis))
 }
 
-pub(super) fn recovered_generation_matches(
+pub(super) fn recovered_process_matches(
     lineage: CasLineageProof,
     generation: CasLoadedSessionGeneration,
 ) -> bool {
-    match lineage.recovered_loaded_generation() {
-        Some(required) => required == generation,
+    match lineage.recovered_injection_generation() {
+        Some(required) => required.process() == generation.process(),
         None => true,
     }
 }

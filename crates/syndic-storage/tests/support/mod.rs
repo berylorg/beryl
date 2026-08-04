@@ -1,9 +1,14 @@
 #![allow(dead_code)]
 
 pub mod exact_cas;
+mod lifecycle;
 pub mod phase11;
 pub mod populated;
 pub mod semantic;
+mod terminal_history;
+
+#[allow(unused_imports)]
+pub use terminal_history::converge_and_release_terminal_history;
 
 use std::{
     path::{Path, PathBuf},
@@ -20,12 +25,16 @@ use syndic_storage::test_faults::{FixtureBatch, FixtureRecord, fixture_transcrip
 use syndic_storage::{
     BindingHeadRecord, BindingState, ComposerContentAssembler, ComposerPayload, ContentAppend,
     ContentBuild, ContentByteSpanRecord, ContentManifestRecord, ContentReference,
-    DraftByThreadRecord, DraftRecord, HistorySummaryRecord, InputGateRecord, PreparedContent,
-    ProjectionLifecycle, SelectedPathProof, SyndicCurrentDraft, SyndicStorage, SyndicTimestamp,
-    ThreadRecord, TranscriptBuildPhase, TranscriptBuildRecord, TranscriptGeneration,
-    TranscriptPathTurnRecord, TranscriptViewHeadRecord, TurnDepth, TurnEndStatus,
-    TurnIncompleteReason, TurnLifecycle, TurnStateRecord, TurnStateRevision, TurnTerminalOutcome,
+    DraftByThreadRecord, DraftRecord, DraftSubmissionIntent, HistorySummaryRecord, InputGateRecord,
+    PreparedContent, ProjectionLifecycle, SelectedPathProof, SyndicCurrentDraft, SyndicStorage,
+    SyndicTimestamp, ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord,
+    ThreadLineageProof, ThreadRecord, ThreadUsageRecord, TranscriptBuildPhase,
+    TranscriptBuildRecord, TranscriptGeneration, TranscriptPathTurnRecord,
+    TranscriptViewHeadRecord, TurnDepth, TurnEndStatus, TurnIncompleteReason, TurnLifecycle,
+    TurnStateRecord, TurnStateRevision, TurnTerminalOutcome,
 };
+
+use lifecycle::lifecycle_end_status;
 
 static NEXT_HOME: AtomicU64 = AtomicU64::new(1);
 
@@ -34,13 +43,18 @@ pub struct TestHome {
 }
 impl TestHome {
     pub fn new(name: &str) -> Self {
-        let sequence = NEXT_HOME.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "beryl-syndic-{name}-{}-{sequence}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self { path }
+        loop {
+            let sequence = NEXT_HOME.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "beryl-syndic-{name}-{}-{sequence}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Self { path },
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("failed to create isolated test home {path:?}: {error}"),
+            }
+        }
     }
     pub fn path(&self) -> &Path {
         &self.path
@@ -150,18 +164,6 @@ pub fn fixture_turn_state_with_capture(
         updated_at,
     )
     .unwrap()
-}
-
-fn lifecycle_end_status(lifecycle: TurnLifecycle) -> Option<TurnEndStatus> {
-    let outcome = match lifecycle {
-        TurnLifecycle::Pending | TurnLifecycle::Active => return None,
-        TurnLifecycle::Complete => TurnTerminalOutcome::Complete,
-        TurnLifecycle::Interrupted => TurnTerminalOutcome::Interrupted,
-        TurnLifecycle::Failed => TurnTerminalOutcome::Failed,
-        TurnLifecycle::Incomplete => TurnTerminalOutcome::Incomplete,
-        TurnLifecycle::UnknownTerminal => TurnTerminalOutcome::UnknownTerminal,
-    };
-    Some(turn_end_status(outcome))
 }
 
 pub const fn test_tool_profile() -> CasConversationToolProfile {
@@ -316,36 +318,55 @@ pub fn thread_records_with_activity(
     let draft_revision = DraftRevision::new(1).unwrap();
     let binding_revision = BindingRevision::new(1).unwrap();
     let projection_revision = ProjectionRevision::new(1).unwrap();
+    let selected = SelectedPathProof::new(tail, thread_revision, digest);
     let thread = ThreadRecord::new(
         thread_id,
-        thread_revision,
-        tail,
+        selected,
         draft_id,
+        ThreadLineageProof::new(
+            None,
+            None,
+            syndic_storage::ThreadLineageDepth::FIRST,
+            syndic_storage::root_thread_lineage_digest(thread_id),
+        ),
+        syndic_storage::ThreadImageLabelFrontiers::empty(),
         None,
-        None,
-        digest,
     );
     let (content, content_records) = composer_content_records(&ComposerPayload::default());
     let draft = DraftRecord::new(
         draft_id,
         thread_id,
         draft_revision,
-        syndic_storage::ConversationParent::from_turn(tail),
-        None,
-        None,
+        DraftSubmissionIntent::Ordinary,
         content,
         timestamp(1),
         timestamp(1),
     );
-    let selected = SelectedPathProof::new(tail, thread_revision, digest);
     let binding = syndic_storage::BindingRecord::new(
         thread_id,
         binding_revision,
         selected,
         BindingState::unbound("fixture").unwrap(),
     );
+    let execution = ThreadExecutionRecord::new(thread_id, exact_cas::execution_binding());
+    let attributes = ThreadAttributesRecord::ordinary(thread_id);
+    let usage = ThreadUsageRecord::empty(thread_id);
+    let history = HistorySummaryRecord::new(
+        thread_id,
+        projection_revision,
+        thread_revision,
+        tail,
+        digest,
+        true,
+        last_activity_at,
+    );
+    let catalog = ThreadCatalogSummaryRecord::initial(&thread, &execution, &attributes, &history);
     let mut records = vec![
         FixtureRecord::Thread(thread),
+        FixtureRecord::ThreadExecution(execution),
+        FixtureRecord::ThreadAttributes(attributes),
+        FixtureRecord::ThreadUsage(usage),
+        FixtureRecord::ThreadCatalogSummary(catalog),
         FixtureRecord::Draft(draft),
         FixtureRecord::DraftByThread(DraftByThreadRecord::new(
             thread_id,
@@ -354,6 +375,7 @@ pub fn thread_records_with_activity(
             thread_revision,
         )),
         FixtureRecord::InputGate(InputGateRecord::idle(thread_id)),
+        FixtureRecord::ActivityQueryHead(syndic_storage::ActivityQueryHeadRecord::empty(thread_id)),
         FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
             thread_id,
             TranscriptGeneration::FIRST,
@@ -363,14 +385,7 @@ pub fn thread_records_with_activity(
             digest,
             ProjectionLifecycle::Current,
         )),
-        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-            thread_id,
-            thread_revision,
-            tail,
-            digest,
-            true,
-            last_activity_at,
-        )),
+        FixtureRecord::HistorySummary(history),
         FixtureRecord::Binding(binding),
         FixtureRecord::BindingHead(BindingHeadRecord::new(
             thread_id,

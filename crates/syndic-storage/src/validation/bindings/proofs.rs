@@ -143,10 +143,12 @@ pub(super) fn validate_stale(
         {
             return invariant("stale lineage establishment exceeds its observed prefix");
         }
-        if let Some(required) = lineage.recovered_loaded_generation()
-            && stale.loaded_generation() != Some(required)
+        if let Some(injection_generation) = lineage.recovered_injection_generation()
+            && stale.loaded_generation().is_none_or(|current_generation| {
+                current_generation.process() != injection_generation.process()
+            })
         {
-            return invariant("stale recovered lineage loaded generation disagrees");
+            return invariant("stale recovered lineage process generation disagrees");
         }
     }
     Ok(())

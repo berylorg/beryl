@@ -7,7 +7,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 ## Non-goals
 
 - Defining Syndic canonical history, transcript-view flattening, Markdown projection, storage schema, resource references, or backend provider policy.
-- Defining transcript residency, renderer demand, resource admission, shell host internals, or GPUI render pipeline mechanics.
+- Defining transcript residency, renderer demand, working-set limits, shell host internals, or GPUI render pipeline mechanics.
 - Rendering operational activity, tool logs, raw reasoning, diagnostics, hidden developer instructions, or backend protocol records as parent transcript narrative.
 - Providing adapters from the transcript feature to obsolete transcript data structures.
 
@@ -16,7 +16,9 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 ## Implementation References
 
 - `gui.md` is a normative supplemental GUI composition file for the transcript region, transcript-owned embedded widgets, menus, and previews.
-- `doc/systems/transcript-presentation/design.md` owns the internal transcript host, residency, presentation, renderer, resource admission, scroll, diagnostics, and shell-boundary architecture.
+- `doc/systems/transcript-presentation/design.md` owns the internal transcript host, residency, presentation, renderer, scroll, diagnostics, and shell-boundary architecture.
+- `doc/systems/bounded-resource-dataflow/design.md` owns risk-based limits for resident pages,
+  layout, snapshots, nested widgets, clipboard/export, decoded media, and GPU working sets.
 - `doc/systems/syndic-conversation-history/design.md` owns durable conversation history, transcript views, Markdown projections, resources, and replay.
 - `doc/systems/cas-live-syndic-transcript/design.md` owns CAS-live capture into Syndic and selected-history read authority for captured CAS-backed turns.
 
@@ -30,10 +32,19 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 
 ## Live Turn Presentation
 
-- Transcript-visible assistant text follows the arrival cadence of normalized CAS text deltas. Beryl appends each received delta on the next available GUI frame and does not replay it through a fixed-rate character or token animation.
-- One CAS delta may contain multiple characters, and multiple deltas received between two GUI frames may naturally become visible together. Beryl introduces no additional pacing, so pauses and apparent throughput reflect when text reaches Beryl within ordinary frame scheduling rather than a simulated typewriter rate.
+- Transcript-visible assistant text follows the arrival cadence of normalized CAS text deltas. Beryl
+  appends each arrived bounded fragment on the next available GUI frame while preserving its parent
+  delta identity and order, and does not replay it through a fixed-rate character or token animation.
+- One CAS delta may contain multiple characters or bounded transport fragments, and fragments from
+  multiple deltas received between two GUI frames may naturally become visible together. Beryl
+  introduces no additional pacing, so pauses and apparent throughput reflect when text reaches Beryl
+  within ordinary frame scheduling rather than a simulated typewriter rate. Fragment boundaries do
+  not become user-visible or durable event boundaries.
 - Durable Syndic coalescing is independent from visible live cadence. The transcript may temporarily present one bounded non-authoritative live suffix beyond its durable Syndic prefix, then replace that suffix only after the corresponding Syndic projection proves exact prefix agreement.
 - Durable takeover must not duplicate, omit, reorder, blank, or visibly restyle an already matching live prefix merely because its storage or projection revision changed. Until takeover, the transient suffix has no stable historical provenance and cannot authorize selection-derived history commands.
+- If completed-item narrative disagrees with the text received live, the transcript retains the
+  exact captured live prefix and presents that record as incomplete. It never swaps in the
+  completion payload, hides the record, or presents either representation as repaired history.
 
 ## Scrolling And Activation
 
@@ -43,7 +54,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - When manual scrolling reaches the edge of coherent resident content, the transcript clamps at that edge until additional coherent content or a stable terminal fallback is available.
 - The transcript region owns transcript scrolling without rendering the shared visual scrollbar affordance.
 - Activating a selected transcript publishes visible content and the initial viewport state together.
-- Markdown parsing, completed-media readiness, and media resource admission are post-publication work with stable row-owned placeholders or terminal fallbacks. They must not gate selected-thread publication or install later scroll correction after the first visible frame.
+- Markdown parsing, completed-media readiness, and bounded media loading are post-publication work with stable row-owned placeholders or terminal fallbacks. They must not gate selected-thread publication or install later scroll correction after the first visible frame.
 - Activation must not blank or replace the transcript with a full-region loading placeholder when a previous coherent transcript can remain visible until the new coherent seed is ready.
 
 ## Large Content And Media
@@ -52,7 +63,7 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - A large synthetic discussion-context item uses the same bounded chunk realization and anchor-preservation rules as other large transcript text and never creates a second fixed-height or independently scrolling viewport.
 - Code blocks, tables, generated images, attachments, and comparable heavy resources may expose their own bounded interaction affordances such as inner scrolling, selection, copy, preview, or fallback states.
 - A nested scrollable code panel does not take vertical pointer-wheel ownership merely because the pointer hovers over it. Clicking the nested code panel selects it for vertical pointer-wheel ownership; while selected, vertical wheel input over that code panel scrolls only the panel and must not co-scroll the transcript. Pressing `Escape` does not clear that wheel ownership.
-- Media rendering must fail visibly and locally when content cannot be admitted, decoded, loaded, or shown within Beryl's resource policy.
+- Media rendering must fail visibly and locally when content exceeds an applicable limit or cannot be decoded, loaded, or shown.
 - Oversized or unsupported content must not make the full transcript unresponsive.
 
 ## Selection, Copy, Quote, And Menus
@@ -61,6 +72,10 @@ Preserve user-visible Markdown structure, transcript media, exact manual scrolli
 - A rendered synthetic discussion-context item permits ordinary text selection and copy but never quote harvesting, replacement edit, branch creation, or an ordinary turn context menu.
 - In streamed huge-content mode, transcript-level selection does not span through unrendered chunks.
 - Nested widgets expose their own copy and selection contracts for their visible resource ranges.
+- Copy reconstructs a contiguous clipboard representation only after the exact selected logical
+  range fits the explicit platform clipboard limit. Rejection is explicit and preserves the
+  selection. A nested resource that supports arbitrary-size source ranges exposes streaming
+  `Save…` as the non-clipboard path; neither action reads renderer text or painted pixels as source.
 - If virtualization, release, remeasurement, activation, or missing data destroys stable selection geometry, Beryl closes the selection, quote affordance, or menu instead of pinning unbounded offscreen content.
 - Context menus target rendered transcript content. They do not open for empty space, operational activity, missing data, stale loading state, or transient non-content paint state.
 - A context menu for an exact historical user-input turn exposes `Edit message`. The row stays visible but disabled when the closest replacement-edit gate can be explained; a row without exact stable Syndic provenance exposes no edit command.

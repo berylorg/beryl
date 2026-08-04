@@ -1,57 +1,49 @@
-use beryl_home_store::{CursorReadLimits, HomeStore};
-use beryl_model::{DomainRevision, SyndicTurnId};
+use beryl_home_store::HomeStore;
+use beryl_model::DomainRevision;
 
 use crate::{
-    CanonicalItemKind, CasRepresentedPrefixProof, ContentEncoding, ContentLifecycle,
-    ContentReference, ConversationParent, RecoveryBudgetKind, RecoveryItemCount,
+    CasRepresentedPrefixProof, ConversationParent, ProjectionTextSource, RecoveryItemCount,
     RecoveryProjectionError, RecoveryProjectionVersion, RecoveryUtf8ByteCount,
-    SyndicPointReadLimit, SyndicStorage, TurnItemOrdinal, TurnKind, TurnLifecycle,
+    SyndicPointReadLimit, SyndicStorage, TurnKind, TurnLifecycle,
 };
 
 const POINT_READ_MAX_BYTES: usize = 16_384;
 const INDEX_PAGE_MAX_ITEMS: usize = 256;
 const INDEX_PAGE_MAX_BYTES: usize = 65_536;
 
+mod cursor;
 mod text;
+mod traversal;
 mod types;
 
-use text::recovery_sequence_digest;
+pub use cursor::{RecoveryCursor, RecoveryCursorPage, RecoveryItemSequenceRole};
+pub use text::RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES;
+use traversal::{RecoveryTailEligibility, RecoveryTopology};
 pub use types::{
-    RecoveryAssembly, RecoveryItem, RecoveryItemRole, RecoveryItemTextKind, RecoveryProjection,
-    RecoveryProjectionRequest, RecoveryProjectionScope,
+    RecoveryAssembly, RecoveryProjection, RecoveryProjectionRequest, RecoveryProjectionScope,
 };
 
 #[derive(Clone, Copy)]
-struct TurnFrontier {
-    id: SyndicTurnId,
-    item_count: u64,
-}
-
-#[derive(Clone, Copy)]
-struct ItemFrontier {
-    role: RecoveryItemRole,
-    content: ContentReference,
+struct RecoveryItemDescriptor {
+    role: RecoveryItemSequenceRole,
+    source: ProjectionTextSource,
 }
 
 impl SyndicStorage {
-    /// Prepares one exact recovery prefix without mutating Syndic state.
+    /// Preflights one exact recovery prefix without mutating Syndic state.
     ///
-    /// Current-selected-path scope assembles through that path's tail for pre-admission validation.
-    /// Pending-selected-turn-parent scope never reads the pending turn's canonical items and
-    /// retains the restart behavior of assembling only its parent prefix. Both scopes follow
-    /// immutable parents, canonical turn-item indexes, logical text spans, and bounded physical
-    /// chunk point reads.
+    /// The ready result contains only compact proof. Call [`Self::open_recovery_cursor`] to replay
+    /// it through bounded UTF-8 pages under the same exact domain revision.
     pub fn prepare_recovery_projection(
         &self,
         store: &HomeStore,
         request: RecoveryProjectionRequest,
     ) -> Result<RecoveryAssembly, RecoveryProjectionError> {
         let source_revision = self.revision(store)?;
-        let limit = point_limit();
         let thread = self
-            .thread(store, request.thread_id(), limit)?
+            .thread(store, request.thread_id(), point_limit())?
             .ok_or(RecoveryProjectionError::StaleSelectedPath)?;
-        let thread = thread.record();
+        let thread = thread;
         if thread.id() != request.thread_id()
             || thread.revision() != request.selected_path().thread_revision()
             || thread.committed_tail() != request.selected_path().tail()
@@ -60,7 +52,7 @@ impl SyndicStorage {
             return Err(RecoveryProjectionError::StaleSelectedPath);
         }
 
-        let Some(tail_id) = request.selected_path().tail() else {
+        let Some(selected_tail_id) = request.selected_path().tail() else {
             return match request.scope() {
                 RecoveryProjectionScope::CurrentSelectedPath => {
                     self.native_empty_recovery(store, request, source_revision)
@@ -70,34 +62,33 @@ impl SyndicStorage {
                 }
             };
         };
-        let tail = self
-            .turn(store, tail_id, limit)?
-            .ok_or(RecoveryProjectionError::MissingHistory { record: "turn" })?;
-        let tail = tail.record();
-        let tail_state = self.turn_state(store, tail_id, limit)?.ok_or(
-            RecoveryProjectionError::MissingHistory {
+        let selected_tail = self.load_recovery_turn(store, selected_tail_id)?;
+        let selected_tail_state = self
+            .turn_state(store, selected_tail_id, point_limit())?
+            .ok_or(RecoveryProjectionError::MissingHistory {
                 record: "turn-state",
-            },
-        )?;
-        let tail_state = tail_state.record();
-        if tail.id() != tail_id
-            || tail_state.turn_id() != tail_id
-            || tail.chain_digest() != request.selected_path().digest()
+            })?;
+        if selected_tail_state.turn_id() != selected_tail_id
+            || selected_tail.chain_digest() != request.selected_path().digest()
         {
             return Err(RecoveryProjectionError::StaleSelectedPath);
         }
 
-        let (prefix_tail, expected_depth) = match request.scope() {
-            RecoveryProjectionScope::CurrentSelectedPath => (tail_id, tail.depth().get()),
+        let (prefix_tail, expected_depth, tail_eligibility) = match request.scope() {
+            RecoveryProjectionScope::CurrentSelectedPath => (
+                selected_tail_id,
+                selected_tail.depth().get(),
+                RecoveryTailEligibility::Strict,
+            ),
             RecoveryProjectionScope::PendingSelectedTurnParent => {
-                if tail.kind() != TurnKind::OrdinaryUser
-                    || tail_state.lifecycle() != TurnLifecycle::Pending
+                if selected_tail.kind() != TurnKind::OrdinaryUser
+                    || selected_tail_state.lifecycle() != TurnLifecycle::Pending
                 {
                     return Err(RecoveryProjectionError::CurrentTailNotPendingOrdinaryUser);
                 }
-                match tail.parent() {
+                match selected_tail.parent() {
                     ConversationParent::Root => {
-                        if tail.depth().get() != 1 {
+                        if selected_tail.depth().get() != 1 {
                             return Err(RecoveryProjectionError::Invariant(
                                 "a root pending tail does not have depth one",
                             ));
@@ -105,12 +96,16 @@ impl SyndicStorage {
                         return self.native_empty_recovery(store, request, source_revision);
                     }
                     ConversationParent::Turn(parent) => {
-                        let depth = tail.depth().get().checked_sub(1).ok_or(
+                        let depth = selected_tail.depth().get().checked_sub(1).ok_or(
                             RecoveryProjectionError::Invariant(
                                 "a non-root pending tail has no parent depth",
                             ),
                         )?;
-                        (parent, depth)
+                        (
+                            parent,
+                            depth,
+                            RecoveryTailEligibility::PendingParentAuthorityLost,
+                        )
                     }
                 }
             }
@@ -123,25 +118,16 @@ impl SyndicStorage {
             return Err(RecoveryProjectionError::ZeroModelContextWindow);
         }
         let utf8_limit = RecoveryUtf8ByteCount::MAX.min(model_tokens / 2);
-
-        let (turns, prefix_digest, expected_item_count) =
-            self.collect_turn_frontier(store, prefix_tail, expected_depth, limit)?;
-        let represented_prefix = CasRepresentedPrefixProof::new(
-            Some(prefix_tail),
-            request.selected_path().thread_revision(),
-            prefix_digest,
-        );
-        let (item_frontier, utf8_bytes) =
-            self.collect_item_frontier(store, &turns, expected_item_count, utf8_limit, limit)?;
-        let items = self.materialize_items(store, &item_frontier)?;
-        let item_count = RecoveryItemCount::new(expected_item_count).map_err(|_| {
+        let topology =
+            self.inspect_recovery_topology(store, prefix_tail, expected_depth, tail_eligibility)?;
+        let utf8_bytes = self.recovery_utf8_total(store, &topology, utf8_limit)?;
+        let sequence_digest = self.hash_recovery_sequence(store, &topology, utf8_bytes)?;
+        let item_count = RecoveryItemCount::new(topology.item_count).map_err(|_| {
             RecoveryProjectionError::Invariant("accepted recovery item count became invalid")
         })?;
         let utf8_bytes = RecoveryUtf8ByteCount::new(utf8_bytes).map_err(|_| {
             RecoveryProjectionError::Invariant("accepted recovery byte count became invalid")
         })?;
-        let sequence_digest = recovery_sequence_digest(&items, utf8_bytes.get());
-
         if self.revision(store)? != source_revision {
             return Err(RecoveryProjectionError::ConcurrentChange);
         }
@@ -149,8 +135,11 @@ impl SyndicStorage {
             version: RecoveryProjectionVersion::V1,
             thread_id: request.thread_id(),
             selected_path: request.selected_path(),
-            represented_prefix,
-            items: items.into_boxed_slice(),
+            represented_prefix: CasRepresentedPrefixProof::new(
+                Some(prefix_tail),
+                request.selected_path().thread_revision(),
+                topology.digest,
+            ),
             item_count,
             utf8_bytes,
             sequence_digest,
@@ -174,316 +163,89 @@ impl SyndicStorage {
         })
     }
 
-    fn collect_turn_frontier(
+    fn ensure_recovery_proof_bound(
         &self,
         store: &HomeStore,
-        prefix_tail: SyndicTurnId,
-        mut expected_depth: u64,
-        limit: SyndicPointReadLimit,
-    ) -> Result<(Vec<TurnFrontier>, beryl_model::SyndicPathDigest, u64), RecoveryProjectionError>
-    {
-        let mut turns = Vec::new();
-        let mut next = prefix_tail;
-        let mut item_count = 0_u64;
-        let mut prefix_digest = None;
-        loop {
-            let turn = self
-                .turn(store, next, limit)?
-                .ok_or(RecoveryProjectionError::MissingHistory { record: "turn" })?;
-            let turn = turn.record();
-            let state = self.turn_state(store, next, limit)?.ok_or(
-                RecoveryProjectionError::MissingHistory {
-                    record: "turn-state",
-                },
-            )?;
-            let state = state.record();
-            if turn.id() != next || state.turn_id() != next || turn.depth().get() != expected_depth
-            {
-                return Err(RecoveryProjectionError::Invariant(
-                    "recovery parent topology identity or depth disagrees",
-                ));
-            }
-            prefix_digest.get_or_insert(turn.chain_digest());
-            if turn.kind() != TurnKind::OrdinaryUser {
-                return Err(RecoveryProjectionError::UnsupportedHistory {
-                    reason: "provider-operation turn",
-                });
-            }
-            if !matches!(
-                state.lifecycle(),
-                TurnLifecycle::Complete | TurnLifecycle::Interrupted | TurnLifecycle::Failed
-            ) || state.incomplete_reason().is_some()
-                || state.finalized_item_count() != state.item_count()
-                || state.open_item_count() != 0
-                || state.history_blocking_item_count() != 0
-            {
-                return Err(RecoveryProjectionError::IncompleteHistory {
-                    reason: "turn is not recovery-complete; the exact outcome, history-incomplete reason, item audit, and finalized frontier must all be complete",
-                });
-            }
-            if state.item_count() == 0 {
-                return Err(RecoveryProjectionError::IncompleteHistory {
-                    reason: "included turn has no canonical items",
-                });
-            }
-            let required = item_count.checked_add(state.item_count()).ok_or(
-                RecoveryProjectionError::BudgetOverflow {
-                    kind: RecoveryBudgetKind::ItemCount,
-                    maximum: RecoveryItemCount::MAX,
-                    actual: u64::MAX,
-                },
-            )?;
-            if required > RecoveryItemCount::MAX {
-                return Err(RecoveryProjectionError::BudgetOverflow {
-                    kind: RecoveryBudgetKind::ItemCount,
-                    maximum: RecoveryItemCount::MAX,
-                    actual: required,
-                });
-            }
-            item_count = required;
-            turns.push(TurnFrontier {
-                id: next,
-                item_count: state.item_count(),
-            });
-
-            match turn.parent() {
-                ConversationParent::Root => {
-                    if expected_depth != 1 {
-                        return Err(RecoveryProjectionError::Invariant(
-                            "recovery ancestry reached root at a non-root depth",
-                        ));
-                    }
-                    break;
-                }
-                ConversationParent::Turn(parent) => {
-                    expected_depth =
-                        expected_depth
-                            .checked_sub(1)
-                            .ok_or(RecoveryProjectionError::Invariant(
-                                "recovery ancestry parent depth underflowed",
-                            ))?;
-                    next = parent;
-                }
-            }
+        proof: RecoveryProjection,
+    ) -> Result<RecoveryTailEligibility, RecoveryProjectionError> {
+        if self.revision(store)? != proof.source_revision() {
+            return Err(RecoveryProjectionError::ConcurrentChange);
         }
-        Ok((
-            turns,
-            prefix_digest.expect("nonempty parent prefix has one digest"),
-            item_count,
-        ))
-    }
-
-    fn collect_item_frontier(
-        &self,
-        store: &HomeStore,
-        turns_tail_to_root: &[TurnFrontier],
-        expected_item_count: u64,
-        utf8_limit: u64,
-        limit: SyndicPointReadLimit,
-    ) -> Result<(Vec<ItemFrontier>, u64), RecoveryProjectionError> {
-        let capacity = usize::try_from(expected_item_count).map_err(|_| {
-            RecoveryProjectionError::Invariant("recovery item allocation length overflowed")
-        })?;
-        #[cfg(feature = "test-faults")]
-        crate::test_faults::metrics::record_recovery_frontier_allocation_attempt(capacity);
-        let mut items = Vec::with_capacity(capacity);
-        #[cfg(feature = "test-faults")]
-        crate::test_faults::metrics::record_recovery_frontier_allocation_completion(
-            items.capacity(),
-        );
-        let mut utf8_bytes = 0_u64;
-        let page_limits = || {
-            CursorReadLimits::new(INDEX_PAGE_MAX_ITEMS, INDEX_PAGE_MAX_BYTES)
-                .expect("recovery index page bounds are nonzero")
-        };
-
-        for turn in turns_tail_to_root.iter().rev() {
-            let mut after = None;
-            let mut observed = 0_u64;
-            while observed < turn.item_count {
-                #[cfg(feature = "test-faults")]
-                crate::test_faults::metrics::record_recovery_turn_item_read_attempt();
-                let page = self.turn_items(store, turn.id, after, page_limits())?;
-                if page.records().is_empty() {
-                    return Err(RecoveryProjectionError::MissingHistory {
-                        record: "turn-item index",
-                    });
-                }
-                for index in page.records() {
-                    if observed >= turn.item_count {
-                        return Err(RecoveryProjectionError::Invariant(
-                            "turn-item index exceeds its finalized frontier",
-                        ));
-                    }
-                    let expected_ordinal = TurnItemOrdinal::new(observed + 1).map_err(|_| {
-                        RecoveryProjectionError::Invariant(
-                            "recovery turn-item ordinal could not be represented",
-                        )
-                    })?;
-                    if index.turn_id() != turn.id || index.ordinal() != expected_ordinal {
-                        return Err(RecoveryProjectionError::Invariant(
-                            "recovery turn-item index order disagrees",
-                        ));
-                    }
-                    let item = self.canonical_item(store, index.item_id(), limit)?.ok_or(
-                        RecoveryProjectionError::MissingHistory {
-                            record: "canonical-item",
-                        },
-                    )?;
-                    let item = item.record();
-                    if item.id() != index.item_id()
-                        || item.turn_id() != turn.id
-                        || item.ordinal() != index.ordinal()
-                        || item.revision() != index.item_revision()
-                    {
-                        return Err(RecoveryProjectionError::Invariant(
-                            "recovery canonical item disagrees with its turn index",
-                        ));
-                    }
-                    let frontier = self.preflight_item(store, item, limit)?;
-                    let logical_bytes = frontier.content.summary().logical_utf8_bytes();
-                    if logical_bytes == 0 {
-                        return Err(RecoveryProjectionError::EmptyHistoryItem);
-                    }
-                    let required = utf8_bytes.checked_add(logical_bytes).ok_or(
-                        RecoveryProjectionError::BudgetOverflow {
-                            kind: RecoveryBudgetKind::Utf8Bytes,
-                            maximum: utf8_limit,
-                            actual: u64::MAX,
-                        },
-                    )?;
-                    if required > utf8_limit {
-                        return Err(RecoveryProjectionError::BudgetOverflow {
-                            kind: RecoveryBudgetKind::Utf8Bytes,
-                            maximum: utf8_limit,
-                            actual: required,
-                        });
-                    }
-                    utf8_bytes = required;
-                    items.push(frontier);
-                    observed += 1;
-                    after = Some(index.ordinal());
-                }
-                if observed < turn.item_count && !page.has_more() {
-                    return Err(RecoveryProjectionError::MissingHistory {
-                        record: "turn-item index",
-                    });
-                }
-                if observed == turn.item_count && page.has_more() {
-                    return Err(RecoveryProjectionError::Invariant(
-                        "turn-item indexes continue past the finalized frontier",
-                    ));
-                }
-            }
-        }
-        if u64::try_from(items.len()).ok() != Some(expected_item_count) {
-            return Err(RecoveryProjectionError::Invariant(
-                "recovery item frontier count disagrees",
-            ));
-        }
-        Ok((items, utf8_bytes))
-    }
-
-    fn preflight_item(
-        &self,
-        store: &HomeStore,
-        item: &crate::CanonicalItemRecord,
-        limit: SyndicPointReadLimit,
-    ) -> Result<ItemFrontier, RecoveryProjectionError> {
-        let (role, content) = match item.kind() {
-            CanonicalItemKind::UserInput => {
-                let content = item.payload().content().ok_or(
-                    RecoveryProjectionError::UnsupportedHistory {
-                        reason: "user input omitted canonical content",
-                    },
-                )?;
-                if item.payload().marker_count() != 0 || content.summary().image_marker_count() != 0
-                {
-                    return Err(RecoveryProjectionError::MediaHistory {
-                        reason: "user input contains an image marker",
-                    });
-                }
-                if content.encoding() != ContentEncoding::ComposerV1 {
-                    return Err(RecoveryProjectionError::UnsupportedHistory {
-                        reason: "user input is not canonical composer content",
-                    });
-                }
-                (RecoveryItemRole::User, content)
-            }
-            CanonicalItemKind::AssistantMessage(_) => {
-                let content = item.payload().content().ok_or(
-                    RecoveryProjectionError::UnsupportedHistory {
-                        reason: "assistant item omitted canonical content",
-                    },
-                )?;
-                if content.summary().image_marker_count() != 0 {
-                    return Err(RecoveryProjectionError::MediaHistory {
-                        reason: "assistant item contains media",
-                    });
-                }
-                if content.encoding() != ContentEncoding::Utf8V1 {
-                    return Err(RecoveryProjectionError::UnsupportedHistory {
-                        reason: "assistant output is not canonical UTF-8 content",
-                    });
-                }
-                (RecoveryItemRole::Assistant, content)
-            }
-            CanonicalItemKind::ProviderText(_) => {
-                return Err(RecoveryProjectionError::UnsupportedHistory {
-                    reason: "typed provider text has no lossless recovery projection",
-                });
-            }
-            CanonicalItemKind::Operational(_) | CanonicalItemKind::Activity(_) => {
-                return Err(RecoveryProjectionError::UnsupportedHistory {
-                    reason: "operational canonical item",
-                });
-            }
-            CanonicalItemKind::GeneratedMedia => {
-                return Err(RecoveryProjectionError::MediaHistory {
-                    reason: "generated media has no finalized recovery projection",
-                });
-            }
-            CanonicalItemKind::Unsupported(_) => {
-                return Err(RecoveryProjectionError::UnsupportedHistory {
-                    reason: "canonical item has an explicit unsupported-history disposition",
-                });
-            }
-        };
-
-        let manifest = self.content_manifest(store, content.id(), limit)?.ok_or(
-            RecoveryProjectionError::MissingHistory {
-                record: "content-manifest",
-            },
-        )?;
-        let manifest = manifest.record();
-        if manifest.id() != content.id()
-            || manifest.current_reference() != Some(content)
-            || !manifest.lifecycle().is_immutable()
+        if proof.version() != RecoveryProjectionVersion::V1
+            || proof.represented_prefix().tail().is_none()
+            || proof.represented_prefix().source_thread_revision()
+                != proof.selected_path().thread_revision()
         {
-            return Err(RecoveryProjectionError::IncompleteHistory {
-                reason: "canonical content is missing its exact immutable manifest frontier",
+            return Err(RecoveryProjectionError::CursorMismatch {
+                reason: "recovery proof header is structurally invalid",
             });
         }
-        match role {
-            RecoveryItemRole::User
-                if manifest.lifecycle() != ContentLifecycle::Sealed
-                    || manifest.owner().is_some() =>
-            {
-                return Err(RecoveryProjectionError::UnsupportedHistory {
-                    reason: "user item does not reference sealed composer authority",
-                });
-            }
-            RecoveryItemRole::Assistant
-                if manifest.lifecycle() != ContentLifecycle::Finalized
-                    || manifest.owner() != Some(item.id()) =>
-            {
-                return Err(RecoveryProjectionError::IncompleteHistory {
-                    reason: "assistant item content is not finalized by that item",
-                });
-            }
-            RecoveryItemRole::User | RecoveryItemRole::Assistant => {}
+        let thread = self
+            .thread(store, proof.thread_id(), point_limit())?
+            .ok_or(RecoveryProjectionError::CursorMismatch {
+                reason: "recovery proof thread is missing",
+            })?;
+        if thread.id() != proof.thread_id()
+            || thread.revision() != proof.selected_path().thread_revision()
+            || thread.committed_tail() != proof.selected_path().tail()
+            || thread.selected_path_digest() != proof.selected_path().digest()
+        {
+            return Err(RecoveryProjectionError::CursorMismatch {
+                reason: "recovery proof no longer names the exact selected path",
+            });
         }
-        Ok(ItemFrontier { role, content })
+        let tail_eligibility = self.recovery_tail_eligibility(store, proof)?;
+        let prefix_tail = proof
+            .represented_prefix()
+            .tail()
+            .expect("the proof header checked a nonempty represented prefix");
+        let tail = self.load_recovery_turn(store, prefix_tail)?;
+        if tail.chain_digest() != proof.represented_prefix().digest() {
+            return Err(RecoveryProjectionError::CursorMismatch {
+                reason: "recovery proof represented-prefix digest disagrees with its tail",
+            });
+        }
+        if self.revision(store)? != proof.source_revision() {
+            return Err(RecoveryProjectionError::ConcurrentChange);
+        }
+        Ok(tail_eligibility)
+    }
+
+    fn recovery_tail_eligibility(
+        &self,
+        store: &HomeStore,
+        proof: RecoveryProjection,
+    ) -> Result<RecoveryTailEligibility, RecoveryProjectionError> {
+        let prefix_tail = proof
+            .represented_prefix()
+            .tail()
+            .expect("the proof header checked a nonempty represented prefix");
+        let selected_tail =
+            proof
+                .selected_path()
+                .tail()
+                .ok_or(RecoveryProjectionError::CursorMismatch {
+                    reason: "recovery proof has no selected tail",
+                })?;
+        if selected_tail == prefix_tail {
+            return Ok(RecoveryTailEligibility::Strict);
+        }
+        let pending = self.load_recovery_turn(store, selected_tail)?;
+        let state = self
+            .turn_state(store, selected_tail, point_limit())?
+            .ok_or(RecoveryProjectionError::MissingHistory {
+                record: "pending recovery turn-state",
+            })?;
+        if pending.kind() != TurnKind::OrdinaryUser
+            || state.turn_id() != selected_tail
+            || state.lifecycle() != TurnLifecycle::Pending
+            || pending.parent().turn() != Some(prefix_tail)
+        {
+            return Err(RecoveryProjectionError::CursorMismatch {
+                reason: "recovery proof no longer names its current path or exact pending successor",
+            });
+        }
+        Ok(RecoveryTailEligibility::PendingParentAuthorityLost)
     }
 }
 

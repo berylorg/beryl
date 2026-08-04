@@ -1,55 +1,143 @@
+mod accepted_delivery;
+mod accepted_next;
+mod accepted_ready;
 mod admission;
 mod binding;
 mod capture;
 mod capture_text;
+mod catalog_summary;
+mod compaction;
 mod content_text;
 mod current;
+mod delivering_steering;
+mod delivery_recovery;
 mod pages;
+mod promotion;
+mod queries;
 mod range;
+mod routes;
+mod stop;
+mod stop_admission;
 
+pub use accepted_delivery::{AcceptedInputDeliveryTransitionStatus, SyndicReadySteeringInput};
+pub(crate) use accepted_next::AcceptedNextCandidateBasis;
+pub use accepted_next::{
+    ACCEPTED_NEXT_PAGE_MAX_BYTES, ACCEPTED_NEXT_PAGE_MAX_RECORDS, AcceptedNextCandidate,
+    AcceptedNextCandidateCursor, AcceptedNextCandidatePage, AcceptedNextSource,
+    AcceptedNextSourceCursor, AcceptedNextSourcePage,
+};
+pub use accepted_ready::{
+    ACCEPTED_READY_PAGE_MAX_BYTES, ACCEPTED_READY_PAGE_MAX_RECORDS, AcceptedReadyCandidate,
+    AcceptedReadyCandidateCursor, AcceptedReadyCandidatePage, AcceptedReadySourceCursor,
+    AcceptedReadySourcePage,
+};
 pub use capture::SyndicCaptureItem;
-pub use content_text::SyndicContentTextRangeRead;
+pub use capture_text::SyndicCaptureTextRangeRead;
+pub use catalog_summary::{
+    ExactThreadCatalogSummary, PreparedThreadCatalogSummaryReplacement,
+    ThreadCatalogSummaryPreparation,
+};
+pub use compaction::{
+    CompactionAdmissionCandidate, CompactionAdmissionIneligibility, CompactionAdmissionRead,
+    CompactionRecoveryCase, CompactionRequestTransitionStatus,
+};
+pub use content_text::{
+    SyndicContentTextRangeRead, SyndicContentTextSegment, SyndicContentTextSegmentBoundary,
+    SyndicContentTextSegmentRangeRead,
+};
 pub use current::{SyndicCurrentDraft, SyndicThreadTail};
+pub use delivering_steering::SyndicDeliveringSteeringInput;
+pub use delivery_recovery::{
+    ActiveDeliveryRecovery, DELIVERY_RECOVERY_GATE_PAGE_MAX_BYTES,
+    DELIVERY_RECOVERY_GATE_PAGE_MAX_RECORDS, DeliveryRecoveryCase,
+    DeliveryRecoveryClassificationError, DeliveryRecoverySource, DeliveryRecoveryStartupCursor,
+    DeliveryRecoveryStartupPage, RecoveredPendingCursor, RecoveredPendingPage,
+    RecoveredPendingSource, SyndicLiveStopOperation,
+};
+pub use queries::*;
 pub use range::SyndicResourceRangeRead;
+pub use routes::*;
+pub use stop::StopOperationTransitionStatus;
+pub use stop_admission::{StopAdmissionCandidate, StopAdmissionIneligibility, StopAdmissionRead};
 
-use beryl_home_store::{CursorDirection, CursorRange, CursorReadLimits, HomeStore, ReadLimitError};
+use beryl_home_store::{HomeStore, PointReadLimit, ReadLimitError};
 use beryl_model::{
     BindingRevision, CasThreadId, CasTurnId, DiscussionContextOwnerId, SyndicAcceptedInputId,
     SyndicContentId, SyndicDraftId, SyndicExecutionSnapshotId, SyndicItemId, SyndicProjectionId,
     SyndicResourceId, SyndicThreadId, SyndicTurnId,
 };
 
-use crate::{AcceptedInputRecord, SyndicReadError};
+use crate::{AcceptedInputRecord, ProjectionTextSource, SyndicReadError};
 use crate::{
     ActiveCasTurnRecord, BindingHeadRecord, BindingRecord, CanonicalItemRecord,
     CasThreadIndexRecord, CasTurnIndexRecord, ContentManifestRecord, ContextEnvelopeRecord,
     DraftRecord, ExecutionSnapshotRecord, HistorySummaryRecord, InputGateRecord,
     ItemProjectionBuildRecord, ItemProjectionHeadRecord, ItemProjectionSetRecord, ProjectionRecord,
-    ResourceMetadataRecord, SourceEventRecord, TranscriptBuildRecord, TranscriptViewHeadRecord,
-    TurnRecord, TurnStateRecord, codec::*, domain::SyndicStorage,
+    ResourceMetadataRecord, SourceEventRecord, StopOperationId, StopOperationRecord,
+    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadUsageRecord,
+    TranscriptBuildRecord, TranscriptViewHeadRecord, TurnRecord, TurnStateRecord, codec::*,
+    domain::SyndicStorage,
 };
 
-/// Nonzero total stored-byte bound for one typed Syndic primary read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SyndicPointReadLimit {
-    max_stored_bytes: usize,
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ReadByteTotals {
+    pub(crate) stored: usize,
+    pub(crate) decoded: usize,
 }
-impl SyndicPointReadLimit {
-    pub fn new(max_stored_bytes: usize) -> Result<Self, ReadLimitError> {
-        beryl_home_store::PointReadLimit::new(max_stored_bytes)?;
-        Ok(Self { max_stored_bytes })
+
+impl ReadByteTotals {
+    pub(crate) const fn new(stored: usize, decoded: usize) -> Self {
+        Self { stored, decoded }
     }
-    #[must_use]
-    pub const fn max_stored_bytes(self) -> usize {
-        self.max_stored_bytes
+
+    pub(crate) fn add(
+        &mut self,
+        stored: usize,
+        decoded: usize,
+        overflow: &'static str,
+    ) -> Result<(), SyndicReadError> {
+        self.stored = self
+            .stored
+            .checked_add(stored)
+            .ok_or(SyndicReadError::Invariant(overflow))?;
+        self.decoded = self
+            .decoded
+            .checked_add(decoded)
+            .ok_or(SyndicReadError::Invariant(overflow))?;
+        Ok(())
     }
 }
 
-/// One bounded point result with exact key-and-value stored-byte accounting.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SyndicStoredRecord<T> {
-    record: T,
-    stored_bytes: usize,
+pub(crate) fn read_projection_text_source_range_into(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    source: ProjectionTextSource,
+    start: u64,
+    end: u64,
+    output: &mut [u8],
+) -> Result<ReadByteTotals, SyndicReadError> {
+    range::read_projection_text_source_range_into(storage, store, source, start, end, output)
+}
+
+/// Nonzero stored-value and practical decoded-value ceiling for one typed Syndic point read.
+///
+/// The encoded key is independently schema-bounded and is not charged to this caller limit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SyndicPointReadLimit {
+    max_bytes: usize,
+}
+impl SyndicPointReadLimit {
+    /// Constructs one ceiling applied independently before value acquisition and publication.
+    pub fn new(max_bytes: usize) -> Result<Self, ReadLimitError> {
+        PointReadLimit::new(max_bytes)?;
+        Ok(Self { max_bytes })
+    }
+
+    /// Returns the maximum stored value and practical decoded value.
+    #[must_use]
+    pub const fn max_bytes(self) -> usize {
+        self.max_bytes
+    }
 }
 
 /// One head-stabilized current binding, never an arbitrary historical revision.
@@ -57,7 +145,6 @@ pub struct SyndicStoredRecord<T> {
 pub struct SyndicCurrentBinding {
     head: BindingHeadRecord,
     binding: BindingRecord,
-    stored_bytes: usize,
 }
 
 impl SyndicCurrentBinding {
@@ -70,22 +157,6 @@ impl SyndicCurrentBinding {
     pub const fn binding(&self) -> &BindingRecord {
         &self.binding
     }
-
-    /// Combined bytes read for the head/binding/head stability proof.
-    #[must_use]
-    pub const fn stored_bytes(&self) -> usize {
-        self.stored_bytes
-    }
-}
-impl<T> SyndicStoredRecord<T> {
-    #[must_use]
-    pub const fn record(&self) -> &T {
-        &self.record
-    }
-    #[must_use]
-    pub const fn stored_bytes(&self) -> usize {
-        self.stored_bytes
-    }
 }
 
 /// One bounded ordered page returned without a raw storage iterator.
@@ -93,20 +164,35 @@ impl<T> SyndicStoredRecord<T> {
 pub struct SyndicPage<T> {
     records: Vec<T>,
     stored_bytes: usize,
+    decoded_bytes: usize,
     has_more: bool,
 }
 impl<T> SyndicPage<T> {
+    /// Returns the typed records published by this page.
     #[must_use]
     pub fn records(&self) -> &[T] {
         &self.records
     }
+
+    /// Returns the actual aggregate stored bytes acquired by this cursor page.
     #[must_use]
     pub const fn stored_bytes(&self) -> usize {
         self.stored_bytes
     }
+
+    /// Returns the actual aggregate practical decoded bytes published by this cursor page.
+    #[must_use]
+    pub const fn decoded_bytes(&self) -> usize {
+        self.decoded_bytes
+    }
     #[must_use]
     pub const fn has_more(&self) -> bool {
         self.has_more
+    }
+
+    #[must_use]
+    pub fn into_records(self) -> Vec<T> {
+        self.records
     }
 }
 
@@ -116,15 +202,47 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicThreadId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<crate::ThreadRecord>>, SyndicReadError> {
+    ) -> Result<Option<crate::ThreadRecord>, SyndicReadError> {
         self.point::<ThreadsFamily>(store, id, limit)
+    }
+    pub fn thread_execution(
+        &self,
+        store: &HomeStore,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadExecutionRecord>, SyndicReadError> {
+        self.point::<ThreadExecutionsFamily>(store, id, limit)
+    }
+    pub fn thread_attributes(
+        &self,
+        store: &HomeStore,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadAttributesRecord>, SyndicReadError> {
+        self.point::<ThreadAttributesFamily>(store, id, limit)
+    }
+    pub fn thread_usage(
+        &self,
+        store: &HomeStore,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadUsageRecord>, SyndicReadError> {
+        self.point::<ThreadUsageFamily>(store, id, limit)
+    }
+    pub fn thread_catalog_summary(
+        &self,
+        store: &HomeStore,
+        id: SyndicThreadId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<ThreadCatalogSummaryRecord>, SyndicReadError> {
+        self.point::<ThreadCatalogSummariesFamily>(store, id, limit)
     }
     pub fn draft(
         &self,
         store: &HomeStore,
         id: SyndicDraftId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<DraftRecord>>, SyndicReadError> {
+    ) -> Result<Option<DraftRecord>, SyndicReadError> {
         self.point::<DraftsFamily>(store, id, limit)
     }
     pub fn content_manifest(
@@ -132,7 +250,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicContentId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ContentManifestRecord>>, SyndicReadError> {
+    ) -> Result<Option<ContentManifestRecord>, SyndicReadError> {
         self.point::<ContentManifestsFamily>(store, id, limit)
     }
     pub fn context_envelope(
@@ -140,7 +258,7 @@ impl SyndicStorage {
         store: &HomeStore,
         owner: DiscussionContextOwnerId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ContextEnvelopeRecord>>, SyndicReadError> {
+    ) -> Result<Option<ContextEnvelopeRecord>, SyndicReadError> {
         self.point::<ContextEnvelopesFamily>(store, ContextOwnerKey::from(owner), limit)
     }
     pub fn turn(
@@ -148,7 +266,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicTurnId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<TurnRecord>>, SyndicReadError> {
+    ) -> Result<Option<TurnRecord>, SyndicReadError> {
         self.point::<TurnsFamily>(store, id, limit)
     }
     pub fn turn_state(
@@ -156,7 +274,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicTurnId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<TurnStateRecord>>, SyndicReadError> {
+    ) -> Result<Option<TurnStateRecord>, SyndicReadError> {
         self.point::<TurnStatesFamily>(store, id, limit)
     }
     pub fn input_gate(
@@ -164,7 +282,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicThreadId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<InputGateRecord>>, SyndicReadError> {
+    ) -> Result<Option<InputGateRecord>, SyndicReadError> {
         self.point::<InputGatesFamily>(store, id, limit)
     }
     pub fn accepted_input(
@@ -172,15 +290,24 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicAcceptedInputId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<AcceptedInputRecord>>, SyndicReadError> {
+    ) -> Result<Option<AcceptedInputRecord>, SyndicReadError> {
         self.point::<AcceptedInputsFamily>(store, id, limit)
+    }
+    /// Reads one retained live-or-consumed stop-operation receipt by its exact natural identity.
+    pub fn stop_operation(
+        &self,
+        store: &HomeStore,
+        id: StopOperationId,
+        limit: SyndicPointReadLimit,
+    ) -> Result<Option<StopOperationRecord>, SyndicReadError> {
+        self.point::<StopOperationsFamily>(store, id, limit)
     }
     pub fn canonical_item(
         &self,
         store: &HomeStore,
         id: SyndicItemId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<CanonicalItemRecord>>, SyndicReadError> {
+    ) -> Result<Option<CanonicalItemRecord>, SyndicReadError> {
         self.point::<CanonicalItemsFamily>(store, id, limit)
     }
     pub fn transcript_view_head(
@@ -188,7 +315,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicThreadId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<TranscriptViewHeadRecord>>, SyndicReadError> {
+    ) -> Result<Option<TranscriptViewHeadRecord>, SyndicReadError> {
         self.point::<TranscriptHeadsFamily>(store, id, limit)
     }
     pub fn item_projection_head(
@@ -196,7 +323,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicItemId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ItemProjectionHeadRecord>>, SyndicReadError> {
+    ) -> Result<Option<ItemProjectionHeadRecord>, SyndicReadError> {
         self.point::<ItemProjectionHeadsFamily>(store, id, limit)
     }
     pub fn item_projection_set(
@@ -205,7 +332,7 @@ impl SyndicStorage {
         item: SyndicItemId,
         generation: crate::ItemProjectionGeneration,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ItemProjectionSetRecord>>, SyndicReadError> {
+    ) -> Result<Option<ItemProjectionSetRecord>, SyndicReadError> {
         self.point::<ItemProjectionSetsFamily>(
             store,
             ItemProjectionSetKey { item, generation },
@@ -218,7 +345,7 @@ impl SyndicStorage {
         item: SyndicItemId,
         generation: crate::ItemProjectionGeneration,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ItemProjectionBuildRecord>>, SyndicReadError> {
+    ) -> Result<Option<ItemProjectionBuildRecord>, SyndicReadError> {
         self.point::<ItemProjectionBuildsFamily>(
             store,
             ItemProjectionSetKey { item, generation },
@@ -231,7 +358,7 @@ impl SyndicStorage {
         thread: SyndicThreadId,
         generation: crate::TranscriptGeneration,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<TranscriptBuildRecord>>, SyndicReadError> {
+    ) -> Result<Option<TranscriptBuildRecord>, SyndicReadError> {
         self.point::<TranscriptBuildsFamily>(
             store,
             ThreadTranscriptBuildKey { thread, generation },
@@ -243,7 +370,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicProjectionId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ProjectionRecord>>, SyndicReadError> {
+    ) -> Result<Option<ProjectionRecord>, SyndicReadError> {
         self.point::<ProjectionsFamily>(store, id, limit)
     }
     pub fn resource(
@@ -251,7 +378,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicResourceId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ResourceMetadataRecord>>, SyndicReadError> {
+    ) -> Result<Option<ResourceMetadataRecord>, SyndicReadError> {
         self.point::<ResourcesFamily>(store, id, limit)
     }
     pub fn history_summary(
@@ -259,7 +386,7 @@ impl SyndicStorage {
         store: &HomeStore,
         id: SyndicThreadId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<HistorySummaryRecord>>, SyndicReadError> {
+    ) -> Result<Option<HistorySummaryRecord>, SyndicReadError> {
         self.point::<HistorySummariesFamily>(store, id, limit)
     }
     pub fn binding(
@@ -268,14 +395,13 @@ impl SyndicStorage {
         thread: SyndicThreadId,
         revision: BindingRevision,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<BindingRecord>>, SyndicReadError> {
+    ) -> Result<Option<BindingRecord>, SyndicReadError> {
         self.point::<BindingsFamily>(store, BindingKey { thread, revision }, limit)
     }
 
     /// Reads the selected binding through a bounded head/binding/head stability proof.
     ///
-    /// `limit` applies independently to each of the three point reads. The returned byte count is
-    /// their checked sum and is therefore bounded by three times the per-read ceiling.
+    /// `limit` applies independently to each of the three point reads.
     pub fn current_binding(
         &self,
         store: &HomeStore,
@@ -290,7 +416,7 @@ impl SyndicStorage {
                 }),
             };
         };
-        let head = first.record().clone();
+        let head = first.clone();
         let binding = self
             .point::<BindingsFamily>(
                 store,
@@ -308,46 +434,30 @@ impl SyndicStorage {
             .ok_or(SyndicReadError::ConcurrentChange {
                 operation: "current-binding read",
             })?;
-        if second.record() != &head {
+        if second != head {
             return Err(SyndicReadError::ConcurrentChange {
                 operation: "current-binding read",
             });
         }
-        let record = binding.record();
-        if record.thread_id() != head.thread_id()
-            || record.revision() != head.revision()
-            || record.state().lifecycle() != head.lifecycle()
-            || record.selected_path().digest() != head.selected_path_digest()
+        if binding.thread_id() != head.thread_id()
+            || binding.revision() != head.revision()
+            || binding.state().lifecycle() != head.lifecycle()
+            || binding.selected_path().digest() != head.selected_path_digest()
         {
             return Err(SyndicReadError::Invariant(
                 "current binding head and selected record disagree",
             ));
         }
         #[cfg(feature = "test-faults")]
-        crate::test_faults::metrics::record_current_binding_read(
-            first.stored_bytes(),
-            binding.stored_bytes(),
-            second.stored_bytes(),
-        );
-        let stored_bytes = first
-            .stored_bytes()
-            .checked_add(binding.stored_bytes())
-            .and_then(|bytes| bytes.checked_add(second.stored_bytes()))
-            .ok_or(SyndicReadError::Invariant(
-                "current binding stored-byte accounting overflowed",
-            ))?;
-        Ok(Some(SyndicCurrentBinding {
-            head,
-            binding: binding.record,
-            stored_bytes,
-        }))
+        crate::test_faults::metrics::record_current_binding_read();
+        Ok(Some(SyndicCurrentBinding { head, binding }))
     }
     pub fn execution_snapshot(
         &self,
         store: &HomeStore,
         id: SyndicExecutionSnapshotId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ExecutionSnapshotRecord>>, SyndicReadError> {
+    ) -> Result<Option<ExecutionSnapshotRecord>, SyndicReadError> {
         self.point::<ExecutionSnapshotsFamily>(store, id, limit)
     }
 
@@ -357,7 +467,7 @@ impl SyndicStorage {
         store: &HomeStore,
         snapshot: SyndicExecutionSnapshotId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<ActiveCasTurnRecord>>, SyndicReadError> {
+    ) -> Result<Option<ActiveCasTurnRecord>, SyndicReadError> {
         self.point::<ActiveCasTurnsFamily>(store, snapshot, limit)
     }
 
@@ -367,7 +477,7 @@ impl SyndicStorage {
         store: &HomeStore,
         cas_thread: CasThreadId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<CasThreadIndexRecord>>, SyndicReadError> {
+    ) -> Result<Option<CasThreadIndexRecord>, SyndicReadError> {
         self.point::<CasThreadIndexFamily>(store, CasThreadKey::Record(cas_thread), limit)
     }
 
@@ -378,7 +488,7 @@ impl SyndicStorage {
         cas_thread: CasThreadId,
         cas_turn: CasTurnId,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<CasTurnIndexRecord>>, SyndicReadError> {
+    ) -> Result<Option<CasTurnIndexRecord>, SyndicReadError> {
         self.point::<CasTurnIndexFamily>(store, CasTurnKey::Record(cas_thread, cas_turn), limit)
     }
 
@@ -388,7 +498,7 @@ impl SyndicStorage {
         turn: SyndicTurnId,
         sequence: crate::SourceEventSequence,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<SourceEventRecord>>, SyndicReadError> {
+    ) -> Result<Option<SourceEventRecord>, SyndicReadError> {
         self.point::<SourceEventsFamily>(
             store,
             TurnEventKey {
@@ -425,21 +535,20 @@ impl SyndicStorage {
         .expect("LiveSourceEvent construction already validates its source record");
         Ok(match stored {
             Some(stored)
-                if stored.record() == &expected
+                if stored == expected
                     && state.as_ref().is_some_and(|state| {
-                        state.record().source_event_count() >= request.sequence().get()
+                        state.source_event_count() >= request.sequence().get()
                     }) =>
             {
                 crate::LiveSourceEventStatus::Exact
             }
             Some(_) => crate::LiveSourceEventStatus::Collision,
             None if state.as_ref().is_some_and(|state| {
-                state.record().revision() == request.expected_state_revision()
-                    && state.record().source_event_count().checked_add(1)
-                        == Some(request.sequence().get())
-            }) && gate.as_ref().is_some_and(|gate| {
-                gate.record().revision() == request.expected_gate_revision()
-            }) =>
+                state.revision() == request.expected_state_revision()
+                    && state.source_event_count().checked_add(1) == Some(request.sequence().get())
+            }) && gate
+                .as_ref()
+                .is_some_and(|gate| gate.revision() == request.expected_gate_revision()) =>
             {
                 crate::LiveSourceEventStatus::Absent
             }
@@ -452,29 +561,13 @@ impl SyndicStorage {
         store: &HomeStore,
         key: F::Key,
         limit: SyndicPointReadLimit,
-    ) -> Result<Option<SyndicStoredRecord<F::Value>>, SyndicReadError>
-    where
-        F::Key: Eq,
-    {
-        let page = store.read_cursor::<crate::domain::SyndicDomain, ExactCodec<F>>(
-            self.handle,
-            &CursorRange::closed(key.clone(), key),
-            CursorDirection::Forward,
-            CursorReadLimits::new(1, limit.max_stored_bytes()).expect("point bound is nonzero"),
-        )?;
-        if page.has_more() || page.records().len() > 1 {
-            return Err(SyndicReadError::Invariant(
-                "Syndic point range returned more than one record",
-            ));
-        }
-        let stored_bytes = page.stored_bytes();
-        Ok(page
-            .into_records()
-            .into_iter()
-            .next()
-            .map(|record| SyndicStoredRecord {
-                record: record.into_parts().1,
-                stored_bytes,
-            }))
+    ) -> Result<Option<F::Value>, SyndicReadError> {
+        store
+            .read_point::<crate::domain::SyndicDomain, ExactCodec<F>>(
+                self.handle,
+                &key,
+                PointReadLimit::new(limit.max_bytes()).expect("point bound is nonzero"),
+            )
+            .map_err(Into::into)
     }
 }

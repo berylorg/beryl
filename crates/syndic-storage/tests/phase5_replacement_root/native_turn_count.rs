@@ -1,22 +1,6 @@
 use super::*;
 
-use beryl_model::{
-    CasNativeTurnCount, CasThreadId, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath,
-};
-
-fn execution_binding() -> ExecutionBinding {
-    ExecutionBinding::new(
-        RuntimeId::from_bytes([87; 16]),
-        RootId::from_bytes([88; 16]),
-        RuntimeNativePath::from_admitted(
-            RuntimeMode::host(),
-            PathFlavor::Windows,
-            "C:\\phase10-root-fresh",
-        )
-        .unwrap(),
-    )
-}
+use beryl_model::{CasNativeTurnCount, CasThreadId};
 
 fn replace_root_turn(store: &HomeStore, storage: SyndicStorage) -> SyndicTurnId {
     let selected = SelectedPathProof::new(
@@ -41,7 +25,7 @@ fn replace_root_turn(store: &HomeStore, storage: SyndicStorage) -> SyndicTurnId 
                     TranscriptGeneration::FIRST,
                     TranscriptPosition::FIRST,
                 ),
-                AdmissionMarkers::default(),
+                None,
                 timestamp(3),
             ),
         ),
@@ -65,7 +49,7 @@ fn replace_root_turn(store: &HomeStore, storage: SyndicStorage) -> SyndicTurnId 
                 InputGateRevision::new(1).unwrap(),
                 draft_id(85),
                 SyndicItemId::from_bytes([86; 16]),
-                AdmissionMarkers::default(),
+                None,
                 timestamp(4),
             ),
         ),

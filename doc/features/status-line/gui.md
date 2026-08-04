@@ -24,7 +24,14 @@ When an operation is unavailable, its segment remains passive or visibly disable
 
 Mount-into: main-window.overlays
 
-Each status operation popup uses the bundled `anchored context menu`, whose row presentation follows the bundled `context menu`. The model/reasoning popup configures the `virtualized-collection` variant for the caller-unbounded backend-supported model and effort selection rows, preserving stable option identity, logical focus, selected-row reveal, and bounded realization. The context popup configures the static bounded `Compact` command row. The turn popup configures static bounded `Soft stop` and `Hard stop` rows, with `Hard stop` using a full-width bundled `hold-to-confirm button` and the three-second feature-owned hold duration.
+Each status operation popup uses the bundled `anchored context menu`, whose row presentation follows
+the bundled `context menu`. The model/reasoning popup configures the `virtualized-collection`
+variant with an exact backend query identity, bounded resident `model/list` cursor pages, stable
+option identities, continuation state, logical focus, selected-row reveal, and bounded realization;
+it never supplies the complete caller-unbounded model collection. The context popup configures the
+static bounded `Compact` command row. The turn popup configures static bounded `Soft stop` and
+`Hard stop` rows, with `Hard stop` using a full-width bundled `hold-to-confirm button` and the
+three-second feature-owned hold duration.
 
 The feature supplies row labels, selected values, supported combinations, exact target identity, command effects, in-flight state, failures, and closest disabled reasons. Built-in widgets own menu bounds, row focus, dismissal, hold progress and cancellation, duplicate-activation suppression, tooltip presentation, and focus return.
 

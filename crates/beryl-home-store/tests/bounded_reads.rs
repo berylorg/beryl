@@ -46,6 +46,8 @@ fn typed_point_and_cursor_reads_return_only_decoded_records() {
     assert_eq!(page.records()[1].value(), b"two");
     assert!(page.has_more());
     assert!(page.stored_bytes() <= 128);
+    assert!(page.decoded_bytes() <= 128);
+    assert!(page.decoded_bytes() > 0);
     assert_eq!(store.health().state(), HomeHealthState::Healthy);
 
     let reverse = store

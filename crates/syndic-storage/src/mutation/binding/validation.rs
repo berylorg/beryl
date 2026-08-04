@@ -36,7 +36,15 @@ pub(super) fn transition_base(
             revision: expected_revision,
         },
     )?;
-    if current.selected_path() != selected_path
+    let canonical = required::<ThreadExecutionsFamily>(reader, &thread_id)?;
+    if current
+        .state()
+        .execution()
+        .is_some_and(|execution| execution != canonical.execution())
+    {
+        return Err(SyndicMutationError::ExecutionBindingConflict);
+    }
+    if !selected_path.is_compatible_descendant_of(current.selected_path())
         || selected_path.tail() != thread.committed_tail()
         || selected_path.digest() != thread.selected_path_digest()
         || selected_path.thread_revision() > thread.revision()
@@ -59,6 +67,18 @@ pub(super) fn transition_base(
         current,
         next_revision,
     })
+}
+
+pub(super) fn validate_canonical_execution(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread_id: SyndicThreadId,
+    execution: &beryl_model::ExecutionBinding,
+) -> Result<(), SyndicMutationError> {
+    let canonical = required::<ThreadExecutionsFamily>(reader, &thread_id)?;
+    if canonical.thread_id() != thread_id || canonical.execution() != execution {
+        return Err(SyndicMutationError::ExecutionBindingConflict);
+    }
+    Ok(())
 }
 
 pub(super) fn ensure_not_active(current: &BindingRecord) -> Result<(), SyndicMutationError> {
@@ -356,7 +376,7 @@ fn validate_exact_selected(
 ) -> Result<(), SyndicMutationError> {
     if prefix.tail() == selected.tail()
         && prefix.digest() == selected.digest()
-        && prefix.source_thread_revision() == selected.thread_revision()
+        && prefix.source_thread_revision() <= selected.thread_revision()
     {
         Ok(())
     } else {
@@ -387,8 +407,10 @@ pub(super) fn validate_stale(
         {
             return Err(SyndicMutationError::BindingPathConflict);
         }
-        if let Some(required) = lineage.recovered_loaded_generation()
-            && stale.loaded_generation() != Some(required)
+        if let Some(injection_generation) = lineage.recovered_injection_generation()
+            && stale.loaded_generation().is_none_or(|current_generation| {
+                current_generation.process() != injection_generation.process()
+            })
         {
             return Err(SyndicMutationError::BindingPathConflict);
         }
@@ -414,7 +436,7 @@ pub(super) fn validate_exact_parent(
     };
     if prefix.tail() == expected_tail
         && prefix.digest() == expected_digest
-        && prefix.source_thread_revision() == selected.thread_revision()
+        && prefix.source_thread_revision() <= selected.thread_revision()
     {
         Ok(())
     } else {

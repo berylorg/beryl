@@ -1,21 +1,30 @@
 use super::*;
 
 #[test]
-fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
-    let home = TestHome::new("phase9-recovered-loaded-generation");
+fn recovered_lineage_activation_requires_its_injection_process_and_preserves_chronology() {
+    let home = TestHome::new("phase13-recovered-injection-process");
     let mut store = open(home.path());
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread, parent, turn, selected) = non_root_pending(&store, storage);
+    assert_eq!(
+        storage
+            .input_gate(&store, thread, point_limit())
+            .unwrap()
+            .unwrap()
+            .route_generation_high_water(),
+        Some(AcceptedRouteGeneration::FIRST)
+    );
     let parent = storage
         .turn(&store, parent, point_limit())
         .unwrap()
         .unwrap();
     let represented = CasRepresentedPrefixProof::new(
-        Some(parent.record().id()),
+        Some(parent.id()),
         selected.thread_revision(),
-        parent.record().chain_digest(),
+        parent.chain_digest(),
     );
-    let required_generation = loaded_generation(7, 11);
+    let injection_generation = loaded_generation(7, 11);
+    let handoff_generation = loaded_generation(7, 12);
     let recovered = RecoveredInjectionProof::new(
         RecoveryProjectionVersion::V1,
         represented,
@@ -23,7 +32,7 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         RecoveryItemCount::new(1).unwrap(),
         RecoveryUtf8ByteCount::new(5).unwrap(),
         timestamp(6),
-        required_generation,
+        injection_generation,
     )
     .unwrap();
     let valid = valid_request(
@@ -44,21 +53,25 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         panic!("recovered establishment is not valid");
     };
     assert_eq!(established.native_turn_count(), CasNativeTurnCount::ZERO);
+    assert_eq!(
+        established.lineage().recovered_injection_generation(),
+        Some(injection_generation)
+    );
 
     let snapshot = SyndicExecutionSnapshotId::from_bytes([13; 16]);
-    let wrong = ActivateBinding::new(
+    let wrong_process = ActivateBinding::new(
         thread,
         current_binding_revision(&store, storage, thread),
         current_gate_revision(&store, storage, thread),
         selected,
         snapshot,
         turn,
-        loaded_generation(7, 12),
+        loaded_generation(8, 12),
         timestamp(8),
     );
     let error = execute(
         &store,
-        storage.activate_binding(storage.revision(&store).unwrap(), wrong),
+        storage.activate_binding(storage.revision(&store).unwrap(), wrong_process),
     )
     .unwrap_err();
     assert!(matches!(
@@ -79,7 +92,7 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         selected,
         snapshot,
         turn,
-        required_generation,
+        handoff_generation,
         timestamp(5),
     );
     let error = execute(
@@ -98,21 +111,33 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
             .is_none()
     );
 
-    let exact = ActivateBinding::new(
+    let same_process_handoff = ActivateBinding::new(
         thread,
         current_binding_revision(&store, storage, thread),
         current_gate_revision(&store, storage, thread),
         selected,
         snapshot,
         turn,
-        required_generation,
+        handoff_generation,
         timestamp(8),
     );
     execute(
         &store,
-        storage.activate_binding(storage.revision(&store).unwrap(), exact),
+        storage.activate_binding(storage.revision(&store).unwrap(), same_process_handoff),
     )
     .unwrap();
+    let gate = storage
+        .input_gate(&store, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        gate.route_generation_high_water(),
+        Some(AcceptedRouteGeneration::new(2).unwrap())
+    );
+    assert_eq!(
+        gate.selected_route().unwrap().generation(),
+        AcceptedRouteGeneration::new(2).unwrap()
+    );
     store.validate_registered_domains().unwrap();
 
     let binding = storage
@@ -126,6 +151,33 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         .execution_snapshot(&store, snapshot, point_limit())
         .unwrap()
         .unwrap();
+    assert_eq!(persisted_snapshot.loaded_generation(), handoff_generation);
+    assert_eq!(
+        active.usable().lineage(),
+        CasLineageProof::recovered(recovered)
+    );
+    store.close().unwrap();
+
+    let mut reopened = open(home.path());
+    let storage = SyndicStorage::register(&mut reopened).unwrap();
+    reopened.validate_registered_domains().unwrap();
+    let binding = storage
+        .current_binding(&reopened, thread, point_limit())
+        .unwrap()
+        .unwrap();
+    let BindingState::Active(active) = binding.binding().state() else {
+        panic!("reopened recovered binding is not active");
+    };
+    let persisted_snapshot = storage
+        .execution_snapshot(&reopened, snapshot, point_limit())
+        .unwrap()
+        .unwrap();
+    assert_eq!(persisted_snapshot.loaded_generation(), handoff_generation);
+    assert_eq!(
+        active.usable().lineage().recovered_injection_generation(),
+        Some(injection_generation)
+    );
+
     let impossible_start = timestamp(5);
     let corrupt_active = ActiveCasBinding::new(
         active.usable().clone(),
@@ -134,7 +186,7 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         active.activation_gate_revision(),
         impossible_start,
     );
-    let persisted_snapshot = persisted_snapshot.record();
+    let persisted_snapshot = persisted_snapshot;
     let corrupt_snapshot = ExecutionSnapshotRecord::new(
         persisted_snapshot.id(),
         persisted_snapshot.thread_id(),
@@ -152,7 +204,7 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         impossible_start,
     );
     commit(
-        &store,
+        &reopened,
         storage,
         batch([
             FixtureRecord::Binding(BindingRecord::new(
@@ -164,10 +216,10 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
             FixtureRecord::ExecutionSnapshot(corrupt_snapshot),
         ]),
     );
-    store.close().unwrap();
+    reopened.close().unwrap();
 
-    let mut reopened = open(home.path());
-    let error = match SyndicStorage::register(&mut reopened) {
+    let mut invalid = open(home.path());
+    let error = match SyndicStorage::register(&mut invalid) {
         Ok(_) => panic!("impossible recovered chronology registered successfully"),
         Err(error) => error,
     };
@@ -181,7 +233,7 @@ fn recovered_lineage_activation_requires_its_exact_loaded_generation() {
         }
         other => panic!("expected recovered chronology rejection, got {other:?}"),
     }
-    reopened.close().unwrap();
+    invalid.close().unwrap();
 }
 
 #[test]
@@ -195,9 +247,9 @@ fn recovered_cas_identity_cannot_be_redefined_as_native_lineage() {
         .unwrap()
         .unwrap();
     let represented = CasRepresentedPrefixProof::new(
-        Some(parent.record().id()),
+        Some(parent.id()),
         selected.thread_revision(),
-        parent.record().chain_digest(),
+        parent.chain_digest(),
     );
     let cas_thread = CasThreadId::new("recovered-cannot-become-native").unwrap();
     let recovered = RecoveredInjectionProof::new(

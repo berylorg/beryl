@@ -67,3 +67,28 @@ Never infer external represented-prefix authority from local lifecycle alone, an
 activated immutable turn to manufacture retryability. Any transition that claims externally
 retained context requires the exact durable provider identity proof; loss of that proof must
 preserve local work while retiring external authority.
+
+## V4 Unknown-Terminal Gate Collision
+
+Phase 65 invalidated the assumption that the V4 gate replacement could reserve `Stopping`
+exclusively for exact stop-operation authority without adding another state. The system contract
+keeps `UnknownTerminal` open while exact late provider evidence remains possible, the lifecycle
+blocks another same-thread start, live ingestion permits later exact evidence, and startup
+classification accepts an active binding with that lifecycle. At the same time, `Stopping` now
+requires a matching live stop record and `FinalizingHistory` requires a proven-terminal turn.
+
+Rejecting every active source-backed unknown-terminal update avoids fabricating stop authority, but
+it removes the separately authorized live terminal-wait interval. Keeping the gate `Steerable`
+would instead allow new input and existing ready work to target a turn that is no longer
+steerable. `PendingTurn`, `Compacting`, `Stopping`, and `FinalizingHistory` each assert a different
+false authority. Post-abandonment `PendingTurn` plus `ProjectionLost` remains correct only after
+the active projection and its late-evidence authority have been retired.
+
+The accepted correction is an explicit queue-only `AwaitingTerminal(turn)` gate, an
+`UnknownTerminal` next-turn reason, and a retained awaiting-terminal route target carrying the
+exact prior steering target. Entry atomically removes ready-source eligibility and reclassifies
+admitted or retryable work without visiting leaves. New input forms later queue-only generations,
+late activation opens a fresh steering generation without retroactively steering that input, exact
+late terminal evidence enters ordinary finalization, and target loss uses active abandonment.
+Startup treats the unresolved state as possible-dispatch active work and abandons it rather than
+waiting or synthesizing a result.

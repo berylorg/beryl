@@ -6,6 +6,7 @@ members = [
     "crates/beryl-home-store",
     "crates/beryl-model",
     "crates/beryl-state",
+    "crates/beryl-stream",
     "crates/syndic-storage",
 ]
 resolver = "3"
@@ -19,14 +20,16 @@ version = "0.1.0"
 [workspace.dependencies]
 anyhow = "1.0.102"
 base64 = "0.22.1"
+bounded-json = { path = "../bounded-json" }
 beryl-app = { path = "crates/beryl-app" }
 beryl-backend = { path = "crates/beryl-backend" }
 beryl-home-store = { path = "crates/beryl-home-store" }
 beryl-model = { path = "crates/beryl-model" }
 beryl-state = { path = "crates/beryl-state" }
+beryl-stream = { path = "crates/beryl-stream" }
 syndic-storage = { path = "crates/syndic-storage" }
 clap = { version = "4.6.1", features = ["derive"] }
-fjall = "=3.1.6"
+fjall = { path = "../fjall-fork", version = "=3.1.6" }
 getrandom = "0.4.2"
 hex = "0.4.3"
 gpui = { git = "https://github.com/berylorg/zed-fork.git", rev = "fabbb607f5aff9e69ef6f09d423c5264bee4c9a8", default-features = false, features = ["windows-manifest"] }
@@ -56,5 +59,6 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }
 unicode-segmentation = "1.12.0"
+unicode-normalization = "=0.1.25"
 wait-timeout = "0.2.1"
 windows = "0.61"

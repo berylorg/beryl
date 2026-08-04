@@ -1,204 +1,91 @@
-use beryl_home_store::{CursorReadLimits, HomeStore};
-use beryl_model::RecoveryItemSequenceDigest;
-use sha2::{Digest, Sha256};
+use std::str;
+
+use beryl_home_store::HomeStore;
 
 use crate::{
-    ContentReference, RecoveryItem, RecoveryItemRole, RecoveryProjectionError,
-    SyndicPointReadLimit, SyndicStorage,
-    codec::{ContentChunkKey, ContentChunksFamily},
+    ProjectionTextSource, RecoveryProjectionError, SyndicStorage,
+    read::{ReadByteTotals, read_projection_text_source_range_into},
 };
 
-use super::{INDEX_PAGE_MAX_BYTES, INDEX_PAGE_MAX_ITEMS, ItemFrontier};
+/// Maximum UTF-8 payload returned by one recovery cursor page.
+pub const RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES: usize = crate::TRANSCRIPT_PAGE_MAX_BYTES;
 
-const CHUNK_POINT_READ_MAX_BYTES: usize = crate::CONTENT_CHUNK_MAX_BYTES + 512;
-const RECOVERY_DIGEST_DOMAIN: &[u8] = b"beryl.syndic.recovery-item-sequence.v1\0";
+pub(super) fn read_recovery_utf8_page(
+    storage: &SyndicStorage,
+    store: &HomeStore,
+    source: ProjectionTextSource,
+    offset: u64,
+    max_utf8_bytes: usize,
+    output: &mut [u8],
+) -> Result<(usize, ReadByteTotals), RecoveryProjectionError> {
+    if max_utf8_bytes == 0 {
+        return Err(RecoveryProjectionError::InvalidCursorPageLimit {
+            actual: max_utf8_bytes,
+        });
+    }
+    let remaining = source.logical_utf8_bytes().checked_sub(offset).ok_or(
+        RecoveryProjectionError::CursorMismatch {
+            reason: "item-local cursor offset exceeds the declared text length",
+        },
+    )?;
+    if remaining == 0 {
+        return Err(RecoveryProjectionError::CursorMismatch {
+            reason: "recovery cursor attempted to emit an empty text page",
+        });
+    }
+    let requested = remaining
+        .min(max_utf8_bytes as u64)
+        .min(output.len() as u64)
+        .min(RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES as u64);
+    if requested == 0 {
+        return Err(RecoveryProjectionError::InvalidCursorPageLimit { actual: 0 });
+    }
+    let end = offset
+        .checked_add(requested)
+        .ok_or(RecoveryProjectionError::CursorMismatch {
+            reason: "item-local cursor offset overflowed",
+        })?;
+    let requested =
+        usize::try_from(requested).map_err(|_| RecoveryProjectionError::CursorMismatch {
+            reason: "bounded recovery page length overflowed",
+        })?;
+    let bytes = output
+        .get_mut(..requested)
+        .ok_or(RecoveryProjectionError::CursorMismatch {
+            reason: "bounded recovery page exceeds its caller-provided storage",
+        })?;
+    let totals =
+        read_projection_text_source_range_into(storage, store, source, offset, end, bytes)?;
 
-impl SyndicStorage {
-    pub(super) fn materialize_items(
-        &self,
-        store: &HomeStore,
-        frontier: &[ItemFrontier],
-    ) -> Result<Vec<RecoveryItem>, RecoveryProjectionError> {
-        let mut items = Vec::with_capacity(frontier.len());
-        for item in frontier {
-            let bytes = self.read_recovery_text(store, item.content)?;
-            let text = String::from_utf8(bytes).map_err(|_| {
-                RecoveryProjectionError::Invariant(
-                    "canonical recovery text spans do not compose valid UTF-8",
-                )
-            })?;
-            if text.is_empty() {
-                return Err(RecoveryProjectionError::EmptyHistoryItem);
-            }
-            let text = text.into_boxed_str();
-            items.push(match item.role {
-                RecoveryItemRole::User => RecoveryItem::user(text),
-                RecoveryItemRole::Assistant => RecoveryItem::assistant(text),
+    let valid_len = match str::from_utf8(bytes) {
+        Ok(_) => bytes.len(),
+        Err(error)
+            if end < source.logical_utf8_bytes()
+                && error.error_len().is_none()
+                && error.valid_up_to() != 0 =>
+        {
+            error.valid_up_to()
+        }
+        Err(error)
+            if end < source.logical_utf8_bytes()
+                && error.error_len().is_none()
+                && error.valid_up_to() == 0 =>
+        {
+            return Err(RecoveryProjectionError::CursorPageLimitTooSmall {
+                offset,
+                actual: requested,
             });
         }
-        Ok(items)
-    }
-
-    fn read_recovery_text(
-        &self,
-        store: &HomeStore,
-        content: ContentReference,
-    ) -> Result<Vec<u8>, RecoveryProjectionError> {
-        let expected = content.summary().logical_utf8_bytes();
-        let capacity = usize::try_from(expected).map_err(|_| {
-            RecoveryProjectionError::Invariant("recovery text allocation length overflowed")
-        })?;
-        let mut bytes = Vec::with_capacity(capacity);
-        let mut logical = 0_u64;
-        let mut after = None;
-        let mut cached_chunk = None;
-        let limits = || {
-            CursorReadLimits::new(INDEX_PAGE_MAX_ITEMS, INDEX_PAGE_MAX_BYTES)
-                .expect("recovery text-span page bounds are nonzero")
-        };
-
-        while logical < expected {
-            let page = self.content_text_spans(store, content.id(), after, limits())?;
-            if page.records().is_empty() {
-                return Err(RecoveryProjectionError::MissingHistory {
-                    record: "content-text-span",
-                });
-            }
-            for span in page.records() {
-                if logical >= expected {
-                    return Err(RecoveryProjectionError::Invariant(
-                        "content text spans continue past the canonical logical frontier",
-                    ));
-                }
-                if span.content_id() != content.id()
-                    || span.logical_start() != logical
-                    || span.logical_end() > expected
-                {
-                    return Err(RecoveryProjectionError::Invariant(
-                        "content text spans do not exactly cover canonical logical bytes",
-                    ));
-                }
-                if span.break_before() {
-                    return Err(RecoveryProjectionError::MediaHistory {
-                        reason: "canonical text is separated by an image marker",
-                    });
-                }
-                if cached_chunk
-                    .as_ref()
-                    .is_none_or(|chunk: &crate::ContentChunkRecord| {
-                        chunk.ordinal() != span.chunk_ordinal()
-                    })
-                {
-                    let chunk = self
-                        .point::<ContentChunksFamily>(
-                            store,
-                            ContentChunkKey {
-                                owner: content.id(),
-                                ordinal: span.chunk_ordinal(),
-                            },
-                            chunk_point_limit(),
-                        )?
-                        .ok_or(RecoveryProjectionError::MissingHistory {
-                            record: "content-chunk",
-                        })?;
-                    cached_chunk = Some(chunk.record().clone());
-                }
-                let chunk = cached_chunk
-                    .as_ref()
-                    .expect("recovery text loads the span's exact chunk");
-                if chunk.content_id() != content.id()
-                    || chunk.ordinal() != span.chunk_ordinal()
-                    || <[u8; 32]>::from(Sha256::digest(chunk.bytes())) != *chunk.digest()
-                {
-                    return Err(RecoveryProjectionError::Invariant(
-                        "content chunk identity or digest disagrees with recovery authority",
-                    ));
-                }
-                let local_start = span
-                    .encoded_start()
-                    .checked_sub(span.chunk_start())
-                    .and_then(|offset| usize::try_from(offset).ok())
-                    .ok_or(RecoveryProjectionError::Invariant(
-                        "content text-span start does not lie in its chunk",
-                    ))?;
-                let local_end = span
-                    .encoded_end()
-                    .checked_sub(span.chunk_start())
-                    .and_then(|offset| usize::try_from(offset).ok())
-                    .ok_or(RecoveryProjectionError::Invariant(
-                        "content text-span end does not lie in its chunk",
-                    ))?;
-                let selected = chunk.bytes().get(local_start..local_end).ok_or(
-                    RecoveryProjectionError::Invariant(
-                        "content text-span range lies outside its physical chunk",
-                    ),
-                )?;
-                if <[u8; 32]>::from(Sha256::digest(selected)) != span.digest() {
-                    return Err(RecoveryProjectionError::Invariant(
-                        "content text-span digest disagrees with its physical bytes",
-                    ));
-                }
-                bytes.extend_from_slice(selected);
-                logical = span.logical_end();
-                after = Some(span.logical_start());
-            }
-            if logical < expected && !page.has_more() {
-                return Err(RecoveryProjectionError::MissingHistory {
-                    record: "content-text-span",
-                });
-            }
-            if logical == expected && page.has_more() {
-                return Err(RecoveryProjectionError::Invariant(
-                    "content text spans continue past the canonical logical frontier",
-                ));
-            }
+        Err(_) => {
+            return Err(RecoveryProjectionError::CursorMismatch {
+                reason: "canonical recovery text is not valid UTF-8",
+            });
         }
-        if bytes.len() != capacity {
-            return Err(RecoveryProjectionError::Invariant(
-                "content text spans returned the wrong logical byte count",
-            ));
-        }
-        Ok(bytes)
+    };
+    if valid_len == 0 {
+        return Err(RecoveryProjectionError::CursorMismatch {
+            reason: "bounded recovery text page made no UTF-8 progress",
+        });
     }
-}
-
-fn chunk_point_limit() -> SyndicPointReadLimit {
-    SyndicPointReadLimit::new(CHUNK_POINT_READ_MAX_BYTES)
-        .expect("recovery chunk point-read bound is nonzero")
-}
-
-pub(super) fn recovery_sequence_digest(
-    items: &[RecoveryItem],
-    utf8_bytes: u64,
-) -> RecoveryItemSequenceDigest {
-    let mut hash = Sha256::new();
-    hash.update(RECOVERY_DIGEST_DOMAIN);
-    hash.update(
-        u64::try_from(items.len())
-            .expect("bounded recovery item count fits u64")
-            .to_be_bytes(),
-    );
-    hash.update(utf8_bytes.to_be_bytes());
-    for (index, item) in items.iter().enumerate() {
-        let role = match item {
-            RecoveryItem::UserInputText(_) => 0_u8,
-            RecoveryItem::AssistantOutputText(_) => 1_u8,
-        };
-        let text = item.text().as_bytes();
-        hash.update(
-            u64::try_from(index)
-                .expect("bounded recovery item ordinal fits u64")
-                .checked_add(1)
-                .expect("bounded recovery item ordinal is not u64::MAX")
-                .to_be_bytes(),
-        );
-        hash.update([role]);
-        hash.update(
-            u64::try_from(text.len())
-                .expect("bounded recovery item text length fits u64")
-                .to_be_bytes(),
-        );
-        hash.update(text);
-    }
-    RecoveryItemSequenceDigest::from_bytes(hash.finalize().into())
+    Ok((valid_len, totals))
 }

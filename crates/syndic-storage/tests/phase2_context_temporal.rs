@@ -20,7 +20,7 @@ use support::populated::{
 };
 use support::{
     TestHome, batch, commit, composer_content_records, draft_id, empty_composer_content,
-    fixture_turn_state, id, open, timestamp,
+    fixture_turn_state, fixture_turn_state_with_finalization, id, open, timestamp,
 };
 
 fn source_digest() -> beryl_model::SyndicPathDigest {
@@ -34,7 +34,7 @@ fn source_transcript_digest() -> [u8; 32] {
         TranscriptGeneration::FIRST,
         TranscriptPosition::FIRST,
         source_item(),
-        ProjectionRevision::new(1).unwrap(),
+        ProjectionRevision::new(4).unwrap(),
         ItemProjectionGeneration::FIRST,
         source_projection(),
         ProjectionRevision::new(1).unwrap(),
@@ -48,6 +48,7 @@ fn context_source_user_item_mutation() -> FixtureBatch {
     let item = beryl_model::SyndicItemId::from_bytes([70; 16]);
     let projection = fixture_inline_paragraph_projection(item, turn, "user");
     let revision = projection.revision();
+    let item_revision = ProjectionRevision::new(4).unwrap();
     let (content, mut records) = composer_content_records(
         &ComposerPayload::new(vec![ComposerAtom::text("user").unwrap()]).unwrap(),
     );
@@ -59,7 +60,7 @@ fn context_source_user_item_mutation() -> FixtureBatch {
     let checkpoint = MarkdownParserCheckpoint::new(
         4,
         4,
-        ContentPieceOrdinal::new(2).unwrap(),
+        ProjectionTextSourceCursor::Composer(ContentPieceOrdinal::new(2).unwrap()),
         4,
         Box::<str>::default(),
         false,
@@ -70,7 +71,7 @@ fn context_source_user_item_mutation() -> FixtureBatch {
         TranscriptGeneration::FIRST,
         TranscriptPosition::new(2).unwrap(),
         item,
-        revision,
+        item_revision,
         ItemProjectionGeneration::FIRST,
         projection.id(),
         revision,
@@ -97,7 +98,7 @@ fn context_source_user_item_mutation() -> FixtureBatch {
             TurnItemOrdinal::new(2).unwrap(),
             revision,
             content,
-            0,
+            None,
         )),
         FixtureRecord::TurnItem(TurnItemIndexRecord::new(
             turn,
@@ -116,8 +117,8 @@ fn context_source_user_item_mutation() -> FixtureBatch {
             item,
             ItemProjectionGeneration::FIRST,
             ProjectionFormatVersion::V1,
-            revision,
-            content,
+            item_revision,
+            ProjectionTextSource::composer(content),
             4,
             1,
             0,
@@ -131,7 +132,7 @@ fn context_source_user_item_mutation() -> FixtureBatch {
         FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
             item,
             revision,
-            revision,
+            item_revision,
             ItemProjectionGeneration::FIRST,
             ProjectionLifecycle::Current,
         )),
@@ -185,7 +186,7 @@ fn context_source_user_item_mutation() -> FixtureBatch {
             context,
         )),
     ]);
-    correlate_source_user_item(&mut records, item, revision, content, 0, timestamp(4));
+    correlate_source_user_item(&mut records, item, revision, content, None, timestamp(4));
     batch(records)
 }
 
@@ -287,447 +288,201 @@ fn validate_and_reopen(name: &str, mutation: FixtureBatch) {
     reopened.close().unwrap();
 }
 
-#[test]
-fn context_remains_valid_after_source_thread_selects_away_from_source_turn() {
-    let thread = id(30);
-    let draft = draft_id(31);
-    let root = SyndicTurnId::from_bytes([29; 16]);
-    let digest = root_turn_chain_digest(root);
-    let thread_revision = ThreadRevision::new(2).unwrap();
-    let draft_revision = DraftRevision::new(2).unwrap();
-    let projection_revision = ProjectionRevision::new(2).unwrap();
-    let binding_revision = BindingRevision::new(5).unwrap();
-    let selected = SelectedPathProof::new(Some(root), thread_revision, digest);
-    let mutation = batch([
-        FixtureRecord::Thread(ThreadRecord::new(
-            thread,
-            thread_revision,
-            Some(root),
-            draft,
-            None,
-            None,
-            digest,
-        )),
-        FixtureRecord::Draft(DraftRecord::new(
-            draft,
-            thread,
-            draft_revision,
-            ConversationParent::Turn(root),
-            None,
-            None,
-            empty_composer_content(),
-            timestamp(1),
-            timestamp(1),
-        )),
-        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
-            thread,
-            draft,
-            draft_revision,
-            thread_revision,
-        )),
-        FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
-            thread,
-            TranscriptGeneration::new(2).unwrap(),
-            projection_revision,
-            0,
-            Some(root),
-            digest,
-            ProjectionLifecycle::Current,
-        )),
-        FixtureRecord::TranscriptBuild(TranscriptBuildRecord::new(
-            thread,
-            TranscriptGeneration::new(2).unwrap(),
-            projection_revision,
-            thread_revision,
-            Some(root),
-            digest,
-            1,
-            0,
-            fixture_transcript_digest_seed(),
-            true,
-            TranscriptBuildPhase::Complete,
-        )),
-        FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-            thread,
-            TranscriptGeneration::new(2).unwrap(),
-            TurnDepth::FIRST,
-            root,
-            digest,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            1,
-            0,
-            0,
-            timestamp(2),
-        )),
-        FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-            thread,
-            thread_revision,
-            Some(root),
-            digest,
-            true,
-            timestamp(2),
-        )),
-        FixtureRecord::Binding(BindingRecord::new(
-            thread,
-            binding_revision,
-            selected,
-            BindingState::unbound("source moved selection").unwrap(),
-        )),
-        FixtureRecord::BindingHead(BindingHeadRecord::new(
-            thread,
-            binding_revision,
-            BindingLifecycle::Unbound,
-            digest,
-        )),
-    ]);
-    validate_and_reopen("context-source-moved", mutation);
-}
-
-#[test]
-fn submitted_context_owner_need_not_remain_on_child_selected_path() {
-    let source = source_turn();
-    let child_thread = id(36);
-    let old_draft = draft_id(37);
-    let new_draft = draft_id(38);
-    let owner_turn = old_draft.submitted_turn_id();
-    let alternate = SyndicTurnId::from_bytes([39; 16]);
-    let source_digest = child_turn_chain_digest(
-        source,
-        SyndicTurnId::from_bytes([29; 16]),
-        root_turn_chain_digest(SyndicTurnId::from_bytes([29; 16])),
-    );
-    let owner_digest = child_turn_chain_digest(owner_turn, source, source_digest);
-    let alternate_digest = child_turn_chain_digest(alternate, source, source_digest);
-    let owner = DiscussionContextOwnerId::SubmittedTurn(owner_turn);
-    let thread_revision = ThreadRevision::new(2).unwrap();
-    let draft_revision = DraftRevision::new(1).unwrap();
-    let head_revision = ProjectionRevision::new(2).unwrap();
-    let binding_revision = BindingRevision::new(2).unwrap();
-    let selected = SelectedPathProof::new(Some(alternate), thread_revision, alternate_digest);
-    let generation = TranscriptGeneration::new(2).unwrap();
-    let transcript_entry = TranscriptViewEntryRecord::new(
-        child_thread,
-        generation,
-        TranscriptPosition::FIRST,
+fn unknown_terminal_source_mutation() -> FixtureBatch {
+    let records = populated_records();
+    let item = records
+        .iter()
+        .find_map(|record| match record {
+            FixtureRecord::CanonicalItem(item) if item.id() == source_item() => Some(item.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let frame = records
+        .iter()
+        .find_map(|record| match record {
+            FixtureRecord::SourceEvent(event)
+                if event.turn_id() == source_turn()
+                    && event.sequence() == SourceEventSequence::new(4).unwrap() =>
+            {
+                match event.payload() {
+                    SourceEventPayload::ItemFrame { frame, .. } => Some(frame.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .unwrap();
+    let set = records
+        .iter()
+        .find_map(|record| match record {
+            FixtureRecord::ItemProjectionSet(set) if set.item_id() == source_item() => {
+                Some(set.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    let head = records
+        .iter()
+        .find_map(|record| match record {
+            FixtureRecord::ItemProjectionHead(head) if head.item_id() == source_item() => {
+                Some(*head)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let live_revision = ProjectionRevision::new(3).unwrap();
+    let (provider, manifest) = syndic_storage::test_faults::fixture_provider_content_manifest(
         source_item(),
-        ProjectionRevision::new(1).unwrap(),
-        ItemProjectionGeneration::FIRST,
-        source_projection(),
-        ProjectionRevision::new(1).unwrap(),
+        &frame,
+        false,
     );
-    let transcript_digest =
-        fixture_advance_transcript_digest(fixture_transcript_digest_seed(), &transcript_entry);
-
+    let cas_source = item.cas_source().unwrap().clone();
+    let canonical = CanonicalItemRecord::with_provider_state(
+        item.id(),
+        item.turn_id(),
+        item.ordinal(),
+        live_revision,
+        SourceEventSequence::new(4).unwrap(),
+        3,
+        cas_source.clone(),
+        item.assistant_phase(),
+        provider,
+        item.narrative_completion(),
+        item.presentation().clone(),
+    )
+    .unwrap();
+    let updated_set = ItemProjectionSetRecord::new(
+        set.item_id(),
+        set.generation(),
+        set.format(),
+        live_revision,
+        set.source(),
+        set.source_bytes(),
+        set.stable_projection_count(),
+        set.stable_resource_count(),
+        set.stable_digest(),
+        set.projection_count(),
+        set.resource_count(),
+        set.digest(),
+        set.resume_checkpoint().clone(),
+        set.stable_eof_resolved(),
+    );
     let mut mutation = batch([
-        FixtureRecord::Thread(ThreadRecord::new(
-            child_thread,
-            thread_revision,
-            Some(alternate),
-            new_draft,
-            Some(id(30)),
-            Some(owner),
-            alternate_digest,
-        )),
-        FixtureRecord::Draft(DraftRecord::new(
-            new_draft,
-            child_thread,
-            draft_revision,
-            ConversationParent::Turn(alternate),
-            None,
-            None,
-            empty_composer_content(),
-            timestamp(8),
-            timestamp(8),
-        )),
-        FixtureRecord::ContextEnvelope(context_record(owner)),
-        FixtureRecord::DraftByThread(DraftByThreadRecord::new(
-            child_thread,
-            new_draft,
-            draft_revision,
-            thread_revision,
-        )),
-        FixtureRecord::ThreadParent(ThreadParentIndexRecord::new(
-            id(30),
-            child_thread,
-            thread_revision,
-            owner,
-        )),
-        FixtureRecord::Turn(TurnRecord::new(
-            owner_turn,
-            child_thread,
-            TurnKind::OrdinaryUser,
-            ConversationParent::Turn(source),
-            Some(source),
-            TurnDepth::new(3).unwrap(),
-            owner_digest,
-            timestamp(6),
-        )),
-        FixtureRecord::TurnState(fixture_turn_state(
-            owner_turn,
+        FixtureRecord::InputGate(
+            InputGateRecord::new(
+                id(30),
+                InputGateRevision::new(1).unwrap(),
+                InputGateState::PendingTurn(source_turn()),
+                0,
+                None,
+                None,
+                0,
+                0,
+                0,
+            )
+            .unwrap(),
+        ),
+        FixtureRecord::TurnState(fixture_turn_state_with_finalization(
+            source_turn(),
             TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            0,
-            0,
-            timestamp(6),
-        )),
-        FixtureRecord::TurnChild(TurnChildIndexRecord::new(
-            source,
-            owner_turn,
-            TurnDepth::new(3).unwrap(),
-            owner_digest,
-        )),
-        FixtureRecord::Turn(TurnRecord::new(
-            alternate,
-            child_thread,
-            TurnKind::OrdinaryUser,
-            ConversationParent::Turn(source),
-            Some(source),
-            TurnDepth::new(3).unwrap(),
-            alternate_digest,
-            timestamp(7),
-        )),
-        FixtureRecord::TurnState(fixture_turn_state(
-            alternate,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
+            TurnLifecycle::UnknownTerminal,
+            5,
             1,
             0,
-            timestamp(7),
+            timestamp(4),
         )),
         FixtureRecord::SourceEvent(
             SourceEventRecord::new(
-                alternate,
-                SourceEventSequence::FIRST,
-                None,
+                source_turn(),
+                SourceEventSequence::new(5).unwrap(),
+                Some(source_cas_authority()),
                 SourceEventPayload::TurnEnded(
-                    TurnEndStatus::new(TurnTerminalOutcome::Interrupted, None).unwrap(),
+                    TurnEndStatus::new(TurnTerminalOutcome::UnknownTerminal, None).unwrap(),
                 ),
             )
             .unwrap(),
         ),
-        FixtureRecord::TurnChild(TurnChildIndexRecord::new(
-            source,
-            alternate,
-            TurnDepth::new(3).unwrap(),
-            alternate_digest,
+        FixtureRecord::ContentManifest(manifest),
+        FixtureRecord::CanonicalItem(canonical),
+        FixtureRecord::TurnItem(TurnItemIndexRecord::new(
+            source_turn(),
+            TurnItemOrdinal::FIRST,
+            source_item(),
+            live_revision,
+        )),
+        FixtureRecord::CasItem(CasItemIndexRecord::new(
+            cas_source.turn().thread_id().clone(),
+            cas_source.turn().turn_id().clone(),
+            cas_source.item_id().clone(),
+            source_item(),
+            live_revision,
+        )),
+        FixtureRecord::ItemProjectionSet(updated_set),
+        FixtureRecord::ItemProjectionHead(ItemProjectionHeadRecord::new(
+            source_item(),
+            head.revision(),
+            live_revision,
+            head.generation(),
+            head.lifecycle(),
         )),
         FixtureRecord::TranscriptViewHead(TranscriptViewHeadRecord::new(
-            child_thread,
-            generation,
-            head_revision,
-            1,
-            Some(alternate),
-            alternate_digest,
+            id(30),
+            TranscriptGeneration::FIRST,
+            ProjectionRevision::new(1).unwrap(),
+            0,
+            Some(source_turn()),
+            source_digest(),
             ProjectionLifecycle::Current,
         )),
         FixtureRecord::TranscriptBuild(TranscriptBuildRecord::new(
-            child_thread,
-            generation,
-            head_revision,
-            thread_revision,
-            Some(alternate),
-            alternate_digest,
-            3,
-            1,
-            transcript_digest,
-            true,
+            id(30),
+            TranscriptGeneration::FIRST,
+            ProjectionRevision::new(1).unwrap(),
+            ThreadRevision::new(1).unwrap(),
+            Some(source_turn()),
+            source_digest(),
+            2,
+            0,
+            fixture_transcript_digest_seed(),
+            false,
             TranscriptBuildPhase::Complete,
         )),
         FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-            child_thread,
-            generation,
-            TurnDepth::FIRST,
-            SyndicTurnId::from_bytes([29; 16]),
-            root_turn_chain_digest(SyndicTurnId::from_bytes([29; 16])),
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            1,
-            0,
-            0,
-            timestamp(2),
-        )),
-        FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-            child_thread,
-            generation,
+            id(30),
+            TranscriptGeneration::FIRST,
             TurnDepth::new(2).unwrap(),
-            source,
-            source_digest,
+            source_turn(),
+            source_digest(),
             TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
+            TurnLifecycle::UnknownTerminal,
             5,
             1,
-            1,
+            0,
             timestamp(4),
         )),
-        FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-            child_thread,
-            generation,
-            TurnDepth::new(3).unwrap(),
-            alternate,
-            alternate_digest,
-            TurnStateRevision::FIRST,
-            TurnLifecycle::Interrupted,
-            1,
-            0,
-            0,
-            timestamp(7),
-        )),
-        FixtureRecord::TranscriptViewEntry(transcript_entry),
         FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-            child_thread,
-            thread_revision,
-            Some(alternate),
-            alternate_digest,
-            true,
-            timestamp(8),
-        )),
-        FixtureRecord::Binding(BindingRecord::new(
-            child_thread,
-            binding_revision,
-            selected,
-            BindingState::unbound("submitted context owner retained").unwrap(),
-        )),
-        FixtureRecord::BindingHead(BindingHeadRecord::new(
-            child_thread,
-            binding_revision,
-            BindingLifecycle::Unbound,
-            alternate_digest,
+            id(30),
+            ProjectionRevision::new(2).unwrap(),
+            ThreadRevision::new(1).unwrap(),
+            Some(source_turn()),
+            source_digest(),
+            false,
+            timestamp(4),
         )),
     ]);
     mutation
-        .delete(FixtureDelete::Draft(old_draft))
-        .unwrap()
-        .delete(FixtureDelete::ContextEnvelope(
-            DiscussionContextOwnerId::Draft(old_draft),
-        ))
+        .delete(FixtureDelete::TranscriptViewEntry {
+            thread: id(30),
+            generation: TranscriptGeneration::FIRST,
+            position: TranscriptPosition::FIRST,
+        })
         .unwrap();
-    validate_and_reopen("context-owner-off-later-path", mutation);
+    mutation
 }
 
-#[test]
-fn context_reopen_checks_finalization_kind_association_text_and_owner_parent() {
-    assert_context_rejection(
-        "context-source-not-terminal",
-        "context source turn is not finalized terminal history",
-        batch([
-            FixtureRecord::InputGate(
-                InputGateRecord::new(
-                    id(30),
-                    InputGateRevision::new(1).unwrap(),
-                    InputGateState::PendingTurn(source_turn()),
-                    0,
-                    0,
-                    0,
-                    0,
-                )
-                .unwrap(),
-            ),
-            FixtureRecord::TurnState(fixture_turn_state(
-                source_turn(),
-                TurnStateRevision::FIRST,
-                TurnLifecycle::UnknownTerminal,
-                5,
-                1,
-                timestamp(4),
-            )),
-            FixtureRecord::SourceEvent(
-                SourceEventRecord::new(
-                    source_turn(),
-                    SourceEventSequence::new(5).unwrap(),
-                    Some(source_cas_authority()),
-                    SourceEventPayload::TurnEnded(
-                        TurnEndStatus::new(TurnTerminalOutcome::UnknownTerminal, None).unwrap(),
-                    ),
-                )
-                .unwrap(),
-            ),
-            FixtureRecord::TranscriptBuild(TranscriptBuildRecord::new(
-                id(30),
-                TranscriptGeneration::FIRST,
-                ProjectionRevision::new(1).unwrap(),
-                ThreadRevision::new(1).unwrap(),
-                Some(source_turn()),
-                source_digest(),
-                2,
-                1,
-                source_transcript_digest(),
-                false,
-                TranscriptBuildPhase::Complete,
-            )),
-            FixtureRecord::TranscriptPathTurn(TranscriptPathTurnRecord::new(
-                id(30),
-                TranscriptGeneration::FIRST,
-                TurnDepth::new(2).unwrap(),
-                source_turn(),
-                source_digest(),
-                TurnStateRevision::FIRST,
-                TurnLifecycle::UnknownTerminal,
-                5,
-                1,
-                1,
-                timestamp(4),
-            )),
-            FixtureRecord::HistorySummary(HistorySummaryRecord::new(
-                id(30),
-                ThreadRevision::new(1).unwrap(),
-                Some(source_turn()),
-                source_digest(),
-                false,
-                timestamp(4),
-            )),
-        ]),
-    );
-    assert_context_rejection(
-        "context-projection-not-current",
-        "context source projection is outside its current item set",
-        batch([FixtureRecord::ContextEnvelope(
-            context_record_with_projection(
-                DiscussionContextOwnerId::Draft(draft_id(37)),
-                source_resource_projection(),
-                "assistant",
-            ),
-        )]),
-    );
-    assert_context_rejection(
-        "context-source-not-assistant",
-        "context source item is not an assistant message",
-        context_source_user_item_mutation(),
-    );
-    assert_context_rejection(
-        "context-source-revision",
-        "context source records disagree",
-        batch([FixtureRecord::ContextEnvelope(
-            context_record_with_projection_revision(
-                DiscussionContextOwnerId::Draft(draft_id(37)),
-                source_projection(),
-                ProjectionRevision::new(2).unwrap(),
-                "assistant",
-            ),
-        )]),
-    );
-    assert_context_rejection(
-        "context-source-text",
-        "context source range and exact text disagree",
-        batch([FixtureRecord::ContextEnvelope(context_record_with_text(
-            DiscussionContextOwnerId::Draft(draft_id(37)),
-            "assistAnt",
-        ))]),
-    );
-    let owner = DiscussionContextOwnerId::Draft(draft_id(37));
-    assert_context_rejection(
-        "context-owner-parent",
-        "context owner parent and source turn disagree",
-        batch([FixtureRecord::Draft(DraftRecord::new(
-            draft_id(37),
-            id(36),
-            DraftRevision::new(1).unwrap(),
-            ConversationParent::Root,
-            Some(owner),
-            None,
-            empty_composer_content(),
-            timestamp(5),
-            timestamp(5),
-        ))]),
-    );
-}
+#[path = "phase2_context_temporal/child_path.rs"]
+mod child_path;
+#[path = "phase2_context_temporal/reopen_validation.rs"]
+mod reopen_validation;
+#[path = "phase2_context_temporal/selected_away.rs"]
+mod selected_away;

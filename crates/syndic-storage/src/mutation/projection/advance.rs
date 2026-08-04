@@ -38,11 +38,10 @@ impl AdvanceBuildMutation {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
         let item = required::<CanonicalItemsFamily>(reader, &build.item_id())?;
-        let manifest = required::<ContentManifestsFamily>(reader, &build.source_content().id())?;
+        let source_is_immutable =
+            super::lifecycle::validate_projection_source(reader, &item, build.source())?;
         if item.revision() != build.source_item_revision()
-            || item.payload().content() != Some(build.source_content())
-            || matches!(manifest.lifecycle(), crate::ContentLifecycle::Building)
-            || manifest.current_reference() != Some(build.source_content())
+            || item.projection_source() != Some(build.source())
         {
             return Err(SyndicMutationError::ProjectionBuildConflict);
         }
@@ -52,7 +51,7 @@ impl AdvanceBuildMutation {
         let resume_checkpoint = checkpoint.clone();
         let piece = range::load_piece(reader, &build, checkpoint)?;
         let step = parser::advance(checkpoint, piece)?;
-        let outputs_are_stable = !step.finished || manifest.lifecycle().is_immutable();
+        let outputs_are_stable = !step.finished || source_is_immutable;
         let mut records = AdvanceBuildRecords {
             build: build.clone(),
             next_build: None,
@@ -72,8 +71,14 @@ impl AdvanceBuildMutation {
                 .checked_add(1)
                 .ok_or(SyndicMutationError::ProjectionBuildConflict)?;
             let ordinal = crate::ProjectionOrdinal::new(projection_count)?;
-            let materialized =
-                materialize::materialize_output(reader, &item, build.format(), ordinal, output)?;
+            let materialized = materialize::materialize_output(
+                reader,
+                &item,
+                build.source(),
+                build.format(),
+                ordinal,
+                output,
+            )?;
             output_digest = crate::projection::advance_item_set_digest(
                 output_digest,
                 materialized.projection.id(),
@@ -119,7 +124,7 @@ impl AdvanceBuildMutation {
         records.finish(
             reader,
             &item,
-            manifest.lifecycle().is_immutable(),
+            source_is_immutable,
             resume_checkpoint,
             step.checkpoint,
             step.finished,

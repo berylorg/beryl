@@ -1,11 +1,13 @@
 #![allow(dead_code, unused_imports)]
 
-pub use beryl_app::{
-    ActiveThemeProjection, AppearanceSettings, BerylThemeProperty, BerylThemeRole,
-    InstalledThemeId, StylePropertyValue, ThemeDefinition, ThemeDocument, ThemeDocumentError,
-    ThemeRepositoryError, ThemeRepositorySnapshot, ThemeRepositoryStore, ThemeResolutionContext,
-    ThemeResolutionError, ThemeResolver, ThemeValidationDiagnostics, built_in_theme_schema,
-};
+#[path = "../src/appearance/theme/mod.rs"]
+pub mod appearance_theme;
+
+pub mod appearance {
+    pub use crate::appearance_theme as theme;
+}
+
+pub use appearance_theme::*;
 
 #[path = "../src/shell/theme_candidates.rs"]
 mod theme_candidates;
@@ -219,9 +221,12 @@ fn candidate_document(
 }
 
 fn theme_definition(foreground: &str) -> ThemeDefinition {
-    let mut settings = AppearanceSettings::default();
-    settings.general_ui.foreground = foreground.to_string();
-    settings.to_theme_definition().unwrap()
+    ThemeDefinition::new(vec![
+        ThemeRoleDefinition::new(BerylThemeRole::AppWindow.id()).with_property(
+            BerylThemeProperty::Foreground.id(),
+            StylePropertySource::Concrete(StylePropertyValue::color(foreground)),
+        ),
+    ])
 }
 
 fn projection_foreground(projection: &ActiveThemeProjection) -> StylePropertyValue {

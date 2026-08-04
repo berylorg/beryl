@@ -1,13 +1,17 @@
+mod support;
+
 use std::{error::Error, fmt, io};
 
 use beryl_home_store::{
     CommandError, ContributorCallbackStage, DomainCallbackError, DomainCallbackSource,
-    DomainMutation, DomainReader, DomainRegistrationError, DomainSchemaVersion, HomeCommand,
-    HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, KeyspaceSchemaVersion,
-    MutationBuildError, MutationBuilder, ReadError, ReadStage, RecordCodec, RecordFamily,
-    RecordVersion, StorageDomain,
+    DomainMutation, DomainReader, DomainRegistrationError, DomainSchemaVersion, DomainValidator,
+    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore,
+    KeyspaceSchemaVersion, MutationBuildError, MutationBuilder, ReadError, ReadStage, RecordCodec,
+    RecordFamily, RecordVersion, StorageDomain,
 };
 use tempfile::tempdir;
+
+use support::{AlphaDomain, PutBytes};
 
 struct AccessDomain;
 struct AccessRecord;
@@ -138,6 +142,18 @@ impl DomainMutation<AccessDomain> for Put {
     }
 }
 
+struct AccessValidator {
+    failure: Failure,
+}
+
+impl DomainValidator<AccessDomain> for AccessValidator {
+    type Error = CallbackError;
+
+    fn validate(&self, _reader: &DomainReader<'_, AccessDomain>) -> Result<(), Self::Error> {
+        fail(self.failure, "validation-only participant")
+    }
+}
+
 fn fail(failure: Failure, stage: &'static str) -> Result<(), CallbackError> {
     match failure {
         Failure::None => Ok(()),
@@ -169,6 +185,27 @@ fn execute(
     let mut command = HomeCommand::new(store.home_revision().unwrap());
     command
         .add(domain.contribution(store.domain_revision(domain).unwrap(), mutation))
+        .unwrap();
+    store.execute(command)
+}
+
+fn execute_with_validator(
+    store: &HomeStore,
+    mutation_domain: beryl_home_store::DomainHandle<AlphaDomain>,
+    validator_domain: beryl_home_store::DomainHandle<AccessDomain>,
+    failure: Failure,
+) -> Result<beryl_home_store::CommitReceipt, CommandError> {
+    let mut command = HomeCommand::new(store.home_revision().unwrap());
+    command
+        .add(mutation_domain.contribution(
+            store.domain_revision(mutation_domain).unwrap(),
+            PutBytes::<AlphaDomain>::new(17, b"must stay atomic".to_vec()),
+        ))
+        .unwrap()
+        .add_validation(validator_domain.validation(
+            store.domain_revision(validator_domain).unwrap(),
+            AccessValidator { failure },
+        ))
         .unwrap();
     store.execute(command)
 }
@@ -284,6 +321,68 @@ fn structural_and_semantic_callback_failures_have_distinct_health_effects() {
         }
     ));
     assert_eq!(store.health().state(), HomeHealthState::Failed);
+}
+
+#[test]
+fn validation_only_participant_preserves_semantic_and_access_provenance() {
+    for failure in [Failure::Storage, Failure::Structural, Failure::Semantic] {
+        let directory = tempdir().unwrap();
+        let mut store = open(directory.path());
+        let mutation_domain = store.register_domain::<AlphaDomain>().unwrap();
+        let validator_domain = store.register_domain::<AccessDomain>().unwrap();
+        let home_before = store.home_revision().unwrap();
+        let mutation_before = store.domain_revision(mutation_domain).unwrap();
+        let validator_before = store.domain_revision(validator_domain).unwrap();
+
+        let error =
+            execute_with_validator(&store, mutation_domain, validator_domain, failure).unwrap_err();
+        match failure {
+            Failure::Storage => {
+                assert!(matches!(
+                    error,
+                    CommandError::ContributorAccess {
+                        domain: "callback_access",
+                        stage: ContributorCallbackStage::Validation,
+                        source: DomainCallbackSource::Read(ReadError::Storage { .. }),
+                    }
+                ));
+                assert_eq!(store.health().state(), HomeHealthState::Verifying);
+                store.verify_health().unwrap();
+            }
+            Failure::Structural => {
+                assert!(matches!(
+                    error,
+                    CommandError::ContributorAccess {
+                        domain: "callback_access",
+                        stage: ContributorCallbackStage::Validation,
+                        source: DomainCallbackSource::Read(ReadError::MalformedRecord { .. }),
+                    }
+                ));
+                assert_eq!(store.health().state(), HomeHealthState::Failed);
+                continue;
+            }
+            Failure::Semantic => {
+                assert!(matches!(
+                    error,
+                    CommandError::ContributorValidation {
+                        domain: "callback_access",
+                        ..
+                    }
+                ));
+                assert_eq!(store.health().state(), HomeHealthState::Healthy);
+            }
+            Failure::None => unreachable!(),
+        }
+        assert_eq!(store.home_revision().unwrap(), home_before);
+        assert_eq!(
+            store.domain_revision(mutation_domain).unwrap(),
+            mutation_before
+        );
+        assert_eq!(
+            store.domain_revision(validator_domain).unwrap(),
+            validator_before
+        );
+    }
 }
 
 #[test]

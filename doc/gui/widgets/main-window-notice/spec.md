@@ -21,9 +21,17 @@ Widgets:
 
 # Anatomy
 
-The main-window notice contains an overlay-anchored frame, variant marker, fixed header, owner-supplied title, optional close command, optional bounded selectable detail viewport, optional owner-supplied command region, and external vertical scrollbar.
+The main-window notice contains an overlay-anchored frame, variant marker, fixed header,
+owner-supplied bounded title, optional close command, optional bounded selectable detail viewport,
+optional owner-supplied command region, and external vertical scrollbar.
 
-The widget presents exactly one owner-supplied notice record at a time. The owning feature supplies stable notice identity, title, bounded detail, warning/error/info classification, dismissal mode and effect, and optional commands with stable command identities. The command region accepts at most three commands and renders that statically bounded set in full. Queue policy, deduplication, coalescing, and replacement order remain outside the widget. The widget owns visible notice anatomy, detail selection, close-control placement, command-region placement, bounded layout, and variant treatment.
+The widget presents exactly one owner-supplied notice record at a time. The owning feature supplies
+stable notice identity, bounded title and detail projections, warning/error/info classification,
+dismissal mode and effect, and optional commands with stable command identities. The command region
+accepts at most three commands and renders that statically bounded set in full. Queue policy,
+deduplication, coalescing, and replacement order remain outside the widget. The widget owns visible
+notice anatomy, detail selection, close-control placement, command-region placement, bounded
+layout, and variant treatment.
 
 Owner commands use the referenced `command button` contract. The widget does not prescribe command labels, command effects, pending policy, retry semantics, a global dismiss-all command, or any other feature-specific recovery policy.
 

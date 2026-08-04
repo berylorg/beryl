@@ -1,11 +1,7 @@
 use beryl_home_store::HomeGeneration;
-use beryl_model::{
-    BerylHomeId, DiscussionContextOwnerId, DraftRevision, SyndicDraftId, SyndicThreadId,
-    ThreadRevision,
-};
+use beryl_model::{BerylHomeId, DraftRevision, SyndicDraftId, SyndicThreadId};
 use syndic_storage::{
-    ComposerPayload, ConversationParent, DraftRecord, ReplacementEditIntent, SyndicCurrentDraft,
-    SyndicTimestamp,
+    ComposerPayload, DraftRecord, DraftSubmissionIntent, SyndicCurrentDraft, SyndicTimestamp,
 };
 
 use super::{DraftBindingGeneration, DraftPersistenceTime};
@@ -17,7 +13,6 @@ pub struct DraftPersistenceBinding {
     home_generation: HomeGeneration,
     thread_id: SyndicThreadId,
     draft_id: SyndicDraftId,
-    thread_revision: ThreadRevision,
     generation: DraftBindingGeneration,
 }
 
@@ -43,11 +38,6 @@ impl DraftPersistenceBinding {
     }
 
     #[must_use]
-    pub const fn thread_revision(self) -> ThreadRevision {
-        self.thread_revision
-    }
-
-    #[must_use]
     pub const fn generation(self) -> DraftBindingGeneration {
         self.generation
     }
@@ -57,14 +47,12 @@ impl DraftPersistenceBinding {
         home_generation: HomeGeneration,
         thread_id: SyndicThreadId,
         draft_id: SyndicDraftId,
-        thread_revision: ThreadRevision,
     ) -> Self {
         Self {
             home_id,
             home_generation,
             thread_id,
             draft_id,
-            thread_revision,
             generation: DraftBindingGeneration::FIRST,
         }
     }
@@ -145,18 +133,14 @@ pub(crate) struct DurableDraftBase {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ImmutableDraftShape {
-    pub(crate) parent: ConversationParent,
-    pub(crate) context_owner_id: Option<DiscussionContextOwnerId>,
-    pub(crate) replacement_edit_intent: Option<ReplacementEditIntent>,
+    pub(crate) submission_intent: DraftSubmissionIntent,
     pub(crate) created_at: SyndicTimestamp,
 }
 
 impl ImmutableDraftShape {
     pub(crate) const fn from_record(draft: &DraftRecord) -> Self {
         Self {
-            parent: draft.parent(),
-            context_owner_id: draft.context_owner_id(),
-            replacement_edit_intent: draft.replacement_edit_intent(),
+            submission_intent: draft.submission_intent(),
             created_at: draft.created_at(),
         }
     }

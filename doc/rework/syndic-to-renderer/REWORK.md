@@ -1,3 +1,9 @@
+# Status
+
+Completed historical rework. It is not an active implementation authority. The retained
+semantic-anchor, resident-host, and chunked-realization boundary is now consumed and completed under
+`doc/rework/beryl-home/REWORK.md`, including its cross-checkpoint bounded-resource cutover.
+
 # Target Docs
 
 Read these target-state docs before working on this rework:

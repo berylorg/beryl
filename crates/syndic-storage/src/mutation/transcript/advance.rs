@@ -64,7 +64,7 @@ fn require_current_source(
     let thread = required::<ThreadsFamily>(reader, &build.thread_id())?;
     let head = required::<TranscriptHeadsFamily>(reader, &build.thread_id())?;
     let summary = required::<HistorySummariesFamily>(reader, &build.thread_id())?;
-    if thread.revision() != build.source_thread_revision()
+    if thread.revision() < build.source_thread_revision()
         || thread.committed_tail() != build.committed_tail()
         || thread.selected_path_digest() != build.selected_path_digest()
         || head.generation() != build.generation()

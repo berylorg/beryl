@@ -165,7 +165,7 @@ fn ensure_content(
 ) -> Result<(), Box<DraftSaveExecution>> {
     loop {
         let manifest = match storage.content_manifest(store, content.id(), limit) {
-            Ok(manifest) => manifest.map(|record| record.record().clone()),
+            Ok(manifest) => manifest,
             Err(error) => {
                 return Err(Box::new(suspended(
                     request,
@@ -343,7 +343,6 @@ fn execute_update(
 
 fn matches_request(current: &SyndicCurrentDraft, request: &DraftSaveRequest) -> bool {
     current.thread().id() == request.thread_id()
-        && current.thread().revision() == request.binding().thread_revision()
         && current.draft().id() == request.draft_id()
         && current.draft().revision() == request.expected_revision()
 }
@@ -372,7 +371,6 @@ fn command_error_outcome(error: &CommandError) -> DraftSaveOutcome {
                     matches!(
                         source,
                         SyndicMutationError::DraftRevisionConflict { .. }
-                            | SyndicMutationError::ThreadRevisionConflict { .. }
                             | SyndicMutationError::CurrentDraftConflict
                     )
                 }) =>
@@ -418,31 +416,5 @@ fn known_unchanged(
         token: request.token(),
         outcome: DraftSaveOutcome::KnownUnchanged(reason),
         failure: Some(failure),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use beryl_home_store::CommandError;
-    use beryl_model::ThreadRevision;
-    use syndic_storage::SyndicMutationError;
-
-    use super::command_error_outcome;
-    use crate::draft_persistence::{DraftSaveOutcome, DraftSuspensionCause};
-
-    #[test]
-    fn thread_revision_contributor_conflict_requires_reconciliation() {
-        let error = CommandError::ContributorValidation {
-            domain: "syndic",
-            source: Box::new(SyndicMutationError::ThreadRevisionConflict {
-                expected: ThreadRevision::new(1).expect("revision"),
-                current: ThreadRevision::new(2).expect("revision"),
-            }),
-        };
-
-        assert_eq!(
-            command_error_outcome(&error),
-            DraftSaveOutcome::RequiresReconciliation(DraftSuspensionCause::RevisionConflict)
-        );
     }
 }

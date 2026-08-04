@@ -208,12 +208,34 @@ impl From<SyndicReadError> for NativeProjectionError {
             SyndicReadError::ContentTextRequiresSealed
             | SyndicReadError::ContentTextContainsImageMarkers { .. }
             | SyndicReadError::InvalidContentTextOffset { .. }
+            | SyndicReadError::InvalidContentTextSegmentCursor { .. }
+            | SyndicReadError::InvalidContentTextSegmentOffset { .. }
             | SyndicReadError::InvalidContentTextReadLimit { .. }
             | SyndicReadError::ContentTextReadLimitTooSmall { .. }
             | SyndicReadError::InvalidResourceRange { .. }
             | SyndicReadError::InvalidResourceReadLimit { .. }
             | SyndicReadError::ResourceHasNoTextBacking
-            | SyndicReadError::CaptureItemHasNoTextContent => Self::Invariant(
+            | SyndicReadError::CaptureItemHasNoTextContent
+            | SyndicReadError::CatalogSummaryRevisionExhausted
+            | SyndicReadError::StaleThreadLineage
+            | SyndicReadError::InvalidThreadLineageCursor
+            | SyndicReadError::StaleActivityQuery
+            | SyndicReadError::InvalidActivityQueryCursor
+            | SyndicReadError::ActivityQueryIsStale
+            | SyndicReadError::StaleAcceptedRoute
+            | SyndicReadError::InvalidAcceptedRouteCursor
+            | SyndicReadError::StaleAcceptedReadySourceScan
+            | SyndicReadError::InvalidAcceptedReadySourceCursor
+            | SyndicReadError::StaleAcceptedReadyCandidateSource
+            | SyndicReadError::InvalidAcceptedReadyCandidateCursor
+            | SyndicReadError::StaleAcceptedNextSourceScan
+            | SyndicReadError::InvalidAcceptedNextSourceCursor
+            | SyndicReadError::StaleAcceptedNextCandidateSource
+            | SyndicReadError::InvalidAcceptedNextCandidateSource
+            | SyndicReadError::InvalidAcceptedNextCandidateCursor
+            | SyndicReadError::InvalidDeliveryRecoveryStartupCursor
+            | SyndicReadError::StaleRecoveredPendingScan
+            | SyndicReadError::InvalidRecoveredPendingCursor => Self::Invariant(
                 "native planning unexpectedly used a public content/resource range boundary",
             ),
         }
@@ -235,13 +257,13 @@ impl SyndicStorage {
         let thread = self.thread(store, request.thread_id, limit)?.ok_or(
             NativeProjectionError::Invariant("native projection thread is missing"),
         )?;
-        let thread = thread.record();
+        let thread = thread;
         let selected_path = SelectedPathProof::new(
             thread.committed_tail(),
             thread.revision(),
             thread.selected_path_digest(),
         );
-        if selected_path != request.selected_path {
+        if !selected_path.is_compatible_descendant_of(request.selected_path) {
             return Err(NativeProjectionError::StaleSelectedPath);
         }
         if thread.context_owner_id().is_some() {
@@ -253,7 +275,7 @@ impl SyndicStorage {
             .ok_or(NativeProjectionError::Invariant(
                 "native projection binding is missing",
             ))?;
-        if current.binding().selected_path() != selected_path {
+        if !selected_path.is_compatible_descendant_of(current.binding().selected_path()) {
             return Err(NativeProjectionError::Invariant(
                 "current binding and thread selected path disagree",
             ));
@@ -264,7 +286,7 @@ impl SyndicStorage {
         let pending_id = selected_path
             .tail()
             .ok_or(NativeProjectionError::CurrentTailNotPendingOrdinaryUser)?;
-        if gate.record().state() != &InputGateState::PendingTurn(pending_id) {
+        if gate.state() != &InputGateState::PendingTurn(pending_id) {
             return Err(NativeProjectionError::CurrentTailNotPendingOrdinaryUser);
         }
         let pending =
@@ -277,14 +299,14 @@ impl SyndicStorage {
                 .ok_or(NativeProjectionError::Invariant(
                     "pending selected turn state is missing",
                 ))?;
-        if pending.record().kind() != TurnKind::OrdinaryUser
-            || pending_state.record().lifecycle() != TurnLifecycle::Pending
+        if pending.kind() != TurnKind::OrdinaryUser
+            || pending_state.lifecycle() != TurnLifecycle::Pending
         {
             return Err(NativeProjectionError::CurrentTailNotPendingOrdinaryUser);
         }
 
         let represented_prefix =
-            match pending.record().parent().turn() {
+            match pending.parent().turn() {
                 Some(parent_id) => {
                     let parent = self.turn(store, parent_id, limit)?.ok_or(
                         NativeProjectionError::Invariant("pending turn parent is missing"),
@@ -292,7 +314,7 @@ impl SyndicStorage {
                     CasRepresentedPrefixProof::new(
                         Some(parent_id),
                         selected_path.thread_revision(),
-                        parent.record().chain_digest(),
+                        parent.chain_digest(),
                     )
                 }
                 None => CasRepresentedPrefixProof::new(

@@ -51,7 +51,11 @@ Arrow keys move the focused cell through realized row and column identities. Hom
 
 Shift-modified navigation extends a rectangular selection through resident eligible cells. Selection identity is expressed by stable row and column identities, not visible indices. Selection cannot span an unrealized gap; attempting to extend through one reports demand and preserves the last coherent resident selection.
 
-Copy requests use the owner-supplied source representation for the selected stable range. The widget does not reconstruct unloaded cells or copy painted ellipses, fallbacks, headers, or pending placeholders as authored content.
+Copy requests use the owner-supplied source representation for the selected stable range and
+reconstruct a contiguous platform value only after its exact logical size fits the admitted
+clipboard limit. Rejection preserves the stable selection. Owner-supplied `Save…` may stream a
+larger stable table range through bounded pages. The widget does not reconstruct unloaded cells or
+copy painted ellipses, fallbacks, headers, or pending placeholders as authored content.
 
 If range release, revision change, remeasurement, or fallback replacement invalidates focus or selection, the widget resolves focus to the nearest coherent realized cell and closes invalid selection. It does not pin unbounded offscreen ranges solely for focus or selection.
 

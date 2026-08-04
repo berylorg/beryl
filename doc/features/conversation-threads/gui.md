@@ -10,7 +10,11 @@ Conversation-thread controls form an explicitly feature-local toolbar ordering r
 
 The New Thread split button is a feature-local joined arrangement of two `command button` widgets. It remains feature-local because it is used once and adds no focus, activation, or state model beyond those buttons. Its text-labeled primary segment and compact secondary ellipsis segment share one outer silhouette without a gap, meet at one internal divider, and read as one control while retaining independent enabled, hover, pressed, focused, and disabled states. The secondary segment's accessible name is `Choose runtime and root`.
 
-The backward and forward controls are compact icon-like `command button` widgets. The feature supplies the trigger's selected-thread identity and title, `THREADS` flyout label, catalog readiness, unavailable explanation, and command that opens the Thread Switcher. The trigger widget owns its stretchable geometry, truncation, trailing affordance, focus, loading, open, and unavailable presentation.
+The backward and forward controls are compact icon-like `command button` widgets. The feature
+supplies the trigger's selected-thread identity and bounded Beryl catalog title copy, `THREADS`
+flyout label, catalog readiness, unavailable explanation, and command that opens the Thread
+Switcher. The trigger widget owns its stretchable geometry, truncation, trailing affordance, focus,
+loading, open, and unavailable presentation.
 
 The toolbar does not display Workspaces or Graph controls, a static runtime prefix, a root path, or a thread-management action menu. The New Thread secondary segment and active thread selector trigger open selection flyouts rather than action menus.
 
@@ -20,7 +24,12 @@ Mount-into: main-window.thread-lineage
 
 The feature mounts one project-local [`thread lineage`](../../gui/widgets/thread-lineage/spec.md) only for a selected thread with parent-thread lineage. The widget owns breadcrumb-strip anatomy, fixed-height navigation geometry, focus, unavailable/current presentation, truncation, bounded horizontal realization and scrolling, tooltip anchoring, and content-free diagnostics.
 
-The feature supplies `LINEAGE` as the structural heading, the ordered stable parent-thread identities and titles, compact chevron separators, the current thread's readonly endpoint, each parent's exact availability reason, and the exact navigation command for available parents.
+The feature supplies `LINEAGE` as the structural heading, one revision-bound lineage query identity,
+the total parent count, bounded resident breadcrumb pages with ordered stable parent-thread
+identities and bounded title projections, compact chevron separators, the current thread's readonly
+endpoint, each resident parent's exact availability reason, and the exact navigation command for
+available parents. It answers deduplicated page requests without constructing the complete ancestor
+chain in GUI memory.
 
 Top-level threads do not mount the widget and leave no empty spacer beneath the toolbar. A parent open elsewhere or otherwise unavailable remains represented through the widget's unavailable breadcrumb state; the feature supplies the explanatory tooltip and no activation command.
 
@@ -28,7 +37,7 @@ Top-level threads do not mount the widget and leave no empty spacer beneath the 
 
 Mount-into: main-window.overlays
 
-The active thread selector trigger opens one project-local [`thread-root picker`](../../gui/widgets/thread-root-picker/spec.md) configured for immediate selection. The feature supplies the thread/root collections, runtime registry, row presentation data, labels, commands, and activation effects; the widget owns its reusable flyout anatomy, focus model, stable collection switching, bounded rendering, and layout.
+The active thread selector trigger opens one project-local [`thread-root picker`](../../gui/widgets/thread-root-picker/spec.md) configured for immediate selection. The feature supplies revision-bound thread, root, and runtime query identities, total counts, bounded resident row pages, row presentation data, labels, commands, and activation effects; the widget owns its reusable flyout anatomy, focus model, stable collection switching, bounded rendering, and layout.
 
 The picker header remains titled `Switch thread` in all of this feature's collection modes and uses scope-specific helper text. It has no trailing ellipsis, thread action menu, archive command, pin command, rename command, delete command, or other thread-manipulation affordance.
 
@@ -64,7 +73,9 @@ These controls create or select runtimes and roots only. They do not expose thre
 
 `Add runtime` invokes the platform-native file-open dialog for selecting a Codex CLI executable. `Add root` invokes the platform-native directory dialog for the exact runtime row. These are OS-owned dialogs rather than nested Beryl forms or flyouts; while one is open, the invoking thread-root picker remains unchanged behind it. After selection, the invoking command remains visible and pending while validation and durable admission run, with duplicate activation suppressed. Cancellation or failure returns focus to that command without changing picker scope or selection.
 
-Search filters the feature's current exhaustive collection without changing its scope or recent-first ordering. The feature supplies the in-viewport empty result when no row matches.
+Search starts a new revision-bound query over the feature's current exhaustive logical collection
+without changing its scope or recent-first ordering. The feature supplies bounded result pages and
+the in-viewport empty result only after the query proves that no row matches.
 
 Every Thread Switcher opening starts in the all-roots thread collection with empty search and moves focus into the search field, regardless of pointer or keyboard invocation. `Browse roots`, `Back to threads`, root choice, and removal of a root filter each clear search and return focus to the search field so text for one collection is never silently applied to another.
 
@@ -74,7 +85,7 @@ The feature supplies a distinct stable collection key for the all-roots thread l
 
 Mount-into: main-window.overlays
 
-New Thread uses the same project-local `thread-root picker` as the Thread Switcher, configured for confirmed selection with root-row presentation. Its collection remains an exhaustive recent-first root list; runtime selection changes scope rather than changing the list into another collection type.
+New Thread uses the same project-local `thread-root picker` as the Thread Switcher, configured for confirmed selection with root-row presentation. Its collection remains an exhaustive logical recent-first root query backed by bounded pages; runtime selection changes scope rather than changing the collection type.
 
 The feature configures the picker title as `New thread`, supplies helper text explaining that a root must be chosen before confirmation, and uses the collection heading `ROOTS FOR ALL RUNTIMES` or `ROOTS FOR <runtime>`.
 
@@ -90,4 +101,8 @@ Every New Thread flyout opening starts with the all-runtimes root collection, em
 
 Mount-into: main-window.toolbar
 
-Before the complete thread catalog is ready, the feature configures the same thread selector trigger instance as loading, dimmed, and inert while the other independently available toolbar controls preserve their own states. Catalog readiness changes it to ready without replacing the trigger or toolbar and without waiting for transcript or runtime readiness.
+Before the first coherent page of the revision-bound default catalog query is ready, the feature
+configures the same thread selector trigger instance as loading, dimmed, and inert while the other
+independently available toolbar controls preserve their own states. First-page readiness changes it
+to ready without replacing the trigger or toolbar and without waiting for all catalog pages,
+transcript readiness, or runtime readiness.

@@ -1,23 +1,23 @@
-use std::collections::{BTreeMap, BTreeSet};
-
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
 use beryl_model::{
     AcceptedInputRevision, DiscussionContextOwnerId, DomainRevision, DraftRevision,
-    InputGateRevision, ProjectionRevision, SyndicDraftId, SyndicItemId, SyndicThreadId,
-    SyndicTurnId, ThreadRevision,
+    InputGateRevision, ProjectionRevision, SealedAssetReferenceSetProof, SyndicDraftId,
+    SyndicItemId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
-    AcceptedInputDisposition, AcceptedInputLifecycle, AcceptedInputOrdinal, BindingHeadRecord,
-    BindingLifecycle, BindingRecord, BindingState, CanonicalItemRecord, ContentEncoding,
-    ConversationParent, DraftByThreadRecord, DraftRecord, HistorySummaryRecord, InputGateRecord,
-    InputGateState, InputMarkerOrdinal, InputMarkerOwner, InputMarkerResolutionRecord,
-    PreparedContent, ProjectionLifecycle, ResolvedImageMarker, SelectedPathProof,
+    AcceptedInputLifecycle, AcceptedInputOrdinal, AcceptedNextSourceRecord,
+    AcceptedReadySourceRecord, AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord,
+    AcceptedRouteHeadProof, AcceptedRouteLeafRecord, AcceptedRouteLeafState, AcceptedRouteRevision,
+    AcceptedRouteTarget, BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState,
+    CanonicalItemRecord, ContentEncoding, ConversationParent, DraftByThreadRecord, DraftRecord,
+    DraftSubmissionIntent, HistorySummaryRecord, ImageLabelOriginSpanRecord, InputGateRecord,
+    InputGateState, NextTurnReason, PreparedContent, ProjectionLifecycle, SelectedPathProof,
     SyndicMutationError, SyndicRecordError, SyndicStorage, SyndicTimestamp,
     ThreadParentIndexRecord, ThreadRecord, TranscriptViewHeadRecord, TurnChildIndexRecord,
     TurnDepth, TurnItemIndexRecord, TurnItemOrdinal, TurnKind, TurnLifecycle, TurnRecord,
-    TurnStateRecord, TurnStateRevision, child_turn_chain_digest, codec::*,
-    content::input_marker_digest, domain::SyndicDomain, root_turn_chain_digest,
+    TurnStateRecord, TurnStateRevision, child_turn_chain_digest, codec::*, domain::SyndicDomain,
+    root_turn_chain_digest,
 };
 
 use super::{current_draft, point, required};
@@ -31,69 +31,6 @@ pub enum InputAdmissionStatus {
     Collision,
 }
 
-/// One bounded exact marker set supplied to an atomic input admission.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AdmissionMarkers {
-    markers: Vec<ResolvedImageMarker>,
-}
-
-impl AdmissionMarkers {
-    pub fn new(markers: Vec<ResolvedImageMarker>) -> Result<Self, SyndicRecordError> {
-        if markers.len() > crate::record::MAX_COMPOSER_IMAGE_MARKERS {
-            return Err(SyndicRecordError::TooManyImageMarkers {
-                kind: "admission marker resolutions",
-                maximum: crate::record::MAX_COMPOSER_IMAGE_MARKERS,
-                actual: markers.len(),
-            });
-        }
-        let mut identities = BTreeSet::new();
-        let mut labels = BTreeMap::new();
-        for marker in &markers {
-            if !identities.insert(marker.marker_id()) {
-                return Err(SyndicRecordError::DuplicateImageMarker {
-                    kind: "admission marker resolutions",
-                    marker_id: marker.marker_id(),
-                });
-            }
-            if labels
-                .insert(marker.label(), marker.asset_id())
-                .is_some_and(|asset| asset != marker.asset_id())
-            {
-                return Err(SyndicRecordError::LabelAssetMismatch {
-                    label: marker.label(),
-                });
-            }
-        }
-        Ok(Self { markers })
-    }
-
-    #[must_use]
-    pub fn markers(&self) -> &[ResolvedImageMarker] {
-        &self.markers
-    }
-
-    pub(super) fn validate_content(
-        &self,
-        content: crate::ContentReference,
-    ) -> Result<(), SyndicMutationError> {
-        let count =
-            u64::try_from(self.markers.len()).map_err(|_| SyndicRecordError::LengthOverflow {
-                kind: "admission marker resolutions",
-            })?;
-        let digest = input_marker_digest(
-            self.markers
-                .iter()
-                .map(|marker| (marker.marker_id(), marker.label())),
-        );
-        if count != content.summary().image_marker_count()
-            || digest != content.summary().marker_digest()
-        {
-            return Err(SyndicMutationError::MarkerResolutionConflict);
-        }
-        Ok(())
-    }
-}
-
 /// Exact caller-owned identities and revisions for one idle draft submission.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IdleSubmission {
@@ -105,7 +42,7 @@ pub struct IdleSubmission {
     expected_gate_revision: InputGateRevision,
     next_draft_id: SyndicDraftId,
     user_item_id: SyndicItemId,
-    markers: AdmissionMarkers,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
     admitted_at: SyndicTimestamp,
 }
 
@@ -121,7 +58,7 @@ impl IdleSubmission {
         expected_gate_revision: InputGateRevision,
         next_draft_id: SyndicDraftId,
         user_item_id: SyndicItemId,
-        markers: AdmissionMarkers,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
         admitted_at: SyndicTimestamp,
     ) -> Self {
         Self {
@@ -133,7 +70,7 @@ impl IdleSubmission {
             expected_gate_revision,
             next_draft_id,
             user_item_id,
-            markers,
+            asset_reference_set,
             admitted_at,
         }
     }
@@ -184,8 +121,8 @@ impl IdleSubmission {
     }
 
     #[must_use]
-    pub const fn markers(&self) -> &AdmissionMarkers {
-        &self.markers
+    pub const fn asset_reference_set(&self) -> Option<SealedAssetReferenceSetProof> {
+        self.asset_reference_set
     }
 
     #[must_use]
@@ -204,7 +141,7 @@ pub struct AcceptedInputAdmission {
     expected_content: crate::ContentReference,
     expected_gate_revision: InputGateRevision,
     next_draft_id: SyndicDraftId,
-    markers: AdmissionMarkers,
+    asset_reference_set: Option<SealedAssetReferenceSetProof>,
     admitted_at: SyndicTimestamp,
 }
 
@@ -219,7 +156,7 @@ impl AcceptedInputAdmission {
         expected_content: crate::ContentReference,
         expected_gate_revision: InputGateRevision,
         next_draft_id: SyndicDraftId,
-        markers: AdmissionMarkers,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
         admitted_at: SyndicTimestamp,
     ) -> Self {
         Self {
@@ -230,7 +167,7 @@ impl AcceptedInputAdmission {
             expected_content,
             expected_gate_revision,
             next_draft_id,
-            markers,
+            asset_reference_set,
             admitted_at,
         }
     }
@@ -276,13 +213,26 @@ impl AcceptedInputAdmission {
     }
 
     #[must_use]
-    pub const fn markers(&self) -> &AdmissionMarkers {
-        &self.markers
+    pub const fn asset_reference_set(&self) -> Option<SealedAssetReferenceSetProof> {
+        self.asset_reference_set
     }
 
     #[must_use]
     pub const fn admitted_at(&self) -> SyndicTimestamp {
         self.admitted_at
+    }
+
+    /// Materializes the immutable receipt persisted by a successful admission.
+    ///
+    /// Returns an error when the caller supplied the same source and replacement draft identity.
+    pub fn admission_proof(&self) -> Result<crate::AcceptedInputAdmissionProof, SyndicRecordError> {
+        crate::AcceptedInputAdmissionProof::new(
+            self.expected_thread_revision,
+            self.draft_id,
+            self.expected_draft_revision,
+            self.expected_gate_revision,
+            self.next_draft_id,
+        )
     }
 }
 
@@ -364,11 +314,13 @@ struct IdleSubmissionRecords {
     child_index: Option<TurnChildIndexRecord>,
     item: CanonicalItemRecord,
     item_index: TurnItemIndexRecord,
-    marker_records: Vec<InputMarkerResolutionRecord>,
+    origin_span: Option<ImageLabelOriginSpanRecord>,
     transcript_head: TranscriptViewHeadRecord,
     transcript_build: Option<crate::TranscriptBuildRecord>,
     summary: HistorySummaryRecord,
     gate: InputGateRecord,
+    activity_head: crate::ActivityQueryHeadRecord,
+    activity_source: crate::ActivityQuerySourceRecord,
     binding: BindingRecord,
     binding_head: BindingHeadRecord,
     context_move: Option<ContextMove>,
@@ -387,9 +339,12 @@ struct AcceptedInputRecords {
     draft_index: DraftByThreadRecord,
     input: crate::AcceptedInputRecord,
     order_index: crate::AcceptedOrderIndexRecord,
-    steering_index: Option<crate::AcceptedSteeringIndexRecord>,
-    next_index: Option<crate::AcceptedNextTurnIndexRecord>,
-    marker_records: Vec<InputMarkerResolutionRecord>,
+    route_head: Option<AcceptedRouteGenerationHeadRecord>,
+    route_generation: AcceptedRouteGenerationRecord,
+    route_leaf: AcceptedRouteLeafRecord,
+    ready_source: Option<AcceptedReadySourceRecord>,
+    next_source: Option<AcceptedNextSourceRecord>,
+    origin_span: Option<ImageLabelOriginSpanRecord>,
     summary: HistorySummaryRecord,
     gate: InputGateRecord,
     thread_parent_index: Option<ThreadParentIndexRecord>,
@@ -399,6 +354,7 @@ struct AdmissionBase {
     thread: ThreadRecord,
     draft: DraftRecord,
     gate: InputGateRecord,
+    summary: HistorySummaryRecord,
     empty_content: crate::ContentReference,
 }
 
@@ -408,5 +364,6 @@ mod shared;
 
 use shared::*;
 pub(super) use shared::{
-    canonical_empty_content, require_sealed_composer, validate_replacement_intent,
+    canonical_empty_content, require_sealed_composer, thread_parent_index, turn_shape,
+    validate_asset_reference_set, validate_replacement_intent,
 };

@@ -1,9 +1,7 @@
-use fjall::{KeyspaceCreateOptions, Readable};
-
 use super::*;
-use crate::{metadata::DomainMetadata, store::StoreGeneration};
+use crate::{health::ClassifiedFjallError, store::StoreGeneration};
 
-use super::registration::{registered_family, validate_blueprint};
+use super::registration::{read_persisted_metadata, registered_family, validate_blueprint};
 
 pub(crate) fn reacquire_registry(
     generation: &mut StoreGeneration,
@@ -11,37 +9,15 @@ pub(crate) fn reacquire_registry(
 ) -> Result<(), DomainRegistrationError> {
     let mut registry = DomainRegistry::default();
     for blueprint in blueprints {
-        let encoded = generation
-            .database
-            .snapshot()
-            .get(generation.domains_keyspace(), blueprint.name.as_bytes())
-            .map_err(|source| DomainRegistrationError::Storage {
-                domain: blueprint.name,
-                stage: DomainRegistrationStage::ReadRegistry,
-                source: Box::new(source),
-            })?
-            .ok_or(DomainRegistrationError::InvalidMetadata {
+        let persisted = read_persisted_metadata(generation, blueprint.name)?.ok_or(
+            DomainRegistrationError::InvalidMetadata {
                 domain: blueprint.name,
                 source: Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "registered domain metadata is missing during reopen",
                 )),
-            })?;
-        if encoded.len() > 8 * 1_024 {
-            return Err(DomainRegistrationError::InvalidMetadata {
-                domain: blueprint.name,
-                source: Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "domain registration exceeds its byte bound",
-                )),
-            });
-        }
-        let persisted = DomainMetadata::decode(&encoded).map_err(|source| {
-            DomainRegistrationError::InvalidMetadata {
-                domain: blueprint.name,
-                source: Box::new(source),
-            }
-        })?;
+            },
+        )?;
         validate_blueprint(blueprint, &persisted)?;
         let domain = reacquire_families(generation, blueprint)?;
         registry.insert(domain);
@@ -51,7 +27,13 @@ pub(crate) fn reacquire_registry(
 }
 
 pub(crate) fn validate_registry(generation: &StoreGeneration) -> Result<(), DomainValidationError> {
-    let snapshot = generation.database.snapshot();
+    let snapshot =
+        generation
+            .database
+            .snapshot()
+            .map_err(|source| DomainValidationError::Snapshot {
+                source: Box::new(ClassifiedFjallError::direct(source)),
+            })?;
     for domain in generation.registry.iter() {
         domain
             .validate(&snapshot)
@@ -64,7 +46,13 @@ pub(crate) fn validate_reopen_registry(
     generation: &StoreGeneration,
     sidecars: &crate::SidecarVerifier<'_>,
 ) -> Result<(), DomainValidationError> {
-    let snapshot = generation.database.snapshot();
+    let snapshot =
+        generation
+            .database
+            .snapshot()
+            .map_err(|source| DomainValidationError::Snapshot {
+                source: Box::new(ClassifiedFjallError::direct(source)),
+            })?;
     for domain in generation.registry.iter() {
         domain
             .validate_reopen(&snapshot, sidecars)
@@ -79,7 +67,15 @@ fn reacquire_families(
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
     let mut families = Vec::with_capacity(blueprint.families.len());
     for family in &blueprint.families {
-        if !generation.database.keyspace_exists(&family.physical_name) {
+        if !generation
+            .database
+            .keyspace_exists(&family.physical_name)
+            .map_err(|source| DomainRegistrationError::Storage {
+                domain: blueprint.name,
+                stage: DomainRegistrationStage::OpenKeyspace,
+                source: Box::new(ClassifiedFjallError::direct(source)),
+            })?
+        {
             return Err(DomainRegistrationError::MissingKeyspace {
                 domain: blueprint.name,
                 keyspace: family.physical_name.clone(),
@@ -87,11 +83,11 @@ fn reacquire_families(
         }
         let keyspace = generation
             .database
-            .keyspace(&family.physical_name, KeyspaceCreateOptions::default)
+            .open_keyspace(&family.physical_name)
             .map_err(|source| DomainRegistrationError::Storage {
                 domain: blueprint.name,
                 stage: DomainRegistrationStage::OpenKeyspace,
-                source: Box::new(source),
+                source: Box::new(ClassifiedFjallError::direct(source)),
             })?;
         families.push(registered_family(family, keyspace));
     }

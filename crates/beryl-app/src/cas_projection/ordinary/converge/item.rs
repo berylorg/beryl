@@ -1,11 +1,10 @@
 use beryl_home_store::{CommandError, HomeStore};
 use beryl_model::{SyndicThreadId, SyndicTurnId};
 use syndic_storage::{
-    AdvanceItemProjectionBuild, CanonicalItemKind, CanonicalItemPayload, ContentLifecycle,
-    FinalizeNextTurnItem, FreezeNextTurnItem, GeneratedMediaResourceDisposition,
-    ItemProjectionBuildPhase, ProjectionLifecycle, ProviderItemLifecycle, ResourceBacking,
-    StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnKind,
-    TurnStateRecord,
+    AdvanceItemProjectionBuild, ContentLifecycle, FinalizeNextTurnItem, FreezeNextTurnItem,
+    GeneratedMediaResourceDisposition, ItemProjectionBuildPhase, ProjectionLifecycle,
+    ProjectionTextSource, ProviderItemLifecycle, ResourceBacking, StartItemProjectionBuild,
+    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp, TurnKind, TurnStateRecord,
 };
 
 use super::super::OrdinaryTurnExecutionError;
@@ -39,73 +38,65 @@ pub(super) fn converge_turn_items(
         let Some(next) = frontier.next.as_ref() else {
             return Ok(());
         };
-        if next.item.provider_lifecycle() != ProviderItemLifecycle::Completed
-            || next.item.disposition().is_history_blocking()
-        {
+        if next.item.provider_lifecycle() != ProviderItemLifecycle::Completed {
             return Ok(());
         }
-        match next.item.payload() {
-            CanonicalItemPayload::UserInput { .. } | CanonicalItemPayload::Text(_) => {
-                let manifest =
-                    next.manifest
-                        .as_ref()
-                        .ok_or(OrdinaryTurnExecutionError::Invariant(
-                            "terminal text item has no content manifest",
-                        ))?;
-                match manifest.lifecycle() {
-                    ContentLifecycle::Live => {
-                        freeze_live_item(
-                            store,
-                            storage,
-                            thread_id,
-                            turn_id,
-                            minimum_observed_at,
-                            limit,
-                            &frontier,
-                        )?;
-                        continue;
-                    }
-                    ContentLifecycle::Sealed | ContentLifecycle::Finalized => {}
-                    ContentLifecycle::Building => {
-                        return Err(OrdinaryTurnExecutionError::Invariant(
-                            "terminal canonical item still references building content",
-                        ));
-                    }
-                }
+        let provider_manifest =
+            next.provider_manifest
+                .as_ref()
+                .ok_or(OrdinaryTurnExecutionError::Invariant(
+                    "completed provider item has no ProviderItemV1 manifest",
+                ))?;
+        match provider_manifest.lifecycle() {
+            ContentLifecycle::Live => {
+                freeze_live_item(
+                    store,
+                    storage,
+                    thread_id,
+                    turn_id,
+                    minimum_observed_at,
+                    limit,
+                    &frontier,
+                )?;
+                continue;
             }
-            CanonicalItemPayload::Activity if next.manifest.is_none() => {}
-            CanonicalItemPayload::GeneratedMedia(_) => {
-                let resource =
-                    next.resource
-                        .as_ref()
-                        .ok_or(OrdinaryTurnExecutionError::Invariant(
-                            "terminal generated item has no resource metadata",
-                        ))?;
-                match resource.backing() {
-                    ResourceBacking::GeneratedMedia(GeneratedMediaResourceDisposition::Asset(
-                        _,
-                    )) => {}
-                    ResourceBacking::GeneratedMedia(
-                        GeneratedMediaResourceDisposition::PendingAsset
-                        | GeneratedMediaResourceDisposition::Unavailable(_),
-                    ) => return Ok(()),
-                    ResourceBacking::CanonicalTextRange { .. } => {
-                        return Err(OrdinaryTurnExecutionError::Invariant(
-                            "generated item resource has text backing",
-                        ));
-                    }
-                }
-            }
-            CanonicalItemPayload::Unsupported(_) => {
-                return Ok(());
-            }
-            CanonicalItemPayload::Activity => {
+            ContentLifecycle::Finalized => {}
+            ContentLifecycle::Building | ContentLifecycle::Sealed => {
                 return Err(OrdinaryTurnExecutionError::Invariant(
-                    "terminal activity item unexpectedly owns text content",
+                    "completed provider item has an invalid content lifecycle",
                 ));
             }
         }
-        if is_visible(next.item.kind()) {
+        if let Some(resource_id) = next.item.presentation().resource_id() {
+            let resource = next
+                .resource
+                .as_ref()
+                .ok_or(OrdinaryTurnExecutionError::Invariant(
+                    "terminal generated item has no resource metadata",
+                ))?;
+            if resource.id() != resource_id || resource.item_id() != next.item.id() {
+                return Err(OrdinaryTurnExecutionError::Invariant(
+                    "terminal generated item resource disagrees",
+                ));
+            }
+            match resource.backing() {
+                ResourceBacking::GeneratedMedia(GeneratedMediaResourceDisposition::Asset(_)) => {}
+                ResourceBacking::GeneratedMedia(
+                    GeneratedMediaResourceDisposition::PendingAsset
+                    | GeneratedMediaResourceDisposition::Unavailable(_),
+                ) => return Ok(()),
+                ResourceBacking::TextRange { .. } => {
+                    return Err(OrdinaryTurnExecutionError::Invariant(
+                        "generated item resource has text backing",
+                    ));
+                }
+            }
+        } else if next.resource.is_some() {
+            return Err(OrdinaryTurnExecutionError::Invariant(
+                "non-generated item unexpectedly owns a resource",
+            ));
+        }
+        if next.item.projection_source().is_some() {
             converge_item_projection(store, storage, thread_id, next, limit)?;
         }
         finalize_item(
@@ -130,13 +121,6 @@ fn require_terminal(
         ));
     }
     Ok(())
-}
-
-const fn is_visible(kind: CanonicalItemKind) -> bool {
-    matches!(
-        kind,
-        CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -216,24 +200,25 @@ fn exact_freeze_progress(
     let (Some(before_item), Some(after_item)) = (&before.next, &after.next) else {
         return false;
     };
-    let (Some(before_content), Some(after_content)) = (
-        before_item.item.payload().content(),
-        after_item.item.payload().content(),
+    let (Some(before_manifest), Some(after_manifest)) = (
+        &before_item.provider_manifest,
+        &after_item.provider_manifest,
     ) else {
         return false;
     };
-    let (Some(before_manifest), Some(after_manifest)) =
-        (&before_item.manifest, &after_item.manifest)
+    let (Some(before_provider), Some(after_provider)) =
+        (before_item.item.provider(), after_item.item.provider())
     else {
         return false;
     };
-    next_is(before.state.revision().get(), after.state.revision().get())
-        && after.state.lifecycle() == before.state.lifecycle()
-        && after.state.source_event_count() == before.state.source_event_count()
-        && after.state.item_count() == before.state.item_count()
-        && after.state.finalized_item_count() == before.state.finalized_item_count()
-        && after.state.updated_at() == updated_at
+    exact_freeze_state(&before.state, &after.state, updated_at)
+        && after_item.index.turn_id() == before_item.index.turn_id()
         && after_item.index.ordinal() == before_item.index.ordinal()
+        && after_item.index.item_id() == before_item.index.item_id()
+        && next_is(
+            before_item.index.item_revision().get(),
+            after_item.index.item_revision().get(),
+        )
         && after_item.item.id() == before_item.item.id()
         && after_item.item.turn_id() == before_item.item.turn_id()
         && after_item.item.ordinal() == before_item.item.ordinal()
@@ -245,19 +230,75 @@ fn exact_freeze_progress(
         && after_item.item.source_event() == before_item.item.source_event()
         && after_item.item.source_event_count() == before_item.item.source_event_count()
         && after_item.item.cas_source() == before_item.item.cas_source()
-        && after_content.id() == before_content.id()
-        && after_manifest.id() == before_manifest.id()
-        && after_manifest.owner() == before_manifest.owner()
-        && next_is(
-            before_manifest.revision().get(),
-            after_manifest.revision().get(),
-        )
-        && after_manifest.encoding() == before_manifest.encoding()
-        && after_manifest.lifecycle() == ContentLifecycle::Finalized
-        && after_manifest.chunk_count() == before_manifest.chunk_count()
-        && after_manifest.encoded_bytes() == before_manifest.encoded_bytes()
-        && after_manifest.chain_digest() == before_manifest.chain_digest()
-        && after_manifest.expected() == before_manifest.expected()
+        && after_item.item.provider_kind() == before_item.item.provider_kind()
+        && after_item.item.provider_lifecycle() == before_item.item.provider_lifecycle()
+        && after_item.item.assistant_phase() == before_item.item.assistant_phase()
+        && after_item.item.narrative_completion() == before_item.item.narrative_completion()
+        && after_item.item.presentation() == before_item.item.presentation()
+        && after_item.item.projection_source() == before_item.item.projection_source()
+        && exact_frozen_provider(before_provider, after_provider)
+        && exact_frozen_manifest(before_manifest, after_manifest)
+        && exact_projection_manifest_after_freeze(before_item, after_item)
+        && after_item.resource == before_item.resource
+}
+
+fn exact_freeze_state(
+    before: &TurnStateRecord,
+    after: &TurnStateRecord,
+    updated_at: SyndicTimestamp,
+) -> bool {
+    after.turn_id() == before.turn_id()
+        && next_is(before.revision().get(), after.revision().get())
+        && after.lifecycle() == before.lifecycle()
+        && after.source_event_count() == before.source_event_count()
+        && after.item_count() == before.item_count()
+        && after.finalized_item_count() == before.finalized_item_count()
+        && after.open_item_count() == before.open_item_count()
+        && after.history_blocking_item_count() == before.history_blocking_item_count()
+        && after.provider_observation_issue() == before.provider_observation_issue()
+        && after.end_status() == before.end_status()
+        && after.updated_at() == updated_at
+}
+
+fn exact_frozen_provider(
+    before: &syndic_storage::SealedProviderFrameReference,
+    after: &syndic_storage::SealedProviderFrameReference,
+) -> bool {
+    before.frame() == after.frame()
+        && before.observation() == after.observation()
+        && before.stream_state() == after.stream_state()
+        && before.narrative() == after.narrative()
+}
+
+fn exact_frozen_manifest(
+    before: &syndic_storage::ContentManifestRecord,
+    after: &syndic_storage::ContentManifestRecord,
+) -> bool {
+    before.lifecycle() == ContentLifecycle::Live
+        && after.id() == before.id()
+        && after.owner() == before.owner()
+        && next_is(before.revision().get(), after.revision().get())
+        && after.encoding() == before.encoding()
+        && after.lifecycle() == ContentLifecycle::Finalized
+        && after.chunk_count() == before.chunk_count()
+        && after.encoded_bytes() == before.encoded_bytes()
+        && after.chain_digest() == before.chain_digest()
+        && after.expected() == before.expected()
+}
+
+fn exact_projection_manifest_after_freeze(
+    before: &snapshot::CanonicalSnapshot,
+    after: &snapshot::CanonicalSnapshot,
+) -> bool {
+    match before.item.projection_source() {
+        Some(ProjectionTextSource::ProviderNarrative(_)) => {
+            before.projection_manifest == before.provider_manifest
+                && after.projection_manifest == after.provider_manifest
+        }
+        Some(ProjectionTextSource::Composer(_)) | None => {
+            before.projection_manifest == after.projection_manifest
+        }
+    }
 }
 
 fn next_is(before: u64, after: u64) -> bool {
@@ -334,8 +375,9 @@ fn validate_projection_source(
     source: &snapshot::CanonicalSnapshot,
 ) -> Result<(), OrdinaryTurnExecutionError> {
     if current.item != source.item
-        || source.manifest.as_ref() != Some(&current.manifest)
-        || !current.manifest.lifecycle().is_immutable()
+        || current.provider_manifest != source.provider_manifest
+        || source.projection_manifest.as_ref() != Some(&current.projection_manifest)
+        || !current.projection_manifest.lifecycle().is_immutable()
     {
         return Err(OrdinaryTurnExecutionError::Invariant(
             "terminal item projection source changed",
@@ -347,10 +389,9 @@ fn validate_projection_source(
 fn current_projection(
     current: &snapshot::ProjectionSnapshot,
 ) -> Result<bool, OrdinaryTurnExecutionError> {
-    let content = current
+    let source = current
         .item
-        .payload()
-        .content()
+        .projection_source()
         .ok_or(OrdinaryTurnExecutionError::Invariant(
             "visible terminal item projection source has no text content",
         ))?;
@@ -363,7 +404,8 @@ fn current_projection(
                     set.item_id() == current.item.id()
                         && set.generation() == head.generation()
                         && set.source_item_revision() == current.item.revision()
-                        && set.source_content() == content
+                        && set.source() == source
+                        && set.source_bytes() == source.logical_utf8_bytes()
                         && set.projection_count() != 0
                 });
             if exact {
@@ -385,14 +427,14 @@ fn valid_parsing_build(
     current: &snapshot::ProjectionSnapshot,
     build: &syndic_storage::ItemProjectionBuildRecord,
 ) -> bool {
-    let Some(content) = current.item.payload().content() else {
+    let Some(source) = current.item.projection_source() else {
         return false;
     };
     build.item_id() == current.item.id()
         && build.generation() == current.generation
         && build.source_item_revision() == current.item.revision()
-        && build.source_content() == content
-        && build.source_bytes() == content.summary().logical_utf8_bytes()
+        && build.source() == source
+        && build.source_bytes() == source.logical_utf8_bytes()
         && matches!(build.phase(), ItemProjectionBuildPhase::Parsing(_))
 }
 

@@ -57,7 +57,7 @@ fn create_thread(
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
-            CreateThread::ordinary(thread, draft, timestamp(1)),
+            CreateThread::ordinary(thread, draft, execution_binding(), timestamp(1)),
         ),
     );
 }
@@ -109,10 +109,10 @@ fn submit_root_turn(
         draft,
         current.draft().revision(),
         current.draft().content(),
-        gate.record().revision(),
+        gate.revision(),
         replacement,
         item,
-        AdmissionMarkers::default(),
+        None,
         submitted_at,
     );
     let turn = submission.submitted_turn_id();
@@ -208,6 +208,7 @@ fn activate_root_turn(
         timestamp(3),
     );
     let cas_thread = CasThreadId::new("phase9-terminal-authority").unwrap();
+    let cas_turn = CasTurnId::new("phase9-terminal-cas-turn").unwrap();
     let valid = valid_request(thread, selected, cas_thread.clone());
     execute(
         store,
@@ -221,20 +222,20 @@ fn activate_root_turn(
         .input_gate(store, thread, point_limit())
         .unwrap()
         .unwrap();
-    let source_less_activation = LiveSourceEvent::new(
+    let premature_activation = LiveSourceEvent::new(
         thread,
         turn,
-        state.record().revision(),
-        gate.record().revision(),
+        state.revision(),
+        gate.revision(),
         SourceEventSequence::FIRST,
-        None,
+        Some(CasTurnSource::new(cas_thread.clone(), cas_turn.clone())),
         SourceEventPayload::TurnActivated,
         timestamp(4),
     )
     .unwrap();
     let error = execute_result(
         store,
-        storage.admit_live_source_event(storage.revision(store).unwrap(), source_less_activation),
+        storage.admit_live_source_event(storage.revision(store).unwrap(), premature_activation),
     )
     .unwrap_err();
     assert!(matches!(
@@ -253,7 +254,7 @@ fn activate_root_turn(
     let activation = ActivateBinding::new(
         thread,
         current.binding().revision(),
-        gate.record().revision(),
+        gate.revision(),
         selected,
         snapshot,
         turn,
@@ -264,7 +265,6 @@ fn activate_root_turn(
         store,
         storage.activate_binding(storage.revision(store).unwrap(), activation.clone()),
     );
-    let cas_turn = CasTurnId::new("phase9-terminal-cas-turn").unwrap();
     if publish_cas_turn {
         let binding = storage
             .current_binding(store, thread, point_limit())
@@ -281,7 +281,7 @@ fn activate_root_turn(
                 PublishActiveCasTurn::new(
                     thread,
                     binding.binding().revision(),
-                    gate.record().revision(),
+                    gate.revision(),
                     snapshot,
                     cas_thread.clone(),
                     cas_turn.clone(),
@@ -321,9 +321,9 @@ fn terminal_event(
     LiveSourceEvent::new(
         fixture.thread,
         fixture.turn,
-        state.record().revision(),
-        gate.record().revision(),
-        SourceEventSequence::new(state.record().source_event_count() + 1).unwrap(),
+        state.revision(),
+        gate.revision(),
+        SourceEventSequence::new(state.source_event_count() + 1).unwrap(),
         source,
         SourceEventPayload::TurnEnded(
             TurnEndStatus::new(outcome, Some(TurnIncompleteReason::ItemAuditFailed)).unwrap(),

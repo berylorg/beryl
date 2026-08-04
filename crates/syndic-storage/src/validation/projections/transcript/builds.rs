@@ -131,7 +131,7 @@ fn validate_active_build(
         &build.thread_id(),
         "active transcript build head is missing",
     )?;
-    if build.source_thread_revision() != thread.revision()
+    if build.source_thread_revision() > thread.revision()
         || build.committed_tail() != thread.committed_tail()
         || build.selected_path_digest() != thread.selected_path_digest()
         || head.generation() != build.generation()

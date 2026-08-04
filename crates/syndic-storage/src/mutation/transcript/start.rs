@@ -119,7 +119,7 @@ impl StartMutation {
         let thread = required::<ThreadsFamily>(reader, &self.request.thread_id)?;
         let head = required::<TranscriptHeadsFamily>(reader, &thread.id())?;
         let summary = required::<HistorySummariesFamily>(reader, &thread.id())?;
-        if thread.revision() != self.request.expected_thread_revision
+        if thread.revision() < self.request.expected_thread_revision
             || head.revision() != self.request.expected_head_revision
             || head.committed_tail() != thread.committed_tail()
             || head.selected_path_digest() != thread.selected_path_digest()
@@ -180,16 +180,19 @@ impl StartMutation {
                 ProjectionLifecycle::Stale
             },
         ));
-        let selected_summary = complete.then(|| {
-            crate::HistorySummaryRecord::new(
+        let selected_summary = if complete && !summary.complete() {
+            Some(crate::HistorySummaryRecord::new(
                 summary.thread_id(),
+                summary.revision().checked_next()?,
                 thread.revision(),
                 None,
                 thread.selected_path_digest(),
                 true,
                 summary.last_activity_at(),
-            )
-        });
+            ))
+        } else {
+            None
+        };
         Ok(StartRecords {
             build,
             head: selected_head,

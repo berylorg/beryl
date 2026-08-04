@@ -1,48 +1,87 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder, MutationContribution};
 use beryl_model::{
-    BindingRevision, ContentRevision, DomainRevision, DraftRevision, ProjectionRevision,
-    SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision,
+    BindingRevision, ContentRevision, DomainRevision, DraftRevision, ExecutionBinding,
+    ProjectionRevision, SyndicDraftId, SyndicThreadId, SyndicTurnId, ThreadRevision,
 };
 
 use crate::{
     BindingHeadRecord, BindingLifecycle, BindingRecord, BindingState, ComposerPayload,
-    ContentChunkRecord, ContentManifestRecord, ConversationParent, DraftByThreadRecord,
-    DraftRecord, HistorySummaryRecord, InputGateRecord, PreparedContent, ProjectionLifecycle,
-    SelectedPathProof, SyndicStorage, SyndicThreadTail, SyndicTimestamp, ThreadRecord,
-    TranscriptGeneration, TranscriptViewHeadRecord, codec::*, domain::SyndicDomain,
-    empty_selected_path_digest,
+    ContentChunkRecord, ContentManifestRecord, DraftByThreadRecord, DraftRecord,
+    DraftSubmissionIntent, HistorySummaryRecord, InputGateRecord, PreparedContent,
+    ProjectionLifecycle, SelectedPathProof, SyndicStorage, SyndicThreadTail, SyndicTimestamp,
+    ThreadAttributesRecord, ThreadCatalogSummaryRecord, ThreadExecutionRecord, ThreadLineageProof,
+    ThreadRecord, ThreadUsageRecord, TranscriptGeneration, TranscriptViewHeadRecord, codec::*,
+    domain::SyndicDomain, empty_selected_path_digest, root_thread_lineage_digest,
 };
 
 mod accepted;
+mod activity;
 mod admission;
 mod binding;
+mod compaction;
 mod content;
 mod error;
+mod initial_content;
 mod live;
 pub(crate) mod projection;
+mod promotion;
+mod provider_frame;
+mod provider_observation;
 mod replacement;
+mod stop;
+mod thread_properties;
 mod transcript;
 
 pub use accepted::{
     BeginAcceptedInputDelivery, CompleteAcceptedInputDelivery, RetryAcceptedInputDelivery,
     SteeringRejection,
 };
-pub use admission::{
-    AcceptedInputAdmission, AdmissionMarkers, IdleSubmission, InputAdmissionStatus,
-};
+pub use activity::PublishActivityChildHandoff;
+pub use admission::{AcceptedInputAdmission, IdleSubmission, InputAdmissionStatus};
+#[cfg(feature = "test-faults")]
+pub(crate) use binding::active_cas_turn_fault_scope;
 pub use binding::{
     AbandonActiveBinding, ActivateBinding, ActiveCasTurnPublicationStatus,
-    BindingPublicationStatus, CancelBindingActivation, PublishActiveCasTurn, PublishStaleBinding,
-    PublishUnboundBinding, PublishValidBinding,
+    BindingPublicationStatus, CancelBindingActivation, ExactRejectedInputDelivery,
+    PublishActiveCasTurn, PublishStaleBinding, PublishUnboundBinding, PublishValidBinding,
+};
+pub use compaction::{
+    AbandonCompactionOperation, AdmitCompactionOperation, ClaimCompactionDispatch,
+    CompactionProviderEvent, PublishCompactionProviderEvent, PublishCompactionRequestDisposition,
+    SealLifecycleContinuationContent, SettleCompactionOperation, SettleLifecycleCompaction,
 };
 pub use content::{
     CONTENT_APPEND_MAX_CHUNKS, ContentAppend, ContentBuild, DraftPayloadUpdate,
     DraftPayloadUpdateDecision,
 };
 pub use error::{CreateThreadError, SyndicMutationError, ThreadCreationStatus};
-pub use live::{FinalizeNextTurnItem, FreezeNextTurnItem, LiveSourceEvent, LiveSourceEventStatus};
+use initial_content::validate_initial_content;
+#[cfg(feature = "test-faults")]
+pub(crate) use live::live_source_event_fault_scope;
+pub use live::{
+    CompleteTerminalHistory, FinalizeNextTurnItem, FreezeNextTurnItem, LiveSourceEvent,
+    LiveSourceEventStatus,
+};
 pub use projection::{AdvanceItemProjectionBuild, StartItemProjectionBuild};
+pub use promotion::{AcceptedInputPromotionStatus, PromoteAcceptedInput};
+pub use provider_frame::{
+    PROVIDER_FRAME_STAGE_MAX_NARRATIVE_SPANS, PreparedProviderFrame,
+    ProviderCompletionComparisonMutationError, ProviderFrameMutationError,
+    ProviderFramePreparationError, ProviderFramePreparationPlan, ProviderFrameStageBatch,
+    ProviderFrameStageBatchError, ProviderFrameStageBatchState, ProviderFrameStageCallback,
+    ProviderFrameStageError, prepare_provider_frame, stage_provider_frame,
+};
+pub use provider_observation::ProviderObservationMutationError;
+#[cfg(feature = "test-faults")]
+pub(crate) use provider_observation::provider_observation_stage_fault_scope;
 pub use replacement::{CancelReplacementEdit, StartReplacementEdit};
+pub use stop::{
+    AbandonStopOperation, AdmitStopOperation, ClaimStopDispatch, JoinStopCause,
+    SafelyReopenStopOperation,
+};
+pub use thread_properties::{
+    AcceptGeneratedThreadTitle, ArchiveBranchDiscussionThread, PublishThreadUsage,
+};
 pub use transcript::{AdvanceTranscriptBuild, StartTranscriptBuild};
 
 /// Exact immutable inputs for one ordinary thread and its first durable draft.
@@ -50,6 +89,7 @@ pub use transcript::{AdvanceTranscriptBuild, StartTranscriptBuild};
 pub struct CreateThread {
     thread_id: SyndicThreadId,
     draft_id: SyndicDraftId,
+    execution: ExecutionBinding,
     created_at: SyndicTimestamp,
     source: Option<SyndicThreadTail>,
 }
@@ -60,11 +100,13 @@ impl CreateThread {
     pub const fn ordinary(
         thread_id: SyndicThreadId,
         draft_id: SyndicDraftId,
+        execution: ExecutionBinding,
         created_at: SyndicTimestamp,
     ) -> Self {
         Self {
             thread_id,
             draft_id,
+            execution,
             created_at,
             source: None,
         }
@@ -89,6 +131,7 @@ impl CreateThread {
         Ok(Self {
             thread_id,
             draft_id,
+            execution: source.execution().clone(),
             created_at,
             source: Some(source),
         })
@@ -105,6 +148,11 @@ impl CreateThread {
     }
 
     #[must_use]
+    pub const fn execution(&self) -> &ExecutionBinding {
+        &self.execution
+    }
+
+    #[must_use]
     pub const fn created_at(&self) -> SyndicTimestamp {
         self.created_at
     }
@@ -113,6 +161,10 @@ impl CreateThread {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct InitialThreadRecords {
     pub(crate) thread: ThreadRecord,
+    pub(crate) execution: ThreadExecutionRecord,
+    pub(crate) attributes: ThreadAttributesRecord,
+    pub(crate) usage: ThreadUsageRecord,
+    pub(crate) catalog_summary: ThreadCatalogSummaryRecord,
     pub(crate) draft: DraftRecord,
     pub(crate) content_manifest: ContentManifestRecord,
     pub(crate) content_chunks: Vec<ContentChunkRecord>,
@@ -122,6 +174,7 @@ pub(crate) struct InitialThreadRecords {
     pub(crate) transcript_build: Option<crate::TranscriptBuildRecord>,
     pub(crate) summary: HistorySummaryRecord,
     pub(crate) input_gate: InputGateRecord,
+    pub(crate) activity_head: crate::ActivityQueryHeadRecord,
     pub(crate) binding: BindingRecord,
     pub(crate) binding_head: BindingHeadRecord,
 }
@@ -147,20 +200,22 @@ impl CreateThread {
         );
         let thread = ThreadRecord::new(
             self.thread_id,
-            thread_revision,
-            selected_path.tail(),
+            selected_path,
             self.draft_id,
+            ThreadLineageProof::new(
+                None,
+                None,
+                crate::ThreadLineageDepth::FIRST,
+                root_thread_lineage_digest(self.thread_id),
+            ),
+            crate::ThreadImageLabelFrontiers::empty(),
             None,
-            None,
-            selected_path.digest(),
         );
         let draft = DraftRecord::new(
             self.draft_id,
             self.thread_id,
             draft_revision,
-            ConversationParent::from_turn(selected_path.tail()),
-            None,
-            None,
+            DraftSubmissionIntent::Ordinary,
             content.reference(content_revision),
             self.created_at,
             self.created_at,
@@ -185,8 +240,35 @@ impl CreateThread {
                 crate::TranscriptBuildPhase::Complete,
             )
         });
+        let execution = ThreadExecutionRecord::new(self.thread_id, self.execution.clone());
+        let attributes = ThreadAttributesRecord::ordinary(self.thread_id);
+        let usage = ThreadUsageRecord::empty(self.thread_id);
+        let summary = HistorySummaryRecord::new(
+            self.thread_id,
+            projection_revision,
+            thread_revision,
+            selected_path.tail(),
+            selected_path.digest(),
+            !stale,
+            self.created_at,
+        );
+        let initial_title = self
+            .source
+            .as_ref()
+            .and_then(|source| source.entire_selected_path_title().cloned());
+        let catalog_summary = ThreadCatalogSummaryRecord::initial_with_history_title(
+            &thread,
+            &execution,
+            &attributes,
+            &summary,
+            initial_title,
+        );
         InitialThreadRecords {
             thread,
+            execution,
+            attributes,
+            usage,
+            catalog_summary,
             draft,
             content_manifest: content.sealed_manifest(content_revision),
             content_chunks: content.chunks().to_vec(),
@@ -211,15 +293,9 @@ impl CreateThread {
                 },
             ),
             transcript_build,
-            summary: HistorySummaryRecord::new(
-                self.thread_id,
-                thread_revision,
-                selected_path.tail(),
-                selected_path.digest(),
-                !stale,
-                self.created_at,
-            ),
+            summary,
             input_gate: InputGateRecord::idle(self.thread_id),
+            activity_head: crate::ActivityQueryHeadRecord::empty(self.thread_id),
             binding: BindingRecord::new(
                 self.thread_id,
                 binding_revision,
@@ -253,12 +329,15 @@ fn validate_source_tail(
         return Err(SyndicMutationError::SourceTailConflict);
     }
     let summary = required::<HistorySummariesFamily>(reader, &source.thread_id())?;
+    let execution = required::<ThreadExecutionsFamily>(reader, &source.thread_id())?;
     if summary.thread_revision() != selected.thread_revision()
         || summary.committed_tail() != selected.tail()
         || summary.selected_path_digest() != selected.digest()
         || summary.last_activity_at() != source.last_activity_at()
         || !summary.complete()
         || !source.complete()
+        || execution.thread_id() != source.thread_id()
+        || execution.execution() != source.execution()
     {
         return Err(SyndicMutationError::SourceTailConflict);
     }
@@ -350,12 +429,17 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             None => false,
         };
         if point::<ThreadsFamily>(reader, &records.thread.id())?.is_some()
+            || point::<ThreadExecutionsFamily>(reader, &records.thread.id())?.is_some()
+            || point::<ThreadAttributesFamily>(reader, &records.thread.id())?.is_some()
+            || point::<ThreadUsageFamily>(reader, &records.thread.id())?.is_some()
+            || point::<ThreadCatalogSummariesFamily>(reader, &records.thread.id())?.is_some()
             || point::<DraftsFamily>(reader, &records.draft.id())?.is_some()
             || point::<DraftByThreadFamily>(reader, &records.thread.id())?.is_some()
             || point::<TranscriptHeadsFamily>(reader, &records.thread.id())?.is_some()
             || transcript_build_collision
             || point::<HistorySummariesFamily>(reader, &records.thread.id())?.is_some()
             || point::<InputGatesFamily>(reader, &records.thread.id())?.is_some()
+            || point::<ActivityQueryHeadsFamily>(reader, &records.thread.id())?.is_some()
             || point::<BindingHeadsFamily>(reader, &records.thread.id())?.is_some()
             || point::<BindingsFamily>(
                 reader,
@@ -413,6 +497,11 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
             }
         }
         mutations.put::<ThreadsCodec>(&records.thread.id(), &records.thread)?;
+        mutations.put::<ThreadExecutionsCodec>(&records.thread.id(), &records.execution)?;
+        mutations.put::<ThreadAttributesCodec>(&records.thread.id(), &records.attributes)?;
+        mutations.put::<ThreadUsageCodec>(&records.thread.id(), &records.usage)?;
+        mutations
+            .put::<ThreadCatalogSummariesCodec>(&records.thread.id(), &records.catalog_summary)?;
         mutations.put::<DraftsCodec>(&records.draft.id(), &records.draft)?;
         mutations.put::<DraftByThreadCodec>(&records.thread.id(), &records.draft_index)?;
         mutations.put::<TranscriptHeadsCodec>(&records.thread.id(), &records.transcript_head)?;
@@ -427,6 +516,7 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         }
         mutations.put::<HistorySummariesCodec>(&records.thread.id(), &records.summary)?;
         mutations.put::<InputGatesCodec>(&records.thread.id(), &records.input_gate)?;
+        mutations.put::<ActivityQueryHeadsCodec>(&records.thread.id(), &records.activity_head)?;
         mutations.put::<BindingsCodec>(
             &BindingKey {
                 thread: records.thread.id(),
@@ -436,72 +526,5 @@ impl DomainMutation<SyndicDomain> for CreateThreadMutation {
         )?;
         mutations.put::<BindingHeadsCodec>(&records.thread.id(), &records.binding_head)?;
         Ok(())
-    }
-}
-
-fn validate_initial_content(
-    reader: &DomainReader<'_, SyndicDomain>,
-    records: &InitialThreadRecords,
-) -> Result<(), SyndicMutationError> {
-    match point::<ContentManifestsFamily>(reader, &records.content_manifest.id())? {
-        Some(manifest) if manifest != records.content_manifest => {
-            Err(SyndicMutationError::IdentityCollision)
-        }
-        Some(_) => {
-            for chunk in &records.content_chunks {
-                let stored = point::<ContentChunksFamily>(
-                    reader,
-                    &ContentChunkKey {
-                        owner: chunk.content_id(),
-                        ordinal: chunk.ordinal(),
-                    },
-                )?;
-                if stored.as_ref() != Some(chunk) {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            for span in &records.content_spans {
-                let stored = point::<ContentByteSpansFamily>(
-                    reader,
-                    &ContentByteSpanKey {
-                        owner: span.content_id(),
-                        start: span.start(),
-                    },
-                )?;
-                if stored.as_ref() != Some(span) {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            Ok(())
-        }
-        None => {
-            for chunk in &records.content_chunks {
-                if point::<ContentChunksFamily>(
-                    reader,
-                    &ContentChunkKey {
-                        owner: chunk.content_id(),
-                        ordinal: chunk.ordinal(),
-                    },
-                )?
-                .is_some()
-                {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            for span in &records.content_spans {
-                if point::<ContentByteSpansFamily>(
-                    reader,
-                    &ContentByteSpanKey {
-                        owner: span.content_id(),
-                        start: span.start(),
-                    },
-                )?
-                .is_some()
-                {
-                    return Err(SyndicMutationError::IdentityCollision);
-                }
-            }
-            Ok(())
-        }
     }
 }

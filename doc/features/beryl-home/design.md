@@ -55,7 +55,15 @@ Preserve the user's current window layout and last coherent work surfaces when d
 - Already resident content may remain readable, selectable, and copyable when those actions require no new durable read or mutation.
 - History loading and navigation, thread activation, draft editing, submission, settings, window-session mutation, runtime/root mutation, metadata mutation, and every other operation requiring Beryl-home state are unavailable while the failure persists.
 - Beryl does not report a failed write as saved and does not fall back to CAS history or another authority.
-- Once the failure is established as persistent, Beryl makes a best-effort attempt to interrupt every active conversation turn without closing its window.
+- Once the failure is established as persistent, Beryl first closes further live-command
+  authorization, then makes one best-effort attempt to interrupt each exact active conversation
+  turn already known from the last coherent in-memory projection without closing its window, but
+  only when retained dispatch evidence proves no earlier primary interruption may have crossed.
+- This emergency path cannot claim durable stop admission after the store gate has failed. It never
+  guesses a target, duplicates a possibly dispatched durable stop, retries an ambiguous
+  interruption, releases a thread claim, or reports durable stop confirmation. One fixed
+  process-local failure-generation guard permits at most one volatile request per exact target;
+  same-home recovery starts from the last committed gate and lifecycle state.
 - Turn output, lifecycle updates, or other incoming work that arrives while durable capture is unavailable is never presented as durably saved.
 - Each affected main window presents the shared failure through its own disabled controls and established error notice.
 - An operation that would close a window or exit while changing the durable restore set does not complete when that restore-set write fails; the current windows remain intact.

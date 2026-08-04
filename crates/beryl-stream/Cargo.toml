@@ -1,0 +1,9 @@
+[package]
+name = "beryl-stream"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+thiserror.workspace = true

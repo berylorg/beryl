@@ -60,7 +60,7 @@ impl CasProjectionCoordinator {
         stale_reason: &'static str,
     ) -> Result<LoadedCasProjection, ProjectionExecutionError> {
         let cas_thread_id = fresh.thread_id().clone();
-        let lease = match session.connection().register_new(
+        let lease = match session.register_loaded(
             cas_thread_id.clone(),
             request.thread_id(),
             request.timeout(),

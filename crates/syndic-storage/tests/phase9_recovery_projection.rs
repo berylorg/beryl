@@ -3,8 +3,7 @@
 #[path = "phase9_recovery_projection/support.rs"]
 mod support;
 
-use beryl_model::{RecoveryItemSequenceDigest, SyndicPathDigest};
-use sha2::{Digest, Sha256};
+use beryl_model::{RecoveryItemSequenceDigest, RecoveryItemSequenceRole, SyndicPathDigest};
 use syndic_storage::*;
 
 use support::{Builder, TestHome, open};
@@ -46,54 +45,37 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
     assert_eq!(projection.selected_path(), selected);
     assert_eq!(projection.represented_prefix().tail(), Some(second.turn));
     assert_ne!(projection.represented_prefix().tail(), Some(pending.turn));
-    assert_eq!(
-        projection
-            .items()
-            .iter()
-            .map(|item| (item.role(), item.text_kind(), item.text()))
-            .collect::<Vec<_>>(),
-        vec![
-            (
-                RecoveryItemRole::User,
-                RecoveryItemTextKind::InputText,
-                "first user",
-            ),
-            (
-                RecoveryItemRole::Assistant,
-                RecoveryItemTextKind::OutputText,
-                "first assistant",
-            ),
-            (
-                RecoveryItemRole::User,
-                RecoveryItemTextKind::InputText,
-                spanning.as_str(),
-            ),
-            (
-                RecoveryItemRole::Assistant,
-                RecoveryItemTextKind::OutputText,
-                "second assistant",
-            ),
-        ]
-    );
+    let expected_items = vec![
+        (RecoveryItemSequenceRole::UserInputText, "first user".into()),
+        (
+            RecoveryItemSequenceRole::AssistantOutputText,
+            "first assistant".into(),
+        ),
+        (RecoveryItemSequenceRole::UserInputText, spanning),
+        (
+            RecoveryItemSequenceRole::AssistantOutputText,
+            "second assistant".into(),
+        ),
+    ];
+    test_faults::reset_recovery_residency_metrics();
+    assert_eq!(replay(&storage, &store, projection), expected_items);
+    let metrics = test_faults::recovery_residency_metrics();
+    assert_eq!(metrics.max_resident_turns(), 1);
+    assert_eq!(metrics.max_resident_items(), 1);
+    assert!(metrics.cursor_page_count() > projection.item_count().get() as usize);
+    assert!(metrics.max_cursor_page_bytes() <= RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES);
     let manifest = storage
         .canonical_item(&store, second.user_item, support::point_limit())
         .unwrap()
         .unwrap();
     assert!(
         manifest
-            .record()
-            .payload()
-            .content()
-            .expect("projected assistant message has content")
+            .presentation_content()
+            .expect("projected user message has content")
             .summary()
             .chunk_count()
             > 1
     );
-    assert_eq!(
-        projection.sequence_digest(),
-        expected_digest(projection.items())
-    );
-    let expected_items = projection.items().to_vec();
     let expected_digest = projection.sequence_digest();
     store.close().unwrap();
 
@@ -105,7 +87,10 @@ fn exact_root_to_tail_items_exclude_pending_input_and_reopen_deterministically()
     else {
         panic!("reopened nonempty prefix must remain recoverable")
     };
-    assert_eq!(reopened_projection.items(), expected_items);
+    assert_eq!(
+        replay(&storage, &reopened, reopened_projection),
+        expected_items
+    );
     assert_eq!(reopened_projection.sequence_digest(), expected_digest);
     reopened.close().unwrap();
 }
@@ -140,6 +125,92 @@ fn root_pending_is_native_fresh_even_without_model_metadata() {
 }
 
 #[test]
+fn caller_page_limit_preserves_utf8_progress_and_returns_the_exact_lease() {
+    let home = TestHome::new("phase40-recovery-caller-page");
+    let mut store = open(home.path());
+    let storage = SyndicStorage::register(&mut store).unwrap();
+    let mut builder = Builder::new(&store, storage, 5);
+    let completed = builder.submit_text("é🙂x");
+    builder.complete_without_assistant(completed, TurnTerminalOutcome::Complete);
+    builder.submit_text("pending input");
+    let RecoveryAssembly::Ready(projection) = storage
+        .prepare_recovery_projection(
+            &store,
+            RecoveryProjectionRequest::for_pending_selected_turn_parent(
+                builder.thread(),
+                builder.selected_path(),
+                Some(100_000),
+            ),
+        )
+        .unwrap()
+    else {
+        panic!("the completed parent prefix must be recoverable")
+    };
+    let mut cursor = storage.open_recovery_cursor(&store, projection).unwrap();
+    let pool = support::recovery_page_pool(16);
+
+    test_faults::reset_recovery_residency_metrics();
+    assert!(matches!(
+        storage.read_recovery_cursor_page(&store, &mut cursor, pool.try_lease().unwrap(), 0),
+        Err(RecoveryProjectionError::InvalidCursorPageLimit { actual: 0 })
+    ));
+    assert_eq!(
+        test_faults::recovery_residency_metrics().turn_item_read_attempts(),
+        0
+    );
+    assert_eq!(pool.diagnostics().available, 1);
+
+    assert!(matches!(
+        storage.read_recovery_cursor_page(&store, &mut cursor, pool.try_lease().unwrap(), 1),
+        Err(RecoveryProjectionError::CursorPageLimitTooSmall {
+            offset: 0,
+            actual: 1,
+        })
+    ));
+    assert_eq!(pool.diagnostics().available, 1);
+
+    let lease = pool.try_lease().unwrap();
+    let generation = lease.generation();
+    let first = storage
+        .read_recovery_cursor_page(&store, &mut cursor, lease, 3)
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.text(), "é");
+    assert_eq!(first.item_offset(), 0);
+    assert!(!first.item_terminal());
+    let lease = first.into_page_lease();
+    assert_eq!(lease.generation(), generation);
+    assert_eq!(lease.len(), "é".len());
+
+    let second = storage
+        .read_recovery_cursor_page(&store, &mut cursor, lease, 4)
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.text(), "🙂");
+    assert_eq!(second.item_offset(), "é".len() as u64);
+    assert!(!second.item_terminal());
+    let lease = second.into_page_lease();
+    assert_eq!(lease.generation(), generation);
+
+    let terminal = storage
+        .read_recovery_cursor_page(&store, &mut cursor, lease, usize::MAX)
+        .unwrap()
+        .unwrap();
+    assert_eq!(terminal.text(), "x");
+    assert!(terminal.item_terminal());
+    assert!(terminal.sequence_terminal());
+    let lease = terminal.into_page_lease();
+    assert_eq!(lease.generation(), generation);
+    assert!(
+        storage
+            .read_recovery_cursor_page(&store, &mut cursor, lease, 16)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(pool.diagnostics().available, 1);
+}
+
+#[test]
 fn finalized_interrupted_and_failed_turns_remain_exact_recovery_history() {
     for (name, thread_byte, outcome) in [
         (
@@ -171,8 +242,11 @@ fn finalized_interrupted_and_failed_turns_remain_exact_recovery_history() {
             panic!("finalized interrupted and failed history must be recoverable")
         };
         assert_eq!(
-            projection.items(),
-            &[RecoveryItem::UserInputText("retained user history".into())]
+            replay(&storage, &store, projection),
+            vec![(
+                RecoveryItemSequenceRole::UserInputText,
+                "retained user history".into(),
+            )]
         );
     }
 }
@@ -349,11 +423,9 @@ fn media_operational_empty_and_incomplete_history_reject_distinctly() {
         RecoveryProjectionError::IncompleteHistory { .. }
     ));
     assert!(incomplete.to_string().contains("not recovery-complete"));
-    assert!(
-        incomplete
-            .to_string()
-            .contains("exact outcome, history-incomplete reason, item audit")
-    );
+    assert!(incomplete.to_string().contains(
+        "exact outcome, history-incomplete and provider-observation issue facts, item audit",
+    ));
 }
 
 #[test]
@@ -420,22 +492,63 @@ fn with_single_user_prefix(
     check(&store, storage, thread, selected);
 }
 
-fn expected_digest(items: &[RecoveryItem]) -> RecoveryItemSequenceDigest {
-    let total_bytes: u64 = items.iter().map(|item| item.text().len() as u64).sum();
-    let mut hash = Sha256::new();
-    hash.update(b"beryl.syndic.recovery-item-sequence.v1\0");
-    hash.update((items.len() as u64).to_be_bytes());
-    hash.update(total_bytes.to_be_bytes());
-    for (index, item) in items.iter().enumerate() {
-        hash.update((index as u64 + 1).to_be_bytes());
-        hash.update([match item.role() {
-            RecoveryItemRole::User => 0,
-            RecoveryItemRole::Assistant => 1,
-        }]);
-        hash.update((item.text().len() as u64).to_be_bytes());
-        hash.update(item.text().as_bytes());
+fn replay(
+    storage: &SyndicStorage,
+    store: &beryl_home_store::HomeStore,
+    projection: RecoveryProjection,
+) -> Vec<(RecoveryItemSequenceRole, String)> {
+    let mut cursor = storage.open_recovery_cursor(store, projection).unwrap();
+    let pool = support::recovery_page_pool(RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES);
+    let mut page_lease = pool.try_lease().unwrap();
+    let mut items: Vec<(RecoveryItemSequenceRole, String)> = Vec::new();
+    let mut saw_terminal = false;
+    loop {
+        let lease_generation = page_lease.generation();
+        let Some(page) = storage
+            .read_recovery_cursor_page(
+                store,
+                &mut cursor,
+                page_lease,
+                RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES,
+            )
+            .unwrap()
+        else {
+            break;
+        };
+        assert!(!page.text().is_empty());
+        assert!(page.text().len() <= RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES);
+        if page.item_offset() == 0 {
+            assert_eq!(page.sequence_ordinal(), items.len() as u64 + 1);
+            items.push((page.role(), String::new()));
+        } else {
+            assert_eq!(page.sequence_ordinal(), items.len() as u64);
+        }
+        let (_, text) = items.last_mut().unwrap();
+        assert_eq!(page.item_offset(), text.len() as u64);
+        assert!(page.declared_item_utf8_bytes() >= text.len() as u64 + page.text().len() as u64);
+        text.push_str(page.text());
+        if page.item_terminal() {
+            assert_eq!(text.len() as u64, page.declared_item_utf8_bytes());
+        }
+        saw_terminal = page.sequence_terminal();
+        page_lease = page.into_page_lease();
+        assert_eq!(page_lease.generation(), lease_generation);
     }
-    RecoveryItemSequenceDigest::from_bytes(hash.finalize().into())
+    assert!(saw_terminal);
+    assert!(matches!(
+        storage.read_recovery_cursor_page(
+            store,
+            &mut cursor,
+            pool.try_lease().unwrap(),
+            RECOVERY_CURSOR_PAGE_MAX_UTF8_BYTES,
+        ),
+        Err(RecoveryProjectionError::CursorTerminal)
+    ));
+    let diagnostics = pool.diagnostics();
+    assert_eq!(diagnostics.leased, 0);
+    assert_eq!(diagnostics.available, 1);
+    assert_eq!(diagnostics.high_water, 1);
+    items
 }
 
 fn stale_digest() -> SyndicPathDigest {

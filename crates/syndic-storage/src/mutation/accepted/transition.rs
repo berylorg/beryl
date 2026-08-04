@@ -1,21 +1,22 @@
 use beryl_home_store::{DomainMutation, DomainReader, MutationBuilder};
 
 use crate::{
-    AcceptedInputDisposition, AcceptedInputLifecycle, AcceptedInputRecord,
-    AcceptedNextTurnIndexRecord, AcceptedOrderIndexRecord, AcceptedSteeringIndexRecord,
-    InputGateRecord, InputGateState, NextTurnReason, SyndicMutationError, SyndicRecordError,
-    codec::*, domain::SyndicDomain,
+    AcceptedInputLifecycle, AcceptedNextSourceRecord, AcceptedReadySourceRecord,
+    AcceptedRouteGenerationHeadRecord, AcceptedRouteGenerationRecord, AcceptedRouteHeadProof,
+    AcceptedRouteLeafRecord, AcceptedRouteLeafState, AcceptedRouteLeafTransitionProof,
+    AcceptedRouteTarget, InputGateRecord, InputGateState, NextTurnReason, SyndicMutationError,
+    SyndicRecordError, codec::*, domain::SyndicDomain,
 };
 
 use super::{AcceptedInputDeliveryMutation, AcceptedInputDeliveryTransitionKind};
-use crate::mutation::{point, required};
+use crate::mutation::required;
 
 struct AcceptedInputDeliveryRecords {
-    prior_turn: beryl_model::SyndicTurnId,
-    input: AcceptedInputRecord,
-    order: AcceptedOrderIndexRecord,
-    steering: Option<AcceptedSteeringIndexRecord>,
-    next: Option<AcceptedNextTurnIndexRecord>,
+    leaf: AcceptedRouteLeafRecord,
+    generation: AcceptedRouteGenerationRecord,
+    head: AcceptedRouteGenerationHeadRecord,
+    ready_source: Option<AcceptedReadySourceRecord>,
+    next_source: Option<AcceptedNextSourceRecord>,
     gate: InputGateRecord,
 }
 
@@ -40,68 +41,227 @@ impl AcceptedInputDeliveryMutation {
         &self,
         reader: &DomainReader<'_, SyndicDomain>,
     ) -> Result<AcceptedInputDeliveryRecords, SyndicMutationError> {
-        let transition = self.transition;
+        let transition = &self.transition;
         let gate = required::<InputGatesFamily>(reader, &transition.thread_id)?;
-        if gate.revision() != transition.expected_gate_revision {
-            return Err(SyndicMutationError::InputGateRevisionConflict {
-                expected: transition.expected_gate_revision,
-                current: gate.revision(),
-            });
-        }
-        let current = required::<AcceptedInputsFamily>(reader, &transition.input_id)?;
-        if current.thread_id() != transition.thread_id {
+        let input = required::<AcceptedInputsFamily>(reader, &transition.input_id)?;
+        let leaf = required::<AcceptedRouteLeavesFamily>(reader, &transition.input_id)?;
+        if input.thread_id() != transition.thread_id
+            || leaf.thread_id() != transition.thread_id
+            || leaf.input_id() != input.id()
+            || leaf.ordinal() != input.ordinal()
+            || leaf.generation() != input.route_generation()
+        {
             return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
         }
-        if current.revision() != transition.expected_input_revision {
+        if leaf.revision() != transition.expected_input_revision {
             return Err(SyndicMutationError::AcceptedInputRevisionConflict {
                 expected: transition.expected_input_revision,
-                current: current.revision(),
+                current: leaf.revision(),
             });
         }
-        validate_source_lifecycle(self.kind, current.lifecycle())?;
-
-        let AcceptedInputDisposition::SteerActiveTurn(target) = current.disposition() else {
-            return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
-        };
-        if gate.state() != &InputGateState::Steerable(target.clone()) {
+        validate_source_lifecycle(self.kind, leaf.lifecycle())?;
+        if leaf.state() != AcceptedRouteLeafState::Routed {
             return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
         }
-        let prior_turn = target.pending().active_turn_id();
-        validate_indexes(reader, &current, prior_turn)?;
 
-        self.next_records(current, gate, prior_turn)
+        let proof = gate
+            .selected_route()
+            .ok_or(SyndicMutationError::AcceptedInputDeliveryConflict)?;
+        let head = required::<AcceptedRouteGenerationHeadsFamily>(reader, &transition.thread_id)?;
+        let generation = required::<AcceptedRouteGenerationsFamily>(
+            reader,
+            &ThreadRouteKey {
+                thread: transition.thread_id,
+                generation: leaf.generation(),
+            },
+        )?;
+        let AcceptedRouteTarget::Steering(target) = generation.target() else {
+            return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
+        };
+        let InputGateState::Steerable(gate_turn) = gate.state() else {
+            return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
+        };
+        if proof.generation() != leaf.generation()
+            || proof != head.proof()
+            || proof.revision() != generation.revision()
+            || target != &transition.target
+            || *gate_turn != transition.target.pending().active_turn_id()
+        {
+            return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
+        }
+
+        self.next_records(input, leaf, generation, gate)
     }
 
     fn next_records(
         &self,
-        current: AcceptedInputRecord,
-        gate: InputGateRecord,
-        prior_turn: beryl_model::SyndicTurnId,
+        input: crate::AcceptedInputRecord,
+        current_leaf: AcceptedRouteLeafRecord,
+        current_generation: AcceptedRouteGenerationRecord,
+        current_gate: InputGateRecord,
     ) -> Result<AcceptedInputDeliveryRecords, SyndicMutationError> {
-        let revision = current.revision().checked_next()?;
-        let (disposition, lifecycle) = delivery_result(self.kind, current.disposition().clone());
-        let input = AcceptedInputRecord::new(
-            current.id(),
-            current.thread_id(),
-            revision,
-            current.ordinal(),
-            current.gate_revision(),
-            disposition,
-            lifecycle,
-            current.content(),
-            current.marker_count(),
-            current.admitted_at(),
-        );
-        let order =
-            AcceptedOrderIndexRecord::new(input.thread_id(), input.ordinal(), input.id(), revision);
-        let (steering, next) = next_route(self.kind, &input, prior_turn);
-        let gate = next_gate(self.kind, gate, &input)?;
-        Ok(AcceptedInputDeliveryRecords {
-            prior_turn,
-            input,
-            order,
-            steering,
+        let bytes = input.content().summary().logical_utf8_bytes();
+        let mut ready = current_generation.ready_retryable_count();
+        let mut delivering = current_generation.delivering_count();
+        let mut next = current_generation.next_turn_count();
+        let mut terminal = current_generation.terminal_count();
+        let mut live_bytes = current_generation.live_logical_utf8_bytes();
+        let mut delivering_bytes = current_generation.delivering_logical_utf8_bytes();
+
+        match self.kind {
+            AcceptedInputDeliveryTransitionKind::Begin => {
+                ready = checked_sub(ready, 1, "accepted-route ready count")?;
+                delivering = checked_add(delivering, 1, "accepted-route delivering count")?;
+                delivering_bytes =
+                    checked_add(delivering_bytes, bytes, "accepted-route delivering bytes")?;
+            }
+            AcceptedInputDeliveryTransitionKind::Retry => {
+                delivering = checked_sub(delivering, 1, "accepted-route delivering count")?;
+                ready = checked_add(ready, 1, "accepted-route ready count")?;
+                delivering_bytes =
+                    checked_sub(delivering_bytes, bytes, "accepted-route delivering bytes")?;
+            }
+            AcceptedInputDeliveryTransitionKind::Complete => {
+                delivering = checked_sub(delivering, 1, "accepted-route delivering count")?;
+                terminal = checked_add(terminal, 1, "accepted-route terminal count")?;
+                delivering_bytes =
+                    checked_sub(delivering_bytes, bytes, "accepted-route delivering bytes")?;
+                live_bytes = checked_sub(live_bytes, bytes, "accepted-route live bytes")?;
+            }
+            AcceptedInputDeliveryTransitionKind::Rejected => {
+                delivering = checked_sub(delivering, 1, "accepted-route delivering count")?;
+                next = checked_add(next, 1, "accepted-route next-turn count")?;
+                delivering_bytes =
+                    checked_sub(delivering_bytes, bytes, "accepted-route delivering bytes")?;
+            }
+        }
+
+        let leaf_revision = current_leaf.revision().checked_next()?;
+        let leaf = AcceptedRouteLeafRecord::new(
+            current_leaf.input_id(),
+            current_leaf.thread_id(),
+            current_leaf.generation(),
+            current_leaf.ordinal(),
+            leaf_revision,
+            match self.kind {
+                AcceptedInputDeliveryTransitionKind::Rejected => {
+                    AcceptedRouteLeafState::NextTurn(NextTurnReason::SteeringRejected)
+                }
+                AcceptedInputDeliveryTransitionKind::Begin
+                | AcceptedInputDeliveryTransitionKind::Retry
+                | AcceptedInputDeliveryTransitionKind::Complete => AcceptedRouteLeafState::Routed,
+            },
+            match self.kind {
+                AcceptedInputDeliveryTransitionKind::Begin => AcceptedInputLifecycle::Delivering,
+                AcceptedInputDeliveryTransitionKind::Retry
+                | AcceptedInputDeliveryTransitionKind::Rejected => {
+                    AcceptedInputLifecycle::Retryable
+                }
+                AcceptedInputDeliveryTransitionKind::Complete => AcceptedInputLifecycle::Delivered,
+            },
+        )
+        .with_transition_proof(AcceptedRouteLeafTransitionProof::new(
+            current_gate.revision(),
+            AcceptedRouteHeadProof::new(
+                current_generation.generation(),
+                current_generation.revision(),
+            ),
+            self.transition.expected_input_revision,
+            self.kind.persisted(),
+        ));
+        let generation_revision = current_generation.revision().checked_next()?;
+        let generation = AcceptedRouteGenerationRecord::new(
+            current_generation.thread_id(),
+            current_generation.generation(),
+            generation_revision,
+            current_generation.target().clone(),
+            current_generation.first_ordinal(),
+            current_generation.last_ordinal(),
+            current_generation.input_count(),
+            ready,
+            delivering,
             next,
+            terminal,
+            live_bytes,
+            delivering_bytes,
+        )?;
+        let proof = AcceptedRouteHeadProof::new(generation.generation(), generation_revision);
+        let head = AcceptedRouteGenerationHeadRecord::new(generation.thread_id(), proof);
+        let next_source = (generation.next_turn_count() > 0).then(|| {
+            AcceptedNextSourceRecord::new(
+                generation.thread_id(),
+                generation.generation(),
+                generation_revision,
+                generation
+                    .first_ordinal()
+                    .expect("nonempty generation owns transitioned leaf"),
+                generation
+                    .last_ordinal()
+                    .expect("nonempty generation owns transitioned leaf"),
+            )
+        });
+
+        let removes_steering = matches!(
+            self.kind,
+            AcceptedInputDeliveryTransitionKind::Complete
+                | AcceptedInputDeliveryTransitionKind::Rejected
+        );
+        let steering_count = if removes_steering {
+            checked_sub(current_gate.live_steering_count(), 1, "live steering count")?
+        } else {
+            current_gate.live_steering_count()
+        };
+        let next_count = if matches!(self.kind, AcceptedInputDeliveryTransitionKind::Rejected) {
+            checked_add(
+                current_gate.live_next_turn_count(),
+                1,
+                "live next-turn count",
+            )?
+        } else {
+            current_gate.live_next_turn_count()
+        };
+        let gate_live_bytes = if matches!(self.kind, AcceptedInputDeliveryTransitionKind::Complete)
+        {
+            checked_sub(
+                current_gate.live_logical_utf8_bytes(),
+                bytes,
+                "live accepted-input bytes",
+            )?
+        } else {
+            current_gate.live_logical_utf8_bytes()
+        };
+        let gate = InputGateRecord::new(
+            current_gate.thread_id(),
+            current_gate.revision().checked_next()?,
+            current_gate.state().clone(),
+            current_gate.accepted_high_water(),
+            current_gate.route_generation_high_water(),
+            Some(proof),
+            steering_count,
+            next_count,
+            gate_live_bytes,
+        )?;
+        let ready_source = (generation.ready_retryable_count() > 0).then(|| {
+            AcceptedReadySourceRecord::new(
+                generation.thread_id(),
+                gate.revision(),
+                generation.generation(),
+                generation_revision,
+                generation
+                    .first_ordinal()
+                    .expect("nonempty generation owns ready work"),
+                generation
+                    .last_ordinal()
+                    .expect("nonempty generation owns ready work"),
+            )
+        });
+
+        Ok(AcceptedInputDeliveryRecords {
+            leaf,
+            generation,
+            head,
+            ready_source,
+            next_source,
             gate,
         })
     }
@@ -122,148 +282,21 @@ fn validate_source_lifecycle(
             lifecycle == AcceptedInputLifecycle::Delivering
         }
     };
-    if valid {
-        Ok(())
-    } else {
-        Err(SyndicMutationError::AcceptedInputDeliveryConflict)
-    }
+    valid
+        .then_some(())
+        .ok_or(SyndicMutationError::AcceptedInputDeliveryConflict)
 }
 
-fn validate_indexes(
-    reader: &DomainReader<'_, SyndicDomain>,
-    current: &AcceptedInputRecord,
-    prior_turn: beryl_model::SyndicTurnId,
-) -> Result<(), SyndicMutationError> {
-    let order_key = ThreadAcceptedKey {
-        owner: current.thread_id(),
-        ordinal: current.ordinal(),
-    };
-    let expected_order = AcceptedOrderIndexRecord::new(
-        current.thread_id(),
-        current.ordinal(),
-        current.id(),
-        current.revision(),
-    );
-    let steering_key = SteeringKey {
-        thread: current.thread_id(),
-        turn: prior_turn,
-        ordinal: current.ordinal(),
-    };
-    let expected_steering = AcceptedSteeringIndexRecord::new(
-        current.thread_id(),
-        prior_turn,
-        current.ordinal(),
-        current.id(),
-        current.revision(),
-    );
-    if point::<AcceptedOrderFamily>(reader, &order_key)?.as_ref() != Some(&expected_order)
-        || point::<AcceptedSteeringFamily>(reader, &steering_key)?.as_ref()
-            != Some(&expected_steering)
-        || point::<AcceptedNextFamily>(reader, &order_key)?.is_some()
-    {
-        return Err(SyndicMutationError::AcceptedInputDeliveryConflict);
-    }
-    Ok(())
+fn checked_add(value: u64, amount: u64, kind: &'static str) -> Result<u64, SyndicRecordError> {
+    value
+        .checked_add(amount)
+        .ok_or(SyndicRecordError::LengthOverflow { kind })
 }
 
-fn delivery_result(
-    kind: AcceptedInputDeliveryTransitionKind,
-    current: AcceptedInputDisposition,
-) -> (AcceptedInputDisposition, AcceptedInputLifecycle) {
-    match kind {
-        AcceptedInputDeliveryTransitionKind::Begin => (current, AcceptedInputLifecycle::Delivering),
-        AcceptedInputDeliveryTransitionKind::Retry => (current, AcceptedInputLifecycle::Retryable),
-        AcceptedInputDeliveryTransitionKind::Complete => {
-            (current, AcceptedInputLifecycle::Delivered)
-        }
-        AcceptedInputDeliveryTransitionKind::Rejected => (
-            AcceptedInputDisposition::NextTurn(NextTurnReason::SteeringRejected),
-            AcceptedInputLifecycle::Retryable,
-        ),
-    }
-}
-
-fn next_route(
-    kind: AcceptedInputDeliveryTransitionKind,
-    input: &AcceptedInputRecord,
-    prior_turn: beryl_model::SyndicTurnId,
-) -> (
-    Option<AcceptedSteeringIndexRecord>,
-    Option<AcceptedNextTurnIndexRecord>,
-) {
-    match kind {
-        AcceptedInputDeliveryTransitionKind::Begin | AcceptedInputDeliveryTransitionKind::Retry => {
-            (
-                Some(AcceptedSteeringIndexRecord::new(
-                    input.thread_id(),
-                    prior_turn,
-                    input.ordinal(),
-                    input.id(),
-                    input.revision(),
-                )),
-                None,
-            )
-        }
-        AcceptedInputDeliveryTransitionKind::Complete => (None, None),
-        AcceptedInputDeliveryTransitionKind::Rejected => (
-            None,
-            Some(AcceptedNextTurnIndexRecord::new(
-                input.thread_id(),
-                input.ordinal(),
-                input.id(),
-                input.revision(),
-            )),
-        ),
-    }
-}
-
-fn next_gate(
-    kind: AcceptedInputDeliveryTransitionKind,
-    gate: InputGateRecord,
-    input: &AcceptedInputRecord,
-) -> Result<InputGateRecord, SyndicMutationError> {
-    let removes_steering = matches!(
-        kind,
-        AcceptedInputDeliveryTransitionKind::Complete
-            | AcceptedInputDeliveryTransitionKind::Rejected
-    );
-    let steering_count = if removes_steering {
-        gate.live_steering_count()
-            .checked_sub(1)
-            .ok_or(SyndicRecordError::LengthOverflow {
-                kind: "live steering count",
-            })?
-    } else {
-        gate.live_steering_count()
-    };
-    let next_count = if matches!(kind, AcceptedInputDeliveryTransitionKind::Rejected) {
-        gate.live_next_turn_count()
-            .checked_add(1)
-            .ok_or(SyndicRecordError::LengthOverflow {
-                kind: "live next-turn count",
-            })?
-    } else {
-        gate.live_next_turn_count()
-    };
-    let removes_live_bytes = matches!(kind, AcceptedInputDeliveryTransitionKind::Complete);
-    let live_bytes = if removes_live_bytes {
-        gate.live_logical_utf8_bytes()
-            .checked_sub(input.content().summary().logical_utf8_bytes())
-            .ok_or(SyndicRecordError::LengthOverflow {
-                kind: "live accepted-input bytes",
-            })?
-    } else {
-        gate.live_logical_utf8_bytes()
-    };
-    Ok(InputGateRecord::new(
-        gate.thread_id(),
-        gate.revision().checked_next()?,
-        gate.state().clone(),
-        gate.accepted_high_water(),
-        steering_count,
-        next_count,
-        live_bytes,
-    )?)
+fn checked_sub(value: u64, amount: u64, kind: &'static str) -> Result<u64, SyndicRecordError> {
+    value
+        .checked_sub(amount)
+        .ok_or(SyndicRecordError::LengthOverflow { kind })
 }
 
 impl AcceptedInputDeliveryRecords {
@@ -271,27 +304,34 @@ impl AcceptedInputDeliveryRecords {
         self,
         mutations: &mut MutationBuilder<'_, SyndicDomain>,
     ) -> Result<(), SyndicMutationError> {
-        let order_key = ThreadAcceptedKey {
-            owner: self.input.thread_id(),
-            ordinal: self.input.ordinal(),
+        mutations.put::<AcceptedRouteLeavesCodec>(&self.leaf.input_id(), &self.leaf)?;
+        mutations.put::<AcceptedRouteGenerationHeadsCodec>(&self.head.thread_id(), &self.head)?;
+        mutations.put::<AcceptedRouteGenerationsCodec>(
+            &ThreadRouteKey {
+                thread: self.generation.thread_id(),
+                generation: self.generation.generation(),
+            },
+            &self.generation,
+        )?;
+        let source_key = ThreadRouteKey {
+            thread: self.generation.thread_id(),
+            generation: self.generation.generation(),
         };
-        let steering_key = SteeringKey {
-            thread: self.input.thread_id(),
-            turn: self.prior_turn,
-            ordinal: self.input.ordinal(),
-        };
-        mutations.put::<AcceptedInputsCodec>(&self.input.id(), &self.input)?;
-        mutations.put::<AcceptedOrderCodec>(&order_key, &self.order)?;
-        match &self.steering {
-            Some(steering) => {
-                mutations.put::<AcceptedSteeringCodec>(&steering_key, steering)?;
-            }
-            None => mutations.delete::<AcceptedSteeringCodec>(&steering_key)?,
+        if let Some(source) = &self.ready_source {
+            mutations.put::<AcceptedReadySourcesCodec>(&source_key, source)?;
+        } else {
+            mutations.delete::<AcceptedReadySourcesCodec>(&source_key)?;
         }
-        if let Some(next) = &self.next {
-            mutations.put::<AcceptedNextCodec>(&order_key, next)?;
+        if let Some(source) = &self.next_source {
+            mutations.put::<AcceptedNextSourcesCodec>(
+                &ThreadRouteKey {
+                    thread: source.thread_id(),
+                    generation: source.generation(),
+                },
+                source,
+            )?;
         }
-        mutations.put::<InputGatesCodec>(&self.input.thread_id(), &self.gate)?;
+        mutations.put::<InputGatesCodec>(&self.gate.thread_id(), &self.gate)?;
         Ok(())
     }
 }

@@ -1,21 +1,27 @@
 #![allow(dead_code)]
 
+use std::convert::Infallible;
+
 use beryl_app::conversation_tools::ConversationToolRegistry;
 use beryl_home_store::{HomeCommand, HomeStore};
 use beryl_model::{
-    BindingRevision, CasConversationToolProfile, CasLoadedSessionGeneration,
+    BindingRevision, CasConversationToolProfile, CasItemId, CasLoadedSessionGeneration,
     CasLoadedThreadGeneration, CasNativeTurnCount, CasProcessGeneration, CasThreadId, CasTurnId,
     ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
-    SyndicExecutionSnapshotId, SyndicThreadId, SyndicTurnId,
+    SyndicContentId, SyndicExecutionSnapshotId, SyndicItemId, SyndicThreadId, SyndicTurnId,
 };
 use syndic_storage::{
-    ActivateBinding, BindingState, CasLineageProof, CasRepresentedPrefixProof, CasTurnSource,
-    LiveSourceEvent, NativeCasLineage, PublishActiveCasTurn, PublishValidBinding,
-    SourceEventPayload, SourceEventSequence, SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
-    empty_selected_path_digest,
+    ActivateBinding, BindingState, CasItemSource, CasLineageProof, CasRepresentedPrefixProof,
+    CasTurnSource, LiveSourceEvent, NativeCasLineage, ProviderFrameOrdinalV1,
+    ProviderFramePreparationPlan, ProviderItemBuildLifecycle, ProviderItemFrameV1,
+    ProviderItemObservationV1, ProviderItemV1, ProviderLifecycleTimestampMsV1,
+    ProviderSubmittedContentV1, ProviderUserMessageV1, PublishActiveCasTurn, PublishValidBinding,
+    SealedProviderFrameReference, SourceEventPayload, SourceEventSequence, SyndicPointReadLimit,
+    SyndicStorage, SyndicTimestamp, empty_selected_path_digest, prepare_provider_frame,
+    stage_provider_frame,
 };
 
-use crate::backend::EXECUTION_ROOT;
+use crate::EXECUTION_ROOT;
 
 pub fn execution_binding() -> ExecutionBinding {
     ExecutionBinding::new(
@@ -23,6 +29,19 @@ pub fn execution_binding() -> ExecutionBinding {
         RootId::from_bytes([247; 16]),
         RuntimeNativePath::from_admitted(RuntimeMode::host(), PathFlavor::Windows, EXECUTION_ROOT)
             .unwrap(),
+    )
+}
+
+pub fn wsl_execution_binding() -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([246; 16]),
+        RootId::from_bytes([247; 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::wsl("Ubuntu-24.04").unwrap(),
+            PathFlavor::Posix,
+            "/work/beryl",
+        )
+        .unwrap(),
     )
 }
 
@@ -44,10 +63,10 @@ pub fn establish_turn(
     let selected = current.binding().selected_path();
     assert_eq!(selected.tail(), Some(turn));
     let turn_record = storage.turn(store, turn, point_limit()).unwrap().unwrap();
-    let (parent, parent_digest) = match turn_record.record().parent().turn() {
+    let (parent, parent_digest) = match turn_record.parent().turn() {
         Some(parent) => {
             let parent = storage.turn(store, parent, point_limit()).unwrap().unwrap();
-            (Some(parent.record().id()), parent.record().chain_digest())
+            (Some(parent.id()), parent.chain_digest())
         }
         None => (None, empty_selected_path_digest()),
     };
@@ -66,7 +85,7 @@ pub fn establish_turn(
         });
     let exact_source = [
         Some(current.binding().state()),
-        prior.as_ref().map(|record| record.record().state()),
+        prior.as_ref().map(|record| record.state()),
     ]
     .into_iter()
     .flatten()
@@ -91,7 +110,7 @@ pub fn establish_turn(
         )
     });
     let active_loaded_generation = lineage
-        .recovered_loaded_generation()
+        .recovered_injection_generation()
         .unwrap_or_else(loaded_generation);
     let current_already_valid = matches!(
         current.binding().state(),
@@ -134,7 +153,7 @@ pub fn establish_turn(
             ActivateBinding::new(
                 thread,
                 binding.binding().revision(),
-                gate.record().revision(),
+                gate.revision(),
                 selected,
                 snapshot,
                 turn,
@@ -159,7 +178,7 @@ pub fn establish_turn(
             PublishActiveCasTurn::new(
                 thread,
                 binding.binding().revision(),
-                gate.record().revision(),
+                gate.revision(),
                 snapshot,
                 cas_thread.clone(),
                 cas_turn.clone(),
@@ -190,9 +209,9 @@ pub fn admit_event(
     let event = LiveSourceEvent::new(
         thread,
         turn,
-        state.record().revision(),
-        gate.record().revision(),
-        SourceEventSequence::new(state.record().source_event_count() + 1).unwrap(),
+        state.revision(),
+        gate.revision(),
+        SourceEventSequence::new(state.source_event_count() + 1).unwrap(),
         Some(source.clone()),
         payload,
         observed_at,
@@ -201,6 +220,157 @@ pub fn admit_event(
     execute(
         store,
         storage.admit_live_source_event(storage.revision(store).unwrap(), event),
+    );
+}
+
+fn provider_content_id(item_id: SyndicItemId) -> SyndicContentId {
+    let mut bytes = *item_id.as_bytes();
+    for byte in &mut bytes {
+        *byte ^= 0xa5;
+    }
+    SyndicContentId::from_bytes(bytes)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn admit_item_frame(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    item_id: SyndicItemId,
+    source: &CasTurnSource,
+    frame: ProviderItemFrameV1,
+    observed_at: SyndicTimestamp,
+) -> SealedProviderFrameReference {
+    let state = storage
+        .turn_state(store, turn, point_limit())
+        .unwrap()
+        .unwrap();
+    let source_event = SourceEventSequence::new(state.source_event_count() + 1).unwrap();
+    let prior = storage
+        .canonical_item(store, item_id, point_limit())
+        .unwrap()
+        .and_then(|item| item.provider().cloned());
+    let item_source = CasItemSource::new(source.clone(), frame.item_id().clone());
+    let plan = match prior {
+        Some(prior) => ProviderFramePreparationPlan::subsequent(
+            item_id,
+            turn,
+            item_source,
+            source_event,
+            prior,
+            frame,
+        ),
+        None => ProviderFramePreparationPlan::first(
+            item_id,
+            turn,
+            item_source,
+            source_event,
+            provider_content_id(item_id),
+            frame,
+        ),
+    };
+    let prepared = prepare_provider_frame(plan).unwrap();
+    execute(
+        store,
+        storage.begin_provider_frame_build(storage.revision(store).unwrap(), &prepared),
+    );
+    let mut build = stage_provider_frame(
+        &prepared,
+        prepared.initial_build().clone(),
+        &mut |batch: &syndic_storage::ProviderFrameStageBatch| {
+            execute(
+                store,
+                storage.stage_provider_frame_batch(storage.revision(store).unwrap(), batch.clone()),
+            );
+            Ok::<(), Infallible>(())
+        },
+    )
+    .unwrap();
+    for _ in 0..4_096 {
+        if build.lifecycle() == ProviderItemBuildLifecycle::Sealed {
+            let sealed = prepared.target().clone();
+            assert_eq!(build.target(), &sealed);
+            admit_event(
+                store,
+                storage,
+                thread,
+                turn,
+                source,
+                SourceEventPayload::ItemFrame {
+                    item_id,
+                    frame: Box::new(sealed.clone()),
+                },
+                observed_at,
+            );
+            return sealed;
+        }
+        execute(
+            store,
+            storage.compare_provider_completion(storage.revision(store).unwrap(), build),
+        );
+        build = storage
+            .provider_item_build(store, item_id, point_limit())
+            .unwrap()
+            .unwrap();
+    }
+    panic!("bounded provider completion comparison did not finish");
+}
+
+pub fn correlate_user_item(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    item_id: SyndicItemId,
+    source: &CasTurnSource,
+    observed_at: SyndicTimestamp,
+) {
+    let item = storage
+        .canonical_item(store, item_id, point_limit())
+        .unwrap()
+        .unwrap();
+    let content = item
+        .presentation_content()
+        .expect("submitted user fixture has sealed composer content");
+    let cas_item_id = CasItemId::new(format!("phase10-user-{item_id}")).unwrap();
+    let provider_item = ProviderItemV1::UserMessage(ProviderUserMessageV1 {
+        client_id: None,
+        submitted: ProviderSubmittedContentV1 { content },
+    });
+    admit_item_frame(
+        store,
+        storage,
+        thread,
+        turn,
+        item_id,
+        source,
+        ProviderItemFrameV1::new(
+            ProviderFrameOrdinalV1::FIRST,
+            cas_item_id.clone(),
+            ProviderItemObservationV1::Started {
+                observed_at: ProviderLifecycleTimestampMsV1::new(observed_at.unix_millis()),
+                item: provider_item.clone(),
+            },
+        ),
+        observed_at,
+    );
+    admit_item_frame(
+        store,
+        storage,
+        thread,
+        turn,
+        item_id,
+        source,
+        ProviderItemFrameV1::new(
+            ProviderFrameOrdinalV1::new(2).unwrap(),
+            cas_item_id,
+            ProviderItemObservationV1::Completed {
+                observed_at: ProviderLifecycleTimestampMsV1::new(observed_at.unix_millis()),
+                item: provider_item,
+            },
+        ),
+        observed_at,
     );
 }
 

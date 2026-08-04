@@ -1,56 +1,9 @@
 use super::projection_build::{decode_markdown_checkpoint, encode_markdown_checkpoint};
 use super::*;
 
-pub(super) fn encode_canonical_item(value: &CanonicalItemRecord) -> Result<Vec<u8>, CodecError> {
-    let mut e = Encoder::new();
-    enc_item(&mut e, value.id());
-    enc_turn(&mut e, value.turn_id());
-    enc_item_ord(&mut e, value.ordinal());
-    enc_projection_rev(&mut e, value.revision());
-    enc_opt(&mut e, value.source_event(), enc_source_seq);
-    e.u64(value.source_event_count());
-    match value.cas_source() {
-        Some(source) => {
-            e.u8(1);
-            enc_cas_item_source(&mut e, source)
-        }
-        None => e.u8(0),
-    }
-    enc_provider_item_kind(&mut e, value.provider_kind());
-    enc_provider_item_lifecycle(&mut e, value.provider_lifecycle());
-    enc_provider_item_disposition(&mut e, value.disposition());
-    enc_opt(&mut e, value.assistant_phase(), enc_assistant_phase);
-    enc_canonical_payload(&mut e, value.payload());
-    Ok(e.finish())
-}
+mod canonical;
 
-pub(super) fn decode_canonical_item(bytes: &[u8]) -> Result<CanonicalItemRecord, CodecError> {
-    let mut d = Decoder::new(bytes);
-    let id = dec_item(&mut d)?;
-    let turn = dec_turn(&mut d)?;
-    let ordinal = dec_item_ord(&mut d)?;
-    let revision = dec_projection_rev(&mut d)?;
-    let event = dec_opt(&mut d, "item source event", dec_source_seq)?;
-    let event_count = d.u64()?;
-    let cas = dec_opt(&mut d, "item CAS source", dec_cas_item_source)?;
-    let value = CanonicalItemRecord::with_source_state(
-        id,
-        turn,
-        ordinal,
-        revision,
-        event,
-        event_count,
-        cas,
-        dec_provider_item_kind(&mut d)?,
-        dec_provider_item_lifecycle(&mut d)?,
-        dec_provider_item_disposition(&mut d)?,
-        dec_opt(&mut d, "canonical assistant phase", dec_assistant_phase)?,
-        dec_canonical_payload(&mut d)?,
-    )
-    .map_err(|source| invalid("canonical item", source))?;
-    d.finish()?;
-    Ok(value)
-}
+pub(super) use canonical::{decode_canonical_item, encode_canonical_item};
 
 pub(super) fn encode_transcript_head(
     value: &TranscriptViewHeadRecord,
@@ -154,7 +107,6 @@ fn encode_projection_payload(e: &mut Encoder, value: &ProjectionPayload) {
             e.u64(*source_offset);
             enc_marker(e, marker.marker_id());
             enc_image_label(e, marker.label());
-            enc_asset_id(e, marker.asset_id());
         }
     }
 }
@@ -181,7 +133,7 @@ fn decode_projection_payload(d: &mut Decoder<'_>) -> Result<ProjectionPayload, C
             dec_composer_atom_ord(d)?,
             dec_input_marker_ord(d)?,
             d.u64()?,
-            ResolvedImageMarker::new(dec_marker(d)?, dec_image_label(d)?, dec_asset_id(d)?),
+            ComposerImageMarker::new(dec_marker(d)?, dec_image_label(d)?),
         )),
         3 => Ok(ProjectionPayload::empty()),
         tag => Err(CodecError::InvalidTag {
@@ -226,7 +178,7 @@ pub(super) fn encode_item_projection_set(
     enc_item_projection_generation(&mut e, value.generation());
     enc_projection_format(&mut e, value.format());
     enc_projection_rev(&mut e, value.source_item_revision());
-    enc_content_ref(&mut e, value.source_content());
+    enc_projection_text_source(&mut e, value.source());
     e.u64(value.source_bytes());
     e.u64(value.stable_projection_count());
     e.u64(value.stable_resource_count());
@@ -248,7 +200,7 @@ pub(super) fn decode_item_projection_set(
         dec_item_projection_generation(&mut d)?,
         dec_projection_format(&mut d)?,
         dec_projection_rev(&mut d)?,
-        dec_content_ref(&mut d)?,
+        dec_projection_text_source(&mut d)?,
         d.u64()?,
         d.u64()?,
         d.u64()?,
@@ -271,7 +223,7 @@ pub(super) fn encode_resource_record(
     enc_projection_rev(&mut e, value.revision());
     enc_item(&mut e, value.item_id());
     match value.backing() {
-        ResourceBacking::CanonicalTextRange { content_id, range } => {
+        ResourceBacking::TextRange { source, range } => {
             let projection = value.projection_id().ok_or_else(|| {
                 invalid(
                     "resource metadata",
@@ -301,7 +253,7 @@ pub(super) fn encode_resource_record(
             enc_resource_ord(&mut e, ordinal);
             enc_resource_kind(&mut e, value.kind());
             e.text(media_type);
-            enc_content(&mut e, content_id);
+            enc_projection_text_source(&mut e, source);
             enc_projection_source_range(&mut e, range);
             e.fixed32(digest);
             enc_opt(&mut e, value.preview_range(), enc_projection_source_range);
@@ -333,7 +285,7 @@ pub(super) fn decode_resource_record(bytes: &[u8]) -> Result<ResourceMetadataRec
             let ordinal = dec_resource_ord(&mut d)?;
             let kind = dec_resource_kind(&mut d)?;
             let media = d.text("resource media type")?.to_owned();
-            let content_id = dec_content(&mut d)?;
+            let source = dec_projection_text_source(&mut d)?;
             let range = dec_projection_source_range(&mut d, "resource backing range")?;
             let digest = d.fixed32()?;
             let preview_range = dec_opt(&mut d, "resource preview range", |d| {
@@ -348,7 +300,7 @@ pub(super) fn decode_resource_record(bytes: &[u8]) -> Result<ResourceMetadataRec
                 ordinal,
                 kind,
                 media,
-                ResourceBacking::CanonicalTextRange { content_id, range },
+                ResourceBacking::TextRange { source, range },
                 digest,
                 preview_range,
                 structure,
@@ -459,6 +411,7 @@ fn decode_resource_structure(d: &mut Decoder<'_>) -> Result<ResourceStructure, C
 pub(super) fn encode_history_summary(value: &HistorySummaryRecord) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
     enc_thread(&mut e, value.thread_id());
+    enc_projection_rev(&mut e, value.revision());
     enc_thread_rev(&mut e, value.thread_revision());
     enc_opt(&mut e, value.committed_tail(), enc_turn);
     enc_path_digest(&mut e, value.selected_path_digest());
@@ -471,6 +424,7 @@ pub(super) fn decode_history_summary(bytes: &[u8]) -> Result<HistorySummaryRecor
     let mut d = Decoder::new(bytes);
     let value = HistorySummaryRecord::new(
         dec_thread(&mut d)?,
+        dec_projection_rev(&mut d)?,
         dec_thread_rev(&mut d)?,
         dec_opt(&mut d, "summary tail", dec_turn)?,
         dec_path_digest(&mut d)?,

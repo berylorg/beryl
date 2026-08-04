@@ -1,10 +1,15 @@
 use std::error::Error;
 
-use fjall::{Keyspace, KeyspaceCreateOptions, PersistMode, Readable};
+use fjall::{Keyspace, PersistMode};
 
 use super::reopen::validate_registry;
 use super::*;
-use crate::{HomeStore, health::FailureSeverity, store::StoreGeneration};
+use crate::{
+    HomeStore,
+    health::{ClassifiedFjallError, FailureSeverity},
+    metadata::MAX_DOMAIN_METADATA_BYTES,
+    store::StoreGeneration,
+};
 
 impl HomeStore {
     /// Registers or reacquires one typed logical domain before process services start.
@@ -55,7 +60,13 @@ impl HomeStore {
             }
         };
         drop(registrations);
-        admission.confirm()?;
+        admission.confirm_database(&generation.database, |source| {
+            DomainRegistrationError::Storage {
+                domain: D::NAME,
+                stage: DomainRegistrationStage::ConfirmHealth,
+                source: Box::new(source),
+            }
+        })?;
         Ok(handle)
     }
 
@@ -80,7 +91,11 @@ impl HomeStore {
         if let Err(error) = &result {
             admission.fail(validation_failure_severity(error));
         } else {
-            admission.confirm()?;
+            admission.confirm_database(&generation.database, |source| {
+                DomainValidationError::Health {
+                    source: Box::new(source),
+                }
+            })?;
         }
         result
     }
@@ -117,7 +132,11 @@ impl HomeStore {
             return Err(DomainHandleError::NotRegistered { domain: D::NAME });
         }
         let handle = DomainHandle::new(generation.instance_id, slot);
-        admission.confirm()?;
+        admission.confirm_database(&generation.database, |source| {
+            DomainHandleError::StorageHealth {
+                source: Box::new(source),
+            }
+        })?;
         Ok(handle)
     }
 }
@@ -168,30 +187,19 @@ fn register_definition<D: StorageDomain>(
         }
     }
 
-    let snapshot = generation.database.snapshot();
-    let encoded = snapshot
-        .get(generation.domains_keyspace(), definition.name.as_bytes())
-        .map_err(|source| {
-            registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
-        })?;
-    let (registered, existing) = match encoded {
-        Some(encoded) => {
-            if encoded.len() > 8 * 1_024 {
-                return Err(invalid_metadata::<D>(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "domain registration exceeds its byte bound",
-                )));
-            }
-            let persisted = DomainMetadata::decode(&encoded).map_err(invalid_metadata::<D>)?;
+    let persisted = read_persisted_metadata(generation, definition.name)?;
+    let (registered, existing) = match persisted {
+        Some(persisted) => {
             validate_persisted(definition, &persisted)?;
             (open_existing_families::<D>(generation, definition)?, true)
         }
         None => (create_new_families::<D>(generation, definition)?, false),
     };
-    drop(snapshot);
 
     if existing {
-        let snapshot = generation.database.snapshot();
+        let snapshot = generation.database.snapshot().map_err(|source| {
+            registration_storage::<D>(DomainRegistrationStage::ReadRegistry, source)
+        })?;
         registered
             .validate_reopen(&snapshot, sidecars)
             .map_err(|source| match source {
@@ -214,13 +222,53 @@ fn register_definition<D: StorageDomain>(
     Ok(registered)
 }
 
+pub(super) fn read_persisted_metadata(
+    generation: &StoreGeneration,
+    domain: &'static str,
+) -> Result<Option<DomainMetadata>, DomainRegistrationError> {
+    let snapshot = generation.database.snapshot().map_err(|source| {
+        registration_storage_for(domain, DomainRegistrationStage::ReadRegistry, source)
+    })?;
+    let Some(point) = snapshot
+        .point(generation.domains_keyspace(), domain.as_bytes())
+        .map_err(|source| {
+            registration_storage_for(domain, DomainRegistrationStage::ReadRegistry, source)
+        })?
+    else {
+        return Ok(None);
+    };
+    let actual = usize::try_from(point.stored_value_len())
+        .expect("u32 stored-value length fits usize on supported targets");
+    if actual > MAX_DOMAIN_METADATA_BYTES {
+        return Err(invalid_metadata_for(
+            domain,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "domain registration exceeds its byte bound",
+            ),
+        ));
+    }
+    let pair = point.acquire().map_err(|source| {
+        registration_storage_for(domain, DomainRegistrationStage::ReadRegistry, source)
+    })?;
+    DomainMetadata::decode(pair.value())
+        .map(Some)
+        .map_err(|source| invalid_metadata_for(domain, source))
+}
+
 fn open_existing_families<D: StorageDomain>(
     generation: &StoreGeneration,
     definition: &DomainBlueprint,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
     let mut families = Vec::with_capacity(definition.families.len());
     for family in &definition.families {
-        if !generation.database.keyspace_exists(&family.physical_name) {
+        if !generation
+            .database
+            .keyspace_exists(&family.physical_name)
+            .map_err(|source| {
+                registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+            })?
+        {
             return Err(DomainRegistrationError::MissingKeyspace {
                 domain: D::NAME,
                 keyspace: family.physical_name.clone(),
@@ -228,7 +276,7 @@ fn open_existing_families<D: StorageDomain>(
         }
         let keyspace = generation
             .database
-            .keyspace(&family.physical_name, KeyspaceCreateOptions::default)
+            .open_keyspace(&family.physical_name)
             .map_err(|source| {
                 registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
             })?;
@@ -241,24 +289,78 @@ fn create_new_families<D: StorageDomain>(
     generation: &StoreGeneration,
     definition: &DomainBlueprint,
 ) -> Result<RegisteredDomain, DomainRegistrationError> {
+    let mut keyspaces: Vec<Option<Keyspace>> = Vec::with_capacity(definition.families.len());
     for family in &definition.families {
-        if generation.database.keyspace_exists(&family.physical_name) {
+        let exists = generation
+            .database
+            .keyspace_exists(&family.physical_name)
+            .map_err(|source| {
+                registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+            })?;
+        let keyspace = if exists {
+            Some(
+                generation
+                    .database
+                    .open_keyspace(&family.physical_name)
+                    .map_err(|source| {
+                        registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+                    })?,
+            )
+        } else {
+            None
+        };
+        keyspaces.push(keyspace);
+    }
+
+    let snapshot = generation.database.snapshot().map_err(|source| {
+        registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+    })?;
+    for (family, keyspace) in definition.families.iter().zip(&keyspaces) {
+        let Some(keyspace) = keyspace else {
+            continue;
+        };
+        let mut cursor = snapshot.exhaustive(keyspace).map_err(|source| {
+            registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+        })?;
+        if cursor
+            .next()
+            .map_err(|source| {
+                registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+            })?
+            .is_some()
+        {
             return Err(DomainRegistrationError::UnexpectedKeyspace {
                 keyspace: family.physical_name.clone(),
             });
         }
     }
+    drop(snapshot);
 
-    let mut families = Vec::with_capacity(definition.families.len());
-    for family in &definition.families {
-        let keyspace = generation
-            .database
-            .keyspace(&family.physical_name, KeyspaceCreateOptions::default)
-            .map_err(|source| {
-                registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
-            })?;
-        families.push(registered_family(family, keyspace));
+    for (family, keyspace) in definition.families.iter().zip(&mut keyspaces) {
+        if keyspace.is_some() {
+            continue;
+        }
+        *keyspace = Some(
+            generation
+                .database
+                .create_keyspace(&family.physical_name)
+                .map_err(|source| {
+                    registration_storage::<D>(DomainRegistrationStage::OpenKeyspace, source)
+                })?,
+        );
     }
+
+    let families = definition
+        .families
+        .iter()
+        .zip(keyspaces)
+        .map(|(family, keyspace)| {
+            registered_family(
+                family,
+                keyspace.expect("every declared family was opened or created"),
+            )
+        })
+        .collect();
     Ok(registered_domain(definition, families))
 }
 
@@ -270,12 +372,28 @@ fn persist_new_registration<D: StorageDomain>(
         .initial_metadata()
         .encode()
         .map_err(invalid_metadata::<D>)?;
-    let mut batch = generation.database.batch();
-    batch.insert(
-        generation.domains_keyspace(),
-        definition.name.as_bytes(),
-        metadata,
-    );
+    let key = definition.name.as_bytes().to_vec().into_boxed_slice();
+    let metadata = metadata.into_boxed_slice();
+    let key_bytes = u64::try_from(key.len()).map_err(invalid_metadata::<D>)?;
+    let value_bytes = u64::try_from(metadata.len()).map_err(invalid_metadata::<D>)?;
+    let capacity = generation
+        .database
+        .storage_policy()
+        .batch_capacity(1, key_bytes, value_bytes)
+        .map_err(|source| {
+            registration_storage::<D>(DomainRegistrationStage::CommitRegistry, source)
+        })?;
+    let mut batch = generation
+        .database
+        .batch(capacity, PersistMode::Buffer)
+        .map_err(|source| {
+            registration_storage::<D>(DomainRegistrationStage::CommitRegistry, source)
+        })?;
+    batch
+        .insert(generation.domains_keyspace(), key, metadata)
+        .map_err(|source| {
+            registration_storage::<D>(DomainRegistrationStage::CommitRegistry, source)
+        })?;
     batch.commit().map_err(|source| {
         registration_storage::<D>(DomainRegistrationStage::CommitRegistry, source)
     })?;
@@ -370,20 +488,35 @@ pub(super) fn validate_blueprint(
 fn invalid_metadata<D: StorageDomain>(
     source: impl Error + Send + Sync + 'static,
 ) -> DomainRegistrationError {
+    invalid_metadata_for(D::NAME, source)
+}
+
+fn invalid_metadata_for(
+    domain: &'static str,
+    source: impl Error + Send + Sync + 'static,
+) -> DomainRegistrationError {
     DomainRegistrationError::InvalidMetadata {
-        domain: D::NAME,
+        domain,
         source: Box::new(source),
     }
 }
 
 fn registration_storage<D: StorageDomain>(
     stage: DomainRegistrationStage,
-    source: impl Error + Send + Sync + 'static,
+    source: fjall::Error,
+) -> DomainRegistrationError {
+    registration_storage_for(D::NAME, stage, source)
+}
+
+fn registration_storage_for(
+    domain: &'static str,
+    stage: DomainRegistrationStage,
+    source: fjall::Error,
 ) -> DomainRegistrationError {
     DomainRegistrationError::Storage {
-        domain: D::NAME,
+        domain,
         stage,
-        source: Box::new(source),
+        source: Box::new(ClassifiedFjallError::direct(source)),
     }
 }
 
@@ -393,7 +526,12 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
         | DomainRegistrationError::DuplicateDomain { .. }
         | DomainRegistrationError::OwnerTypeMismatch { .. }
         | DomainRegistrationError::HealthGate(_) => None,
-        DomainRegistrationError::Storage { .. } => Some(FailureSeverity::Verify),
+        DomainRegistrationError::Storage { source, .. } => {
+            source.downcast_ref::<ClassifiedFjallError>().map_or(
+                Some(FailureSeverity::Verify),
+                ClassifiedFjallError::severity,
+            )
+        }
         DomainRegistrationError::ValidationAccess { source, .. } => {
             Some(callback::callback_failure_severity(source))
         }
@@ -411,6 +549,12 @@ fn registration_failure_severity(error: &DomainRegistrationError) -> Option<Fail
 fn validation_failure_severity(error: &DomainValidationError) -> FailureSeverity {
     match error {
         DomainValidationError::Access { source, .. } => callback::callback_failure_severity(source),
+        DomainValidationError::Snapshot { source } | DomainValidationError::Health { source } => {
+            source
+                .downcast_ref::<ClassifiedFjallError>()
+                .and_then(ClassifiedFjallError::severity)
+                .unwrap_or(FailureSeverity::Verify)
+        }
         DomainValidationError::HealthGate(_)
         | DomainValidationError::GenerationPoisoned
         | DomainValidationError::Rejected { .. } => FailureSeverity::Structural,

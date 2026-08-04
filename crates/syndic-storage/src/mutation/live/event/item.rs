@@ -1,425 +1,414 @@
 use beryl_home_store::DomainReader;
-use beryl_model::{ContentRevision, ProjectionRevision, SyndicItemId};
+use beryl_model::{ProjectionRevision, SyndicItemId, SyndicThreadId};
 
 use crate::mutation::{point, required};
 use crate::{
-    CanonicalItemKind, CanonicalItemPayload, CanonicalItemRecord, ContentLifecycle,
-    ContentManifestRecord, ItemProjectionBuildRecord, ItemProjectionHeadRecord,
-    ItemSourceEventOrdinal, ProviderItemDisposition, ProviderItemKind, ProviderItemLifecycle,
-    ResourceMetadataRecord, SourceEventRecord, SourceEventText, SourceItemDescriptor,
-    SyndicMutationError, TurnItemOrdinal, codec::*, domain::SyndicDomain,
+    CanonicalItemPresentation, CanonicalItemRecord, ItemProjectionBuildRecord,
+    ItemProjectionHeadRecord, ItemSourceEventOrdinal, ProviderItemKind, ProviderItemLifecycle,
+    ProviderNarrativeCompletionDisposition, ResourceMetadataRecord, SealedProviderFrameReference,
+    SourceEventRecord, SyndicMutationError, TurnItemOrdinal, codec::*, domain::SyndicDomain,
 };
 
 mod effect;
 mod helpers;
+mod publication;
 
 pub(super) use effect::ItemEffect;
 use helpers::{
-    append_live_content, ensure_new_cas_item, ensure_new_item_source_event, ensure_new_turn_item,
-    exact_item_source, merge_assistant_phase, sourced_item, validate_sourced_item,
+    assistant_phase_for_frame, became_history_blocking, ensure_new_cas_item,
+    ensure_new_item_source_event, ensure_new_turn_item, exact_item_source,
+    generated_media_resource_id, is_visible, next_item_source_ordinal, require_current_indexes,
+    require_turn_item_index,
 };
+use publication::{publication_manifest, validate_build_identity, validate_structural_frame};
 
-pub(super) struct StartedItem {
+pub(super) struct PublishedItemFrame {
     pub(super) effect: ItemEffect,
     pub(super) added_item: bool,
+    pub(super) opened_item: bool,
+    pub(super) completed_item: bool,
+    pub(super) history_became_blocking: bool,
     pub(super) transcript_dirty: bool,
 }
 
-pub(super) struct CompletedItem {
-    pub(super) effect: ItemEffect,
-    pub(super) added_item: bool,
-    pub(super) transcript_dirty: bool,
+struct CanonicalFrameEffect {
+    item: CanonicalItemRecord,
+    source_ordinal: ItemSourceEventOrdinal,
+    resource: Option<ResourceMetadataRecord>,
+    projection_build: Option<ItemProjectionBuildRecord>,
+    projection_head: Option<ItemProjectionHeadRecord>,
+    added_item: bool,
+    opened_item: bool,
+    completed_item: bool,
+    transcript_dirty: bool,
 }
 
-pub(super) fn start_item(
+pub(super) fn publish_item_frame(
     reader: &DomainReader<'_, SyndicDomain>,
     event: &SourceEventRecord,
-    new_ordinal: u64,
-    descriptor: &SourceItemDescriptor,
-    assistant_phase: Option<crate::AssistantMessagePhase>,
-) -> Result<StartedItem, SyndicMutationError> {
-    if descriptor.kind() == ProviderItemKind::UserMessage {
-        return correlate_user_input(reader, event, descriptor);
-    }
-    if point::<CanonicalItemsFamily>(reader, &descriptor.item_id())?.is_some() {
-        return Err(SyndicMutationError::CanonicalItemConflict);
-    }
-    let ordinal = TurnItemOrdinal::new(new_ordinal)?;
-    ensure_new_turn_item(reader, event.turn_id(), ordinal)?;
-    let source = exact_item_source(event.source(), descriptor.cas_item_id())?;
-    ensure_new_cas_item(reader, &source)?;
-    ensure_new_item_source_event(reader, descriptor.item_id(), ItemSourceEventOrdinal::FIRST)?;
-
-    let revision = ProjectionRevision::new(1).expect("first canonical item revision");
-    let (manifest, resource, payload) = initial_payload(reader, descriptor, revision)?;
-    let item = CanonicalItemRecord::with_source_state(
-        descriptor.item_id(),
-        event.turn_id(),
-        ordinal,
-        revision,
-        Some(event.sequence()),
-        1,
-        Some(source.clone()),
-        descriptor.kind(),
-        ProviderItemLifecycle::Started,
-        descriptor.disposition(),
-        assistant_phase,
-        payload,
-    )?;
-    let transcript_dirty = is_transcript_visible(&item);
-    Ok(StartedItem {
-        transcript_dirty,
-        added_item: true,
-        effect: ItemEffect::new(
-            item,
-            source,
-            ItemSourceEventOrdinal::FIRST,
-            event.sequence(),
-            manifest,
-            resource,
-        ),
+    thread_id: SyndicThreadId,
+    current_item_count: u64,
+    item_id: SyndicItemId,
+    frame: &SealedProviderFrameReference,
+) -> Result<PublishedItemFrame, SyndicMutationError> {
+    let build = required::<ProviderItemBuildsFamily>(reader, &item_id)?;
+    validate_build_identity(event, item_id, frame, &build)?;
+    let structural = validate_structural_frame(reader, &build)?;
+    let narrative_completion = build
+        .completion_check()
+        .and_then(|check| check.disposition());
+    let manifest = publication_manifest(reader, &build)?;
+    let source = exact_item_source(event, frame)?;
+    let canonical = match build.prior() {
+        Some(prior) => publish_subsequent_frame(
+            reader,
+            event,
+            thread_id,
+            item_id,
+            prior,
+            frame,
+            &source,
+            &structural,
+            narrative_completion,
+        )?,
+        None => publish_first_frame(
+            reader,
+            event,
+            thread_id,
+            current_item_count,
+            item_id,
+            frame,
+            &source,
+            &structural,
+        )?,
+    };
+    let completion_mismatch =
+        narrative_completion.is_some_and(ProviderNarrativeCompletionDisposition::is_mismatch);
+    let history_became_blocking =
+        became_history_blocking(build.prior(), frame, completion_mismatch);
+    let mut effect = ItemEffect::new(
+        canonical.item,
+        source,
+        canonical.source_ordinal,
+        event.sequence(),
+        manifest,
+        canonical.resource,
+    );
+    effect.set_projection_invalidation(canonical.projection_build, canonical.projection_head);
+    Ok(PublishedItemFrame {
+        effect,
+        added_item: canonical.added_item,
+        opened_item: canonical.opened_item,
+        completed_item: canonical.completed_item,
+        history_became_blocking,
+        transcript_dirty: canonical.transcript_dirty,
     })
 }
 
-pub(super) fn append_item(
+#[allow(clippy::too_many_arguments)]
+fn publish_first_frame(
     reader: &DomainReader<'_, SyndicDomain>,
     event: &SourceEventRecord,
+    thread_id: SyndicThreadId,
+    current_item_count: u64,
     item_id: SyndicItemId,
-    cas_item_id: &beryl_model::CasItemId,
-    expected_kind: ProviderItemKind,
-    text: &SourceEventText,
-) -> Result<(ItemEffect, bool), SyndicMutationError> {
-    let item = sourced_item(reader, event, item_id, cas_item_id)?;
-    if item.provider_kind() != expected_kind {
-        return Err(SyndicMutationError::ProviderItemKindConflict);
+    frame: &SealedProviderFrameReference,
+    source: &crate::CasItemSource,
+    structural: &crate::ProviderFrameStructuralValidationV1,
+) -> Result<CanonicalFrameEffect, SyndicMutationError> {
+    ensure_new_cas_item(reader, source)?;
+    ensure_new_item_source_event(reader, item_id, ItemSourceEventOrdinal::FIRST)?;
+    if frame.frame().item_kind() == ProviderItemKind::UserMessage {
+        return correlate_user_input(reader, event, item_id, frame, source, structural);
     }
-    if item.provider_lifecycle() != ProviderItemLifecycle::Started
-        || item.disposition() != ProviderItemDisposition::CanonicalText
-    {
-        return Err(SyndicMutationError::ProviderItemLifecycleConflict);
-    }
-    let content = item
-        .payload()
-        .content()
-        .ok_or(SyndicMutationError::CanonicalItemConflict)?;
-    let (projection_build, projection_head) = invalidate_visible_projection(reader, &item)?;
-    let current = required::<ContentManifestsFamily>(reader, &content.id())?;
-    if current.owner() != Some(item.id())
-        || current.lifecycle() != ContentLifecycle::Live
-        || current.current_reference() != Some(content)
-    {
+    if point::<CanonicalItemsFamily>(reader, &item_id)?.is_some() {
         return Err(SyndicMutationError::CanonicalItemConflict);
     }
-    let span_start = current.encoded_bytes();
-    let (manifest, chunks) = append_live_content(&current, text.as_str())?;
-    let spans = crate::content_byte_spans(&chunks, span_start)?;
-    let text_spans = crate::utf8_content_text_spans(&chunks, span_start)?;
-    let pieces = text_spans
-        .iter()
-        .copied()
-        .map(crate::ContentPieceRecord::text)
-        .collect();
-    let content = manifest
-        .current_reference()
-        .ok_or(SyndicMutationError::ContentManifestConflict)?;
-    let (next, source_ordinal) = advance_item(
+    let new_ordinal = current_item_count
+        .checked_add(1)
+        .ok_or(SyndicMutationError::CanonicalItemConflict)
+        .and_then(|value| TurnItemOrdinal::new(value).map_err(Into::into))?;
+    ensure_new_turn_item(reader, event.turn_id(), new_ordinal)?;
+    let revision = ProjectionRevision::new(1).expect("first canonical item revision");
+    let (presentation, resource) = first_presentation(
         reader,
-        event,
-        &item,
-        ProviderItemLifecycle::Started,
-        item.assistant_phase(),
-        CanonicalItemPayload::text(content),
+        thread_id,
+        event.turn_id(),
+        item_id,
+        revision,
+        frame.frame().item_kind(),
     )?;
-    let visible = is_transcript_visible(&next);
-    let mut effect = ItemEffect::new(
-        next,
-        item.cas_source()
-            .cloned()
-            .ok_or(SyndicMutationError::SourceIdentityConflict)?,
-        source_ordinal,
-        event.sequence(),
-        Some(manifest),
+    validate_structural_publication_facts(frame, structural, &presentation, None)?;
+    let assistant_phase = assistant_phase_for_frame(
+        frame.frame().item_kind(),
+        frame.observation(),
+        structural.message_phase(),
         None,
-    );
-    effect.set_content_parts(chunks, spans, text_spans, pieces);
-    effect.set_projection_invalidation(projection_build, projection_head);
-    Ok((effect, visible))
-}
-
-pub(super) fn complete_item(
-    reader: &DomainReader<'_, SyndicDomain>,
-    event: &SourceEventRecord,
-    new_ordinal: u64,
-    descriptor: &SourceItemDescriptor,
-    assistant_phase: Option<crate::AssistantMessagePhase>,
-) -> Result<CompletedItem, SyndicMutationError> {
-    let Some(item) = point::<CanonicalItemsFamily>(reader, &descriptor.item_id())? else {
-        return complete_instantaneous_item(
-            reader,
-            event,
-            new_ordinal,
-            descriptor,
-            assistant_phase,
-        );
-    };
-    let source = exact_item_source(event.source(), descriptor.cas_item_id())?;
-    validate_sourced_item(reader, event, &item, &source)?;
-    if item.provider_kind() != descriptor.kind() {
-        return Err(SyndicMutationError::ProviderItemKindConflict);
-    }
-    if item.provider_lifecycle() != ProviderItemLifecycle::Started
-        || item.disposition() != descriptor.disposition()
-    {
-        return Err(SyndicMutationError::ProviderItemLifecycleConflict);
-    }
-    let phase = merge_assistant_phase(item.assistant_phase(), assistant_phase)?;
-    let (projection_build, projection_head) = invalidate_visible_projection(reader, &item)?;
-    let (manifest, payload) = complete_payload(reader, &item)?;
-    let (next, source_ordinal) = advance_item(
-        reader,
-        event,
-        &item,
-        ProviderItemLifecycle::Completed,
-        phase,
-        payload,
     )?;
-    let visible = is_transcript_visible(&next);
-    let mut effect = ItemEffect::new(
-        next,
-        source,
-        source_ordinal,
+    let item = CanonicalItemRecord::with_provider_state(
+        item_id,
+        event.turn_id(),
+        new_ordinal,
+        revision,
         event.sequence(),
-        manifest,
+        1,
+        source.clone(),
+        assistant_phase,
+        frame.clone(),
         None,
-    );
-    effect.set_projection_invalidation(projection_build, projection_head);
-    Ok(CompletedItem {
-        effect,
-        added_item: false,
-        transcript_dirty: visible,
+        presentation,
+    )?;
+    let transcript_dirty = is_visible(item.presentation());
+    Ok(CanonicalFrameEffect {
+        item,
+        source_ordinal: ItemSourceEventOrdinal::FIRST,
+        resource,
+        projection_build: None,
+        projection_head: None,
+        added_item: true,
+        opened_item: !frame.stream_state().is_complete(),
+        completed_item: false,
+        transcript_dirty,
     })
 }
 
 fn correlate_user_input(
     reader: &DomainReader<'_, SyndicDomain>,
     event: &SourceEventRecord,
-    descriptor: &SourceItemDescriptor,
-) -> Result<StartedItem, SyndicMutationError> {
-    let item = required::<CanonicalItemsFamily>(reader, &descriptor.item_id())?;
-    if item.turn_id() != event.turn_id()
-        || item.provider_kind() != ProviderItemKind::UserMessage
-        || item.provider_lifecycle() != ProviderItemLifecycle::AwaitingCorrelation
-        || item.disposition() != descriptor.disposition()
-        || item.source_event_count() != 0
-        || item.cas_source().is_some()
+    item_id: SyndicItemId,
+    frame: &SealedProviderFrameReference,
+    source: &crate::CasItemSource,
+    structural: &crate::ProviderFrameStructuralValidationV1,
+) -> Result<CanonicalFrameEffect, SyndicMutationError> {
+    let current = required::<CanonicalItemsFamily>(reader, &item_id)?;
+    if current.id() != item_id
+        || current.turn_id() != event.turn_id()
+        || current.provider_kind() != ProviderItemKind::UserMessage
+        || current.provider_lifecycle() != ProviderItemLifecycle::AwaitingCorrelation
+        || current.source_event().is_some()
+        || current.source_event_count() != 0
+        || current.cas_source().is_some()
+        || current.provider().is_some()
+        || current.assistant_phase().is_some()
     {
         return Err(SyndicMutationError::ProviderItemLifecycleConflict);
     }
-    let source = exact_item_source(event.source(), descriptor.cas_item_id())?;
-    ensure_new_cas_item(reader, &source)?;
-    ensure_new_item_source_event(reader, item.id(), ItemSourceEventOrdinal::FIRST)?;
-    let (projection_build, projection_head) = invalidate_visible_projection(reader, &item)?;
-    let revision = item.revision().checked_next()?;
-    let next = CanonicalItemRecord::with_source_state(
-        item.id(),
-        item.turn_id(),
-        item.ordinal(),
-        revision,
-        Some(event.sequence()),
-        1,
-        Some(source.clone()),
-        item.provider_kind(),
-        ProviderItemLifecycle::Started,
-        item.disposition(),
-        None,
-        item.payload().clone(),
+    require_turn_item_index(reader, &current)?;
+    validate_structural_publication_facts(
+        frame,
+        structural,
+        current.presentation(),
+        Some(&current),
     )?;
-    let mut effect = ItemEffect::new(
-        next,
-        source,
-        ItemSourceEventOrdinal::FIRST,
-        event.sequence(),
-        None,
-        None,
-    );
-    effect.set_projection_invalidation(projection_build, projection_head);
-    Ok(StartedItem {
-        effect,
-        added_item: false,
-        transcript_dirty: true,
-    })
-}
-
-fn complete_instantaneous_item(
-    reader: &DomainReader<'_, SyndicDomain>,
-    event: &SourceEventRecord,
-    new_ordinal: u64,
-    descriptor: &SourceItemDescriptor,
-    assistant_phase: Option<crate::AssistantMessagePhase>,
-) -> Result<CompletedItem, SyndicMutationError> {
-    if !descriptor.kind().permits_completion_only()
-        || descriptor.disposition() != ProviderItemDisposition::ActivityOnly
-        || assistant_phase.is_some()
-    {
-        return Err(SyndicMutationError::ProviderItemLifecycleConflict);
-    }
-    let ordinal = TurnItemOrdinal::new(new_ordinal)?;
-    ensure_new_turn_item(reader, event.turn_id(), ordinal)?;
-    let source = exact_item_source(event.source(), descriptor.cas_item_id())?;
-    ensure_new_cas_item(reader, &source)?;
-    ensure_new_item_source_event(reader, descriptor.item_id(), ItemSourceEventOrdinal::FIRST)?;
-    let revision = ProjectionRevision::new(1).expect("first canonical item revision");
-    let item = CanonicalItemRecord::with_source_state(
-        descriptor.item_id(),
-        event.turn_id(),
-        ordinal,
-        revision,
-        Some(event.sequence()),
-        1,
-        Some(source.clone()),
-        descriptor.kind(),
-        ProviderItemLifecycle::Completed,
-        descriptor.disposition(),
-        None,
-        CanonicalItemPayload::activity(),
-    )?;
-    Ok(CompletedItem {
-        effect: ItemEffect::new(
-            item,
-            source,
-            ItemSourceEventOrdinal::FIRST,
-            event.sequence(),
-            None,
-            None,
-        ),
-        added_item: true,
-        transcript_dirty: false,
-    })
-}
-
-fn initial_payload(
-    reader: &DomainReader<'_, SyndicDomain>,
-    descriptor: &SourceItemDescriptor,
-    revision: ProjectionRevision,
-) -> Result<
-    (
-        Option<ContentManifestRecord>,
-        Option<ResourceMetadataRecord>,
-        CanonicalItemPayload,
-    ),
-    SyndicMutationError,
-> {
-    match descriptor.disposition() {
-        ProviderItemDisposition::CanonicalText => {
-            let content_id = crate::content::live_item_content_id(descriptor.item_id());
-            if point::<ContentManifestsFamily>(reader, &content_id)?.is_some() {
-                return Err(SyndicMutationError::CanonicalItemConflict);
-            }
-            let manifest = ContentManifestRecord::live(
-                content_id,
-                descriptor.item_id(),
-                ContentRevision::new(1).expect("first live content revision"),
-            );
-            let content = manifest
-                .current_reference()
-                .ok_or(SyndicMutationError::ContentManifestConflict)?;
-            Ok((Some(manifest), None, CanonicalItemPayload::text(content)))
-        }
-        ProviderItemDisposition::ActivityOnly => Ok((None, None, CanonicalItemPayload::activity())),
-        ProviderItemDisposition::GeneratedMedia { resource_id } => {
-            if point::<ResourcesFamily>(reader, &resource_id)?.is_some() {
-                return Err(SyndicMutationError::CanonicalItemConflict);
-            }
-            let resource = ResourceMetadataRecord::pending_generated_media(
-                resource_id,
-                revision,
-                descriptor.item_id(),
-            );
-            Ok((
-                None,
-                Some(resource),
-                CanonicalItemPayload::generated_media(resource_id),
-            ))
-        }
-        ProviderItemDisposition::Unsupported(reason) => {
-            Ok((None, None, CanonicalItemPayload::unsupported(reason)))
-        }
-        ProviderItemDisposition::CorrelatedUserInput { .. } => {
-            Err(SyndicMutationError::ProviderItemLifecycleConflict)
-        }
-    }
-}
-
-fn complete_payload(
-    reader: &DomainReader<'_, SyndicDomain>,
-    item: &CanonicalItemRecord,
-) -> Result<(Option<ContentManifestRecord>, CanonicalItemPayload), SyndicMutationError> {
-    let Some(content) = item.payload().content() else {
-        return Ok((None, item.payload().clone()));
-    };
-    if matches!(
-        item.disposition(),
-        ProviderItemDisposition::CorrelatedUserInput { .. }
-    ) {
-        return Ok((None, item.payload().clone()));
-    }
-    let current = required::<ContentManifestsFamily>(reader, &content.id())?;
-    if current.owner() != Some(item.id())
-        || current.lifecycle() != ContentLifecycle::Live
-        || current.current_reference() != Some(content)
-    {
-        return Err(SyndicMutationError::CanonicalItemConflict);
-    }
-    let manifest = ContentManifestRecord::with_owner(
-        current.id(),
-        current.owner(),
-        current.revision().checked_next()?,
-        current.encoding(),
-        ContentLifecycle::Finalized,
-        current.chunk_count(),
-        current.encoded_bytes(),
-        current.chain_digest(),
-        current.expected(),
-    );
-    let content = manifest
-        .current_reference()
-        .ok_or(SyndicMutationError::ContentManifestConflict)?;
-    Ok((Some(manifest), CanonicalItemPayload::text(content)))
-}
-
-fn advance_item(
-    reader: &DomainReader<'_, SyndicDomain>,
-    event: &SourceEventRecord,
-    current: &CanonicalItemRecord,
-    lifecycle: ProviderItemLifecycle,
-    assistant_phase: Option<crate::AssistantMessagePhase>,
-    payload: CanonicalItemPayload,
-) -> Result<(CanonicalItemRecord, ItemSourceEventOrdinal), SyndicMutationError> {
+    let (projection_build, projection_head) = invalidate_text_projection(reader, &current)?;
     let revision = current.revision().checked_next()?;
-    let source_count = current
-        .source_event_count()
-        .checked_add(1)
-        .ok_or(SyndicMutationError::SourceEventFrontierExhausted)?;
-    let source_ordinal = ItemSourceEventOrdinal::new(source_count)?;
-    ensure_new_item_source_event(reader, current.id(), source_ordinal)?;
-    let item = CanonicalItemRecord::with_source_state(
+    let next = CanonicalItemRecord::with_provider_state(
         current.id(),
         current.turn_id(),
         current.ordinal(),
         revision,
-        Some(event.sequence()),
-        source_count,
-        current.cas_source().cloned(),
-        current.provider_kind(),
-        lifecycle,
-        current.disposition(),
-        assistant_phase,
-        payload,
+        event.sequence(),
+        1,
+        source.clone(),
+        None,
+        frame.clone(),
+        None,
+        current.presentation().clone(),
     )?;
-    Ok((item, source_ordinal))
+    Ok(CanonicalFrameEffect {
+        item: next,
+        source_ordinal: ItemSourceEventOrdinal::FIRST,
+        resource: None,
+        projection_build,
+        projection_head,
+        added_item: false,
+        opened_item: false,
+        completed_item: false,
+        transcript_dirty: true,
+    })
 }
 
-fn invalidate_visible_projection(
+#[allow(clippy::too_many_arguments)]
+fn publish_subsequent_frame(
+    reader: &DomainReader<'_, SyndicDomain>,
+    event: &SourceEventRecord,
+    thread_id: SyndicThreadId,
+    item_id: SyndicItemId,
+    prior: &SealedProviderFrameReference,
+    frame: &SealedProviderFrameReference,
+    source: &crate::CasItemSource,
+    structural: &crate::ProviderFrameStructuralValidationV1,
+    narrative_completion: Option<ProviderNarrativeCompletionDisposition>,
+) -> Result<CanonicalFrameEffect, SyndicMutationError> {
+    let current = required::<CanonicalItemsFamily>(reader, &item_id)?;
+    if current.id() != item_id
+        || current.turn_id() != event.turn_id()
+        || current.cas_source() != Some(source)
+        || current.provider_kind() != frame.frame().item_kind()
+        || current.provider_lifecycle() != ProviderItemLifecycle::Started
+        || current.provider() != Some(prior)
+    {
+        return Err(SyndicMutationError::ProviderFrameBuildConflict);
+    }
+    require_current_indexes(reader, &current, source)?;
+    validate_current_presentation(reader, thread_id, &current)?;
+    validate_structural_publication_facts(
+        frame,
+        structural,
+        current.presentation(),
+        Some(&current),
+    )?;
+    let source_ordinal = next_item_source_ordinal(reader, &current)?;
+    let assistant_phase = assistant_phase_for_frame(
+        frame.frame().item_kind(),
+        frame.observation(),
+        structural.message_phase(),
+        current.assistant_phase(),
+    )?;
+    let (projection_build, projection_head) = invalidate_text_projection(reader, &current)?;
+    let next = CanonicalItemRecord::with_provider_state(
+        current.id(),
+        current.turn_id(),
+        current.ordinal(),
+        current.revision().checked_next()?,
+        event.sequence(),
+        source_ordinal.get(),
+        source.clone(),
+        assistant_phase,
+        frame.clone(),
+        narrative_completion,
+        current.presentation().clone(),
+    )?;
+    Ok(CanonicalFrameEffect {
+        transcript_dirty: is_visible(next.presentation()),
+        item: next,
+        source_ordinal,
+        resource: None,
+        projection_build,
+        projection_head,
+        added_item: false,
+        opened_item: false,
+        completed_item: frame.stream_state().is_complete(),
+    })
+}
+
+fn first_presentation(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread_id: SyndicThreadId,
+    turn_id: beryl_model::SyndicTurnId,
+    item_id: SyndicItemId,
+    revision: ProjectionRevision,
+    kind: ProviderItemKind,
+) -> Result<(CanonicalItemPresentation, Option<ResourceMetadataRecord>), SyndicMutationError> {
+    let presentation = match kind {
+        ProviderItemKind::UserMessage => {
+            return Err(SyndicMutationError::ProviderItemLifecycleConflict);
+        }
+        ProviderItemKind::AgentMessage | ProviderItemKind::Plan => {
+            CanonicalItemPresentation::Narrative
+        }
+        ProviderItemKind::CommandExecution
+        | ProviderItemKind::FileChange
+        | ProviderItemKind::McpToolCall
+        | ProviderItemKind::DynamicToolCall => CanonicalItemPresentation::Operational,
+        ProviderItemKind::HookPrompt
+        | ProviderItemKind::Reasoning
+        | ProviderItemKind::CollabAgentToolCall
+        | ProviderItemKind::SubAgentActivity
+        | ProviderItemKind::WebSearch
+        | ProviderItemKind::ImageView
+        | ProviderItemKind::Sleep
+        | ProviderItemKind::EnteredReviewMode
+        | ProviderItemKind::ExitedReviewMode
+        | ProviderItemKind::ContextCompaction => CanonicalItemPresentation::Activity,
+        ProviderItemKind::StandaloneImageGeneration => {
+            let resource_id = generated_media_resource_id(thread_id, turn_id, item_id);
+            if point::<ResourcesFamily>(reader, &resource_id)?.is_some() {
+                return Err(SyndicMutationError::GeneratedMediaResourceCollision);
+            }
+            let resource =
+                ResourceMetadataRecord::pending_generated_media(resource_id, revision, item_id);
+            return Ok((
+                CanonicalItemPresentation::GeneratedMedia { resource_id },
+                Some(resource),
+            ));
+        }
+    };
+    Ok((presentation, None))
+}
+
+fn validate_current_presentation(
+    reader: &DomainReader<'_, SyndicDomain>,
+    thread_id: SyndicThreadId,
+    item: &CanonicalItemRecord,
+) -> Result<(), SyndicMutationError> {
+    let expected = match item.provider_kind() {
+        ProviderItemKind::UserMessage => match item.presentation() {
+            CanonicalItemPresentation::UserInput { .. } => return Ok(()),
+            _ => return Err(SyndicMutationError::CanonicalItemConflict),
+        },
+        ProviderItemKind::AgentMessage | ProviderItemKind::Plan => {
+            CanonicalItemPresentation::Narrative
+        }
+        ProviderItemKind::CommandExecution
+        | ProviderItemKind::FileChange
+        | ProviderItemKind::McpToolCall
+        | ProviderItemKind::DynamicToolCall => CanonicalItemPresentation::Operational,
+        ProviderItemKind::HookPrompt
+        | ProviderItemKind::Reasoning
+        | ProviderItemKind::CollabAgentToolCall
+        | ProviderItemKind::SubAgentActivity
+        | ProviderItemKind::WebSearch
+        | ProviderItemKind::ImageView
+        | ProviderItemKind::Sleep
+        | ProviderItemKind::EnteredReviewMode
+        | ProviderItemKind::ExitedReviewMode
+        | ProviderItemKind::ContextCompaction => CanonicalItemPresentation::Activity,
+        ProviderItemKind::StandaloneImageGeneration => {
+            let resource_id = generated_media_resource_id(thread_id, item.turn_id(), item.id());
+            let expected_resource = ResourceMetadataRecord::pending_generated_media(
+                resource_id,
+                ProjectionRevision::new(1).expect("first generated resource revision"),
+                item.id(),
+            );
+            if required::<ResourcesFamily>(reader, &resource_id)? != expected_resource {
+                return Err(SyndicMutationError::CanonicalItemConflict);
+            }
+            CanonicalItemPresentation::GeneratedMedia { resource_id }
+        }
+    };
+    if item.presentation() != &expected {
+        return Err(SyndicMutationError::CanonicalItemConflict);
+    }
+    Ok(())
+}
+
+fn validate_structural_publication_facts(
+    frame: &SealedProviderFrameReference,
+    structural: &crate::ProviderFrameStructuralValidationV1,
+    presentation: &CanonicalItemPresentation,
+    current: Option<&CanonicalItemRecord>,
+) -> Result<(), SyndicMutationError> {
+    if frame.frame().item_kind() == ProviderItemKind::UserMessage {
+        let CanonicalItemPresentation::UserInput { content, .. } = presentation else {
+            return Err(SyndicMutationError::CanonicalItemConflict);
+        };
+        if structural.submitted_content() != Some(*content) {
+            return Err(SyndicMutationError::CanonicalItemConflict);
+        }
+    } else if structural.submitted_content().is_some() {
+        return Err(SyndicMutationError::ProviderFrameValidationConflict);
+    }
+    if frame.frame().item_kind() != ProviderItemKind::AgentMessage
+        && (structural.message_phase().is_some()
+            || current.is_some_and(|item| item.assistant_phase().is_some()))
+    {
+        return Err(SyndicMutationError::AssistantPhaseConflict);
+    }
+    Ok(())
+}
+
+fn invalidate_text_projection(
     reader: &DomainReader<'_, SyndicDomain>,
     item: &CanonicalItemRecord,
 ) -> Result<
@@ -429,16 +418,9 @@ fn invalidate_visible_projection(
     ),
     SyndicMutationError,
 > {
-    if is_transcript_visible(item) {
+    if item.projection_source().is_some() {
         crate::mutation::projection::invalidate_item_projection(reader, item)
     } else {
         Ok((None, None))
     }
-}
-
-fn is_transcript_visible(item: &CanonicalItemRecord) -> bool {
-    matches!(
-        item.kind(),
-        CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-    )
 }

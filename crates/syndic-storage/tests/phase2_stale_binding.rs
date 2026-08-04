@@ -2,10 +2,7 @@
 
 mod support;
 
-use beryl_model::{
-    BindingRevision, CasThreadId, ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode,
-    RuntimeNativePath, ThreadRevision,
-};
+use beryl_model::{BindingRevision, CasThreadId, ThreadRevision};
 use syndic_storage::test_faults::FixtureRecord;
 use syndic_storage::*;
 
@@ -33,7 +30,7 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
                 selected,
                 BindingState::stale(
                     StaleCasBinding::new(
-                        execution_binding(),
+                        support::exact_cas::execution_binding(),
                         cas_thread.clone(),
                         Some(test_tool_profile()),
                         Some(CasRepresentedPrefixProof::new(
@@ -99,18 +96,4 @@ fn stale_binding_roundtrips_with_its_required_cas_thread_reservation() {
     };
     assert_eq!(stale.observed_tool_profile(), Some(test_tool_profile()));
     reopened.close().unwrap();
-}
-
-fn execution_binding() -> ExecutionBinding {
-    let path = RuntimeNativePath::from_admitted(
-        RuntimeMode::host(),
-        PathFlavor::Windows,
-        "C:\\stale-fixture",
-    )
-    .unwrap();
-    ExecutionBinding::new(
-        RuntimeId::from_bytes([7; 16]),
-        RootId::from_bytes([8; 16]),
-        path,
-    )
 }

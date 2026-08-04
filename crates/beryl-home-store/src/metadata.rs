@@ -12,7 +12,9 @@ pub(crate) const DOMAINS_KEYSPACE: &str = "_beryl_domains";
 const REVISION_MAGIC: &[u8; 8] = b"BRYLREVN";
 const DOMAIN_MAGIC: &[u8; 8] = b"BRYLDOMN";
 const METADATA_ENCODING: u32 = 1;
-const MAX_DOMAIN_METADATA_BYTES: usize = 8 * 1_024;
+pub(crate) const MAX_HOME_HEADER_BYTES: usize = 64;
+pub(crate) const HOME_REVISION_BYTES: usize = 20;
+pub(crate) const MAX_DOMAIN_METADATA_BYTES: usize = 8 * 1_024;
 const MAX_FAMILIES: usize = 64;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,7 +32,7 @@ pub(crate) struct DomainMetadata {
 }
 
 pub(crate) fn encode_home_revision(revision: HomeRevision) -> Vec<u8> {
-    let mut encoded = Vec::with_capacity(20);
+    let mut encoded = Vec::with_capacity(HOME_REVISION_BYTES);
     encoded.extend_from_slice(REVISION_MAGIC);
     encoded.extend_from_slice(&METADATA_ENCODING.to_be_bytes());
     encoded.extend_from_slice(&revision.get().to_be_bytes());
@@ -38,7 +40,7 @@ pub(crate) fn encode_home_revision(revision: HomeRevision) -> Vec<u8> {
 }
 
 pub(crate) fn decode_home_revision(encoded: &[u8]) -> io::Result<HomeRevision> {
-    if encoded.len() != 20 || &encoded[..8] != REVISION_MAGIC {
+    if encoded.len() != HOME_REVISION_BYTES || &encoded[..8] != REVISION_MAGIC {
         return Err(invalid_data("home revision record has an invalid envelope"));
     }
 

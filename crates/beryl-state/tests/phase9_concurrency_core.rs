@@ -2,21 +2,20 @@ mod support;
 
 use beryl_home_store::{CursorReadLimits, HomeCommand};
 use beryl_model::{
-    AdmittedHostPath, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, ThreadRevision,
+    AdmittedHostPath, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
 };
 use beryl_state::{
-    AddConfiguredRoot, ApplySettings, CreateClaimedWindow, CreateThreadMetadata,
-    ExpectedSettingRevision, InitializeThreadlessWindow, MarkOrderlyExit, RemoveSessionWindow,
-    ReplaceWindowClaim, RootRegistration, RuntimeRootMutationError, SessionExitIntent,
-    SessionMutationError, SettingKey, SettingUpdate, SettingValue, ThreadActivitySummary,
-    ThreadMetadataKind, UnixMillis, UpdateThreadActivity,
+    AddConfiguredRoot, ApplySettings, CreateClaimedWindow, ExpectedSettingRevision,
+    InitializeThreadlessWindow, MarkOrderlyExit, RemoveSessionWindow, ReplaceWindowClaim,
+    RootRegistration, RuntimeRootMutationError, SessionExitIntent, SessionMutationError,
+    SettingKey, SettingUpdate, SettingValue, UnixMillis,
 };
 use tempfile::tempdir;
 
 use support::phase9::{
     assert_one_success_one_conflict, command, placement, race_commands, target, thread, window,
 };
-use support::{binding, contributor_source, execute, host_runtime};
+use support::{contributor_source, execute, host_runtime};
 
 fn theme(value: &str) -> SettingUpdate {
     SettingUpdate::new(
@@ -37,10 +36,9 @@ fn root_registration(seed: u8, path: &str) -> RootRegistration {
 }
 
 #[test]
-fn different_domains_and_competing_record_revisions_serialize_without_lost_state() {
+fn different_domains_serialize_without_lost_state() {
     let directory = tempdir().unwrap();
     let (store, state) = support::open(directory.path());
-    let thread_id = thread(10);
     let expected_home = store.home_revision().unwrap();
 
     let mut settings_command = HomeCommand::new(expected_home);
@@ -50,19 +48,15 @@ fn different_domains_and_competing_record_revisions_serialize_without_lost_state
             ApplySettings::new(vec![theme("different-domain")]).unwrap(),
         ))
         .unwrap();
-    let mut metadata_command = HomeCommand::new(expected_home);
-    metadata_command
-        .add(state.thread_metadata().create(
-            state.thread_metadata().revision(&store).unwrap(),
-            CreateThreadMetadata::new(
-                thread_id,
-                binding(1, 2, r"C:\Work\ten"),
-                ThreadMetadataKind::Ordinary,
-            ),
+    let mut runtime_command = HomeCommand::new(expected_home);
+    runtime_command
+        .add(state.runtime_roots().create_runtime_with_home_root(
+            state.runtime_roots().revision(&store).unwrap(),
+            host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Work\ten"),
         ))
         .unwrap();
 
-    let results = race_commands(&store, settings_command, metadata_command);
+    let results = race_commands(&store, settings_command, runtime_command);
     assert_one_success_one_conflict(&results);
 
     if state
@@ -81,61 +75,20 @@ fn different_domains_and_competing_record_revisions_serialize_without_lost_state
         .unwrap();
     }
     if state
-        .thread_metadata()
-        .metadata(&store, thread_id)
+        .runtime_roots()
+        .runtime(&store, RuntimeId::from_bytes([1; 16]))
         .unwrap()
         .is_none()
     {
         execute(
             &store,
-            state.thread_metadata().create(
-                state.thread_metadata().revision(&store).unwrap(),
-                CreateThreadMetadata::new(
-                    thread_id,
-                    binding(1, 2, r"C:\Work\ten"),
-                    ThreadMetadataKind::Ordinary,
-                ),
+            state.runtime_roots().create_runtime_with_home_root(
+                state.runtime_roots().revision(&store).unwrap(),
+                host_runtime(1, 2, r"C:\Codex\codex.exe", r"C:\Work\ten"),
             ),
         )
         .unwrap();
     }
-
-    let record = state
-        .thread_metadata()
-        .metadata(&store, thread_id)
-        .unwrap()
-        .unwrap();
-    let expected_home = store.home_revision().unwrap();
-    let expected_domain = state.thread_metadata().revision(&store).unwrap();
-    let competing = [2_u64, 3].map(|source_revision| {
-        let mut command = HomeCommand::new(expected_home);
-        command
-            .add(state.thread_metadata().update_activity(
-                expected_domain,
-                UpdateThreadActivity::new(
-                    thread_id,
-                    record.revision(),
-                    ThreadActivitySummary::new(
-                        ThreadRevision::new(source_revision).unwrap(),
-                        UnixMillis::new(100 + source_revision),
-                    ),
-                ),
-            ))
-            .unwrap();
-        command
-    });
-    let [first, second] = competing;
-    let results = race_commands(&store, first, second);
-    assert_one_success_one_conflict(&results);
-
-    let activity = state
-        .thread_metadata()
-        .metadata(&store, thread_id)
-        .unwrap()
-        .unwrap()
-        .activity()
-        .unwrap();
-    assert!(matches!(activity.source_thread_revision().get(), 2 | 3));
 
     store.close().unwrap();
     let (reopened, state) = support::open(directory.path());
@@ -149,14 +102,12 @@ fn different_domains_and_competing_record_revisions_serialize_without_lost_state
             .as_active_theme_id(),
         Some("different-domain")
     );
-    assert_eq!(
+    assert!(
         state
-            .thread_metadata()
-            .metadata(&reopened, thread_id)
+            .runtime_roots()
+            .runtime(&reopened, RuntimeId::from_bytes([1; 16]))
             .unwrap()
-            .unwrap()
-            .activity(),
-        Some(activity)
+            .is_some()
     );
 }
 

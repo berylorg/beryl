@@ -11,7 +11,7 @@ pub(super) fn encode_item_projection_build(
     enc_projection_rev(&mut e, value.revision());
     enc_projection_format(&mut e, value.format());
     enc_projection_rev(&mut e, value.source_item_revision());
-    enc_content_ref(&mut e, value.source_content());
+    enc_projection_text_source(&mut e, value.source());
     e.u64(value.source_bytes());
     e.u64(value.projection_count());
     e.u64(value.resource_count());
@@ -30,7 +30,7 @@ pub(super) fn decode_item_projection_build(
         dec_projection_rev(&mut d)?,
         dec_projection_format(&mut d)?,
         dec_projection_rev(&mut d)?,
-        dec_content_ref(&mut d)?,
+        dec_projection_text_source(&mut d)?,
         d.u64()?,
         d.u64()?,
         d.u64()?,
@@ -72,7 +72,7 @@ fn decode_item_build_phase(d: &mut Decoder<'_>) -> Result<ItemProjectionBuildPha
 pub(super) fn encode_markdown_checkpoint(e: &mut Encoder, value: &MarkdownParserCheckpoint) {
     e.u64(value.consumed_source_bytes());
     e.u64(value.closed_source_bytes());
-    enc_content_piece_ord(e, value.next_piece_ordinal());
+    enc_projection_text_source_cursor(e, value.source_cursor());
     e.u64(value.line_start());
     e.text(value.line_carry());
     enc_bool(e, value.line_continuation());
@@ -85,7 +85,7 @@ pub(super) fn decode_markdown_checkpoint(
     Ok(MarkdownParserCheckpoint::new(
         d.u64()?,
         d.u64()?,
-        dec_content_piece_ord(d)?,
+        dec_projection_text_source_cursor(d)?,
         d.u64()?,
         d.text("Markdown line carry")?.into(),
         dec_bool(d, "Markdown line continuation")?,

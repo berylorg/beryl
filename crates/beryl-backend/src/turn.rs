@@ -1,15 +1,15 @@
 mod approval;
 mod control;
-mod delta;
-mod item;
 mod metadata;
-mod stream;
-mod wire;
+mod normal_terminal;
+mod ordered_control;
+mod steering;
+mod streamed_input;
 
 pub use approval::*;
 pub use control::*;
-pub use delta::*;
-pub use item::*;
 pub use metadata::*;
-pub use stream::*;
-pub use wire::parse_turn_stream_event;
+pub use normal_terminal::*;
+pub use ordered_control::*;
+pub use steering::*;
+pub use streamed_input::*;

@@ -1,28 +1,55 @@
-use std::num::NonZeroU64;
-
-use beryl_app::input_admission::{accepted_input_command, idle_submission_command};
+use beryl_app::cas_projection::{
+    ProjectionConnectionService, ProjectionServiceConfig, ScheduledOrdinaryAdmission,
+    ScheduledOrdinaryAdmissionError, ScheduledOrdinaryAdmissionResult,
+    ScheduledOrdinaryExecutionProvider, ScheduledOrdinaryExecutionUnavailable,
+};
+use beryl_app::input_admission::{
+    InputAdmissionBuildError, idle_submission_command, prepare_accepted_input_admission,
+};
+use beryl_home_store::{HomeCommand, HomeOpenOptions, HomeSchemaVersion, HomeStore};
+#[cfg(feature = "test-faults")]
 use beryl_home_store::{
-    HomeCommand, HomeHealthState, HomeOpenOptions, HomeSchemaVersion, HomeStore, SidecarByteLimit,
-    SidecarNamespace,
+    HomeHealthState,
     test_faults::{FaultController, FaultPoint},
 };
 use beryl_model::{
-    AssetId, DraftRevision, InputGateRevision, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId,
-    SyndicThreadId, ThreadRevision,
+    DraftRevision, ExecutionBinding, InputGateRevision, PathFlavor, RootId, RuntimeId, RuntimeMode,
+    RuntimeNativePath, SyndicDraftId, SyndicDraftMarkerId, SyndicItemId, SyndicThreadId,
+    ThreadRevision,
 };
-use beryl_state::{
-    AssetMediaType, AssetReferenceOwner, BerylState, CreateAssetWithReference, UnixMillis,
-};
+use beryl_state::{AssetOwner, AssetOwnerHeadUpdate, BerylState, UpdateAssetOwnerHeads};
 use syndic_storage::{
-    AcceptedInputAdmission, AdmissionMarkers, ComposerAtom, ComposerPayload, ContentAppend,
-    ContentBuild, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission,
-    ImageLabelOrdinal, InputAdmissionStatus, PreparedContent, ResolvedImageMarker,
-    SyndicPointReadLimit, SyndicStorage, SyndicTimestamp,
+    AcceptedInputAdmission, ComposerAtom, ComposerPayload, ContentAppend, ContentBuild,
+    CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission,
+    ImageLabelOrdinal, InputAdmissionStatus, PreparedContent, SyndicPointReadLimit, SyndicStorage,
+    SyndicTimestamp,
 };
+
+#[path = "phase5_input_admission/assets.rs"]
+mod assets;
+#[path = "phase5_input_admission/historical_labels.rs"]
+mod historical_labels;
+#[path = "phase5_input_admission/marker_free.rs"]
+mod marker_free;
+
+use assets::{admit_asset, admit_asset_at_label};
+
+struct UnavailableScheduledOrdinaryProvider;
+
+impl ScheduledOrdinaryExecutionProvider for UnavailableScheduledOrdinaryProvider {
+    fn try_issue(
+        &mut self,
+        admission: ScheduledOrdinaryAdmission,
+    ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
+        Ok(admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady))
+    }
+
+    fn shutdown(&mut self) {}
+}
 
 struct Fixture {
     _directory: tempfile::TempDir,
-    store: HomeStore,
+    store: ProjectionConnectionService,
     syndic: SyndicStorage,
     state: BerylState,
     thread: SyndicThreadId,
@@ -31,20 +58,27 @@ struct Fixture {
 
 impl Fixture {
     fn new(name: u8) -> Self {
-        Self::open(name, None)
-    }
-
-    fn with_faults(name: u8, faults: FaultController) -> Self {
-        Self::open(name, Some(faults))
-    }
-
-    fn open(name: u8, faults: Option<FaultController>) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let options = HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT);
-        let mut store = match faults {
-            Some(faults) => HomeStore::open_with_faults(options, faults).unwrap(),
-            None => HomeStore::open(options).unwrap(),
-        };
+        let store = HomeStore::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        Self::from_store(name, directory, store)
+    }
+
+    #[cfg(feature = "test-faults")]
+    fn with_faults(name: u8, faults: FaultController) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let store = HomeStore::open_with_faults(
+            HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+            faults,
+        )
+        .unwrap();
+        Self::from_store(name, directory, store)
+    }
+
+    fn from_store(name: u8, directory: tempfile::TempDir, mut store: HomeStore) -> Self {
         let state = BerylState::register(&mut store).unwrap();
         let syndic = SyndicStorage::register(&mut store).unwrap();
         let thread = SyndicThreadId::from_bytes([name; 16]);
@@ -53,10 +87,17 @@ impl Fixture {
         command
             .add(syndic.create_thread(
                 syndic.revision(&store).unwrap(),
-                CreateThread::ordinary(thread, draft, time(1)),
+                CreateThread::ordinary(thread, draft, execution_binding(name), time(1)),
             ))
             .unwrap();
         store.execute(command).unwrap();
+        let store = ProjectionConnectionService::new(
+            store,
+            syndic,
+            ProjectionServiceConfig::try_new(8, 4).unwrap(),
+            Box::new(UnavailableScheduledOrdinaryProvider),
+        )
+        .unwrap();
         Self {
             _directory: directory,
             store,
@@ -68,12 +109,31 @@ impl Fixture {
     }
 
     fn publish_marker(&self, marker_id: SyndicDraftMarkerId, updated_at: u64) {
-        let payload = ComposerPayload::new(vec![ComposerAtom::image_marker(
-            marker_id,
-            ImageLabelOrdinal::FIRST,
-        )])
-        .unwrap();
-        let content = PreparedContent::composer(&payload).unwrap();
+        self.publish_marker_at(marker_id, ImageLabelOrdinal::FIRST, updated_at);
+    }
+
+    fn publish_marker_at(
+        &self,
+        marker_id: SyndicDraftMarkerId,
+        label: ImageLabelOrdinal,
+        updated_at: u64,
+    ) {
+        let payload =
+            ComposerPayload::new(vec![ComposerAtom::image_marker(marker_id, label)]).unwrap();
+        self.publish_payload(&payload, updated_at);
+    }
+
+    fn publish_marker_free(&self, updated_at: u64) {
+        self.publish_text("marker free", updated_at);
+    }
+
+    fn publish_text(&self, text: &str, updated_at: u64) {
+        let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
+        self.publish_payload(&payload, updated_at);
+    }
+
+    fn publish_payload(&self, payload: &ComposerPayload, updated_at: u64) {
+        let content = PreparedContent::composer(payload).unwrap();
         execute_one(
             &self.store,
             self.syndic.begin_content(
@@ -112,6 +172,19 @@ fn time(value: u64) -> SyndicTimestamp {
     SyndicTimestamp::from_unix_millis(value)
 }
 
+fn execution_binding(seed: u8) -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([seed; 16]),
+        RootId::from_bytes([seed.wrapping_add(2); 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::host(),
+            PathFlavor::Windows,
+            r"C:\work\beryl-phase5",
+        )
+        .unwrap(),
+    )
+}
+
 fn point_limit() -> SyndicPointReadLimit {
     SyndicPointReadLimit::new(1_000_000).unwrap()
 }
@@ -122,63 +195,14 @@ fn execute_one(store: &HomeStore, contribution: beryl_home_store::MutationContri
     store.execute(command).unwrap();
 }
 
-fn admit_asset(
-    fixture: &mut Fixture,
-    marker_id: SyndicDraftMarkerId,
-    bytes: &[u8],
-    owner_draft: SyndicDraftId,
-) -> AssetId {
-    let sidecar = fixture
-        .store
-        .admit_sidecar(
-            SidecarNamespace::new("images").unwrap(),
-            bytes,
-            SidecarByteLimit::new(NonZeroU64::new(1_024 * 1_024).unwrap()),
-        )
-        .unwrap();
-    let asset_id = AssetId::sha256_v1(
-        sidecar.address().digest().as_bytes(),
-        NonZeroU64::new(sidecar.address().length()).unwrap(),
-    );
-    let assets = fixture.state.assets();
-    let revision = assets.revision(&fixture.store).unwrap();
-    let creation = CreateAssetWithReference::new(
-        asset_id,
-        AssetMediaType::new("image/png").unwrap(),
-        None,
-        revision.checked_next().unwrap(),
-        AssetReferenceOwner::CurrentDraftMarker {
-            draft_id: owner_draft,
-            marker_id,
-        },
-        UnixMillis::new(2),
-    )
-    .unwrap();
-    let first = assets
-        .create_with_reference(revision, sidecar, creation)
-        .unwrap();
-    let mut command = HomeCommand::new(fixture.store.home_revision().unwrap());
-    first.add_to(&mut command).unwrap();
-    fixture.store.execute(command).unwrap();
-    asset_id
-}
-
-fn markers(marker_id: SyndicDraftMarkerId, asset_id: AssetId) -> AdmissionMarkers {
-    AdmissionMarkers::new(vec![ResolvedImageMarker::new(
-        marker_id,
-        ImageLabelOrdinal::FIRST,
-        asset_id,
-    )])
-    .unwrap()
-}
-
 #[test]
 fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
     let mut fixture = Fixture::new(1);
     let first_marker = SyndicDraftMarkerId::from_bytes([10; 16]);
     fixture.publish_marker(first_marker, 2);
     let first_draft = fixture.draft;
-    let first_asset = admit_asset(&mut fixture, first_marker, b"first image", first_draft);
+    let (_first_asset, first_set) =
+        admit_asset(&mut fixture, first_marker, b"first image", first_draft, 20);
     let first_content = fixture
         .syndic
         .current_draft(&fixture.store, fixture.thread, point_limit())
@@ -197,7 +221,7 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         InputGateRevision::new(1).unwrap(),
         second_draft,
         first_item,
-        markers(first_marker, first_asset),
+        Some(first_set),
         time(3),
     );
     let command = idle_submission_command(
@@ -209,19 +233,13 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
     .unwrap();
     fixture.store.execute(command).unwrap();
 
-    let old_owner = AssetReferenceOwner::CurrentDraftMarker {
-        draft_id: fixture.draft,
-        marker_id: first_marker,
-    };
-    let submitted_owner = AssetReferenceOwner::SubmittedTurnItemMarker {
-        item_id: first_item,
-        marker_id: first_marker,
-    };
+    let old_owner = AssetOwner::CurrentDraft(fixture.draft);
+    let submitted_owner = AssetOwner::SubmittedTurnItem(first_item);
     assert!(
         fixture
             .state
             .assets()
-            .reference(&fixture.store, old_owner)
+            .owner_head(&fixture.store, old_owner)
             .unwrap()
             .is_none()
     );
@@ -229,16 +247,24 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         fixture
             .state
             .assets()
-            .reference(&fixture.store, submitted_owner)
+            .owner_head(&fixture.store, submitted_owner)
             .unwrap()
             .unwrap()
-            .asset_id(),
-        first_asset
+            .set(),
+        first_set
     );
 
     let second_marker = SyndicDraftMarkerId::from_bytes([13; 16]);
-    fixture.publish_marker(second_marker, 4);
-    let second_asset = admit_asset(&mut fixture, second_marker, b"second image", second_draft);
+    let second_label = ImageLabelOrdinal::new(2).unwrap();
+    fixture.publish_marker_at(second_marker, second_label, 4);
+    let (_second_asset, second_set) = admit_asset_at_label(
+        &mut fixture,
+        second_marker,
+        second_label,
+        b"second image",
+        second_draft,
+        21,
+    );
     let second_content = fixture
         .syndic
         .current_draft(&fixture.store, fixture.thread, point_limit())
@@ -254,32 +280,32 @@ fn idle_and_non_idle_admission_move_asset_ownership_in_the_same_commit() {
         second_content,
         InputGateRevision::new(2).unwrap(),
         SyndicDraftId::from_bytes([14; 16]),
-        markers(second_marker, second_asset),
+        Some(second_set),
         time(5),
     );
     let input_id = admission.accepted_input_id();
-    let command = accepted_input_command(
+    let prepared = prepare_accepted_input_admission(
         &fixture.store,
         fixture.syndic,
         fixture.state.assets(),
         admission,
     )
     .unwrap();
-    fixture.store.execute(command).unwrap();
+    fixture
+        .store
+        .execute_accepted_input_admission(prepared)
+        .unwrap();
 
-    let accepted_owner = AssetReferenceOwner::AcceptedInputMarker {
-        input_id,
-        marker_id: second_marker,
-    };
+    let accepted_owner = AssetOwner::AcceptedInput(input_id);
     assert_eq!(
         fixture
             .state
             .assets()
-            .reference(&fixture.store, accepted_owner)
+            .owner_head(&fixture.store, accepted_owner)
             .unwrap()
             .unwrap()
-            .asset_id(),
-        second_asset
+            .set(),
+        second_set
     );
     fixture.store.validate_registered_domains().unwrap();
 }
@@ -290,11 +316,12 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
     let marker_id = SyndicDraftMarkerId::from_bytes([31; 16]);
     fixture.publish_marker(marker_id, 2);
     let wrong_owner_draft = SyndicDraftId::from_bytes([32; 16]);
-    let asset_id = admit_asset(
+    let (_asset_id, proof) = admit_asset(
         &mut fixture,
         marker_id,
         b"mismatched owner",
         wrong_owner_draft,
+        40,
     );
     let item_id = SyndicItemId::from_bytes([33; 16]);
     let expected_content = fixture
@@ -313,17 +340,19 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         InputGateRevision::new(1).unwrap(),
         SyndicDraftId::from_bytes([34; 16]),
         item_id,
-        markers(marker_id, asset_id),
+        Some(proof),
         time(3),
     );
-    let command = idle_submission_command(
-        &fixture.store,
-        fixture.syndic,
-        fixture.state.assets(),
-        submission,
-    )
-    .unwrap();
-    assert!(fixture.store.execute(command).is_err());
+    assert!(matches!(
+        idle_submission_command(
+            &fixture.store,
+            fixture.syndic,
+            fixture.state.assets(),
+            submission,
+        ),
+        Err(InputAdmissionBuildError::MissingOwnerHead(owner))
+            if owner == AssetOwner::CurrentDraft(fixture.draft)
+    ));
 
     let current = fixture
         .syndic
@@ -347,10 +376,7 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         fixture
             .state
             .assets()
-            .reference(
-                &fixture.store,
-                AssetReferenceOwner::SubmittedTurnItemMarker { item_id, marker_id },
-            )
+            .owner_head(&fixture.store, AssetOwner::SubmittedTurnItem(item_id))
             .unwrap()
             .is_none()
     );
@@ -358,18 +384,13 @@ fn missing_draft_asset_owner_rejects_both_domains_without_consuming_the_draft() 
         fixture
             .state
             .assets()
-            .reference(
-                &fixture.store,
-                AssetReferenceOwner::CurrentDraftMarker {
-                    draft_id: wrong_owner_draft,
-                    marker_id,
-                },
-            )
+            .owner_head(&fixture.store, AssetOwner::CurrentDraft(wrong_owner_draft))
             .unwrap()
             .is_some()
     );
 }
 
+#[cfg(feature = "test-faults")]
 #[test]
 fn persistence_cuts_keep_syndic_and_asset_ownership_on_the_same_side() {
     for (name, point, status, moved) in [
@@ -397,7 +418,8 @@ fn persistence_cuts_keep_syndic_and_asset_ownership_on_the_same_side() {
         let marker_id = SyndicDraftMarkerId::from_bytes([name.wrapping_add(2); 16]);
         fixture.publish_marker(marker_id, 2);
         let draft_id = fixture.draft;
-        let asset_id = admit_asset(&mut fixture, marker_id, b"fault image", draft_id);
+        let (_asset_id, proof) =
+            admit_asset(&mut fixture, marker_id, b"fault image", draft_id, name);
         let content = fixture
             .syndic
             .current_draft(&fixture.store, fixture.thread, point_limit())
@@ -415,7 +437,7 @@ fn persistence_cuts_keep_syndic_and_asset_ownership_on_the_same_side() {
             InputGateRevision::new(1).unwrap(),
             SyndicDraftId::from_bytes([name.wrapping_add(4); 16]),
             item_id,
-            markers(marker_id, asset_id),
+            Some(proof),
             time(3),
         );
         let command = idle_submission_command(
@@ -439,21 +461,12 @@ fn persistence_cuts_keep_syndic_and_asset_ownership_on_the_same_side() {
         let source = fixture
             .state
             .assets()
-            .reference(
-                &fixture.store,
-                AssetReferenceOwner::CurrentDraftMarker {
-                    draft_id,
-                    marker_id,
-                },
-            )
+            .owner_head(&fixture.store, AssetOwner::CurrentDraft(draft_id))
             .unwrap();
         let target = fixture
             .state
             .assets()
-            .reference(
-                &fixture.store,
-                AssetReferenceOwner::SubmittedTurnItemMarker { item_id, marker_id },
-            )
+            .owner_head(&fixture.store, AssetOwner::SubmittedTurnItem(item_id))
             .unwrap();
         assert_eq!(source.is_none(), moved);
         assert_eq!(target.is_some(), moved);

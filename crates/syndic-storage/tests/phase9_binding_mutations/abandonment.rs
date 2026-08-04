@@ -28,9 +28,9 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         current.draft().id(),
         current.draft().revision(),
         current.draft().content(),
-        gate.record().revision(),
+        gate.revision(),
         draft_id(25),
-        AdmissionMarkers::default(),
+        None,
         timestamp(7),
     );
     let accepted = admission.accepted_input_id();
@@ -54,6 +54,15 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
+    let target = AcceptedRouteLostTarget::Steering(SteeringTargetProof::new(
+        PendingSteeringTargetProof::new(
+            binding.binding().revision(),
+            active.snapshot_id(),
+            active.turn_id(),
+            active.usable().cas_thread_id().clone(),
+        ),
+        fixture.cas_turn.clone(),
+    ));
     let wrong_stale = StaleCasBinding::new(
         active.usable().execution().clone(),
         active.usable().cas_thread_id().clone(),
@@ -61,7 +70,7 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         Some(active.usable().represented_prefix()),
         Some(active.usable().lineage()),
         Some(active.usable().native_turn_count().checked_next().unwrap()),
-        Some(snapshot.record().loaded_generation()),
+        Some(snapshot.loaded_generation()),
         "active CAS projection lost",
         timestamp(8),
     )
@@ -73,7 +82,8 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
             AbandonActiveBinding::new(
                 fixture.thread,
                 binding.binding().revision(),
-                gate.record().revision(),
+                gate.selected_route().unwrap().generation(),
+                target.clone(),
                 fixture.selected,
                 wrong_stale,
             ),
@@ -91,7 +101,7 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         Some(active.usable().represented_prefix()),
         Some(active.usable().lineage()),
         Some(active.usable().native_turn_count()),
-        Some(snapshot.record().loaded_generation()),
+        Some(snapshot.loaded_generation()),
         "active CAS projection lost",
         timestamp(8),
     )
@@ -99,7 +109,8 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
     let abandon = AbandonActiveBinding::new(
         fixture.thread,
         binding.binding().revision(),
-        gate.record().revision(),
+        gate.selected_route().unwrap().generation(),
+        target,
         fixture.selected,
         stale,
     );
@@ -130,28 +141,36 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        owner.record().retired_binding_revision(),
+        owner.retired_binding_revision(),
         Some(binding.binding().revision())
     );
-    let input = storage
-        .accepted_input(&store, accepted, point_limit())
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        input.record().disposition(),
-        &AcceptedInputDisposition::NextTurn(NextTurnReason::ProjectionLost)
-    );
-    assert_eq!(input.record().lifecycle(), AcceptedInputLifecycle::Admitted);
     let gate = storage
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
+    assert_eq!(gate.state(), &InputGateState::PendingTurn(fixture.turn));
+    assert_eq!(gate.live_steering_count(), 0);
+    assert_eq!(gate.live_next_turn_count(), 1);
+    let proof = gate.selected_route().unwrap();
+    let page = storage
+        .accepted_route_page(
+            &store,
+            fixture.thread,
+            proof.generation(),
+            proof.revision(),
+            None,
+        )
+        .unwrap();
+    let input = page
+        .records()
+        .iter()
+        .find(|row| row.input().id() == accepted)
+        .unwrap();
     assert_eq!(
-        gate.record().state(),
-        &InputGateState::PendingTurn(fixture.turn)
+        input.effective_state(),
+        AcceptedRouteEffectiveState::NextTurn(NextTurnReason::ProjectionLost)
     );
-    assert_eq!(gate.record().live_steering_count(), 0);
-    assert_eq!(gate.record().live_next_turn_count(), 1);
+    assert_eq!(input.leaf().lifecycle(), AcceptedInputLifecycle::Admitted);
 
     let represented = CasRepresentedPrefixProof::new(
         None,
@@ -190,7 +209,7 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
             ActivateBinding::new(
                 fixture.thread,
                 binding.binding().revision(),
-                gate.record().revision(),
+                gate.revision(),
                 fixture.selected,
                 retry_snapshot,
                 fixture.turn,
@@ -203,16 +222,13 @@ fn pre_activation_abandonment_retires_projection_and_preserves_queued_input() {
         .turn_state(&store, fixture.turn, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(state.record().lifecycle(), TurnLifecycle::Pending);
+    assert_eq!(state.lifecycle(), TurnLifecycle::Pending);
     let gate = storage
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
-    assert!(matches!(
-        gate.record().state(),
-        InputGateState::AwaitingSteering(_)
-    ));
-    assert_eq!(gate.record().live_next_turn_count(), 1);
+    assert!(matches!(gate.state(), InputGateState::AwaitingSteering(_)));
+    assert_eq!(gate.live_next_turn_count(), 1);
     store.validate_registered_domains().unwrap();
 
     store.close().unwrap();
@@ -243,8 +259,8 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             LiveSourceEvent::new(
                 fixture.thread,
                 fixture.turn,
-                state.record().revision(),
-                gate.record().revision(),
+                state.revision(),
+                gate.revision(),
                 SourceEventSequence::FIRST,
                 Some(CasTurnSource::new(
                     fixture.cas_thread.clone(),
@@ -272,6 +288,15 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
+    let target = AcceptedRouteLostTarget::Steering(SteeringTargetProof::new(
+        PendingSteeringTargetProof::new(
+            binding.binding().revision(),
+            active.snapshot_id(),
+            active.turn_id(),
+            active.usable().cas_thread_id().clone(),
+        ),
+        fixture.cas_turn.clone(),
+    ));
     let stale = StaleCasBinding::new(
         active.usable().execution().clone(),
         active.usable().cas_thread_id().clone(),
@@ -279,7 +304,7 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         Some(active.usable().represented_prefix()),
         Some(active.usable().lineage()),
         Some(active.usable().native_turn_count()),
-        Some(snapshot.record().loaded_generation()),
+        Some(snapshot.loaded_generation()),
         "active CAS projection lost",
         timestamp(7),
     )
@@ -291,7 +316,8 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
             AbandonActiveBinding::new(
                 fixture.thread,
                 binding.binding().revision(),
-                gate.record().revision(),
+                gate.selected_route().unwrap().generation(),
+                target,
                 fixture.selected,
                 stale,
             ),
@@ -306,20 +332,26 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         .input_gate(&store, fixture.thread, point_limit())
         .unwrap()
         .unwrap();
-    let source_less_activation = LiveSourceEvent::new(
+    let stale_projection_activation = LiveSourceEvent::new(
         fixture.thread,
         fixture.turn,
-        state.record().revision(),
-        gate.record().revision(),
-        SourceEventSequence::new(state.record().source_event_count() + 1).unwrap(),
-        None,
+        state.revision(),
+        gate.revision(),
+        SourceEventSequence::new(state.source_event_count() + 1).unwrap(),
+        Some(CasTurnSource::new(
+            fixture.cas_thread.clone(),
+            fixture.cas_turn.clone(),
+        )),
         SourceEventPayload::TurnActivated,
         timestamp(8),
     )
     .unwrap();
     let error = execute_result(
         &store,
-        storage.admit_live_source_event(storage.revision(&store).unwrap(), source_less_activation),
+        storage.admit_live_source_event(
+            storage.revision(&store).unwrap(),
+            stale_projection_activation,
+        ),
     )
     .unwrap_err();
     assert!(matches!(
@@ -412,13 +444,15 @@ fn reopen_rejects_idle_gate_after_abandoned_turn_becomes_unbound() {
         .unwrap()
         .unwrap();
     let corrupt = InputGateRecord::new(
-        gate.record().thread_id(),
-        gate.record().revision(),
+        gate.thread_id(),
+        gate.revision(),
         InputGateState::Idle,
-        gate.record().accepted_high_water(),
-        gate.record().live_steering_count(),
-        gate.record().live_next_turn_count(),
-        gate.record().live_logical_utf8_bytes(),
+        gate.accepted_high_water(),
+        gate.route_generation_high_water(),
+        gate.selected_route(),
+        gate.live_steering_count(),
+        gate.live_next_turn_count(),
+        gate.live_logical_utf8_bytes(),
     )
     .unwrap();
     commit(&store, storage, batch([FixtureRecord::InputGate(corrupt)]));

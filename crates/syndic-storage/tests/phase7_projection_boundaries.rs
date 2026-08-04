@@ -1,224 +1,28 @@
 #![cfg(feature = "test-faults")]
 
-#[path = "phase6_live_history/support.rs"]
 mod support;
 
-use beryl_home_store::{CursorReadLimits, HomeCommand, HomeStore};
-use std::num::NonZeroU64;
+#[path = "phase7_projection_boundaries/fixture.rs"]
+mod fixture;
 
-use beryl_model::{AssetId, ContentRevision, SyndicDraftMarkerId, SyndicItemId, SyndicResourceId};
+use beryl_home_store::{CursorReadLimits, HomeCommand, HomeStore};
+use beryl_model::{
+    AssetReferenceSetDigest, AssetReferenceSetId, ContentRevision, SealedAssetReferenceSetProof,
+    SyndicDraftMarkerId, SyndicItemId, SyndicResourceId,
+};
 use syndic_storage::{
-    AdmissionMarkers, AdvanceItemProjectionBuild, CONTENT_CHUNK_MAX_BYTES, ComposerAtom,
-    ComposerContentAssembler, ComposerPayload, CreateThread, DraftPayloadUpdate,
-    DraftPayloadUpdateDecision, IdleSubmission, ImageLabelOrdinal, ItemProjectionGeneration,
-    MARKDOWN_CODE_INLINE_MAX_BYTES, MARKDOWN_CODE_INLINE_MAX_LINES,
-    MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
+    AdvanceItemProjectionBuild, CONTENT_CHUNK_MAX_BYTES, ComposerAtom, ComposerContentAssembler,
+    ComposerPayload, CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission,
+    ImageLabelOrdinal, ItemProjectionGeneration, MARKDOWN_CODE_INLINE_MAX_BYTES,
+    MARKDOWN_CODE_INLINE_MAX_LINES, MARKDOWN_PARAGRAPH_INLINE_MAX_BYTES, MARKDOWN_SPAN_MAX_BYTES,
     MARKDOWN_TABLE_INLINE_MAX_BODY_ROWS, MARKDOWN_TABLE_INLINE_MAX_BYTES,
     MARKDOWN_TABLE_INLINE_MAX_COLUMNS, MarkdownBlockKind, PreparedContent, ProjectionPayload,
-    ResolvedImageMarker, StartItemProjectionBuild, SyndicPointReadLimit, SyndicReadError,
-    SyndicStorage, TRANSCRIPT_PAGE_MAX_BYTES,
+    StartItemProjectionBuild, SyndicPointReadLimit, SyndicReadError, SyndicStorage,
+    TRANSCRIPT_PAGE_MAX_BYTES,
 };
 
+use fixture::*;
 use support::{TestHome, draft_id, id, open, stage_prepared_content, timestamp};
-
-struct ProjectedFixture {
-    store: HomeStore,
-    _home: TestHome,
-    storage: SyndicStorage,
-    item: SyndicItemId,
-    generation: ItemProjectionGeneration,
-}
-
-fn point_limit() -> SyndicPointReadLimit {
-    SyndicPointReadLimit::new(1_000_000).unwrap()
-}
-
-fn execute(store: &HomeStore, contribution: beryl_home_store::MutationContribution) {
-    let mut command = HomeCommand::new(store.home_revision().unwrap());
-    command.add(contribution).unwrap();
-    store.execute(command).unwrap();
-}
-
-fn project_user_markdown(name: &str, text: &str) -> ProjectedFixture {
-    let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
-    project_user_payload(name, payload, AdmissionMarkers::default())
-}
-
-fn project_user_payload(
-    name: &str,
-    payload: ComposerPayload,
-    markers: AdmissionMarkers,
-) -> ProjectedFixture {
-    let home = TestHome::new(name);
-    let mut store = open(home.path());
-    let storage = SyndicStorage::register(&mut store).unwrap();
-    let thread = id(1);
-    let draft = draft_id(2);
-    execute(
-        &store,
-        storage.create_thread(
-            storage.revision(&store).unwrap(),
-            CreateThread::ordinary(thread, draft, timestamp(1)),
-        ),
-    );
-
-    let content = PreparedContent::composer(&payload).unwrap();
-    stage_prepared_content(&store, storage, &content);
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let update = match DraftPayloadUpdate::prepare(&current, &content, timestamp(2)).unwrap() {
-        DraftPayloadUpdateDecision::Update(update) => update,
-        DraftPayloadUpdateDecision::NoChange => unreachable!(),
-    };
-    execute(
-        &store,
-        storage.update_draft_payload(storage.revision(&store).unwrap(), update),
-    );
-
-    let current = storage
-        .current_draft(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let thread_record = storage
-        .thread(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let gate = storage
-        .input_gate(&store, thread, point_limit())
-        .unwrap()
-        .unwrap();
-    let item = SyndicItemId::from_bytes([4; 16]);
-    let submission = IdleSubmission::new(
-        thread,
-        thread_record.record().revision(),
-        draft,
-        current.draft().revision(),
-        current.draft().content(),
-        gate.record().revision(),
-        draft_id(3),
-        item,
-        markers,
-        timestamp(3),
-    );
-    execute(
-        &store,
-        storage.submit_idle_draft(storage.revision(&store).unwrap(), submission),
-    );
-
-    let canonical = storage
-        .canonical_item(&store, item, point_limit())
-        .unwrap()
-        .unwrap();
-    let generation = ItemProjectionGeneration::FIRST;
-    execute(
-        &store,
-        storage.start_item_projection_build(
-            storage.revision(&store).unwrap(),
-            StartItemProjectionBuild::new(item, canonical.record().revision(), generation),
-        ),
-    );
-    for _ in 0..128 {
-        if storage
-            .item_projection_set(&store, item, generation, point_limit())
-            .unwrap()
-            .is_some()
-        {
-            return ProjectedFixture {
-                store,
-                _home: home,
-                storage,
-                item,
-                generation,
-            };
-        }
-        let build = storage
-            .item_projection_build(&store, item, generation, point_limit())
-            .unwrap()
-            .unwrap();
-        execute(
-            &store,
-            storage.advance_item_projection_build(
-                storage.revision(&store).unwrap(),
-                AdvanceItemProjectionBuild::new(item, generation, build.record().revision()),
-            ),
-        );
-    }
-    panic!("bounded Markdown projection did not finish");
-}
-
-fn projections(fixture: &ProjectedFixture) -> Vec<syndic_storage::ProjectionRecord> {
-    let mut output = Vec::new();
-    let mut after = None;
-    loop {
-        let page = fixture
-            .storage
-            .item_projections(
-                &fixture.store,
-                fixture.item,
-                fixture.generation,
-                after,
-                CursorReadLimits::new(256, TRANSCRIPT_PAGE_MAX_BYTES).unwrap(),
-            )
-            .unwrap();
-        for index in page.records() {
-            output.push(
-                fixture
-                    .storage
-                    .projection(&fixture.store, index.projection_id(), point_limit())
-                    .unwrap()
-                    .unwrap()
-                    .record()
-                    .clone(),
-            );
-            after = Some(index.ordinal());
-        }
-        if !page.has_more() {
-            return output;
-        }
-    }
-}
-
-fn single_projection(name: &str, markdown: &str) -> syndic_storage::ProjectionRecord {
-    let fixture = project_user_markdown(name, markdown);
-    let mut projected = projections(&fixture);
-    assert_eq!(projected.len(), 1, "{name} must produce one block");
-    projected.pop().unwrap()
-}
-
-fn assert_inline_block(name: &str, markdown: &str, expected: MarkdownBlockKind) {
-    let projection = single_projection(name, markdown);
-    match projection.payload() {
-        ProjectionPayload::InlineMarkdown {
-            block_kind,
-            source,
-            source_range,
-            ..
-        } => {
-            assert_eq!(*block_kind, expected);
-            assert_eq!(&**source, markdown);
-            assert_eq!(source_range.start(), 0);
-            assert_eq!(source_range.end(), markdown.len() as u64);
-        }
-        payload => panic!("expected one inline {expected:?} block, got {payload:?}"),
-    }
-}
-
-fn assert_resource_block(name: &str, markdown: &str, expected: MarkdownBlockKind) {
-    let projection = single_projection(name, markdown);
-    match projection.payload() {
-        ProjectionPayload::ResourceReference {
-            block_kind,
-            source_range,
-            ..
-        } => {
-            assert_eq!(*block_kind, expected);
-            assert!(source_range.end() <= markdown.len() as u64);
-        }
-        payload => panic!("expected one {expected:?} resource, got {payload:?}"),
-    }
-}
 
 #[test]
 fn composer_chunk_boundaries_never_split_utf8_scalars() {
@@ -252,17 +56,10 @@ fn composer_chunk_boundaries_never_split_utf8_scalars() {
 fn zero_width_image_pieces_survive_marker_only_and_trailing_positions() {
     let marker_id = SyndicDraftMarkerId::from_bytes([31; 16]);
     let label = ImageLabelOrdinal::new(1).unwrap();
-    let marker = ResolvedImageMarker::new(
-        marker_id,
-        label,
-        AssetId::sha256_v1([32; 32], NonZeroU64::new(17).unwrap()),
-    );
-    let markers = || AdmissionMarkers::new(vec![marker]).unwrap();
-
     let marker_only = project_user_payload(
         "phase7-marker-only",
         ComposerPayload::new(vec![ComposerAtom::image_marker(marker_id, label)]).unwrap(),
-        markers(),
+        None,
     );
     let marker_only = projections(&marker_only);
     assert_eq!(marker_only.len(), 1);
@@ -281,7 +78,7 @@ fn zero_width_image_pieces_survive_marker_only_and_trailing_positions() {
             ComposerAtom::image_marker(marker_id, label),
         ])
         .unwrap(),
-        markers(),
+        None,
     );
     let trailing = projections(&trailing);
     assert_eq!(trailing.len(), 2);
@@ -412,7 +209,7 @@ fn heavy_resource_text_is_range_read_with_exact_bounded_continuations() {
         .resource(&fixture.store, resource_id, point_limit())
         .unwrap()
         .unwrap();
-    assert_eq!(metadata.record().byte_length(), Some(expected.len() as u64));
+    assert_eq!(metadata.byte_length(), Some(expected.len() as u64));
 
     let mut observed = Vec::new();
     let mut offset = 0_u64;

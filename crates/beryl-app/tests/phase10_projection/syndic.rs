@@ -1,26 +1,72 @@
 #![allow(dead_code)]
 
+#[path = "syndic/assets.rs"]
+mod assets;
 #[path = "syndic/exact.rs"]
 mod exact;
+#[path = "syndic/history.rs"]
+mod history;
 #[path = "syndic/support.rs"]
 mod support;
 
+use beryl_app::{
+    cas_projection::{
+        ProjectionCancellationToken, ProjectionConnectionService, ProjectionServiceConfig,
+        ScheduledOrdinaryAdmission, ScheduledOrdinaryAdmissionError,
+        ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryExecutionProvider,
+        ScheduledOrdinaryExecutionUnavailable,
+    },
+    input_admission::{idle_submission_command, prepare_accepted_input_admission},
+};
 use beryl_home_store::{CursorReadLimits, HomeOpenOptions, HomeSchemaVersion, HomeStore};
-use beryl_model::{CasItemId, SyndicDraftId, SyndicItemId, SyndicThreadId, SyndicTurnId};
+use beryl_model::{
+    CasItemId, SealedAssetReferenceSetProof, SyndicAcceptedInputId, SyndicDraftId,
+    SyndicDraftMarkerId, SyndicItemId, SyndicThreadId, SyndicTurnId,
+};
+use beryl_state::{AssetState, BerylState};
 use support::{execute, project_item, stage_prepared_content};
 use syndic_storage::*;
 
-pub use exact::execution_binding;
+#[allow(unused_imports)]
+pub use exact::{execution_binding, wsl_execution_binding};
+
+pub fn correlate_captured_user_item(
+    store: &HomeStore,
+    storage: SyndicStorage,
+    thread: SyndicThreadId,
+    turn: SyndicTurnId,
+    item: SyndicItemId,
+    source: &CasTurnSource,
+    observed_at: SyndicTimestamp,
+) {
+    exact::correlate_user_item(store, storage, thread, turn, item, source, observed_at);
+}
 
 #[derive(Clone, Copy)]
 pub struct SubmittedTurn {
     pub turn: SyndicTurnId,
+    user_item: SyndicItemId,
+}
+
+struct UnavailableScheduledOrdinaryProvider;
+
+impl ScheduledOrdinaryExecutionProvider for UnavailableScheduledOrdinaryProvider {
+    fn try_issue(
+        &mut self,
+        admission: ScheduledOrdinaryAdmission,
+    ) -> Result<ScheduledOrdinaryAdmissionResult, ScheduledOrdinaryAdmissionError> {
+        Ok(admission.decline(ScheduledOrdinaryExecutionUnavailable::RuntimeNotReady))
+    }
+
+    fn shutdown(&mut self) {}
 }
 
 pub struct Fixture {
     _directory: tempfile::TempDir,
-    pub store: HomeStore,
+    pub store: ProjectionConnectionService,
     pub storage: SyndicStorage,
+    pub state: BerylState,
+    pub cancellation: ProjectionCancellationToken,
     pub thread: SyndicThreadId,
     next_draft: u8,
     next_item: u8,
@@ -28,14 +74,60 @@ pub struct Fixture {
 }
 
 impl Fixture {
+    pub fn draft_marker_id(draft: SyndicDraftId, ordinal: u64) -> SyndicDraftMarkerId {
+        assets::marker_id(draft, ordinal)
+    }
+
     pub fn new(seed: u8) -> Self {
+        Self::new_with_worker_capacity(seed, 128)
+    }
+
+    pub fn new_with_worker_capacity(seed: u8, worker_capacity: u64) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let store = HomeStore::open(HomeOpenOptions::new(
             directory.path(),
             HomeSchemaVersion::CURRENT,
         ))
         .unwrap();
-        Self::from_store(seed, directory, store)
+        Self::from_store(seed, directory, store, worker_capacity)
+    }
+
+    pub fn new_with_scheduled_provider(
+        seed: u8,
+        create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let store = HomeStore::open(HomeOpenOptions::new(
+            directory.path(),
+            HomeSchemaVersion::CURRENT,
+        ))
+        .unwrap();
+        Self::from_store_with_provider(seed, directory, store, 128, create_provider)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn new_with_scheduled_provider_and_faults(
+        seed: u8,
+        faults: beryl_home_store::test_faults::FaultController,
+        create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
+        Self::new_with_scheduled_provider_faults_and_capacity(seed, faults, 128, create_provider)
+    }
+
+    #[cfg(feature = "test-faults")]
+    pub fn new_with_scheduled_provider_faults_and_capacity(
+        seed: u8,
+        faults: beryl_home_store::test_faults::FaultController,
+        worker_capacity: u64,
+        create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let store = HomeStore::open_with_faults(
+            HomeOpenOptions::new(directory.path(), HomeSchemaVersion::CURRENT),
+            faults,
+        )
+        .unwrap();
+        Self::from_store_with_provider(seed, directory, store, worker_capacity, create_provider)
     }
 
     #[cfg(feature = "test-faults")]
@@ -46,11 +138,29 @@ impl Fixture {
             faults,
         )
         .unwrap();
-        Self::from_store(seed, directory, store)
+        Self::from_store(seed, directory, store, 128)
     }
 
-    fn from_store(seed: u8, directory: tempfile::TempDir, mut store: HomeStore) -> Self {
+    fn from_store(
+        seed: u8,
+        directory: tempfile::TempDir,
+        store: HomeStore,
+        worker_capacity: u64,
+    ) -> Self {
+        Self::from_store_with_provider(seed, directory, store, worker_capacity, |_| {
+            Box::new(UnavailableScheduledOrdinaryProvider)
+        })
+    }
+
+    fn from_store_with_provider(
+        seed: u8,
+        directory: tempfile::TempDir,
+        mut store: HomeStore,
+        worker_capacity: u64,
+        create_provider: impl FnOnce(AssetState) -> Box<dyn ScheduledOrdinaryExecutionProvider>,
+    ) -> Self {
         let storage = SyndicStorage::register(&mut store).unwrap();
+        let state = BerylState::register(&mut store).unwrap();
         let thread = SyndicThreadId::from_bytes([seed; 16]);
         execute(
             &store,
@@ -59,19 +169,41 @@ impl Fixture {
                 CreateThread::ordinary(
                     thread,
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+                    execution_binding(),
                     SyndicTimestamp::from_unix_millis(1),
                 ),
             ),
         );
+        let config = ProjectionServiceConfig::try_new(128, worker_capacity).unwrap();
+        let scheduled_provider = create_provider(state.assets());
+        let store =
+            ProjectionConnectionService::new(store, storage, config, scheduled_provider).unwrap();
         Self {
             _directory: directory,
             store,
             storage,
+            state,
+            cancellation: ProjectionCancellationToken::new(),
             thread,
             next_draft: 40,
             next_item: 80,
             clock: 2,
         }
+    }
+
+    pub fn into_service(self) -> (tempfile::TempDir, ProjectionConnectionService) {
+        let Self {
+            _directory,
+            store,
+            storage: _,
+            state: _,
+            cancellation: _,
+            thread: _,
+            next_draft: _,
+            next_item: _,
+            clock: _,
+        } = self;
+        (_directory, store)
     }
 
     pub fn submit_text(&mut self, text: &str) -> SubmittedTurn {
@@ -80,6 +212,107 @@ impl Fixture {
 
     pub fn submit_text_on(&mut self, thread: SyndicThreadId, text: &str) -> SubmittedTurn {
         let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
+        let submission = self.prepare_submission_on(thread, payload, None);
+        self.execute_submission(submission)
+    }
+
+    pub fn accept_text(&mut self, text: &str) -> SyndicAcceptedInputId {
+        let payload = ComposerPayload::new(vec![ComposerAtom::text(text).unwrap()]).unwrap();
+        let content = PreparedContent::composer(&payload).unwrap();
+        stage_prepared_content(&self.store, self.storage, &content);
+        let current = self
+            .storage
+            .current_draft(&self.store, self.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let DraftPayloadUpdateDecision::Update(update) =
+            DraftPayloadUpdate::prepare(&current, &content, self.tick()).unwrap()
+        else {
+            panic!("fixture accepted input must change the draft")
+        };
+        execute(
+            &self.store,
+            self.storage
+                .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
+        );
+        let current = self
+            .storage
+            .current_draft(&self.store, self.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let gate = self
+            .storage
+            .input_gate(&self.store, self.thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let next_draft = SyndicDraftId::from_bytes([self.next_draft; 16]);
+        self.next_draft = self.next_draft.checked_add(1).unwrap();
+        let admission = AcceptedInputAdmission::new(
+            self.thread,
+            current.thread().revision(),
+            current.draft().id(),
+            current.draft().revision(),
+            current.draft().content(),
+            gate.revision(),
+            next_draft,
+            None,
+            self.tick(),
+        );
+        let accepted_input_id = admission.accepted_input_id();
+        let prepared = prepare_accepted_input_admission(
+            &self.store,
+            self.storage,
+            self.state.assets(),
+            admission,
+        )
+        .unwrap();
+        self.store
+            .execute_accepted_input_admission(prepared)
+            .unwrap();
+        accepted_input_id
+    }
+
+    pub fn submit_reference_on(
+        &mut self,
+        thread: SyndicThreadId,
+        content: ContentReference,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
+    ) -> SubmittedTurn {
+        let current = self
+            .storage
+            .current_draft(&self.store, thread, point_limit())
+            .unwrap()
+            .unwrap();
+        let DraftPayloadUpdateDecision::Update(update) =
+            DraftPayloadUpdate::prepare_reference(&current, content, self.tick()).unwrap()
+        else {
+            panic!("fixture submission must change the draft")
+        };
+        execute(
+            &self.store,
+            self.storage
+                .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
+        );
+        let submission = self.prepare_current_submission_on(thread, asset_reference_set);
+        self.execute_submission(submission)
+    }
+
+    fn execute_submission(&self, submission: IdleSubmission) -> SubmittedTurn {
+        let turn = submission.submitted_turn_id();
+        let user_item = submission.user_item_id();
+        let command =
+            idle_submission_command(&self.store, self.storage, self.state.assets(), submission)
+                .unwrap();
+        self.store.execute(command).unwrap();
+        SubmittedTurn { turn, user_item }
+    }
+
+    fn prepare_submission_on(
+        &mut self,
+        thread: SyndicThreadId,
+        payload: ComposerPayload,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
+    ) -> IdleSubmission {
         let content = PreparedContent::composer(&payload).unwrap();
         stage_prepared_content(&self.store, self.storage, &content);
         let current = self
@@ -97,6 +330,14 @@ impl Fixture {
             self.storage
                 .update_draft_payload(self.storage.revision(&self.store).unwrap(), update),
         );
+        self.prepare_current_submission_on(thread, asset_reference_set)
+    }
+
+    fn prepare_current_submission_on(
+        &mut self,
+        thread: SyndicThreadId,
+        asset_reference_set: Option<SealedAssetReferenceSetProof>,
+    ) -> IdleSubmission {
         let current = self
             .storage
             .current_draft(&self.store, thread, point_limit())
@@ -111,25 +352,18 @@ impl Fixture {
         self.next_draft = self.next_draft.checked_add(1).unwrap();
         let user_item = SyndicItemId::from_bytes([self.next_item; 16]);
         self.next_item = self.next_item.checked_add(1).unwrap();
-        let submission = IdleSubmission::new(
+        IdleSubmission::new(
             thread,
             current.thread().revision(),
             current.draft().id(),
             current.draft().revision(),
             current.draft().content(),
-            gate.record().revision(),
+            gate.revision(),
             next_draft,
             user_item,
-            AdmissionMarkers::default(),
+            asset_reference_set,
             self.tick(),
-        );
-        let turn = submission.submitted_turn_id();
-        execute(
-            &self.store,
-            self.storage
-                .submit_idle_draft(self.storage.revision(&self.store).unwrap(), submission),
-        );
-        SubmittedTurn { turn }
+        )
     }
 
     pub fn selected_path(&self, thread: SyndicThreadId) -> SelectedPathProof {
@@ -139,82 +373,10 @@ impl Fixture {
             .unwrap()
             .unwrap();
         SelectedPathProof::new(
-            thread.record().committed_tail(),
-            thread.record().revision(),
-            thread.record().selected_path_digest(),
+            thread.committed_tail(),
+            thread.revision(),
+            thread.selected_path_digest(),
         )
-    }
-
-    pub fn complete_with_assistant(&mut self, submitted: SubmittedTurn, text: &str) {
-        self.complete_with_assistant_on(self.thread, submitted, text);
-    }
-
-    pub fn complete_with_assistant_on(
-        &mut self,
-        thread: SyndicThreadId,
-        submitted: SubmittedTurn,
-        text: &str,
-    ) {
-        let started_at = self.tick();
-        let source = exact::establish_turn(
-            &self.store,
-            self.storage,
-            thread,
-            submitted.turn,
-            started_at,
-        );
-        self.admit(
-            thread,
-            submitted.turn,
-            &source,
-            SourceEventPayload::TurnActivated,
-        );
-        let item = SyndicItemId::from_bytes([self.next_item; 16]);
-        self.next_item = self.next_item.checked_add(1).unwrap();
-        let cas_item = CasItemId::new(format!("phase10-item-{item}")).unwrap();
-        let descriptor = SourceItemDescriptor::new(
-            item,
-            cas_item.clone(),
-            ProviderItemKind::AgentMessage,
-            ProviderItemDisposition::CanonicalText,
-        )
-        .unwrap();
-        self.admit(
-            thread,
-            submitted.turn,
-            &source,
-            SourceEventPayload::ItemStarted {
-                item: descriptor.clone(),
-                assistant_phase: Some(AssistantMessagePhase::FinalAnswer),
-            },
-        );
-        self.admit(
-            thread,
-            submitted.turn,
-            &source,
-            SourceEventPayload::ItemDelta {
-                item_id: item,
-                cas_item_id: cas_item,
-                expected_kind: ProviderItemKind::AgentMessage,
-                text: SourceEventText::new(text).unwrap(),
-            },
-        );
-        self.admit(
-            thread,
-            submitted.turn,
-            &source,
-            SourceEventPayload::ItemCompleted {
-                item: descriptor,
-                assistant_phase: Some(AssistantMessagePhase::FinalAnswer),
-            },
-        );
-        self.admit(
-            thread,
-            submitted.turn,
-            &source,
-            SourceEventPayload::TurnEnded(TurnEndStatus::complete()),
-        );
-        self.finalize_all(thread, submitted.turn);
     }
 
     pub fn retire_current_binding(&mut self, thread: SyndicThreadId) {
@@ -302,6 +464,12 @@ impl Fixture {
     }
 
     pub fn create_ordinary_pending(&mut self, seed: u8, text: &str) -> SyndicThreadId {
+        let thread = self.create_ordinary(seed);
+        self.submit_text_on(thread, text);
+        thread
+    }
+
+    pub fn create_ordinary(&mut self, seed: u8) -> SyndicThreadId {
         let thread = SyndicThreadId::from_bytes([seed; 16]);
         let created_at = self.tick();
         execute(
@@ -311,165 +479,31 @@ impl Fixture {
                 CreateThread::ordinary(
                     thread,
                     SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+                    execution_binding(),
                     created_at,
                 ),
             ),
         );
-        self.submit_text_on(thread, text);
         thread
+    }
+
+    pub fn advance_unrelated_syndic_revision(&self, seed: u8) {
+        execute(
+            &self.store,
+            self.storage.create_thread(
+                self.storage.revision(&self.store).unwrap(),
+                CreateThread::ordinary(
+                    SyndicThreadId::from_bytes([seed; 16]),
+                    SyndicDraftId::from_bytes([seed.wrapping_add(1); 16]),
+                    execution_binding(),
+                    SyndicTimestamp::from_unix_millis(50_000 + u64::from(seed)),
+                ),
+            ),
+        );
     }
 
     pub fn advance_clock_to(&mut self, next_unix_millis: u64) {
         self.clock = self.clock.max(next_unix_millis);
-    }
-
-    fn admit(
-        &mut self,
-        thread: SyndicThreadId,
-        turn: SyndicTurnId,
-        source: &CasTurnSource,
-        payload: SourceEventPayload,
-    ) {
-        let observed_at = self.tick();
-        exact::admit_event(
-            &self.store,
-            self.storage,
-            thread,
-            turn,
-            source,
-            payload,
-            observed_at,
-        );
-    }
-
-    fn finalize_all(&mut self, thread: SyndicThreadId, turn: SyndicTurnId) {
-        let indexes = self
-            .storage
-            .turn_items(
-                &self.store,
-                turn,
-                None,
-                CursorReadLimits::new(64, 1_000_000).unwrap(),
-            )
-            .unwrap()
-            .records()
-            .to_vec();
-        for index in indexes {
-            let item = self
-                .storage
-                .canonical_item(&self.store, index.item_id(), point_limit())
-                .unwrap()
-                .unwrap();
-            let manifest = self
-                .storage
-                .content_manifest(
-                    &self.store,
-                    item.record()
-                        .payload()
-                        .content()
-                        .expect("finalization fixture item must own content")
-                        .id(),
-                    point_limit(),
-                )
-                .unwrap()
-                .unwrap();
-            if manifest.record().lifecycle() == ContentLifecycle::Live {
-                let state = self
-                    .storage
-                    .turn_state(&self.store, turn, point_limit())
-                    .unwrap()
-                    .unwrap();
-                let updated_at = self.tick();
-                execute(
-                    &self.store,
-                    self.storage.freeze_next_turn_item(
-                        self.storage.revision(&self.store).unwrap(),
-                        FreezeNextTurnItem::new(
-                            thread,
-                            turn,
-                            state.record().revision(),
-                            index.ordinal(),
-                            index.item_id(),
-                            updated_at,
-                        ),
-                    ),
-                );
-            }
-            let item = self
-                .storage
-                .canonical_item(&self.store, index.item_id(), point_limit())
-                .unwrap()
-                .unwrap();
-            if matches!(
-                item.record().kind(),
-                CanonicalItemKind::UserInput | CanonicalItemKind::AssistantMessage(_)
-            ) {
-                project_item(&self.store, self.storage, index.item_id());
-            }
-            let state = self
-                .storage
-                .turn_state(&self.store, turn, point_limit())
-                .unwrap()
-                .unwrap();
-            let updated_at = self.tick();
-            execute(
-                &self.store,
-                self.storage.finalize_next_turn_item(
-                    self.storage.revision(&self.store).unwrap(),
-                    FinalizeNextTurnItem::new(
-                        thread,
-                        turn,
-                        state.record().revision(),
-                        index.ordinal(),
-                        index.item_id(),
-                        updated_at,
-                    ),
-                ),
-            );
-        }
-    }
-
-    fn finish_transcript(&self, thread: SyndicThreadId) {
-        let thread_record = self
-            .storage
-            .thread(&self.store, thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let head = self
-            .storage
-            .transcript_view_head(&self.store, thread, point_limit())
-            .unwrap()
-            .unwrap();
-        let generation = head.record().generation();
-        execute(
-            &self.store,
-            self.storage.start_transcript_build(
-                self.storage.revision(&self.store).unwrap(),
-                StartTranscriptBuild::new(
-                    thread,
-                    thread_record.record().revision(),
-                    head.record().revision(),
-                ),
-            ),
-        );
-        for _ in 0..1_024 {
-            let build = self
-                .storage
-                .transcript_build(&self.store, thread, generation, point_limit())
-                .unwrap()
-                .unwrap();
-            if build.record().phase() == TranscriptBuildPhase::Complete {
-                return;
-            }
-            execute(
-                &self.store,
-                self.storage.advance_transcript_build(
-                    self.storage.revision(&self.store).unwrap(),
-                    AdvanceTranscriptBuild::new(thread, generation, build.record().revision()),
-                ),
-            );
-        }
-        panic!("fixture transcript build did not converge")
     }
 
     fn tick(&mut self) -> SyndicTimestamp {

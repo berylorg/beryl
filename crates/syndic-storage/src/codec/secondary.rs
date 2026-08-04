@@ -1,9 +1,17 @@
 mod cas;
+mod cas_family;
 mod content;
+mod provider;
+mod query;
+mod route;
 
 use beryl_model::*;
 use cas::*;
+pub(crate) use cas_family::*;
 pub(crate) use content::*;
+pub(crate) use provider::*;
+pub(crate) use query::*;
+pub(crate) use route::*;
 
 use crate::*;
 
@@ -11,13 +19,14 @@ use super::primary::projection_build::{decode_transcript_path_turn, encode_trans
 use super::{keys::*, parts::*, *};
 
 macro_rules! fixed_family {
-    ($marker:ident,$alias:ident,$name:literal,$key:ty,$value:ty,$max_key:expr,$enc_key:expr,$dec_key:expr,$enc_value:ident,$dec_value:ident) => {
+    ($marker:ident,$alias:ident,$name:literal,$version:expr,$key:ty,$value:ty,$max_key:expr,$enc_key:expr,$dec_key:expr,$enc_value:ident,$dec_value:ident) => {
         pub(crate) struct $marker;
         pub(crate) type $alias = ExactCodec<$marker>;
         impl Family for $marker {
             type Key = $key;
             type Value = $value;
             const NAME: &'static str = $name;
+            const RECORD_VERSION: beryl_home_store::RecordVersion = $version;
             const MAX_KEY_BYTES: usize = $max_key;
             const MAX_VALUE_BYTES: usize = SMALL_MAX;
             fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
@@ -45,6 +54,7 @@ fixed_family!(
     DraftByThreadFamily,
     DraftByThreadCodec,
     "draft-by-thread",
+    beryl_home_store::RecordVersion::new(1),
     SyndicThreadId,
     DraftByThreadRecord,
     16,
@@ -57,6 +67,7 @@ fixed_family!(
     ThreadParentFamily,
     ThreadParentCodec,
     "thread-parent-index",
+    beryl_home_store::RecordVersion::new(1),
     ThreadPairKey,
     ThreadParentIndexRecord,
     32,
@@ -69,6 +80,7 @@ fixed_family!(
     TurnChildrenFamily,
     TurnChildrenCodec,
     "turn-children",
+    beryl_home_store::RecordVersion::new(1),
     TurnPairKey,
     TurnChildIndexRecord,
     32,
@@ -81,6 +93,7 @@ fixed_family!(
     AcceptedOrderFamily,
     AcceptedOrderCodec,
     "accepted-order",
+    beryl_home_store::RecordVersion::new(2),
     ThreadAcceptedKey,
     AcceptedOrderIndexRecord,
     24,
@@ -90,33 +103,10 @@ fixed_family!(
     decode_accepted_order
 );
 fixed_family!(
-    AcceptedSteeringFamily,
-    AcceptedSteeringCodec,
-    "accepted-steering",
-    SteeringKey,
-    AcceptedSteeringIndexRecord,
-    40,
-    |k: &SteeringKey| k.encode(),
-    SteeringKey::decode,
-    encode_accepted_steering,
-    decode_accepted_steering
-);
-fixed_family!(
-    AcceptedNextFamily,
-    AcceptedNextCodec,
-    "accepted-next-turn",
-    ThreadAcceptedKey,
-    AcceptedNextTurnIndexRecord,
-    24,
-    |k: &ThreadAcceptedKey| k.encode(),
-    ThreadAcceptedKey::decode,
-    encode_accepted_next,
-    decode_accepted_next
-);
-fixed_family!(
     TurnItemsFamily,
     TurnItemsCodec,
     "turn-items",
+    beryl_home_store::RecordVersion::new(1),
     TurnItemKey,
     TurnItemIndexRecord,
     24,
@@ -129,6 +119,7 @@ fixed_family!(
     ItemSourceEventsFamily,
     ItemSourceEventsCodec,
     "item-source-events",
+    beryl_home_store::RecordVersion::new(1),
     ItemEventKey,
     ItemSourceEventIndexRecord,
     24,
@@ -141,6 +132,7 @@ fixed_family!(
     TranscriptPathTurnsFamily,
     TranscriptPathTurnsCodec,
     "transcript-path-turns",
+    beryl_home_store::RecordVersion::new(1),
     ThreadTranscriptPathKey,
     TranscriptPathTurnRecord,
     32,
@@ -153,6 +145,7 @@ fixed_family!(
     TranscriptEntriesFamily,
     TranscriptEntriesCodec,
     "transcript-view-entries",
+    beryl_home_store::RecordVersion::new(1),
     ThreadTranscriptKey,
     TranscriptViewEntryRecord,
     32,
@@ -165,6 +158,7 @@ fixed_family!(
     StableItemProjectionsFamily,
     StableItemProjectionsCodec,
     "stable-item-projections",
+    beryl_home_store::RecordVersion::new(1),
     StableItemProjectionKey,
     StableItemProjectionIndexRecord,
     24,
@@ -177,6 +171,7 @@ fixed_family!(
     ItemProjectionsFamily,
     ItemProjectionsCodec,
     "item-projections",
+    beryl_home_store::RecordVersion::new(1),
     ItemProjectionKey,
     ItemProjectionIndexRecord,
     32,
@@ -189,6 +184,7 @@ fixed_family!(
     ProjectionResourcesFamily,
     ProjectionResourcesCodec,
     "projection-resources",
+    beryl_home_store::RecordVersion::new(1),
     ProjectionResourceKey,
     ProjectionResourceIndexRecord,
     24,
@@ -201,6 +197,7 @@ fixed_family!(
     BindingHeadsFamily,
     BindingHeadsCodec,
     "binding-heads",
+    beryl_home_store::RecordVersion::new(1),
     SyndicThreadId,
     BindingHeadRecord,
     16,
@@ -209,103 +206,6 @@ fixed_family!(
     encode_binding_head,
     decode_binding_head
 );
-
-pub(crate) struct CasItemIndexFamily;
-pub(crate) type CasItemIndexCodec = ExactCodec<CasItemIndexFamily>;
-impl Family for CasItemIndexFamily {
-    type Key = CasItemKey;
-    type Value = CasItemIndexRecord;
-    const NAME: &'static str = "cas-item-index";
-    const MAX_KEY_BYTES: usize = 782;
-    const MAX_VALUE_BYTES: usize = SMALL_MAX;
-    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
-        Ok(key.encode())
-    }
-    fn decode_key(bytes: &[u8]) -> Result<Self::Key, CodecError> {
-        CasItemKey::decode(bytes)
-    }
-    fn validate_stored_key(key: &Self::Key) -> Result<(), CodecError> {
-        key.stored()
-    }
-    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, CodecError> {
-        encode_cas_item_index(value)
-    }
-    fn decode_value(bytes: &[u8]) -> Result<Self::Value, CodecError> {
-        decode_cas_item_index(bytes)
-    }
-}
-pub(crate) struct CasThreadIndexFamily;
-pub(crate) type CasThreadIndexCodec = ExactCodec<CasThreadIndexFamily>;
-impl Family for CasThreadIndexFamily {
-    type Key = CasThreadKey;
-    type Value = CasThreadIndexRecord;
-    const NAME: &'static str = "cas-thread-index";
-    const MAX_KEY_BYTES: usize = 261;
-    const MAX_VALUE_BYTES: usize = SMALL_MAX;
-    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
-        Ok(key.encode())
-    }
-    fn decode_key(bytes: &[u8]) -> Result<Self::Key, CodecError> {
-        CasThreadKey::decode(bytes)
-    }
-    fn validate_stored_key(key: &Self::Key) -> Result<(), CodecError> {
-        key.stored()
-    }
-    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, CodecError> {
-        encode_cas_thread_index(value)
-    }
-    fn decode_value(bytes: &[u8]) -> Result<Self::Value, CodecError> {
-        decode_cas_thread_index(bytes)
-    }
-}
-pub(crate) struct CasThreadBindingIndexFamily;
-pub(crate) type CasThreadBindingIndexCodec = ExactCodec<CasThreadBindingIndexFamily>;
-impl Family for CasThreadBindingIndexFamily {
-    type Key = CasThreadBindingKey;
-    type Value = CasThreadBindingIndexRecord;
-    const NAME: &'static str = "cas-thread-bindings";
-    const MAX_KEY_BYTES: usize = 269;
-    const MAX_VALUE_BYTES: usize = SMALL_MAX;
-    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
-        Ok(key.encode())
-    }
-    fn decode_key(bytes: &[u8]) -> Result<Self::Key, CodecError> {
-        CasThreadBindingKey::decode(bytes)
-    }
-    fn validate_stored_key(key: &Self::Key) -> Result<(), CodecError> {
-        key.stored()
-    }
-    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, CodecError> {
-        encode_cas_thread_binding_index(value)
-    }
-    fn decode_value(bytes: &[u8]) -> Result<Self::Value, CodecError> {
-        decode_cas_thread_binding_index(bytes)
-    }
-}
-pub(crate) struct CasTurnIndexFamily;
-pub(crate) type CasTurnIndexCodec = ExactCodec<CasTurnIndexFamily>;
-impl Family for CasTurnIndexFamily {
-    type Key = CasTurnKey;
-    type Value = CasTurnIndexRecord;
-    const NAME: &'static str = "cas-turn-index";
-    const MAX_KEY_BYTES: usize = 521;
-    const MAX_VALUE_BYTES: usize = SMALL_MAX;
-    fn encode_key(key: &Self::Key) -> Result<Vec<u8>, CodecError> {
-        Ok(key.encode())
-    }
-    fn decode_key(bytes: &[u8]) -> Result<Self::Key, CodecError> {
-        CasTurnKey::decode(bytes)
-    }
-    fn validate_stored_key(key: &Self::Key) -> Result<(), CodecError> {
-        key.stored()
-    }
-    fn encode_value(value: &Self::Value) -> Result<Vec<u8>, CodecError> {
-        encode_cas_turn_index(value)
-    }
-    fn decode_value(bytes: &[u8]) -> Result<Self::Value, CodecError> {
-        decode_cas_turn_index(bytes)
-    }
-}
 
 fn encode_draft_index(v: &DraftByThreadRecord) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
@@ -369,7 +269,7 @@ fn encode_accepted_order(v: &AcceptedOrderIndexRecord) -> Result<Vec<u8>, CodecE
     enc_thread(&mut e, v.thread_id);
     enc_accepted_ord(&mut e, v.ordinal);
     enc_accepted(&mut e, v.input_id);
-    enc_accepted_rev(&mut e, v.input_revision);
+    enc_route_generation(&mut e, v.route_generation);
     Ok(e.finish())
 }
 fn decode_accepted_order(b: &[u8]) -> Result<AcceptedOrderIndexRecord, CodecError> {
@@ -378,52 +278,11 @@ fn decode_accepted_order(b: &[u8]) -> Result<AcceptedOrderIndexRecord, CodecErro
         dec_thread(&mut d)?,
         dec_accepted_ord(&mut d)?,
         dec_accepted(&mut d)?,
-        dec_accepted_rev(&mut d)?,
+        dec_route_generation(&mut d)?,
     );
     d.finish()?;
     Ok(v)
 }
-fn encode_accepted_steering(v: &AcceptedSteeringIndexRecord) -> Result<Vec<u8>, CodecError> {
-    let mut e = Encoder::new();
-    enc_thread(&mut e, v.thread_id);
-    enc_turn(&mut e, v.turn_id);
-    enc_accepted_ord(&mut e, v.ordinal);
-    enc_accepted(&mut e, v.input_id);
-    enc_accepted_rev(&mut e, v.input_revision);
-    Ok(e.finish())
-}
-fn decode_accepted_steering(b: &[u8]) -> Result<AcceptedSteeringIndexRecord, CodecError> {
-    let mut d = Decoder::new(b);
-    let v = AcceptedSteeringIndexRecord::new(
-        dec_thread(&mut d)?,
-        dec_turn(&mut d)?,
-        dec_accepted_ord(&mut d)?,
-        dec_accepted(&mut d)?,
-        dec_accepted_rev(&mut d)?,
-    );
-    d.finish()?;
-    Ok(v)
-}
-fn encode_accepted_next(v: &AcceptedNextTurnIndexRecord) -> Result<Vec<u8>, CodecError> {
-    let mut e = Encoder::new();
-    enc_thread(&mut e, v.thread_id);
-    enc_accepted_ord(&mut e, v.ordinal);
-    enc_accepted(&mut e, v.input_id);
-    enc_accepted_rev(&mut e, v.input_revision);
-    Ok(e.finish())
-}
-fn decode_accepted_next(b: &[u8]) -> Result<AcceptedNextTurnIndexRecord, CodecError> {
-    let mut d = Decoder::new(b);
-    let v = AcceptedNextTurnIndexRecord::new(
-        dec_thread(&mut d)?,
-        dec_accepted_ord(&mut d)?,
-        dec_accepted(&mut d)?,
-        dec_accepted_rev(&mut d)?,
-    );
-    d.finish()?;
-    Ok(v)
-}
-
 fn encode_turn_item(v: &TurnItemIndexRecord) -> Result<Vec<u8>, CodecError> {
     let mut e = Encoder::new();
     enc_turn(&mut e, v.turn_id);

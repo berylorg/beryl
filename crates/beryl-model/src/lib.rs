@@ -8,8 +8,8 @@
 //!
 //! ```
 //! use beryl_model::{
-//!     CasConversationToolProfile, CasNativeTurnCount, ExecutionBinding, PathFlavor, RootId,
-//!     RuntimeId, RuntimeMode, RuntimeNativePath,
+//!     CasConversationToolProfile, CasNativeTurnCount, ExecutionBinding, ImageLabelOrdinal,
+//!     PathFlavor, ProviderObservationId, RootId, RuntimeId, RuntimeMode, RuntimeNativePath,
 //! };
 //!
 //! let runtime_id = RuntimeId::from_bytes([1; 16]);
@@ -25,6 +25,23 @@
 //! assert_eq!(binding.runtime_id(), runtime_id);
 //! assert_eq!(CasNativeTurnCount::ZERO.checked_next()?.get(), 1);
 //! assert_eq!(CasConversationToolProfile::v1([3; 32]).digest(), [3; 32]);
+//! assert_eq!(ImageLabelOrdinal::new(27)?.to_string(), "AA");
+//! let observation = ProviderObservationId::from_bytes([4; 16]);
+//! assert_eq!(observation.as_bytes(), &[4; 16]);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! Recovery preflight and replay share the same constant-resident digest logic:
+//!
+//! ```
+//! use beryl_model::{RecoveryItemSequenceAccumulator, RecoveryItemSequenceRole};
+//!
+//! let mut sequence = RecoveryItemSequenceAccumulator::new(1, 5);
+//! sequence.begin_item(1, RecoveryItemSequenceRole::UserInputText, 5)?;
+//! sequence.update_text(b"hello")?;
+//! sequence.finish_item()?;
+//! let digest = sequence.finish()?;
+//! assert_ne!(digest.as_bytes(), &[0; 32]);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 #![forbid(unsafe_code)]
@@ -34,23 +51,32 @@ mod availability;
 mod ids;
 mod placement;
 mod provenance;
+mod recovery;
 mod revision;
 mod runtime;
 mod syndic;
 
-pub use asset::{AssetId, AssetIdentityVersion};
+pub use asset::{
+    AssetId, AssetIdentityVersion, AssetProofError, AssetReferenceSetDigest, AssetReferenceSetId,
+    ImageLabelOrdinal, ImageLabelOrdinalError, SealedAssetReferenceSetProof,
+    SealedContentMarkerSummary, advance_content_marker_digest, content_marker_digest_seed,
+};
 pub use availability::{Availability, UnavailableReason};
 pub use ids::{
-    BerylHomeId, CommandId, IdempotencyKey, IdentityParseError, JobId, ResolutionIntentId, RootId,
-    RuntimeId, SyndicAcceptedInputId, SyndicContentId, SyndicDraftId, SyndicDraftMarkerId,
-    SyndicExecutionSnapshotId, SyndicItemId, SyndicProjectionId, SyndicResourceId,
-    SyndicRetryRecordId, SyndicThreadId, SyndicTurnId, VirtualDesktopId, WindowId,
+    BerylHomeId, CommandId, IdempotencyKey, IdentityParseError, JobId, ProviderObservationId,
+    ResolutionIntentId, RootId, RuntimeId, SyndicAcceptedInputId, SyndicContentId, SyndicDraftId,
+    SyndicDraftMarkerId, SyndicExecutionSnapshotId, SyndicItemId, SyndicProjectionId,
+    SyndicResourceId, SyndicRetryRecordId, SyndicThreadId, SyndicTurnId, VirtualDesktopId,
+    WindowId,
 };
 pub use placement::{
     MonitorHint, MonitorId, PlacementError, WindowBounds, WindowDisplayState, WindowPlacement,
 };
 pub use provenance::{
     CasItemId, CasThreadId, CasTurnId, DynamicToolCallId, DynamicToolName, Provenance,
+};
+pub use recovery::{
+    RecoveryItemSequenceAccumulator, RecoveryItemSequenceError, RecoveryItemSequenceRole,
 };
 pub use revision::{
     AcceptedInputRevision, BindingRevision, ClaimRevision, ContentRevision, DomainRevision,

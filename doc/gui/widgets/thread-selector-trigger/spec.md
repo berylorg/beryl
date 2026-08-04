@@ -24,7 +24,10 @@ Widgets:
 
 The thread selector trigger contains one command-capable root, primary selected-thread title region, trailing flyout label, and trailing disclosure glyph. The complete root is one activation target; the title and trailing affordance are not separate commands.
 
-The owning feature supplies the selected-thread identity, visible title or fallback, accessible name, flyout label, activation command, readiness, unavailability reason, and associated popup state. The widget owns trigger geometry, title truncation, focus, command feedback, and stable trailing-affordance placement.
+The owning feature supplies the selected-thread identity, bounded visible title or fallback, bounded
+accessible name, flyout label, activation command, readiness, unavailability reason, and associated
+popup state. The widget owns trigger geometry, title truncation, focus, command feedback, and stable
+trailing-affordance placement.
 
 The widget does not contain runtime, root, catalog, thread status, metadata actions, or flyout content.
 
@@ -52,7 +55,9 @@ Loading rejects pointer, keyboard, touch, and programmatic activation and does n
 
 Unavailable remains focusable for inspection but never invokes its command. It satisfies `disabled-command-tooltip` with the closest owner-supplied actionable reason.
 
-When the title truncates, hover or focus exposes the complete owner-supplied title through `tooltip`. Title updates retain trigger focus and popup anchoring because root identity follows the main-window trigger instance, not the displayed title.
+When the title truncates geometrically, hover or focus exposes the complete owner-supplied bounded
+title projection through `tooltip`. Title updates retain trigger focus and popup anchoring because
+root identity follows the main-window trigger instance, not the displayed title.
 
 While the associated flyout is open, selected-thread title updates occur in place and do not move or recreate the anchor. If the selected-thread identity changes through successful activation, the associated old flyout closes before the new identity is published.
 

@@ -7,7 +7,10 @@ use beryl_home_store::{
     CommandCancellation, CommandError, CursorReadLimits, HomeCommand, HomeOpenOptions,
     HomeSchemaVersion, HomeStore,
 };
-use beryl_model::{SyndicDraftId, SyndicThreadId};
+use beryl_model::{
+    ExecutionBinding, PathFlavor, RootId, RuntimeId, RuntimeMode, RuntimeNativePath, SyndicDraftId,
+    SyndicThreadId,
+};
 use syndic_storage::{
     ComposerAtom, ComposerContentAssembler, ComposerPayload, ContentAppend, ContentBuild,
     CreateThread, DraftPayloadUpdate, DraftPayloadUpdateDecision, PreparedContent,
@@ -39,6 +42,19 @@ impl Drop for TestHome {
 
 fn open(home: &TestHome) -> HomeStore {
     HomeStore::open(HomeOpenOptions::new(&home.0, HomeSchemaVersion::CURRENT)).unwrap()
+}
+
+fn execution() -> ExecutionBinding {
+    ExecutionBinding::new(
+        RuntimeId::from_bytes([91; 16]),
+        RootId::from_bytes([92; 16]),
+        RuntimeNativePath::from_admitted(
+            RuntimeMode::host(),
+            PathFlavor::Windows,
+            "C:\\syndic-phase3",
+        )
+        .unwrap(),
+    )
 }
 
 fn ids(byte: u8) -> (SyndicThreadId, SyndicDraftId) {
@@ -146,7 +162,7 @@ fn ordinary_creation_is_atomic_reopenable_and_naturally_reconcilable() {
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(1);
-    let creation = CreateThread::ordinary(thread_id, draft_id, timestamp(10));
+    let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(10));
 
     assert_eq!(
         storage
@@ -198,7 +214,7 @@ fn cancellation_before_admission_and_identity_collision_change_nothing() {
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(10);
-    let creation = CreateThread::ordinary(thread_id, draft_id, timestamp(1));
+    let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(1));
     let before = storage.revision(&store).unwrap();
     let cancellation = CommandCancellation::new();
     cancellation.cancel();
@@ -244,7 +260,7 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
     let mut store = open(&home);
     let storage = SyndicStorage::register(&mut store).unwrap();
     let (thread_id, draft_id) = ids(20);
-    let creation = CreateThread::ordinary(thread_id, draft_id, timestamp(5));
+    let creation = CreateThread::ordinary(thread_id, draft_id, execution(), timestamp(5));
     execute(
         &store,
         storage,
@@ -281,14 +297,9 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
         .unwrap();
     assert!(update.matches_committed(&after));
     assert_eq!(after.draft().thread_id(), before.draft().thread_id());
-    assert_eq!(after.draft().parent(), before.draft().parent());
     assert_eq!(
-        after.draft().context_owner_id(),
-        before.draft().context_owner_id()
-    );
-    assert_eq!(
-        after.draft().replacement_edit_intent(),
-        before.draft().replacement_edit_intent()
+        after.draft().submission_intent(),
+        before.draft().submission_intent()
     );
     assert_eq!(after.draft().created_at(), before.draft().created_at());
     assert_eq!(
@@ -296,7 +307,6 @@ fn dirty_only_update_preserves_immutable_draft_facts_and_reconciles_exactly() {
             .history_summary(&store, thread_id, limit())
             .unwrap()
             .unwrap()
-            .record()
             .last_activity_at(),
         timestamp(7)
     );

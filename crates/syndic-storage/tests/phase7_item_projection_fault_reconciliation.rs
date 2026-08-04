@@ -8,8 +8,8 @@ use beryl_home_store::{
 };
 use beryl_model::SyndicItemId;
 use syndic_storage::{
-    AdmissionMarkers, AdvanceItemProjectionBuild, ComposerAtom, ComposerPayload, CreateThread,
-    DraftPayloadUpdate, DraftPayloadUpdateDecision, IdleSubmission, ItemProjectionBuildPhase,
+    AdvanceItemProjectionBuild, ComposerAtom, ComposerPayload, CreateThread, DraftPayloadUpdate,
+    DraftPayloadUpdateDecision, IdleSubmission, ItemProjectionBuildPhase,
     ItemProjectionBuildRecord, ItemProjectionGeneration, PreparedContent, ProjectionLifecycle,
     StartItemProjectionBuild, SyndicPointReadLimit, SyndicStorage,
 };
@@ -53,7 +53,12 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
         store,
         storage.create_thread(
             storage.revision(store).unwrap(),
-            CreateThread::ordinary(thread, draft, timestamp(1)),
+            CreateThread::ordinary(
+                thread,
+                draft,
+                support::exact_cas::execution_binding(),
+                timestamp(1),
+            ),
         ),
     );
 
@@ -93,14 +98,14 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
             storage.revision(store).unwrap(),
             IdleSubmission::new(
                 thread,
-                thread_record.record().revision(),
+                thread_record.revision(),
                 draft,
                 current.draft().revision(),
                 current.draft().content(),
-                gate.record().revision(),
+                gate.revision(),
                 draft_id(3),
                 item,
-                AdmissionMarkers::default(),
+                None,
                 timestamp(3),
             ),
         ),
@@ -115,7 +120,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
         store,
         storage.start_item_projection_build(
             storage.revision(store).unwrap(),
-            StartItemProjectionBuild::new(item, canonical.record().revision(), generation),
+            StartItemProjectionBuild::new(item, canonical.revision(), generation),
         ),
     );
     let initial_build = storage
@@ -126,7 +131,7 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
         store,
         storage.advance_item_projection_build(
             storage.revision(store).unwrap(),
-            AdvanceItemProjectionBuild::new(item, generation, initial_build.record().revision()),
+            AdvanceItemProjectionBuild::new(item, generation, initial_build.revision()),
         ),
     );
 
@@ -134,7 +139,6 @@ fn prepare_final_publication(store: &HomeStore, storage: SyndicStorage) -> Pendi
         .item_projection_build(store, item, generation, point_limit())
         .unwrap()
         .unwrap()
-        .record()
         .clone();
     assert!(matches!(
         build.phase(),
@@ -178,16 +182,16 @@ fn assert_recovered_state(
 
     match (expected, build, set, head) {
         (RecoveredState::Old, Some(build), None, None) => {
-            assert_eq!(build.record(), &pending.build);
+            assert_eq!(build, pending.build);
         }
         (RecoveredState::New, None, Some(set), Some(head)) => {
-            assert_eq!(set.record().item_id(), pending.item);
-            assert_eq!(set.record().generation(), pending.generation);
-            assert_eq!(set.record().projection_count(), 1);
-            assert_eq!(set.record().resource_count(), 0);
-            assert!(set.record().stable_eof_resolved());
-            assert_eq!(head.record().generation(), pending.generation);
-            assert_eq!(head.record().lifecycle(), ProjectionLifecycle::Current);
+            assert_eq!(set.item_id(), pending.item);
+            assert_eq!(set.generation(), pending.generation);
+            assert_eq!(set.projection_count(), 1);
+            assert_eq!(set.resource_count(), 0);
+            assert!(set.stable_eof_resolved());
+            assert_eq!(head.generation(), pending.generation);
+            assert_eq!(head.lifecycle(), ProjectionLifecycle::Current);
 
             let page = storage
                 .item_projections(
@@ -204,7 +208,7 @@ fn assert_recovered_state(
                 .projection(store, page.records()[0].projection_id(), point_limit())
                 .unwrap()
                 .unwrap();
-            assert_eq!(projection.record().item_id(), pending.item);
+            assert_eq!(projection.item_id(), pending.item);
         }
         (expected, build, set, head) => panic!(
             "mixed projection-publication state after {expected:?}: build={}, set={}, head={}",

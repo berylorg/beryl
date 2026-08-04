@@ -23,14 +23,46 @@ Let the model request a semantic lifecycle handoff while Beryl retains ownership
 
 - `phase_needs_review` stops after the current turn reaches terminal state so the operator can review or live-test the completed phase.
 - `blocked_needs_operator` stops after the current turn reaches terminal state and requests an operator-attention notification.
-- `phase_continue` records that the current turn should continue after terminal completion, then Beryl runs selected-thread context compaction and starts the next turn with Beryl's fixed continuation message.
+- `phase_continue` records process-local intent to continue after terminal completion. If separately
+  accepted user input does not take precedence, Beryl runs selected-thread context compaction and
+  starts the next turn with Beryl's fixed continuation message.
 - `plan_complete` stops after the current turn reaches terminal state and requests a completion notification.
 - Automatic lifecycle continuation does not play ordinary end-turn sound for the turn that requested continuation.
+- Any exact stop admitted for the turn before terminal completion cancels that turn's pending
+  automatic continuation. A user, diagnostic controller, window-close barrier, or Beryl-owned
+  interrupting approval must not appear to stop a turn and then silently restart it; the stop does
+  not discard separately accepted queued user input.
 
 ## Continuation Behavior
 
 - Beryl, not the model, chooses whether and how to compact before continuation.
-- The fixed continuation message is Beryl-owned and is not supplied by the model.
+- The fixed continuation message is exactly `Continue from the root doc/plan.md.`. It is
+  Beryl-owned, is not supplied by the model, and appears as Beryl-authored continuation input rather
+  than input authored by the operator.
+- A pending automatic continuation does not survive Beryl process loss. Restart never recreates it
+  from the yield tool item, transcript text, compaction history, or plan state.
+- Once the fixed continuation has been durably admitted as a conversation turn, it is no longer
+  pending lifecycle intent. That already visible/admitted turn survives and recovers like any other
+  ordinary conversation turn; restart still does not create an additional one.
+- Beginning the owning window's close barrier cancels the pending continuation before Beryl decides
+  whether there is still an interruptible turn. This remains true after the yielding turn has
+  finished or compaction has begun, and does not depend on the whole process exiting.
+- After the yielding turn finishes, already accepted next-turn input wins. Beryl cancels the
+  automatic continuation, does not start its compaction, and preserves the user's accepted order.
+- Input submitted while automatic compaction is running is visibly accepted and queued. When
+  compaction succeeds, already accepted input wins and consumes the automatic continuation;
+  otherwise Beryl starts the fixed continuation while leaving the current composer draft
+  unchanged. Input accepted after that continuation has started remains ordered behind it.
+- The Beryl-authored continuation follows ordinary conversation execution behavior after it starts,
+  including normal transcript capture and stop controls. Its distinct origin prevents Beryl from
+  presenting it as operator-authored input.
+- Compaction failure, interruption, stop, or lost backend authority cancels automatic continuation
+  without discarding accepted user input. Completion-wait timeout alone does not cancel it; exact
+  success observed later in the same process still follows the same user-input precedence.
+- One lifecycle request can start at most one automatic continuation. An ambiguous local outcome
+  never causes Beryl to submit a compensating duplicate.
+- If Beryl cannot prepare the fixed continuation after compaction succeeds, it reports the
+  continuation failure, does not substitute different text, and preserves accepted user input.
 - Automatic continuation sends the latest applied non-empty global developer-instructions setting as hidden developer-instructions context, subject to the composer feature's developer-instructions rules.
 - Context compaction timeout behavior is governed by the settings/status-line contracts.
 

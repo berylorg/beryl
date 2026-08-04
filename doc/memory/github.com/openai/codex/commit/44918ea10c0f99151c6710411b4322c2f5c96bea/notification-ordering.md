@@ -98,6 +98,39 @@ replacement on the existing incomplete or unknown-terminal paths. Do not replace
 event with idle status, and do not claim that CAS has waited for Beryl persistence merely because
 it enqueued or wrote the terminal notification.
 
+## Exact Pinned Terminal Wire Order
+
+Follow-up source inspection for Checkpoint 3 Phase 37 established the serializer order needed by
+an incremental closed grammar. `TurnCompletedNotification` writes `threadId` and then `turn`.
+Inside `turn`, the pinned `Turn` serializer writes these fields in order:
+
+1. `id`
+2. `items`
+3. `itemsView`
+4. `status`
+5. `error`
+6. `startedAt`
+7. `completedAt`
+8. `durationMs`
+
+The production terminal emitter supplies `items = []` and `itemsView = "notLoaded"`. Terminal
+status is `completed`, `interrupted`, or `failed`; `inProgress` belongs to the shared `Turn` schema
+but is not a terminal value. Successful and interrupted terminal production carries no error,
+while failure carries the last turn error. `startedAt`, `completedAt`, and `durationMs` are each a
+nullable signed 64-bit integer. The protocol type adds no nonnegative constraint.
+
+When present, the error object serializes `message`, `codexErrorInfo`, and `additionalDetails` in
+that order. The pinned closed `codexErrorInfo` vocabulary is context-window exhaustion, session
+budget exhaustion, usage-limit exhaustion, server overload, cyber policy, HTTP connection failure,
+response-stream connection failure, internal server error, unauthorized, bad request, thread
+rollback failure, sandbox error, response-stream disconnection, too many failed response attempts,
+an active turn that is not steerable (`review` or `compact`), and `other`. The HTTP and response
+stream variants carry an `httpStatusCode` field whose value is an unsigned 16-bit integer or null.
+This enum is externally tagged: unit variants serialize as camel-case strings, while data-bearing
+variants serialize as a one-key camel-case outer object containing their payload object. The active
+turn variant similarly contains a required `turnKind`. No `type` field is present. No terminal item
+snapshot is available from this wire shape.
+
 # Sources
 
 - OpenAI `codex` repository, canonical remote `https://github.com/openai/codex.git`, requested tag

@@ -1,3 +1,10 @@
+# Status
+
+Completed historical rework whose workspace-era target was superseded by the active Beryl-home
+replacement. It is not live target authority and must not be resumed. Current catalog ownership,
+paging, search, shell integration, and bounded-resource work belongs to
+`doc/rework/beryl-home/REWORK.md` and its target documents.
+
 # Target Docs
 
 - `doc/features/conversation-threads/design.md`
