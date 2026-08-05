@@ -1,0 +1,4 @@
+interface:
+  display_name: "Architectural Rework"
+  short_description: "Manage clean replacement and cutover tracking."
+  default_prompt: "Use $architectural-rework to define or execute a removal-first architectural replacement with concise cutover tracking."

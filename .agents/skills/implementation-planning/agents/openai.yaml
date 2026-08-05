@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementation Planning"
+  short_description: "Maintain root doc/plan.md phases."
+  default_prompt: "Use $implementation-planning before implementation work to maintain root doc/plan.md as a compact sliding window with one acceptance boundary per phase, scope-growth replanning, edge cases, blockers, and per-phase completion review."

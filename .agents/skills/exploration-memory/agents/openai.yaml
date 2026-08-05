@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exploration Memory"
+  short_description: "Preserve expensive third-party investigation notes."
+  default_prompt: "Use this skill when expensive investigation of external sources, registries, repositories, dependencies, papers, standards, or research topics should be preserved under doc/memory for reuse."

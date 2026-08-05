@@ -1,0 +1,4 @@
+interface:
+  display_name: "GUI"
+  short_description: "Use GUI docs, slots, mounts, and widget specs."
+  default_prompt: "Use $gui to write or review GUI integration docs, feature GUI mounts, and widget specs."

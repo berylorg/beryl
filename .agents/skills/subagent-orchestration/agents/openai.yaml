@@ -1,0 +1,4 @@
+interface:
+  display_name: "Subagent Orchestration"
+  short_description: "Delegate substantive work by model and ownership."
+  default_prompt: "Use $subagent-orchestration to make profiled subagents the default path for substantive bounded execution while retaining authority and integration in the main thread."
