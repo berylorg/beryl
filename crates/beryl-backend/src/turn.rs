@@ -280,6 +280,16 @@ pub struct GenericThreadItem {
     pub reasoning_effort: Option<String>,
     #[serde(
         default,
+        rename = "agentThreadId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub agent_thread_id: Option<String>,
+    #[serde(default, rename = "agentPath", skip_serializing_if = "Option::is_none")]
+    pub agent_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(
+        default,
         rename = "receiverThreadIds",
         skip_serializing_if = "Vec::is_empty"
     )]
@@ -839,6 +849,7 @@ impl ThreadItem {
 
     fn raw_tool_name(&self) -> Option<&str> {
         match self {
+            Self::Generic(item) if item.item_type == "subAgentActivity" => item.kind.as_deref(),
             Self::Generic(item) => item.tool.as_deref(),
             _ => None,
         }
@@ -915,7 +926,23 @@ impl ThreadItem {
             Self::Generic(item) if item.item_type == "collabAgentToolCall" => {
                 item.receiver_thread_ids.clone()
             }
+            Self::Generic(item) if item.item_type == "subAgentActivity" => item
+                .agent_thread_id
+                .as_ref()
+                .filter(|thread_id| !thread_id.trim().is_empty())
+                .cloned()
+                .into_iter()
+                .collect(),
             _ => Vec::new(),
+        }
+    }
+
+    fn sub_agent_activity_path(&self) -> Option<&str> {
+        match self {
+            Self::Generic(item) if item.item_type == "subAgentActivity" => {
+                item.agent_path.as_deref()
+            }
+            _ => None,
         }
     }
 
@@ -1075,6 +1102,9 @@ impl TurnStreamEvent {
             _ => return None,
         };
         let item_type = item.item_type();
+        if item_type == "subAgentActivity" && lifecycle != ToolActivityLifecycle::Completed {
+            return None;
+        }
         let source = ToolActivitySource::from_item_type(item_type)?;
 
         Some(
@@ -1097,6 +1127,7 @@ impl TurnStreamEvent {
             .with_file_change_summary(item.file_change_summary())
             .with_collab_agent_spawn_metadata(item.collab_agent_spawn_metadata())
             .with_receiver_thread_ids(item.receiver_thread_ids())
+            .with_sub_agent_activity_path(item.sub_agent_activity_path())
             .with_agent_label_updates(item.agent_label_updates()),
         )
     }

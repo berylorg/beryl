@@ -2,10 +2,15 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
+    sync::mpsc,
     thread,
     time::Duration,
 };
 
+#[cfg(feature = "lifecycle-test-support")]
+use beryl_backend::lifecycle_test_support::{
+    pause_websocket_after_next_read_frame_byte, pause_websocket_after_next_read_payload,
+};
 use beryl_backend::{
     BackendLaunchSpec, BackendWebSocketEndpoint, ManagedBackendError, ManagedBackendSession,
     ThreadItem, ThreadListOptions, ThreadReadOptions, ThreadStatus, ThreadTurnsListOptions,
@@ -79,6 +84,169 @@ fn managed_websocket_clients_keep_stream_notifications_isolated() {
         }
     );
 
+    server.join().unwrap();
+}
+
+#[test]
+#[cfg(feature = "lifecycle-test-support")]
+fn managed_websocket_stream_poll_completes_header_started_before_idle_deadline() {
+    assert_stream_poll_completes_across_idle_deadline(false);
+}
+
+#[test]
+#[cfg(feature = "lifecycle-test-support")]
+fn managed_websocket_stream_poll_completes_payload_started_before_idle_deadline() {
+    assert_stream_poll_completes_across_idle_deadline(true);
+}
+
+#[test]
+fn managed_websocket_clean_stream_idle_remains_reusable() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let (release_sender, release_receiver) = mpsc::sync_channel(1);
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        release_receiver.recv().unwrap();
+        send_notification(
+            &mut socket,
+            "thread/name/updated",
+            json!({
+                "threadId": "reusable_thread",
+                "threadName": "After clean idle"
+            }),
+        );
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    assert_eq!(
+        client
+            .next_turn_stream_event(Duration::from_millis(20))
+            .unwrap(),
+        None
+    );
+    release_sender.send(()).unwrap();
+    assert_eq!(
+        client
+            .next_turn_stream_event(Duration::from_secs(2))
+            .unwrap()
+            .unwrap(),
+        TurnStreamEvent::ThreadNameUpdated {
+            thread_id: "reusable_thread".to_string(),
+            thread_name: Some("After clean idle".to_string()),
+        }
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_request_deadline_after_partial_payload_aborts_without_desync() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/list"));
+
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": { "data": [], "nextCursor": null }
+        })
+        .to_string();
+        let frame = unmasked_server_text_frame(response.as_bytes());
+        socket.get_mut().write_all(&frame[..12]).unwrap();
+        socket.get_mut().flush().unwrap();
+        thread::sleep(Duration::from_millis(400));
+        let _ = socket.get_mut().write_all(&frame[12..]);
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .list_thread_page(&ThreadListOptions::page(1), Duration::from_millis(200))
+        .unwrap_err();
+    assert!(matches!(
+        &error,
+        ManagedBackendError::RequestTimeout { method, .. } if method == "thread/list"
+    ));
+    assert!(!error.to_string().contains("reserved opcode"));
+
+    let later_error = client
+        .next_turn_stream_event(Duration::from_millis(20))
+        .unwrap_err();
+    assert!(matches!(
+        &later_error,
+        ManagedBackendError::SessionPoisoned { method } if method == "turn stream"
+    ));
+    assert!(!later_error.to_string().contains("reserved opcode"));
+    server.join().unwrap();
+}
+
+#[test]
+fn managed_websocket_streaming_parser_deadline_after_partial_payload_poisoned() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+        let request = read_json(&mut socket);
+        assert_eq!(request["id"], json!(2));
+        assert_eq!(request["method"], json!("thread/read"));
+
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "thread": {
+                    "cliVersion": "0.146.0",
+                    "createdAt": 1,
+                    "cwd": "C:/work/beryl",
+                    "ephemeral": false,
+                    "id": "parser_deadline_thread",
+                    "modelProvider": "openai",
+                    "preview": "",
+                    "status": { "type": "idle" },
+                    "updatedAt": 2,
+                    "turns": []
+                }
+            }
+        })
+        .to_string();
+        let frame = unmasked_server_text_frame(response.as_bytes());
+        socket.get_mut().write_all(&frame[..12]).unwrap();
+        socket.get_mut().flush().unwrap();
+        thread::sleep(Duration::from_millis(400));
+        let _ = socket.get_mut().write_all(&frame[12..]);
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let error = client
+        .read_thread(
+            "parser_deadline_thread",
+            ThreadReadOptions::include_turns(),
+            Duration::from_millis(200),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        &error,
+        ManagedBackendError::RequestTimeout { method, .. } if method == "thread/read"
+    ));
+    let later_error = client
+        .read_thread(
+            "parser_deadline_thread",
+            ThreadReadOptions::metadata_only(),
+            Duration::from_millis(20),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        &later_error,
+        ManagedBackendError::SessionPoisoned { method } if method == "thread/read"
+    ));
     server.join().unwrap();
 }
 
@@ -582,12 +750,9 @@ fn managed_websocket_rejects_reserved_bit_server_frame() {
     let server = thread::spawn(move || {
         let mut socket = accept_authenticated(&listener, "Bearer test-token");
         assert_initialize_request(&read_json(&mut socket), 1);
-        write_raw_frame_with_first_byte(
-            socket.get_mut(),
-            0xC1,
-            false,
-            initialize_response(1).as_bytes(),
-        );
+        let mut frame = unmasked_server_text_frame(initialize_response(1).as_bytes());
+        frame[0] = 0xC1;
+        let _ = socket.get_mut().write_all(&frame);
     });
 
     let error = ManagedBackendSession::connect_websocket(
@@ -663,6 +828,89 @@ fn websocket_test_launch(endpoint: BackendWebSocketEndpoint) -> BackendLaunchSpe
         endpoint,
         PathBuf::from(r"C:\tmp\beryl-token.txt"),
     )
+}
+
+#[cfg(feature = "lifecycle-test-support")]
+fn assert_stream_poll_completes_across_idle_deadline(pause_in_payload: bool) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let endpoint = BackendWebSocketEndpoint::loopback(listener.local_addr().unwrap().port());
+    let (release_suffix, await_suffix_release) = mpsc::sync_channel(1);
+    let server = thread::spawn(move || {
+        let mut socket = accept_authenticated(&listener, "Bearer test-token");
+        expect_initialize(&mut socket, 1);
+        expect_initialized(&mut socket);
+
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "method": "thread/name/updated",
+            "params": {
+                "threadId": "deadline_thread",
+                "threadName": "Completed after idle boundary"
+            }
+        })
+        .to_string();
+        let frame = unmasked_server_text_frame(payload.as_bytes());
+        if pause_in_payload {
+            socket.get_mut().write_all(&frame[..12]).unwrap();
+            socket.get_mut().flush().unwrap();
+            await_suffix_release.recv().unwrap();
+            socket.get_mut().write_all(&frame[12..]).unwrap();
+        } else {
+            socket.get_mut().write_all(&frame).unwrap();
+        }
+        socket.get_mut().flush().unwrap();
+    });
+
+    let mut client = connect_test_client(&endpoint);
+    let (progress_entered, release_progress) = if pause_in_payload {
+        pause_websocket_after_next_read_payload(&mut client).unwrap()
+    } else {
+        pause_websocket_after_next_read_frame_byte(&mut client).unwrap()
+    };
+    let (result_sender, result_receiver) = mpsc::sync_channel(1);
+    let client_thread = thread::spawn(move || {
+        result_sender
+            .send(client.next_turn_stream_event(Duration::from_millis(20)))
+            .unwrap();
+    });
+    progress_entered
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap();
+    thread::sleep(Duration::from_millis(40));
+    if pause_in_payload {
+        release_suffix.send(()).unwrap();
+    }
+    release_progress.send(()).unwrap();
+
+    assert_eq!(
+        result_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        TurnStreamEvent::ThreadNameUpdated {
+            thread_id: "deadline_thread".to_string(),
+            thread_name: Some("Completed after idle boundary".to_string()),
+        }
+    );
+
+    client_thread.join().unwrap();
+    server.join().unwrap();
+}
+
+fn unmasked_server_text_frame(payload: &[u8]) -> Vec<u8> {
+    let mut frame = vec![0x81];
+    if payload.len() < 126 {
+        frame.push(payload.len() as u8);
+    } else if u16::try_from(payload.len()).is_ok() {
+        frame.push(126);
+        frame.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    } else {
+        frame.push(127);
+        frame.extend_from_slice(&(payload.len() as u64).to_be_bytes());
+    }
+    frame.extend_from_slice(payload);
+    frame
 }
 
 fn accept_authenticated(

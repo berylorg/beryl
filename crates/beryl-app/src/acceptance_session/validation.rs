@@ -111,12 +111,16 @@ pub(super) fn paths_overlap(left: &Path, right: &Path) -> bool {
 fn comparable_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
-    let resolved = fs::canonicalize(path).unwrap_or_else(|_| {
-        path.parent()
-            .and_then(|parent| fs::canonicalize(parent).ok())
-            .and_then(|parent| path.file_name().map(|leaf| parent.join(leaf)))
-            .unwrap_or_else(|| path.to_path_buf())
-    });
+    let resolved = path
+        .ancestors()
+        .find_map(|ancestor| {
+            fs::canonicalize(ancestor).ok().map(|canonical_ancestor| {
+                path.strip_prefix(ancestor)
+                    .map(|suffix| canonical_ancestor.join(suffix))
+                    .unwrap_or(canonical_ancestor)
+            })
+        })
+        .unwrap_or_else(|| path.to_path_buf());
     let mut normalized = PathBuf::new();
     for component in resolved.components() {
         match component {

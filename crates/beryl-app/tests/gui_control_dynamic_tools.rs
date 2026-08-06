@@ -18,9 +18,10 @@ use beryl_backend::{
 use diagnostic_dynamic_tools::VisibleMediaSnapshot;
 use gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CLOSE_POPUPS_TOOL,
-    ClosePopupsResult, GuiControlToolRequest, PopupUiState, READ_UI_STATE_TOOL,
-    SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON, SWITCH_THREAD_TOOL,
-    SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand, TranscriptUiState, UiStateSnapshot,
+    ClosePopupsResult, GuiControlToolRequest, MultiAgentV2ActivitySample, PopupUiState,
+    READ_UI_STATE_TOOL, SCROLL_TRANSCRIPT_TOOL, SETTINGS_WINDOW_POPUP_CLOSE_REASON,
+    SWITCH_THREAD_TOOL, SWITCH_WORKSPACE_TOOL, ScrollTranscriptCommand,
+    SelectedParentTerminalTurnUiState, TranscriptUiState, UiStateSnapshot,
     close_popups_tool_response, parse_beryl_gui_control_dynamic_tool_request,
     ui_state_tool_response,
 };
@@ -195,6 +196,77 @@ fn ui_state_response_reports_backend_unavailable_reason() {
         payload["result"]["backendUnavailable"]["runtimeTarget"]["canonicalPath"],
         r"C:\Users\operator"
     );
+}
+
+#[test]
+fn ui_state_response_serializes_content_free_diagnostic_fields_in_camel_case() {
+    let request = tool_request(READ_UI_STATE_TOOL, json!({}));
+    let response = ui_state_tool_response(
+        &request,
+        UiStateSnapshot {
+            shell_state: "ready".to_string(),
+            selected_surface: "conversation".to_string(),
+            selected_workspace_id: None,
+            selected_thread_id: Some("thread_parent".to_string()),
+            selected_runtime_target: None,
+            backend_unavailable: None,
+            turn_state: gui_control_dynamic_tools::TurnUiState {
+                selected_parent_terminal_turn: Some(SelectedParentTerminalTurnUiState {
+                    thread_id: "thread_parent".to_string(),
+                    turn_id: "turn_parent".to_string(),
+                    status: "completed".to_string(),
+                }),
+                ..Default::default()
+            },
+            transcript: TranscriptUiState::default(),
+            visible_media: VisibleMediaSnapshot::default(),
+            activity_panel: ActivityPanelUiState {
+                multi_agent_v2_activity_sample: vec![MultiAgentV2ActivitySample {
+                    parent_thread_id: "thread_parent".to_string(),
+                    parent_turn_id: "turn_parent".to_string(),
+                    parent_item_id: "item_activity".to_string(),
+                    child_thread_id: Some("thread_child".to_string()),
+                    lifecycle_kind: "interacted".to_string(),
+                    row_status: "finished_ok".to_string(),
+                    nickname_resolution_state: "resolved".to_string(),
+                }],
+                ..Default::default()
+            },
+            popups: PopupUiState::default(),
+            background_work: BackgroundWorkUiState::default(),
+        },
+    );
+    let payload = response_json(&response);
+    let diagnostic_text = serde_json::to_string(&json!({
+        "terminal": payload["result"]["turnState"]["selectedParentTerminalTurn"],
+        "activity": payload["result"]["activityPanel"]["multiAgentV2ActivitySample"],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        payload["result"]["turnState"]["selectedParentTerminalTurn"]["threadId"],
+        "thread_parent"
+    );
+    assert_eq!(
+        payload["result"]["activityPanel"]["multiAgentV2ActivitySample"][0]["lifecycleKind"],
+        "interacted"
+    );
+    assert_eq!(
+        payload["result"]["activityPanel"]["multiAgentV2ActivitySampleTruncated"],
+        false
+    );
+    for forbidden in [
+        "label",
+        "display",
+        "prompt",
+        "reasoning",
+        "output",
+        "model",
+        "effort",
+        "agentPath",
+    ] {
+        assert!(!diagnostic_text.contains(forbidden));
+    }
 }
 
 fn tool_request(tool: &str, arguments: Value) -> DynamicToolCallRequest {

@@ -30,6 +30,9 @@ Show bounded live and recent backend activity for the selected conversation with
 - Visible rows are scoped to the selected backend conversation thread and that thread's observed subagent activity.
 - When the workspace is on a pending new-thread draft, visible activity is empty rather than stale rows from the previous selection.
 - Activity state is keyed by backend thread id, turn id, and item id so lifecycle updates remain exact across overlapping threads and subagents.
+- A completed multi-agent v2 `subAgentActivity` record keeps the parent event's backend thread, turn, and item identity for correlation, retention, and selected-parent visibility, while its agent label is attributed to the exact child `agentThreadId` carried by that event.
+- A v2 lifecycle record with a valid child attribution keeps its agent label empty until that child thread's backend nickname resolves through the ordinary metadata path. It must not render the child thread id or `agentPath` as a fallback label.
+- Completed-only v2 lifecycle records report the completed collaboration operation; they do not synthesize a running child lifecycle or imply that the child turn has completed.
 - Running activity is retained until terminal state. Completed activity may be pruned by deterministic row, byte, and selected-thread retention windows.
 - Background metadata resolution for unresolved subagent names is bounded, cancellable, and lower priority than foreground turn streaming.
 

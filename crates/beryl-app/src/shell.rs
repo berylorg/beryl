@@ -74,11 +74,13 @@ use crate::diagnostic_dynamic_tools::{
 use crate::graph_upkeep_context::compose_hidden_developer_instructions;
 use crate::gui_control_dynamic_tools::{
     ActivityPanelUiState, BackendUnavailableUiState, BackgroundWorkUiState, CancellableTurnUiState,
-    ClosePopupsResult, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest, PopupUiState,
+    ClosePopupsResult, DEFAULT_UI_VISIBLE_ROW_LIMIT, GuiControlToolRequest,
+    MAX_DIAGNOSTIC_IDENTITY_BYTES, MultiAgentV2ActivitySample, PopupUiState,
     SETTINGS_WINDOW_POPUP_CLOSE_REASON, ScrollTranscriptArguments, ScrollTranscriptCommand,
-    ScrollTranscriptResult, SwitchThreadArguments, SwitchThreadResult, SwitchWorkspaceArguments,
-    SwitchWorkspaceResult, TranscriptScrollPositionDiagnostic, TranscriptUiState, TurnUiState,
-    UiRangeDiagnostic, UiStateSnapshot, VisibleTranscriptRowDiagnostic, bounded_control_string,
+    ScrollTranscriptResult, SelectedParentTerminalTurnUiState, SwitchThreadArguments,
+    SwitchThreadResult, SwitchWorkspaceArguments, SwitchWorkspaceResult,
+    TranscriptScrollPositionDiagnostic, TranscriptUiState, TurnUiState, UiRangeDiagnostic,
+    UiStateSnapshot, VisibleTranscriptRowDiagnostic, bounded_control_string,
     close_popups_tool_response, gui_control_failure_response, is_beryl_gui_control_dynamic_tool,
     parse_beryl_gui_control_dynamic_tool_request, parse_gui_control_tool_request,
     scroll_transcript_tool_response, switch_thread_tool_response, ui_state_tool_response,
@@ -310,6 +312,33 @@ fn cancellable_turn_ui_state(turn: &CancellableActiveTurn) -> CancellableTurnUiS
         turn_id: bounded_control_string(turn.turn_id.clone()),
         kind: kind.to_string(),
     }
+}
+
+fn selected_parent_terminal_turn_ui_state(
+    turn: execution_detail::SelectedParentTerminalTurn,
+) -> Option<SelectedParentTerminalTurnUiState> {
+    if turn.thread_id.trim().is_empty()
+        || turn.turn_id.trim().is_empty()
+        || turn.thread_id.len() > MAX_DIAGNOSTIC_IDENTITY_BYTES
+        || turn.turn_id.len() > MAX_DIAGNOSTIC_IDENTITY_BYTES
+    {
+        return None;
+    }
+    let status = match turn.status {
+        TurnExecutionStatus::Completed => "completed",
+        TurnExecutionStatus::Interrupted => "interrupted",
+        TurnExecutionStatus::Failed => "failed",
+        TurnExecutionStatus::Queued
+        | TurnExecutionStatus::Starting
+        | TurnExecutionStatus::Running => {
+            return None;
+        }
+    };
+    Some(SelectedParentTerminalTurnUiState {
+        thread_id: turn.thread_id,
+        turn_id: turn.turn_id,
+        status: status.to_string(),
+    })
 }
 
 fn diagnostic_expected_turn_mismatch(
@@ -13715,6 +13744,10 @@ impl ShellView {
             .as_ref()
             .map(|targets| (targets.targets.len(), targets.limitations.len()))
             .unwrap_or_default();
+        let selected_parent_terminal_turn = surface
+            .execution_details
+            .selected_parent_terminal_turn()
+            .and_then(selected_parent_terminal_turn_ui_state);
 
         TurnUiState {
             selected_thread_state,
@@ -13730,6 +13763,7 @@ impl ShellView {
                 .status_line_operations()
                 .hard_stop_request_in_flight(),
             hard_stop_hold_active: surface.status_line_operations().hard_stop_hold_active(),
+            selected_parent_terminal_turn,
         }
     }
 
@@ -13803,11 +13837,30 @@ impl ShellView {
 
     fn activity_panel_ui_state(&self) -> ActivityPanelUiState {
         self.conversation_surface()
-            .map(|surface| ActivityPanelUiState {
-                mode: format!("{:?}", surface.tool_activity_panel_mode()).to_ascii_lowercase(),
-                visible: surface.tool_activity_panel_visible(),
-                row_count: surface.tool_activity_row_count(),
-                height_px: f64::from(f32::from(surface.tool_activity_panel_height())),
+            .map(|surface| {
+                let sample = surface
+                    .tool_activity
+                    .multi_agent_v2_activity_diagnostic_sample(surface.selected_thread_id());
+                ActivityPanelUiState {
+                    mode: format!("{:?}", surface.tool_activity_panel_mode()).to_ascii_lowercase(),
+                    visible: surface.tool_activity_panel_visible(),
+                    row_count: surface.tool_activity_row_count(),
+                    height_px: f64::from(f32::from(surface.tool_activity_panel_height())),
+                    multi_agent_v2_activity_sample: sample
+                        .records
+                        .into_iter()
+                        .map(|record| MultiAgentV2ActivitySample {
+                            parent_thread_id: record.parent_thread_id,
+                            parent_turn_id: record.parent_turn_id,
+                            parent_item_id: record.parent_item_id,
+                            child_thread_id: record.child_thread_id,
+                            lifecycle_kind: record.lifecycle_kind.to_string(),
+                            row_status: record.row_status.to_string(),
+                            nickname_resolution_state: record.nickname_resolution_state.to_string(),
+                        })
+                        .collect(),
+                    multi_agent_v2_activity_sample_truncated: sample.truncated,
+                }
             })
             .unwrap_or_default()
     }

@@ -569,12 +569,6 @@ impl AcceptanceSessionConfig {
         if self.launch_mode == AcceptanceLaunchMode::FreshWorkspace && self.isolated_home.exists() {
             require_directory(&self.isolated_home, "inspect isolated home")?;
         }
-        if self.evidence_path.exists() {
-            return Err(AcceptanceSessionError::InvalidConfiguration(format!(
-                "evidence path {} already exists",
-                self.evidence_path.display()
-            )));
-        }
         let evidence_parent = self.evidence_path.parent().ok_or_else(|| {
             AcceptanceSessionError::InvalidConfiguration(
                 "evidence path must have an existing parent directory".to_string(),
@@ -582,27 +576,62 @@ impl AcceptanceSessionConfig {
         })?;
         require_directory(evidence_parent, "inspect evidence parent")?;
 
-        let mut paths = vec![
-            ("executable", self.executable_path.as_path()),
-            ("isolated home", self.isolated_home.as_path()),
-            ("evidence", self.evidence_path.as_path()),
-        ];
+        reject_path_overlap(
+            "isolated home",
+            &self.isolated_home,
+            "evidence",
+            &self.evidence_path,
+        )?;
+        reject_path_overlap(
+            "executable",
+            &self.executable_path,
+            "isolated home",
+            &self.isolated_home,
+        )?;
+        reject_path_overlap(
+            "executable",
+            &self.executable_path,
+            "evidence",
+            &self.evidence_path,
+        )?;
         if let Some(workspace) = self.execution_workspace.as_deref() {
-            paths.push(("execution workspace", workspace));
+            reject_path_overlap(
+                "isolated home",
+                &self.isolated_home,
+                "execution workspace",
+                workspace,
+            )?;
+            reject_path_overlap(
+                "evidence",
+                &self.evidence_path,
+                "execution workspace",
+                workspace,
+            )?;
         }
-        for (index, (left_label, left)) in paths.iter().enumerate() {
-            for (right_label, right) in paths.iter().skip(index + 1) {
-                if paths_overlap(left, right) {
-                    return Err(AcceptanceSessionError::InvalidConfiguration(format!(
-                        "{left_label} path {} collides with {right_label} path {}",
-                        left.display(),
-                        right.display()
-                    )));
-                }
-            }
+        if self.evidence_path.exists() {
+            return Err(AcceptanceSessionError::InvalidConfiguration(format!(
+                "evidence path {} already exists",
+                self.evidence_path.display()
+            )));
         }
         Ok(())
     }
+}
+
+fn reject_path_overlap(
+    left_label: &str,
+    left: &Path,
+    right_label: &str,
+    right: &Path,
+) -> Result<(), AcceptanceSessionError> {
+    if paths_overlap(left, right) {
+        return Err(AcceptanceSessionError::InvalidConfiguration(format!(
+            "{left_label} path {} collides with {right_label} path {}",
+            left.display(),
+            right.display()
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug)]

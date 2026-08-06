@@ -1326,6 +1326,99 @@ fn collab_agent_tool_activity_does_not_invent_labels_from_status_states() {
 }
 
 #[test]
+fn subagent_activity_completed_items_normalize_all_protocol_kinds() {
+    for kind in ["started", "interacted", "interrupted"] {
+        let activity = parse_tool_activity(
+            "item/completed",
+            json!({
+                "id": format!("subagent_{kind}"),
+                "type": "subAgentActivity",
+                "kind": kind,
+                "agentThreadId": "thread_child",
+                "agentPath": "main/research",
+            }),
+        );
+
+        assert_eq!(activity.thread_id, "thread_123");
+        assert_eq!(activity.turn_id, "turn_123");
+        assert_eq!(activity.item_type, "subAgentActivity");
+        assert_eq!(activity.source, ToolActivitySource::CollabAgentToolCall);
+        assert_eq!(activity.lifecycle, ToolActivityLifecycle::Completed);
+        assert_eq!(activity.raw_tool_name.as_deref(), Some(kind));
+        assert_eq!(
+            activity.receiver_thread_ids,
+            vec!["thread_child".to_string()]
+        );
+        assert_eq!(
+            activity.sub_agent_activity_path.as_deref(),
+            Some("main/research")
+        );
+        assert!(activity.collab_agent_spawn_metadata.is_none());
+        assert!(activity.agent_label_updates.is_empty());
+    }
+}
+
+#[test]
+fn subagent_activity_is_completed_only_and_ignores_blank_child_ids() {
+    let started = parse_turn_stream_event(
+        "item/started",
+        Some(json!({
+            "threadId": "thread_parent",
+            "turnId": "turn_parent",
+            "item": {
+                "id": "subagent_started",
+                "type": "subAgentActivity",
+                "kind": "started",
+                "agentThreadId": "thread_child",
+            }
+        })),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(started.tool_activity().is_none());
+
+    for agent_thread_id in [None, Some(""), Some("   ")] {
+        let mut item = json!({
+            "id": "subagent_completed",
+            "type": "subAgentActivity",
+            "kind": "interacted",
+            "agentPath": "main/research",
+        });
+        if let Some(agent_thread_id) = agent_thread_id {
+            item["agentThreadId"] = json!(agent_thread_id);
+        }
+
+        let activity = parse_tool_activity("item/completed", item);
+        assert_eq!(activity.lifecycle, ToolActivityLifecycle::Completed);
+        assert!(activity.receiver_thread_ids.is_empty());
+    }
+}
+
+#[test]
+fn legacy_collab_activity_remains_distinct_from_subagent_activity() {
+    let activity = parse_tool_activity(
+        "item/completed",
+        json!({
+            "id": "agent_legacy",
+            "type": "collabAgentToolCall",
+            "agentsStates": {},
+            "receiverThreadIds": ["thread_child"],
+            "status": "completed",
+            "tool": "wait_agent",
+        }),
+    );
+
+    assert_eq!(activity.item_type, "collabAgentToolCall");
+    assert_eq!(activity.source, ToolActivitySource::CollabAgentToolCall);
+    assert_eq!(activity.raw_tool_name.as_deref(), Some("wait_agent"));
+    assert_eq!(
+        activity.receiver_thread_ids,
+        vec!["thread_child".to_string()]
+    );
+    assert!(activity.sub_agent_activity_path.is_none());
+}
+
+#[test]
 fn collab_agent_tool_activity_preserves_spawn_model_metadata() {
     let activity = parse_tool_activity(
         "item/started",

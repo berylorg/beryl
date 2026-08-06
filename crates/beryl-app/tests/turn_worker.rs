@@ -23,8 +23,8 @@ pub use beryl_app::{
 };
 use beryl_backend::{
     ApprovalRequest, DynamicToolCallOutputContentItem, DynamicToolCallRequest,
-    DynamicToolCallResponse, ThreadSessionResponse, ThreadStartOptions, ThreadStatus, TurnInfo,
-    TurnStatus, TurnStreamEvent, UserInput, parse_approval_request,
+    DynamicToolCallResponse, JsonRpcError, ThreadSessionResponse, ThreadStartOptions, ThreadStatus,
+    TurnInfo, TurnStatus, TurnStreamEvent, UserInput, parse_approval_request,
     parse_dynamic_tool_call_request,
 };
 use beryl_model::{
@@ -232,6 +232,73 @@ fn stream_completion_requires_exact_thread_and_turn_before_idle_can_finish() {
             completion_grace
         ]
     );
+}
+
+#[test]
+fn stream_backend_transport_error_before_completion_is_immediately_fatal() {
+    let idle_poll = Duration::from_secs(10);
+    let completion_grace = Duration::from_millis(500);
+    let mut backend = FakeTurnStreamBackend::new([
+        Err("websocket transport closed: connection reset by peer".to_string()),
+        Ok(Some(turn_completed("thread_1", "turn_1"))),
+    ]);
+    let mut emitted = Vec::new();
+
+    let error = stream_active_turn_events(
+        &mut backend,
+        "thread_1",
+        "turn_1",
+        idle_poll,
+        completion_grace,
+        unexpected_dynamic_tool_call,
+        |_| panic!("test did not expect a lifecycle yield"),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
+    )
+    .unwrap_err();
+
+    assert!(error.contains("websocket transport closed"));
+    assert!(emitted.is_empty());
+    assert_eq!(backend.polls, vec![idle_poll]);
+}
+
+#[test]
+fn stream_protocol_error_before_completion_is_immediately_fatal() {
+    let idle_poll = Duration::from_secs(10);
+    let completion_grace = Duration::from_millis(500);
+    let mut backend = FakeTurnStreamBackend::new([
+        Ok(Some(TurnStreamEvent::ProtocolError {
+            error: JsonRpcError {
+                code: -32000,
+                message: "turn stream framing failed".to_string(),
+                data: None,
+            },
+        })),
+        Ok(Some(turn_completed("thread_1", "turn_1"))),
+    ]);
+    let mut emitted = Vec::new();
+
+    let error = stream_active_turn_events(
+        &mut backend,
+        "thread_1",
+        "turn_1",
+        idle_poll,
+        completion_grace,
+        unexpected_dynamic_tool_call,
+        |_| panic!("test did not expect a lifecycle yield"),
+        |event| {
+            emitted.push(event);
+            Ok(())
+        },
+    )
+    .unwrap_err();
+
+    assert!(error.contains("protocol error"));
+    assert!(error.contains("turn stream framing failed"));
+    assert!(emitted.is_empty());
+    assert_eq!(backend.polls, vec![idle_poll]);
 }
 
 #[test]

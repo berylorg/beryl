@@ -126,6 +126,80 @@ fn execution_detail_tracks_streamed_items_and_identifies_terminal_answer() {
 }
 
 #[test]
+fn execution_detail_projects_only_latest_bounded_terminal_parent_turn() {
+    for (status, expected) in [
+        (TurnStatus::Completed, TurnExecutionStatus::Completed),
+        (TurnStatus::Interrupted, TurnExecutionStatus::Interrupted),
+        (TurnStatus::Failed, TurnExecutionStatus::Failed),
+    ] {
+        let mut state = ExecutionDetailState::default();
+        state.begin_turn("Inspect diagnostics".to_string());
+        state.apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: "thread_parent".to_string(),
+            turn: TurnInfo {
+                id: "turn_parent".to_string(),
+                status: TurnStatus::InProgress,
+                items: Vec::new(),
+                error: None,
+            },
+        });
+        state.apply_stream_event(TurnStreamEvent::TurnCompleted {
+            thread_id: "thread_parent".to_string(),
+            turn: TurnInfo {
+                id: "turn_parent".to_string(),
+                status,
+                items: Vec::new(),
+                error: None,
+            },
+        });
+
+        let terminal = state.selected_parent_terminal_turn().unwrap();
+        assert_eq!(terminal.thread_id, "thread_parent");
+        assert_eq!(terminal.turn_id, "turn_parent");
+        assert_eq!(terminal.status, expected);
+
+        state.begin_turn("New active turn".to_string());
+        assert!(state.selected_parent_terminal_turn().is_none());
+    }
+}
+
+#[test]
+fn execution_detail_omits_terminal_parent_turn_with_missing_or_overbound_identity() {
+    for (thread_id, turn_id) in [
+        (String::new(), "turn_parent".to_string()),
+        ("thread_parent".to_string(), String::new()),
+        ("   ".to_string(), "turn_parent".to_string()),
+        ("thread_parent".to_string(), "   ".to_string()),
+        ("x".repeat(513), "turn_parent".to_string()),
+        ("x".repeat(512) + " ", "turn_parent".to_string()),
+        ("thread_parent".to_string(), "x".repeat(513)),
+    ] {
+        let mut state = ExecutionDetailState::default();
+        state.begin_turn("Inspect diagnostics".to_string());
+        state.apply_stream_event(TurnStreamEvent::TurnStarted {
+            thread_id: thread_id.clone(),
+            turn: TurnInfo {
+                id: turn_id.clone(),
+                status: TurnStatus::InProgress,
+                items: Vec::new(),
+                error: None,
+            },
+        });
+        state.apply_stream_event(TurnStreamEvent::TurnCompleted {
+            thread_id,
+            turn: TurnInfo {
+                id: turn_id,
+                status: TurnStatus::Completed,
+                items: Vec::new(),
+                error: None,
+            },
+        });
+
+        assert!(state.selected_parent_terminal_turn().is_none());
+    }
+}
+
+#[test]
 fn execution_detail_retained_counts_include_loaded_turn_payloads() {
     let mut state = ExecutionDetailState::default();
     state.begin_turn("Inspect".to_string());
@@ -1415,12 +1489,16 @@ fn execution_detail_preserves_live_turn_records() {
     assert_eq!(user_input_texts(turn), vec!["Inspect the workspace"]);
     assert_eq!(turn.status, TurnExecutionStatus::Starting);
     assert_eq!(turn.terminal_assistant_item_id, None);
+    assert_eq!(state.working_turn_index(), Some(0));
+    assert_eq!(state.last_turn_state(), LastTurnState::Working);
 
     state.finish_turn_failure("backend unavailable");
 
     let turn = &state.turns()[0];
     assert_eq!(turn.status, TurnExecutionStatus::Failed);
     assert_eq!(turn.error_message.as_deref(), Some("backend unavailable"));
+    assert_eq!(state.working_turn_index(), None);
+    assert_eq!(state.last_turn_state(), LastTurnState::Error);
 }
 
 #[test]

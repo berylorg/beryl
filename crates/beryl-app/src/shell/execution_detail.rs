@@ -35,6 +35,7 @@ pub(crate) const MAX_REASONING_SUMMARY_BYTES: usize = 512 * 1024;
 pub(crate) const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_FILE_CHANGE_OUTPUT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_ERROR_MESSAGE_BYTES: usize = 128 * 1024;
+const MAX_DIAGNOSTIC_IDENTITY_BYTES: usize = 512;
 
 #[derive(Clone, Default)]
 pub(super) struct ExecutionDetailState {
@@ -94,6 +95,13 @@ pub(super) enum LastTurnState {
     Working,
     Ok,
     Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SelectedParentTerminalTurn {
+    pub(super) thread_id: String,
+    pub(super) turn_id: String,
+    pub(super) status: TurnExecutionStatus,
 }
 
 #[derive(Clone)]
@@ -500,6 +508,32 @@ impl ExecutionDetailState {
                 LastTurnState::Error
             }
         }
+    }
+
+    pub fn selected_parent_terminal_turn(&self) -> Option<SelectedParentTerminalTurn> {
+        let turn = self.turns.last()?;
+        if !matches!(
+            turn.status,
+            TurnExecutionStatus::Completed
+                | TurnExecutionStatus::Interrupted
+                | TurnExecutionStatus::Failed
+        ) {
+            return None;
+        }
+        let thread_id = turn.thread_id.clone()?;
+        let turn_id = turn.turn_id.clone()?;
+        if thread_id.trim().is_empty()
+            || turn_id.trim().is_empty()
+            || thread_id.len() > MAX_DIAGNOSTIC_IDENTITY_BYTES
+            || turn_id.len() > MAX_DIAGNOSTIC_IDENTITY_BYTES
+        {
+            return None;
+        }
+        Some(SelectedParentTerminalTurn {
+            thread_id,
+            turn_id,
+            status: turn.status,
+        })
     }
 
     #[allow(dead_code)]

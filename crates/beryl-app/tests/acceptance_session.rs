@@ -300,6 +300,151 @@ fn config_rejects_relative_missing_and_colliding_paths_before_launch() {
 
 #[cfg(windows)]
 #[test]
+fn fresh_workspace_accepts_a_frozen_executable_nested_under_a_canonical_workspace_alias() {
+    let fixture = Fixture::new(FakeBehavior::Success);
+    let executable_dir = fixture.workspace.join("acceptance");
+    fs::create_dir(&executable_dir).unwrap();
+    let executable = executable_dir.join("frozen.cmd");
+    fs::copy(&fixture.executable, &executable).unwrap();
+    make_executable(&executable);
+    let canonical_executable = fs::canonicalize(&executable).unwrap();
+    let workspace_alias = executable_dir.join("..");
+
+    let session = AcceptanceSession::start(
+        AcceptanceSessionConfig::new(
+            &executable,
+            &fixture.home,
+            AcceptanceLaunchMode::FreshWorkspace,
+            Some(workspace_alias),
+            &fixture.evidence,
+            "nested-executable",
+            limits(1, 64),
+            Duration::from_secs(1),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let outcome = session.finish();
+    assert_eq!(
+        outcome.evidence().fixture.executable_path,
+        canonical_executable
+    );
+    assert_eq!(
+        outcome.evidence().process.executable_path,
+        canonical_executable
+    );
+    fixture.root.close().unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn config_rejects_each_cleanup_or_publication_sensitive_path_overlap() {
+    let fixture = Fixture::new(FakeBehavior::Success);
+    let assert_collision = |executable: &Path,
+                            home: &Path,
+                            evidence: &Path,
+                            workspace: &Path,
+                            expected_left: &str,
+                            expected_right: &str| {
+        let error = AcceptanceSessionConfig::new(
+            executable,
+            home,
+            AcceptanceLaunchMode::FreshWorkspace,
+            Some(workspace.to_path_buf()),
+            evidence,
+            "path-overlap",
+            limits(1, 64),
+            Duration::from_secs(1),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(expected_left) && error.to_string().contains(expected_right),
+            "expected {expected_left}/{expected_right} collision, got {error}"
+        );
+    };
+
+    assert_collision(
+        &fixture.executable,
+        &fixture.workspace.join("isolated-home"),
+        &fixture.evidence,
+        &fixture.workspace,
+        "isolated home path",
+        "execution workspace path",
+    );
+    assert_collision(
+        &fixture.executable,
+        &fixture.home,
+        &fixture.workspace.join("evidence.json"),
+        &fixture.workspace,
+        "evidence path",
+        "execution workspace path",
+    );
+
+    let shared = fixture.root.join("shared");
+    fs::create_dir(&shared).unwrap();
+    assert_collision(
+        &fixture.executable,
+        &shared,
+        &shared.join("evidence.json"),
+        &fixture.workspace,
+        "isolated home path",
+        "evidence path",
+    );
+
+    let executable_home = fixture.root.join("executable-home");
+    fs::create_dir(&executable_home).unwrap();
+    let nested_executable = executable_home.join("frozen.cmd");
+    fs::copy(&fixture.executable, &nested_executable).unwrap();
+    make_executable(&nested_executable);
+    assert_collision(
+        &nested_executable,
+        &executable_home,
+        &fixture.evidence,
+        &fixture.workspace,
+        "executable path",
+        "isolated home path",
+    );
+    assert_collision(
+        &fixture.executable,
+        &fixture.home,
+        &fixture.executable,
+        &fixture.workspace,
+        "executable path",
+        "evidence path",
+    );
+    fixture.root.close().unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn config_rejects_a_home_with_multiple_missing_components_under_the_workspace() {
+    let fixture = Fixture::new(FakeBehavior::Success);
+    let home = fixture
+        .workspace
+        .join("missing-parent")
+        .join("isolated-home");
+
+    let error = AcceptanceSessionConfig::new(
+        &fixture.executable,
+        &home,
+        AcceptanceLaunchMode::FreshWorkspace,
+        Some(fixture.workspace.clone()),
+        &fixture.evidence,
+        "missing-home-components",
+        limits(1, 64),
+        Duration::from_secs(1),
+    )
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("isolated home path")
+            && error.to_string().contains("execution workspace path"),
+        "expected isolated home/workspace collision, got {error}"
+    );
+    fixture.root.close().unwrap();
+}
+
+#[cfg(windows)]
+#[test]
 fn launch_modes_validate_workspace_and_recovery_home_state_before_launch() {
     let fixture = Fixture::new(FakeBehavior::Success);
 

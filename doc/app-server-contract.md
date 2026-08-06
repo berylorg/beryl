@@ -43,6 +43,7 @@ It is an implementation aid, not a design authority. Relevant feature, system, a
 - WebSocket transport is available through `codex app-server --listen ws://IP:PORT` and carries one JSON-RPC message per WebSocket text frame.
 - Loopback WebSocket listeners can use capability-token auth through `--ws-auth capability-token --ws-token-file <absolute-path>`.
 - WebSocket clients present the capability token as an `Authorization: Bearer <token>` header during the WebSocket handshake.
+- App-server may begin a text frame close to a client's receive-poll deadline. A turn-stream client needs a separately bounded in-progress-message completion window once the first frame byte arrives; treating the original deadline as idle after discarding partial decoder state can make the next payload byte appear to be a reserved opcode.
 
 ## Initialize Surface
 
@@ -161,6 +162,7 @@ It is an implementation aid, not a design authority. Relevant feature, system, a
 - Backend `Thread` metadata includes optional top-level `agentNickname` for AgentControl-spawned subagents. The 0.125.0 and 0.128.0 schemas can also expose the same nickname through nested source metadata at `source.subAgent.thread_spawn.agent_nickname`. A metadata-only `thread/read` response for the spawned child thread is the reliable app-server source observed for subagent nicknames.
 - A separate initialized WebSocket client can call metadata-only `thread/read` for a child thread id immediately after `spawnAgent` completion and receive `Thread.agentNickname` without transferring transcript turns. Beryl treats `collabAgentToolCall.receiverThreadIds` as nickname-resolution keys, not display labels.
 - The raw `codex/event/collab_agent_spawn_end` stream notification may carry the spawned subagent thread id and backend-chosen nickname on some protocol paths. This notification is an opportunistic label source only; Beryl must not depend on it as the sole live nickname source.
+- On exact `codex-cli 0.146.0`, multi-agent v2 `spawn`, `send`, `followup`, and `interrupt` successes each produce a completed-only `subAgentActivity` item with `id`, `kind`, `agentThreadId`, and `agentPath`; failures produce none. `kind` is `started`, `interacted`, or `interrupted`, so `interacted` does not distinguish send from followup. Beryl correlates this activity by `agentThreadId`, retains `thread/read` nickname resolution, does not render `agentPath` as a nickname, and does not infer model or reasoning effort. The v2 `wait_agent` path and all v1 collaboration activity remain legacy `collabAgentToolCall` lifecycle activity. Exact evidence: `doc/memory/topic/codex-app-server-0.146.0/multi-agent-v2-activity-protocol.md`.
 - `webSearch`, `imageView`, `imageGeneration`, and `contextCompaction` are separate native item types with their own fields rather than MCP tool calls.
 - The observed `imageGeneration` thread item includes `id`, `type = "imageGeneration"`, `status`, `revisedPrompt`, `result`, and `savedPath`.
 - The observed `imageGeneration.result` is raw PNG base64, not a `data:` URL. `savedPath` points at the same generated PNG under the Codex-generated-images directory for the thread.

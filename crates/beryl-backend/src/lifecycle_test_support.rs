@@ -108,6 +108,28 @@ pub fn pause_websocket_after_next_write_header(
     Ok((entered_rx, release_tx))
 }
 
+pub fn pause_websocket_after_next_read_frame_byte(
+    session: &mut ManagedBackendSession,
+) -> LifecycleTestResult<(Receiver<()>, SyncSender<()>)> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    if !session.pause_websocket_after_next_read_frame_byte_for_test(entered_tx, release_rx) {
+        return Err("test session does not use WebSocket transport".into());
+    }
+    Ok((entered_rx, release_tx))
+}
+
+pub fn pause_websocket_after_next_read_payload(
+    session: &mut ManagedBackendSession,
+) -> LifecycleTestResult<(Receiver<()>, SyncSender<()>)> {
+    let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    if !session.pause_websocket_after_next_read_payload_for_test(entered_tx, release_rx) {
+        return Err("test session does not use WebSocket transport".into());
+    }
+    Ok((entered_rx, release_tx))
+}
+
 pub fn pause_websocket_before_next_write(
     session: &mut ManagedBackendSession,
 ) -> LifecycleTestResult<(Receiver<()>, SyncSender<()>)> {

@@ -17,7 +17,7 @@ pub(crate) const SETTINGS_WINDOW_POPUP_CLOSE_REASON: &str = "settings_window_pop
 pub(crate) const MAX_UI_VISIBLE_ROW_LIMIT: usize = 64;
 pub(crate) const DEFAULT_UI_VISIBLE_ROW_LIMIT: usize = 32;
 pub(crate) const MAX_SCROLL_REPEAT: usize = 8;
-const MAX_CONTROL_STRING_BYTES: usize = 512;
+pub(crate) const MAX_DIAGNOSTIC_IDENTITY_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +56,15 @@ pub(crate) struct TurnUiState {
     pub turn_stop_request_in_flight: bool,
     pub hard_stop_request_in_flight: bool,
     pub hard_stop_hold_active: bool,
+    pub selected_parent_terminal_turn: Option<SelectedParentTerminalTurnUiState>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SelectedParentTerminalTurnUiState {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -124,6 +133,20 @@ pub(crate) struct ActivityPanelUiState {
     pub visible: bool,
     pub row_count: usize,
     pub height_px: f64,
+    pub multi_agent_v2_activity_sample: Vec<MultiAgentV2ActivitySample>,
+    pub multi_agent_v2_activity_sample_truncated: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MultiAgentV2ActivitySample {
+    pub parent_thread_id: String,
+    pub parent_turn_id: String,
+    pub parent_item_id: String,
+    pub child_thread_id: Option<String>,
+    pub lifecycle_kind: String,
+    pub row_status: String,
+    pub nickname_resolution_state: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -398,9 +421,9 @@ fn bounded_non_empty_argument(
             detail: format!("{name} must not be empty"),
         });
     }
-    if value.len() > MAX_CONTROL_STRING_BYTES {
+    if value.len() > MAX_DIAGNOSTIC_IDENTITY_BYTES {
         return Err(GuiControlToolError::InvalidArguments {
-            detail: format!("{name} exceeds {MAX_CONTROL_STRING_BYTES} bytes"),
+            detail: format!("{name} exceeds {MAX_DIAGNOSTIC_IDENTITY_BYTES} bytes"),
         });
     }
     Ok(value)
@@ -437,10 +460,10 @@ fn compact_json(value: Value) -> String {
 
 fn truncate_control_string(value: impl Into<String>) -> String {
     let mut value = value.into();
-    if value.len() <= MAX_CONTROL_STRING_BYTES {
+    if value.len() <= MAX_DIAGNOSTIC_IDENTITY_BYTES {
         return value;
     }
-    let mut end = MAX_CONTROL_STRING_BYTES;
+    let mut end = MAX_DIAGNOSTIC_IDENTITY_BYTES;
     while end > 0 && !value.is_char_boundary(end) {
         end -= 1;
     }

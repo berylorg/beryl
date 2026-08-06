@@ -1563,6 +1563,612 @@ fn projection_keeps_thread_metadata_nickname_above_later_activity_labels() {
     assert_eq!(child_row.agent_label, "Hooke");
 }
 
+#[test]
+fn projection_attributes_completed_v2_activity_to_the_child_without_changing_parent_visibility() {
+    let mut projection = ToolActivityProjection::default();
+
+    for kind in ["started", "interacted", "interrupted"] {
+        projection.apply_stream_event(
+            &completed(
+                "thread_parent",
+                "turn_parent",
+                subagent_activity_item(
+                    format!("subagent_{kind}").as_str(),
+                    kind,
+                    Some("thread_child"),
+                ),
+            ),
+            Some("Main".to_string()),
+        );
+    }
+
+    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(parent_rows.len(), 3);
+    assert!(parent_rows.iter().all(|row| row.agent_label.is_empty()));
+    assert_eq!(
+        parent_rows
+            .iter()
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["interrupted", "interacted", "started"]
+    );
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_child"))
+            .len(),
+        0
+    );
+
+    projection.apply_stream_event(&thread_started("thread_child", Some("Noether")), None);
+
+    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert!(parent_rows.iter().all(|row| row.agent_label == "Noether"));
+}
+
+#[test]
+fn projection_keeps_malformed_v2_activity_on_the_parent_without_a_child_label() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_missing", "interacted", Some("   ")),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let row = row_for_activity(&projection, "interacted");
+    assert_eq!(row.agent_label, "Main");
+    assert_eq!(
+        projection.unresolved_subagent_thread_ids(),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn projection_keeps_legacy_collaboration_activity_on_main() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy_agent", "thread_child"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(
+        row_for_activity(&projection, "spawnAgent").agent_label,
+        "Main"
+    );
+}
+
+#[test]
+fn projection_keeps_completed_v2_same_key_replay_idempotent() {
+    let mut projection = ToolActivityProjection::default();
+    let event = completed(
+        "thread_parent",
+        "turn_parent",
+        subagent_activity_item("subagent_1", "interacted", Some("thread_child")),
+    );
+
+    assert!(projection.apply_stream_event(&event, Some("Main".to_string())));
+    assert!(!projection.apply_stream_event(&event, Some("Main".to_string())));
+
+    assert_eq!(projection.rows().len(), 1);
+    assert_eq!(projection.rows()[0].agent_label, "");
+    assert_eq!(projection.rows()[0].tool_display_value, "interacted");
+    assert_eq!(projection.retained_counts().parent_thread_links, 1);
+}
+
+#[test]
+fn projection_attributes_nested_v2_lifecycle_activity_to_each_exact_child() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_child", "interacted", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_child",
+            "turn_child",
+            subagent_activity_item(
+                "subagent_grandchild",
+                "interrupted",
+                Some("thread_grandchild"),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
+    projection.apply_stream_event(&thread_started("thread_grandchild", Some("Noether")), None);
+
+    let parent_rows = projection.rows_for_selected_thread(Some("thread_parent"));
+    assert_eq!(parent_rows.len(), 2);
+    assert!(
+        parent_rows
+            .iter()
+            .any(|row| row.tool_display_value == "interacted" && row.agent_label == "Hooke")
+    );
+    assert!(
+        parent_rows
+            .iter()
+            .any(|row| row.tool_display_value == "interrupted" && row.agent_label == "Noether")
+    );
+}
+
+#[test]
+fn projection_applies_runtime_metadata_to_v2_child_attribution_after_resolution() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_1", "interacted", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+    let metadata = thread_read_metadata(
+        "thread_child",
+        Some("Hooke"),
+        Some("gpt-5.5"),
+        Some("xhigh"),
+    );
+
+    projection.apply_thread_read_metadata([&metadata]);
+
+    assert_eq!(
+        row_for_activity(&projection, "interacted").agent_label,
+        "Hooke (gpt-5.5/xhigh)"
+    );
+}
+
+#[test]
+fn projection_prunes_v2_ownership_with_its_completed_lifecycle_record() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_1", "interacted", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
+
+    for index in 0..ACTIVITY_COMPLETED_ROW_BUDGET + 10 {
+        add_completed_command(&mut projection, "thread_other", index, "completed");
+    }
+
+    let counts = projection.retained_counts();
+    assert_eq!(counts.parent_thread_links, 0);
+    assert_eq!(counts.root_turn_links, 0);
+    assert_eq!(counts.subagent_metadata_count, 0);
+    assert_eq!(counts.label_count, 0);
+    assert!(projection.subagent_metadata_resolution_targets().is_empty());
+    assert!(projection.unresolved_subagent_thread_ids().is_empty());
+    assert!(
+        projection
+            .rows()
+            .iter()
+            .all(|row| row.tool_display_value != "interacted")
+    );
+}
+
+#[test]
+fn projection_prunes_completed_v2_activity_with_an_oversized_child_identity() {
+    let mut projection = ToolActivityProjection::default();
+    projection.set_selected_thread_id(Some("thread_parent"));
+    let oversized_child_id = "child_".to_string()
+        + &"x".repeat(ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_add(1));
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item(
+                "subagent_oversized",
+                "interacted",
+                Some(&oversized_child_id),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert!(projection.rows().is_empty());
+    assert_eq!(projection.retained_counts().records, 0);
+    assert_eq!(projection.retained_counts().parent_thread_links, 0);
+}
+
+#[test]
+fn projection_keeps_selected_v2_activity_at_the_completed_identity_byte_boundary() {
+    let mut projection = ToolActivityProjection::default();
+    projection.set_selected_thread_id(Some("thread_parent"));
+    let fixed_payload_bytes = "Main".len() + "interacted".len();
+    let child_id_bytes =
+        ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_sub(fixed_payload_bytes) / 2;
+    let child_id = "x".repeat(child_id_bytes);
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_boundary", "interacted", Some(&child_id)),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(projection.retained_counts().records, 1);
+    assert_eq!(
+        projection.row_count_for_selected_thread(Some("thread_parent")),
+        1
+    );
+}
+
+#[test]
+fn projection_applies_selected_v2_identity_budget_newest_first_and_prunes_old_ownership() {
+    let mut projection = ToolActivityProjection::default();
+    projection.set_selected_thread_id(Some("thread_parent"));
+    let fixed_payload_bytes = "Main".len() + "interacted".len();
+    let child_id_bytes =
+        ACTIVITY_COMPLETED_DISPLAY_BYTE_BUDGET.saturating_sub(fixed_payload_bytes) / 2;
+    let child_a = "a".repeat(child_id_bytes);
+    let child_b = "b".repeat(child_id_bytes);
+
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_old", "started", Some(&child_a)),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(&thread_started(&child_a, Some("Old")), None);
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_new", "interacted", Some(&child_b)),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(projection.retained_counts().records, 1);
+    assert_eq!(projection.retained_counts().parent_thread_links, 1);
+    assert_eq!(projection.retained_counts().label_count, 0);
+    assert_eq!(
+        projection
+            .rows_for_selected_thread(Some("thread_parent"))
+            .iter()
+            .map(|row| row.tool_display_value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["interacted"]
+    );
+    assert_eq!(
+        projection.unresolved_subagent_thread_ids(),
+        vec![child_b.clone()]
+    );
+}
+
+#[test]
+fn projection_requires_thread_metadata_nickname_for_v2_subject_after_legacy_metadata() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &started(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_with_agent_label(
+                "legacy_agent",
+                "thread_child",
+                "Legacy activity label",
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    let metadata = thread_read_metadata("thread_child", None, Some("gpt-5.5"), Some("xhigh"));
+    projection.apply_thread_read_metadata([&metadata]);
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("subagent_v2", "interacted", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+
+    assert_eq!(row_for_activity(&projection, "interacted").agent_label, "");
+    assert_eq!(
+        projection.subagent_metadata_resolution_targets(),
+        vec![tool_activity::ToolActivitySubagentMetadataTarget {
+            thread_id: "thread_child".to_string(),
+            requires_nickname: true,
+        }]
+    );
+
+    projection.apply_stream_event(&thread_started("thread_child", Some("Hooke")), None);
+    assert_eq!(
+        row_for_activity(&projection, "interacted").agent_label,
+        "Hooke (gpt-5.5/xhigh)"
+    );
+}
+
+#[test]
+fn diagnostic_sample_projects_recognized_v2_kinds_with_immediate_parent_identity() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("item_child", "started", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_child",
+            "turn_child",
+            subagent_activity_item("item_grandchild", "interrupted", Some("thread_grandchild")),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(&thread_started("thread_grandchild", Some("Noether")), None);
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("item_invalid_kind", "other", Some("thread_ignored")),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            collab_spawn_item_for("legacy_item", "thread_legacy"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some("thread_parent"));
+
+    assert!(!sample.truncated);
+    assert_eq!(sample.records.len(), 2);
+    assert_eq!(sample.records[0].parent_thread_id, "thread_child");
+    assert_eq!(sample.records[0].parent_turn_id, "turn_child");
+    assert_eq!(sample.records[0].parent_item_id, "item_grandchild");
+    assert_eq!(
+        sample.records[0].child_thread_id.as_deref(),
+        Some("thread_grandchild")
+    );
+    assert_eq!(sample.records[0].lifecycle_kind, "interrupted");
+    assert_eq!(sample.records[0].row_status, "finished_ok");
+    assert_eq!(sample.records[0].nickname_resolution_state, "resolved");
+    assert_eq!(sample.records[1].parent_thread_id, "thread_parent");
+    assert_eq!(sample.records[1].lifecycle_kind, "started");
+    assert_eq!(sample.records[1].nickname_resolution_state, "unresolved");
+    assert!(
+        projection
+            .multi_agent_v2_activity_diagnostic_sample(None)
+            .records
+            .is_empty()
+    );
+}
+
+#[test]
+fn diagnostic_sample_marks_invalid_identity_omission_and_item_cap_truncation() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item("", "interacted", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item(&"x".repeat(513), "interacted", Some("thread_child")),
+        ),
+        Some("Main".to_string()),
+    );
+    for index in 0..65 {
+        projection.apply_stream_event(
+            &completed(
+                "thread_parent",
+                "turn_parent",
+                subagent_activity_item(
+                    format!("item_{index:03}").as_str(),
+                    "interacted",
+                    Some("thread_child"),
+                ),
+            ),
+            Some("Main".to_string()),
+        );
+    }
+
+    let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some("thread_parent"));
+
+    assert_eq!(sample.records.len(), 64);
+    assert!(sample.truncated);
+    assert_eq!(sample.records[0].parent_item_id, "item_064");
+    assert_eq!(sample.records[63].parent_item_id, "item_001");
+}
+
+#[test]
+fn diagnostic_sample_stops_at_aggregate_identity_budget_without_skipping() {
+    let mut projection = ToolActivityProjection::default();
+    let thread_id = "t".repeat(512);
+    let turn_id = "u".repeat(512);
+    projection.set_selected_thread_id(Some(&thread_id));
+    for index in 0..64 {
+        projection.apply_stream_event(
+            &completed(
+                &thread_id,
+                &turn_id,
+                subagent_activity_item(
+                    format!("{index:03}_{}", "i".repeat(507)).as_str(),
+                    "interacted",
+                    None,
+                ),
+            ),
+            Some("Main".to_string()),
+        );
+    }
+
+    let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some(&thread_id));
+
+    assert_eq!(sample.records.len(), 42);
+    assert!(sample.truncated);
+    assert_eq!(&sample.records.last().unwrap().parent_item_id[..3], "022");
+}
+
+#[test]
+fn diagnostic_sample_reports_finished_error_and_not_applicable_without_child_identity() {
+    let mut projection = ToolActivityProjection::default();
+    projection.apply_stream_event(
+        &completed(
+            "thread_parent",
+            "turn_parent",
+            subagent_activity_item_with_status("item_error", "interacted", None, "failed"),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some("thread_parent"));
+
+    assert_eq!(sample.records.len(), 1);
+    assert_eq!(sample.records[0].row_status, "finished_error");
+    assert_eq!(sample.records[0].child_thread_id, None);
+    assert_eq!(
+        sample.records[0].nickname_resolution_state,
+        "not_applicable"
+    );
+}
+
+#[test]
+fn diagnostic_sample_omits_overbound_parent_thread_and_turn_without_item_cap() {
+    for (thread_id, turn_id) in [
+        ("t".repeat(512) + " ", "turn_parent".to_string()),
+        ("thread_parent".to_string(), "u".repeat(513)),
+    ] {
+        let mut projection = ToolActivityProjection::default();
+        projection.set_selected_thread_id(Some(&thread_id));
+        projection.apply_stream_event(
+            &completed(
+                &thread_id,
+                &turn_id,
+                subagent_activity_item("item_activity", "interacted", None),
+            ),
+            Some("Main".to_string()),
+        );
+
+        let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some(&thread_id));
+
+        assert!(sample.records.is_empty());
+        assert!(sample.truncated);
+    }
+}
+
+#[test]
+fn diagnostic_sample_omits_blank_and_overbound_parent_item_without_item_cap() {
+    for item_id in [String::from("   "), "i".repeat(513)] {
+        let mut projection = ToolActivityProjection::default();
+        projection.set_selected_thread_id(Some("thread_parent"));
+        projection.apply_stream_event(
+            &completed(
+                "thread_parent",
+                "turn_parent",
+                subagent_activity_item(&item_id, "interacted", None),
+            ),
+            Some("Main".to_string()),
+        );
+
+        let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some("thread_parent"));
+
+        assert!(sample.records.is_empty());
+        assert!(sample.truncated);
+    }
+}
+
+#[test]
+fn diagnostic_sample_preserves_whitespace_identity_and_omits_overbound_child() {
+    let mut projection = ToolActivityProjection::default();
+    let parent_thread_id = "thread_parent ";
+    let child_thread_id = "thread_child ";
+    projection.set_selected_thread_id(Some(parent_thread_id));
+    projection.apply_stream_event(
+        &completed(
+            parent_thread_id,
+            "turn_parent ",
+            subagent_activity_item("item_activity ", "started", Some(child_thread_id)),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let exact = projection.multi_agent_v2_activity_diagnostic_sample(Some(parent_thread_id));
+    assert_eq!(exact.records.len(), 1);
+    assert_eq!(exact.records[0].parent_thread_id, parent_thread_id);
+    assert_eq!(exact.records[0].parent_turn_id, "turn_parent ");
+    assert_eq!(exact.records[0].parent_item_id, "item_activity ");
+    assert_eq!(
+        exact.records[0].child_thread_id.as_deref(),
+        Some(child_thread_id)
+    );
+
+    let oversized_child_id = "c".repeat(512) + " ";
+    projection.apply_stream_event(
+        &completed(
+            parent_thread_id,
+            "turn_parent ",
+            subagent_activity_item(
+                "item_oversized_child",
+                "interacted",
+                Some(&oversized_child_id),
+            ),
+        ),
+        Some("Main".to_string()),
+    );
+    let bounded = projection.multi_agent_v2_activity_diagnostic_sample(Some(parent_thread_id));
+    assert_eq!(bounded.records.len(), 1);
+    assert!(bounded.truncated);
+}
+
+#[test]
+fn diagnostic_sample_enforces_utf8_identity_byte_boundary_without_normalization() {
+    let at_limit = "é".repeat(256);
+    let over_limit = "é".repeat(257);
+    let mut projection = ToolActivityProjection::default();
+    projection.set_selected_thread_id(Some(&at_limit));
+    projection.apply_stream_event(
+        &completed(
+            &at_limit,
+            "turn_parent",
+            subagent_activity_item("item_boundary", "interacted", None),
+        ),
+        Some("Main".to_string()),
+    );
+    projection.apply_stream_event(
+        &completed(
+            &at_limit,
+            "turn_parent",
+            subagent_activity_item(&over_limit, "interacted", None),
+        ),
+        Some("Main".to_string()),
+    );
+
+    let sample = projection.multi_agent_v2_activity_diagnostic_sample(Some(&at_limit));
+
+    assert_eq!(sample.records.len(), 1);
+    assert_eq!(sample.records[0].parent_thread_id, at_limit);
+    assert!(sample.truncated);
+}
+
 fn started(thread_id: &str, turn_id: &str, item: ThreadItem) -> TurnStreamEvent {
     TurnStreamEvent::ItemStarted {
         thread_id: thread_id.to_string(),
@@ -1904,4 +2510,27 @@ fn collab_spawn_item_with_agent_label(
         "tool": "spawnAgent"
     }))
     .unwrap()
+}
+
+fn subagent_activity_item(item_id: &str, kind: &str, agent_thread_id: Option<&str>) -> ThreadItem {
+    subagent_activity_item_with_status(item_id, kind, agent_thread_id, "completed")
+}
+
+fn subagent_activity_item_with_status(
+    item_id: &str,
+    kind: &str,
+    agent_thread_id: Option<&str>,
+    status: &str,
+) -> ThreadItem {
+    let mut item = json!({
+        "id": item_id,
+        "type": "subAgentActivity",
+        "kind": kind,
+        "agentPath": "main/research",
+        "status": status,
+    });
+    if let Some(agent_thread_id) = agent_thread_id {
+        item["agentThreadId"] = json!(agent_thread_id);
+    }
+    serde_json::from_value(item).unwrap()
 }

@@ -27,6 +27,63 @@ const WEBSOCKET_FRAME_PAYLOAD_BUDGET: usize = 64 * 1024 * 1024;
 const WEBSOCKET_TEXT_MESSAGE_BUDGET: usize = 64 * 1024 * 1024;
 const WEBSOCKET_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const WEBSOCKET_HANDSHAKE_READ_AHEAD_BUDGET: usize = 4 * 1024;
+const WEBSOCKET_STREAM_MESSAGE_COMPLETION_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[derive(Clone, Copy)]
+pub(crate) enum WebSocketReceiveMode {
+    Request,
+    StreamPoll,
+}
+
+struct ReceiveDeadline {
+    base: Instant,
+    current: Instant,
+    completion_timeout: Option<Duration>,
+    framing_progressed: bool,
+}
+
+impl ReceiveDeadline {
+    fn request(current: Instant) -> Self {
+        Self {
+            base: current,
+            current,
+            completion_timeout: None,
+            framing_progressed: false,
+        }
+    }
+
+    fn stream_poll(current: Instant) -> Self {
+        Self {
+            base: current,
+            current,
+            completion_timeout: Some(WEBSOCKET_STREAM_MESSAGE_COMPLETION_TIMEOUT),
+            framing_progressed: false,
+        }
+    }
+
+    fn current(&self) -> Instant {
+        self.current
+    }
+
+    fn note_frame_byte(&mut self) {
+        if self.framing_progressed {
+            return;
+        }
+        self.framing_progressed = true;
+        if let Some(completion_timeout) = self.completion_timeout {
+            self.current = Instant::now() + completion_timeout;
+        }
+    }
+
+    fn framing_progressed(&self) -> bool {
+        self.framing_progressed
+    }
+
+    fn finish_standalone_control_frame(&mut self) {
+        self.current = self.base;
+        self.framing_progressed = false;
+    }
+}
 
 pub(crate) struct WebSocketClientTransport {
     endpoint: String,
@@ -45,6 +102,10 @@ pub(crate) struct WebSocketClientTransport {
     close_frame_attempts: usize,
     #[cfg(feature = "lifecycle-test-support")]
     write_error_after_header: Option<io::ErrorKind>,
+    #[cfg(feature = "lifecycle-test-support")]
+    read_first_frame_byte_pause: Option<WebSocketReadPause>,
+    #[cfg(feature = "lifecycle-test-support")]
+    read_payload_pause: Option<WebSocketReadPause>,
 }
 
 #[cfg(feature = "lifecycle-test-support")]
@@ -52,6 +113,12 @@ struct WebSocketWritePause {
     entered: std::sync::mpsc::SyncSender<()>,
     release: std::sync::mpsc::Receiver<()>,
     remaining_writes: usize,
+}
+
+#[cfg(feature = "lifecycle-test-support")]
+struct WebSocketReadPause {
+    entered: std::sync::mpsc::SyncSender<()>,
+    release: std::sync::mpsc::Receiver<()>,
 }
 
 impl WebSocketClientTransport {
@@ -87,6 +154,10 @@ impl WebSocketClientTransport {
             close_frame_attempts: 0,
             #[cfg(feature = "lifecycle-test-support")]
             write_error_after_header: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            read_first_frame_byte_pause: None,
+            #[cfg(feature = "lifecycle-test-support")]
+            read_payload_pause: None,
         })
     }
 
@@ -105,6 +176,32 @@ impl WebSocketClientTransport {
             release,
             remaining_writes: 0,
         });
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_after_next_read_frame_byte(
+        &mut self,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        self.read_first_frame_byte_pause = Some(WebSocketReadPause { entered, release });
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_after_next_read_payload(
+        &mut self,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        self.read_payload_pause = Some(WebSocketReadPause { entered, release });
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(super) fn pause_after_read_payload_for_test(&mut self) {
+        if let Some(pause) = self.read_payload_pause.take() {
+            let _ = pause.entered.send(());
+            let _ = pause.release.recv();
+        }
     }
 
     #[cfg(feature = "lifecycle-test-support")]
@@ -167,7 +264,12 @@ impl WebSocketClientTransport {
         &mut self,
         method: &str,
         deadline: Instant,
+        receive_mode: WebSocketReceiveMode,
     ) -> Result<Option<String>, ManagedBackendError> {
+        let mut deadline = match receive_mode {
+            WebSocketReceiveMode::Request => ReceiveDeadline::request(deadline),
+            WebSocketReceiveMode::StreamPoll => ReceiveDeadline::stream_poll(deadline),
+        };
         let receive_started = Instant::now();
         let mut payload = MessagePayload::new(method, WEBSOCKET_TEXT_MESSAGE_BUDGET);
         let mut chunk = [0_u8; READ_CHUNK_BYTES];
@@ -178,7 +280,7 @@ impl WebSocketClientTransport {
 
         loop {
             let was_started = payload.started;
-            match self.read_message_payload_chunk(method, deadline, &mut payload, &mut chunk) {
+            match self.read_message_payload_chunk(method, &mut deadline, &mut payload, &mut chunk) {
                 Ok(PayloadRead::Idle) if !saw_message_byte && !payload.started => {
                     return Ok(None);
                 }
@@ -220,7 +322,9 @@ impl WebSocketClientTransport {
                     });
                 }
                 Ok(PayloadRead::Binary) => return Err(ManagedBackendError::UnexpectedMessageShape),
-                Err(error) => return Err(self.transport_error(method, error)),
+                Err(error) => {
+                    return Err(self.receive_error(method, &deadline, error));
+                }
             }
         }
     }
@@ -231,13 +335,17 @@ impl WebSocketClientTransport {
         deadline: Instant,
         parse: impl FnOnce(&mut dyn Read) -> Result<T, serde_json::Error>,
     ) -> Result<Option<Result<T, serde_json::Error>>, ManagedBackendError> {
-        let mut reader = WebSocketTextMessageReader::new(self, method, deadline);
+        let mut reader =
+            WebSocketTextMessageReader::new(self, method, ReceiveDeadline::request(deadline));
 
         let parse_started = Instant::now();
         let prime_started = Instant::now();
         let prime = match reader.prime() {
             Ok(prime) => prime,
-            Err(source) => return Err(reader.transport.transport_error(method, source)),
+            Err(source) => {
+                let error = reader.receive_error(source);
+                return Err(error);
+            }
         };
         let prime_elapsed = prime_started.elapsed();
         let reader_wait_after_prime = reader.read_wait();
@@ -264,9 +372,9 @@ impl WebSocketClientTransport {
             Ok(value) => {
                 let discard_started = Instant::now();
                 let reader_wait_before_discard = reader.read_wait();
-                reader
-                    .discard_to_end()
-                    .map_err(|source| reader.transport.transport_error(method, source))?;
+                if let Err(source) = reader.discard_to_end() {
+                    return Err(reader.receive_error(source));
+                }
                 let discard_elapsed = discard_started.elapsed();
                 let discard_reader_wait = reader
                     .read_wait()
@@ -340,7 +448,7 @@ impl WebSocketClientTransport {
                         "failed while streaming WebSocket text message: {source}"
                     ))
                 });
-                Err(reader.transport.transport_error(method, transport_error))
+                Err(reader.receive_error(transport_error))
             }
             Err(source) => {
                 debug!(
@@ -390,7 +498,10 @@ enum HeaderRead {
 }
 
 impl WebSocketClientTransport {
-    fn read_header(&mut self, deadline: Instant) -> Result<HeaderRead, ManagedWebSocketError> {
+    fn read_header(
+        &mut self,
+        deadline: &mut ReceiveDeadline,
+    ) -> Result<HeaderRead, ManagedWebSocketError> {
         let mut bytes = Vec::with_capacity(14);
         loop {
             match self
@@ -416,12 +527,17 @@ impl WebSocketClientTransport {
         }
     }
 
-    fn read_header_byte(&mut self, deadline: Instant) -> Result<Option<u8>, ManagedWebSocketError> {
+    fn read_header_byte(
+        &mut self,
+        deadline: &mut ReceiveDeadline,
+    ) -> Result<Option<u8>, ManagedWebSocketError> {
         if let Some(byte) = self.pending_read.pop_front() {
+            self.note_read_frame_byte(deadline);
             return Ok(Some(byte));
         }
 
         let Some(remaining) = deadline
+            .current()
             .checked_duration_since(Instant::now())
             .filter(|remaining| !remaining.is_zero())
         else {
@@ -435,11 +551,23 @@ impl WebSocketClientTransport {
             Ok(0) => Err(ManagedWebSocketError::protocol(
                 "unexpected EOF while reading WebSocket frame header",
             )),
-            Ok(_) => Ok(Some(byte[0])),
+            Ok(_) => {
+                self.note_read_frame_byte(deadline);
+                Ok(Some(byte[0]))
+            }
             Err(error) if is_timeout_io_error(&error) => {
                 Err(ManagedWebSocketError::deadline_expired())
             }
             Err(error) => Err(ManagedWebSocketError::from_io(error)),
+        }
+    }
+
+    fn note_read_frame_byte(&mut self, deadline: &mut ReceiveDeadline) {
+        deadline.note_frame_byte();
+        #[cfg(feature = "lifecycle-test-support")]
+        if let Some(pause) = self.read_first_frame_byte_pause.take() {
+            let _ = pause.entered.send(());
+            let _ = pause.release.recv();
         }
     }
 
@@ -462,7 +590,7 @@ impl WebSocketClientTransport {
             output[written] = byte;
             written += 1;
         }
-        if written == target {
+        if written > 0 {
             return Ok(written);
         }
 
@@ -647,6 +775,22 @@ impl WebSocketClientTransport {
             endpoint: self.endpoint.clone(),
             source,
         }
+    }
+
+    fn receive_error(
+        &mut self,
+        method: &str,
+        deadline: &ReceiveDeadline,
+        source: ManagedWebSocketError,
+    ) -> ManagedBackendError {
+        if source.is_deadline_expired() && deadline.framing_progressed() {
+            self.abort();
+            return self.transport_error(
+                method,
+                ManagedWebSocketError::read_deadline_expired_after_progress(),
+            );
+        }
+        self.transport_error(method, source)
     }
 }
 

@@ -6,9 +6,10 @@ use std::{
 use soketto::base::OpCode;
 
 use super::{
-    HeaderRead, READ_CHUNK_BYTES, WEBSOCKET_TEXT_MESSAGE_BUDGET, WebSocketClientTransport,
+    HeaderRead, READ_CHUNK_BYTES, ReceiveDeadline, WEBSOCKET_TEXT_MESSAGE_BUDGET,
+    WebSocketClientTransport,
 };
-use crate::session::ManagedWebSocketError;
+use crate::session::{ManagedBackendError, ManagedWebSocketError};
 
 pub(super) struct MessagePayload<'a> {
     method: &'a str,
@@ -75,7 +76,7 @@ pub(super) struct WebSocketTextMessageReader<'a> {
     len: usize,
     complete: bool,
     started_at: Instant,
-    deadline: Instant,
+    deadline: ReceiveDeadline,
     read_wait: Duration,
     fill_buffer_calls: usize,
     payload_chunk_count: usize,
@@ -89,7 +90,7 @@ impl<'a> WebSocketTextMessageReader<'a> {
     pub(super) fn new(
         transport: &'a mut WebSocketClientTransport,
         method: &'a str,
-        deadline: Instant,
+        deadline: ReceiveDeadline,
     ) -> Self {
         Self {
             transport,
@@ -141,6 +142,11 @@ impl<'a> WebSocketTextMessageReader<'a> {
 
     pub(super) fn take_transport_error(&mut self) -> Option<ManagedWebSocketError> {
         self.transport_error.take()
+    }
+
+    pub(super) fn receive_error(&mut self, source: ManagedWebSocketError) -> ManagedBackendError {
+        self.transport
+            .receive_error(self.method, &self.deadline, source)
     }
 
     pub(super) fn text_frame_count(&self) -> usize {
@@ -204,7 +210,7 @@ impl<'a> WebSocketTextMessageReader<'a> {
             let read_started = Instant::now();
             let read = self.transport.read_message_payload_chunk(
                 self.method,
-                self.deadline,
+                &mut self.deadline,
                 &mut self.payload,
                 &mut self.buffer,
             );
@@ -321,7 +327,7 @@ impl WebSocketClientTransport {
     pub(super) fn read_message_payload_chunk(
         &mut self,
         method: &str,
-        deadline: Instant,
+        deadline: &mut ReceiveDeadline,
         payload: &mut MessagePayload<'_>,
         output: &mut [u8],
     ) -> Result<PayloadRead, ManagedWebSocketError> {
@@ -336,7 +342,9 @@ impl WebSocketClientTransport {
                 final_frame,
             } = &mut payload.state
             {
-                let count = self.read_payload_chunk(deadline, *remaining, output)?;
+                let count = self.read_payload_chunk(deadline.current(), *remaining, output)?;
+                #[cfg(feature = "lifecycle-test-support")]
+                self.pause_after_read_payload_for_test();
                 *remaining -= count;
                 if *remaining == 0 {
                     if *final_frame {
@@ -368,15 +376,27 @@ impl WebSocketClientTransport {
 
             if header.opcode().is_control() {
                 payload.note_control_frame();
-                let control = self.read_control_payload(deadline, &header)?;
+                let control = self.read_control_payload(deadline.current(), &header)?;
+                let standalone_control = !payload.started;
                 match header.opcode() {
                     OpCode::Ping => {
-                        self.write_frame_payload(OpCode::Pong, &control, Some(deadline))?;
+                        self.write_frame_payload(OpCode::Pong, &control, Some(deadline.current()))?;
+                        if standalone_control {
+                            deadline.finish_standalone_control_frame();
+                        }
                         return Ok(PayloadRead::Pong);
                     }
-                    OpCode::Pong => return Ok(PayloadRead::Pong),
+                    OpCode::Pong => {
+                        if standalone_control {
+                            deadline.finish_standalone_control_frame();
+                        }
+                        return Ok(PayloadRead::Pong);
+                    }
                     OpCode::Close => {
-                        let _ = self.write_close_frame(method, Some(deadline));
+                        let _ = self.write_close_frame(method, Some(deadline.current()));
+                        if standalone_control {
+                            deadline.finish_standalone_control_frame();
+                        }
                         return Ok(PayloadRead::Close);
                     }
                     _ => {

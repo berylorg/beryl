@@ -62,6 +62,7 @@ pub struct ToolActivityEvent {
     pub file_change_summary: Option<ToolActivityFileChangeSummary>,
     pub collab_agent_spawn_metadata: Option<ToolActivityCollabAgentSpawnMetadata>,
     pub receiver_thread_ids: Vec<String>,
+    pub sub_agent_activity_path: Option<String>,
     pub agent_label_updates: Vec<ToolActivityAgentLabel>,
 }
 
@@ -94,6 +95,7 @@ impl ToolActivitySource {
             "mcpToolCall" => Some(Self::McpToolCall),
             "dynamicToolCall" => Some(Self::DynamicToolCall),
             "collabAgentToolCall" => Some(Self::CollabAgentToolCall),
+            "subAgentActivity" => Some(Self::CollabAgentToolCall),
             "webSearch" => Some(Self::WebSearch),
             "imageView" => Some(Self::ImageView),
             "imageGeneration" => Some(Self::ImageGeneration),
@@ -136,6 +138,7 @@ impl ToolActivityEvent {
             file_change_summary: None,
             collab_agent_spawn_metadata: None,
             receiver_thread_ids: Vec::new(),
+            sub_agent_activity_path: None,
             agent_label_updates: Vec::new(),
         }
     }
@@ -217,6 +220,11 @@ impl ToolActivityEvent {
             .into_iter()
             .filter_map(non_empty_string)
             .collect();
+        self
+    }
+
+    pub(crate) fn with_sub_agent_activity_path(mut self, agent_path: Option<&str>) -> Self {
+        self.sub_agent_activity_path = non_empty(agent_path).map(str::to_string);
         self
     }
 

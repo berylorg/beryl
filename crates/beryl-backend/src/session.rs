@@ -51,7 +51,7 @@ use crate::{
         ThreadStartParams, TurnStartParams, TurnSteerParams, parse_approval_request,
         parse_turn_stream_event,
     },
-    websocket_transport::WebSocketClientTransport,
+    websocket_transport::{WebSocketClientTransport, WebSocketReceiveMode},
 };
 
 const INITIALIZE_METHOD: &str = "initialize";
@@ -476,6 +476,7 @@ pub struct ManagedWebSocketError {
 enum ManagedWebSocketErrorKind {
     Other,
     DeadlineExpired,
+    ReadDeadlineExpiredAfterProgress,
     WriteDeadlineExpired,
     WriteFailedAfterCommit,
 }
@@ -505,6 +506,19 @@ impl ManagedWebSocketError {
 
     pub(crate) fn is_deadline_expired(&self) -> bool {
         self.kind == ManagedWebSocketErrorKind::DeadlineExpired
+    }
+
+    pub(crate) fn read_deadline_expired_after_progress() -> Self {
+        Self {
+            message: "receive deadline expired after inbound framing progress".to_string(),
+            io_error_kind: Some(io::ErrorKind::TimedOut),
+            source: None,
+            kind: ManagedWebSocketErrorKind::ReadDeadlineExpiredAfterProgress,
+        }
+    }
+
+    pub(crate) fn is_read_deadline_expired_after_progress(&self) -> bool {
+        self.kind == ManagedWebSocketErrorKind::ReadDeadlineExpiredAfterProgress
     }
 
     pub(crate) fn write_deadline_expired() -> Self {
@@ -1220,7 +1234,8 @@ impl ManagedBackendSession {
             Err(
                 DeadlineTransportError::DeadlineExpired
                 | DeadlineTransportError::StdioWriteExpired
-                | DeadlineTransportError::WebSocketWriteExpired,
+                | DeadlineTransportError::WebSocketWriteExpired
+                | DeadlineTransportError::WebSocketReadExpiredAfterProgress(_),
             ) => {
                 unreachable!("unbounded response expired")
             }
@@ -1329,6 +1344,7 @@ impl ManagedBackendSession {
         &mut self,
         idle_timeout: Duration,
     ) -> Result<Option<TurnStreamEvent>, ManagedBackendError> {
+        self.ensure_usable("turn stream")?;
         let deadline = Instant::now() + idle_timeout;
 
         loop {
@@ -1574,6 +1590,36 @@ impl ManagedBackendSession {
         match &mut self.transport {
             BackendClientTransport::WebSocket(transport) => {
                 transport.pause_after_next_write_header(entered, release);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_websocket_after_next_read_frame_byte_for_test(
+        &mut self,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.pause_after_next_read_frame_byte(entered, release);
+                true
+            }
+            BackendClientTransport::Stdio { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "lifecycle-test-support")]
+    pub(crate) fn pause_websocket_after_next_read_payload_for_test(
+        &mut self,
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    ) -> bool {
+        match &mut self.transport {
+            BackendClientTransport::WebSocket(transport) => {
+                transport.pause_after_next_read_payload(entered, release);
                 true
             }
             BackendClientTransport::Stdio { .. } => false,
@@ -2112,6 +2158,9 @@ impl ManagedBackendSession {
                 return Err(deadline.timeout_error(method));
             }
             Err(DeadlineTransportError::Backend(error)) => return Err(error),
+            Err(DeadlineTransportError::WebSocketReadExpiredAfterProgress(_)) => {
+                unreachable!("write path cannot report a read deadline")
+            }
         };
 
         let response_wait_started = Instant::now();
@@ -2274,6 +2323,9 @@ impl ManagedBackendSession {
                                 return Err(deadline.timeout_error(method));
                             }
                             Err(DeadlineTransportError::Backend(error)) => return Err(error),
+                            Err(DeadlineTransportError::WebSocketReadExpiredAfterProgress(_)) => {
+                                unreachable!("write path cannot report a read deadline")
+                            }
                         }
                     } else if is_dynamic_tool_call_method(&request_method) {
                         deferred_dynamic_tool_request_count += 1;
@@ -2399,7 +2451,8 @@ impl ManagedBackendSession {
             Err(
                 DeadlineTransportError::DeadlineExpired
                 | DeadlineTransportError::StdioWriteExpired
-                | DeadlineTransportError::WebSocketWriteExpired,
+                | DeadlineTransportError::WebSocketWriteExpired
+                | DeadlineTransportError::WebSocketReadExpiredAfterProgress(_),
             ) => {
                 unreachable!("unbounded write expired")
             }
@@ -2459,7 +2512,8 @@ impl ManagedBackendSession {
             Err(
                 DeadlineTransportError::DeadlineExpired
                 | DeadlineTransportError::StdioWriteExpired
-                | DeadlineTransportError::WebSocketWriteExpired,
+                | DeadlineTransportError::WebSocketWriteExpired
+                | DeadlineTransportError::WebSocketReadExpiredAfterProgress(_),
             ) => {
                 unreachable!("unbounded response expired")
             }
@@ -2504,6 +2558,13 @@ impl ManagedBackendSession {
                 | DeadlineTransportError::StdioWriteFailed(_),
             ) => {
                 unreachable!("receive path cannot report a write deadline")
+            }
+            Err(DeadlineTransportError::WebSocketReadExpiredAfterProgress(error)) => {
+                self.poison_after_websocket_write_timeout();
+                if expected_response.is_some() {
+                    return Ok(None);
+                }
+                return Err(error);
             }
             Err(DeadlineTransportError::WebSocketWriteExpired) => {
                 self.poison_after_websocket_write_timeout();
@@ -2820,6 +2881,7 @@ enum DeadlineTransportError {
     DeadlineExpired,
     StdioWriteExpired,
     StdioWriteFailed(ManagedBackendError),
+    WebSocketReadExpiredAfterProgress(ManagedBackendError),
     WebSocketWriteExpired,
     WebSocketWriteFailed(ManagedBackendError),
     Backend(ManagedBackendError),
@@ -3402,6 +3464,17 @@ impl BackendClientTransport {
                             sanitize_json_rpc_message(sanitizer_kind, expected.request_id, reader)
                         },
                     ) {
+                        Err(error @ ManagedBackendError::WebSocketTransport { .. })
+                            if matches!(
+                                &error,
+                                ManagedBackendError::WebSocketTransport { source, .. }
+                                    if source.is_read_deadline_expired_after_progress()
+                            ) =>
+                        {
+                            Err(DeadlineTransportError::WebSocketReadExpiredAfterProgress(
+                                error,
+                            ))
+                        }
                         Err(ManagedBackendError::WebSocketTransport { source, .. })
                             if source.is_write_deadline_expired() =>
                         {
@@ -3468,7 +3541,26 @@ impl BackendClientTransport {
                     };
                 }
 
-                match transport.recv_text_message_until(method, deadline) {
+                match transport.recv_text_message_until(
+                    method,
+                    deadline,
+                    if expected_response.is_none() {
+                        WebSocketReceiveMode::StreamPoll
+                    } else {
+                        WebSocketReceiveMode::Request
+                    },
+                ) {
+                    Err(error @ ManagedBackendError::WebSocketTransport { .. })
+                        if matches!(
+                            &error,
+                            ManagedBackendError::WebSocketTransport { source, .. }
+                                if source.is_read_deadline_expired_after_progress()
+                        ) =>
+                    {
+                        Err(DeadlineTransportError::WebSocketReadExpiredAfterProgress(
+                            error,
+                        ))
+                    }
                     Err(ManagedBackendError::WebSocketTransport { source, .. })
                         if source.is_write_deadline_expired() =>
                     {
